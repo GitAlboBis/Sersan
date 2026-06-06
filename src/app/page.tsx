@@ -49,28 +49,53 @@ export default function Home() {
       itemScope
       itemType="https://schema.org/WebPage"
     >
+      {/* data-line-anchor wrappers glue the WebGL signature line's curve
+          waypoints to real section positions (src/webgl/curves/routeCurves.ts).
+          Plain block divs — zero layout impact. */}
       <CinematicSystemScroll />
-      <CredibilityStrip />
+      <div data-line-anchor="credibility">
+        <CredibilityStrip />
+      </div>
       <SectionDivider />
-      <ProblemSection />
+      <div data-line-anchor="problem">
+        <ProblemSection />
+      </div>
       <SectionDivider />
-      <ServicesSection />
+      <div data-line-anchor="services">
+        <ServicesSection />
+      </div>
       <SectionDivider />
-      <ProductionGradeSection />
+      <div data-line-anchor="production">
+        <ProductionGradeSection />
+      </div>
       <SectionDivider />
-      <UseCasesSection />
+      <div data-line-anchor="use-cases">
+        <UseCasesSection />
+      </div>
       <SectionDivider />
-      <CaseStudiesSection />
+      <div data-line-anchor="case-studies">
+        <CaseStudiesSection />
+      </div>
       <SectionDivider />
-      <WorkInProgress variant="teaser" />
+      <div data-line-anchor="work-in-progress">
+        <WorkInProgress variant="teaser" />
+      </div>
       <SectionDivider />
-      <FoundersSection />
+      <div data-line-anchor="founders">
+        <FoundersSection />
+      </div>
       <SectionDivider />
-      <ProcessSection />
+      <div data-line-anchor="process">
+        <ProcessSection />
+      </div>
       <SectionDivider />
-      <FitSection />
+      <div data-line-anchor="fit">
+        <FitSection />
+      </div>
       <SectionDivider />
-      <FinalCTA />
+      <div data-line-anchor="final-cta">
+        <FinalCTA />
+      </div>
     </div>
   );
 }

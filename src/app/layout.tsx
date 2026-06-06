@@ -6,6 +6,7 @@ import { LanguageProvider } from "@/components/language-provider";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { SmoothScrollProvider } from "@/components/smooth-scroll-provider";
+import { CanvasHost } from "@/webgl/CanvasHost";
 import { Analytics } from "@vercel/analytics/next";
 
 // Brand type stack (self-hosted via next/font, no runtime CDN requests):
@@ -174,11 +175,20 @@ export default function RootLayout({
         </a>
         <LanguageProvider>
           <SmoothScrollProvider>
+            {/* Persistent WebGL layer — fixed, behind everything (z-0).
+                Mounted at layout level so the GL context survives route
+                changes. Decorative only: aria-hidden + pointer-events:none
+                live inside CanvasHost. */}
+            <CanvasHost />
             <Navbar />
-            <main id="main" className="flex-1">
-              {children}
-            </main>
-            <Footer />
+            {/* Content wrapper above the canvas (z-1). The canvas adds
+                light behind this layer; text stays DOM-crisp. */}
+            <div className="relative z-[1] flex flex-1 flex-col">
+              <main id="main" className="flex-1">
+                {children}
+              </main>
+              <Footer />
+            </div>
           </SmoothScrollProvider>
         </LanguageProvider>
         <Analytics />

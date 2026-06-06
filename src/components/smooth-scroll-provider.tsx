@@ -12,6 +12,7 @@ import { useEffect } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { acquireLenis, releaseLenis } from "@/lib/lenis-singleton";
+import { useScrollStore } from "@/webgl/store/scrollStore";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
@@ -21,19 +22,37 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    // Respect prefers-reduced-motion — fall back to native scroll.
+    const setScroll = useScrollStore.getState().setScroll;
+
+    // Respect prefers-reduced-motion — fall back to native scroll. The
+    // scroll store still gets a progress source (any non-WebGL consumer may
+    // read it; the canvas itself self-disables under reduced motion).
     const prefersReduced = window.matchMedia(
       "(prefers-reduced-motion: reduce)",
     ).matches;
-    if (prefersReduced) return;
+    if (prefersReduced) {
+      const onNativeScroll = () => {
+        const max =
+          document.documentElement.scrollHeight - window.innerHeight;
+        setScroll(max > 0 ? window.scrollY / max : 0, 0);
+      };
+      window.addEventListener("scroll", onNativeScroll, { passive: true });
+      onNativeScroll();
+      return () => window.removeEventListener("scroll", onNativeScroll);
+    }
 
     const lenis = acquireLenis();
 
     // Expose to window for nav anchor links + debugging.
     (window as unknown as { __lenis?: typeof lenis }).__lenis = lenis;
 
-    // Bridge Lenis → ScrollTrigger. Every Lenis tick = ScrollTrigger update.
-    lenis.on("scroll", ScrollTrigger.update);
+    // Bridge Lenis → ScrollTrigger AND the WebGL scroll store. One source,
+    // every consumer: GSAP reveals and shader uniforms share the exact same
+    // smoothed progress.
+    lenis.on("scroll", (l: { progress?: number; velocity?: number }) => {
+      ScrollTrigger.update();
+      setScroll(l.progress ?? 0, l.velocity ?? 0);
+    });
 
     // Hijack anchor-link clicks so Lenis handles them smoothly.
     const onClick = (e: MouseEvent) => {

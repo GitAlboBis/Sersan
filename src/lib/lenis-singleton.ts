@@ -16,11 +16,36 @@ import Lenis from "lenis";
 let instance: Lenis | null = null;
 let rafId: number | null = null;
 let refcount = 0;
+// When the persistent R3F canvas is mounted, ITS loop pumps Lenis (single
+// RAF authority, AGENTS.md §3a) and the private tick below stays parked.
+let externallyPumped = false;
 
 function tick(time: number) {
-  if (!instance) return;
+  if (!instance || externallyPumped) return;
   instance.raf(time);
   rafId = requestAnimationFrame(tick);
+}
+
+/**
+ * Hand the RAF baton to (or take it back from) an external loop — the R3F
+ * FrameDriver. Switching off external pumping restarts the private tick so
+ * scrolling survives the canvas unmounting (tier degradation).
+ */
+export function setExternalPump(on: boolean) {
+  externallyPumped = on;
+  if (on) {
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  } else if (instance && rafId === null) {
+    rafId = requestAnimationFrame(tick);
+  }
+}
+
+/** Advance Lenis from the external loop. No-op unless external pumping is on. */
+export function pumpLenis(time: number) {
+  if (instance && externallyPumped) instance.raf(time);
 }
 
 export function acquireLenis(): Lenis {
@@ -34,7 +59,9 @@ export function acquireLenis(): Lenis {
       // on mobile where we don't run the scene anyway.
       smoothWheel: true,
     });
-    rafId = requestAnimationFrame(tick);
+    if (!externallyPumped) {
+      rafId = requestAnimationFrame(tick);
+    }
   }
   refcount++;
   return instance;
