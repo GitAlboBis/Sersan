@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 264 200" role="img" aria-label="SERSAN">
+  <title>SERSAN</title>
+
+  <!-- Left S — stencil-cut, cream. fill-rule="evenodd" carves the two
+       counter voids out of the outer box, giving a true block-stencil S. -->
+  <path
+    fill="#F3EDE5"
+    fill-rule="evenodd"
+    d="M 12 0 L 120 0 L 120 200 L 12 200 L 0 188 L 0 12 Z M 24 24 L 120 24 L 120 88 L 24 88 Z M 0 112 L 96 112 L 96 176 L 0 176 Z"
+  />
+
+  <!-- Brass divider — thin vertical mark between the two letters -->
+  <rect x="130" y="0" width="4" height="200" fill="#C8A572"/>
+
+  <!-- Right S — mirror of the left -->
+  <g transform="translate(264 0) scale(-1 1)">
+    <path
+      fill="#F3EDE5"
+      fill-rule="evenodd"
+      d="M 12 0 L 120 0 L 120 200 L 12 200 L 0 188 L 0 12 Z M 24 24 L 120 24 L 120 88 L 24 88 Z M 0 112 L 96 112 L 96 176 L 0 176 Z"
+    />
+  </g>
+</svg>

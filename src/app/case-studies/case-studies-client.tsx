@@ -1,0 +1,178 @@
+"use client";
+
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { caseStudies } from "@/data/case-studies";
+import { useLanguage } from "@/components/language-provider";
+import WorkInProgress from "@/components/sections/work-in-progress";
+
+export function CaseStudiesClient() {
+  const { language } = useLanguage();
+  const isEn = language === "en";
+
+  return (
+    <div className="min-h-screen pt-24 relative">
+      {/* Hero */}
+      <section className="py-20 sm:py-32 relative">
+        <div className="container-px relative">
+          <div className="max-w-3xl mx-auto text-center">
+            <p className="eyebrow mb-6 inline-flex items-center justify-center gap-2">
+              <span
+                className="inline-block w-1.5 h-1.5 rounded-full"
+                style={{ background: "hsl(var(--accent))" }}
+                aria-hidden="true"
+              />
+              {isEn ? "Selected work" : "Lavori selezionati"}
+            </p>
+            <h1 className="font-display text-[clamp(2.25rem,7vw,4.5rem)] leading-[1.15] tracking-[-0.025em] text-ink text-balance mb-8 pb-1">
+              {isEn ? (
+                <>
+                  Engineering{" "}
+                  <span className="italic" style={{ color: "hsl(var(--accent))" }}>
+                    track record.
+                  </span>
+                </>
+              ) : (
+                <>
+                  Track record di{" "}
+                  <span className="italic" style={{ color: "hsl(var(--accent))" }}>
+                    ingegneria.
+                  </span>
+                </>
+              )}
+            </h1>
+            <p className="text-base sm:text-lg text-ink-mute max-w-2xl mx-auto leading-[1.55]">
+              {isEn
+                ? "AI-powered software CPTO Michele Sanna has shipped across tier-1 institutions, plus current Sersan product builds. Each entry labels the role and the delivery context."
+                : "Software AI-powered che il CPTO Michele Sanna ha portato in produzione in istituzioni tier-1, insieme ai build di prodotto attuali di Sersan. Ogni voce indica il ruolo e il contesto di delivery."}
+            </p>
+            <div
+              className="mt-10 mx-auto h-px w-48 origin-center"
+              style={{
+                background:
+                  "linear-gradient(90deg, transparent 0%, hsl(var(--accent) / 0.6) 50%, transparent 100%)",
+              }}
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Work in progress — internal builds shown before the shipped archive */}
+      <WorkInProgress variant="full" />
+
+      {/* Grid */}
+      <section className="py-16 sm:py-24">
+        <div className="container-px">
+          <div className="max-w-6xl mx-auto">
+            <h2 className="sr-only">{isEn ? "Case studies" : "Case study"}</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
+              {caseStudies.map((study) => {
+                const engagement = isEn ? study.engagement : study.engagementIt;
+                const role = isEn ? study.role : study.roleIt;
+                const summary = isEn ? study.summary : study.summaryIt;
+                return (
+                  <Link
+                    key={study.id}
+                    href={`/case-studies/${study.id}`}
+                    className="group block h-full rounded-xl border border-rule/70 bg-surface/40 backdrop-blur-[1px] p-7 hover:border-[hsl(var(--accent)/0.5)] hover:bg-surface/60 transition-colors"
+                    aria-label={`${study.client}, ${engagement}`}
+                  >
+                    <p
+                      className="text-[10px] font-mono uppercase tracking-[0.18em] mb-3"
+                      style={{ color: "hsl(var(--accent))" }}
+                    >
+                      {study.industry}
+                    </p>
+                    <h3 className="font-display text-2xl text-ink leading-tight mb-2 group-hover:text-[hsl(var(--accent))] transition-colors">
+                      {study.client}
+                    </h3>
+                    <p className="text-sm text-ink-mute mb-4">{engagement}</p>
+                    <p className="text-sm text-ink/85 leading-[1.55] line-clamp-4 mb-6">{summary}</p>
+                    <div className="flex items-center justify-between text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
+                      <span>{role}</span>
+                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Disclaimer */}
+      <section className="pb-12">
+        <div className="container-px">
+          <div className="max-w-3xl mx-auto">
+            <p className="text-xs text-muted-foreground leading-relaxed text-center italic">
+              {isEn
+                ? "All figures reflect measured impact in production or validated simulation environments. Engagements are labelled by the delivery context in which they were performed; some predate Sersan or were delivered through previous employers or consulting partners. Specific client data and proprietary methods are abstracted where required by confidentiality."
+                : "Tutti i numeri riflettono l'impatto misurato in produzione o in ambienti di simulazione validati. Gli ingaggi sono etichettati in base al contesto di delivery in cui sono stati svolti; alcuni precedono Sersan o sono stati erogati tramite precedenti datori di lavoro o partner di consulenza. Dati specifici dei clienti e metodi proprietari sono astratti dove richiesto dalla riservatezza."}
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Closing CTA */}
+      <section className="section-lg relative">
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] opacity-20 pointer-events-none"
+          aria-hidden="true"
+        >
+          <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle,hsl(var(--accent))_0%,transparent_60%)] blur-[140px]" />
+        </div>
+        <div className="container-px relative z-10">
+          <div className="max-w-2xl mx-auto text-center">
+            <h2 className="font-display text-3xl sm:text-[2.5rem] text-ink leading-[1.12] tracking-tight text-balance mb-6">
+              {isEn ? (
+                <>
+                  Want this kind of work in{" "}
+                  <span className="italic" style={{ color: "hsl(var(--accent))" }}>
+                    your business?
+                  </span>
+                </>
+              ) : (
+                <>
+                  Volete questo tipo di lavoro nella{" "}
+                  <span className="italic" style={{ color: "hsl(var(--accent))" }}>
+                    vostra azienda?
+                  </span>
+                </>
+              )}
+            </h2>
+            <p className="text-base sm:text-lg text-ink-mute mb-10 max-w-lg mx-auto leading-[1.55]">
+              {isEn
+                ? "A free scoping call is the easiest way to find out where it would have the highest impact."
+                : "Una call di scoping gratuita è il modo più semplice per capire dove avrebbe l'impatto maggiore."}
+            </p>
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+              <Button asChild size="lg" className="px-10 py-7 text-base font-semibold rounded-full">
+                <Link href="/audit">
+                  {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Link>
+              </Button>
+              <a
+                href="mailto:alex.s@sersan.dev"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {isEn ? (
+                  <>
+                    Or email{" "}
+                    <span className="underline decoration-dotted underline-offset-4">alex.s@sersan.dev</span>
+                  </>
+                ) : (
+                  <>
+                    Oppure scrivete a{" "}
+                    <span className="underline decoration-dotted underline-offset-4">alex.s@sersan.dev</span>
+                  </>
+                )}
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}

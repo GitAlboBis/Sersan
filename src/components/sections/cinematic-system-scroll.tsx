@@ -1,0 +1,932 @@
+"use client";
+
+/**
+ * CinematicSystemScroll — pinned 600vh cinematic spine of the homepage.
+ *
+ * One ScrollTrigger pins the inner viewport for 6 stages × 100vh of scroll
+ * distance. Scroll progress (0..1) is written into progressRef on every
+ * ScrollTrigger update. The 3D scene reads from progressRef each frame; no
+ * React state churn.
+ *
+ * Text panels are absolutely positioned over the scene and fade in/out
+ * across their stage range, with a small lead-in/lead-out.
+ *
+ * Mobile (≤768px) returns to a normal stacked layout — no pin, no Canvas.
+ */
+
+import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
+import { ArrowRight } from "lucide-react";
+import Link from "next/link";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { Button } from "@/components/ui/button";
+import { CinematicOverlay } from "@/components/scene/cinematic-overlay";
+import { NeuralNetLayer } from "@/components/scene/neural-net-layer";
+import { useLanguage } from "@/components/language-provider";
+import type { Language } from "@/data/translations/types";
+import { START_HREF } from "@/lib/site";
+import { cn } from "@/lib/utils";
+
+if (typeof window !== "undefined") {
+  gsap.registerPlugin(ScrollTrigger);
+}
+
+// === Stage definitions ====================================================
+// Each stage carries both EN and IT copy. `localizeStages(language)` resolves
+// them into a flat `Stage[]` for the active language; the default/SSR render
+// is always English (the language provider starts at "en" on the server).
+type Stage = {
+  id: string;
+  start: number;
+  end: number;
+  eyebrow: string;
+  title: React.ReactNode;
+  body: React.ReactNode;
+  // Optional extra content rendered under the body — used on the hero
+  // stage to surface a proof bullet (categorical commit) and a small
+  // credentials strip drawn from real founders.ts / case-studies.ts data.
+  extras?: React.ReactNode;
+};
+
+type LocalizedStage = {
+  id: string;
+  start: number;
+  end: number;
+  eyebrow: { en: string; it: string };
+  title: { en: React.ReactNode; it: React.ReactNode };
+  body: { en: React.ReactNode; it: React.ReactNode };
+  extras?: { en: React.ReactNode; it: React.ReactNode };
+};
+
+const STAGE_CONTENT: LocalizedStage[] = [
+  {
+    id: "dormant",
+    start: 0.0,
+    end: 0.1,
+    eyebrow: {
+      en: "AI engineering studio · production systems",
+      it: "Studio di ingegneria AI · sistemi in produzione",
+    },
+    title: {
+      en: (
+        <>
+          We build production software with{" "}
+          <span className="text-[hsl(var(--accent))] font-display font-medium">
+            AI agents
+          </span>{" "}
+          inside.
+        </>
+      ),
+      it: (
+        <>
+          Costruiamo software di produzione con{" "}
+          <span className="text-[hsl(var(--accent))] font-display font-medium">
+            agenti AI
+          </span>{" "}
+          dentro.
+        </>
+      ),
+    },
+    body: {
+      en: "SerSan builds custom software, AI agents, automations, MLOps architecture, and audit-ready systems for teams that need production reliability, not polished demos.",
+      it: "SerSan costruisce software su misura, agenti AI, automazioni, architetture MLOps e sistemi pronti per l'audit per team che hanno bisogno di affidabilità in produzione, non di demo patinate.",
+    },
+    // Hero proof: categorical commit + real counts pulled from the actual
+    // case-studies.ts data and founders.ts credentials. No invented metrics.
+    extras: {
+      en: (
+        <div className="mt-5 flex flex-col gap-3">
+          <p className="text-[13px] sm:text-[14px] font-mono uppercase tracking-[0.14em] text-ink/85 leading-relaxed">
+            Custom Software <span aria-hidden="true">·</span> AI Agents{" "}
+            <span aria-hidden="true">·</span> Automation{" "}
+            <span aria-hidden="true">·</span> MLOps{" "}
+            <span aria-hidden="true">·</span> Audits
+            <br />
+            <span className="text-ink-mute/80">
+              For SaaS, fintech &amp; regulated teams
+            </span>
+          </p>
+          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-mono uppercase tracking-[0.14em] text-ink/75 list-none">
+            <li className="flex items-center gap-1.5">
+              <span className="text-ink tabular-nums">13</span>
+              <span>named engagements</span>
+            </li>
+            <li aria-hidden="true" className="text-ink-mute/55">/</li>
+            <li className="flex items-center gap-1.5">
+              <span className="text-ink tabular-nums">5</span>
+              <span>tier-1 institutions</span>
+            </li>
+            <li aria-hidden="true" className="text-ink-mute/55">/</li>
+            <li className="flex items-center gap-1.5">
+              <span className="text-ink tabular-nums">1</span>
+              <span>PhD, applied maths</span>
+            </li>
+          </ul>
+        </div>
+      ),
+      it: (
+        <div className="mt-5 flex flex-col gap-3">
+          <p className="text-[13px] sm:text-[14px] font-mono uppercase tracking-[0.14em] text-ink/85 leading-relaxed">
+            Software su misura <span aria-hidden="true">·</span> Agenti AI{" "}
+            <span aria-hidden="true">·</span> Automazione{" "}
+            <span aria-hidden="true">·</span> MLOps{" "}
+            <span aria-hidden="true">·</span> Audit
+            <br />
+            <span className="text-ink-mute/80">
+              Per SaaS, fintech e team regolamentati
+            </span>
+          </p>
+          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-mono uppercase tracking-[0.14em] text-ink/75 list-none">
+            <li className="flex items-center gap-1.5">
+              <span className="text-ink tabular-nums">13</span>
+              <span>progetti nominali</span>
+            </li>
+            <li aria-hidden="true" className="text-ink-mute/55">/</li>
+            <li className="flex items-center gap-1.5">
+              <span className="text-ink tabular-nums">5</span>
+              <span>istituzioni tier-1</span>
+            </li>
+            <li aria-hidden="true" className="text-ink-mute/55">/</li>
+            <li className="flex items-center gap-1.5">
+              <span className="text-ink tabular-nums">1</span>
+              <span>PhD, matematica applicata</span>
+            </li>
+          </ul>
+        </div>
+      ),
+    },
+  },
+  {
+    id: "signals",
+    start: 0.1,
+    end: 0.25,
+    eyebrow: { en: "01 / Signals", it: "01 / Segnali" },
+    title: {
+      en: <>Every production system starts with messy signals.</>,
+      it: <>Ogni sistema in produzione parte da segnali confusi.</>,
+    },
+    body: {
+      en: "Roadmaps, workflows, tools, data, constraints, and risks. The first thing we do is map what you actually have, not what the deck says.",
+      it: "Roadmap, workflow, strumenti, dati, vincoli e rischi. La prima cosa che facciamo è mappare ciò che avete davvero, non ciò che dice il deck.",
+    },
+  },
+  {
+    id: "audit",
+    start: 0.25,
+    end: 0.4,
+    eyebrow: { en: "02 / Audit", it: "02 / Audit" },
+    title: {
+      en: (
+        <>
+          We find what{" "}
+          <span className="text-[hsl(var(--accent))] font-display font-medium">
+            should not
+          </span>{" "}
+          be built before code becomes debt.
+        </>
+      ),
+      it: (
+        <>
+          Individuiamo cosa{" "}
+          <span className="text-[hsl(var(--accent))] font-display font-medium">
+            non va
+          </span>{" "}
+          costruito prima che il codice diventi debito.
+        </>
+      ),
+    },
+    body: {
+      en: "Architecture, risk, cost, data quality, compliance, and failure modes. About a third of ideas don't survive this step. That's the point.",
+      it: "Architettura, rischio, costi, qualità dei dati, compliance e modalità di guasto. Circa un terzo delle idee non supera questo passaggio. Ed è proprio il punto.",
+    },
+  },
+  {
+    id: "build",
+    start: 0.4,
+    end: 0.58,
+    eyebrow: { en: "03 / Build", it: "03 / Sviluppo" },
+    title: {
+      en: <>Then we design and build the system.</>,
+      it: <>Poi progettiamo e costruiamo il sistema.</>,
+    },
+    body: {
+      en: "Agents, retrieval, automation, model workflows, APIs, and evaluation loops. Production-grade by the time it ships, not bolted on after launch.",
+      it: "Agenti, retrieval, automazione, workflow di modelli, API e loop di valutazione. Pronto per la produzione già al rilascio, non aggiunto dopo il lancio.",
+    },
+  },
+  {
+    id: "operate",
+    start: 0.58,
+    end: 0.75,
+    eyebrow: { en: "04 / Operate", it: "04 / Operatività" },
+    title: {
+      en: <>Production is not launch day.</>,
+      it: <>La produzione non è il giorno del lancio.</>,
+    },
+    body: {
+      en: "Monitoring, evals, human review, rollback paths, and handover are wired in from day one. The system that ships and the system in production are the same system.",
+      it: "Monitoring, eval, revisione umana, percorsi di rollback e handover sono integrati dal primo giorno. Il sistema che rilasciate e il sistema in produzione sono lo stesso sistema.",
+    },
+  },
+  {
+    id: "handover",
+    start: 0.75,
+    end: 1.0,
+    eyebrow: { en: "05 / Handover", it: "05 / Consegna" },
+    title: {
+      en: (
+        <>
+          We hand over something you can{" "}
+          <span className="text-[hsl(var(--accent))] font-display font-medium">
+            run.
+          </span>
+        </>
+      ),
+      it: (
+        <>
+          Consegniamo un sistema che potete{" "}
+          <span className="text-[hsl(var(--accent))] font-display font-medium">
+            gestire.
+          </span>
+        </>
+      ),
+    },
+    body: {
+      en: "A production system with its evals, traces, and boundaries documented. Your team owns it from day one, and you talk to one of us, not an account manager.",
+      it: "Un sistema in produzione con eval, trace e limiti documentati. Il vostro team lo gestisce dal primo giorno, e parlate con uno di noi, non con un account manager.",
+    },
+  },
+];
+
+function localizeStages(language: Language): Stage[] {
+  return STAGE_CONTENT.map((s) => ({
+    id: s.id,
+    start: s.start,
+    end: s.end,
+    eyebrow: s.eyebrow[language],
+    title: s.title[language],
+    body: s.body[language],
+    extras: s.extras ? s.extras[language] : undefined,
+  }));
+}
+
+// CTA + hint labels used in both the desktop spine and the mobile fallback.
+const SPINE_COPY = {
+  en: {
+    ctaPrimary: "Book a 30-min scoping call",
+    seeWhatWeBuild: "See what we build",
+    seeSelectedWork: "See selected work",
+    scroll: "Scroll",
+  },
+  it: {
+    ctaPrimary: "Prenota una call di scoping di 30 min",
+    seeWhatWeBuild: "Guarda cosa costruiamo",
+    seeSelectedWork: "Guarda i nostri lavori",
+    scroll: "Scorri",
+  },
+} as const;
+
+// Opacity for a panel given current progress + its stage range. The fade-in
+// and fade-out happen STRICTLY INSIDE [start, end] so adjacent headlines never
+// overlap — exactly one headline owns the screen at a time. The hero (start 0)
+// stays lit at the very top; the final panel stays lit at the very bottom.
+function panelOpacity(
+  progress: number,
+  start: number,
+  end: number,
+  isHero = false,
+  isFinal = false,
+): number {
+  const fade = Math.min(0.03, (end - start) * 0.3);
+  if (progress <= start) return isHero ? 1 : 0;
+  if (progress >= end) return isFinal ? 1 : 0;
+  let o = 1;
+  if (!isHero && progress < start + fade) o = (progress - start) / fade;
+  if (!isFinal && progress > end - fade) o = Math.min(o, (end - progress) / fade);
+  return Math.max(0, o);
+}
+
+// === Stage panel ==========================================================
+function StagePanel({
+  stage,
+  progressRef,
+  isFinal,
+  isHero,
+  copy,
+}: {
+  stage: Stage;
+  progressRef: React.MutableRefObject<number>;
+  isFinal?: boolean;
+  isHero?: boolean;
+  copy: (typeof SPINE_COPY)[Language];
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  // Drive opacity via rAF (no React re-renders). Early-returns when progress
+  // is unchanged so an idle (un-scrolled) spine stops thrashing styles.
+  useEffect(() => {
+    let raf = 0;
+    let lastP = Number.NaN;
+    let lit = true; // last applied inert/aria state — start "lit" so first tick syncs
+    const tick = () => {
+      const el = ref.current;
+      const p = progressRef.current;
+      if (el && p !== lastP) {
+        lastP = p;
+        const o = panelOpacity(p, stage.start, stage.end, isHero, isFinal);
+        el.style.opacity = String(o);
+        // Subtle Y offset for entry — anchored at the top of viewport
+        const yOffset = (1 - o) * 16;
+        el.style.transform = `translate3d(0, ${yOffset}px, 0)`;
+        // Below this threshold the panel is visually hidden: disable pointer
+        // events AND remove it from focus order + the a11y tree (inert).
+        const visible = o > 0.6;
+        if (visible !== lit) {
+          lit = visible;
+          el.style.pointerEvents = visible ? "auto" : "none";
+          // `inert` exists on HTMLElement in current TS lib; cast for safety.
+          (el as HTMLElement & { inert: boolean }).inert = !visible;
+          if (visible) el.removeAttribute("aria-hidden");
+          else el.setAttribute("aria-hidden", "true");
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [progressRef, stage.start, stage.end, isHero, isFinal]);
+
+  // Initial opacity is computed from progress = 0 so the hero stage (which
+  // begins at start=0) is fully visible in the server-rendered HTML. The
+  // rAF loop in useEffect takes over once JS hydrates. This makes the H1
+  // present and visible without waiting for client hydration.
+  const initialOpacity = panelOpacity(0, stage.start, stage.end, isHero, isFinal);
+  const initialY = (1 - initialOpacity) * 16;
+  const initiallyHidden = initialOpacity <= 0.6;
+
+  return (
+    <div
+      ref={ref}
+      className={cn(
+        "absolute inset-0 flex pointer-events-none",
+        // Every stage is vertically centered so the copy sits on the orb's
+        // eyeline — orb (right) + copy (left) read as one balanced scene
+        // instead of the orb floating high while the text sinks to the bottom
+        // (the old `items-end` opened a large diagonal void on wide screens).
+        // The hero keeps top padding so the eyebrow + first headline line never
+        // slide under the fixed nav on short/laptop viewports (~600-720px).
+        isHero
+          ? "items-center pt-[max(var(--header-h),6rem)] pb-12 sm:pb-16"
+          : "items-center pb-12 sm:pb-16",
+      )}
+      // Panels that start hidden are inert + removed from the a11y tree from
+      // first paint; the rAF tick toggles this as stages light/dim.
+      inert={initiallyHidden}
+      aria-hidden={initiallyHidden || undefined}
+      style={{
+        opacity: initialOpacity,
+        transform: `translate3d(0, ${initialY}px, 0)`,
+        willChange: "opacity, transform",
+      }}
+    >
+      <div className="container-px w-full">
+        <div className="max-w-[42rem]">
+          <p
+            className={cn(
+              "eyebrow inline-flex items-center gap-2 text-ink/80",
+              // Hero rhythm tightened so the full block (eyebrow → 3-line H1 →
+              // subcopy → keyword strip → proof → 2 CTAs) clears top + bottom
+              // at ~600-720px viewport heights.
+              isHero ? "mb-3" : "mb-4",
+            )}
+          >
+            <span aria-hidden="true" className="status-dot" />
+            <span>{stage.eyebrow}</span>
+          </p>
+          {isHero ? (
+            // The hero stage is the page's H1. Subsequent stages are H2s
+            // because the cinematic spine reads as one section to crawlers.
+            <h1 className="font-display text-[clamp(2.35rem,4.8vw,4.5rem)] leading-[0.98] tracking-[-0.03em] text-ink mb-4 text-balance">
+              {stage.title}
+            </h1>
+          ) : (
+            <h2 className="font-display text-[clamp(2.25rem,4.5vw,4rem)] leading-[0.98] tracking-[-0.028em] text-ink mb-5 text-balance">
+              {stage.title}
+            </h2>
+          )}
+          <p
+            className={cn(
+              "text-base sm:text-lg text-foreground/80 leading-[1.55] max-w-[40rem]",
+              isHero && "leading-[1.5]",
+            )}
+          >
+            {stage.body}
+          </p>
+          {stage.extras}
+          {isHero ? (
+            <div className="mt-5 flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
+              <Link href={START_HREF} className="block">
+                <Button variant="hero" size="xl" className="group">
+                  {copy.ctaPrimary}
+                  <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
+                </Button>
+              </Link>
+              <Link href="#services" className="block">
+                <Button variant="heroOutline" size="xl">
+                  {copy.seeWhatWeBuild}
+                </Button>
+              </Link>
+            </div>
+          ) : null}
+          {isFinal ? (
+            <div className="mt-7 flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
+              <Link href={START_HREF} className="block">
+                <Button variant="hero" size="xl" className="group">
+                  {copy.ctaPrimary}
+                  <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
+                </Button>
+              </Link>
+              <Link href="#work" className="block">
+                <Button variant="heroOutline" size="xl">
+                  {copy.seeSelectedWork}
+                </Button>
+              </Link>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// === Stage progress indicator (left rail) =================================
+function StageRail({
+  progressRef,
+  stages,
+}: {
+  progressRef: React.MutableRefObject<number>;
+  stages: Stage[];
+}) {
+  const rail = useRef<Array<HTMLSpanElement | null>>([]);
+
+  useEffect(() => {
+    let raf = 0;
+    let lastP = Number.NaN;
+    const tick = () => {
+      const p = progressRef.current;
+      if (p !== lastP) {
+        lastP = p;
+        stages.forEach((stage, i) => {
+          const el = rail.current[i];
+          if (!el) return;
+          const active = p >= stage.start - 0.02 && p <= stage.end + 0.02;
+          // Quiet secondary detail: only the active tick lights (in accent);
+          // everything else is a faint uniform rule. No past/future contrast.
+          el.style.background = active
+            ? "hsl(var(--accent) / 0.8)"
+            : "hsl(var(--rule) / 0.5)";
+          el.style.opacity = active ? "1" : "0.5";
+        });
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [progressRef, stages]);
+
+  return (
+    <div className="hidden lg:flex absolute left-8 top-1/2 -translate-y-1/2 flex-col gap-3.5 z-20">
+      {stages.map((s, i) => (
+        <span
+          key={s.id}
+          ref={(el) => {
+            rail.current[i] = el;
+          }}
+          className="block w-px h-7 rounded-full transition-[background-color,opacity] duration-300"
+          style={{ background: "hsl(var(--rule) / 0.5)", opacity: 0.5 }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// === Mobile fallback ======================================================
+// Stacked layout used when the desktop pinned cinematic is too heavy.
+// The hero panel (i === 0) renders an H1 so the page heading hierarchy
+// stays consistent across viewports.
+function MobileFallback({
+  stages,
+  copy,
+}: {
+  stages: Stage[];
+  copy: (typeof SPINE_COPY)[Language];
+}) {
+  return (
+    <section className="relative">
+      {stages.map((stage, i) => {
+        const isHero = i === 0;
+        const isFinal = i === stages.length - 1;
+        return (
+          <div
+            key={stage.id}
+            className={cn(
+              "min-h-[80svh] flex items-center container-px py-20 border-b border-[hsl(var(--rule))]",
+              // Hero clears the fixed nav so the eyebrow/H1 never sit under it
+              // on short mobile/landscape heights.
+              isHero && "relative overflow-hidden pt-[max(var(--header-h),6rem)]",
+            )}
+          >
+            {isHero ? (
+              <>
+                {/* Static orb backdrop (no parallax — lightweight). Framed so
+                    the orb's luminous core sits in the upper-right, reading as
+                    an ambient electric-blue glow behind the text. */}
+                <div className="absolute inset-0">
+                  <Image
+                    src="/images/hero/orb-core.webp"
+                    alt=""
+                    aria-hidden="true"
+                    fill
+                    priority
+                    quality={90}
+                    className="object-cover opacity-50"
+                    style={{ objectPosition: "92% 14%" }}
+                    sizes="100vw"
+                  />
+                </div>
+                {/* Single radial wash: near-solid bg over the lower-left
+                    two-thirds (eyebrow→headline→body→CTAs), fading toward
+                    transparent in the top-right so the glow shows. */}
+                <div
+                  aria-hidden="true"
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    background:
+                      "radial-gradient(125% 115% at 100% 0%, transparent 0%, hsl(var(--bg) / 0.5) 28%, hsl(var(--bg) / 0.92) 58%, hsl(var(--bg)) 100%)",
+                  }}
+                />
+              </>
+            ) : null}
+            <div className={cn("max-w-2xl", isHero && "relative z-10")}>
+              <p className="eyebrow mb-4 inline-flex items-center gap-2 text-ink-mute">
+                <span aria-hidden="true" className="status-dot" />
+                <span>{stage.eyebrow}</span>
+              </p>
+              {isHero ? (
+                <h1 className="font-display text-[clamp(2.25rem,8vw,3.25rem)] leading-[1.02] tracking-[-0.028em] text-ink mb-4">
+                  {stage.title}
+                </h1>
+              ) : (
+                <h2 className="font-display text-[clamp(2rem,7vw,3rem)] leading-[1.02] tracking-[-0.025em] text-ink mb-4">
+                  {stage.title}
+                </h2>
+              )}
+              <p className="text-base text-ink-mute leading-relaxed">
+                {stage.body}
+              </p>
+              {stage.extras}
+              {isHero ? (
+                <div className="mt-6 flex flex-col gap-3">
+                  <Link href={START_HREF}>
+                    <Button variant="hero" size="xl" className="w-full">
+                      {copy.ctaPrimary}
+                    </Button>
+                  </Link>
+                  <Link href="#services">
+                    <Button variant="heroOutline" size="lg" className="w-full">
+                      {copy.seeWhatWeBuild}
+                    </Button>
+                  </Link>
+                </div>
+              ) : null}
+              {isFinal ? (
+                <div className="mt-6 flex flex-col gap-3">
+                  <Link href={START_HREF}>
+                    <Button variant="hero" size="xl" className="w-full">
+                      {copy.ctaPrimary}
+                    </Button>
+                  </Link>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+// === Hero backdrop image (static render + subtle scroll parallax) =========
+// Replaces the live WebGL scene. The generated render lives at
+// /images/hero/orb-core.png (electric-blue plasma orb on a dark hex pedestal,
+// orbital rings, center-right, left third dark for the headline). A rAF loop
+// reads progressRef and applies a gentle scale + translateY across 0→1, plus a
+// very slow ambient float. Reduced-motion: static, fixed scale, no transform.
+function HeroBackdrop({
+  progressRef,
+  reduceMotion,
+}: {
+  progressRef: React.MutableRefObject<number>;
+  reduceMotion: boolean;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (reduceMotion) return;
+    let raf = 0;
+    const start = performance.now();
+    const tick = (now: number) => {
+      const el = ref.current;
+      if (el) {
+        const p = progressRef.current;
+        // Scroll-driven cinematic dolly: push-in scale 1.22 → 1.34 and a slow
+        // camera pan across 0→1. The higher base zoom (was 1.06) crops the hex
+        // pedestal off the bottom of the frame and centers the orb, so the
+        // scene reads as an orb on the orb's eyeline rather than a small orb
+        // floating above a stray block. Scale grows faster than the pan, so the
+        // overscan always exceeds the translate — no image edge is revealed.
+        const scale = 1.22 + p * 0.12;
+        const tx = -p * 6;
+        const ty = -p * 5;
+        // Slow ambient float (~22s period), a couple of px each axis, plus a
+        // tiny scale breath.
+        const t = (now - start) / 1000;
+        const driftY = Math.sin(t * 0.28) * 3;
+        const driftX = Math.cos(t * 0.21) * 2;
+        const breath = Math.sin(t * 0.5) * 0.006;
+        el.style.transform = `translate(${tx}%, ${ty}%) translate3d(${driftX}px, ${driftY}px, 0) scale(${
+          scale + breath
+        })`;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [progressRef, reduceMotion]);
+
+  return (
+    <div
+      ref={ref}
+      className="absolute inset-0"
+      style={{
+        transform: "translate3d(0,0,0) scale(1.22)",
+        willChange: "transform",
+      }}
+    >
+      <Image
+        src="/images/hero/orb-core.webp"
+        alt=""
+        aria-hidden="true"
+        fill
+        priority
+        quality={90}
+        className="object-cover"
+        // Horizontal 115% keeps the orb in the right portion (dark left third
+        // for the copy). Vertical 32% biases the framing toward the TOP of the
+        // source image — combined with the 1.22 base zoom this crops the hex
+        // pedestal off the bottom and lands the orb on the vertical eyeline of
+        // the copy, so the scene reads balanced rather than top-heavy.
+        style={{ objectPosition: "115% 32%" }}
+        sizes="100vw"
+      />
+    </div>
+  );
+}
+
+// === Main component =======================================================
+export default function CinematicSystemScroll() {
+  const { language } = useLanguage();
+  const stages = localizeStages(language);
+  const copy = SPINE_COPY[language];
+  const outerRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const progressRef = useRef<number>(0);
+  // Default to desktop layout on the server so the hero H1 + subhead are
+  // present in the initial HTML (good for SEO, first paint, accessibility).
+  // The client detects mobile and switches after mount; the resulting
+  // flash on a mobile cold-load is acceptable trade for an SSR'd hero.
+  const [isMobile, setIsMobile] = useState<boolean>(false);
+  const [hasDetectedViewport, setHasDetectedViewport] = useState(false);
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setIsMobile(window.matchMedia("(max-width: 768px)").matches);
+    setHasDetectedViewport(true);
+    setReduceMotion(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }, []);
+
+  // (Removed: the JS `new Image()` preloader that warmed orb-core.png + five
+  // planet jpgs and flipped an `assetsReady` flag. The orb is now painted by
+  // `next/image priority` — Next emits a real <link rel=preload> for it, so it
+  // can be the LCP element without a JS gate. The five planet jpgs were dead
+  // leftovers from the retired WebGL scene.)
+
+  // (Removed: canvas-on-demand IntersectionObserver gate.) The spine is
+  // the homepage hero — always in view from first paint, so the gate was
+  // dead weight that could leave the canvas un-mounted if the observer's
+  // first callback was deferred. The Canvas now mounts on first render.
+
+  // (Removed: the mouse-smoothing rAF loop. Its only consumer was the live
+  // WebGL scene, which was replaced by the static orb render — the smoothed
+  // mouse position was no longer read anywhere, so the loop + its refs were
+  // dead per-frame work.)
+
+  // ScrollTrigger pin + scrub. Only attach once the viewport detection
+  // has settled — otherwise on a mobile cold load we'd briefly pin to a
+  // section that's about to be replaced by MobileFallback.
+  useEffect(() => {
+    if (!hasDetectedViewport || isMobile) return;
+    if (typeof window === "undefined") return;
+
+    const outer = outerRef.current;
+    if (!outer) return;
+
+    const st = ScrollTrigger.create({
+      trigger: outer,
+      start: "top top",
+      end: "bottom bottom",
+      scrub: 0.6,
+      // No pin here — the inner stage uses CSS `position: sticky` which
+      // already pins it visually. Adding ScrollTrigger.pin on top would
+      // double-pin and break layout.
+      onUpdate: (self) => {
+        progressRef.current = self.progress;
+      },
+    });
+
+    // Force a refresh after layout settles. Multiple short timeouts catch
+    // late-arriving font / texture / canvas layout shifts. The final
+    // resize listener catches mobile rotation + browser-chrome reveal.
+    const refresh = () => ScrollTrigger.refresh();
+    const ids = [60, 250, 700, 1500].map((ms) => window.setTimeout(refresh, ms));
+    // Debounced resize handler — coalesce the event burst from a resize /
+    // orientation change into a single re-measure once it settles.
+    let resizeId = 0;
+    const onResize = () => {
+      window.clearTimeout(resizeId);
+      resizeId = window.setTimeout(refresh, 150);
+    };
+    window.addEventListener("resize", onResize);
+
+    return () => {
+      st.kill();
+      ids.forEach((id) => window.clearTimeout(id));
+      window.clearTimeout(resizeId);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [isMobile, hasDetectedViewport]);
+
+  // Mobile users — and anyone with prefers-reduced-motion (on any viewport)
+  // — get the stacked fallback once detection has resolved. The pinned
+  // 400vh scrub is motion-heavy by nature, so under reduced-motion we serve
+  // the static stacked layout on desktop too. On the server we always render
+  // the desktop layout, so the hero copy is in the initial HTML regardless.
+  if (hasDetectedViewport && (isMobile || reduceMotion)) {
+    return <MobileFallback stages={stages} copy={copy} />;
+  }
+
+  return (
+    <section
+      ref={outerRef}
+      id="top"
+      className="relative"
+      // 520vh gives each of the six stages a bit more scroll distance so the
+      // transitions read calmer (less sensitive) than the previous 400vh,
+      // while still releasing the user into the rest of the page well before
+      // the old 600vh spine did.
+      style={{ height: "520vh" }}
+    >
+      {/* Pinned viewport. The text panels + orb render immediately (so the H1
+          and the LCP image are in the initial paint). */}
+      <div
+        ref={stageRef}
+        className="sticky top-0 h-screen overflow-hidden"
+      >
+        {/* Static hero render + subtle scroll parallax — replaces the live
+            WebGL scene. NOT gated: rendered via next/image priority so it can
+            be the LCP paint immediately. */}
+        <HeroBackdrop progressRef={progressRef} reduceMotion={reduceMotion} />
+
+        {/* Animated neural-network depth layer — composites OVER the orb image
+            (screen blend) but BELOW the telemetry overlay + text. Parallaxes
+            at a different rate than the orb for real depth. */}
+        <NeuralNetLayer progressRef={progressRef} reduceMotion={reduceMotion} />
+
+        {/* Atmospheric overlay — sits between the WebGL canvas and the
+            vignette/text. Adds telemetry arcs, diagnostic pings, a faint
+            topology constellation, dust drift, an occasional scan pass,
+            and grain. All CSS/SVG, GPU-cheap, prefers-reduced-motion
+            gated. Does not interfere with text or CTAs. */}
+        <CinematicOverlay />
+
+        {/* Vignette gradient at bottom. Kept to the lower ~45% so it darkens
+            the hex pedestal at the base of the orb (it fades into black as an
+            intentional plinth instead of reading as a stray metallic block)
+            WITHOUT swallowing the now-centered orb, whose glow sits above this
+            band. */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-x-0 bottom-0 h-[45%] pointer-events-none"
+          style={{
+            background:
+              "linear-gradient(to top, hsl(var(--bg)) 0%, hsl(var(--bg) / 0.92) 24%, hsl(var(--bg) / 0.5) 58%, transparent 100%)",
+          }}
+        />
+
+        {/* Left-side horizontal gradient — pushes the text panel's
+            readability up by darkening the planet/nebula behind it on
+            the left third of the viewport. Strongest near the left edge
+            (where the H1 + paragraph sit), fading to transparent at the
+            centre. Critical for the wider stage 0 / hero waypoint where
+            the planet drifts left at the wide-shot camera. */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-y-0 left-0 w-[58%] pointer-events-none"
+          style={{
+            background:
+              "linear-gradient(to right, hsl(var(--bg) / 0.88) 0%, hsl(var(--bg) / 0.45) 38%, transparent 74%)",
+          }}
+        />
+
+        {/* Guaranteed text-contrast scrim. Sits directly behind the text
+            column (center-left, where every panel now anchors) and above the
+            orb + overlay, so the headline/body keep ≥4.5:1 contrast at ALL
+            scroll positions — even when the bright orb drifts under the text on
+            the push-in. Concentrated center-left and faded out toward the orb
+            on the right so it never washes out the focal subject. */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              "radial-gradient(58% 85% at 0% 50%, hsl(var(--bg) / 0.85) 0%, hsl(var(--bg) / 0.4) 38%, transparent 72%)",
+          }}
+        />
+
+        {/* Stage rail (left) */}
+        <StageRail progressRef={progressRef} stages={stages} />
+
+        {/* Stage panels stacked, each fades in during its range. The hero
+            panel (index 0) is the page H1; the final panel carries the
+            scoping CTA cluster. */}
+        {stages.map((stage, i) => (
+          <StagePanel
+            key={stage.id}
+            stage={stage}
+            progressRef={progressRef}
+            isHero={i === 0}
+            isFinal={i === stages.length - 1}
+            copy={copy}
+          />
+        ))}
+
+        {/* Scroll hint, fades out after stage 0 */}
+        <ScrollHint progressRef={progressRef} label={copy.scroll} />
+      </div>
+    </section>
+  );
+}
+
+// === Scroll hint (chevron + label) ========================================
+function ScrollHint({
+  progressRef,
+  label,
+}: {
+  progressRef: React.MutableRefObject<number>;
+  label: string;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    let raf = 0;
+    let lastP = Number.NaN;
+    const tick = () => {
+      const p = progressRef.current;
+      if (p !== lastP) {
+        lastP = p;
+        const el = ref.current;
+        if (el) {
+          const o = Math.max(0, 1 - p / 0.05);
+          el.style.opacity = String(o);
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [progressRef]);
+  return (
+    <div
+      ref={ref}
+      aria-hidden="true"
+      className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-ink-mute"
+      style={{ opacity: 1 }}
+    >
+      <span className="font-mono text-[10px] tracking-[0.18em] uppercase">
+        {label}
+      </span>
+      <span className="block w-px h-8 bg-[hsl(var(--ink-mute)/0.5)] motion-safe:animate-pulse" />
+    </div>
+  );
+}

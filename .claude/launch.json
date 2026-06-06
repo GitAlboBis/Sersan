@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "sersan-v2-dev",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000,
+      "autoPort": true
+    },
+    {
+      "name": "sersan-v2-prod",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "start", "--", "-p", "3100"],
+      "port": 3100,
+      "autoPort": true
+    }
+  ]
+}

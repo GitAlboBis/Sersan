@@ -1,0 +1,618 @@
+@import "tailwindcss";
+
+/* === SerSan — 8bit-grade dark system ===
+   Pure black + white + one electric cyan accent. Single source of truth
+   for color, type, spacing. Tailwind v4 CSS-first via `@theme inline`. */
+
+:root {
+  /* === SerSan brand identity — navy graphite + electric blue ===
+     The structural lessons from 8bit (fluid root, tight letter-spacing,
+     responsive margins, easing curves) live below. Colors stay SerSan. */
+
+  /* Surfaces — deep navy. Lifted out of pure-black territory; the page
+     used to read as a black slab even with section glows on top because
+     --bg was at 3% lightness. 8% is still unmistakably dark but has
+     enough mid-tone for the steel-card gradients + section tints to
+     actually register. */
+  --bg:           220 26% 7%;     /* lifted deep navy */
+  --surface:      220 20% 13%;    /* lifted card (was 11%) */
+  --surface-elev: 220 18% 19%;    /* raised panel (was 17%) */
+
+  /* Ink */
+  --ink:           210 20% 96%;
+  --ink-mute:      220 8% 60%;    /* slightly brighter mute reads against new bg */
+  --ink-dim:       220 6% 32%;
+
+  /* Rules — cool graphite */
+  --rule:         220 16% 19%;    /* slightly lifted to read against new bg */
+  --rule-warm:     36 20% 32%;
+
+  /* Accent — electric brand blue. The previous muted teal token was
+     never the actual brand colour — strategy doc + every "brand blue"
+     reference in the codebase assumed an electric-blue accent. The
+     teal value was a legacy from an earlier palette experiment and
+     was the single biggest reason the page kept reading as "no
+     colour, looks dead": every accent reference (CTAs, hovers, glows,
+     active indicators, the planet's tint, the section glows) rendered
+     as muted grey-blue. */
+  --accent:       205 95% 62%;    /* #29A3F5 — electric brand blue */
+  --accent-dark:  205 95% 42%;    /* deeper rim variant */
+  --accent-warm:   36 52% 66%;    /* legacy brass — used for warm accents */
+  --refusal:       12 65% 58%;
+
+  /* shadcn-compat semantics — primary is the BRAND accent. We keep the
+     restraint by reserving accent-glow + status pulses for the rare hits. */
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --card: var(--surface);
+  --card-foreground: var(--ink);
+  --popover: var(--surface);
+  --popover-foreground: var(--ink);
+  --primary: var(--accent);
+  --primary-foreground: 220 35% 5%;
+  --secondary: var(--surface);
+  --secondary-foreground: var(--ink);
+  --muted: var(--surface);
+  --muted-foreground: var(--ink-mute);
+  --accent-foreground: var(--ink);
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --border: var(--rule);
+  /* Form-field border — lifted well above --rule so the input boundary meets
+     WCAG 1.4.11 non-text contrast (≥3:1) against the dark field fill. The
+     plain --rule (19% L) was ~1.2:1 and effectively invisible. */
+  --input: 220 14% 42%;
+  --ring: var(--accent);
+  --radius: 0.5rem;
+
+  /* === 8bit motion + spacing tokens === */
+  --ease-out: cubic-bezier(0.215, 0.610, 0.355, 1.000);
+  --ease-in-out: cubic-bezier(0.645, 0.045, 0.355, 1.000);
+  /* Canonical ENTRANCE curve (sharp expo-out decel). Single source of truth
+     for fade/slide reveals — mirrored by GSAP `expo.out` and the framer
+     EASE constant so every reveal on the page shares one feel. */
+  --ease-entrance: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --dur-fast:    200ms;
+  --dur-normal:  300ms;
+  --dur-slow:    500ms;
+  --dur-hero:    1000ms;
+
+  --gutter: 1rem;
+  --margin: 2rem;
+  --header-h: 6.1rem;
+}
+
+@media (min-width: 768px) {
+  :root { --gutter: 3rem; --margin: 4rem; }
+}
+@media (min-width: 1024px) {
+  :root { --margin: 6rem; }
+}
+@media (min-width: 1280px) {
+  :root { --margin: 10rem; }
+}
+
+@theme inline {
+  --color-bg: hsl(var(--bg));
+  --color-surface: hsl(var(--surface));
+  --color-surface-elev: hsl(var(--surface-elev));
+  --color-ink: hsl(var(--ink));
+  --color-ink-mute: hsl(var(--ink-mute));
+  --color-rule: hsl(var(--rule));
+  --color-rule-warm: hsl(var(--rule-warm));
+  --color-accent: hsl(var(--accent));
+  --color-accent-warm: hsl(var(--accent-warm));
+  --color-refusal: hsl(var(--refusal));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-border: hsl(var(--border));
+  --color-ring: hsl(var(--ring));
+
+  /* Geist family (self-hosted via next/font). Sans drives body, display, and
+     the lingering serif token alike — the editorial serif is fully retired. */
+  --font-sans: var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-serif: var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-display: var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+
+  --animate-marquee: marquee 30s linear infinite;
+  --animate-marquee-reverse: marquee-reverse 35s linear infinite;
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+@keyframes marquee-reverse {
+  0% { transform: translateX(-50%); }
+  100% { transform: translateX(0); }
+}
+
+/* Premium fade-up — used by hero & section reveals.
+   Out-expo easing matches the Linear/Framer feel. */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.fade-up {
+  opacity: 0;
+  animation: fade-up 0.7s var(--ease-entrance) forwards;
+}
+.fade-in {
+  opacity: 0;
+  animation: fade-in 0.6s var(--ease-entrance) forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fade-up, .fade-in {
+    opacity: 1 !important;
+    transform: none !important;
+    animation: none !important;
+  }
+}
+
+/* 8bit-style infrastructure status pill. Sits in the hero eyebrow row. */
+.status-dot {
+  position: relative;
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: hsl(var(--accent));
+  box-shadow: 0 0 0 0 hsl(var(--accent));
+  animation: status-pulse 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes status-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 hsl(var(--accent) / 0.6); }
+  50%      { box-shadow: 0 0 0 6px hsl(var(--accent) / 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .status-dot { animation: none; }
+}
+
+/* 8bit-style horizontal divider: ──────•────── */
+.section-rule {
+  position: relative;
+  height: 1px;
+  width: 100%;
+  background: hsl(var(--rule));
+  opacity: 0.8;
+}
+.section-rule::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  margin-top: -2px;
+  border-radius: 999px;
+  background: hsl(var(--accent));
+  box-shadow: 0 0 0 4px hsl(var(--bg)), 0 0 14px hsl(var(--accent) / 0.6);
+}
+
+/* Marquee — used by the tier-1 logo strip below the hero. */
+.marquee-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 4rem;
+  animation: marquee-x 28s linear infinite;
+  will-change: transform;
+}
+@keyframes marquee-x {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track { animation: none; }
+}
+
+/* Reduced-motion: explicitly stop the Tailwind theme marquee animations.
+   The global rule below clamps animation-duration, but these theme tokens
+   (animate-marquee / animate-marquee-reverse) run via the `animation`
+   shorthand, so we null them out outright to be certain nothing scrolls. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee,
+  .animate-marquee-reverse {
+    animation: none !important;
+  }
+}
+
+/* === Base === */
+
+* { border-color: hsl(var(--border)); }
+
+html {
+  scroll-behavior: smooth;
+  /* Anchor scroll offset — the fixed nav is ~68px on sm+. scroll-padding-top
+     pushes anchored navigation past the nav so section headings land
+     clearly below the bar instead of cut behind it. */
+  scroll-padding-top: 84px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html {
+  /* 8bit's fluid root: everything scales with viewport. */
+  font-size: clamp(13px, 0.85vw, 16px);
+}
+
+body {
+  background-color: hsl(var(--bg));
+  /* Velvety electric-blue base. The infrastructure grid is gone — it kept
+     reading as the dominant pattern. Instead a soft blue radial wash from
+     the top gives the page a deep velvet feel (not flat black, not a solid
+     blue block), layered over the existing center vignette so cards stay
+     legible. */
+  background-image:
+    radial-gradient(
+      ellipse 120% 80% at 50% 0%,
+      hsl(var(--accent) / 0.06) 0%,
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse at 50% 30%,
+      transparent 0%,
+      hsl(var(--bg) / 0.4) 60%,
+      hsl(var(--bg)) 100%
+    );
+  background-attachment: fixed;
+  color: hsl(var(--ink));
+  font-family: var(--font-geist-sans), 'Helvetica Neue', Helvetica, Arial, system-ui, sans-serif;
+  font-feature-settings: 'ss01', 'cv11';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Sections sit above the 3D scene. Add a per-section atmospheric tint so
+   text stays legible without fully blocking the architecture beneath. */
+.cinematic-veil {
+  position: relative;
+}
+.cinematic-veil::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 70% 60% at 20% 50%, hsl(var(--bg) / 0.78) 0%, hsl(var(--bg) / 0.4) 50%, transparent 80%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+h1, h2 {
+  font-family: var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+h3, h4, h5, h6 {
+  font-family: var(--font-geist-sans), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  letter-spacing: -0.01em;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px hsl(var(--bg)),
+    0 0 0 4px hsl(var(--accent)),
+    0 0 18px hsl(var(--accent) / 0.35);
+  border-radius: inherit;
+  transition: box-shadow 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="radio"]:focus-visible {
+  box-shadow:
+    0 0 0 1px hsl(var(--bg)),
+    0 0 0 3px hsl(var(--accent) / 0.7);
+}
+
+img { height: auto; max-width: 100%; }
+
+/* === Typography utilities === */
+
+.heading-display {
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-weight: 600;
+  font-size: clamp(3rem, 7.5vw, 7rem);
+  line-height: 0.92;
+  letter-spacing: -0.035em;
+}
+.heading-1 {
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-weight: 600;
+  font-size: clamp(2.5rem, 5.5vw, 4.5rem);
+  line-height: 0.98;
+  letter-spacing: -0.028em;
+}
+.heading-2 {
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-weight: 600;
+  font-size: clamp(2rem, 3.75vw, 3.125rem);
+  line-height: 1.04;
+  letter-spacing: -0.024em;
+}
+.heading-3 {
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-weight: 500;
+  font-size: clamp(1.25rem, 2.25vw, 1.625rem);
+  line-height: 1.2;
+  letter-spacing: -0.012em;
+}
+
+.eyebrow {
+  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: hsl(var(--ink-mute));
+  font-weight: 400;
+}
+
+.font-display {
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* Section padding scales. Mobile values bumped (was 2.5/3.5/4rem) so
+   sections breathe on small screens — premium sites need air around
+   content even at 360px. The desktop values stay generous. */
+.section-sm { padding-block: 3rem; }
+.section    { padding-block: 4.5rem; }
+.section-lg { padding-block: 5rem; }
+@media (min-width: 640px) {
+  .section-sm { padding-block: 4rem; }
+  .section    { padding-block: 5.5rem; }
+  .section-lg { padding-block: 6.5rem; }
+}
+@media (min-width: 1024px) {
+  .section-sm { padding-block: 5rem; }
+  .section    { padding-block: 6.5rem; }
+  .section-lg { padding-block: 8rem; }
+}
+
+.card-elevated {
+  position: relative;
+  border-radius: 1rem;
+  border: 1px solid hsl(var(--border) / 0.6);
+  background: hsl(var(--surface));
+  padding: 1.5rem;
+  transition: all 300ms;
+}
+.card-elevated:hover {
+  border-color: hsl(var(--ink) / 0.3);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 30px hsl(var(--bg) / 0.5);
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-elevated:hover { transform: none; }
+}
+
+/*
+ * .section-accent-tint — section-wide brand-blue atmospheric wash.
+ *
+ * The radial SectionGlow blobs alone weren't reading as "the page has
+ * colour" — they sat in corners. This utility paints the whole section
+ * with a soft brand-blue radial that fills the visible area edge to
+ * edge. Combined with SectionGlow blobs on top, the section now feels
+ * lit, not just dimmed.
+ *
+ * The opacity is intentionally low (5%) but covers a huge area so the
+ * cumulative tint is clearly visible. Applied via a ::before pseudo so
+ * the section's normal layout isn't affected.
+ */
+.section-accent-tint {
+  position: relative;
+  isolation: isolate;
+}
+.section-accent-tint::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    radial-gradient(
+      ellipse 90% 70% at 30% 50%,
+      hsl(var(--accent) / 0.20) 0%,
+      hsl(var(--accent) / 0.10) 45%,
+      transparent 75%
+    );
+}
+.section-accent-tint--strong::before {
+  background:
+    radial-gradient(
+      ellipse 90% 70% at 30% 50%,
+      hsl(var(--accent) / 0.28) 0%,
+      hsl(var(--accent) / 0.13) 45%,
+      transparent 75%
+    );
+}
+
+/*
+ * .card-steel — brushed-panel feel.
+ *
+ * Move from "flat dark rectangle" to "machined surface". Each card gets:
+ *
+ *   - Vertical gradient background (lit top, darker bottom — implies a
+ *     soft light source above the page).
+ *   - Inset top-edge highlight: a 1px brighter line at the top of the
+ *     card. Always visible (not just on hover). Reads as a chamfered
+ *     metal bevel catching the page's "light".
+ *   - Inset bottom-edge shadow: 1px darker line at the bottom for the
+ *     opposing depth cue.
+ *   - Drop shadow under the card so it sits *above* the page, not flush.
+ *
+ * Hover state lifts the top highlight to brand blue, intensifies the
+ * drop shadow with a brand-blue tint, and (slightly) brightens the
+ * border. The 350ms ease is shared with the rest of the page's motion.
+ *
+ * Used by Problem, Services, Use Cases, Founders, and Process cards.
+ */
+.card-steel {
+  position: relative;
+  border-radius: 0.5rem;
+  border: 1px solid hsl(220 14% 22% / 0.9);
+  background:
+    linear-gradient(
+      180deg,
+      hsl(220 22% 11%) 0%,
+      hsl(220 22% 9%) 55%,
+      hsl(220 24% 8%) 100%
+    );
+  box-shadow:
+    /* Top-edge highlight (chamfered bevel) */
+    inset 0 1px 0 hsl(220 14% 32% / 0.55),
+    /* Bottom-edge shadow (depth) */
+    inset 0 -1px 0 hsl(220 30% 4% / 0.7),
+    /* Drop shadow — card sits above the page */
+    0 10px 30px -16px hsl(220 50% 0% / 0.65);
+  transition:
+    border-color 350ms cubic-bezier(0.215, 0.610, 0.355, 1.000),
+    box-shadow 350ms cubic-bezier(0.215, 0.610, 0.355, 1.000),
+    background 350ms cubic-bezier(0.215, 0.610, 0.355, 1.000);
+}
+.card-steel:hover {
+  border-color: hsl(var(--accent) / 0.42);
+  background:
+    linear-gradient(
+      180deg,
+      hsl(220 22% 12%) 0%,
+      hsl(220 22% 9%) 55%,
+      hsl(220 24% 8%) 100%
+    );
+  box-shadow:
+    /* Top-edge highlight — brand blue */
+    inset 0 1px 0 hsl(var(--accent) / 0.55),
+    inset 0 -1px 0 hsl(220 30% 4% / 0.7),
+    /* Ambient ring + drop shadow tinted brand blue */
+    0 0 0 1px hsl(var(--accent) / 0.18),
+    0 30px 80px -30px hsl(var(--accent) / 0.32),
+    0 10px 30px -16px hsl(220 50% 0% / 0.65);
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-steel { transition: none; }
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.875rem;
+  border-radius: 9999px;
+  border: 1px solid hsl(var(--border) / 0.6);
+  background: hsl(var(--surface));
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: hsl(var(--foreground) / 0.8);
+}
+
+.section-divider {
+  position: relative;
+  height: 1px;
+  width: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    hsl(var(--accent) / 0.3) 50%,
+    transparent 100%
+  );
+}
+.section-divider::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  margin-top: -2px;
+  border-radius: 999px;
+  background: hsl(var(--accent) / 0.6);
+  box-shadow: 0 0 12px hsl(var(--accent) / 0.4);
+}
+
+.nav-underline {
+  position: relative;
+}
+.nav-underline::after {
+  content: '';
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 4px;
+  height: 1px;
+  background: hsl(var(--accent));
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.nav-underline:hover::after,
+.nav-underline:focus-visible::after {
+  transform: scaleX(1);
+}
+@media (pointer: coarse) {
+  .nav-underline::after { display: none; }
+}
+
+.skip-to-content {
+  position: absolute;
+  left: 1rem;
+  top: 1rem;
+  z-index: 100;
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  background: hsl(var(--accent));
+  color: hsl(var(--bg));
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  transform: translateY(-200%);
+  transition: transform 200ms;
+}
+.skip-to-content:focus { transform: translateY(0); }
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+.container-px {
+  width: 100%;
+  margin-inline: auto;
+  padding-inline: var(--margin);
+  max-width: 1600px;
+}

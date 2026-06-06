@@ -1,0 +1,51 @@
+# Sersan
+
+> AI-powered software engineering for fintech, SaaS, and regulated tech. Built to run at 3am.
+
+Sersan is a London-registered, EU-operating engineering consultancy founded by Alessandro Serratt (CEO, commercial generalist) and Michele Sanna (CPTO, PhD applied mathematics, ex-Revolut / JPMorgan / Deloitte / Brevan Howard / Accenture). We design, build, and operate the software, the AI layer, and what runs in production — same people start-to-finish.
+
+## What we do
+
+- **Technical audits** — one-week diagnostic of your product, systems, data, and manual work. Scored map of what to build, fix, and ship next. From £15K.
+- **Applied AI (LLM / RAG)** — production AI systems, not demos. Multi-head retrieval, evaluation harnesses, guardrails, monitoring.
+- **ML & Data Engineering** — pipelines, feature stores, MLOps, model lifecycle.
+- **Custom software engineering** — TypeScript / Python / Go / Rust depending on what's appropriate. We don't ship to a stack religion.
+- **Fractional CTO / CPTO** — ongoing senior steering from £8K/month, no minimum term.
+- **AI/IoT for agrivoltaics** — vertical specialization in solar-agriculture monitoring with edge inference.
+
+## How we work
+
+- Weekly scope. No multi-year retainers.
+- Engagements from £15K. Fractional from £8K/month, no minimum term.
+- Same senior people from audit through operate. If it breaks at 3am, we wake up.
+- Compliance baked in (EU AI Act, DORA, GDPR, ISO 27001), not bolted on.
+
+## What we refuse
+
+- Projects under £15K — wrong fit, here's who's better.
+- Junior developers staffed on your project.
+- Three-month scoping phases before anyone writes code.
+- "AI strategy" decks without production deliverables.
+
+## Where we are
+
+- London (registered)
+- EU-operating
+- Reply within 1 business day
+
+## Pages
+
+- [Home](https://www.sersan.io/)
+- [Audit](https://www.sersan.io/audit) — the one-week technical audit
+- [Consulting](https://www.sersan.io/consulting) — practice areas + scoping intake
+- [Case studies](https://www.sersan.io/case-studies) — published work, with metrics
+- [Writing](https://www.sersan.io/resources) — field notes
+- [About](https://www.sersan.io/about) — founders, thesis
+- [Trust](https://www.sersan.io/trust) — security, compliance, data handling
+- [Contact](https://www.sersan.io/contact)
+
+## Contact
+
+- info@sersan.io
+- [LinkedIn — Alessandro Serratt](https://www.linkedin.com/in/alessandro-serratt/)
+- [Cal.com booking](https://cal.com/sersan/scoping-call)

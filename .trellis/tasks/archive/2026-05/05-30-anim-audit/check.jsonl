@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify reduced-motion fallbacks, no console, build passes, a11y intact"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "Verify strict TS, no any/@ts-ignore introduced"}
