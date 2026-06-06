@@ -26,9 +26,9 @@ const PULSE_COUNT = 10;
 // Link distance threshold as a fraction of the min(width,height).
 const LINK_DIST = 0.19;
 
-// Brand cool palette — electric blue + cyan.
-const BLUE = { r: 56, g: 182, b: 255 }; // #38B6FF
-const CYAN = { r: 124, g: 208, b: 255 }; // #7cd0ff
+// Brand signal palette — electric cyan + violet (matches --accent/--accent-2).
+const BLUE = { r: 59, g: 225, b: 255 }; // #3BE1FF
+const CYAN = { r: 124, g: 92, b: 255 }; // #7C5CFF
 
 type Node = {
   // Normalized [0..1] position + velocity (per second, in normalized units).

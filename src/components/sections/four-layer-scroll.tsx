@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { motion, useReducedMotion } from "framer-motion";
 import { useLanguage } from "@/components/language-provider";
@@ -18,7 +18,7 @@ function buildCopy(isEn: boolean) {
         title: isEn ? "Augmentation" : "Augmentation",
         desc: isEn
           ? "Your team, just faster. Copilot rollouts, licence choices, usage policies, training, and a way to tell whether people are actually using the thing. Helps the team you already have do their job better, without changing what the job is."
-          : "Il vostro team, solo più veloce. Rollout di copilot, scelta delle licenze, policy d'uso, training e visibilità reale sull'adozione.",
+          : "Il vostro team, solo piÃ¹ veloce. Rollout di copilot, scelta delle licenze, policy d'uso, training e visibilitÃ  reale sull'adozione.",
         aria: isEn
           ? "A person with a chat assistant beside them, representing copilot-style augmentation of an existing team."
           : "Una persona con un assistente chat accanto.",
@@ -242,7 +242,7 @@ function Diagram3({ animated }: { animated: boolean }) {
         y="26"
         fill={inkMute}
         fontSize="7"
-        fontFamily="var(--font-geist-mono), ui-monospace, monospace"
+        fontFamily="var(--font-jbm), ui-monospace, monospace"
         letterSpacing="0.06em"
       >
         GUARDRAILS
@@ -359,7 +359,7 @@ function Diagram4({ animated }: { animated: boolean }) {
         x="42"
         y="89.5"
         fontSize="7"
-        fontFamily="var(--font-geist-sans), sans-serif"
+        fontFamily="var(--font-switzer), sans-serif"
         fill="hsl(var(--primary-foreground))"
       >
         Generate
@@ -392,8 +392,8 @@ function Diagram4({ animated }: { animated: boolean }) {
 const DIAGRAMS = [Diagram1, Diagram2, Diagram3, Diagram4];
 
 /**
- * FourLayerScroll — four-card grid that maps the four layers of AI
- * engagement (augmentation → workflow → agentic → embedded product) with a
+ * FourLayerScroll â€” four-card grid that maps the four layers of AI
+ * engagement (augmentation â†’ workflow â†’ agentic â†’ embedded product) with a
  * brass ignition scan-line on enter.
  */
 export default function FourLayerScroll() {

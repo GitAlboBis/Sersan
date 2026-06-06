@@ -250,14 +250,14 @@ export function CinematicOverlay() {
                 <circle
                   r={p.size}
                   fill={
-                    p.hue === "accent" ? "hsl(var(--accent))" : "hsl(36 95% 70%)"
+                    p.hue === "accent" ? "hsl(var(--accent))" : "hsl(var(--accent-2))"
                   }
                   opacity={0.95}
                   style={{
                     filter: `drop-shadow(0 0 ${p.size * 1.5}px ${
                       p.hue === "accent"
                         ? "hsl(var(--accent) / 0.8)"
-                        : "hsl(36 95% 60% / 0.7)"
+                        : "hsl(var(--accent-2) / 0.7)"
                     })`,
                   }}
                 >

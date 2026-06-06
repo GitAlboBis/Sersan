@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Fraunces, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { LanguageProvider } from "@/components/language-provider";
 import { Navbar } from "@/components/navbar";
@@ -7,18 +8,35 @@ import { Footer } from "@/components/footer";
 import { SmoothScrollProvider } from "@/components/smooth-scroll-provider";
 import { Analytics } from "@vercel/analytics/next";
 
-// Self-hosted via next/font/google (no CDN). Geist Sans drives both display
-// and body; Geist Mono handles eyebrows/code. The serif is gone — the brand
-// now reads as modern-technical, not editorial.
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Brand type stack (self-hosted via next/font, no runtime CDN requests):
+// - Display: Fraunces (variable, optical sizing + italic) — the editorial
+//   serif for big headings. Editorial New is no longer distributed by
+//   Fontshare; Fraunces is what the live site already resolves to.
+// - Body: Switzer (Fontshare, self-hosted woff2) — modern distinctive sans.
+// - Mono: JetBrains Mono — eyebrows, labels, tabular numerics.
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
   subsets: ["latin"],
+  axes: ["opsz"],
+  style: ["normal", "italic"],
   display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const switzer = localFont({
+  variable: "--font-switzer",
+  src: [
+    { path: "../fonts/switzer-300.woff2", weight: "300", style: "normal" },
+    { path: "../fonts/switzer-400.woff2", weight: "400", style: "normal" },
+    { path: "../fonts/switzer-500.woff2", weight: "500", style: "normal" },
+    { path: "../fonts/switzer-600.woff2", weight: "600", style: "normal" },
+  ],
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jbm",
   subsets: ["latin"],
+  weight: ["400", "500"],
   display: "swap",
 });
 
@@ -99,7 +117,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#070b14",
+  themeColor: "#0B1422",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -142,7 +160,7 @@ export default function RootLayout({
        client-side when the user switches to Italian. */
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${fraunces.variable} ${switzer.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <head>
         <script
