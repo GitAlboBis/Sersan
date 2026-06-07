@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Shield, Lock, Globe, FileText, Mail, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import CompliancePipeline from "@/components/sections/compliance-pipeline";
+import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
 
 export function TrustClient() {
@@ -109,7 +110,7 @@ export function TrustClient() {
     <div className="min-h-screen pt-24 pb-24 relative">
       <div className="container-px max-w-5xl">
         {/* Header */}
-        <div className="mb-14 max-w-3xl">
+        <div data-line-anchor="hero" className="mb-14 max-w-3xl">
           <p className="eyebrow mb-5 inline-flex items-center gap-2">
             <span
               className="inline-block w-1.5 h-1.5 rounded-full"
@@ -161,56 +162,61 @@ export function TrustClient() {
 
         {/* Standards */}
         <section className="mb-20">
-          <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
-            {isEn ? "Standards" : "Standard"}
-          </h2>
+          <Reveal>
+            <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
+              {isEn ? "Standards" : "Standard"}
+            </h2>
+          </Reveal>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {standards.map((s) => (
-              <div
-                key={s.title}
-                className="p-6 rounded-xl border border-rule/70 bg-surface/40 hover:border-[hsl(var(--accent)/0.4)] transition-colors"
-              >
-                <div className="mb-4" style={{ color: "hsl(var(--accent))" }}>
-                  <s.icon className="w-5 h-5" />
+            {standards.map((s, i) => (
+              <Reveal key={s.title} delay={i * 70}>
+                <div className="card-steel p-6">
+                  <div className="mb-4" style={{ color: "hsl(var(--accent))" }}>
+                    <s.icon className="w-5 h-5" />
+                  </div>
+                  <h3 className="font-display text-lg text-ink mb-2 leading-tight">{s.title}</h3>
+                  <p className="text-sm text-ink-mute leading-[1.55]">{s.desc}</p>
                 </div>
-                <h3 className="font-display text-lg text-ink mb-2 leading-tight">{s.title}</h3>
-                <p className="text-sm text-ink-mute leading-[1.55]">{s.desc}</p>
-              </div>
+              </Reveal>
             ))}
           </div>
         </section>
 
         {/* GDPR Roles */}
-        <section className="mb-20">
-          <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-3">
-            {isEn ? "GDPR roles" : "Ruoli GDPR"}
-          </h2>
-          <p className="text-sm text-ink-mute leading-[1.55] mb-8 max-w-3xl">
-            {isEn
-              ? "Under GDPR, responsibilities differ depending on whether an organisation is a Controller or a Processor. Sersan can act in either capacity depending on the engagement."
-              : "Ai sensi del GDPR, le responsabilità variano a seconda che l'organizzazione sia Titolare o Responsabile del trattamento. Sersan può agire in entrambi i ruoli a seconda dell'ingaggio."}
-          </p>
+        <section data-line-anchor="rights" className="mb-20">
+          <Reveal>
+            <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-3">
+              {isEn ? "GDPR roles" : "Ruoli GDPR"}
+            </h2>
+            <p className="text-sm text-ink-mute leading-[1.55] mb-8 max-w-3xl">
+              {isEn
+                ? "Under GDPR, responsibilities differ depending on whether an organisation is a Controller or a Processor. Sersan can act in either capacity depending on the engagement."
+                : "Ai sensi del GDPR, le responsabilità variano a seconda che l'organizzazione sia Titolare o Responsabile del trattamento. Sersan può agire in entrambi i ruoli a seconda dell'ingaggio."}
+            </p>
+          </Reveal>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {gdprRoles.map((r) => (
-              <div key={r.title} className="p-6 rounded-xl border border-rule/70 bg-surface/40">
-                <p
-                  className="text-[10px] font-mono uppercase tracking-[0.18em] mb-2"
-                  style={{ color: "hsl(var(--accent))" }}
-                >
-                  {r.label}
-                </p>
-                <h3 className="font-display text-lg text-ink mb-4 leading-tight">{r.title}</h3>
-                <ul className="space-y-2">
-                  {r.items.map((it) => (
-                    <li key={it} className="text-sm text-ink-mute flex items-start gap-2 leading-[1.5]">
-                      <span style={{ color: "hsl(var(--accent))" }} aria-hidden="true">
-                        ·
-                      </span>
-                      <span>{it}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            {gdprRoles.map((r, i) => (
+              <Reveal key={r.title} delay={i * 80}>
+                <div className="card-steel p-6">
+                  <p
+                    className="text-[10px] font-mono uppercase tracking-[0.18em] mb-2"
+                    style={{ color: "hsl(var(--accent))" }}
+                  >
+                    {r.label}
+                  </p>
+                  <h3 className="font-display text-lg text-ink mb-4 leading-tight">{r.title}</h3>
+                  <ul className="space-y-2">
+                    {r.items.map((it) => (
+                      <li key={it} className="text-sm text-ink-mute flex items-start gap-2 leading-[1.5]">
+                        <span style={{ color: "hsl(var(--accent))" }} aria-hidden="true">
+                          ·
+                        </span>
+                        <span>{it}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </Reveal>
             ))}
           </div>
           <p className="mt-6 text-xs text-ink-mute leading-[1.55] max-w-3xl">
@@ -222,29 +228,37 @@ export function TrustClient() {
         </section>
 
         {/* Compliance pipeline visualization */}
-        <CompliancePipeline />
+        <div data-line-anchor="pipeline">
+          <CompliancePipeline />
+        </div>
 
         {/* Controls */}
-        <section className="mb-20">
-          <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
-            {isEn ? "Technical controls" : "Controlli tecnici"}
-          </h2>
+        <section data-line-anchor="subprocessors" className="mb-20">
+          <Reveal>
+            <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
+              {isEn ? "Technical controls" : "Controlli tecnici"}
+            </h2>
+          </Reveal>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {controls.map((c) => (
-              <div key={c.title} className="p-6 rounded-xl border border-rule/70 bg-surface/40">
-                <h3 className="font-display text-lg text-ink mb-2 leading-tight">{c.title}</h3>
-                <p className="text-sm text-ink-mute leading-[1.55]">{c.desc}</p>
-              </div>
+            {controls.map((c, i) => (
+              <Reveal key={c.title} delay={i * 70}>
+                <div className="card-steel p-6">
+                  <h3 className="font-display text-lg text-ink mb-2 leading-tight">{c.title}</h3>
+                  <p className="text-sm text-ink-mute leading-[1.55]">{c.desc}</p>
+                </div>
+              </Reveal>
             ))}
           </div>
         </section>
 
         {/* Retention */}
         <section className="mb-20">
-          <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-6">
-            {isEn ? "Retention" : "Conservazione"}
-          </h2>
-          <div className="rounded-xl border border-rule/70 bg-surface/40 p-7">
+          <Reveal>
+            <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-6">
+              {isEn ? "Retention" : "Conservazione"}
+            </h2>
+          </Reveal>
+          <div className="card-steel p-7">
             <div className="flex items-start gap-4 mb-4">
               <div
                 className="p-2.5 rounded-lg border border-rule/60 bg-surface"
@@ -264,11 +278,13 @@ export function TrustClient() {
         </section>
 
         {/* Contact */}
-        <section>
-          <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-6">
-            {isEn ? "Contact" : "Contatti"}
-          </h2>
-          <div className="rounded-xl border border-rule/70 bg-surface/40 p-7">
+        <section data-line-anchor="final-cta">
+          <Reveal>
+            <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-6">
+              {isEn ? "Contact" : "Contatti"}
+            </h2>
+          </Reveal>
+          <div className="card-steel p-7">
             <p className="text-sm text-ink/85 mb-4 leading-[1.6]">
               {isEn
                 ? "For DPA requests, security questionnaires, or data subject requests, contact us directly. Founders answer the trust inbox personally."

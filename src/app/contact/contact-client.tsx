@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { founders } from "@/data/founders";
 import { ContactForm } from "@/components/contact-form";
 import { CalEmbed } from "@/components/cal-embed";
+import { Reveal } from "@/components/ui/reveal";
+import { SectionHeading } from "@/components/ui/section-heading";
 import { useLanguage } from "@/components/language-provider";
 
 export function ContactClient() {
@@ -69,7 +71,7 @@ export function ContactClient() {
   return (
     <div className="min-h-screen relative">
       {/* Hero */}
-      <section className="pt-24 pb-12 md:pt-32 md:pb-16 relative overflow-hidden">
+      <section data-line-anchor="hero" className="pt-24 pb-12 md:pt-32 md:pb-16 relative overflow-hidden">
         <div aria-hidden="true" className="absolute inset-0 pointer-events-none">
           <div
             className="absolute left-1/2 top-0 -translate-x-1/2 w-[80vw] h-[40vw] max-w-[1100px] max-h-[600px] blur-3xl opacity-30"
@@ -77,7 +79,7 @@ export function ContactClient() {
           />
         </div>
         <div className="container-px relative z-10">
-          <div className="text-center max-w-3xl mx-auto">
+          <Reveal className="text-center max-w-3xl mx-auto">
             <p className="eyebrow mb-6 inline-flex items-center justify-center gap-2">
               <span
                 className="inline-block w-1.5 h-1.5 rounded-full"
@@ -110,27 +112,30 @@ export function ContactClient() {
                 ? "No SDR funnel, no junior triage. A short note and a senior engineer reads it."
                 : "Nessun funnel di SDR, nessun triage junior. Una nota breve, e la legge un ingegnere senior."}
             </p>
-          </div>
+          </Reveal>
         </div>
       </section>
 
       {/* Form + info */}
-      <section className="section relative">
+      <section data-line-anchor="reach" className="section relative">
         <div className="container-px">
           <div className="grid lg:grid-cols-5 gap-10 lg:gap-14 max-w-6xl mx-auto">
             {/* Info */}
             <div className="lg:col-span-2 space-y-10">
               <div>
-                <p className="eyebrow mb-4" style={{ color: "hsl(var(--accent))" }}>
-                  {isEn ? "Reach us directly" : "Contattaci direttamente"}
-                </p>
-                <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
-                  {isEn ? "Same channels, no triage." : "Gli stessi canali, nessun triage."}
-                </h2>
+                <Reveal>
+                  <p className="eyebrow mb-4" style={{ color: "hsl(var(--accent))" }}>
+                    {isEn ? "Reach us directly" : "Contattaci direttamente"}
+                  </p>
+                  <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
+                    {isEn ? "Same channels, no triage." : "Gli stessi canali, nessun triage."}
+                  </h2>
+                </Reveal>
 
                 <div className="space-y-5">
                   {contactInfo.map((info, index) => (
-                    <div key={index} className="flex items-start gap-4">
+                    <Reveal key={index} delay={Math.min(index, 5) * 60} from="left">
+                    <div className="flex items-start gap-4">
                       <div
                         className="p-2.5 rounded-lg shrink-0 border border-rule/60 bg-surface/40 backdrop-blur-sm"
                         style={{ color: "hsl(var(--accent))" }}
@@ -153,6 +158,7 @@ export function ContactClient() {
                         )}
                       </div>
                     </div>
+                    </Reveal>
                   ))}
                 </div>
 
@@ -193,7 +199,7 @@ export function ContactClient() {
               </div>
 
               {/* Audit upsell */}
-              <div className="p-6 rounded-xl border border-rule/70 bg-surface/40 backdrop-blur-sm">
+              <div className="card-steel p-6">
                 <p
                   className="text-[10px] font-mono uppercase tracking-[0.16em] mb-3"
                   style={{ color: "hsl(var(--accent))" }}
@@ -241,30 +247,32 @@ export function ContactClient() {
       </section>
 
       {/* Or pick a slot directly — Cal.com */}
-      <section className="section relative border-t border-rule/40">
+      <section data-line-anchor="intake" className="section relative border-t border-rule/40">
         <div className="container-px">
           <div className="max-w-6xl mx-auto grid lg:grid-cols-5 gap-10 lg:gap-14 items-start">
             <div className="lg:col-span-2">
-              <p className="eyebrow mb-4" style={{ color: "hsl(var(--accent))" }}>
-                {isEn ? "Or pick a slot directly" : "O scegliete uno slot direttamente"}
-              </p>
-              <h2 className="font-display text-2xl sm:text-[2rem] text-ink leading-[1.15] tracking-tight mb-5">
-                {isEn ? (
-                  <>
-                    Skip the inbox.{" "}
-                    <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                      Book the call.
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    Saltate l&apos;inbox.{" "}
-                    <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                      Prenotate la call.
-                    </span>
-                  </>
-                )}
-              </h2>
+              <Reveal>
+                <p className="eyebrow mb-4" style={{ color: "hsl(var(--accent))" }}>
+                  {isEn ? "Or pick a slot directly" : "O scegliete uno slot direttamente"}
+                </p>
+                <h2 className="font-display text-2xl sm:text-[2rem] text-ink leading-[1.15] tracking-tight mb-5">
+                  {isEn ? (
+                    <>
+                      Skip the inbox.{" "}
+                      <span className="italic" style={{ color: "hsl(var(--accent))" }}>
+                        Book the call.
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      Saltate l&apos;inbox.{" "}
+                      <span className="italic" style={{ color: "hsl(var(--accent))" }}>
+                        Prenotate la call.
+                      </span>
+                    </>
+                  )}
+                </h2>
+              </Reveal>
               <p className="text-base text-ink-mute leading-[1.6] mb-4">
                 {isEn
                   ? "Pick a 30-minute slot. We'll reply with a calendar link within 1 business day."
@@ -284,7 +292,7 @@ export function ContactClient() {
       </section>
 
       {/* Related row */}
-      <section className="section-sm border-t border-rule/40">
+      <section data-line-anchor="final-cta" className="section-sm border-t border-rule/40">
         <div className="container-px">
           <div className="max-w-3xl mx-auto flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
             {relatedLinks.map((l) => (

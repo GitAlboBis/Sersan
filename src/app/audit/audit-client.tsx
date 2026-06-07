@@ -4,6 +4,8 @@ import Link from "next/link";
 import { ArrowRight, Check, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CalEmbed } from "@/components/cal-embed";
+import { SectionHeading } from "@/components/ui/section-heading";
+import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
 
 export function AuditClient() {
@@ -143,6 +145,7 @@ export function AuditClient() {
   return (
     <div className="min-h-screen pt-24 relative">
       {/* Hero */}
+      <div data-line-anchor="hero">
       <section className="relative section-lg overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-background/40 via-background/20 to-background pointer-events-none" />
         <div
@@ -198,21 +201,19 @@ export function AuditClient() {
           </div>
         </div>
       </section>
+      </div>
 
       {/* What we look at */}
+      <div data-line-anchor="surfaces">
       <section className="section-lg relative">
         <div className="container-px relative">
-          <div className="max-w-3xl mx-auto text-center mb-12">
-            <p className="eyebrow mb-5 inline-flex items-center justify-center gap-2">
-              <span
-                className="inline-block w-1.5 h-1.5 rounded-full"
-                style={{ background: "hsl(var(--accent))" }}
-                aria-hidden="true"
-              />
-              {isEn ? "What we look at" : "Cosa guardiamo"}
-            </p>
-            <h2 className="font-display text-3xl sm:text-[2.5rem] text-ink leading-[1.12] tracking-tight text-balance">
-              {isEn ? (
+          <SectionHeading
+            align="center"
+            className="mx-auto mb-12"
+            eyebrow={isEn ? "What we look at" : "Cosa guardiamo"}
+            titleClassName="font-display text-3xl sm:text-[2.5rem] text-ink leading-[1.12] tracking-tight text-balance"
+            title={
+              isEn ? (
                 <>
                   Six surfaces. One week.{" "}
                   <span className="italic" style={{ color: "hsl(var(--accent))" }}>
@@ -226,51 +227,46 @@ export function AuditClient() {
                     Profondità reale su ognuna.
                   </span>
                 </>
-              )}
-            </h2>
-          </div>
+              )
+            }
+          />
 
           <div className="max-w-5xl mx-auto">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
               {lookAt.map((item, i) => (
-                <div
-                  key={i}
-                  className="h-full p-6 rounded-xl border border-rule/70 bg-surface/40 backdrop-blur-[1px] hover:border-[hsl(var(--accent)/0.4)] transition-colors"
-                >
-                  <div className="flex items-start gap-4">
-                    <div
-                      className="shrink-0 text-[10px] font-mono uppercase tracking-[0.16em]"
-                      style={{ color: "hsl(var(--accent))" }}
-                    >
-                      {String(i + 1).padStart(2, "0")}
-                    </div>
-                    <div>
-                      <h3 className="font-display text-lg text-ink mb-2 leading-tight">{item.title}</h3>
-                      <p className="text-sm text-ink-mute leading-[1.55]">{item.desc}</p>
+                <Reveal key={i} delay={i * 70}>
+                  <div className="card-steel h-full p-6 backdrop-blur-[1px]">
+                    <div className="flex items-start gap-4">
+                      <div
+                        className="shrink-0 text-[10px] font-mono uppercase tracking-[0.16em]"
+                        style={{ color: "hsl(var(--accent))" }}
+                      >
+                        {String(i + 1).padStart(2, "0")}
+                      </div>
+                      <div>
+                        <h3 className="font-display text-lg text-ink mb-2 leading-tight">{item.title}</h3>
+                        <p className="text-sm text-ink-mute leading-[1.55]">{item.desc}</p>
+                      </div>
                     </div>
                   </div>
-                </div>
+                </Reveal>
               ))}
             </div>
           </div>
         </div>
       </section>
+      </div>
 
       {/* What's in the report */}
+      <div data-line-anchor="deliverable">
       <section className="section-lg relative">
         <div className="container-px relative">
           <div className="max-w-5xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
-            <div>
-              <p className="eyebrow mb-5 inline-flex items-center gap-2">
-                <span
-                  className="inline-block w-1.5 h-1.5 rounded-full"
-                  style={{ background: "hsl(var(--accent))" }}
-                  aria-hidden="true"
-                />
-                {isEn ? "The deliverable" : "Il deliverable"}
-              </p>
-              <h2 className="font-display text-3xl sm:text-[2.25rem] text-ink leading-[1.1] tracking-tight mb-6">
-                {isEn ? (
+            <SectionHeading
+              eyebrow={isEn ? "The deliverable" : "Il deliverable"}
+              titleClassName="font-display text-3xl sm:text-[2.25rem] text-ink leading-[1.1] tracking-tight mb-6"
+              title={
+                isEn ? (
                   <>
                     What&apos;s in the{" "}
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
@@ -284,42 +280,56 @@ export function AuditClient() {
                       report.
                     </span>
                   </>
-                )}
-              </h2>
-              <p className="text-base text-ink-mute leading-[1.6] mb-6">
-                {isEn
-                  ? "A written document. Roughly 20–30 pages. No 80-slide deck. Built to be read by leadership and acted on by engineering."
-                  : "Un documento scritto. Tra le 20 e le 30 pagine. Niente deck da 80 slide. Pensato per essere letto dalla leadership e messo in pratica dall'ingegneria."}
-              </p>
-              <p className="text-base text-ink-mute leading-[1.6]">
-                {isEn
-                  ? "Delivered as a PDF and walked through live with your team in a 60–90 minute session."
-                  : "Consegnato come PDF e presentato live al vostro team in una sessione di 60–90 minuti."}
-              </p>
-            </div>
+                )
+              }
+              description={
+                <>
+                  <span className="block mb-6">
+                    {isEn
+                      ? "A written document. Roughly 20–30 pages. No 80-slide deck. Built to be read by leadership and acted on by engineering."
+                      : "Un documento scritto. Tra le 20 e le 30 pagine. Niente deck da 80 slide. Pensato per essere letto dalla leadership e messo in pratica dall'ingegneria."}
+                  </span>
+                  <span className="block">
+                    {isEn
+                      ? "Delivered as a PDF and walked through live with your team in a 60–90 minute session."
+                      : "Consegnato come PDF e presentato live al vostro team in una sessione di 60–90 minuti."}
+                  </span>
+                </>
+              }
+            />
             <ul className="space-y-3.5">
               {reportContents.map((item, i) => (
-                <li key={i} className="flex items-start gap-3 py-2 border-b border-rule/40 last:border-0">
+                <Reveal
+                  key={i}
+                  as="li"
+                  delay={i * 60}
+                  className="flex items-start gap-3 py-2 border-b border-rule/40 last:border-0"
+                >
                   <Check
                     className="w-4 h-4 mt-1 shrink-0"
                     style={{ color: "hsl(var(--accent))" }}
                     strokeWidth={2.5}
                   />
                   <span className="text-sm sm:text-base text-ink/90 leading-[1.55]">{item}</span>
-                </li>
+                </Reveal>
               ))}
             </ul>
           </div>
         </div>
       </section>
+      </div>
 
       {/* The week */}
+      <div data-line-anchor="timeline">
       <section className="section-lg relative">
         <div className="container-px relative">
-          <div className="max-w-3xl mx-auto text-center mb-12">
-            <p className="eyebrow mb-5">{isEn ? "The week, day by day" : "La settimana, giorno per giorno"}</p>
-            <h2 className="font-display text-3xl sm:text-[2.5rem] text-ink leading-[1.12] tracking-tight text-balance">
-              {isEn ? (
+          <SectionHeading
+            align="center"
+            className="mx-auto mb-12"
+            eyebrow={isEn ? "The week, day by day" : "La settimana, giorno per giorno"}
+            titleClassName="font-display text-3xl sm:text-[2.5rem] text-ink leading-[1.12] tracking-tight text-balance"
+            title={
+              isEn ? (
                 <>
                   Six days.{" "}
                   <span className="italic" style={{ color: "hsl(var(--accent))" }}>
@@ -333,38 +343,41 @@ export function AuditClient() {
                     Lavoro vero ognuno.
                   </span>
                 </>
-              )}
-            </h2>
-          </div>
+              )
+            }
+          />
           <div className="max-w-4xl mx-auto space-y-4">
             {week.map((w, i) => (
-              <div
-                key={i}
-                className="flex flex-col sm:flex-row gap-4 sm:gap-6 p-6 rounded-xl border border-rule/70 bg-surface/40"
-              >
-                <div
-                  className="sm:w-28 shrink-0 text-[11px] font-mono uppercase tracking-[0.18em]"
-                  style={{ color: "hsl(var(--accent))" }}
-                >
-                  {w.day}
+              <Reveal key={i} delay={i * 70}>
+                <div className="card-steel flex flex-col sm:flex-row gap-4 sm:gap-6 p-6">
+                  <div
+                    className="sm:w-28 shrink-0 text-[11px] font-mono uppercase tracking-[0.18em]"
+                    style={{ color: "hsl(var(--accent))" }}
+                  >
+                    {w.day}
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="font-display text-lg text-ink mb-1.5 leading-tight">{w.title}</h3>
+                    <p className="text-sm text-ink-mute leading-[1.55]">{w.desc}</p>
+                  </div>
                 </div>
-                <div className="flex-1">
-                  <h3 className="font-display text-lg text-ink mb-1.5 leading-tight">{w.title}</h3>
-                  <p className="text-sm text-ink-mute leading-[1.55]">{w.desc}</p>
-                </div>
-              </div>
+              </Reveal>
             ))}
           </div>
         </div>
       </section>
+      </div>
 
       {/* What happens after */}
       <section className="section-lg relative">
         <div className="container-px relative">
-          <div className="max-w-3xl mx-auto text-center mb-14">
-            <p className="eyebrow mb-5">{isEn ? "What happens after" : "Cosa succede dopo"}</p>
-            <h2 className="font-display text-3xl sm:text-[2.5rem] text-ink leading-[1.12] tracking-tight text-balance">
-              {isEn ? (
+          <SectionHeading
+            align="center"
+            className="mx-auto mb-14"
+            eyebrow={isEn ? "What happens after" : "Cosa succede dopo"}
+            titleClassName="font-display text-3xl sm:text-[2.5rem] text-ink leading-[1.12] tracking-tight text-balance"
+            title={
+              isEn ? (
                 <>
                   Three doors.{" "}
                   <span className="italic" style={{ color: "hsl(var(--accent))" }}>
@@ -378,25 +391,24 @@ export function AuditClient() {
                     Scegliete voi.
                   </span>
                 </>
-              )}
-            </h2>
-          </div>
+              )
+            }
+          />
           <div className="max-w-5xl mx-auto">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
               {after.map((item, i) => (
-                <div
-                  key={i}
-                  className="h-full p-7 rounded-xl border border-rule/70 bg-surface/40 backdrop-blur-[1px] hover:border-[hsl(var(--accent)/0.4)] transition-colors"
-                >
-                  <div
-                    className="font-mono text-[10px] uppercase tracking-[0.2em] mb-4"
-                    style={{ color: "hsl(var(--accent))" }}
-                  >
-                    {String(i + 1).padStart(2, "0")}
+                <Reveal key={i} delay={i * 80}>
+                  <div className="card-steel h-full p-7 backdrop-blur-[1px]">
+                    <div
+                      className="font-mono text-[10px] uppercase tracking-[0.2em] mb-4"
+                      style={{ color: "hsl(var(--accent))" }}
+                    >
+                      {String(i + 1).padStart(2, "0")}
+                    </div>
+                    <h3 className="font-display text-lg text-ink mb-3 leading-tight">{item.title}</h3>
+                    <p className="text-sm text-ink-mute leading-[1.55]">{item.desc}</p>
                   </div>
-                  <h3 className="font-display text-lg text-ink mb-3 leading-tight">{item.title}</h3>
-                  <p className="text-sm text-ink-mute leading-[1.55]">{item.desc}</p>
-                </div>
+                </Reveal>
               ))}
             </div>
           </div>
@@ -406,15 +418,19 @@ export function AuditClient() {
       {/* FAQ */}
       <section className="section-lg relative">
         <div className="container-px relative">
-          <div className="max-w-3xl mx-auto text-center mb-16">
-            <h2 className="heading-2">{isEn ? "Honest answers." : "Risposte oneste."}</h2>
-          </div>
+          <SectionHeading
+            align="center"
+            className="mx-auto mb-16"
+            title={isEn ? "Honest answers." : "Risposte oneste."}
+          />
           <div className="max-w-3xl mx-auto space-y-6">
             {faqs.map((f, i) => (
-              <div key={i} className="card-elevated p-7">
-                <h3 className="font-display text-lg font-semibold mb-3 text-foreground">{f.q}</h3>
-                <p className="text-sm sm:text-base text-muted-foreground/75 leading-relaxed">{f.a}</p>
-              </div>
+              <Reveal key={i} delay={i * 60}>
+                <div className="card-steel p-7">
+                  <h3 className="font-display text-lg font-semibold mb-3 text-foreground">{f.q}</h3>
+                  <p className="text-sm sm:text-base text-muted-foreground/75 leading-relaxed">{f.a}</p>
+                </div>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -424,7 +440,7 @@ export function AuditClient() {
       <section className="section relative">
         <div className="container-px relative">
           <div className="max-w-3xl mx-auto">
-            <div className="card-elevated p-7 sm:p-8 rounded-xl border border-rule/40 bg-surface-elev">
+            <div className="card-steel p-7 sm:p-8">
               <p
                 className="text-[10px] font-mono uppercase tracking-[0.18em] mb-4"
                 style={{ color: "hsl(var(--accent))" }}
@@ -466,6 +482,7 @@ export function AuditClient() {
       </section>
 
       {/* Closing CTA — Cal.com booking */}
+      <div data-line-anchor="final-cta">
       <section id="book-call" className="section-lg relative overflow-hidden">
         <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] opacity-25 pointer-events-none"
@@ -474,10 +491,13 @@ export function AuditClient() {
           <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle,hsl(var(--accent))_0%,transparent_60%)] blur-[140px]" />
         </div>
         <div className="container-px relative z-10">
-          <div className="max-w-3xl mx-auto text-center mb-10">
-            <p className="eyebrow mb-5">{isEn ? "Book a scoping call" : "Prenota una call di scoping"}</p>
-            <h2 className="font-display text-3xl sm:text-[2.5rem] text-ink leading-[1.12] tracking-tight text-balance mb-5">
-              {isEn ? (
+          <SectionHeading
+            align="center"
+            className="mx-auto mb-10"
+            eyebrow={isEn ? "Book a scoping call" : "Prenota una call di scoping"}
+            titleClassName="font-display text-3xl sm:text-[2.5rem] text-ink leading-[1.12] tracking-tight text-balance mb-5"
+            title={
+              isEn ? (
                 <>
                   Pick a slot.{" "}
                   <span className="italic" style={{ color: "hsl(var(--accent))" }}>
@@ -491,19 +511,23 @@ export function AuditClient() {
                     30 minuti, nessun pitch.
                   </span>
                 </>
-              )}
-            </h2>
-            <p className="text-base sm:text-lg text-ink-mute max-w-lg mx-auto leading-[1.55]">
-              {isEn
-                ? "Free scoping call. If you commission the full audit, the deliverable is yours to keep, whether you hire us after or not."
-                : "Call di scoping gratuita. Se commissionate l'audit completo, il deliverable resta vostro, che ci ingaggiate dopo o no."}
-            </p>
-            <p className="mt-4 text-sm text-ink-mute max-w-md mx-auto">
-              {isEn
-                ? "Pick a 30-minute slot below. We'll reply with a calendar link within 1 business day."
-                : "Scegliete uno slot di 30 minuti qui sotto. Vi rispondiamo con un link al calendario entro 1 giorno lavorativo."}
-            </p>
-          </div>
+              )
+            }
+            description={
+              <>
+                <span className="block max-w-lg mx-auto text-base sm:text-lg leading-[1.55]">
+                  {isEn
+                    ? "Free scoping call. If you commission the full audit, the deliverable is yours to keep, whether you hire us after or not."
+                    : "Call di scoping gratuita. Se commissionate l'audit completo, il deliverable resta vostro, che ci ingaggiate dopo o no."}
+                </span>
+                <span className="block mt-4 max-w-md mx-auto text-sm">
+                  {isEn
+                    ? "Pick a 30-minute slot below. We'll reply with a calendar link within 1 business day."
+                    : "Scegliete uno slot di 30 minuti qui sotto. Vi rispondiamo con un link al calendario entro 1 giorno lavorativo."}
+                </span>
+              </>
+            }
+          />
 
           <div className="section-divider max-w-3xl mx-auto" aria-hidden="true" />
 
@@ -529,6 +553,7 @@ export function AuditClient() {
           </div>
         </div>
       </section>
+      </div>
     </div>
   );
 }

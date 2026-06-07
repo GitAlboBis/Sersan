@@ -4,6 +4,8 @@ import Link from "next/link";
 import { ArrowRight, Building2, Cog, Database, Brain, Container, Code2, LineChart, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MultiStepIntake } from "@/components/multi-step-intake";
+import { SectionHeading } from "@/components/ui/section-heading";
+import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
 
 export function ConsultingClient() {
@@ -129,6 +131,7 @@ export function ConsultingClient() {
   return (
     <div className="min-h-screen pt-24 relative">
       {/* Hero */}
+      <div data-line-anchor="hero">
       <section className="relative section-lg overflow-hidden">
         <div
           aria-hidden="true"
@@ -183,14 +186,19 @@ export function ConsultingClient() {
           </div>
         </div>
       </section>
+      </div>
 
       {/* Practice areas grid */}
+      <div data-line-anchor="practice">
       <section className="section-lg">
         <div className="container-px">
-          <div className="max-w-3xl mx-auto text-center mb-12">
-            <p className="eyebrow mb-4">{isEn ? "What we do" : "Cosa facciamo"}</p>
-            <h2 className="font-display text-3xl sm:text-[2.25rem] text-ink leading-[1.12] tracking-tight text-balance">
-              {isEn ? (
+          <SectionHeading
+            align="center"
+            className="mx-auto mb-12"
+            eyebrow={isEn ? "What we do" : "Cosa facciamo"}
+            titleClassName="font-display text-3xl sm:text-[2.25rem] text-ink leading-[1.12] tracking-tight text-balance"
+            title={
+              isEn ? (
                 <>
                   Eight surfaces. <span className="italic" style={{ color: "hsl(var(--accent))" }}>One team.</span>
                 </>
@@ -198,33 +206,37 @@ export function ConsultingClient() {
                 <>
                   Otto superfici. <span className="italic" style={{ color: "hsl(var(--accent))" }}>Un solo team.</span>
                 </>
-              )}
-            </h2>
-          </div>
+              )
+            }
+          />
           <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {services.map((s) => (
-              <div
-                key={s.title}
-                className="h-full p-6 rounded-xl border border-rule/70 bg-surface/40 hover:border-[hsl(var(--accent)/0.4)] transition-colors"
-              >
-                <div className="mb-4" style={{ color: "hsl(var(--accent))" }}>
-                  <s.icon className="w-5 h-5" />
+            {services.map((s, i) => (
+              <Reveal key={s.title} delay={i * 60}>
+                <div className="card-steel h-full p-6">
+                  <div className="mb-4" style={{ color: "hsl(var(--accent))" }}>
+                    <s.icon className="w-5 h-5" />
+                  </div>
+                  <h3 className="font-display text-lg text-ink mb-2 leading-tight">{s.title}</h3>
+                  <p className="text-sm text-ink-mute leading-[1.55]">{s.desc}</p>
                 </div>
-                <h3 className="font-display text-lg text-ink mb-2 leading-tight">{s.title}</h3>
-                <p className="text-sm text-ink-mute leading-[1.55]">{s.desc}</p>
-              </div>
+              </Reveal>
             ))}
           </div>
         </div>
       </section>
+      </div>
 
       {/* Packages */}
+      <div data-line-anchor="engage">
       <section className="section-lg">
         <div className="container-px">
-          <div className="max-w-3xl mx-auto text-center mb-12">
-            <p className="eyebrow mb-4">{isEn ? "Engagement formats" : "Formati di ingaggio"}</p>
-            <h2 className="font-display text-3xl sm:text-[2.25rem] text-ink leading-[1.12] tracking-tight text-balance">
-              {isEn ? (
+          <SectionHeading
+            align="center"
+            className="mx-auto mb-12"
+            eyebrow={isEn ? "Engagement formats" : "Formati di ingaggio"}
+            titleClassName="font-display text-3xl sm:text-[2.25rem] text-ink leading-[1.12] tracking-tight text-balance"
+            title={
+              isEn ? (
                 <>
                   Three formats.{" "}
                   <span className="italic" style={{ color: "hsl(var(--accent))" }}>
@@ -238,48 +250,48 @@ export function ConsultingClient() {
                     Scegliete quello giusto.
                   </span>
                 </>
-              )}
-            </h2>
-          </div>
+              )
+            }
+          />
           <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-5">
-            {packages.map((p) => (
-              <div key={p.name} className="h-full p-7 rounded-xl border border-rule/70 bg-surface/40">
-                <p
-                  className="text-[10px] font-mono uppercase tracking-[0.2em] mb-2"
-                  style={{ color: "hsl(var(--accent))" }}
-                >
-                  {p.timing}
-                </p>
-                <h3 className="font-display text-xl text-ink mb-3 leading-tight">{p.name}</h3>
-                <p className="text-sm text-ink-mute mb-5 leading-[1.55]">{p.desc}</p>
-                <ul className="space-y-1.5">
-                  {p.includes.map((i) => (
-                    <li key={i} className="text-xs text-ink/80 flex items-start gap-2">
-                      <span style={{ color: "hsl(var(--accent))" }}>·</span>
-                      <span>{i}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            {packages.map((p, i) => (
+              <Reveal key={p.name} delay={i * 80}>
+                <div className="card-steel h-full p-7">
+                  <p
+                    className="text-[10px] font-mono uppercase tracking-[0.2em] mb-2"
+                    style={{ color: "hsl(var(--accent))" }}
+                  >
+                    {p.timing}
+                  </p>
+                  <h3 className="font-display text-xl text-ink mb-3 leading-tight">{p.name}</h3>
+                  <p className="text-sm text-ink-mute mb-5 leading-[1.55]">{p.desc}</p>
+                  <ul className="space-y-1.5">
+                    {p.includes.map((inc) => (
+                      <li key={inc} className="text-xs text-ink/80 flex items-start gap-2">
+                        <span style={{ color: "hsl(var(--accent))" }}>·</span>
+                        <span>{inc}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </Reveal>
             ))}
           </div>
         </div>
       </section>
+      </div>
 
       {/* Intake form */}
+      <div data-line-anchor="process">
       <section id="intake" className="section-lg relative">
         <div className="container-px relative">
-          <div className="max-w-3xl mx-auto text-center mb-10">
-            <p className="eyebrow mb-5 inline-flex items-center justify-center gap-2">
-              <span
-                className="inline-block w-1.5 h-1.5 rounded-full"
-                style={{ background: "hsl(var(--accent))" }}
-                aria-hidden="true"
-              />
-              {isEn ? "Intake" : "Intake"}
-            </p>
-            <h2 className="font-display text-3xl sm:text-[2.5rem] text-ink leading-[1.12] tracking-tight text-balance mb-4">
-              {isEn ? (
+          <SectionHeading
+            align="center"
+            className="mx-auto mb-10"
+            eyebrow={isEn ? "Intake" : "Intake"}
+            titleClassName="font-display text-3xl sm:text-[2.5rem] text-ink leading-[1.12] tracking-tight text-balance mb-4"
+            title={
+              isEn ? (
                 <>
                   Start a{" "}
                   <span className="italic" style={{ color: "hsl(var(--accent))" }}>
@@ -293,41 +305,48 @@ export function ConsultingClient() {
                     conversazione di scoping.
                   </span>
                 </>
-              )}
-            </h2>
-            <p className="text-base text-ink-mute max-w-xl mx-auto leading-[1.6]">
-              {isEn
+              )
+            }
+            description={
+              isEn
                 ? "Four short steps. A senior engineer replies within one business day with what we'd ship first and where we'd push back."
-                : "Quattro passaggi brevi. Un ingegnere senior risponde entro un giorno lavorativo con cosa porteremmo in produzione per primo e dove faremmo obiezione."}
-            </p>
-          </div>
+                : "Quattro passaggi brevi. Un ingegnere senior risponde entro un giorno lavorativo con cosa porteremmo in produzione per primo e dove faremmo obiezione."
+            }
+          />
           <div className="max-w-2xl mx-auto">
             <MultiStepIntake />
           </div>
         </div>
       </section>
+      </div>
 
       {/* Closing CTA */}
+      <div data-line-anchor="final-cta">
       <section className="section-lg">
         <div className="container-px">
           <div className="max-w-2xl mx-auto text-center">
-            <h2 className="font-display text-3xl sm:text-[2.5rem] text-ink leading-[1.12] tracking-tight text-balance mb-6">
-              {isEn ? (
-                <>
-                  Tell us what&apos;s broken.{" "}
-                  <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                    We&apos;ll tell you what we&apos;d ship first.
-                  </span>
-                </>
-              ) : (
-                <>
-                  Diteci cosa non funziona.{" "}
-                  <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                    Vi diciamo cosa metteremmo in produzione per primo.
-                  </span>
-                </>
-              )}
-            </h2>
+            <SectionHeading
+              align="center"
+              className="mx-auto mb-6"
+              titleClassName="font-display text-3xl sm:text-[2.5rem] text-ink leading-[1.12] tracking-tight text-balance"
+              title={
+                isEn ? (
+                  <>
+                    Tell us what&apos;s broken.{" "}
+                    <span className="italic" style={{ color: "hsl(var(--accent))" }}>
+                      We&apos;ll tell you what we&apos;d ship first.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Diteci cosa non funziona.{" "}
+                    <span className="italic" style={{ color: "hsl(var(--accent))" }}>
+                      Vi diciamo cosa metteremmo in produzione per primo.
+                    </span>
+                  </>
+                )
+              }
+            />
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
               <Button asChild size="lg" className="group">
                 <Link href="/audit">
@@ -344,6 +363,7 @@ export function ConsultingClient() {
           </div>
         </div>
       </section>
+      </div>
     </div>
   );
 }

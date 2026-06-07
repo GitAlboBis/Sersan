@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { SplitText } from "gsap/SplitText";
+import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 
 if (typeof window !== "undefined") {
@@ -35,12 +36,18 @@ export function SectionHeading({
   cta,
 }: SectionHeadingProps) {
   const ref = useRef<HTMLDivElement | null>(null);
-  const playedRef = useRef(false);
+  const { language } = useLanguage();
 
+  // Re-run on every language change. The EN↔IT toggle swaps the title text in
+  // place, so a once-only effect would leave SplitText line-divs wrapping the
+  // OLD language's lines while React tries to update detached children — the
+  // title would stay stuck. Mirrors HeadingChoreographer: re-split per language
+  // and revert the previous split in cleanup BEFORE the new render. The <h2>
+  // also carries key={language} (see JSX) so React mounts a fresh, React-owned
+  // title subtree each toggle, discarding any SplitText-orphaned nodes.
   useEffect(() => {
     const el = ref.current;
-    if (!el || playedRef.current) return;
-    playedRef.current = true;
+    if (!el) return;
 
     const prefersReduced =
       typeof window !== "undefined" &&
@@ -48,9 +55,11 @@ export function SectionHeading({
     if (prefersReduced) return;
 
     let cancelled = false;
+    let split: SplitText | null = null;
+    let tl: gsap.core.Timeline | null = null;
 
-    // Wait for the webfonts: SplitText measures line boxes, and Fraunces
-    // swapping in after the split would re-wrap lines under the masks.
+    // Wait for the webfonts: SplitText measures line boxes, and the display
+    // serif swapping in after the split would re-wrap lines under the masks.
     document.fonts?.ready.then(() => {
       if (cancelled || !ref.current) return;
 
@@ -66,7 +75,7 @@ export function SectionHeading({
       if (descEl) gsap.set(descEl, { opacity: 0, y: 12 });
       if (ctaEl) gsap.set(ctaEl, { opacity: 0, y: 10 });
 
-      const tl = gsap.timeline({
+      tl = gsap.timeline({
         scrollTrigger: { trigger: el, start: "top 85%", once: true },
       });
 
@@ -84,11 +93,11 @@ export function SectionHeading({
         );
       }
       if (titleEl) {
-        // Editorial line-mask reveal: each line of the Fraunces title rises
-        // out of its own clip. The split is reverted once the intro has
-        // played, restoring the original DOM — so the EN/IT swap never
-        // reconciles against SplitText-mutated children.
-        const split = new SplitText(titleEl, { type: "lines", mask: "lines" });
+        // Editorial line-mask reveal: each line of the title rises out of its
+        // own clip. The split is held in `split` and reverted in cleanup
+        // (and once the intro completes) so the DOM always ends on the plain,
+        // React-owned title text — the EN/IT swap then reconciles cleanly.
+        split = new SplitText(titleEl, { type: "lines", mask: "lines" });
         tl.from(
           split.lines,
           {
@@ -96,7 +105,10 @@ export function SectionHeading({
             duration: 0.85,
             stagger: 0.09,
             ease: "expo.out",
-            onComplete: () => split.revert(),
+            onComplete: () => {
+              split?.revert();
+              split = null;
+            },
           },
           ">-0.25",
         );
@@ -117,12 +129,18 @@ export function SectionHeading({
       }
     });
 
-    // Don't kill timelines on unmount — let scroll-triggered animations
-    // finish playing; just stop a late fonts.ready from building anew.
+    // On language change / unmount: stop a late fonts.ready from building anew,
+    // revert any live split so no orphaned mask/.split-line divs survive into
+    // the next-language render, and kill this timeline's ScrollTrigger so the
+    // re-created `once:true` reveal doesn't accumulate duplicate triggers.
     return () => {
       cancelled = true;
+      split?.revert();
+      split = null;
+      tl?.scrollTrigger?.kill();
+      tl?.kill();
     };
-  }, []);
+  }, [language]);
 
   return (
     <div
@@ -145,6 +163,7 @@ export function SectionHeading({
       ) : null}
 
       <h2
+        key={language}
         data-heading-title
         className={cn("heading-2 text-ink mb-5 text-balance", titleClassName)}
       >

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowRight, Clock } from "lucide-react";
 import { resources } from "@/data/resources";
 import { useLanguage } from "@/components/language-provider";
+import { Reveal } from "@/components/ui/reveal";
 
 export function ResourcesClient() {
   const { language } = useLanguage();
@@ -28,7 +29,7 @@ export function ResourcesClient() {
   return (
     <div className="min-h-screen text-foreground relative">
       {/* Hero */}
-      <section className="pt-24 pb-16 md:pb-24 relative overflow-hidden">
+      <section data-line-anchor="hero" className="pt-24 pb-16 md:pb-24 relative overflow-hidden">
         <div aria-hidden="true" className="absolute inset-0 pointer-events-none">
           <div
             className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[75vw] h-[36vw] max-w-[1000px] max-h-[560px] blur-3xl opacity-25"
@@ -36,7 +37,7 @@ export function ResourcesClient() {
           />
         </div>
         <div className="container-px relative z-10">
-          <div className="max-w-3xl mx-auto text-center">
+          <Reveal className="max-w-3xl mx-auto text-center">
             <p className="eyebrow mb-6 inline-flex items-center justify-center gap-2">
               <span
                 className="inline-block w-1.5 h-1.5 rounded-full"
@@ -67,19 +68,19 @@ export function ResourcesClient() {
                 ? "No frameworks-of-frameworks. Just what worked, what failed, and why."
                 : "Niente framework di framework. Solo cosa ha funzionato, cosa è andato male e perché."}
             </p>
-          </div>
+          </Reveal>
         </div>
       </section>
 
       {/* Articles list */}
-      <section className="pb-24">
+      <section data-line-anchor="list" className="pb-24">
         <div className="container-px">
           <div className="max-w-4xl mx-auto space-y-5">
-            {resources.map((r) => (
+            {resources.map((r, i) => (
+              <Reveal key={r.slug} delay={Math.min(i, 4) * 70}>
               <Link
-                key={r.slug}
                 href={`/resources/${r.slug}`}
-                className="group block rounded-xl border border-rule/70 bg-surface/40 p-7 hover:border-[hsl(var(--accent)/0.5)] hover:bg-surface/60 transition-colors"
+                className="card-steel group block p-7"
               >
                 <div className="flex items-center gap-3 mb-3 text-[10px] font-mono uppercase tracking-[0.16em] text-ink-mute">
                   <span style={{ color: "hsl(var(--accent))" }}>{categoryLabel[r.category]}</span>
@@ -109,10 +110,15 @@ export function ResourcesClient() {
                   <ArrowRight className="w-4 h-4 text-ink-mute group-hover:text-[hsl(var(--accent))] group-hover:translate-x-0.5 transition-all" />
                 </div>
               </Link>
+              </Reveal>
             ))}
           </div>
         </div>
       </section>
+
+      {/* Closing anchor — gives the signature line a tail waypoint (P5b).
+          Zero-content block div, no layout/copy impact. */}
+      <div data-line-anchor="final-cta" aria-hidden="true" />
     </div>
   );
 }

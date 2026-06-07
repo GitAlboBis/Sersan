@@ -5,6 +5,8 @@ import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { caseStudies } from "@/data/case-studies";
 import { useLanguage } from "@/components/language-provider";
+import { Reveal } from "@/components/ui/reveal";
+import { SectionHeading } from "@/components/ui/section-heading";
 import WorkInProgress from "@/components/sections/work-in-progress";
 
 export function CaseStudiesClient() {
@@ -14,9 +16,9 @@ export function CaseStudiesClient() {
   return (
     <div className="min-h-screen pt-24 relative">
       {/* Hero */}
-      <section className="py-20 sm:py-32 relative">
+      <section data-line-anchor="hero" className="py-20 sm:py-32 relative">
         <div className="container-px relative">
-          <div className="max-w-3xl mx-auto text-center">
+          <Reveal className="max-w-3xl mx-auto text-center">
             <p className="eyebrow mb-6 inline-flex items-center justify-center gap-2">
               <span
                 className="inline-block w-1.5 h-1.5 rounded-full"
@@ -54,7 +56,7 @@ export function CaseStudiesClient() {
                   "linear-gradient(90deg, transparent 0%, hsl(var(--accent) / 0.6) 50%, transparent 100%)",
               }}
             />
-          </div>
+          </Reveal>
         </div>
       </section>
 
@@ -62,38 +64,39 @@ export function CaseStudiesClient() {
       <WorkInProgress variant="full" />
 
       {/* Grid */}
-      <section className="py-16 sm:py-24">
+      <section data-line-anchor="grid" className="py-16 sm:py-24">
         <div className="container-px">
           <div className="max-w-6xl mx-auto">
             <h2 className="sr-only">{isEn ? "Case studies" : "Case study"}</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
-              {caseStudies.map((study) => {
+              {caseStudies.map((study, i) => {
                 const engagement = isEn ? study.engagement : study.engagementIt;
                 const role = isEn ? study.role : study.roleIt;
                 const summary = isEn ? study.summary : study.summaryIt;
                 return (
-                  <Link
-                    key={study.id}
-                    href={`/case-studies/${study.id}`}
-                    className="group block h-full rounded-xl border border-rule/70 bg-surface/40 backdrop-blur-[1px] p-7 hover:border-[hsl(var(--accent)/0.5)] hover:bg-surface/60 transition-colors"
-                    aria-label={`${study.client}, ${engagement}`}
-                  >
-                    <p
-                      className="text-[10px] font-mono uppercase tracking-[0.18em] mb-3"
-                      style={{ color: "hsl(var(--accent))" }}
+                  <Reveal key={study.id} delay={(i % 2) * 90} className="h-full">
+                    <Link
+                      href={`/case-studies/${study.id}`}
+                      className="card-steel group flex flex-col h-full p-7"
+                      aria-label={`${study.client}, ${engagement}`}
                     >
-                      {study.industry}
-                    </p>
-                    <h3 className="font-display text-2xl text-ink leading-tight mb-2 group-hover:text-[hsl(var(--accent))] transition-colors">
-                      {study.client}
-                    </h3>
-                    <p className="text-sm text-ink-mute mb-4">{engagement}</p>
-                    <p className="text-sm text-ink/85 leading-[1.55] line-clamp-4 mb-6">{summary}</p>
-                    <div className="flex items-center justify-between text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
-                      <span>{role}</span>
-                      <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                    </div>
-                  </Link>
+                      <p
+                        className="text-[10px] font-mono uppercase tracking-[0.18em] mb-3"
+                        style={{ color: "hsl(var(--accent))" }}
+                      >
+                        {study.industry}
+                      </p>
+                      <h3 className="font-display text-2xl text-ink leading-tight mb-2 group-hover:text-[hsl(var(--accent))] transition-colors">
+                        {study.client}
+                      </h3>
+                      <p className="text-sm text-ink-mute mb-4">{engagement}</p>
+                      <p className="text-sm text-ink/85 leading-[1.55] line-clamp-4 mb-6">{summary}</p>
+                      <div className="mt-auto flex items-center justify-between text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
+                        <span>{role}</span>
+                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                      </div>
+                    </Link>
+                  </Reveal>
                 );
               })}
             </div>
@@ -102,7 +105,7 @@ export function CaseStudiesClient() {
       </section>
 
       {/* Disclaimer */}
-      <section className="pb-12">
+      <section data-line-anchor="disclaimer" className="pb-12">
         <div className="container-px">
           <div className="max-w-3xl mx-auto">
             <p className="text-xs text-muted-foreground leading-relaxed text-center italic">
@@ -115,7 +118,7 @@ export function CaseStudiesClient() {
       </section>
 
       {/* Closing CTA */}
-      <section className="section-lg relative">
+      <section data-line-anchor="final-cta" className="section-lg relative">
         <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] opacity-20 pointer-events-none"
           aria-hidden="true"
@@ -124,28 +127,32 @@ export function CaseStudiesClient() {
         </div>
         <div className="container-px relative z-10">
           <div className="max-w-2xl mx-auto text-center">
-            <h2 className="font-display text-3xl sm:text-[2.5rem] text-ink leading-[1.12] tracking-tight text-balance mb-6">
-              {isEn ? (
-                <>
-                  Want this kind of work in{" "}
-                  <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                    your business?
-                  </span>
-                </>
-              ) : (
-                <>
-                  Volete questo tipo di lavoro nella{" "}
-                  <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                    vostra azienda?
-                  </span>
-                </>
-              )}
-            </h2>
-            <p className="text-base sm:text-lg text-ink-mute mb-10 max-w-lg mx-auto leading-[1.55]">
-              {isEn
-                ? "A free scoping call is the easiest way to find out where it would have the highest impact."
-                : "Una call di scoping gratuita è il modo più semplice per capire dove avrebbe l'impatto maggiore."}
-            </p>
+            <SectionHeading
+              align="center"
+              className="mx-auto mb-10 max-w-2xl"
+              title={
+                isEn ? (
+                  <>
+                    Want this kind of work in{" "}
+                    <span className="italic" style={{ color: "hsl(var(--accent))" }}>
+                      your business?
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Volete questo tipo di lavoro nella{" "}
+                    <span className="italic" style={{ color: "hsl(var(--accent))" }}>
+                      vostra azienda?
+                    </span>
+                  </>
+                )
+              }
+              description={
+                isEn
+                  ? "A free scoping call is the easiest way to find out where it would have the highest impact."
+                  : "Una call di scoping gratuita è il modo più semplice per capire dove avrebbe l'impatto maggiore."
+              }
+            />
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <Button asChild size="lg" className="px-10 py-7 text-base font-semibold rounded-full">
                 <Link href="/audit">

@@ -5,6 +5,8 @@ import { ArrowRight } from "lucide-react";
 import { LinkedinIcon } from "@/components/icons/brand";
 import { Button } from "@/components/ui/button";
 import OurWhy from "@/components/sections/our-why";
+import { Reveal } from "@/components/ui/reveal";
+import { SectionHeading } from "@/components/ui/section-heading";
 import { founders } from "@/data/founders";
 import { useLanguage } from "@/components/language-provider";
 import { START_HREF } from "@/lib/site";
@@ -41,7 +43,7 @@ export function AboutClient() {
     <div className="min-h-screen text-foreground">
       <div className="pt-20 pb-20 relative">
         {/* Hero */}
-        <section className="relative overflow-hidden mb-20 sm:mb-24 py-20 md:py-28">
+        <section data-line-anchor="hero" className="relative overflow-hidden mb-20 sm:mb-24 py-20 md:py-28">
           <div aria-hidden="true" className="absolute inset-0 pointer-events-none">
             <div
               className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[85vw] h-[45vw] max-w-[1200px] max-h-[700px] blur-3xl opacity-30"
@@ -54,7 +56,7 @@ export function AboutClient() {
           </div>
 
           <div className="container-px relative z-10">
-            <div className="max-w-4xl mx-auto text-center">
+            <Reveal className="max-w-4xl mx-auto text-center">
               <p className="eyebrow mb-6 inline-flex items-center justify-center gap-2">
                 <span
                   className="inline-block w-1.5 h-1.5 rounded-full"
@@ -98,14 +100,16 @@ export function AboutClient() {
                   </Link>
                 </Button>
               </div>
-            </div>
+            </Reveal>
           </div>
         </section>
 
-        <OurWhy />
+        <div data-line-anchor="why">
+          <OurWhy />
+        </div>
 
         {/* The Founding Pair */}
-        <section className="container-px mb-24">
+        <section data-line-anchor="founders" className="container-px mb-24">
           <div className="text-center mb-12 max-w-3xl mx-auto">
             <p className="text-[11px] font-mono uppercase tracking-[0.25em] text-muted-foreground mb-4">
               {isEn
@@ -115,11 +119,11 @@ export function AboutClient() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
-            {founders.map((f) => (
+            {founders.map((f, i) => (
+              <Reveal key={f.name} delay={i * 100} className="h-full">
               <div
-                key={f.name}
                 id={f.anchor}
-                className="bg-surface/40 backdrop-blur-[1px] border border-rule/70 rounded-2xl p-8 h-full scroll-mt-32"
+                className="card-steel rounded-2xl p-8 h-full scroll-mt-32"
               >
                 <div className="flex items-start gap-6 mb-6">
                   <div className="w-20 h-20 rounded-full overflow-hidden shrink-0 ring-2 ring-primary/30">
@@ -149,6 +153,7 @@ export function AboutClient() {
                 </div>
                 <p className="text-muted-foreground leading-relaxed">{isEn ? f.bioEn : f.bioIt}</p>
               </div>
+              </Reveal>
             ))}
           </div>
 
@@ -179,11 +184,13 @@ export function AboutClient() {
         </section>
 
         {/* Three pillars */}
-        <section className="container-px mb-24">
-          <div className="text-center mb-12 max-w-3xl mx-auto">
-            <p className="eyebrow mb-4">{isEn ? "How we work" : "Come lavoriamo"}</p>
-            <h2 className="font-display text-3xl sm:text-[2.25rem] text-ink leading-tight tracking-tight text-balance">
-              {isEn ? (
+        <section data-line-anchor="rules" className="container-px mb-24">
+          <SectionHeading
+            align="center"
+            className="mx-auto mb-12 max-w-3xl"
+            eyebrow={isEn ? "How we work" : "Come lavoriamo"}
+            title={
+              isEn ? (
                 <>
                   Three rules.{" "}
                   <span className="italic" style={{ color: "hsl(var(--accent))" }}>
@@ -197,16 +204,14 @@ export function AboutClient() {
                     Non negoziabili.
                   </span>
                 </>
-              )}
-            </h2>
-          </div>
+              )
+            }
+          />
 
           <div className="grid md:grid-cols-3 gap-4 max-w-5xl mx-auto">
-            {pillars.map((p) => (
-              <div
-                key={p.num}
-                className="h-full p-6 lg:p-7 rounded-xl border border-rule/70 bg-surface/40 backdrop-blur-[1px] hover:border-[hsl(var(--accent)/0.4)] hover:bg-surface/60 transition-colors group"
-              >
+            {pillars.map((p, i) => (
+              <Reveal key={p.num} delay={i * 90} className="h-full">
+              <div className="card-steel h-full p-6 lg:p-7 group">
                 <p
                   className="text-[10px] font-mono uppercase tracking-[0.2em] mb-4"
                   style={{ color: "hsl(var(--accent))" }}
@@ -216,6 +221,7 @@ export function AboutClient() {
                 <h3 className="font-display text-xl text-ink mb-3 leading-tight">{p.title}</h3>
                 <p className="text-sm text-ink-mute leading-[1.6]">{p.body}</p>
               </div>
+              </Reveal>
             ))}
           </div>
         </section>
@@ -267,26 +273,30 @@ export function AboutClient() {
         </section>
 
         {/* Final beat */}
-        <section className="container-px">
+        <section data-line-anchor="final-cta" className="container-px">
           <div className="max-w-3xl mx-auto text-center py-12">
-            <p className="eyebrow mb-6">{isEn ? "The next step" : "Il prossimo passo"}</p>
-            <h2 className="font-display text-3xl sm:text-[2.5rem] text-ink leading-[1.12] tracking-tight text-balance mb-8">
-              {isEn ? (
-                <>
-                  One week. Inside your stack.{" "}
-                  <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                    A written verdict.
-                  </span>
-                </>
-              ) : (
-                <>
-                  Una settimana. Dentro il vostro stack.{" "}
-                  <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                    Un verdetto scritto.
-                  </span>
-                </>
-              )}
-            </h2>
+            <SectionHeading
+              align="center"
+              className="mx-auto mb-8 max-w-3xl"
+              eyebrow={isEn ? "The next step" : "Il prossimo passo"}
+              title={
+                isEn ? (
+                  <>
+                    One week. Inside your stack.{" "}
+                    <span className="italic" style={{ color: "hsl(var(--accent))" }}>
+                      A written verdict.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Una settimana. Dentro il vostro stack.{" "}
+                    <span className="italic" style={{ color: "hsl(var(--accent))" }}>
+                      Un verdetto scritto.
+                    </span>
+                  </>
+                )
+              }
+            />
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
               <Button asChild size="lg" className="group">
                 <Link href={START_HREF}>
