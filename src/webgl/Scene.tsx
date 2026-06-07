@@ -9,9 +9,7 @@
  * navy body background (DOM) stays the backdrop, the canvas only adds
  * light on top.
  */
-import { Suspense } from "react";
 import { Canvas } from "@react-three/fiber";
-import { Environment } from "@react-three/drei";
 import { usePathname } from "next/navigation";
 import { FrameDriver } from "./FrameDriver";
 import { SignatureLine } from "./SignatureLine";
@@ -58,18 +56,9 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
       <FrameDriver />
       <SignatureLine tier={tier} pathname={pathname} anchors={anchors} />
       <DriftParticles tier={tier} anchors={anchors} />
-      {pathname === "/" && (
-        <Suspense fallback={null}>
-          {/* Environment feeds subtle reflections on the planet/rings —
-              never a visible background (the navy DOM stays the backdrop). */}
-          <Environment
-            files="/hdri/studio_small_03_1k.hdr"
-            background={false}
-            environmentIntensity={0.3}
-          />
-          <HeroPlanet tier={tier} anchors={anchors} />
-        </Suspense>
-      )}
+      {/* Fully procedural hero — no textures, no HDRI, no Suspense: it
+          mounts on the first frame and the poster cross-fades immediately. */}
+      {pathname === "/" && <HeroPlanet tier={tier} anchors={anchors} />}
       {tier === "full" && <PostFX />}
     </Canvas>
   );

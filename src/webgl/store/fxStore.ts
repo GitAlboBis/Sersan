@@ -50,7 +50,7 @@ export const useFxStore = create<FxState>((set) => ({
   vignetteDarkness: 0.55,
   heroEmissive: 2.6,
   heroPulseSpeed: 0.45,
-  heroScale: 0.3,
+  heroScale: 0.235,
   particleOpacity: 0.35,
   set: (partial) => set(partial),
 }));
