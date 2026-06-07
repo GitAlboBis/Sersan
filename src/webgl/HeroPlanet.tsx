@@ -17,7 +17,8 @@
  *   the ring plane opens, and everything recedes+fades at handover.
  *
  * Screen-anchored during the 520vh sticky pin (follows the world-strip
- * camera); announces heroReady for the poster cross-fade.
+ * camera); announces heroReady on first frame to arm the drag-to-rotate
+ * capture layer.
  */
 import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";

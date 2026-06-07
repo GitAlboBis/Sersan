@@ -15,7 +15,6 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import gsap from "gsap";
@@ -24,7 +23,6 @@ import { Button } from "@/components/ui/button";
 import { Magnetic } from "@/components/ui/magnetic";
 import { HeroDragLayer } from "@/components/hero-drag-layer";
 import { useLanguage } from "@/components/language-provider";
-import { useTierStore } from "@/webgl/store/tierStore";
 import type { Language } from "@/data/translations/types";
 import { START_HREF } from "@/lib/site";
 import { cn } from "@/lib/utils";
@@ -543,35 +541,18 @@ function MobileFallback({
             )}
           >
             {isHero ? (
-              <>
-                {/* Static orb backdrop (no parallax — lightweight). Framed so
-                    the orb's luminous core sits in the upper-right, reading as
-                    an ambient electric-blue glow behind the text. */}
-                <div className="absolute inset-0">
-                  <Image
-                    src="/images/hero/orb-core.webp"
-                    alt=""
-                    aria-hidden="true"
-                    fill
-                    priority
-                    quality={90}
-                    className="object-cover opacity-50"
-                    style={{ objectPosition: "92% 14%" }}
-                    sizes="100vw"
-                  />
-                </div>
-                {/* Single radial wash: near-solid bg over the lower-left
-                    two-thirds (eyebrow→headline→body→CTAs), fading toward
-                    transparent in the top-right so the glow shows. */}
-                <div
-                  aria-hidden="true"
-                  className="absolute inset-0 pointer-events-none"
-                  style={{
-                    background:
-                      "radial-gradient(125% 115% at 100% 0%, transparent 0%, hsl(var(--bg) / 0.5) 28%, hsl(var(--bg) / 0.92) 58%, hsl(var(--bg)) 100%)",
-                  }}
-                />
-              </>
+              // Ambient brand wash behind the hero copy. The old orb poster
+              // image was removed (the live WebGL Saturn is the only hero
+              // visual); this subtle navy radial keeps depth in the upper-right
+              // without reintroducing any image asset.
+              <div
+                aria-hidden="true"
+                className="absolute inset-0 pointer-events-none"
+                style={{
+                  background:
+                    "radial-gradient(125% 115% at 100% 0%, hsl(var(--accent) / 0.06) 0%, hsl(var(--bg) / 0.6) 30%, hsl(var(--bg) / 0.92) 58%, hsl(var(--bg)) 100%)",
+                }}
+              />
             ) : null}
             <div className={cn("max-w-2xl", isHero && "relative z-10")}>
               <p className="eyebrow mb-4 inline-flex items-center gap-2 text-ink-mute">
@@ -622,89 +603,6 @@ function MobileFallback({
   );
 }
 
-// === Hero backdrop image (static render + subtle scroll parallax) =========
-// Replaces the live WebGL scene. The generated render lives at
-// /images/hero/orb-core.png (electric-blue plasma orb on a dark hex pedestal,
-// orbital rings, center-right, left third dark for the headline). A rAF loop
-// reads progressRef and applies a gentle scale + translateY across 0→1, plus a
-// very slow ambient float. Reduced-motion: static, fixed scale, no transform.
-function HeroBackdrop({
-  progressRef,
-  reduceMotion,
-  dimmed,
-}: {
-  progressRef: React.MutableRefObject<number>;
-  reduceMotion: boolean;
-  /** True once the live WebGL hero has taken over — the poster cross-fades
-   *  out (it stays in the DOM as the SSR/LCP paint + instant fallback). */
-  dimmed: boolean;
-}) {
-  const ref = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    if (reduceMotion || dimmed) return;
-    let raf = 0;
-    const start = performance.now();
-    const tick = (now: number) => {
-      const el = ref.current;
-      if (el) {
-        const p = progressRef.current;
-        // Scroll-driven cinematic dolly: push-in scale 1.22 → 1.34 and a slow
-        // camera pan across 0→1. The higher base zoom (was 1.06) crops the hex
-        // pedestal off the bottom of the frame and centers the orb, so the
-        // scene reads as an orb on the orb's eyeline rather than a small orb
-        // floating above a stray block. Scale grows faster than the pan, so the
-        // overscan always exceeds the translate — no image edge is revealed.
-        const scale = 1.22 + p * 0.12;
-        const tx = -p * 6;
-        const ty = -p * 5;
-        // Slow ambient float (~22s period), a couple of px each axis, plus a
-        // tiny scale breath.
-        const t = (now - start) / 1000;
-        const driftY = Math.sin(t * 0.28) * 3;
-        const driftX = Math.cos(t * 0.21) * 2;
-        const breath = Math.sin(t * 0.5) * 0.006;
-        el.style.transform = `translate(${tx}%, ${ty}%) translate3d(${driftX}px, ${driftY}px, 0) scale(${
-          scale + breath
-        })`;
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [progressRef, reduceMotion, dimmed]);
-
-  return (
-    <div
-      ref={ref}
-      className="absolute inset-0"
-      style={{
-        transform: "translate3d(0,0,0) scale(1.22)",
-        willChange: "transform",
-        opacity: dimmed ? 0 : 1,
-        transition: "opacity 450ms cubic-bezier(0.4, 0, 0.2, 1)",
-      }}
-    >
-      <Image
-        src="/images/hero/orb-core.webp"
-        alt=""
-        aria-hidden="true"
-        fill
-        priority
-        quality={90}
-        className="object-cover"
-        // Horizontal 115% keeps the orb in the right portion (dark left third
-        // for the copy). Vertical 32% biases the framing toward the TOP of the
-        // source image — combined with the 1.22 base zoom this crops the hex
-        // pedestal off the bottom and lands the orb on the vertical eyeline of
-        // the copy, so the scene reads balanced rather than top-heavy.
-        style={{ objectPosition: "115% 32%" }}
-        sizes="100vw"
-      />
-    </div>
-  );
-}
-
 // === Main component =======================================================
 export default function CinematicSystemScroll() {
   const { language } = useLanguage();
@@ -713,9 +611,6 @@ export default function CinematicSystemScroll() {
   const outerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const progressRef = useRef<number>(0);
-  // The live WebGL Signal Core announces itself here; the poster cross-fades
-  // out and the persistent canvas owns the hero visual from then on.
-  const heroWebGLReady = useTierStore((s) => s.heroReady);
   // Default to desktop layout on the server so the hero H1 + subhead are
   // present in the initial HTML (good for SEO, first paint, accessibility).
   // The client detects mobile and switches after mount; the resulting
@@ -731,11 +626,11 @@ export default function CinematicSystemScroll() {
     setReduceMotion(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   }, []);
 
-  // (Removed: the JS `new Image()` preloader that warmed orb-core.png + five
-  // planet jpgs and flipped an `assetsReady` flag. The orb is now painted by
-  // `next/image priority` — Next emits a real <link rel=preload> for it, so it
-  // can be the LCP element without a JS gate. The five planet jpgs were dead
-  // leftovers from the retired WebGL scene.)
+  // (Removed: the orb-core poster image + its cross-fade machinery. The hero
+  // visual is now owned entirely by the persistent WebGL Saturn; on a cold
+  // load the hero is just the dark brand background + radial washes + the
+  // SSR'd text until the canvas paints. Also previously removed: the JS
+  // `new Image()` preloader that warmed orb-core + dead planet jpgs.)
 
   // (Removed: canvas-on-demand IntersectionObserver gate.) The spine is
   // the homepage hero — always in view from first paint, so the gate was
@@ -812,24 +707,16 @@ export default function CinematicSystemScroll() {
       // the old 600vh spine did.
       style={{ height: "520vh" }}
     >
-      {/* Pinned viewport. The text panels + orb render immediately (so the H1
-          and the LCP image are in the initial paint). */}
+      {/* Pinned viewport. The text panels render immediately (so the H1 is in
+          the initial paint). The hero visual is owned entirely by the
+          persistent WebGL canvas (the procedural Saturn behind the DOM); no
+          poster image is rendered here. During the brief cold-load gap before
+          the canvas paints its first frame the hero is simply the dark brand
+          background + the radial washes below + the SSR'd text. */}
       <div
         ref={stageRef}
         className="sticky top-0 h-screen overflow-hidden"
       >
-        {/* Hero poster (orb render) — the SSR/LCP paint and the permanent
-            fallback. Once the WebGL Signal Core renders its first frame the
-            poster cross-fades out and the persistent canvas (glass core,
-            signature line, particles, bloom) owns the hero visual.
-            (NeuralNetLayer and CinematicOverlay were deleted — the canvas
-            replaces both natively: GPU particles + postprocessing grain.) */}
-        <HeroBackdrop
-          progressRef={progressRef}
-          reduceMotion={reduceMotion}
-          dimmed={heroWebGLReady}
-        />
-
         {/* Vignette gradient at bottom. Kept to the lower ~45% so it darkens
             the hex pedestal at the base of the orb (it fades into black as an
             intentional plinth instead of reading as a stray metallic block)

@@ -16,8 +16,9 @@ export type SceneTier = "full" | "lite" | "off";
 interface TierState {
   tier: SceneTier;
   resolved: boolean;
-  /** True once the WebGL hero has rendered its first frame — the DOM
-   *  poster (orb-core.webp) cross-fades out when this flips. */
+  /** True once the WebGL hero (the procedural Saturn) has rendered its first
+   *  frame. Gates the hero drag-to-rotate capture layer so dragging only
+   *  arms once the planet is live. */
   heroReady: boolean;
   resolve: () => void;
   degrade: () => void;
