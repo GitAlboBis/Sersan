@@ -7,6 +7,7 @@ import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { SmoothScrollProvider } from "@/components/smooth-scroll-provider";
 import { CanvasHost } from "@/webgl/CanvasHost";
+import { CardTiltController } from "@/components/fx/card-tilt-controller";
 import { Analytics } from "@vercel/analytics/next";
 
 // Brand type stack (self-hosted via next/font, no runtime CDN requests):
@@ -180,6 +181,7 @@ export default function RootLayout({
                 changes. Decorative only: aria-hidden + pointer-events:none
                 live inside CanvasHost. */}
             <CanvasHost />
+            <CardTiltController />
             <Navbar />
             {/* Content wrapper above the canvas (z-1). The canvas adds
                 light behind this layer; text stays DOM-crisp. */}

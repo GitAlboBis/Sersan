@@ -542,6 +542,25 @@ img { height: auto; max-width: 100%; }
   .card-steel { transition: none; }
 }
 
+/* Pointer-tracking sheen — driven by CardTiltController via --sheen-* vars.
+   A soft signal-cyan radial follows the cursor across the card surface
+   while the card tilts in 3D. Zero cost at rest (opacity 0). */
+.card-steel::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    220px circle at var(--sheen-x, 50%) var(--sheen-y, 50%),
+    hsl(var(--accent) / 0.10) 0%,
+    hsl(var(--accent-2) / 0.04) 45%,
+    transparent 70%
+  );
+  opacity: var(--sheen-o, 0);
+  transition: opacity 350ms cubic-bezier(0.215, 0.610, 0.355, 1.000);
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;
