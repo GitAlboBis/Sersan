@@ -187,7 +187,10 @@ function ServiceCard({ service, isEn }: { service: Service; isEn: boolean }) {
           aria-hidden="true"
           className="grid place-items-center h-9 w-9 rounded-md border border-[hsl(var(--rule))] bg-[hsl(var(--accent)/0.05)] text-ink-mute group-hover:text-[hsl(var(--accent))] group-hover:border-[hsl(var(--accent)/0.4)] transition-colors duration-300"
         >
-          <service.icon className="h-4 w-4" strokeWidth={1.5} />
+          <service.icon
+            className="h-4 w-4 transition-transform duration-300 ease-out group-hover:scale-110 group-hover:rotate-[10deg] motion-reduce:transform-none motion-reduce:transition-none"
+            strokeWidth={1.5}
+          />
         </span>
       </div>
 
@@ -217,8 +220,10 @@ function ServiceCard({ service, isEn }: { service: Service; isEn: boolean }) {
         ))}
       </ul>
 
-      {/* Solves — highlighted bottom strip */}
-      <div className="mt-auto -mx-6 sm:-mx-8 -mb-6 sm:-mb-8 px-6 sm:px-8 py-4 border-t border-[hsl(var(--rule))] bg-[hsl(var(--accent)/0.04)]">
+      {/* Solves — highlighted bottom strip. On hover the footer bar gains an
+          inset accent glow (sub-element only — the card root transform stays
+          owned by CardTiltController). */}
+      <div className="mt-auto -mx-6 sm:-mx-8 -mb-6 sm:-mb-8 px-6 sm:px-8 py-4 border-t border-[hsl(var(--rule))] bg-[hsl(var(--accent)/0.04)] transition-shadow duration-300 group-hover:shadow-[inset_0_1px_0_hsl(var(--accent)/0.45),0_-8px_24px_-16px_hsl(var(--accent)/0.4)] motion-reduce:transition-none">
         <div className="flex items-baseline justify-between gap-4">
           <div className="min-w-0">
             <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-[hsl(var(--accent))] mb-1">

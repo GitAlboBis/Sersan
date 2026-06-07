@@ -17,6 +17,12 @@ interface SectionHeadingProps {
   align?: "left" | "center";
   className?: string;
   titleClassName?: string;
+  /**
+   * Optional slot rendered below the description (e.g. a CTA link/button).
+   * Reveals last in the heading cascade. Back-compatible: omitting it renders
+   * exactly as before. (P2 — shared by P3/P5, so this MUST stay optional.)
+   */
+  cta?: React.ReactNode;
 }
 
 export function SectionHeading({
@@ -26,6 +32,7 @@ export function SectionHeading({
   align = "left",
   className,
   titleClassName,
+  cta,
 }: SectionHeadingProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   const playedRef = useRef(false);
@@ -51,16 +58,21 @@ export function SectionHeading({
       const eyebrowText = el.querySelector<HTMLElement>("[data-eyebrow-text]");
       const titleEl = el.querySelector<HTMLElement>("[data-heading-title]");
       const descEl = el.querySelector<HTMLElement>("[data-heading-desc]");
+      const ctaEl = el.querySelector<HTMLElement>("[data-heading-cta]");
 
       // Initial state
       if (line) gsap.set(line, { scaleX: 0, transformOrigin: "left center" });
       if (eyebrowText) gsap.set(eyebrowText, { opacity: 0, y: 6 });
       if (descEl) gsap.set(descEl, { opacity: 0, y: 12 });
+      if (ctaEl) gsap.set(ctaEl, { opacity: 0, y: 10 });
 
       const tl = gsap.timeline({
         scrollTrigger: { trigger: el, start: "top 85%", once: true },
       });
 
+      // Cascade: eyebrow → title → description → cta, each lagging the
+      // previous by ~100-150ms so the heading reads as one staggered beat
+      // (the negative overlaps keep the lag tight while still distinct).
       if (line) {
         tl.to(line, { scaleX: 1, duration: 0.6, ease: "expo.out" });
       }
@@ -68,7 +80,7 @@ export function SectionHeading({
         tl.to(
           eyebrowText,
           { opacity: 1, y: 0, duration: 0.45, ease: "expo.out" },
-          ">-0.4",
+          ">-0.35",
         );
       }
       if (titleEl) {
@@ -86,14 +98,21 @@ export function SectionHeading({
             ease: "expo.out",
             onComplete: () => split.revert(),
           },
-          ">-0.3",
+          ">-0.25",
         );
       }
       if (descEl) {
         tl.to(
           descEl,
           { opacity: 1, y: 0, duration: 0.55, ease: "expo.out" },
-          ">-0.45",
+          ">-0.4",
+        );
+      }
+      if (ctaEl) {
+        tl.to(
+          ctaEl,
+          { opacity: 1, y: 0, duration: 0.5, ease: "expo.out" },
+          ">-0.4",
         );
       }
     });
@@ -139,6 +158,12 @@ export function SectionHeading({
         >
           {description}
         </p>
+      ) : null}
+
+      {cta ? (
+        <div data-heading-cta className="mt-6">
+          {cta}
+        </div>
       ) : null}
     </div>
   );

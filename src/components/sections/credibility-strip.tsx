@@ -8,6 +8,7 @@ import {
 } from "@/components/trust-wordmarks";
 import { useLanguage } from "@/components/language-provider";
 import { useScrollStore } from "@/webgl/store/scrollStore";
+import { useScrollParallax } from "@/components/ui/use-scroll-parallax";
 
 /**
  * CredibilityStrip — calm row of tier-1 institutions where the SerSan team
@@ -26,6 +27,10 @@ export default function CredibilityStrip() {
   const { language } = useLanguage();
   const isEn = language === "en";
   const trackRef = useRef<HTMLDivElement | null>(null);
+  // Tiny scroll-linked Y drift on the inner content (NOT the marquee track,
+  // which GSAP already drives via xPercent/timeScale). Separate element, so
+  // the two transforms never fight.
+  const parallaxRef = useScrollParallax<HTMLDivElement>(4);
 
   // Scroll-velocity coupling: convert the steady CSS keyframe loop into a GSAP
   // xPercent tween whose timeScale rides the scroll velocity, so the marquee
@@ -86,7 +91,10 @@ export default function CredibilityStrip() {
       }
       className="relative border-y border-[hsl(var(--rule))] bg-[hsl(var(--bg))]"
     >
-      <div className="container-px py-7 sm:py-9 flex flex-col gap-5 sm:gap-6">
+      <div
+        ref={parallaxRef}
+        className="container-px py-7 sm:py-9 flex flex-col gap-5 sm:gap-6"
+      >
         {/* Audience trust band — names the buyer types in a single
             scannable line. Sits above the marquee so visitors see who
             this is for before they see where the team trained. */}

@@ -10,14 +10,7 @@ import FoundersSection from "@/components/sections/founders-section";
 import ProcessSection from "@/components/sections/process-section";
 import FitSection from "@/components/sections/fit-section";
 import FinalCTA from "@/components/sections/final-cta";
-
-function SectionDivider() {
-  return (
-    <div aria-hidden="true" className="container-px py-1 relative z-10">
-      <div className="section-rule mx-auto max-w-3xl" />
-    </div>
-  );
-}
+import { SectionDivider } from "@/components/ui/section-divider";
 
 /**
  * SerSan v2 — cinematic homepage.

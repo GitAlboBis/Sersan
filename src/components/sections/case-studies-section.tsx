@@ -126,7 +126,7 @@ function FeaturedCard({ study, isEn }: { study: CaseStudy; isEn: boolean }) {
           {summary}
         </p>
 
-        <div className="grid grid-cols-3 gap-3 mt-auto pt-5 border-t border-[hsl(var(--rule))]">
+        <div className="grid grid-cols-3 gap-3 mt-auto pt-5 border-t border-[hsl(var(--rule))] transition-colors duration-300 group-hover:border-[hsl(var(--accent)/0.35)] motion-reduce:transition-none">
           {topMetrics.map((m, i) => (
             <div key={i} className="flex flex-col gap-1">
               <CountUp

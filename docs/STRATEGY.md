@@ -547,8 +547,12 @@ links to it via the Services section card 04.
 
 - Sections: `section-lg` (~7rem top/bottom on desktop, ~4rem mobile).
 - Container: `container-px` (responsive margin/gutter).
-- Section divider: thin centred rule with accent dot (already
-  implemented as `<SectionDivider>`).
+- Section divider: thin centred rule with accent dot. Implemented as the
+  client component `src/components/ui/section-divider.tsx` (`<SectionDivider>`)
+  — extracted out of `page.tsx` in P2 so it can draw from center on scroll
+  (scaleX 0→1, transform-origin center, single non-pinning ScrollTrigger)
+  while `page.tsx` stays a Server Component. Reduced-motion: final state set
+  immediately, no trigger.
 
 ### C5. Card design
 

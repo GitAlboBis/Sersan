@@ -5,6 +5,7 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { SectionGlow } from "@/components/ui/section-glow";
 import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
+import { useScrollStore } from "@/webgl/store/scrollStore";
 
 /**
  * ProductionGradeSection — the SIGNATURE section.
@@ -214,14 +215,27 @@ function TracePanel() {
   const { ref, inView } = useInView<HTMLDivElement>();
   const [active, setActive] = useState(-1);
 
-  // A single quiet sweep: the cursor steps down the spans, then rests.
+  // A single quiet sweep: the cursor steps down the spans, then rests. The
+  // per-row STEP is gently modulated by the page scroll progress so the sweep
+  // tightens as the reader moves down the page (clamped so it never thrashes).
+  // Reads the transient scroll store via getState() — no re-render per frame.
   useEffect(() => {
     if (!inView) return;
+    // Honor reduced-motion: no scanning rAF loop, rest the panel on its
+    // first row so it still reads as a populated trace (invariant 7).
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      setActive(-1);
+      return;
+    }
     let raf = 0;
-    let start = performance.now();
-    const STEP = 360;
+    const start = performance.now();
     const REST = 1600;
     const tick = (now: number) => {
+      const progress = useScrollStore.getState().progress;
+      const STEP = Math.max(240, 360 * (1 - progress * 0.3));
       const elapsed = now - start;
       const cycle = TRACE_SPANS.length * STEP + REST;
       const e = elapsed % cycle;

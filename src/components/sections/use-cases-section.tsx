@@ -6,6 +6,7 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { Reveal } from "@/components/ui/reveal";
 import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
+import { useScrollParallax } from "@/components/ui/use-scroll-parallax";
 
 /**
  * UseCasesSection — "Which situation are you in?".
@@ -25,6 +26,15 @@ type UseCase = {
   pain: string;
   response: string;
 };
+
+/**
+ * Wave-reveal directions for the six-tile grid: the deck enters as a wave
+ * rather than a flat fade. Left column slides from the left, center from the
+ * bottom, right column from the right — index-mapped per P2 plan
+ * ([0,2] left, [1] bottom, [3,5] right). On a 3-col grid this reads as the
+ * outer columns sweeping in toward the center. Falls back to "up" otherwise.
+ */
+const WAVE_FROM = ["left", "bottom", "right", "left", "bottom", "right"] as const;
 
 function getUseCases(isEn: boolean): UseCase[] {
   return [
@@ -117,8 +127,9 @@ function UseCaseCard({ uc, isEn }: { uc: UseCase; isEn: boolean }) {
         {uc.pain}
       </h3>
 
-      {/* SerSan response */}
-      <div className="mt-auto pt-4 border-t border-[hsl(var(--rule)/0.7)]">
+      {/* SerSan response. The top border lifts to an accent hairline on
+          hover (sub-element only — CardTiltController owns the root tilt). */}
+      <div className="mt-auto pt-4 border-t border-[hsl(var(--rule)/0.7)] transition-colors duration-300 group-hover:border-[hsl(var(--accent)/0.4)] motion-reduce:transition-none">
         <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-[hsl(var(--accent)/0.85)] mb-1.5">
           {isEn ? "SerSan response" : "Risposta di SerSan"}
         </p>
@@ -143,6 +154,10 @@ export default function UseCasesSection() {
   const { language } = useLanguage();
   const isEn = language === "en";
   const useCases = getUseCases(isEn);
+  // Tiny scroll-linked drift on the whole deck container (the per-card
+  // Reveal transforms are on the inner Reveal elements, so this outer grid
+  // wrapper's Y never fights them).
+  const deckRef = useScrollParallax<HTMLDivElement>(6);
 
   return (
     <section
@@ -179,9 +194,12 @@ export default function UseCasesSection() {
           className="mb-12 sm:mb-16 max-w-3xl"
         />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
+        <div
+          ref={deckRef}
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6"
+        >
           {useCases.map((uc, i) => (
-            <Reveal key={uc.num} delay={i * 60}>
+            <Reveal key={uc.num} delay={i * 80} from={WAVE_FROM[i] ?? "up"}>
               <UseCaseCard uc={uc} isEn={isEn} />
             </Reveal>
           ))}
