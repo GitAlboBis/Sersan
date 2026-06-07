@@ -8,6 +8,8 @@ import { Footer } from "@/components/footer";
 import { SmoothScrollProvider } from "@/components/smooth-scroll-provider";
 import { CanvasHost } from "@/webgl/CanvasHost";
 import { CardTiltController } from "@/components/fx/card-tilt-controller";
+import { HeadingChoreographer } from "@/components/fx/heading-choreographer";
+import { CustomCursor } from "@/components/fx/custom-cursor";
 import { Analytics } from "@vercel/analytics/next";
 
 // Brand type stack (self-hosted via next/font, no runtime CDN requests):
@@ -182,6 +184,8 @@ export default function RootLayout({
                 live inside CanvasHost. */}
             <CanvasHost />
             <CardTiltController />
+            <HeadingChoreographer />
+            <CustomCursor />
             <Navbar />
             {/* Content wrapper above the canvas (z-1). The canvas adds
                 light behind this layer; text stays DOM-crisp. */}
