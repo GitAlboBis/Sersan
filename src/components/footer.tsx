@@ -221,7 +221,7 @@ export function Footer() {
             </a>
           </div>
 
-          <div className="sm:col-span-3 sm:text-right text-[10.5px] font-mono uppercase tracking-[0.14em] text-ink-mute/80">
+          <div className="sm:col-span-3 sm:text-right text-[10.5px] font-mono uppercase tracking-[0.14em] text-ink-mute">
             {isEn
               ? "ISO 27001 (in progress) · DORA · EU AI Act"
               : "ISO 27001 (in corso) · DORA · EU AI Act"}

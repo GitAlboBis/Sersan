@@ -138,12 +138,16 @@ export function CountUp({ value, duration = 1.2, className }: CountUpProps) {
     return () => st.kill();
   }, [value, duration, parsed, shouldAnimate]);
 
-  // The aria-label always carries the final value so AT users hear the
-  // real metric, never the intermediate animation frames. The animation
-  // is purely decorative for sighted users.
+  // AT users always get the static final value (sr-only), never the
+  // intermediate animation frames — the animated span is aria-hidden.
+  // (aria-label on a generic <span> is prohibited per ARIA; this sr-only
+  // pattern carries the same intent and passes axe.)
   return (
-    <span ref={ref} className={className} aria-label={value}>
-      <span ref={outRef} aria-hidden="true">{value}</span>
+    <span ref={ref} className={className}>
+      <span className="sr-only">{value}</span>
+      <span ref={outRef} aria-hidden="true">
+        {value}
+      </span>
     </span>
   );
 }
