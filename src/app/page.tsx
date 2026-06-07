@@ -95,7 +95,12 @@ export default function Home() {
       <div data-line-anchor="fit">
         <FitSection />
       </div>
-      <SectionDivider />
+      {/* The gateway gap: the WebGL portal world-anchors here (transparent
+          backdrop between sections) and the signature line threads it on
+          its way into the final CTA. */}
+      <div data-line-anchor="gateway" className="py-36 sm:py-52">
+        <SectionDivider />
+      </div>
       <div data-line-anchor="final-cta">
         <FinalCTA />
       </div>

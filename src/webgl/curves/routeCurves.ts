@@ -47,7 +47,11 @@ export const routeCurves: Record<string, RouteCurveConfig> = {
       { anchor: "founders", x: 1.2, z: -0.2 },
       { anchor: "process", x: -1.25, z: 0.3 },
       { anchor: "fit", x: 1.1, z: -0.4 },
-      { anchor: "final-cta", x: 0.0, z: 0.6 }, // resolves to center at the CTA
+      // The line resolves to center and THREADS THE GATEWAY (the Blender
+      // portal world-anchors to the same "gateway" gap), then runs straight
+      // down into the CTA.
+      { anchor: "gateway", x: 0.0, z: 0.6 },
+      { anchor: "final-cta", x: 0.0, z: 0.6 },
     ],
   },
   // Generic gentle serpentine for routes without a bespoke config.

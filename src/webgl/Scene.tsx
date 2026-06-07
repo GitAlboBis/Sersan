@@ -12,9 +12,11 @@
 import { useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
 import { usePathname } from "next/navigation";
+import { Suspense } from "react";
 import { FrameDriver } from "./FrameDriver";
 import { SignatureLine } from "./SignatureLine";
 import { HeroPlanet } from "./HeroPlanet";
+import { GatewayPortal } from "./GatewayPortal";
 import { DriftParticles } from "./DriftParticles";
 import { PostFX } from "./PostFX";
 import { useSectionAnchors } from "./hooks/useSectionAnchors";
@@ -73,6 +75,12 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
       {/* Fully procedural hero — no textures, no HDRI, no Suspense: it
           mounts on the first frame and the poster cross-fades immediately. */}
       {pathname === "/" && <HeroPlanet tier={tier} anchors={anchors} />}
+      {/* Blender-built gateway at the end of the home story (66KB GLB). */}
+      {pathname === "/" && (
+        <Suspense fallback={null}>
+          <GatewayPortal tier={tier} anchors={anchors} />
+        </Suspense>
+      )}
       {tier === "full" && <PostFX />}
     </Canvas>
   );
