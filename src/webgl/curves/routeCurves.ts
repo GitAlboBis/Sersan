@@ -54,7 +54,108 @@ export const routeCurves: Record<string, RouteCurveConfig> = {
       { anchor: "final-cta", x: 0.0, z: 0.6 },
     ],
   },
-  // Generic gentle serpentine for routes without a bespoke config.
+  // === Interior routes ====================================================
+  // Each bespoke config is anchored to that route's P5a [data-line-anchor]
+  // ids and resolves to CENTER (x:0) at the transparent "ritual" gap that
+  // precedes the closing CTA, where the route's RouteHero ritual object
+  // world-anchors — so the beam threads the object in clean negative space
+  // (exactly like home's gateway gap), then continues straight down into the
+  // CTA ("final-cta", also x:0). TONE is expressed via z-bias and waypoint
+  // count/spacing ONLY; |x| of every TURN-AROUND stays ≥ ~1.1 so the
+  // serpentine bends happen off-screen (never narrow |x| for "focus").
+  //
+  // Both "ritual" and "final-cta" sit at z:0.6 toward camera, matching
+  // RouteHero's default z (0.6), so the line and the object share a plane.
+
+  // Audit: six surfaces, one week — the most beats of any interior route.
+  // Crisp, technical serpentine; modest depth weave.
+  "/audit": {
+    waypoints: [
+      { at: 0.0, x: 1.2, z: -0.6 },
+      { anchor: "hero", x: -1.2, z: 0.2 },
+      { anchor: "surfaces", x: 1.25, z: -0.2 },
+      { anchor: "deliverable", x: -1.2, z: 0.3 },
+      { anchor: "timeline", x: 1.2, z: -0.3 },
+      { anchor: "ritual", x: 0.0, z: 0.6 },
+      { anchor: "final-cta", x: 0.0, z: 0.6 },
+    ],
+  },
+  // Consulting: warmer, denser feel — a touch more depth swing across the
+  // practice/engage/process beats suggests an active production floor.
+  "/consulting": {
+    waypoints: [
+      { at: 0.0, x: 1.2, z: -0.5 },
+      { anchor: "hero", x: -1.25, z: 0.3 },
+      { anchor: "practice", x: 1.2, z: -0.4 },
+      { anchor: "engage", x: -1.2, z: 0.4 },
+      { anchor: "process", x: 1.25, z: -0.3 },
+      { anchor: "ritual", x: 0.0, z: 0.6 },
+      { anchor: "final-cta", x: 0.0, z: 0.6 },
+    ],
+  },
+  // Trust: cool, precise, governed — shallower depth weave reads as a
+  // controlled signal threading the compliance beats.
+  "/trust": {
+    waypoints: [
+      { at: 0.0, x: 1.15, z: -0.3 },
+      { anchor: "hero", x: -1.2, z: 0.2 },
+      { anchor: "rights", x: 1.2, z: -0.2 },
+      { anchor: "pipeline", x: -1.25, z: 0.2 },
+      { anchor: "subprocessors", x: 1.2, z: -0.2 },
+      { anchor: "ritual", x: 0.0, z: 0.6 },
+      { anchor: "final-cta", x: 0.0, z: 0.6 },
+    ],
+  },
+  // Case studies: fewer beats, broad confident sweeps between the grid and
+  // disclaimer; pronounced depth on the entry so the long grid reads as one
+  // diagonal.
+  "/case-studies": {
+    waypoints: [
+      { at: 0.0, x: 1.25, z: -0.6 },
+      { anchor: "hero", x: -1.2, z: 0.3 },
+      { anchor: "grid", x: 1.2, z: -0.3 },
+      { anchor: "disclaimer", x: -1.25, z: 0.3 },
+      { anchor: "ritual", x: 0.0, z: 0.6 },
+      { anchor: "final-cta", x: 0.0, z: 0.6 },
+    ],
+  },
+  // Resources: the quietest route — a single calm sweep into the closing ring
+  // (only hero + list before final-cta).
+  "/resources": {
+    waypoints: [
+      { at: 0.0, x: 1.2, z: -0.4 },
+      { anchor: "hero", x: -1.2, z: 0.2 },
+      { anchor: "list", x: 1.2, z: -0.2 },
+      { anchor: "ritual", x: 0.0, z: 0.6 },
+      { anchor: "final-cta", x: 0.0, z: 0.6 },
+    ],
+  },
+  // About: sparse, breathing — gentle low-amplitude depth across the founding
+  // pair beats so the page feels unhurried.
+  "/about": {
+    waypoints: [
+      { at: 0.0, x: 1.15, z: -0.3 },
+      { anchor: "hero", x: -1.2, z: 0.2 },
+      { anchor: "why", x: 1.2, z: -0.2 },
+      { anchor: "founders", x: -1.25, z: 0.3 },
+      { anchor: "rules", x: 1.2, z: -0.2 },
+      { anchor: "ritual", x: 0.0, z: 0.6 },
+      { anchor: "final-cta", x: 0.0, z: 0.6 },
+    ],
+  },
+  // Contact: short and direct — three beats then the closing ring.
+  "/contact": {
+    waypoints: [
+      { at: 0.0, x: 1.2, z: -0.4 },
+      { anchor: "hero", x: -1.2, z: 0.2 },
+      { anchor: "reach", x: 1.25, z: -0.3 },
+      { anchor: "intake", x: -1.2, z: 0.3 },
+      { anchor: "ritual", x: 0.0, z: 0.6 },
+      { anchor: "final-cta", x: 0.0, z: 0.6 },
+    ],
+  },
+  // Generic gentle serpentine for routes without a bespoke config (e.g. any
+  // future [slug] detail pages).
   default: {
     waypoints: [
       { at: 0.0, x: 1.15, z: -0.4 },

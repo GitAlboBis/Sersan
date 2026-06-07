@@ -272,6 +272,11 @@ export function AboutClient() {
           </div>
         </section>
 
+        {/* Ritual gap — transparent negative space so the persistent canvas
+            (z-0) shows through; the route's 3D ritual object world-anchors
+            here and the signature line threads it before the CTA. */}
+        <div data-line-anchor="ritual" aria-hidden="true" className="py-28 sm:py-40" />
+
         {/* Final beat */}
         <section data-line-anchor="final-cta" className="container-px">
           <div className="max-w-3xl mx-auto text-center py-12">

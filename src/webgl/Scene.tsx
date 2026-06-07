@@ -17,11 +17,13 @@ import { FrameDriver } from "./FrameDriver";
 import { SignatureLine } from "./SignatureLine";
 import { HeroPlanet } from "./HeroPlanet";
 import { GatewayPortal } from "./GatewayPortal";
+import { RouteHero, type RouteHeroKind } from "./RouteHero";
 import { DriftParticles } from "./DriftParticles";
 import { PostFX } from "./PostFX";
 import { useSectionAnchors } from "./hooks/useSectionAnchors";
 import { CAMERA_FOV, CAMERA_Z } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
+import type { SectionAnchors } from "./hooks/useSectionAnchors";
 import type { SceneTier } from "./store/tierStore";
 
 // NOTE: the leva tuning panel (debug/LineDebug) and drei's
@@ -38,6 +40,110 @@ if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
   import("./store/scrollStore").then((m) => {
     (window as unknown as Record<string, unknown>).__sersanScroll = m.useScrollStore;
   });
+}
+
+/**
+ * Per-route "ritual object" config (P5b). Each interior route resolves the
+ * signature line into a brand-native 3D object at its closing `final-cta`
+ * anchor — the universal "the signal resolves into a ring" motif, except for
+ * the two routes that ship a bespoke Blender GLB (audit lattice, consulting
+ * ring). Home is intentionally NOT in this map: it keeps HeroPlanet + the
+ * loved GatewayPortal (the home's own RouteHero config), gated separately
+ * below so HeroPlanet never mounts on any interior route.
+ *
+ * Tone (emissive endpoints) stays inside SerSan's monochrome cyan→violet
+ * signal; the small per-route bias mirrors routeFxStore (e.g. trust cooler).
+ */
+interface RouteHeroConfig {
+  kind: RouteHeroKind;
+  emissiveA?: string;
+  emissiveB?: string;
+}
+
+const ROUTE_HERO: Record<string, RouteHeroConfig> = {
+  // Bespoke Blender geometry-only GLBs (lazy + Suspense via RouteHero).
+  "/audit": {
+    kind: {
+      type: "glb",
+      path: "/models/audit-lattice.glb",
+      nodeNames: { outer: "AuditFrame", inner: "AuditCore" },
+      fallbackShape: "lattice",
+    },
+  },
+  "/consulting": {
+    kind: {
+      type: "glb",
+      path: "/models/consulting-ring.glb",
+      nodeNames: { outer: "ConsultingRing", inner: "ConsultingCore" },
+      fallbackShape: "ring",
+    },
+    // Warmer tail, matching routeFx('/consulting').
+    emissiveB: "#8A6BFF",
+  },
+  // Procedural closing ring — the universal resolution motif.
+  "/case-studies": { kind: { type: "procedural", shape: "ring" } },
+  "/resources": { kind: { type: "procedural", shape: "ring" } },
+  "/about": { kind: { type: "procedural", shape: "ring" } },
+  "/contact": { kind: { type: "procedural", shape: "ring" } },
+  // Trust: a cooler closing ring here. Its dedicated WebGL CompliancePipeline3D
+  // centerpiece (at the "pipeline" anchor) arrives later in P6 — NOT here.
+  "/trust": {
+    kind: { type: "procedural", shape: "ring" },
+    emissiveB: "#6E7BFF",
+  },
+};
+
+/**
+ * Mounts the correct ritual object for the active route. Home → HeroPlanet +
+ * GatewayPortal (unchanged); interior routes → a single map lookup. Returns
+ * null on unknown routes (e.g. [slug] detail pages) — the line still threads
+ * through, just without a closing object.
+ */
+function RouteRitual({
+  pathname,
+  tier,
+  anchors,
+}: {
+  pathname: string;
+  tier: Exclude<SceneTier, "off">;
+  anchors: SectionAnchors;
+}) {
+  // Home: the dedicated planet + gateway, exactly as before P5b.
+  if (pathname === "/") {
+    return (
+      <>
+        {/* Fully procedural hero — no textures, no HDRI, no Suspense: it
+            mounts on the first frame and the poster cross-fades immediately. */}
+        <HeroPlanet tier={tier} anchors={anchors} />
+        {/* Blender-built gateway at the end of the home story (66KB GLB). */}
+        <Suspense fallback={null}>
+          <GatewayPortal tier={tier} anchors={anchors} />
+        </Suspense>
+      </>
+    );
+  }
+
+  const config = ROUTE_HERO[pathname];
+  if (!config) return null;
+
+  // Each interior RouteHero is lazy + Suspense-wrapped like the gateway: GLB
+  // paths lazy-load their loader chunk internally; procedural mounts on the
+  // first frame. The closing object world-anchors to the transparent "ritual"
+  // gap (clean negative space the camera reaches — NOT behind the semi-opaque
+  // CTA card), where the curve resolves to center (x:0), so the beam threads
+  // it before continuing into the CTA.
+  return (
+    <Suspense fallback={null}>
+      <RouteHero
+        tier={tier}
+        anchors={anchors}
+        anchorId="ritual"
+        kind={config.kind}
+        emissiveA={config.emissiveA}
+        emissiveB={config.emissiveB}
+      />
+    </Suspense>
+  );
 }
 
 export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
@@ -72,15 +178,11 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
       <FrameDriver />
       <SignatureLine tier={tier} pathname={pathname} anchors={anchors} />
       <DriftParticles tier={tier} anchors={anchors} pathname={pathname} />
-      {/* Fully procedural hero — no textures, no HDRI, no Suspense: it
-          mounts on the first frame and the poster cross-fades immediately. */}
-      {pathname === "/" && <HeroPlanet tier={tier} anchors={anchors} />}
-      {/* Blender-built gateway at the end of the home story (66KB GLB). */}
-      {pathname === "/" && (
-        <Suspense fallback={null}>
-          <GatewayPortal tier={tier} anchors={anchors} />
-        </Suspense>
-      )}
+      {/* The per-route ritual object: HeroPlanet + GatewayPortal on home, a
+          per-route RouteHero on every interior route (single map lookup).
+          HeroPlanet is mounted ONLY inside the pathname === "/" branch, so it
+          never appears on an interior route. */}
+      <RouteRitual pathname={pathname} tier={tier} anchors={anchors} />
       {tier === "full" && <PostFX pathname={pathname} />}
     </Canvas>
   );
