@@ -16,10 +16,44 @@ const vertexShader = /* glsl */ `
   varying vec2 vUv;
   varying vec3 vViewNormal;
 
+  uniform float uTime;
+  // Breath amplitude in WORLD units (already radius-relative: the builder
+  // passes <= 0.4 * tubeRadius). 0 disables the breath entirely.
+  uniform float uBreath;
+
+  // Cheap analytic value-noise-ish term: two low-frequency sines whose phase
+  // walks along the tube (uv.x) and slowly in time. Smooth + periodic, so no
+  // discontinuities at the head-edge mask.
+  float breathField(float along) {
+    return 0.6 * sin(along * 7.0 + uTime * 0.55)
+         + 0.4 * sin(along * 3.0 - uTime * 0.37);
+  }
+
   void main() {
     vUv = uv;
+
+    vec3 pos = position;
+
+    // Radial position breath: offset each vertex along its own surface normal
+    // by a low-frequency field. The displacement is uniform per cross-section
+    // ring (the field depends only on along), so it inflates/deflates the
+    // tube radius without disturbing the uv.x head-mask coordinate.
+    //
+    // The normal is INTENTIONALLY passed through unperturbed. The physically
+    // correct facing-core tilt is -(d displacement / ds) * T where ds is ARC
+    // LENGTH. Since uv.x spans [0,1] over the whole curve of world length
+    // L ≈ 150, d/ds = (d/d(uv.x)) / L; with amplitude capped at 0.4*radius the
+    // correct tilt is < 0.2° — below perception. So we drop the correction
+    // entirely (an earlier version treated uv.x AS arc length, overscaling the
+    // tilt ~150× → ~17° → the core-glow shimmer the P1 check flagged).
+    if (uBreath > 0.0001) {
+      float along = uv.x;
+      float d = uBreath * breathField(along);
+      pos += normal * d;
+    }
+
     vViewNormal = normalize(normalMatrix * normal);
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
   }
 `;
 
@@ -79,6 +113,7 @@ export type LineUniforms = {
   uEmissive: { value: number };
   uFlowSpeed: { value: number };
   uReveal: { value: number };
+  uBreath: { value: number };
 };
 
 export function createLineMaterial(): THREE.ShaderMaterial & {
@@ -98,6 +133,7 @@ export function createLineMaterial(): THREE.ShaderMaterial & {
       uEmissive: { value: 2.6 },
       uFlowSpeed: { value: 0.05 },
       uReveal: { value: 1 },
+      uBreath: { value: 0 },
     },
     transparent: true,
     depthWrite: false,

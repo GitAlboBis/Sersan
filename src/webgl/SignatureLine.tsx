@@ -101,6 +101,26 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       radialSegments,
       false,
     );
+
+    // Per-vertex centerline tangent for the breath normal-correction (WI-2).
+    // TubeGeometry exposes its Frenet tangents (one unit vector per tubular
+    // ring i ∈ [0..tubularSegments]); its vertex layout is, in order, for each
+    // ring i, (radialSegments + 1) vertices. So aTangent is the ring tangent
+    // repeated across that ring — matching position/normal/uv ordering exactly.
+    const ringTangents = geo.tangents; // Vector3[], length tubularSegments + 1
+    const ringVerts = radialSegments + 1;
+    const tangentArr = new Float32Array((tubularSegments + 1) * ringVerts * 3);
+    for (let i = 0; i <= tubularSegments; i++) {
+      const t = ringTangents[i];
+      for (let j = 0; j < ringVerts; j++) {
+        const o = (i * ringVerts + j) * 3;
+        tangentArr[o] = t.x;
+        tangentArr[o + 1] = t.y;
+        tangentArr[o + 2] = t.z;
+      }
+    }
+    geo.setAttribute("aTangent", new THREE.BufferAttribute(tangentArr, 3));
+
     if (process.env.NODE_ENV !== "production") {
       geo.computeBoundingBox();
     }
@@ -114,8 +134,21 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   useEffect(() => () => geometry?.dispose(), [geometry]);
 
   useFrame((_, delta) => {
-    const { progress, velocity, reveal } = useScrollStore.getState();
+    const scroll = useScrollStore.getState();
+    const { progress, velocity, reveal, anchorPulse } = scroll;
     const fx = useFxStore.getState();
+
+    // Section-arrival pulse: the store holds a TARGET bumped to 1 each time a
+    // new section centers (set in useSectionAnchors). Decay it toward 0 here
+    // (~400ms feel, frame-rate independent) and write the damped value back so
+    // the store stays the single source of truth — never incremented per frame.
+    const decayedPulse = THREE.MathUtils.damp(anchorPulse, 0, 7, delta);
+    // Write the damped value back only while there's actually a pulse to
+    // decay — once it has settled to 0, skip the store write so the idle
+    // line never churns the store every frame (no spurious set/notify).
+    if (anchorPulse !== 0) {
+      scroll.setAnchorPulse(decayedPulse < 0.001 ? 0 : decayedPulse);
+    }
 
     dampedProgress.current = THREE.MathUtils.damp(
       dampedProgress.current,
@@ -147,13 +180,32 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     u.uProgress.value = headFraction;
     u.uTime.value += delta;
     u.uReveal.value = dampedReveal.current;
-    // Velocity feeds a subtle energy boost into the glow (clamped). The route
-    // emissive scale (1 on home → unchanged) biases the whole line's glow.
-    const boost = Math.min(Math.abs(velocity) * 0.004, 0.6);
+    // Velocity feeds a subtle energy boost into the glow; the section-arrival
+    // pulse adds a brief ~×1.2 bump as the head "arrives" at each section
+    // (proportional to base emissive so it reads as ×1.0→1.2→1.0). Both are
+    // SUMMED then clamped to the same single ceiling — no double-counting.
+    const velocityBoost = Math.abs(velocity) * 0.004;
+    const pulseBoost = fx.emissive * 0.2 * decayedPulse;
+    const boost = Math.min(velocityBoost + pulseBoost, 0.6);
     u.uEmissive.value = (fx.emissive + boost) * route.lineEmissiveScale;
     u.uGlowFalloff.value = fx.glowFalloff;
     u.uHeadSharp.value = fx.headSharp;
     u.uFlowSpeed.value = fx.flowSpeed;
+
+    // Breath (WI-2): RE-ENABLED after the P1 check, with the overscaled normal
+    // correction removed in lineShader.ts. Only the radial POSITION breath
+    // remains — a uniform per-ring inflate (≤ 0.4*radius) that leaves the uv.x
+    // head-mask coordinate undisturbed. The facing-core normal is now passed
+    // through unperturbed: the physically-correct tilt is < 0.2° (because uv.x
+    // spans the full ~150-unit curve, so d/ds is divided by L), i.e. below
+    // perception, so dropping the correction produces no shimmer. Driver gated
+    // to the full tier; 0 elsewhere makes the shader skip the breath branch
+    // (uBreath <= 0.0001), and under prefers-reduced-motion the Canvas is
+    // unmounted anyway (tier "off").
+    const radius = WORLD_VIEW_HEIGHT * fx.radiusFactor;
+    const velNorm = Math.min(Math.abs(velocity) * 0.01, 1);
+    u.uBreath.value =
+      tier === "full" ? 0.4 * radius * (0.45 + 0.55 * velNorm) : 0;
     // Base = the live fxStore color (dev tuning), lerped toward the route tone
     // by colorBlend. On home colorBlend is 0 AND the endpoints are equal, so
     // the result is byte-identical to today's fx.color* set.

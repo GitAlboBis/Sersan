@@ -1,10 +1,13 @@
 "use client";
 
+import { useEffect, useRef } from "react";
+import gsap from "gsap";
 import {
   BRAND_WORDMARKS,
   type BrandName,
 } from "@/components/trust-wordmarks";
 import { useLanguage } from "@/components/language-provider";
+import { useScrollStore } from "@/webgl/store/scrollStore";
 
 /**
  * CredibilityStrip — calm row of tier-1 institutions where the SerSan team
@@ -22,6 +25,57 @@ const LOGOS: BrandName[] = [
 export default function CredibilityStrip() {
   const { language } = useLanguage();
   const isEn = language === "en";
+  const trackRef = useRef<HTMLDivElement | null>(null);
+
+  // Scroll-velocity coupling: convert the steady CSS keyframe loop into a GSAP
+  // xPercent tween whose timeScale rides the scroll velocity, so the marquee
+  // surges as the reader flicks and settles back to the baseline loop when the
+  // page is still. Under prefers-reduced-motion the CSS rule (animation:none in
+  // RM) stays the source of truth and this effect bails — no coupling, no GSAP.
+  useEffect(() => {
+    const track = trackRef.current;
+    if (!track) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    // GSAP takes over the transform — stop the CSS keyframe loop so the two
+    // don't fight (CSS animation-duration can't be smoothly retimed; timeScale
+    // can). The CSS rule remains the SSR / no-JS / reduced-motion fallback.
+    track.style.animation = "none";
+
+    // Same -50% sweep as the CSS keyframe (two LOGOS copies → seamless wrap),
+    // matched 28s baseline so the steady-state speed is identical to before.
+    const tween = gsap.to(track, {
+      xPercent: -50,
+      duration: 28,
+      ease: "none",
+      repeat: -1,
+    });
+
+    const MAX_TIMESCALE = 5; // cap the surge so a fast flick stays tasteful
+    let current = 1;
+    let rafId = 0;
+
+    // One rAF loop reads the transient scroll velocity and eases timeScale
+    // toward the mapped target — never thrashing per scroll event. When
+    // velocity is 0 (idle / native scroll) the target is 1, so timeScale
+    // settles to the steady baseline loop.
+    const loop = () => {
+      const v = Math.abs(useScrollStore.getState().velocity);
+      const target = 1 + Math.min(v * 0.05, MAX_TIMESCALE - 1);
+      current += (target - current) * 0.08;
+      tween.timeScale(current);
+      rafId = requestAnimationFrame(loop);
+    };
+    rafId = requestAnimationFrame(loop);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      tween.kill();
+      // Hand the loop back to CSS if the component remounts without RM.
+      track.style.animation = "";
+    };
+  }, []);
+
   return (
     <section
       id="credibility"
@@ -53,7 +107,7 @@ export default function CredibilityStrip() {
           </span>
 
           <div className="relative flex-1 overflow-hidden marquee-mask">
-            <div className="marquee-track">
+            <div ref={trackRef} className="marquee-track">
               {[...LOGOS, ...LOGOS].map((name, i) => {
                 const Wordmark = BRAND_WORDMARKS[name];
                 return (
