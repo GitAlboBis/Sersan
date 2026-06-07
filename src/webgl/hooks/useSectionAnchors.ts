@@ -11,8 +11,15 @@
  * ScrollTrigger.refresh debounce in smooth-scroll-provider), after fonts
  * load, on route change, and on two delayed passes that mirror the
  * cinematic section's late ScrollTrigger refresh bursts.
+ *
+ * It ALSO runs one IntersectionObserver over the same [data-line-anchor]
+ * nodes (threshold 0.35) to publish which sections are on screen and which
+ * one is centered (activeAnchor). The observer is rebuilt only when the
+ * anchor set changes (version/scrollHeight signature) — never per render —
+ * and writes the active section + a section-arrival pulse into scrollStore.
  */
 import { useEffect, useState } from "react";
+import { useScrollStore } from "../store/scrollStore";
 
 export interface AnchorSpan {
   /** Document fraction where the element starts. */
@@ -26,15 +33,30 @@ export interface SectionAnchors {
   spans: Record<string, AnchorSpan>;
   scrollHeight: number;
   version: number;
+  /** Anchor ids currently intersecting the viewport (≥35% visible). */
+  inView: Record<string, boolean>;
+  /** Anchor id nearest to viewport center among the in-view set. */
+  activeAnchor: string | null;
+}
+
+interface MeasuredAnchors {
+  fractions: Record<string, number>;
+  spans: Record<string, AnchorSpan>;
+  scrollHeight: number;
+  version: number;
 }
 
 export function useSectionAnchors(pathname: string): SectionAnchors {
-  const [state, setState] = useState<SectionAnchors>({
+  const [state, setState] = useState<MeasuredAnchors>({
     fractions: {},
     spans: {},
     scrollHeight: 1,
     version: 0,
   });
+  // Observer output kept separate from the measurement state so the measure
+  // pass (which rebuilds the curve) never clobbers it and vice-versa.
+  const [inView, setInView] = useState<Record<string, boolean>>({});
+  const [activeAnchor, setActiveAnchor] = useState<string | null>(null);
 
   useEffect(() => {
     let version = 0;
@@ -100,5 +122,76 @@ export function useSectionAnchors(pathname: string): SectionAnchors {
     };
   }, [pathname]);
 
-  return state;
+  // ONE IntersectionObserver over the [data-line-anchor] nodes. Rebuilt only
+  // when the anchor set changes (pathname or measured version bump) — never
+  // per render, never one-observer-per-node. It publishes which anchors are
+  // on screen + the centered one, and bumps the scrollStore arrival pulse.
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof IntersectionObserver === "undefined") {
+      return;
+    }
+    // Wait for the same sentinel window the measure pass guards against: before
+    // first real layout there are no stable anchor rects to observe.
+    if (state.scrollHeight <= 1) return;
+
+    const nodes = Array.from(
+      document.querySelectorAll<HTMLElement>("[data-line-anchor]"),
+    );
+    if (nodes.length === 0) return;
+
+    // Running visibility ratios per anchor id, updated incrementally as the
+    // observer fires for individual nodes.
+    const ratios = new Map<string, number>();
+
+    const recompute = () => {
+      const next: Record<string, boolean> = {};
+      let active: string | null = null;
+      let bestDist = Infinity;
+      const center = window.innerHeight / 2;
+      ratios.forEach((ratio, id) => {
+        if (ratio < 0.35) return;
+        next[id] = true;
+        const el = document.querySelector<HTMLElement>(
+          `[data-line-anchor="${id}"]`,
+        );
+        if (!el) return;
+        const rect = el.getBoundingClientRect();
+        const dist = Math.abs(rect.top + rect.height / 2 - center);
+        if (dist < bestDist) {
+          bestDist = dist;
+          active = id;
+        }
+      });
+      setInView((prev) => {
+        const sameLen = Object.keys(prev).length === Object.keys(next).length;
+        const same = sameLen && Object.keys(next).every((k) => prev[k]);
+        return same ? prev : next;
+      });
+      setActiveAnchor((prev) => (prev === active ? prev : active));
+      useScrollStore.getState().setActiveAnchor(active);
+    };
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const id = (entry.target as HTMLElement).dataset.lineAnchor;
+          if (!id) continue;
+          ratios.set(id, entry.isIntersecting ? entry.intersectionRatio : 0);
+        }
+        recompute();
+      },
+      { threshold: [0, 0.35, 0.6, 1] },
+    );
+
+    nodes.forEach((el) => observer.observe(el));
+
+    return () => observer.disconnect();
+    // Rebuild ONLY when the anchor signature changes — version bumps whenever
+    // scrollHeight/fractions actually move (the measure pass returns `prev`
+    // otherwise), and pathname captures route changes. scrollHeight is read
+    // inside but always moves in lockstep with version, so it is not a dep.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, state.version]);
+
+  return { ...state, inView, activeAnchor };
 }

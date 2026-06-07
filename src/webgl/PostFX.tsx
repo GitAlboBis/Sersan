@@ -14,13 +14,32 @@
  */
 import { EffectComposer, Bloom, Noise, Vignette } from "@react-three/postprocessing";
 import { useFxStore } from "./store/fxStore";
+import { routeFx, HOME_FX } from "./store/routeFxStore";
 
-export function PostFX() {
-  const bloomIntensity = useFxStore((s) => s.bloomIntensity);
-  const bloomThreshold = useFxStore((s) => s.bloomThreshold);
-  const bloomRadius = useFxStore((s) => s.bloomRadius);
+/**
+ * routeFx provides the per-route bloom tone; the dev-tuning fxStore (leva)
+ * is an OVERRIDE that wins only once a dev moves a knob off its default.
+ * Because routeFx('/') mirrors the fxStore defaults verbatim, the home route
+ * is pixel-identical: route.bloom* == HOME_FX.bloom* == fxStore default, so
+ * whichever branch is taken yields the same number. A reactive read is fine —
+ * PostFX only re-renders on navigation (pathname change), never per frame.
+ */
+export function PostFX({ pathname = "/" }: { pathname?: string }) {
+  const fxBloomIntensity = useFxStore((s) => s.bloomIntensity);
+  const fxBloomThreshold = useFxStore((s) => s.bloomThreshold);
+  const fxBloomRadius = useFxStore((s) => s.bloomRadius);
   const noiseOpacity = useFxStore((s) => s.noiseOpacity);
   const vignetteDarkness = useFxStore((s) => s.vignetteDarkness);
+
+  const route = routeFx(pathname);
+  // Use the route tone unless the dev has tuned the value away from its
+  // default (then the leva override wins).
+  const bloomIntensity =
+    fxBloomIntensity === HOME_FX.bloomIntensity ? route.bloomIntensity : fxBloomIntensity;
+  const bloomThreshold =
+    fxBloomThreshold === HOME_FX.bloomThreshold ? route.bloomThreshold : fxBloomThreshold;
+  const bloomRadius =
+    fxBloomRadius === HOME_FX.bloomRadius ? route.bloomRadius : fxBloomRadius;
 
   return (
     <EffectComposer multisampling={0}>

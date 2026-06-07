@@ -17,6 +17,7 @@ import { getRouteCurve } from "./curves/routeCurves";
 import { WORLD_VIEW_HEIGHT } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
 import { useFxStore } from "./store/fxStore";
+import { routeFx } from "./store/routeFxStore";
 import type { SectionAnchors } from "./hooks/useSectionAnchors";
 import type { SceneTier } from "./store/tierStore";
 
@@ -38,6 +39,22 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   const material = useMemo(() => createLineMaterial(), []);
   useEffect(() => () => material.dispose(), [material]);
 
+  // Per-route tone for the line. The color-blend factor is 0 on home (colors
+  // untouched) and a small fixed weight on interior routes; even off-home the
+  // home output is unchanged because routeFx('/') colors equal the fxStore
+  // colors (lerp of equal endpoints is a no-op). Scratch Colors avoid
+  // per-frame allocation in useFrame.
+  const route = useMemo(() => routeFx(pathname), [pathname]);
+  const colorBlend = pathname === "/" ? 0 : 0.6;
+  const routeColors = useMemo(
+    () => ({
+      a: new THREE.Color(route.lineColorA),
+      b: new THREE.Color(route.lineColorB),
+      hot: new THREE.Color(route.lineColorHot),
+    }),
+    [route.lineColorA, route.lineColorB, route.lineColorHot],
+  );
+
   // World units per document/CSS pixel (stable: size only changes on resize).
   const k = WORLD_VIEW_HEIGHT / size.height;
   const worldViewWidth = WORLD_VIEW_HEIGHT * (size.width / size.height);
@@ -50,6 +67,7 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
 
     const config = getRouteCurve(pathname);
     const radiusFactor = useFxStore.getState().radiusFactor;
+    const { tessellationScale } = routeFx(pathname);
 
     const points = config.waypoints.map((wp) => {
       const fraction =
@@ -66,8 +84,10 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // segments between adjacent waypoints renders the bends as polygonal
     // elbows (and the tube can self-intersect). ~40 segments per waypoint
     // keeps every visible sweep perfectly smooth.
+    // tessellationScale (1 on home → unchanged) biases segment density per
+    // route before the same min/max clamp; rounded so the count stays integral.
     const tubularSegments = THREE.MathUtils.clamp(
-      config.waypoints.length * 40,
+      Math.round(config.waypoints.length * 40 * tessellationScale),
       256,
       tier === "full" ? 640 : 320,
     );
@@ -127,15 +147,19 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     u.uProgress.value = headFraction;
     u.uTime.value += delta;
     u.uReveal.value = dampedReveal.current;
-    // Velocity feeds a subtle energy boost into the glow (clamped).
+    // Velocity feeds a subtle energy boost into the glow (clamped). The route
+    // emissive scale (1 on home → unchanged) biases the whole line's glow.
     const boost = Math.min(Math.abs(velocity) * 0.004, 0.6);
-    u.uEmissive.value = fx.emissive + boost;
+    u.uEmissive.value = (fx.emissive + boost) * route.lineEmissiveScale;
     u.uGlowFalloff.value = fx.glowFalloff;
     u.uHeadSharp.value = fx.headSharp;
     u.uFlowSpeed.value = fx.flowSpeed;
-    u.uColorA.value.set(fx.colorA);
-    u.uColorB.value.set(fx.colorB);
-    u.uColorHot.value.set(fx.colorHot);
+    // Base = the live fxStore color (dev tuning), lerped toward the route tone
+    // by colorBlend. On home colorBlend is 0 AND the endpoints are equal, so
+    // the result is byte-identical to today's fx.color* set.
+    u.uColorA.value.set(fx.colorA).lerp(routeColors.a, colorBlend);
+    u.uColorB.value.set(fx.colorB).lerp(routeColors.b, colorBlend);
+    u.uColorHot.value.set(fx.colorHot).lerp(routeColors.hot, colorBlend);
 
     if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
       (window as unknown as Record<string, unknown>).__sersanLineDebug = {

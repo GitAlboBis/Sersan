@@ -71,7 +71,7 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
     >
       <FrameDriver />
       <SignatureLine tier={tier} pathname={pathname} anchors={anchors} />
-      <DriftParticles tier={tier} anchors={anchors} />
+      <DriftParticles tier={tier} anchors={anchors} pathname={pathname} />
       {/* Fully procedural hero — no textures, no HDRI, no Suspense: it
           mounts on the first frame and the poster cross-fades immediately. */}
       {pathname === "/" && <HeroPlanet tier={tier} anchors={anchors} />}
@@ -81,7 +81,7 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           <GatewayPortal tier={tier} anchors={anchors} />
         </Suspense>
       )}
-      {tier === "full" && <PostFX />}
+      {tier === "full" && <PostFX pathname={pathname} />}
     </Canvas>
   );
 }

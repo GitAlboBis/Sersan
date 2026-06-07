@@ -661,3 +661,69 @@ img { height: auto; max-width: 100%; }
   padding-inline: var(--margin);
   max-width: 1600px;
 }
+
+/* ============================================================================
+   P0 front-loaded utilities (additive — nothing references these yet).
+   Front-loading here keeps the "edit shared files once" rule: later phases
+   only ADD class names to JSX, never re-touch globals.css. All motion is
+   neutralized under prefers-reduced-motion at the bottom of this block.
+   ============================================================================ */
+
+/* Card depth on hover — lift + layered accent shadow. Apply ON TOP of
+   .card-steel; the transition is scoped to transform/box-shadow only so it
+   never fights the .card-steel background/border transition (P2/P3). The
+   tilt controller owns the card-root transform, so this utility is intended
+   for a WRAPPER, not the tilted root — see P2/P3 notes. */
+.card-lift {
+  transition:
+    transform 350ms cubic-bezier(0.215, 0.610, 0.355, 1.000),
+    box-shadow 350ms cubic-bezier(0.215, 0.610, 0.355, 1.000);
+}
+.card-lift:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    0 8px 24px hsl(var(--accent) / 0.08),
+    0 2px 8px hsl(var(--accent) / 0.04);
+}
+
+/* Fit good / warn tints — faint surface washes + edge for the /fit row
+   states (P3). Color only, no motion. */
+.fit-good {
+  background: hsl(var(--accent) / 0.06);
+  box-shadow: inset 0 0 0 1px hsl(var(--accent) / 0.22);
+}
+.fit-warn {
+  background: hsl(var(--refusal) / 0.06);
+  box-shadow: inset 0 0 0 1px hsl(var(--refusal) / 0.22);
+}
+
+/* Divider draw helper — initial collapsed state for a left-to-right reveal.
+   The choreographer animates clip-path to inset(0 0 0 0) (P2 SectionDivider).
+   Default (no .is-drawn) is fully hidden; reduced-motion forces it drawn. */
+.divider-draw {
+  clip-path: inset(0 100% 0 0);
+  transition: clip-path 700ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.divider-draw.is-drawn {
+  clip-path: inset(0 0 0 0);
+}
+
+/* Transition curtain base — a fixed, full-viewport navy sheet with a faint
+   accent edge, used by the P6 route-transition wipe. Unused for now; sits
+   inert (pointer-events:none) until template.tsx mounts it as a sibling. */
+.transition-curtain {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  pointer-events: none;
+  background: hsl(var(--bg));
+  box-shadow: inset 0 0 120px hsl(var(--accent) / 0.06);
+  clip-path: inset(0 0 100% 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card-lift { transition: none; }
+  .card-lift:hover { transform: none; box-shadow: none; }
+  .divider-draw { clip-path: inset(0 0 0 0); transition: none; }
+  .transition-curtain { display: none; }
+}
