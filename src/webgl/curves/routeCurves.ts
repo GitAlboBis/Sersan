@@ -28,32 +28,35 @@ export interface RouteCurveConfig {
 }
 
 export const routeCurves: Record<string, RouteCurveConfig> = {
+  // Amplitude rule (debugged live): |x| ≥ ~1.1 puts the serpentine's
+  // TURN-AROUNDS beyond the viewport edges, so on screen the line only ever
+  // reads as elegant sweeping diagonals — never a visible hairpin (tight
+  // on-screen turns render as polygonal elbows and can self-intersect).
   "/": {
     waypoints: [
       // Hero: enter from beyond the right edge so the beam doesn't park
-      // inside the Signal Core's glass volume (its refraction magnifies
-      // anything crossing it into a white-out flare).
-      { at: 0.0, x: 1.08, z: -1.0 },
-      { anchor: "credibility", x: -0.55, z: 0.2 },
-      { anchor: "problem", x: 0.6, z: -0.2 },
-      { anchor: "services", x: -0.65, z: 0.1 },
-      { anchor: "production", x: 0.55, z: 0.5 },
-      { anchor: "use-cases", x: -0.6, z: -0.3 },
-      { anchor: "case-studies", x: 0.65, z: 0.2 },
-      { anchor: "work-in-progress", x: -0.55, z: 0.4 },
-      { anchor: "founders", x: 0.6, z: -0.2 },
-      { anchor: "process", x: -0.65, z: 0.3 },
-      { anchor: "fit", x: 0.55, z: -0.4 },
+      // inside the planet's volume.
+      { at: 0.0, x: 1.15, z: -1.0 },
+      { anchor: "credibility", x: -1.2, z: 0.2 },
+      { anchor: "problem", x: 1.15, z: -0.2 },
+      { anchor: "services", x: -1.25, z: 0.1 },
+      { anchor: "production", x: 1.1, z: 0.5 },
+      { anchor: "use-cases", x: -1.2, z: -0.3 },
+      { anchor: "case-studies", x: 1.25, z: 0.2 },
+      { anchor: "work-in-progress", x: -1.15, z: 0.4 },
+      { anchor: "founders", x: 1.2, z: -0.2 },
+      { anchor: "process", x: -1.25, z: 0.3 },
+      { anchor: "fit", x: 1.1, z: -0.4 },
       { anchor: "final-cta", x: 0.0, z: 0.6 }, // resolves to center at the CTA
     ],
   },
   // Generic gentle serpentine for routes without a bespoke config.
   default: {
     waypoints: [
-      { at: 0.0, x: 0.55, z: -0.4 },
-      { at: 0.25, x: -0.6, z: 0.2 },
-      { at: 0.5, x: 0.55, z: -0.2 },
-      { at: 0.75, x: -0.55, z: 0.3 },
+      { at: 0.0, x: 1.15, z: -0.4 },
+      { at: 0.25, x: -1.2, z: 0.2 },
+      { at: 0.5, x: 1.15, z: -0.2 },
+      { at: 0.75, x: -1.2, z: 0.3 },
       { at: 1.0, x: 0.0, z: 0.5 },
     ],
   },

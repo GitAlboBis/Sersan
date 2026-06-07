@@ -62,10 +62,14 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     });
 
     const curve = new THREE.CatmullRomCurve3(points, false, "centripetal");
+    // Density matters at the serpentine turn-arounds: too few tubular
+    // segments between adjacent waypoints renders the bends as polygonal
+    // elbows (and the tube can self-intersect). ~40 segments per waypoint
+    // keeps every visible sweep perfectly smooth.
     const tubularSegments = THREE.MathUtils.clamp(
-      config.waypoints.length * 14,
-      64,
-      tier === "full" ? 256 : 96,
+      config.waypoints.length * 40,
+      256,
+      tier === "full" ? 640 : 320,
     );
     const radius = WORLD_VIEW_HEIGHT * radiusFactor;
     const radialSegments = tier === "full" ? 8 : 6;
