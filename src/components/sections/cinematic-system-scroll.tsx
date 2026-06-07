@@ -21,6 +21,7 @@ import Link from "next/link";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Button } from "@/components/ui/button";
+import { HeroDragLayer } from "@/components/hero-drag-layer";
 import { useLanguage } from "@/components/language-provider";
 import { useTierStore } from "@/webgl/store/tierStore";
 import type { Language } from "@/data/translations/types";
@@ -676,7 +677,7 @@ function HeroBackdrop({
         transform: "translate3d(0,0,0) scale(1.22)",
         willChange: "transform",
         opacity: dimmed ? 0 : 1,
-        transition: "opacity 1100ms cubic-bezier(0.4, 0, 0.2, 1)",
+        transition: "opacity 450ms cubic-bezier(0.4, 0, 0.2, 1)",
       }}
     >
       <Image
@@ -887,6 +888,10 @@ export default function CinematicSystemScroll() {
 
         {/* Scroll hint, fades out after stage 0 */}
         <ScrollHint progressRef={progressRef} label={copy.scroll} />
+
+        {/* Drag-to-rotate capture over the planet (right half). Mounts only
+            once the WebGL hero is live; wheel scrolling bubbles through. */}
+        <HeroDragLayer />
       </div>
     </section>
   );

@@ -15,7 +15,7 @@ import { Environment } from "@react-three/drei";
 import { usePathname } from "next/navigation";
 import { FrameDriver } from "./FrameDriver";
 import { SignatureLine } from "./SignatureLine";
-import { HeroSignalCore } from "./HeroSignalCore";
+import { HeroPlanet } from "./HeroPlanet";
 import { DriftParticles } from "./DriftParticles";
 import { PostFX } from "./PostFX";
 import { useSectionAnchors } from "./hooks/useSectionAnchors";
@@ -60,14 +60,14 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
       <DriftParticles tier={tier} anchors={anchors} />
       {pathname === "/" && (
         <Suspense fallback={null}>
-          {/* Environment feeds the glass shell's reflections only — never a
-              visible background (the navy DOM stays the backdrop). */}
+          {/* Environment feeds subtle reflections on the planet/rings —
+              never a visible background (the navy DOM stays the backdrop). */}
           <Environment
             files="/hdri/studio_small_03_1k.hdr"
             background={false}
-            environmentIntensity={0.45}
+            environmentIntensity={0.3}
           />
-          <HeroSignalCore tier={tier} anchors={anchors} />
+          <HeroPlanet tier={tier} anchors={anchors} />
         </Suspense>
       )}
       {tier === "full" && <PostFX />}
