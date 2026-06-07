@@ -48,11 +48,16 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
 
     // Bridge Lenis → ScrollTrigger AND the WebGL scroll store. One source,
     // every consumer: GSAP reveals and shader uniforms share the exact same
-    // smoothed progress.
-    lenis.on("scroll", (l: { progress?: number; velocity?: number }) => {
-      ScrollTrigger.update();
-      setScroll(l.progress ?? 0, l.velocity ?? 0);
-    });
+    // smoothed progress. `on` returns an unsubscribe — keep it so the handler
+    // is removed on unmount (the singleton may outlive this provider when
+    // other consumers still hold a refcount).
+    const offScroll = lenis.on(
+      "scroll",
+      (l: { progress?: number; velocity?: number }) => {
+        ScrollTrigger.update();
+        setScroll(l.progress ?? 0, l.velocity ?? 0);
+      },
+    );
 
     // Hijack anchor-link clicks so Lenis handles them smoothly.
     const onClick = (e: MouseEvent) => {
@@ -102,6 +107,7 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
       window.clearTimeout(resizeId);
       window.removeEventListener("resize", onResize);
       document.removeEventListener("click", onClick);
+      offScroll();
       releaseLenis();
       ScrollTrigger.getAll().forEach((st) => st.kill());
     };

@@ -39,9 +39,14 @@ export function useSectionAnchors(pathname: string): SectionAnchors {
   useEffect(() => {
     let version = 0;
     let resizeId = 0;
+    let cancelled = false;
     const timeouts: number[] = [];
 
     const measure = () => {
+      // The fonts.ready promise (below) can resolve after this effect is torn
+      // down on a route change — guard against measuring/setState for a
+      // pathname that no longer owns this effect.
+      if (cancelled) return;
       const scrollHeight = document.documentElement.scrollHeight;
       const fractions: Record<string, number> = {};
       const spans: Record<string, AnchorSpan> = {};
@@ -88,6 +93,7 @@ export function useSectionAnchors(pathname: string): SectionAnchors {
     window.addEventListener("resize", onResize);
 
     return () => {
+      cancelled = true;
       window.clearTimeout(resizeId);
       timeouts.forEach((t) => window.clearTimeout(t));
       window.removeEventListener("resize", onResize);

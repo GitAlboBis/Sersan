@@ -209,11 +209,18 @@ export function HeroPlanet({ tier, anchors }: HeroPlanetProps) {
     [],
   );
 
-  useFrame((state, delta) => {
+  useFrame((state, rawDelta) => {
     const group = groupRef.current;
     const assembly = assemblyRef.current;
     const spin = spinRef.current;
     if (!group || !assembly || !spin) return;
+
+    // Clamp delta: after a tab refocus / long stall R3F hands us a multi-
+    // second delta. The semi-implicit-Euler pitch spring below would blow up
+    // (and the idle spin would jump a full turn) on a raw value, so cap the
+    // step at ~2 frames (33ms) — large enough to be invisible at 60fps,
+    // small enough to keep the spring stable.
+    const delta = Math.min(rawDelta, 1 / 30);
 
     if (!announcedReady.current) {
       announcedReady.current = true;
