@@ -709,16 +709,49 @@ img { height: auto; max-width: 100%; }
 }
 
 /* Transition curtain base — a fixed, full-viewport navy sheet with a faint
-   accent edge, used by the P6 route-transition wipe. Unused for now; sits
-   inert (pointer-events:none) until template.tsx mounts it as a sibling. */
+   accent edge, used by the P6 route-transition wipe. Mounted as a SIBLING by
+   template.tsx (never wrapping the clearProps content div). GSAP drives its
+   clip-path inline; the default state below is fully OPEN — the bottom 100% is
+   clipped, collapsing the sheet to a hairline at the TOP edge — so an
+   un-animated mount (or a reverted/interrupted tween) is never covered. */
 .transition-curtain {
   position: fixed;
   inset: 0;
   z-index: 60;
   pointer-events: none;
-  background: hsl(var(--bg));
-  box-shadow: inset 0 0 120px hsl(var(--accent) / 0.06);
-  clip-path: inset(0 0 100% 0);
+  background:
+    linear-gradient(
+      180deg,
+      hsl(var(--bg)) 0%,
+      hsl(var(--bg)) 70%,
+      hsl(var(--surface)) 100%
+    );
+  box-shadow: inset 0 0 160px hsl(var(--accent) / 0.05);
+  /* bottom inset 100% => clipped to a hairline at the top edge = fully open /
+     page visible. Byte-identical to the wipe end-state in template.tsx so an
+     un-animated mount is never covered. */
+  clip-path: inset(0% 0 100% 0);
+}
+
+/* Luminous edge — a thin cyan→violet line pinned to the bottom of the curtain
+   so the covering sheet reads as a signal panel, not a flat navy block. As the
+   clip-path collapses upward (bottom inset → 100%) the lower band is clipped
+   away first; the glow shows during the covering phase then resolves out. */
+.transition-curtain::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    hsl(var(--accent) / 0.5) 30%,
+    hsl(var(--accent-2, var(--accent)) / 0.5) 70%,
+    transparent 100%
+  );
+  box-shadow: 0 0 24px hsl(var(--accent) / 0.45);
 }
 
 @media (prefers-reduced-motion: reduce) {
