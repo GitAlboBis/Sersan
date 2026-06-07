@@ -21,6 +21,7 @@ import Link from "next/link";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Button } from "@/components/ui/button";
+import { Magnetic } from "@/components/ui/magnetic";
 import { HeroDragLayer } from "@/components/hero-drag-layer";
 import { useLanguage } from "@/components/language-provider";
 import { useTierStore } from "@/webgl/store/tierStore";
@@ -426,12 +427,14 @@ function StagePanel({
           {stage.extras}
           {isHero ? (
             <div className="mt-5 flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
-              <Link href={START_HREF} className="block">
-                <Button variant="hero" size="xl" className="group">
-                  {copy.ctaPrimary}
-                  <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
-                </Button>
-              </Link>
+              <Magnetic>
+                <Link href={START_HREF} className="block">
+                  <Button variant="hero" size="xl" className="group">
+                    {copy.ctaPrimary}
+                    <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
+                  </Button>
+                </Link>
+              </Magnetic>
               <Link href="#services" className="block">
                 <Button variant="heroOutline" size="xl">
                   {copy.seeWhatWeBuild}
@@ -441,12 +444,14 @@ function StagePanel({
           ) : null}
           {isFinal ? (
             <div className="mt-7 flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
-              <Link href={START_HREF} className="block">
-                <Button variant="hero" size="xl" className="group">
-                  {copy.ctaPrimary}
-                  <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
-                </Button>
-              </Link>
+              <Magnetic>
+                <Link href={START_HREF} className="block">
+                  <Button variant="hero" size="xl" className="group">
+                    {copy.ctaPrimary}
+                    <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
+                  </Button>
+                </Link>
+              </Magnetic>
               <Link href="#work" className="block">
                 <Button variant="heroOutline" size="xl">
                   {copy.seeSelectedWork}

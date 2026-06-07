@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
 import { Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Magnetic } from "@/components/ui/magnetic";
 import { SersanLogo } from "@/components/sersan-logo";
 import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
@@ -262,16 +263,18 @@ export function Navbar() {
                 13px matches the nav links scale; tighter tracking + the
                 semibold weight from the hero variant keep it pill-shaped
                 rather than essay-shaped. */}
-            <Button
-              asChild
-              variant="hero"
-              size="lg"
-              className="hidden lg:inline-flex text-[13px] tracking-[0.005em] h-10 px-5"
-            >
-              <Link href={START_HREF}>
-                {language === "it" ? "Prenota una call" : "Book a call"}
-              </Link>
-            </Button>
+            <Magnetic className="hidden lg:inline-block" strength={0.25}>
+              <Button
+                asChild
+                variant="hero"
+                size="lg"
+                className="inline-flex text-[13px] tracking-[0.005em] h-10 px-5"
+              >
+                <Link href={START_HREF}>
+                  {language === "it" ? "Prenota una call" : "Book a call"}
+                </Link>
+              </Button>
+            </Magnetic>
 
             {/* Mobile menu trigger */}
             <Dialog.Root open={open} onOpenChange={setOpen}>
