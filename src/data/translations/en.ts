@@ -370,6 +370,13 @@ const en = {
     'hero.trace.result': 'result',
     'hero.trace.decision': 'intent score 0.82 ≥ threshold 0.7, proceed',
     'hero.trace.finalAction': 'Drafting personalised opener based on hiring intent...',
+
+    // Cal.com booking fallback card (shown while live scheduling is offline)
+    'cal.fallback.eyebrow': 'Book by email',
+    'cal.fallback.heading': 'Prefer email? Send a written intake.',
+    'cal.fallback.body': "Online booking is being set up. In the meantime, send a written intake or email us directly — a senior engineer replies within 1 business day.",
+    'cal.fallback.intakeCta': 'Send a written intake',
+    'cal.fallback.emailCta': 'Email us',
 } as const;
 
 export default en;

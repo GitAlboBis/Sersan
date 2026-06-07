@@ -1,9 +1,15 @@
 "use client";
 
-// TODO: replace placeholder Cal.com slug with the real Sersan booking link.
-import { useEffect } from "react";
-import Cal, { getCalApi } from "@calcom/embed-react";
+// While CAL_ENABLED is false we render a written-intake / email fallback card
+// and DO NOT load the Cal.com script or hit app.cal.com (the placeholder slug
+// `sersan/scoping-call` 404s — "Cal Link seems to be wrong"). To restore the
+// live embed: set CAL_ENABLED = true in `@/lib/site` and replace the slug
+// default below with the real Cal.com booking link.
+import dynamic from "next/dynamic";
+import Link from "next/link";
+import { Mail, ArrowRight } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
+import { CAL_ENABLED, CONTACT_EMAIL, START_HREF } from "@/lib/site";
 
 interface CalEmbedProps {
   slug?: string;
@@ -11,37 +17,17 @@ interface CalEmbedProps {
   hideEventTypeDetails?: boolean;
 }
 
-export function CalEmbed({
-  slug = "sersan/scoping-call",
-  theme = "dark",
-  hideEventTypeDetails = false,
-}: CalEmbedProps) {
-  const { language } = useLanguage();
+// The live Cal embed is isolated in its own module and lazy-loaded ONLY when
+// CAL_ENABLED is true, so `@calcom/embed-react` (and its getCalApi script
+// injection) is never imported/executed in the disabled path.
+const CalLiveEmbed = dynamic(
+  () => import("./cal-live-embed").then((m) => m.CalLiveEmbed),
+  { ssr: false },
+);
 
-  useEffect(() => {
-    (async () => {
-      const cal = await getCalApi({ namespace: "scoping-call" });
-      cal("ui", {
-        theme,
-        hideEventTypeDetails,
-        cssVarsPerTheme: {
-          dark: {
-            "cal-brand": "#c7a87a",
-            "cal-bg": "#0e1015",
-            "cal-bg-emphasis": "#161922",
-            "cal-text": "#efe7d8",
-            "cal-text-emphasis": "#ffffff",
-            "cal-text-muted": "#9a958b",
-            "cal-border": "#2a2c33",
-            "cal-border-emphasis": "#c7a87a",
-          },
-          light: {
-            "cal-brand": "#9a7b48",
-          },
-        },
-      });
-    })();
-  }, [theme, hideEventTypeDetails]);
+/** Email / written-intake fallback shown while live booking is disabled. */
+function CalFallbackCard() {
+  const { t } = useLanguage();
 
   return (
     <div className="cal-embed-wrap relative">
@@ -50,21 +36,43 @@ export function CalEmbed({
         className="pointer-events-none absolute -inset-x-2 -top-2 -bottom-2 rounded-2xl"
         style={{
           background:
-            "radial-gradient(60% 50% at 50% 0%, hsl(var(--accent-warm) / 0.06), transparent 70%)",
+            "radial-gradient(60% 50% at 50% 0%, hsl(var(--accent) / 0.06), transparent 70%)",
         }}
       />
-      <div className="relative rounded-xl border border-rule-warm/40 bg-surface-elev/80 backdrop-blur-sm p-2 sm:p-3 overflow-hidden">
-        <Cal
-          namespace="scoping-call"
-          calLink={slug}
-          style={{ width: "100%", height: "640px", overflow: "scroll" }}
-          config={{
-            layout: "month_view",
-            theme,
-            "cal.language": language === "it" ? "it" : "en",
-          }}
-        />
+      <div className="card-steel relative rounded-xl p-7 sm:p-9 text-center">
+        <p className="eyebrow mb-4" style={{ color: "hsl(var(--accent))" }}>
+          {t("cal.fallback.eyebrow")}
+        </p>
+        <h3 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-[1.18] tracking-tight mb-4 text-balance">
+          {t("cal.fallback.heading")}
+        </h3>
+        <p className="mx-auto max-w-md text-base text-ink-mute leading-[1.6] mb-7">
+          {t("cal.fallback.body")}
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
+          <Link
+            href={START_HREF}
+            className="group inline-flex items-center justify-center gap-1.5 rounded-md px-5 py-2.5 text-sm font-medium bg-accent text-[hsl(var(--primary-foreground))] hover:opacity-90 transition-opacity"
+          >
+            {t("cal.fallback.intakeCta")}
+            <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
+          </Link>
+          <a
+            href={`mailto:${CONTACT_EMAIL}`}
+            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-rule/70 px-5 py-2.5 text-sm text-ink-mute hover:text-ink hover:border-[hsl(var(--accent)/0.42)] transition-colors"
+          >
+            <Mail className="h-3.5 w-3.5" />
+            {CONTACT_EMAIL}
+          </a>
+        </div>
       </div>
     </div>
   );
+}
+
+export function CalEmbed(props: CalEmbedProps) {
+  if (!CAL_ENABLED) {
+    return <CalFallbackCard />;
+  }
+  return <CalLiveEmbed {...props} />;
 }
