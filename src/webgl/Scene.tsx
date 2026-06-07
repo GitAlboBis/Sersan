@@ -9,6 +9,7 @@
  * navy body background (DOM) stays the backdrop, the canvas only adds
  * light on top.
  */
+import { useEffect } from "react";
 import { Canvas } from "@react-three/fiber";
 import { usePathname } from "next/navigation";
 import { FrameDriver } from "./FrameDriver";
@@ -18,6 +19,7 @@ import { DriftParticles } from "./DriftParticles";
 import { PostFX } from "./PostFX";
 import { useSectionAnchors } from "./hooks/useSectionAnchors";
 import { CAMERA_FOV, CAMERA_Z } from "./constants";
+import { useScrollStore } from "./store/scrollStore";
 import type { SceneTier } from "./store/tierStore";
 
 // NOTE: the leva tuning panel (debug/LineDebug) and drei's
@@ -39,6 +41,18 @@ if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
 export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
   const pathname = usePathname();
   const anchors = useSectionAnchors(pathname);
+
+  // Route-transition beat for the signature line: fade out, let the curve
+  // rebuild against the new page's anchors, fade back in. On first mount
+  // this doubles as the intro draw (0 → 1). The DOM enter animation in
+  // app/template.tsx runs on the same navigation, so page and line breathe
+  // together.
+  useEffect(() => {
+    const { setReveal } = useScrollStore.getState();
+    setReveal(0);
+    const t = window.setTimeout(() => setReveal(1), 420);
+    return () => window.clearTimeout(t);
+  }, [pathname]);
 
   return (
     <Canvas
