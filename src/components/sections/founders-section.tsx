@@ -1,13 +1,108 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
+import gsap from "gsap";
 import { founders } from "@/data/founders";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Reveal } from "@/components/ui/reveal";
 import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
+
+/**
+ * FounderPhoto — pointer-tracked tilt on a WRAPPER element, kept entirely
+ * separate from the parent `.card-steel` (which the global CardTiltController
+ * owns). Compounding two tilt transforms on one node is forbidden, so the
+ * tilt lives here on an inner wrapper that the controller never touches, and
+ * a small translateZ parallax on the inner <img> gives it depth.
+ *
+ * Fine-pointer only; inert on touch / reduced-motion (matchMedia guards reuse
+ * the CardTiltController pattern). The `next/image` element is NOT the tilt
+ * node — the alt text + intrinsic sizing stay intact.
+ */
+const PHOTO_TILT = 4; // degrees
+
+function FounderPhoto({
+  src,
+  alt,
+  priority,
+}: {
+  src: string;
+  alt: string;
+  priority: boolean;
+}) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const imgRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    const img = imgRef.current;
+    if (!wrap || !img) return;
+    if (
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
+      window.matchMedia("(pointer: coarse)").matches
+    ) {
+      return;
+    }
+
+    gsap.set(wrap, { transformPerspective: 700, transformStyle: "preserve-3d" });
+    const rx = gsap.quickTo(wrap, "rotationX", { duration: 0.5, ease: "power3.out" });
+    const ry = gsap.quickTo(wrap, "rotationY", { duration: 0.5, ease: "power3.out" });
+    const iz = gsap.quickTo(img, "z", { duration: 0.5, ease: "power3.out" });
+
+    const onMove = (e: PointerEvent) => {
+      const r = wrap.getBoundingClientRect();
+      const px = (e.clientX - r.left) / r.width; // 0..1
+      const py = (e.clientY - r.top) / r.height;
+      rx(-(py - 0.5) * 2 * PHOTO_TILT);
+      ry((px - 0.5) * 2 * PHOTO_TILT);
+      iz(24);
+    };
+    const onLeave = () => {
+      rx(0);
+      ry(0);
+      iz(0);
+    };
+
+    wrap.addEventListener("pointermove", onMove, { passive: true });
+    wrap.addEventListener("pointerleave", onLeave, { passive: true });
+    return () => {
+      wrap.removeEventListener("pointermove", onMove);
+      wrap.removeEventListener("pointerleave", onLeave);
+      gsap.set(wrap, { rotationX: 0, rotationY: 0 });
+      gsap.set(img, { z: 0 });
+    };
+  }, []);
+
+  return (
+    <div
+      ref={wrapRef}
+      className="relative aspect-[4/3] w-full overflow-hidden bg-[hsl(var(--bg))] will-change-transform"
+    >
+      <div ref={imgRef} className="absolute inset-0">
+        <Image
+          src={src}
+          alt={alt}
+          fill
+          sizes="(min-width: 1024px) 36vw, 100vw"
+          className="object-cover object-center grayscale saturate-[0.4] group-hover:grayscale-0 group-hover:saturate-100 transition-[filter] duration-700 ease-out"
+          priority={priority}
+        />
+      </div>
+      {/* Bottom gradient so the role label sits on a dark base */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-x-0 bottom-0 h-32 pointer-events-none"
+        style={{
+          background:
+            "linear-gradient(to top, hsl(var(--bg) / 0.85) 0%, transparent 100%)",
+        }}
+      />
+    </div>
+  );
+}
 
 /**
  * FoundersSection — founder-led credibility block for the homepage.
@@ -87,26 +182,17 @@ export default function FoundersSection() {
                     transition-opacity duration-500
                   "
                 />
-                {/* Photo */}
-                <div className="relative aspect-[4/3] w-full overflow-hidden bg-[hsl(var(--bg))]">
-                  <Image
+                {/* Photo — tilt lives inside FounderPhoto on its own wrapper,
+                    kept separate from the .card-steel root tilt. The name /
+                    role / LinkedIn overlay sits OUTSIDE the tilted wrapper so
+                    its text never warps. */}
+                <div className="relative">
+                  <FounderPhoto
                     src={f.image}
                     alt={`${f.name}, ${isEn ? f.roleEn : f.roleIt}`}
-                    fill
-                    sizes="(min-width: 1024px) 36vw, 100vw"
-                    className="object-cover object-center grayscale-[0.15] group-hover:grayscale-0 transition-all duration-500"
                     priority={i === 0}
                   />
-                  {/* Bottom gradient so the role label sits on a dark base */}
-                  <div
-                    aria-hidden="true"
-                    className="absolute inset-x-0 bottom-0 h-32 pointer-events-none"
-                    style={{
-                      background:
-                        "linear-gradient(to top, hsl(var(--bg) / 0.85) 0%, transparent 100%)",
-                    }}
-                  />
-                  <div className="absolute bottom-4 left-5 right-5 flex items-end justify-between gap-3">
+                  <div className="pointer-events-none absolute bottom-4 left-5 right-5 flex items-end justify-between gap-3">
                     <div>
                       <h3 className="font-display text-xl sm:text-2xl leading-tight text-ink">
                         {f.name}
@@ -120,7 +206,7 @@ export default function FoundersSection() {
                       target="_blank"
                       rel="noopener noreferrer"
                       aria-label={`${f.name} on LinkedIn`}
-                      className="inline-flex items-center justify-center w-9 h-9 rounded-full border border-[hsl(var(--ink)/0.25)] bg-[hsl(var(--bg)/0.6)] text-ink-mute hover:text-ink hover:border-[hsl(var(--accent)/0.6)] transition-colors backdrop-blur"
+                      className="pointer-events-auto inline-flex items-center justify-center w-9 h-9 rounded-full border border-[hsl(var(--ink)/0.25)] bg-[hsl(var(--bg)/0.6)] text-ink-mute hover:text-ink hover:border-[hsl(var(--accent)/0.6)] transition-colors backdrop-blur"
                     >
                       <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
                     </Link>
@@ -133,12 +219,18 @@ export default function FoundersSection() {
                     {isEn ? f.shortBioEn : f.shortBioIt}
                   </p>
 
-                  {/* Credentials */}
+                  {/* Credentials — each chip fades in with a ±5° rotate3d as
+                      the card reveals (CSS-only, staggered, reduced-motion
+                      neutralized in the scoped style block). Copy untouched. */}
                   <ul className="flex flex-col gap-1.5 list-none">
-                    {(isEn ? f.credentialsEn : f.credentialsIt).map((c) => (
+                    {(isEn ? f.credentialsEn : f.credentialsIt).map((c, ci) => (
                       <li
                         key={c}
-                        className="flex items-start gap-2 text-[13px] text-ink leading-relaxed"
+                        className="founder-chip flex items-start gap-2 text-[13px] text-ink leading-relaxed"
+                        style={{
+                          animationDelay: `${i * 120 + 200 + ci * 70}ms`,
+                          ["--chip-rot" as string]: ci % 2 === 0 ? "5deg" : "-5deg",
+                        }}
                       >
                         <span
                           aria-hidden="true"
@@ -212,6 +304,27 @@ export default function FoundersSection() {
           </Link>
         </div>
       </div>
+
+      <style>{`
+        .founder-chip {
+          opacity: 0;
+          transform: perspective(600px) rotate3d(1, 0.4, 0, var(--chip-rot, 5deg)) translateY(6px);
+          animation: founder-chip-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes founder-chip-in {
+          to {
+            opacity: 1;
+            transform: perspective(600px) rotate3d(1, 0.4, 0, 0deg) translateY(0);
+          }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .founder-chip {
+            opacity: 1;
+            transform: none;
+            animation: none;
+          }
+        }
+      `}</style>
     </section>
   );
 }

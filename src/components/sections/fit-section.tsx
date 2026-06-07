@@ -94,13 +94,18 @@ export default function FitSection() {
           className="mb-12 sm:mb-16 max-w-3xl"
         />
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-px bg-[hsl(var(--rule))] border border-[hsl(var(--rule))] rounded-lg overflow-hidden">
+        {/* Two columns. Good-fit rows stagger in from the LEFT, not-a-fit
+            rows mirror from the RIGHT. Hovering one column dims the other via
+            the `fit-grid`/`fit-col` sibling-hover rule (CSS only). Reduced
+            motion settles rows immediately (handled inside Reveal). */}
+        <div className="fit-grid grid grid-cols-1 lg:grid-cols-2 gap-px bg-[hsl(var(--rule))] border border-[hsl(var(--rule))] rounded-lg overflow-hidden">
           {/* Good fit column */}
-          <div className="bg-[hsl(var(--bg))] p-6 sm:p-8">
+          <div className="fit-col fit-col--good bg-[hsl(var(--bg))] p-6 sm:p-8">
             <div className="flex items-center gap-3 mb-6">
               <span
                 aria-hidden="true"
-                className="flex items-center justify-center w-6 h-6 rounded-full bg-[hsl(var(--accent)/0.15)] border border-[hsl(var(--accent)/0.5)]"
+                className="fit-icon flex items-center justify-center w-6 h-6 rounded-full bg-[hsl(var(--accent)/0.15)] border border-[hsl(var(--accent)/0.5)] shadow-[0_0_0_0_hsl(var(--accent)/0)]"
+                style={{ ["--fit-glow" as string]: "var(--accent)" }}
               >
                 <Check className="w-3 h-3 text-[hsl(var(--accent))]" aria-hidden="true" />
               </span>
@@ -110,8 +115,8 @@ export default function FitSection() {
             </div>
             <ul className="flex flex-col gap-3.5">
               {goodFit.map((line, i) => (
-                <Reveal key={i} delay={i * 50} as="li">
-                  <p className="text-[14px] sm:text-[15px] text-ink leading-relaxed">
+                <Reveal key={i} delay={i * 50} from="left" as="li">
+                  <p className="fit-good rounded-md px-3 py-2 text-[14px] sm:text-[15px] text-ink leading-relaxed">
                     {line}
                   </p>
                 </Reveal>
@@ -120,11 +125,12 @@ export default function FitSection() {
           </div>
 
           {/* Not a fit column */}
-          <div className="bg-[hsl(var(--bg))] p-6 sm:p-8">
+          <div className="fit-col fit-col--warn bg-[hsl(var(--bg))] p-6 sm:p-8">
             <div className="flex items-center gap-3 mb-6">
               <span
                 aria-hidden="true"
-                className="flex items-center justify-center w-6 h-6 rounded-full bg-[hsl(36_84%_56%/0.1)] border border-[hsl(36_84%_56%/0.32)]"
+                className="fit-icon flex items-center justify-center w-6 h-6 rounded-full bg-[hsl(36_84%_56%/0.1)] border border-[hsl(36_84%_56%/0.32)]"
+                style={{ ["--fit-glow" as string]: "36 84% 56%" }}
               >
                 <X className="w-3 h-3 text-[hsl(36_84%_62%)]" aria-hidden="true" />
               </span>
@@ -134,8 +140,8 @@ export default function FitSection() {
             </div>
             <ul className="flex flex-col gap-3.5">
               {notAFit.map((line, i) => (
-                <Reveal key={i} delay={i * 50} as="li">
-                  <p className="text-[14px] sm:text-[15px] text-ink-mute leading-relaxed">
+                <Reveal key={i} delay={i * 50} from="right" as="li">
+                  <p className="fit-warn rounded-md px-3 py-2 text-[14px] sm:text-[15px] text-ink-mute leading-relaxed">
                     {line}
                   </p>
                 </Reveal>
@@ -168,6 +174,39 @@ export default function FitSection() {
           </Link>
         </div>
       </div>
+
+      <style>{`
+        /* Check / X icon scales up with a glow on mount. */
+        .fit-icon {
+          transform: scale(0.6);
+          opacity: 0;
+          animation: fit-icon-in 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards;
+        }
+        @keyframes fit-icon-in {
+          0%   { transform: scale(0.6); opacity: 0; box-shadow: 0 0 0 0 hsl(var(--fit-glow) / 0); }
+          60%  { transform: scale(1.12); opacity: 1; box-shadow: 0 0 14px 2px hsl(var(--fit-glow) / 0.45); }
+          100% { transform: scale(1); opacity: 1; box-shadow: 0 0 8px 0 hsl(var(--fit-glow) / 0.25); }
+        }
+
+        /* Hovering one column dims the sibling column (focus the read). */
+        .fit-col { transition: opacity 350ms cubic-bezier(0.215, 0.61, 0.355, 1); }
+        @media (hover: hover) and (pointer: fine) {
+          .fit-grid:has(.fit-col--good:hover) .fit-col--warn,
+          .fit-grid:has(.fit-col--warn:hover) .fit-col--good {
+            opacity: 0.45;
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .fit-icon {
+            transform: none;
+            opacity: 1;
+            animation: none;
+            box-shadow: none;
+          }
+          .fit-col { transition: none; }
+        }
+      `}</style>
     </section>
   );
 }

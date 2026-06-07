@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -141,26 +142,34 @@ function PhaseColumn({
   phase,
   rows,
   showConnector,
+  index,
 }: {
   phase: Phase;
   rows: ReturnType<typeof getRows>;
   showConnector: boolean;
+  index: number;
 }) {
   return (
     <div className="relative">
       {/* Subtle connector to the next column (desktop only). A hairline rule
-          with a small node, reading as the link in the delivery sequence. */}
+          with a small node, reading as the link in the delivery sequence.
+          The structural hairline + node always render; a traveling gradient
+          dot overlay (.process-connector-pulse) animates over it on a slow
+          loop while in view, and is removed under reduced-motion so the
+          static hairline survives. */}
       {showConnector ? (
         <span
           aria-hidden="true"
           className="hidden lg:flex absolute top-8 -right-3 z-10 items-center"
         >
-          <span className="block h-px w-6 bg-[hsl(var(--rule))]" />
+          <span className="relative block h-px w-6 bg-[hsl(var(--rule))] overflow-hidden">
+            <span className="process-connector-pulse" />
+          </span>
           <span className="block w-1.5 h-1.5 rounded-full bg-[hsl(var(--accent)/0.55)] -ml-px" />
         </span>
       ) : null}
 
-      <article className="card-steel group relative flex h-full flex-col p-5 sm:p-6 overflow-hidden">
+      <article className="process-phase card-steel group relative flex h-full flex-col p-5 sm:p-6 overflow-hidden">
         {/* Top-edge accent line — faint at rest, brightens on hover. */}
         <span
           aria-hidden="true"
@@ -193,7 +202,11 @@ function PhaseColumn({
           className="relative mt-4 mb-1 h-px bg-[hsl(var(--rule))]"
         />
 
-        {/* Structured rows: aligned label/value pairs, never paragraphs. */}
+        {/* Structured rows: aligned label/value pairs, never paragraphs.
+            The Duration value pulses once on enter (badge); the accent
+            "Risk reduced" value highlights in a wave staggered by column
+            index. Both are transform/color only and inert under reduced
+            motion — copy is untouched. */}
         <dl className="relative flex-1">
           {rows.map((row) => (
             <div
@@ -210,10 +223,18 @@ function PhaseColumn({
                 {row.label}
               </dt>
               <dd
-                className={
+                className={[
                   row.accent
-                    ? "text-[12.5px] text-ink leading-snug"
-                    : "text-[12.5px] text-ink-mute leading-snug"
+                    ? "text-[12.5px] text-ink leading-snug process-risk"
+                    : "text-[12.5px] text-ink-mute leading-snug",
+                  row.key === "duration" ? "process-duration" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+                style={
+                  row.accent
+                    ? { animationDelay: `${index * 160}ms` }
+                    : undefined
                 }
               >
                 {phase[row.key]}
@@ -231,6 +252,24 @@ export default function ProcessSection() {
   const isEn = language === "en";
   const phases = getPhases(isEn);
   const rows = getRows(isEn);
+
+  // Gate the decorative connector loop with an IntersectionObserver: the
+  // grid only carries the `is-active` class (which runs the traveling pulse
+  // loop) while on-screen, so it never burns CSS animation off-screen.
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = mapRef.current;
+    if (!el) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        el.classList.toggle("is-active", entry.isIntersecting);
+      },
+      { threshold: 0.12 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
 
   return (
     <section
@@ -291,13 +330,17 @@ export default function ProcessSection() {
 
         {/* Delivery map: 4 columns on desktop, 2 on tablet, 1 on mobile.
             Subtle connectors link the columns into a left-to-right sequence. */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 lg:gap-6">
+        <div
+          ref={mapRef}
+          className="process-map grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 lg:gap-6"
+        >
           {phases.map((p, i) => (
             <Reveal key={p.num} delay={i * 80}>
               <PhaseColumn
                 phase={p}
                 rows={rows}
                 showConnector={i < phases.length - 1}
+                index={i}
               />
             </Reveal>
           ))}
@@ -342,6 +385,76 @@ export default function ProcessSection() {
           </div>
         </div>
       </div>
+
+      <style>{`
+        /* NOTE: the card entrance is owned entirely by the parent <Reveal>
+           (which animates opacity/y on its OWN wrapper node, NOT the card
+           root). We deliberately do NOT animate the .process-phase /
+           .card-steel transform here: that node's transform is owned by the
+           global CardTiltController (rotationX/Y/scale on hover), and a CSS
+           animation with fill-mode:forwards on the same property would win the
+           cascade over GSAP's inline transform and kill the hover tilt. The
+           P3 "phase personality" is carried by the connector pulse + duration
+           pulse + risk wave below — none of which touch the card-root
+           transform. */
+
+        /* Duration value: a single pulse on enter (badge feel). */
+        .process-duration {
+          animation: process-duration-pulse 1.6s ease-out 0.2s 1;
+        }
+        @keyframes process-duration-pulse {
+          0%   { color: hsl(var(--ink-mute)); }
+          35%  { color: hsl(var(--accent)); text-shadow: 0 0 10px hsl(var(--accent) / 0.5); }
+          100% { color: hsl(var(--ink-mute)); text-shadow: none; }
+        }
+
+        /* Risk-reduced row highlights in a wave across the four columns
+           (delay set per column index inline). Runs only while in view. */
+        .process-map.is-active .process-risk {
+          animation: process-risk-wave 2.4s ease-in-out infinite;
+        }
+        @keyframes process-risk-wave {
+          0%, 60%, 100% { color: hsl(var(--ink)); text-shadow: none; }
+          30% { color: hsl(var(--accent)); text-shadow: 0 0 8px hsl(var(--accent) / 0.4); }
+        }
+
+        /* Traveling gradient dot along the connector hairline (loop while in
+           view). The structural hairline + node beneath always survive. */
+        .process-connector-pulse {
+          position: absolute;
+          top: 50%;
+          left: 0;
+          width: 8px;
+          height: 3px;
+          margin-top: -1.5px;
+          border-radius: 9999px;
+          background: linear-gradient(
+            90deg,
+            transparent,
+            hsl(var(--accent)),
+            transparent
+          );
+          opacity: 0;
+        }
+        .process-map.is-active .process-connector-pulse {
+          animation: process-connector-travel 2.6s ease-in-out infinite;
+        }
+        @keyframes process-connector-travel {
+          0%   { transform: translateX(-8px); opacity: 0; }
+          15%  { opacity: 1; }
+          85%  { opacity: 1; }
+          100% { transform: translateX(24px); opacity: 0; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .process-duration,
+          .process-map.is-active .process-risk,
+          .process-map.is-active .process-connector-pulse {
+            animation: none;
+          }
+          .process-connector-pulse { display: none; }
+        }
+      `}</style>
     </section>
   );
 }
