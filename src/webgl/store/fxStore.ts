@@ -24,6 +24,13 @@ interface FxState {
   bloomRadius: number;
   noiseOpacity: number;
   vignetteDarkness: number;
+  // Hero Signal Core
+  heroEmissive: number;
+  heroPulseSpeed: number;
+  /** Hero radius as a fraction of viewport world height. */
+  heroScale: number;
+  // Particle field
+  particleOpacity: number;
   set: (partial: Partial<Omit<FxState, "set">>) => void;
 }
 
@@ -41,5 +48,9 @@ export const useFxStore = create<FxState>((set) => ({
   bloomRadius: 0.7,
   noiseOpacity: 0.05,
   vignetteDarkness: 0.55,
+  heroEmissive: 2.6,
+  heroPulseSpeed: 0.45,
+  heroScale: 0.3,
+  particleOpacity: 0.35,
   set: (partial) => set(partial),
 }));

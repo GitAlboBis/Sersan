@@ -14,6 +14,7 @@ import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { createLineMaterial } from "./materials/lineShader";
 import { getRouteCurve } from "./curves/routeCurves";
+import { WORLD_VIEW_HEIGHT } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
 import { useFxStore } from "./store/fxStore";
 import type { SectionAnchors } from "./hooks/useSectionAnchors";
@@ -27,20 +28,6 @@ interface SignatureLineProps {
 
 /** Damping speed for the drawn-progress chase (higher = snappier). */
 const PROGRESS_DAMP = 6;
-
-/** Must match the Canvas camera config in Scene.tsx. */
-const CAMERA_FOV = 50;
-const CAMERA_Z = 12;
-
-/**
- * World-space viewport height at the content plane (z=0), seen from the
- * camera at z=CAMERA_Z. Constant by construction — NEVER derive this from
- * useThree().viewport: that value is computed from the camera's distance to
- * the origin, and our camera travels down the world strip every frame,
- * which would feed the world scale back into itself.
- */
-const WORLD_VIEW_HEIGHT =
-  2 * Math.tan(THREE.MathUtils.degToRad(CAMERA_FOV) / 2) * CAMERA_Z;
 
 export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   const { camera, size } = useThree();

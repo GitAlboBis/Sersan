@@ -30,7 +30,10 @@ export interface RouteCurveConfig {
 export const routeCurves: Record<string, RouteCurveConfig> = {
   "/": {
     waypoints: [
-      { at: 0.0, x: 0.6, z: -0.6 }, // hero — enters from the right
+      // Hero: enter from beyond the right edge so the beam doesn't park
+      // inside the Signal Core's glass volume (its refraction magnifies
+      // anything crossing it into a white-out flare).
+      { at: 0.0, x: 1.08, z: -1.0 },
       { anchor: "credibility", x: -0.55, z: 0.2 },
       { anchor: "problem", x: 0.6, z: -0.2 },
       { anchor: "services", x: -0.65, z: 0.1 },

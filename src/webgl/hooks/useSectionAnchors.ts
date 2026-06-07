@@ -14,8 +14,16 @@
  */
 import { useEffect, useState } from "react";
 
+export interface AnchorSpan {
+  /** Document fraction where the element starts. */
+  start: number;
+  /** Document fraction where the element ends. */
+  end: number;
+}
+
 export interface SectionAnchors {
   fractions: Record<string, number>;
+  spans: Record<string, AnchorSpan>;
   scrollHeight: number;
   version: number;
 }
@@ -23,6 +31,7 @@ export interface SectionAnchors {
 export function useSectionAnchors(pathname: string): SectionAnchors {
   const [state, setState] = useState<SectionAnchors>({
     fractions: {},
+    spans: {},
     scrollHeight: 1,
     version: 0,
   });
@@ -35,12 +44,20 @@ export function useSectionAnchors(pathname: string): SectionAnchors {
     const measure = () => {
       const scrollHeight = document.documentElement.scrollHeight;
       const fractions: Record<string, number> = {};
+      const spans: Record<string, AnchorSpan> = {};
       document.querySelectorAll<HTMLElement>("[data-line-anchor]").forEach((el) => {
         const id = el.dataset.lineAnchor;
         if (!id) return;
         const rect = el.getBoundingClientRect();
-        const centerDocY = rect.top + window.scrollY + rect.height / 2;
-        fractions[id] = scrollHeight > 0 ? centerDocY / scrollHeight : 0;
+        const topDocY = rect.top + window.scrollY;
+        const centerDocY = topDocY + rect.height / 2;
+        if (scrollHeight > 0) {
+          fractions[id] = centerDocY / scrollHeight;
+          spans[id] = {
+            start: topDocY / scrollHeight,
+            end: (topDocY + rect.height) / scrollHeight,
+          };
+        }
       });
       version += 1;
       setState((prev) => {
@@ -53,7 +70,7 @@ export function useSectionAnchors(pathname: string): SectionAnchors {
           Object.entries(fractions).every(
             ([k, v]) => Math.abs((prev.fractions[k] ?? -1) - v) < 0.0005,
           );
-        return same ? prev : { fractions, scrollHeight, version };
+        return same ? prev : { fractions, spans, scrollHeight, version };
       });
     };
 

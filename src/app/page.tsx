@@ -51,8 +51,11 @@ export default function Home() {
     >
       {/* data-line-anchor wrappers glue the WebGL signature line's curve
           waypoints to real section positions (src/webgl/curves/routeCurves.ts).
-          Plain block divs — zero layout impact. */}
-      <CinematicSystemScroll />
+          Plain block divs — zero layout impact. The "hero" anchor also feeds
+          the WebGL HeroSignalCore its pin range (span start/end). */}
+      <div data-line-anchor="hero">
+        <CinematicSystemScroll />
+      </div>
       <div data-line-anchor="credibility">
         <CredibilityStrip />
       </div>

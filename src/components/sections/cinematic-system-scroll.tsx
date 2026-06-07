@@ -21,9 +21,8 @@ import Link from "next/link";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Button } from "@/components/ui/button";
-import { CinematicOverlay } from "@/components/scene/cinematic-overlay";
-import { NeuralNetLayer } from "@/components/scene/neural-net-layer";
 import { useLanguage } from "@/components/language-provider";
+import { useTierStore } from "@/webgl/store/tierStore";
 import type { Language } from "@/data/translations/types";
 import { START_HREF } from "@/lib/site";
 import { cn } from "@/lib/utils";
@@ -626,14 +625,18 @@ function MobileFallback({
 function HeroBackdrop({
   progressRef,
   reduceMotion,
+  dimmed,
 }: {
   progressRef: React.MutableRefObject<number>;
   reduceMotion: boolean;
+  /** True once the live WebGL hero has taken over — the poster cross-fades
+   *  out (it stays in the DOM as the SSR/LCP paint + instant fallback). */
+  dimmed: boolean;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (reduceMotion) return;
+    if (reduceMotion || dimmed) return;
     let raf = 0;
     const start = performance.now();
     const tick = (now: number) => {
@@ -663,7 +666,7 @@ function HeroBackdrop({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [progressRef, reduceMotion]);
+  }, [progressRef, reduceMotion, dimmed]);
 
   return (
     <div
@@ -672,6 +675,8 @@ function HeroBackdrop({
       style={{
         transform: "translate3d(0,0,0) scale(1.22)",
         willChange: "transform",
+        opacity: dimmed ? 0 : 1,
+        transition: "opacity 1100ms cubic-bezier(0.4, 0, 0.2, 1)",
       }}
     >
       <Image
@@ -702,6 +707,9 @@ export default function CinematicSystemScroll() {
   const outerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const progressRef = useRef<number>(0);
+  // The live WebGL Signal Core announces itself here; the poster cross-fades
+  // out and the persistent canvas owns the hero visual from then on.
+  const heroWebGLReady = useTierStore((s) => s.heroReady);
   // Default to desktop layout on the server so the hero H1 + subhead are
   // present in the initial HTML (good for SEO, first paint, accessibility).
   // The client detects mobile and switches after mount; the resulting
@@ -804,22 +812,17 @@ export default function CinematicSystemScroll() {
         ref={stageRef}
         className="sticky top-0 h-screen overflow-hidden"
       >
-        {/* Static hero render + subtle scroll parallax — replaces the live
-            WebGL scene. NOT gated: rendered via next/image priority so it can
-            be the LCP paint immediately. */}
-        <HeroBackdrop progressRef={progressRef} reduceMotion={reduceMotion} />
-
-        {/* Animated neural-network depth layer — composites OVER the orb image
-            (screen blend) but BELOW the telemetry overlay + text. Parallaxes
-            at a different rate than the orb for real depth. */}
-        <NeuralNetLayer progressRef={progressRef} reduceMotion={reduceMotion} />
-
-        {/* Atmospheric overlay — sits between the WebGL canvas and the
-            vignette/text. Adds telemetry arcs, diagnostic pings, a faint
-            topology constellation, dust drift, an occasional scan pass,
-            and grain. All CSS/SVG, GPU-cheap, prefers-reduced-motion
-            gated. Does not interfere with text or CTAs. */}
-        <CinematicOverlay />
+        {/* Hero poster (orb render) — the SSR/LCP paint and the permanent
+            fallback. Once the WebGL Signal Core renders its first frame the
+            poster cross-fades out and the persistent canvas (glass core,
+            signature line, particles, bloom) owns the hero visual.
+            (NeuralNetLayer and CinematicOverlay were deleted — the canvas
+            replaces both natively: GPU particles + postprocessing grain.) */}
+        <HeroBackdrop
+          progressRef={progressRef}
+          reduceMotion={reduceMotion}
+          dimmed={heroWebGLReady}
+        />
 
         {/* Vignette gradient at bottom. Kept to the lower ~45% so it darkens
             the hex pedestal at the base of the orb (it fades into black as an

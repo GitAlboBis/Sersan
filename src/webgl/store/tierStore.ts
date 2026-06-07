@@ -16,8 +16,12 @@ export type SceneTier = "full" | "lite" | "off";
 interface TierState {
   tier: SceneTier;
   resolved: boolean;
+  /** True once the WebGL hero has rendered its first frame — the DOM
+   *  poster (orb-core.webp) cross-fades out when this flips. */
+  heroReady: boolean;
   resolve: () => void;
   degrade: () => void;
+  setHeroReady: (ready: boolean) => void;
 }
 
 function detectTier(): SceneTier {
@@ -40,10 +44,12 @@ function detectTier(): SceneTier {
 export const useTierStore = create<TierState>((set, get) => ({
   tier: "off",
   resolved: false,
+  heroReady: false,
   resolve: () => set({ tier: detectTier(), resolved: true }),
   degrade: () => {
     const { tier } = get();
-    if (tier === "full") set({ tier: "lite" });
-    else if (tier === "lite") set({ tier: "off" });
+    if (tier === "full") set({ tier: "lite", heroReady: false });
+    else if (tier === "lite") set({ tier: "off", heroReady: false });
   },
+  setHeroReady: (heroReady) => set({ heroReady }),
 }));

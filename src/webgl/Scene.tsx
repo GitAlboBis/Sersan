@@ -9,12 +9,17 @@
  * navy body background (DOM) stays the backdrop, the canvas only adds
  * light on top.
  */
+import { Suspense } from "react";
 import { Canvas } from "@react-three/fiber";
+import { Environment } from "@react-three/drei";
 import { usePathname } from "next/navigation";
 import { FrameDriver } from "./FrameDriver";
 import { SignatureLine } from "./SignatureLine";
+import { HeroSignalCore } from "./HeroSignalCore";
+import { DriftParticles } from "./DriftParticles";
 import { PostFX } from "./PostFX";
 import { useSectionAnchors } from "./hooks/useSectionAnchors";
+import { CAMERA_FOV, CAMERA_Z } from "./constants";
 import type { SceneTier } from "./store/tierStore";
 
 // NOTE: the leva tuning panel (debug/LineDebug) and drei's
@@ -45,13 +50,26 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
         powerPreference: "high-performance",
       }}
       dpr={tier === "full" ? [1, 2] : [1, 1.5]}
-      camera={{ fov: 50, position: [0, 0, 12], near: 0.1, far: 200 }}
+      camera={{ fov: CAMERA_FOV, position: [0, 0, CAMERA_Z], near: 0.1, far: 200 }}
       onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
       frameloop="always"
       style={{ position: "absolute", inset: 0 }}
     >
       <FrameDriver />
       <SignatureLine tier={tier} pathname={pathname} anchors={anchors} />
+      <DriftParticles tier={tier} anchors={anchors} />
+      {pathname === "/" && (
+        <Suspense fallback={null}>
+          {/* Environment feeds the glass shell's reflections only — never a
+              visible background (the navy DOM stays the backdrop). */}
+          <Environment
+            files="/hdri/studio_small_03_1k.hdr"
+            background={false}
+            environmentIntensity={0.45}
+          />
+          <HeroSignalCore tier={tier} anchors={anchors} />
+        </Suspense>
+      )}
       {tier === "full" && <PostFX />}
     </Canvas>
   );
