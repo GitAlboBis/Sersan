@@ -30,6 +30,13 @@ export default function LineDebug() {
       fresnelPower: { value: defaults.fresnelPower, min: 0.5, max: 6, step: 0.1 },
       scatter: { value: defaults.scatter, min: 0, max: 1.5, step: 0.05 },
       radiusFactor: { value: defaults.radiusFactor, min: 0.001, max: 0.03, step: 0.0005 },
+      curlTubeIntensity: {
+        value: defaults.curlTubeIntensity,
+        min: 0,
+        max: 2,
+        step: 0.05,
+        label: "curl-tube haze",
+      },
     }),
     PostFX: folder({
       bloomIntensity: { value: defaults.bloomIntensity, min: 0, max: 4, step: 0.05 },

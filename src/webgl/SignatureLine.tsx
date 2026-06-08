@@ -17,6 +17,7 @@ import { webgpuEnabled } from "./renderer/createRenderer";
 import { getRouteCurve } from "./curves/routeCurves";
 import { WORLD_VIEW_HEIGHT } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
+import { useIntroStore } from "./store/introStore";
 import { useFxStore } from "./store/fxStore";
 import { routeFx } from "./store/routeFxStore";
 import type { SectionAnchors } from "./hooks/useSectionAnchors";
@@ -201,6 +202,40 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   // Dispose replaced geometries (rebuilds on resize/route would leak GPU
   // buffers otherwise).
   useEffect(() => () => geometry?.dispose(), [geometry]);
+
+  // First-load hand-off (preloader → line). The preloader holds the viewport
+  // while readiness counts to 100, then flips introStore.introComplete. On that
+  // false→true edge we re-kick the reveal beat (setReveal 0 → 1) so the line
+  // draws in EXACTLY as the curtain lifts — the eye reads "the loading bar
+  // became the signature line". On a soft route change the preloader never
+  // remounts, so introComplete is already true and this never re-fires; the
+  // per-route re-curve beat (Scene.tsx, keyed on pathname) owns those.
+  useEffect(() => {
+    const { setReveal } = useScrollStore.getState();
+    // If the intro already completed (e.g. this SignatureLine instance mounted
+    // late, after the preloader handed off), don't re-trigger — just ensure the
+    // line is drawn.
+    if (useIntroStore.getState().introComplete) {
+      setReveal(1);
+      return;
+    }
+    // While the preloader covers the screen, keep the line undrawn so its
+    // draw-in is the reveal, not a pop-in behind the overlay.
+    setReveal(0);
+    let timeoutId = 0;
+    const unsubscribe = useIntroStore.subscribe((state, prev) => {
+      if (state.introComplete && !prev.introComplete) {
+        setReveal(0);
+        // Brief beat so the curve is settled before the draw-in begins,
+        // matching the ~420ms route-reveal window.
+        timeoutId = window.setTimeout(() => setReveal(1), 60);
+      }
+    });
+    return () => {
+      window.clearTimeout(timeoutId);
+      unsubscribe();
+    };
+  }, []);
 
   useFrame((_, delta) => {
     const scroll = useScrollStore.getState();

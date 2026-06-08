@@ -7,6 +7,7 @@ import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { SmoothScrollProvider } from "@/components/smooth-scroll-provider";
 import { CanvasHost } from "@/webgl/CanvasHost";
+import { Preloader } from "@/components/fx/preloader";
 import { CardTiltController } from "@/components/fx/card-tilt-controller";
 import { HeadingChoreographer } from "@/components/fx/heading-choreographer";
 import { LabelScrambler } from "@/components/fx/label-scrambler";
@@ -180,6 +181,13 @@ export default function RootLayout({
         </a>
         <LanguageProvider>
           <SmoothScrollProvider>
+            {/* First-load preloader — a sober mono % counter + bar + 52. mark
+                that counts real readiness to 100, then wipes up while the
+                signature line draws in (introStore hand-off). Client-only
+                (mounts after hydration → no SSR mismatch), shows once per hard
+                load (layout persists across soft navigations), and is skipped
+                entirely under prefers-reduced-motion. */}
+            <Preloader />
             {/* Persistent WebGL layer — fixed, behind everything (z-0).
                 Mounted at layout level so the GL context survives route
                 changes. Decorative only: aria-hidden + pointer-events:none
