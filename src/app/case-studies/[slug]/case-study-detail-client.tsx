@@ -203,6 +203,7 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
             {prevStudy && (
               <Link
                 href={`/case-studies/${prevStudy.id}`}
+                data-cursor="view"
                 className="group p-5 rounded-xl border border-rule/70 hover:border-[hsl(var(--accent)/0.5)] hover:bg-surface/40 transition-colors"
               >
                 <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-ink-mute mb-2 inline-flex items-center gap-1.5">
@@ -220,6 +221,7 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
             {nextStudy && (
               <Link
                 href={`/case-studies/${nextStudy.id}`}
+                data-cursor="view"
                 className="group p-5 rounded-xl border border-rule/70 hover:border-[hsl(var(--accent)/0.5)] hover:bg-surface/40 transition-colors text-right"
               >
                 <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-ink-mute mb-2 inline-flex items-center gap-1.5 justify-end w-full">

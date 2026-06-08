@@ -60,19 +60,24 @@ export function Magnetic({
       const xTo = gsap.quickTo(el, "x", { duration: 0.45, ease: "power3.out" });
       const yTo = gsap.quickTo(el, "y", { duration: 0.45, ease: "power3.out" });
 
+      // Prime the REAL scale components so GSAP records them; we animate
+      // scaleX/scaleY (never the `scale` shorthand, which is not a resettable
+      // property and trips "scale not eligible for reset" on overwrite).
+      gsap.set(el, { scaleX: 1, scaleY: 1 });
+
       let engaged = false;
       const engage = () => {
         if (engaged) return;
         engaged = true;
-        // Soft elastic pop on lock-on.
-        gsap.to(el, { scale: 1.03, duration: 0.45, ease: "back.out(2.2)" });
+        // Soft elastic pop on lock-on (uniform 1.03 via both axes).
+        gsap.to(el, { scaleX: 1.03, scaleY: 1.03, duration: 0.45, ease: "back.out(2.2)" });
       };
       const release = () => {
         if (!engaged) return;
         engaged = false;
         xTo(0);
         yTo(0);
-        gsap.to(el, { scale: 1, duration: 0.5, ease: "power3.out" });
+        gsap.to(el, { scaleX: 1, scaleY: 1, duration: 0.5, ease: "power3.out" });
       };
 
       const onMove = (e: PointerEvent) => {

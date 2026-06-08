@@ -80,6 +80,10 @@ export function CustomCursor() {
     const trail = trailRefs.current.filter(Boolean) as HTMLDivElement[];
     gsap.set([dot, ring, ...trail], { xPercent: -50, yPercent: -50, opacity: 0 });
     if (label) gsap.set(label, { xPercent: -50, yPercent: -50, opacity: 0 });
+    // Prime the ring's REAL scale components so the swell tween animates
+    // scaleX/scaleY rather than the `scale` shorthand (the shorthand trips
+    // "scale not eligible for reset" when pointerover overwrites the tween).
+    gsap.set(ring, { scaleX: 1, scaleY: 1 });
 
     const dotX = gsap.quickTo(dot, "x", { duration: 0.08, ease: "power2.out" });
     const dotY = gsap.quickTo(dot, "y", { duration: 0.08, ease: "power2.out" });
@@ -143,8 +147,11 @@ export function CustomCursor() {
       const legacyHit = !state && !!target?.closest(INTERACTIVE);
       const { scale, label: text, strong } = presetFor(state, legacyHit);
 
+      // Uniform ring swell via the real scaleX/scaleY props (not the `scale`
+      // shorthand) so repeated pointerover overwrites never trip the reset warn.
       gsap.to(ring, {
-        scale,
+        scaleX: scale,
+        scaleY: scale,
         opacity: shown ? 1 : 0,
         borderColor: strong
           ? "hsl(189 100% 62% / 0.9)"

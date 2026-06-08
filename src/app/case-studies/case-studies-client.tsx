@@ -75,8 +75,18 @@ export function CaseStudiesClient() {
                 const summary = isEn ? study.summary : study.summaryIt;
                 return (
                   <Reveal key={study.id} delay={(i % 2) * 90} className="h-full">
+                    {/* TODO(imagery-upgrade): these are asset-free DOM text cards,
+                        so the premium hover is CSS/GSAP only (3D tilt + signal
+                        sheen + proximity edge glow via CardTiltController +
+                        .card-steel). When product/case-study imagery is provided,
+                        a WebGL <Image>/shader hover (drei) with RGB-shift +
+                        parallax-on-pointer can replace/augment this here — wrap
+                        the image plane in a <View> teleported into the persistent
+                        canvas and keep this DOM hover as the reduced-motion/no-
+                        WebGL fallback. */}
                     <Link
                       href={`/case-studies/${study.id}`}
+                      data-cursor="view"
                       className="card-steel group flex flex-col h-full p-7"
                       aria-label={`${study.client}, ${engagement}`}
                     >
@@ -86,14 +96,17 @@ export function CaseStudiesClient() {
                       >
                         {study.industry}
                       </p>
-                      <h3 className="font-display text-2xl text-ink leading-tight mb-2 group-hover:text-[hsl(var(--accent))] transition-colors">
+                      <h3 className="font-display text-2xl text-ink leading-tight mb-2 transition-colors duration-300 group-hover:text-[hsl(var(--accent))]">
                         {study.client}
                       </h3>
                       <p className="text-sm text-ink-mute mb-4">{engagement}</p>
                       <p className="text-sm text-ink/85 leading-[1.55] line-clamp-4 mb-6">{summary}</p>
                       <div className="mt-auto flex items-center justify-between text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
-                        <span>{role}</span>
-                        <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                        <span className="transition-colors duration-300 group-hover:text-ink">
+                          {role}
+                        </span>
+                        {/* Arrow slides + fades in on hover (asset-free affordance). */}
+                        <ArrowRight className="w-3.5 h-3.5 -translate-x-1 opacity-50 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100 group-hover:text-[hsl(var(--accent))] motion-reduce:transition-none motion-reduce:translate-x-0 motion-reduce:opacity-100" />
                       </div>
                     </Link>
                   </Reveal>

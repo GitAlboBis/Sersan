@@ -540,11 +540,28 @@ img { height: auto; max-width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
   .card-steel { transition: none; }
+  /* No pointer-driven sheen / proximity glow under reduced motion — the
+     controller never runs, so these vars stay at rest; force them off and
+     drop their transitions so only the static :hover state (border + arrow)
+     remains. */
+  .card-steel::after { opacity: 0 !important; transition: none; }
+  .card-steel::before { opacity: 0 !important; }
 }
 
-/* Pointer-tracking sheen — driven by CardTiltController via --sheen-* vars.
-   A soft signal-cyan radial follows the cursor across the card surface
-   while the card tilts in 3D. Zero cost at rest (opacity 0). */
+/* --glow is the pointer-proximity factor (0 at the corners → 1 at centre),
+   tweened by CardTiltController via gsap.quickTo. Registering it as a typed
+   <number> lets GSAP interpolate it smoothly and lets calc() consume it for the
+   edge-glow strength below. Falls back to 0 where @property is unsupported. */
+@property --glow {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 0;
+}
+
+/* Pointer-tracking signal sheen — driven by CardTiltController via --sheen-*
+   vars. A soft cyan→violet radial follows the cursor across the card surface
+   while the card tilts in 3D, like light catching an engineered surface. Zero
+   cost at rest (opacity 0). */
 .card-steel::after {
   content: "";
   position: absolute;
@@ -552,13 +569,35 @@ img { height: auto; max-width: 100%; }
   border-radius: inherit;
   pointer-events: none;
   background: radial-gradient(
-    220px circle at var(--sheen-x, 50%) var(--sheen-y, 50%),
-    hsl(var(--accent) / 0.10) 0%,
-    hsl(var(--accent-2) / 0.04) 45%,
-    transparent 70%
+    240px circle at var(--sheen-x, 50%) var(--sheen-y, 50%),
+    hsl(var(--accent) / 0.14) 0%,
+    hsl(var(--accent-2) / 0.06) 45%,
+    transparent 72%
   );
   opacity: var(--sheen-o, 0);
   transition: opacity 350ms cubic-bezier(0.215, 0.610, 0.355, 1.000);
+}
+
+/* Proximity edge glow — a faint accent ring + bloom on the card border that
+   intensifies as the pointer nears the card centre (--glow → 1). The glow is a
+   box-shadow that lives at the card EDGE (inset hairline ring + outer bloom), so
+   it never covers the card's text even though it paints above it. opacity rides
+   --glow so it costs nothing at rest. The fine-pointer controller owns --glow;
+   under reduced-motion / touch the var stays at its 0 initial value, so only the
+   static :hover border below shows. (No child z-index rule on purpose — some
+   .card-steel consumers position decorative children absolutely; a blanket
+   `> *` reset would break their layout.) */
+.card-steel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    0 0 0 1px hsl(var(--accent) / calc(0.30 * var(--glow, 0))),
+    0 0 22px -2px hsl(var(--accent) / calc(0.28 * var(--glow, 0))),
+    0 0 40px -6px hsl(var(--accent-2) / calc(0.22 * var(--glow, 0)));
+  opacity: var(--glow, 0);
 }
 
 .status-pill {
