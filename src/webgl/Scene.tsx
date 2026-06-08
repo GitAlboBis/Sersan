@@ -21,6 +21,7 @@ import { GatewayPortal } from "./GatewayPortal";
 import { RouteHero, type RouteHeroKind } from "./RouteHero";
 import { DriftParticles } from "./DriftParticles";
 import { PostFX } from "./PostFX";
+import { PostFXNodes } from "./PostFXNodes";
 import { useSectionAnchors } from "./hooks/useSectionAnchors";
 import { CAMERA_FOV, CAMERA_Z } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
@@ -199,18 +200,34 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           HeroPlanet is mounted ONLY inside the pathname === "/" branch, so it
           never appears on an interior route. */}
       <RouteRitual pathname={pathname} tier={tier} anchors={anchors} />
-      {/* PostFX (@react-three/postprocessing) mounts ONLY when the WebGPU flag
-          is OFF. This is a BUILD-TIME guard, not a runtime backend check: the
-          legacy @react-three/postprocessing EffectComposer is WebGL-only — it
-          calls renderer.getContext().getContextAttributes(), which does not
-          exist on WebGPURenderer (and its WebGL2 *fallback* backend exposes a
-          different context object too), so it crashes the renderer whenever the
-          flag is ON, regardless of the chosen backend. A runtime `backend`
-          state would mount PostFX on the first render (before onCreated can
-          update it) and crash. `webgpuEnabled()` is inlined at build time, so
-          this is static and race-free. The TSL post pipeline replaces it in a
-          later phase. With the flag OFF this is byte-identical to before. */}
-      {tier === "full" && !webgpuEnabled() && <PostFX pathname={pathname} />}
+      {/* Postprocessing — desktop ("full") only, exactly as before. Which rig
+          mounts is a BUILD-TIME split on `webgpuEnabled()`, not a runtime backend
+          check:
+
+          • Flag OFF → PostFX (@react-three/postprocessing EffectComposer). This
+            lib is WebGL-only — it calls renderer.getContext().getContextAttributes(),
+            absent on WebGPURenderer (and its WebGL2 *fallback* backend exposes a
+            different context object too) — so it would crash whenever the flag is
+            ON, regardless of the chosen backend. A runtime `backend` state would
+            mount it on the first render (before onCreated can update it) and crash.
+            `webgpuEnabled()` is inlined at build time, so the split is static and
+            race-free. With the flag OFF this branch is byte-identical to before.
+
+          • Flag ON → PostFXNodes (three's native TSL PostProcessing + selective
+            bloom + hand-rolled vignette + optional hand-rolled grain, tonemap at
+            output; the addon CA/film nodes were removed as a null-input crash
+            source — see PostFXNodes header). It restores the cinematic grade the
+            WebGPU path otherwise lacks (EffectComposer is suppressed above), keeps
+            the >1.0 selective-bloom contract, and drives `post.render()` from a
+            single priority-1 useFrame (no second RAF; R3F's default render is
+            suppressed). It imports three/webgpu + three/tsl LAZILY, so the OFF
+            bundle never pulls the heavy node-material build. */}
+      {tier === "full" &&
+        (webgpuEnabled() ? (
+          <PostFXNodes pathname={pathname} />
+        ) : (
+          <PostFX pathname={pathname} />
+        ))}
     </Canvas>
   );
 }
