@@ -9,6 +9,7 @@ import { SmoothScrollProvider } from "@/components/smooth-scroll-provider";
 import { CanvasHost } from "@/webgl/CanvasHost";
 import { CardTiltController } from "@/components/fx/card-tilt-controller";
 import { HeadingChoreographer } from "@/components/fx/heading-choreographer";
+import { LabelScrambler } from "@/components/fx/label-scrambler";
 import { CustomCursor } from "@/components/fx/custom-cursor";
 import { AudioTriggers } from "@/components/fx/audio-triggers";
 import { Analytics } from "@vercel/analytics/next";
@@ -186,6 +187,8 @@ export default function RootLayout({
             <CanvasHost />
             <CardTiltController />
             <HeadingChoreographer />
+            {/* Mono eyebrow/label decode-scramble — one delegated observer. */}
+            <LabelScrambler />
             <CustomCursor />
             {/* Procedural UI sounds (hover/click via delegated listeners +
                 AudioContext autoplay-gesture unlock). Renders nothing. */}
