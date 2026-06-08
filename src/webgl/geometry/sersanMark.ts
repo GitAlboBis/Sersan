@@ -121,6 +121,69 @@ export interface MarkParticleBuffers {
   aThreshold: Float32Array;
 }
 
+export interface MarkHomeField {
+  /** Grid edge (SIZE); total particles = size*size. */
+  size: number;
+  count: number;
+  /**
+   * RGBA-float home positions, ROW-MAJOR over the SIZE×SIZE grid — xyz = rest
+   * surface point, w = 1. Seeds the GPGPU "home" (rest target) DataTexture AND
+   * the live POSITION render target's initial state. Size = size*size*4.
+   */
+  homeRGBA: Float32Array;
+  /**
+   * Per-instance grid UV (`aRef`), one vec2 per particle: the cell center
+   * `((col+0.5)/size, (row+0.5)/size)` so the render vertex shader looks up its
+   * live position from the state texture/RT at exactly its own texel. Size =
+   * size*size*2, ordered to MATCH `homeRGBA`'s row-major layout.
+   */
+  aRef: Float32Array;
+}
+
+/**
+ * Sample a SIZE×SIZE grid of points across the mark's surface for the GPGPU
+ * dissolve hero. Returns the home-position field (to seed the position/home
+ * float textures) and the per-instance grid `aRef` UVs (so each rendered
+ * billboard reads its own texel from the simulation state). The mesh itself is
+ * NOT rendered — the sampler only generates the rest positions the particles
+ * spring back to.
+ *
+ * `homeRGBA[i]` and `aRef[i]` share the SAME row-major index: particle `i` sits
+ * at grid cell `(col = i % size, row = floor(i / size))`, whose texel center is
+ * `aRef[i] = ((col+0.5)/size, (row+0.5)/size)`. A DataTexture built from
+ * `homeRGBA` (RGBAFormat/FloatType, width=height=size) is sampled at `aRef[i]`
+ * to recover `homeRGBA[i]` exactly, so the spring target, the seeded position
+ * and the render lookup all stay in lockstep.
+ */
+export function sampleMarkHomePositions(
+  geometry: THREE.BufferGeometry,
+  size: number,
+): MarkHomeField {
+  const count = size * size;
+  const mesh = new THREE.Mesh(geometry);
+  const sampler = new MeshSurfaceSampler(mesh).build();
+
+  const homeRGBA = new Float32Array(count * 4);
+  const aRef = new Float32Array(count * 2);
+  const pos = new THREE.Vector3();
+
+  for (let i = 0; i < count; i++) {
+    sampler.sample(pos);
+    homeRGBA[i * 4] = pos.x;
+    homeRGBA[i * 4 + 1] = pos.y;
+    homeRGBA[i * 4 + 2] = pos.z;
+    homeRGBA[i * 4 + 3] = 1;
+
+    // Row-major texel center matching the DataTexture's (width=height=size).
+    const col = i % size;
+    const row = Math.floor(i / size);
+    aRef[i * 2] = (col + 0.5) / size;
+    aRef[i * 2 + 1] = (row + 0.5) / size;
+  }
+
+  return { size, count, homeRGBA, aRef };
+}
+
 /**
  * Sample `count` points across the mark's surface with `MeshSurfaceSampler`.
  * Returns per-instance attribute arrays for the instanced-billboard particle

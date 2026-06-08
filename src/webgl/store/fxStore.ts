@@ -41,6 +41,16 @@ interface FxState {
   heroScale: number;
   // Particle field
   particleOpacity: number;
+  // GPGPU dissolve hero (HeroLogo) — the few live-tunable sim/render knobs.
+  // Full param set + defaults live in gpgpu/gpgpuConfig.ts; these override it.
+  /** Elastic spring constant pulling particles back to the mark (regeneration). */
+  gpgpuSpring: number;
+  /** Mouse-repulsion strength. */
+  gpgpuPush: number;
+  /** Mouse-repulsion radius in model space. */
+  gpgpuRadius: number;
+  /** Sprite size in device px (before perspective scale). */
+  gpgpuPointSize: number;
   // Pointer fluid (WebGPU/TSL path only — see PostFXNodes). A barely-there
   // liquid-glass refraction of the scene around the cursor.
   /** Max UV displacement of the scene sample, in screen fraction (~0.004–0.01). */
@@ -81,6 +91,10 @@ export const useFxStore = create<FxState>((set) => ({
   heroPulseSpeed: 0.45,
   heroScale: 0.235,
   particleOpacity: 0.35,
+  gpgpuSpring: 26,
+  gpgpuPush: 42,
+  gpgpuRadius: 0.52,
+  gpgpuPointSize: 7,
   fluidStrength: 0.006,
   dissipation: 0.96,
   splatRadius: 0.07,

@@ -49,6 +49,14 @@ export default function LineDebug() {
       lookAhead: { value: defaults.lookAhead, min: 0, max: 0.15, step: 0.005 },
       lookTiltScale: { value: defaults.lookTiltScale, min: 0, max: 0.5, step: 0.01 },
     }),
+    // GPGPU dissolve hero (HeroLogo). Spring = how snappy the mark recomposes;
+    // push/radius = the cursor dispersion; pointSize = sprite density/glow.
+    "GPGPU hero": folder({
+      gpgpuSpring: { value: defaults.gpgpuSpring, min: 4, max: 60, step: 1, label: "spring" },
+      gpgpuPush: { value: defaults.gpgpuPush, min: 0, max: 120, step: 1, label: "push" },
+      gpgpuRadius: { value: defaults.gpgpuRadius, min: 0.1, max: 1.5, step: 0.02, label: "radius" },
+      gpgpuPointSize: { value: defaults.gpgpuPointSize, min: 2, max: 20, step: 0.5, label: "point size" },
+    }),
     // Pointer fluid (WebGPU/TSL path only — see PostFXNodes). Live-tune the
     // liquid-glass refraction strength + accumulation feel.
     Fluid: folder({
