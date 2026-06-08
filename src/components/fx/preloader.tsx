@@ -250,8 +250,9 @@ export function Preloader() {
       const target = forced ? 1 : targetFraction();
       current += (target - current) * COUNTER_EASE;
       // Snap the last sliver so we land cleanly on 100 (otherwise the ease
-      // asymptotes at 99 forever).
-      if (target >= 1 && current > 0.999) current = 1;
+      // asymptotes at 99 forever). Relaxed from 0.999 → 0.99 so the readout
+      // lands on 100 fast once the target is fully resolved.
+      if (target >= 1 && current > 0.99) current = 1;
 
       const pct = Math.round(current * 100);
       setDisplay(pct);
@@ -259,7 +260,20 @@ export function Preloader() {
         barFillRef.current.style.transform = `scaleX(${current})`;
       }
 
-      if (current >= 1 && !revealed) {
+      // Reveal as soon as the readout reads 100 AND the target is genuinely 1
+      // (forced by the MAX cap, OR all readiness signals + min time satisfied).
+      // We do NOT wait for the asymptotic `current >= 1` tail: under rAF
+      // throttling (backgrounded tab, slow device, automation), rAF drops toward
+      // ~1fps and the ease (`current += (target - current) * 0.12`) crawls across
+      // the last sliver — so "100" would display while the overlay stayed up for
+      // seconds (or until refocus). Triggering on `target >= 1` + rounded-100
+      // makes the reveal fire the instant "100" shows, frame-rate-independent,
+      // and never before genuine readiness (target < 1 ⇒ no reveal).
+      if (target >= 1 && Math.round(current * 100) >= 100 && !revealed) {
+        current = 1;
+        if (barFillRef.current) {
+          barFillRef.current.style.transform = "scaleX(1)";
+        }
         revealed = true;
         reveal();
         return;
