@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Magnetic } from "@/components/ui/magnetic";
 import { SersanLogo } from "@/components/sersan-logo";
 import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 import { START_HREF } from "@/lib/site";
+import { useAudioStore } from "@/webgl/store/audioStore";
 
 // Use homepage anchors so the nav works from /. On sub-pages the leading `/`
 // sends users back to the homepage with the hash, which is the right behavior.
@@ -59,6 +60,45 @@ function LanguageToggle({ compact = false }: { compact?: boolean }) {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * AudioToggle — tasteful on/off control for the procedural UI sounds.
+ *
+ * Styled to match the mono/minimal nav (the EN/IT pill is the style
+ * reference). Shows a speaker icon when on, a muted speaker when off.
+ * `data-audio-toggle` lets the delegated click-sound listener skip this
+ * control. Default state is ON; the persisted value hydrates client-side, so
+ * before hydration we render the default (on) icon — `suppressHydrationWarning`
+ * covers the brief post-hydration swap if a returning user had it off.
+ */
+function AudioToggle({ compact = false }: { compact?: boolean }) {
+  const enabled = useAudioStore((s) => s.enabled);
+  const toggle = useAudioStore((s) => s.toggle);
+  const Icon = enabled ? Volume2 : VolumeX;
+  return (
+    <button
+      type="button"
+      data-audio-toggle
+      data-cursor="link"
+      onClick={() => toggle()}
+      aria-pressed={enabled}
+      aria-label={enabled ? "Mute interface sounds" : "Unmute interface sounds"}
+      title={enabled ? "Sound on" : "Sound off"}
+      suppressHydrationWarning
+      className={cn(
+        // Mirrors the LanguageToggle pill: rounded, bordered, backdrop-blurred,
+        // ≥36px tap height for WCAG 2.5.8 while staying visually compact.
+        "inline-flex items-center justify-center rounded-full border transition-colors",
+        "bg-bg/40 backdrop-blur-md border-rule/60",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--accent))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--bg))]",
+        compact ? "h-9 w-9" : "h-9 w-9",
+        enabled ? "text-ink" : "text-ink-mute hover:text-ink",
+      )}
+    >
+      <Icon className="h-4 w-4" aria-hidden="true" />
+    </button>
   );
 }
 
@@ -255,7 +295,8 @@ export function Navbar() {
           </ul>
 
           <div className="flex items-center gap-3 sm:gap-4 shrink-0">
-            <div className="hidden sm:block">
+            <div className="hidden sm:flex items-center gap-2">
+              <AudioToggle />
               <LanguageToggle />
             </div>
 
@@ -308,6 +349,7 @@ export function Navbar() {
                   <div className="flex items-center justify-between">
                     <SersanLogo size="sm" />
                     <div className="flex items-center gap-2">
+                      <AudioToggle compact />
                       <LanguageToggle compact />
                       <Dialog.Close asChild>
                         <Button

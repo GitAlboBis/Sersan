@@ -35,6 +35,7 @@
 import { useRef } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
+import { playTransition } from "@/lib/audio/uiSounds";
 
 // Wipe duration. Kept close to the Scene.tsx 420ms `setReveal` window so the
 // DOM curtain, the line fade-out/re-curve/fade-in, and the content fade-up all
@@ -98,6 +99,10 @@ export default function Template({ children }: { children: React.ReactNode }) {
         }
         return;
       }
+
+      // Subtle airy whoosh, once per navigation (skipped on first mount above).
+      // The engine no-ops when audio is off or the AudioContext is still locked.
+      playTransition();
 
       // Curtain wipe — a navy sheet that starts fully covering the viewport
       // and lifts UPWARD, uncovering the page from the bottom up. `clip-path`

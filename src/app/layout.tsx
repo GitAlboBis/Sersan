@@ -10,6 +10,7 @@ import { CanvasHost } from "@/webgl/CanvasHost";
 import { CardTiltController } from "@/components/fx/card-tilt-controller";
 import { HeadingChoreographer } from "@/components/fx/heading-choreographer";
 import { CustomCursor } from "@/components/fx/custom-cursor";
+import { AudioTriggers } from "@/components/fx/audio-triggers";
 import { Analytics } from "@vercel/analytics/next";
 
 // Brand type stack (self-hosted via next/font, no runtime CDN requests):
@@ -186,6 +187,9 @@ export default function RootLayout({
             <CardTiltController />
             <HeadingChoreographer />
             <CustomCursor />
+            {/* Procedural UI sounds (hover/click via delegated listeners +
+                AudioContext autoplay-gesture unlock). Renders nothing. */}
+            <AudioTriggers />
             <Navbar />
             {/* Content wrapper above the canvas (z-1). The canvas adds
                 light behind this layer; text stays DOM-crisp. */}
