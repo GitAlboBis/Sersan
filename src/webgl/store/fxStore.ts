@@ -35,6 +35,14 @@ interface FxState {
   heroScale: number;
   // Particle field
   particleOpacity: number;
+  // Cinematic scroll camera (lookAt-ahead tilt — full tier only)
+  /** How far AHEAD along the curve the camera aims, in curve-param units (0..1). */
+  lookAhead: number;
+  /**
+   * Scales the look target's X/Z offset before lookAt, so the camera yaws/pitches
+   * only a few degrees. Keeps hero/section text stable (1 = full curve offset).
+   */
+  lookTiltScale: number;
   set: (partial: Partial<Omit<FxState, "set">>) => void;
 }
 
@@ -52,11 +60,13 @@ export const useFxStore = create<FxState>((set) => ({
   bloomIntensity: 1.1,
   bloomThreshold: 1.0,
   bloomRadius: 0.7,
-  noiseOpacity: 0.05,
+  noiseOpacity: 0.025,
   vignetteDarkness: 0.55,
   heroEmissive: 2.6,
   heroPulseSpeed: 0.45,
   heroScale: 0.235,
   particleOpacity: 0.35,
+  lookAhead: 0.05,
+  lookTiltScale: 0.2,
   set: (partial) => set(partial),
 }));

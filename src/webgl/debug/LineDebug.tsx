@@ -38,6 +38,10 @@ export default function LineDebug() {
       noiseOpacity: { value: defaults.noiseOpacity, min: 0, max: 0.2, step: 0.005 },
       vignetteDarkness: { value: defaults.vignetteDarkness, min: 0, max: 1, step: 0.05 },
     }),
+    Camera: folder({
+      lookAhead: { value: defaults.lookAhead, min: 0, max: 0.15, step: 0.005 },
+      lookTiltScale: { value: defaults.lookTiltScale, min: 0, max: 0.5, step: 0.01 },
+    }),
   });
 
   useEffect(() => {

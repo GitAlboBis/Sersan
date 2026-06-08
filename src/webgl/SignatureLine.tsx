@@ -36,6 +36,17 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   const meshRef = useRef<THREE.Mesh>(null);
   const dampedProgress = useRef(0);
   const dampedReveal = useRef(1);
+  // The live signature curve — captured during geometry build so the camera
+  // (the single authority in this useFrame) can aim slightly AHEAD along it for
+  // the cinematic lookAt-ahead tilt. Rebuilt per route/resize alongside the
+  // geometry, so the camera motion adapts per route for free. `null` while a
+  // rebuild is mid-flight (guarded in useFrame).
+  const curveRef = useRef<THREE.CatmullRomCurve3 | null>(null);
+  // Persistent look target damped toward the ahead-point each frame (no
+  // per-frame allocation; smooths out jitter at curve bends).
+  const lookTarget = useRef(new THREE.Vector3());
+  const lookInitialized = useRef(false);
+  const aheadPoint = useRef(new THREE.Vector3());
 
   // Material selection by the build-time WebGPU flag (createRenderer.ts):
   //   flag OFF → the GLSL ShaderMaterial (unchanged, byte-identical to today),
@@ -135,6 +146,9 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     });
 
     const curve = new THREE.CatmullRomCurve3(points, false, "centripetal");
+    // Keep the live curve for the camera lookAt-ahead (see useFrame). Captured
+    // here (not discarded) so the single camera authority can sample it.
+    curveRef.current = curve;
     // Density matters at the serpentine turn-arounds: too few tubular
     // segments between adjacent waypoints renders the bends as polygonal
     // elbows (and the tube can self-intersect). ~40 segments per waypoint
@@ -230,6 +244,42 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // viewport center. Curve param ≈ doc fraction (waypoints are spread by
     // doc fraction, so the approximation holds visually).
     const headFraction = sh > 0 ? (scrollYWorld + ih * 0.5) / sh : 0;
+
+    // Cinematic lookAt-ahead (ANALISI_LUSION §3.7) — FULL tier only.
+    // The camera aims slightly ahead along the SAME signature curve, producing
+    // a gentle parallax tilt as the user scrolls. This is the single camera
+    // authority (we already own camera.position.y above); no second writer.
+    // X/Z of the ahead-point are scaled DOWN by lookTiltScale so the camera
+    // yaws/pitches only a few degrees — hero/section text stays stable. Y of
+    // the target tracks the curve naturally (small relative to camera.position.y),
+    // giving a subtle pitch without altering the vertical glide.
+    // On lite/off tiers we skip this entirely → camera looks straight down -Z
+    // (its default orientation), exactly as before this change.
+    const curve = curveRef.current;
+    if (tier === "full" && curve) {
+      const t = THREE.MathUtils.clamp(dampedProgress.current, 0, 1);
+      const ahead = THREE.MathUtils.clamp(t + fx.lookAhead, 0, 1);
+      // getPointAt → arc-length-parameterized point on the curve.
+      curve.getPointAt(ahead, aheadPoint.current);
+      // Build the desired look target relative to the camera's current position:
+      // dampen the lateral (x) and depth (z) curve offset so the tilt is subtle,
+      // and keep the target's y near the camera's y plane (the curve's own y is
+      // the full page strip — using it directly would over-pitch).
+      const tilt = fx.lookTiltScale;
+      const targetX = aheadPoint.current.x * tilt;
+      const targetY = camera.position.y + (aheadPoint.current.y - camera.position.y) * tilt;
+      const targetZ = aheadPoint.current.z * tilt;
+      if (!lookInitialized.current) {
+        // First frame at full tier: snap (no swing-in from origin).
+        lookTarget.current.set(targetX, targetY, targetZ);
+        lookInitialized.current = true;
+      } else {
+        lookTarget.current.x = THREE.MathUtils.damp(lookTarget.current.x, targetX, 3.5, delta);
+        lookTarget.current.y = THREE.MathUtils.damp(lookTarget.current.y, targetY, 3.5, delta);
+        lookTarget.current.z = THREE.MathUtils.damp(lookTarget.current.z, targetZ, 3.5, delta);
+      }
+      camera.lookAt(lookTarget.current);
+    }
 
     // On the ON path the TSL material loads lazily; until its chunk resolves
     // `uniforms` is undefined. The camera glide above still runs every frame
