@@ -9,10 +9,11 @@
  * page in world-Y and the camera glides down it as the user scrolls —
  * waypoints stay visually glued to their sections at any page height.
  */
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
-import { createLineMaterial } from "./materials/lineShader";
+import { createLineMaterial, type LineUniforms } from "./materials/lineShader";
+import { webgpuEnabled } from "./renderer/createRenderer";
 import { getRouteCurve } from "./curves/routeCurves";
 import { WORLD_VIEW_HEIGHT } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
@@ -36,8 +37,62 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   const dampedProgress = useRef(0);
   const dampedReveal = useRef(1);
 
-  const material = useMemo(() => createLineMaterial(), []);
-  useEffect(() => () => material.dispose(), [material]);
+  // Material selection by the build-time WebGPU flag (createRenderer.ts):
+  //   flag OFF → the GLSL ShaderMaterial (unchanged, byte-identical to today),
+  //   flag ON  → the TSL NodeMaterial (compiles to WGSL; raw GLSL would render
+  //              as a black silhouette under a WebGPU backend).
+  // Both expose the SAME uniform shape `{ uX: { value } }`, so the per-frame
+  // update logic below drives either one identically. `uniforms` is the shared
+  // reference the useFrame body writes to; `material` is the Object3D-attachable
+  // material for the mesh.
+  //
+  // The TSL module imports `three/webgpu` + `three/tsl` — a SECOND, self-contained
+  // copy of three (the node-material build). To keep that heavy build out of the
+  // classic-WebGL (flag-OFF) bundle entirely — the dual-namespace pitfall in
+  // webgpu-migration-spec §1.6 / §6.1, and mirroring createRenderer.ts's dynamic
+  // `import("three/webgpu")` — `lineNodeMaterial` is imported ONLY behind the ON
+  // flag, lazily. On the OFF path it is never referenced, so it never bundles.
+  const glsl = useMemo(() => (webgpuEnabled() ? null : createLineMaterial()), []);
+  const [tsl, setTsl] = useState<{
+    material: THREE.Material;
+    uniforms: LineUniforms;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!webgpuEnabled()) return;
+    let cancelled = false;
+    let built: { material: THREE.Material; uniforms: LineUniforms } | null = null;
+    // Dynamic import → the `three/webgpu`/`three/tsl` chunk loads only on the ON
+    // path. Lands inside the already-lazy Scene island, never the entry bundle.
+    void import("./materials/lineNodeMaterial").then(
+      ({ createLineNodeMaterial }) => {
+        if (cancelled) return;
+        const m = createLineNodeMaterial();
+        // LineNodeUniforms is structurally the GLSL LineUniforms shape (same
+        // field names, each `{ value }`); the per-frame writes only set `.value`.
+        built = {
+          material: m.material as unknown as THREE.Material,
+          uniforms: m.uniforms as unknown as LineUniforms,
+        };
+        setTsl(built);
+      },
+    );
+    return () => {
+      cancelled = true;
+      // Dispose whichever TSL material this effect instance created (route/anchor
+      // churn does not re-run this effect — deps are empty — but unmount must).
+      built?.material.dispose();
+    };
+  }, []);
+
+  // The active material + its shared uniform reference. OFF: GLSL (synchronous,
+  // byte-identical to today). ON: the TSL material once its lazy chunk resolves.
+  const material = (glsl ?? tsl?.material) as THREE.Material | undefined;
+  const uniforms = (glsl?.uniforms ?? tsl?.uniforms) as LineUniforms | undefined;
+
+  // Dispose the GLSL material on unmount (OFF path). The TSL material is disposed
+  // by its own effect cleanup above.
+  useEffect(() => () => glsl?.dispose(), [glsl]);
 
   // Per-route tone for the line. The color-blend factor is 0 on home (colors
   // untouched) and a small fixed weight on interior routes; even off-home the
@@ -176,7 +231,12 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // doc fraction, so the approximation holds visually).
     const headFraction = sh > 0 ? (scrollYWorld + ih * 0.5) / sh : 0;
 
-    const u = material.uniforms;
+    // On the ON path the TSL material loads lazily; until its chunk resolves
+    // `uniforms` is undefined. The camera glide above still runs every frame
+    // (so the view is in place when the material lands); the uniform writes are
+    // skipped until then. On the OFF path `uniforms` is always set synchronously.
+    const u = uniforms;
+    if (!u) return;
     u.uProgress.value = headFraction;
     u.uTime.value += delta;
     u.uReveal.value = dampedReveal.current;
@@ -233,7 +293,9 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     }
   });
 
-  if (!geometry) return null;
+  // No geometry until the first anchor measurement; no material until the lazy
+  // TSL chunk resolves on the ON path (OFF path has it synchronously).
+  if (!geometry || !material) return null;
 
   return <mesh ref={meshRef} geometry={geometry} material={material} frustumCulled={false} />;
 }
