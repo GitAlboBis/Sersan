@@ -16,6 +16,7 @@ import { Suspense } from "react";
 import { FrameDriver } from "./FrameDriver";
 import { webgpuEnabled, createWebGPURenderer } from "./renderer/createRenderer";
 import { SignatureLine } from "./SignatureLine";
+import { CurlTubeField } from "./CurlTubeField";
 import { HeroPlanet } from "./HeroPlanet";
 import { GatewayPortal } from "./GatewayPortal";
 import { RouteHero, type RouteHeroKind } from "./RouteHero";
@@ -193,6 +194,9 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
       style={{ position: "absolute", inset: 0 }}
     >
       <FrameDriver />
+      {/* Faint curl-noise tube-field haze (full tier only) — deep behind the
+          content, subordinate to the line; shares the single Bloom. */}
+      {tier === "full" && <CurlTubeField anchors={anchors} />}
       <SignatureLine tier={tier} pathname={pathname} anchors={anchors} />
       <DriftParticles tier={tier} anchors={anchors} pathname={pathname} />
       {/* The per-route ritual object: HeroPlanet + GatewayPortal on home, a

@@ -22,6 +22,12 @@ interface FxState {
   scatter: number;
   /** Tube radius as a fraction of viewport world height. */
   radiusFactor: number;
+  /**
+   * Global intensity for the faint curl-noise tube-field background
+   * (CurlTubeField, full-tier only). Default low so it reads as soft haze
+   * subordinate to the signature line; set to 0 to hide the field entirely.
+   */
+  curlTubeIntensity: number;
   // Postprocessing
   bloomIntensity: number;
   bloomThreshold: number;
@@ -65,6 +71,7 @@ export const useFxStore = create<FxState>((set) => ({
   fresnelPower: 2.5,
   scatter: 0.4,
   radiusFactor: 0.013,
+  curlTubeIntensity: 0.5,
   bloomIntensity: 1.1,
   bloomThreshold: 1.0,
   bloomRadius: 0.7,
