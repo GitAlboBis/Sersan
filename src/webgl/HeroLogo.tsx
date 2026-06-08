@@ -107,6 +107,7 @@ interface TslGpgpu {
   uPointSize: { value: number };
   uPixelRatio: { value: number };
   uViewport: { value: THREE.Vector2 };
+  uEmissive: { value: number };
   dispose: () => void;
 }
 
@@ -263,6 +264,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         uPointSize: b.uPointSize,
         uPixelRatio: b.uPixelRatio,
         uViewport: b.uViewport as unknown as { value: THREE.Vector2 },
+        uEmissive: b.uEmissive,
         dispose: b.dispose,
       };
       setTsl(built);
@@ -417,6 +419,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       u.uPixelRatio.value = dpr;
       u.uViewport.value.set(size.width * dpr, size.height * dpr);
       u.uFade.value = fade;
+      u.uEmissive.value = fx.gpgpuEmissive;
     } else if (tsl) {
       // The TSL render material samples the RTs via its own repointed texture
       // nodes (done inside rig.tick); here we only drive the shared uniforms.
@@ -424,6 +427,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       tsl.uPixelRatio.value = dpr;
       tsl.uViewport.value.set(size.width * dpr, size.height * dpr);
       tsl.uFade.value = fade;
+      tsl.uEmissive.value = fx.gpgpuEmissive;
     }
   });
 

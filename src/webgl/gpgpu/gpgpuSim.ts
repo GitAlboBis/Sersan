@@ -32,7 +32,8 @@
  *   (a) elastic spring toward home   (regeneration)        — SPRING
  *   (b) mouse repulsion within RADIUS, PUSH falloff (push²) — dispersion
  *   (c) damping (exp) + max-speed clamp                     — DAMPING / MAX_SPEED
- *   (d) value-noise turbulence, low at rest, more far from home — TURB_BASE/MOVE
+ *   (d) sin-based per-axis turbulence, low at rest, more far from home (matches
+ *       particleDissolve.html exactly)                      — TURB_BASE/MOVE
  *
  * This is the GLSL twin of gpgpuNodeSim.ts (TSL, flag-ON). It imports ONLY
  * `three` core (no three/webgpu), so it stays out of the heavy build and the ON
@@ -40,42 +41,6 @@
  */
 import * as THREE from "three";
 import type { GpgpuConfig } from "./gpgpuConfig";
-
-/** Shared value-noise + turbulence GLSL (matches the TSL twin constant-for-constant). */
-const NOISE_GLSL = /* glsl */ `
-  float hash31(vec3 p) {
-    return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123);
-  }
-  float vnoise3(vec3 p) {
-    vec3 i = floor(p);
-    vec3 f = fract(p);
-    f = f * f * (3.0 - 2.0 * f);
-    float c000 = hash31(i + vec3(0.0, 0.0, 0.0));
-    float c100 = hash31(i + vec3(1.0, 0.0, 0.0));
-    float c010 = hash31(i + vec3(0.0, 1.0, 0.0));
-    float c110 = hash31(i + vec3(1.0, 1.0, 0.0));
-    float c001 = hash31(i + vec3(0.0, 0.0, 1.0));
-    float c101 = hash31(i + vec3(1.0, 0.0, 1.0));
-    float c011 = hash31(i + vec3(0.0, 1.0, 1.0));
-    float c111 = hash31(i + vec3(1.0, 1.0, 1.0));
-    float x00 = mix(c000, c100, f.x);
-    float x10 = mix(c010, c110, f.x);
-    float x01 = mix(c001, c101, f.x);
-    float x11 = mix(c011, c111, f.x);
-    float y0 = mix(x00, x10, f.y);
-    float y1 = mix(x01, x11, f.y);
-    return mix(y0, y1, f.z);
-  }
-  // Cheap 3D turbulence: three decorrelated value-noise lookups → a vec3 in
-  // ~[-0.5,0.5]. Same recipe the TSL path approximates (mx_noise_vec3 there).
-  vec3 turb3(vec3 p) {
-    return vec3(
-      vnoise3(p) - 0.5,
-      vnoise3(p + vec3(31.4, 0.0, 11.7)) - 0.5,
-      vnoise3(p.zxy + vec3(7.7, 53.1, 0.0)) - 0.5
-    );
-  }
-`;
 
 const QUAD_VERTEX = /* glsl */ `
   varying vec2 vUv;
@@ -103,36 +68,50 @@ const VELOCITY_FRAGMENT = /* glsl */ `
   uniform float uTurbMove;
   varying vec2 vUv;
 
-  ${NOISE_GLSL}
-
   void main() {
     vec3 pos  = texture2D(uPos, vUv).xyz;
     vec3 vel  = texture2D(uVel, vUv).xyz;
     vec3 home = texture2D(uHome, vUv).xyz;
     float dt = uDelta;
 
+    // Reference particleDissolve.html velocity shader: build an acceleration
+    // vector from the three forces, then integrate (vel += acc*dt).
+
     // (a) elastic spring toward the rest (home) surface point — regeneration.
+    //     ref: vec3 acc = (home - pos) * uSpring;
     vec3 toHome = home - pos;
-    vel += toHome * uSpring * dt;
+    vec3 acc = toHome * uSpring;
 
     // (b) mouse repulsion within uRadius (model space), push² falloff →
-    //     1 at the cursor, 0 at the radius edge. normalize(away) gives the
-    //     outward push direction.
-    vec3 away = pos - uMouse;
-    float dist = max(length(away), 1e-4);
-    float push = max(0.0, uRadius - dist) / uRadius;
-    vel += (away / dist) * (push * push) * uPush * dt;
+    //     1 at the cursor, 0 at the radius edge; normalize(away) is the outward
+    //     push direction. ref: if (d < uRadius) { f = 1 - d/uRadius; acc +=
+    //     normalize(fromMouse + 1e-5) * (f*f) * uPush; }
+    vec3 fromMouse = pos - uMouse;
+    float d = length(fromMouse);
+    if (d < uRadius) {
+      float f = 1.0 - d / uRadius;
+      acc += normalize(fromMouse + 1e-5) * (f * f) * uPush;
+    }
 
-    // (d) turbulence — low at rest, ramps up the farther a particle is from
-    //     home (so the dispersed cloud shimmers, the recomposed mark is calm).
-    float farness = min(length(toHome), 1.0);
-    vec3 t = turb3(pos * 1.3 + uTime * 0.15);
-    vel += t * (uTurbBase + farness * uTurbMove) * dt;
+    // (d) turbulence — reference sin-based per-axis form (replaces value-noise).
+    //     disp = clamp(length(home - pos) * 3, 0, 1); turb = vec3(
+    //       sin(pos.y*6 + t*1.3), sin(pos.z*6 + t*1.7), sin(pos.x*6 + t*1.1));
+    //     acc += turb * (uTurbBase + uTurbMove * disp);
+    float disp = clamp(length(toHome) * 3.0, 0.0, 1.0);
+    vec3 turb = vec3(
+      sin(pos.y * 6.0 + uTime * 1.3),
+      sin(pos.z * 6.0 + uTime * 1.7),
+      sin(pos.x * 6.0 + uTime * 1.1)
+    );
+    acc += turb * (uTurbBase + uTurbMove * disp);
 
-    // (c) exponential damping + max-speed clamp (frame-rate independent).
+    // Integrate + exponential damping + max-speed clamp (ref order).
+    //   vel += acc*dt; vel *= exp(-uDamping*dt); sp = length(vel);
+    //   if (sp > uMaxSpeed) vel *= uMaxSpeed/sp;
+    vel += acc * dt;
     vel *= exp(-uDamping * dt);
     float sp = length(vel);
-    vel *= min(sp, uMaxSpeed) / max(sp, 1e-4);
+    if (sp > uMaxSpeed) vel *= uMaxSpeed / sp;
 
     gl_FragColor = vec4(vel, 1.0);
   }

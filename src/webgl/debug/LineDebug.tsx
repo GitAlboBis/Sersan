@@ -56,6 +56,13 @@ export default function LineDebug() {
       gpgpuPush: { value: defaults.gpgpuPush, min: 0, max: 120, step: 1, label: "push" },
       gpgpuRadius: { value: defaults.gpgpuRadius, min: 0.1, max: 1.5, step: 0.02, label: "radius" },
       gpgpuPointSize: { value: defaults.gpgpuPointSize, min: 2, max: 20, step: 0.5, label: "point size" },
+      gpgpuEmissive: {
+        value: defaults.gpgpuEmissive,
+        min: 0.5,
+        max: 6,
+        step: 0.1,
+        label: "GPGPU emissive / glow",
+      },
     }),
     // Pointer fluid (WebGPU/TSL path only — see PostFXNodes). Live-tune the
     // liquid-glass refraction strength + accumulation feel.

@@ -13,9 +13,9 @@
  * no-ops on the WebGL2 fallback sub-backend — see the research spec §5.3).
  *
  * The sim MATH (spring + mouse repulsion + turbulence + damping/clamp) and the
- * render (instanced billboard, violet→cyan by velocity, HDR additive) mirror the
- * GLSL twin. `mx_noise_vec3` is the TSL turbulence (the GLSL twin uses a triple
- * value-noise; both read as soft jitter, the look is tuned in-browser).
+ * render (instanced billboard, violet→cyan by RAW velocity, HDR additive) mirror
+ * the GLSL twin and particleDissolve.html formula-for-formula. Turbulence is the
+ * reference's sin-based per-axis shimmer (both backends identical).
  *
  * ALL `three/webgpu` + `three/tsl` symbols are passed IN by HeroLogo (which
  * lazy-imports the namespaces, exactly like PostFXNodes feeds PointerFlowmap),
@@ -151,6 +151,7 @@ export interface TslSymbolsGpgpu {
   modelViewMatrix: AnyNode;
   cameraProjectionMatrix: AnyNode;
   Fn: (fn: () => AnyNode) => () => AnyNode;
+  vec2: (x: AnyNode | number, y?: AnyNode | number) => AnyNode;
   vec3: (x: AnyNode | number, y?: AnyNode | number, z?: AnyNode | number) => AnyNode;
   vec4: (
     x: AnyNode | number,
@@ -164,11 +165,13 @@ export interface TslSymbolsGpgpu {
   min: (a: AnyNode | number, b: AnyNode | number) => AnyNode;
   clamp: (n: AnyNode, a: number, b: number) => AnyNode;
   exp: (n: AnyNode) => AnyNode;
+  sin: (n: AnyNode) => AnyNode;
+  fract: (n: AnyNode) => AnyNode;
+  dot: (a: AnyNode, b: AnyNode) => AnyNode;
   mix: (a: AnyNode, b: AnyNode, t: AnyNode | number) => AnyNode;
   smoothstep: (a: number, b: number, x: AnyNode) => AnyNode;
   Discard: (cond: AnyNode) => void;
   varying: (n: AnyNode) => AnyNode;
-  mx_noise_vec3: (p: AnyNode) => AnyNode;
 }
 
 const QUAD_CORNERS = [-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0];
@@ -188,6 +191,8 @@ export interface GpgpuNodeBuild {
   uPixelRatio: UniformNode<number>;
   /** Framebuffer size in DEVICE pixels. */
   uViewport: UniformNode<unknown>;
+  /** HDR emissive / at-rest glow multiplier (leva-tunable, mirrors GLSL). */
+  uEmissive: UniformNode<number>;
   dispose: () => void;
 }
 
@@ -247,11 +252,14 @@ export function createGpgpuNodeSim(
     min,
     clamp,
     exp,
+    sin,
+    fract,
+    dot,
     mix,
     smoothstep,
     Discard,
     varying,
-    mx_noise_vec3,
+    vec2,
   } = tsl;
 
   const rtOpts = {
@@ -329,23 +337,41 @@ export function createGpgpuNodeSim(
     const vel = uVelRead.xyz.toVar();
     const homePos = uHome.xyz;
     const dt = uDelta as unknown as AnyNode;
+    const time = uTime as unknown as AnyNode;
 
-    // (a) spring toward home.
+    // Mirror of particleDissolve.html: accumulate an acceleration vector from
+    // the three forces, then integrate (vel += acc*dt). Faithful TSL of the
+    // reference velocity shader.
+
+    // (a) elastic spring toward home — ref: acc = (home - pos) * uSpring.
     const toHome = homePos.sub(pos).toVar();
-    vel.addAssign(toHome.mul(SPRING).mul(dt));
+    const acc = toHome.mul(SPRING).toVar();
 
-    // (b) mouse repulsion within RADIUS (model space), push² falloff.
-    const away = pos.sub(uMouse as unknown as AnyNode).toVar();
-    const dist = max(length(away), 1e-4);
-    const push = max(float(0), RADIUS.sub(dist)).div(RADIUS).toVar();
-    vel.addAssign(away.div(dist).mul(push.mul(push)).mul(PUSH).mul(dt));
+    // (b) mouse repulsion within RADIUS (model space), push² falloff. The
+    //     reference's `if (d < uRadius) { f = 1 - d/uRadius; ... f*f }` equals
+    //     `(max(0, R - d)/R)²`, which is 0 outside the radius — same branch,
+    //     branch-free. normalize(fromMouse + 1e-5) is the outward push direction.
+    const fromMouse = pos.sub(uMouse as unknown as AnyNode).toVar();
+    const d = length(fromMouse);
+    const f = max(float(0), RADIUS.sub(d)).div(RADIUS).toVar();
+    acc.addAssign(fromMouse.add(1e-5).normalize().mul(f.mul(f)).mul(PUSH));
 
-    // (d) turbulence — low at rest, ramps with distance-from-home.
-    const farness = min(length(toHome), 1.0);
-    const t = mx_noise_vec3(pos.mul(1.3).add((uTime as unknown as AnyNode).mul(0.15)));
-    vel.addAssign(t.mul(TURB_BASE.add(farness.mul(TURB_MOVE))).mul(dt));
+    // (d) turbulence — reference sin-based per-axis form (replaces mx_noise):
+    //     disp = clamp(length(home - pos) * 3, 0, 1);
+    //     turb = vec3(sin(pos.y*6 + t*1.3), sin(pos.z*6 + t*1.7), sin(pos.x*6 + t*1.1));
+    //     acc += turb * (uTurbBase + uTurbMove * disp).
+    const disp = clamp(length(toHome).mul(3.0), 0.0, 1.0);
+    const turb = vec3(
+      sin(pos.y.mul(6.0).add(time.mul(1.3))),
+      sin(pos.z.mul(6.0).add(time.mul(1.7))),
+      sin(pos.x.mul(6.0).add(time.mul(1.1))),
+    );
+    acc.addAssign(turb.mul(TURB_BASE.add(TURB_MOVE.mul(disp))));
 
-    // (c) damping + max-speed clamp.
+    // Integrate + exponential damping + max-speed clamp (ref order):
+    //   vel += acc*dt; vel *= exp(-uDamping*dt);
+    //   sp = length(vel); if (sp > uMaxSpeed) vel *= uMaxSpeed/sp;
+    vel.addAssign(acc.mul(dt));
     vel.mulAssign(exp(DAMPING.negate().mul(dt)));
     const sp = length(vel).toVar();
     vel.assign(vel.mul(min(sp, MAX_SPEED).div(max(sp, 1e-4))));
@@ -412,7 +438,12 @@ export function createGpgpuNodeSim(
   const uFade = uniform(1) as UniformNode<number>;
   const uColCold = uniform(new Color().fromArray(config.COL_COLD)) as UniformNode<ColorLike>;
   const uColHot = uniform(new Color().fromArray(config.COL_HOT)) as UniformNode<ColorLike>;
-  const uMaxSpeedR = float(config.MAX_SPEED);
+  // HDR multiplier — keeps the selective-bloom contract while controlling the
+  // at-rest glow (see gpgpuRenderShader.ts EMISSIVE). A live uniform so HeroLogo
+  // can drive it from fxStore.gpgpuEmissive each frame; initialised from
+  // config.EMISSIVE (single source of truth, default ~3.0) so the resting violet
+  // crosses the Bloom threshold and the fast cyan motes bloom hard.
+  const uEmissive = uniform(config.EMISSIVE) as UniformNode<number>;
 
   // The render samples the live POSITION/VELOCITY targets at this instance's
   // grid texel. `.value` is repointed to the freshly-written targets each frame.
@@ -422,25 +453,34 @@ export function createGpgpuNodeSim(
 
   const material = new MeshBasicNodeMaterial();
 
-  // vSpeed is a vertex-stage quantity (speed at the instance center) interpolated
-  // to the fragment for the violet→cyan mix.
+  // Per-instance pseudo-random in [0,1] — the TSL stand-in for the reference's
+  // ref.z (Math.random() per particle). aRef is unique per particle, so hashing
+  // it gives stable per-point size+color variance without changing the (vec2)
+  // aRef attribute the integration shell supplies. Same hash as the GLSL twin:
+  //   fract(sin(dot(aRef, (127.1, 311.7))) * 43758.5453123).
+  const vRandSrc = fract(
+    sin(dot(aRefNode.xy, vec2(127.1, 311.7))).mul(43758.5453123),
+  ).toVar();
+
+  // vSpeed is the RAW velocity magnitude at the instance center (the reference
+  // uses raw length, NOT normalized to uMaxSpeed); interpolated to the fragment.
   const vSpeed = float(0).toVar();
   material.vertexNode = Fn(() => {
     const p = uPosTexNode.xyz.toVar();
     const v = uVelTexNode.xyz;
-    vSpeed.assign(
-      clamp(length(v).div(max(uMaxSpeedR, 1e-4)), 0.0, 1.0),
-    );
+    vSpeed.assign(length(v));
 
     // Center → view space (dist = -mv.z), billboard the unit-quad corner in clip
     // space at a perspective-scaled device-pixel size (same math as the GLSL
-    // twin / particleNodeMaterial).
+    // twin / particleNodeMaterial). Reference size:
+    //   uSize * uPR * (0.6 + 0.8*ref.z) / max(-mv.z, 0.001).
     const mv = modelViewMatrix.mul(vec4(p, 1.0)).toVar();
     const dist = mv.z.negate();
     const clip = cameraProjectionMatrix.mul(mv).toVar();
     const sizeNode = (uPointSize as unknown as AnyNode)
       .mul(uPixelRatio as unknown as AnyNode)
-      .div(max(dist, 0.1));
+      .mul(float(0.6).add(float(0.8).mul(vRandSrc)))
+      .div(max(dist, 0.001));
     const corner = positionLocal.xy;
     clip.xy.addAssign(
       corner.mul(sizeNode).div(uViewport as unknown as AnyNode).mul(2.0).mul(clip.w),
@@ -450,16 +490,29 @@ export function createGpgpuNodeSim(
 
   const vQuadUv = varying(positionLocal.xy);
   const vSpeedF = varying(vSpeed);
+  const vRandF = varying(vRandSrc);
 
   const shade = Fn(() => {
-    const circle = smoothstep(0.5, 0.12, length(vQuadUv)).toVar();
-    Discard(circle.lessThan(0.02));
+    // Soft round disc — ref: a = smoothstep(0.5, 0.05, r), discard r > 0.5.
+    // smoothstep(0.5, 0.05, r) is already 0 at r ≥ 0.5, so the alpha-floor
+    // discard below removes those fragments (no greaterThan node needed).
+    const r = length(vQuadUv);
+    const a = smoothstep(0.5, 0.05, r).toVar();
 
-    const col = mix(uColCold as unknown as AnyNode, uColHot as unknown as AnyNode, vSpeedF);
-    const intensity = float(1.6).add(float(1.2).mul(vSpeedF));
-    const alpha = circle.mul(uFade as unknown as AnyNode);
+    // Reference color relationship (violet→cyan by RAW speed):
+    //   t = clamp(vSpeed*0.6, 0, 1); col = mix(uCold, uHot, t);
+    //   col *= (1 + vSpeed*0.35); col *= (0.7 + 0.5*vRand);
+    const t = clamp(vSpeedF.mul(0.6), 0.0, 1.0);
+    const col = mix(uColCold as unknown as AnyNode, uColHot as unknown as AnyNode, t)
+      .toVec3()
+      .mul(float(1.0).add(vSpeedF.mul(0.35)))
+      .mul(float(0.7).add(float(0.5).mul(vRandF)))
+      .mul(uEmissive); // fold the HDR push into the reference relationship
+
+    // Reference alpha = a * 0.55, modulated by the scroll-handoff fade.
+    const alpha = a.mul(0.55).mul(uFade as unknown as AnyNode).toVar();
     Discard(alpha.lessThan(0.004));
-    return vec4(col.toVec3().mul(intensity), alpha);
+    return vec4(col, alpha);
   })();
   material.colorNode = (shade as AnyNode).xyz;
   material.opacityNode = (shade as AnyNode).w;
@@ -541,6 +594,7 @@ export function createGpgpuNodeSim(
     uPointSize,
     uPixelRatio,
     uViewport,
+    uEmissive,
     dispose() {
       rig.dispose();
       geometry.dispose();

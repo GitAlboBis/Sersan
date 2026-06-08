@@ -6,6 +6,7 @@
  * PostFX reads reactively (re-render on change is fine for dev tuning).
  */
 import { create } from "zustand";
+import { DEFAULT_GPGPU_CONFIG } from "../gpgpu/gpgpuConfig";
 
 interface FxState {
   // Line material
@@ -51,6 +52,13 @@ interface FxState {
   gpgpuRadius: number;
   /** Sprite size in device px (before perspective scale). */
   gpgpuPointSize: number;
+  /**
+   * HDR emissive / at-rest glow multiplier on the particle render color.
+   * Pushes the resting violet mark across the Bloom threshold so it reads as a
+   * softly-glowing centerpiece; fast cyan motes bloom harder. Default from
+   * gpgpuConfig.EMISSIVE.
+   */
+  gpgpuEmissive: number;
   // Pointer fluid (WebGPU/TSL path only — see PostFXNodes). A barely-there
   // liquid-glass refraction of the scene around the cursor.
   /** Max UV displacement of the scene sample, in screen fraction (~0.004–0.01). */
@@ -95,6 +103,7 @@ export const useFxStore = create<FxState>((set) => ({
   gpgpuPush: 42,
   gpgpuRadius: 0.52,
   gpgpuPointSize: 7,
+  gpgpuEmissive: DEFAULT_GPGPU_CONFIG.EMISSIVE,
   fluidStrength: 0.006,
   dissipation: 0.96,
   splatRadius: 0.07,
