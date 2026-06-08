@@ -19,8 +19,18 @@
  * Screen-anchored during the 520vh sticky pin (follows the world-strip
  * camera); announces heroReady on first frame to arm the drag-to-rotate
  * capture layer.
+ *
+ * Material backend selection (mirrors SignatureLine / DriftParticles): each
+ * procedural material exists in two builds — the GLSL `ShaderMaterial`s in
+ * `planetShader.ts` (flag OFF, byte-identical to today) and the TSL
+ * NodeMaterials in `planetNodeMaterial.ts` (flag ON; raw GLSL renders black
+ * under a WebGPU backend). The TSL module imports `three/webgpu` + `three/tsl`,
+ * so it is lazy-imported ONLY on the ON path (the dual-namespace pitfall — keep
+ * the heavy node build out of the OFF/WebGL2 bundle). Every material exposes the
+ * SAME `{ uX: { value } }` uniform shape, so the per-frame writes below drive
+ * either build identically.
  */
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { WORLD_VIEW_HEIGHT } from "./constants";
@@ -29,6 +39,7 @@ import {
   createRingMaterial,
   createAtmosphereMaterial,
 } from "./materials/planetShader";
+import { webgpuEnabled } from "./renderer/createRenderer";
 import { useScrollStore } from "./store/scrollStore";
 import { useTierStore, type SceneTier } from "./store/tierStore";
 import { useFxStore } from "./store/fxStore";
@@ -46,6 +57,14 @@ const IDLE_SPIN = (Math.PI * 2) / 70;
 /** Pitch spring (drag returns to the natural tilt with weight). */
 const SPRING_K = 16;
 const SPRING_DAMP = 5.0;
+
+// Uniform shapes shared between the GLSL and TSL builds (same field names, each
+// `{ value }`). The per-frame writes only touch `.value`, so one path drives
+// both. `THREE.Color`/`THREE.Vector3` values are mutated in place exactly as the
+// GLSL ShaderMaterial.uniforms.* are today.
+type BodyUniforms = { uTime: { value: number } };
+type RingUniforms = { uTime: { value: number }; uOpacity: { value: number } };
+type TrailUniforms = { uTime: { value: number }; uFade: { value: number } };
 
 // === Ring annulus with radial UVs (u = inner→outer). ======================
 function createRingGeometry(inner: number, outer: number, segments = 256) {
@@ -75,6 +94,7 @@ function createRingGeometry(inner: number, outer: number, segments = 256) {
 }
 
 // === Orbital light trail (comet head + exponential tail). =================
+// GLSL build (flag OFF) — the inline shader, byte-identical to before.
 const trailVertex = /* glsl */ `
   varying vec2 vUv;
   void main() {
@@ -98,6 +118,23 @@ const trailFragment = /* glsl */ `
   }
 `;
 
+function createTrailGlslMaterial(spec: TrailSpec): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    vertexShader: trailVertex,
+    fragmentShader: trailFragment,
+    uniforms: {
+      uColor: { value: new THREE.Color(spec.color) },
+      uTime: { value: spec.radius * 37.0 }, // de-synced start phases
+      uSpeed: { value: spec.speed },
+      uFade: { value: 1 },
+    },
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.DoubleSide,
+  });
+}
+
 interface TrailSpec {
   radius: number;
   tilt: [number, number, number];
@@ -118,29 +155,59 @@ function OrbitTrail({
   spec: TrailSpec;
   fadeRef: React.MutableRefObject<number>;
 }) {
-  const material = useMemo(
-    () =>
-      new THREE.ShaderMaterial({
-        vertexShader: trailVertex,
-        fragmentShader: trailFragment,
-        uniforms: {
-          uColor: { value: new THREE.Color(spec.color) },
-          uTime: { value: spec.radius * 37.0 }, // de-synced start phases
-          uSpeed: { value: spec.speed },
-          uFade: { value: 1 },
-        },
-        transparent: true,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        side: THREE.DoubleSide,
-      }),
+  // GLSL build is synchronous on the OFF path; null on the ON path (where the
+  // TSL build is lazy-loaded below). Mirrors SignatureLine's glsl/tsl split.
+  const glsl = useMemo(
+    () => (webgpuEnabled() ? null : createTrailGlslMaterial(spec)),
     [spec],
   );
-  useEffect(() => () => material.dispose(), [material]);
+  const [tsl, setTsl] = useState<{
+    material: THREE.Material;
+    uniforms: TrailUniforms;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!webgpuEnabled()) return;
+    let cancelled = false;
+    let built: { material: THREE.Material; uniforms: TrailUniforms } | null =
+      null;
+    void import("./materials/planetNodeMaterial").then(
+      ({ createTrailNodeMaterial }) => {
+        if (cancelled) return;
+        const m = createTrailNodeMaterial({
+          color: spec.color,
+          time: spec.radius * 37.0, // de-synced start phase, matches GLSL
+          speed: spec.speed,
+        });
+        built = {
+          material: m.material as unknown as THREE.Material,
+          uniforms: m.uniforms as unknown as TrailUniforms,
+        };
+        setTsl(built);
+      },
+    );
+    return () => {
+      cancelled = true;
+      built?.material.dispose();
+    };
+  }, [spec]);
+
+  const material = (glsl ?? tsl?.material) as THREE.Material | undefined;
+  const uniforms = (glsl?.uniforms ?? tsl?.uniforms) as
+    | TrailUniforms
+    | undefined;
+
+  useEffect(() => () => glsl?.dispose(), [glsl]);
+
   useFrame((_, delta) => {
-    material.uniforms.uTime.value += delta;
-    material.uniforms.uFade.value = fadeRef.current;
+    const u = uniforms;
+    if (!u) return;
+    u.uTime.value += delta;
+    u.uFade.value = fadeRef.current;
   });
+
+  if (!material) return null;
+
   return (
     <group rotation={spec.tilt}>
       <mesh material={material}>
@@ -161,38 +228,132 @@ export function HeroPlanet({ tier, anchors }: HeroPlanetProps) {
 
   const worldViewWidth = WORLD_VIEW_HEIGHT * (size.width / size.height);
 
-  const bodyMaterial = useMemo(() => createPlanetBodyMaterial(), []);
-  const ringMaterial = useMemo(() => createRingMaterial(), []);
-  const innerAtmo = useMemo(
+  // GLSL builds (flag OFF) — synchronous, byte-identical to today.
+  const glslBody = useMemo(
+    () => (webgpuEnabled() ? null : createPlanetBodyMaterial()),
+    [],
+  );
+  const glslRing = useMemo(
+    () => (webgpuEnabled() ? null : createRingMaterial()),
+    [],
+  );
+  const glslInnerAtmo = useMemo(
     () =>
-      createAtmosphereMaterial({
+      webgpuEnabled()
+        ? null
+        : createAtmosphereMaterial({
+            color: "#3BE1FF",
+            intensity: 0.55,
+            power: 4.2,
+            alpha: 0.5,
+            side: THREE.BackSide,
+          }),
+    [],
+  );
+  const glslOuterHalo = useMemo(
+    () =>
+      webgpuEnabled()
+        ? null
+        : createAtmosphereMaterial({
+            color: "#3a7bd6",
+            intensity: 0.4,
+            power: 2.2,
+            alpha: 0.14,
+            side: THREE.BackSide,
+          }),
+    [],
+  );
+
+  // TSL builds (flag ON) — lazy-loaded so `three/webgpu` never enters the OFF
+  // bundle. One dynamic import builds all four planet materials together.
+  const [tsl, setTsl] = useState<{
+    body: { material: THREE.Material; uniforms: BodyUniforms };
+    ring: { material: THREE.Material; uniforms: RingUniforms };
+    innerAtmo: THREE.Material;
+    outerHalo: THREE.Material;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!webgpuEnabled()) return;
+    let cancelled = false;
+    let built: {
+      body: { material: THREE.Material; uniforms: BodyUniforms };
+      ring: { material: THREE.Material; uniforms: RingUniforms };
+      innerAtmo: THREE.Material;
+      outerHalo: THREE.Material;
+    } | null = null;
+    void import("./materials/planetNodeMaterial").then((m) => {
+      if (cancelled) return;
+      const body = m.createPlanetBodyNodeMaterial();
+      const ring = m.createRingNodeMaterial();
+      const innerAtmo = m.createAtmosphereNodeMaterial({
         color: "#3BE1FF",
         intensity: 0.55,
         power: 4.2,
         alpha: 0.5,
         side: THREE.BackSide,
-      }),
-    [],
-  );
-  const outerHalo = useMemo(
-    () =>
-      createAtmosphereMaterial({
+      });
+      const outerHalo = m.createAtmosphereNodeMaterial({
         color: "#3a7bd6",
         intensity: 0.4,
         power: 2.2,
         alpha: 0.14,
         side: THREE.BackSide,
-      }),
-    [],
-  );
+      });
+      built = {
+        body: {
+          material: body.material as unknown as THREE.Material,
+          uniforms: body.uniforms as unknown as BodyUniforms,
+        },
+        ring: {
+          material: ring.material as unknown as THREE.Material,
+          uniforms: ring.uniforms as unknown as RingUniforms,
+        },
+        innerAtmo: innerAtmo.material as unknown as THREE.Material,
+        outerHalo: outerHalo.material as unknown as THREE.Material,
+      };
+      setTsl(built);
+    });
+    return () => {
+      cancelled = true;
+      built?.body.material.dispose();
+      built?.ring.material.dispose();
+      built?.innerAtmo.dispose();
+      built?.outerHalo.dispose();
+    };
+  }, []);
+
+  // Active materials + shared uniform refs. OFF → GLSL (synchronous); ON → TSL
+  // once its lazy chunk resolves.
+  const bodyMaterial = (glslBody ?? tsl?.body.material) as
+    | THREE.Material
+    | undefined;
+  const ringMaterial = (glslRing ?? tsl?.ring.material) as
+    | THREE.Material
+    | undefined;
+  const innerAtmo = (glslInnerAtmo ?? tsl?.innerAtmo) as
+    | THREE.Material
+    | undefined;
+  const outerHalo = (glslOuterHalo ?? tsl?.outerHalo) as
+    | THREE.Material
+    | undefined;
+  const bodyUniforms = (glslBody?.uniforms ?? tsl?.body.uniforms) as
+    | BodyUniforms
+    | undefined;
+  const ringUniforms = (glslRing?.uniforms ?? tsl?.ring.uniforms) as
+    | RingUniforms
+    | undefined;
+
+  // Dispose the GLSL builds on unmount (OFF path). The TSL builds are disposed
+  // by their own effect cleanup above.
   useEffect(
     () => () => {
-      bodyMaterial.dispose();
-      ringMaterial.dispose();
-      innerAtmo.dispose();
-      outerHalo.dispose();
+      glslBody?.dispose();
+      glslRing?.dispose();
+      glslInnerAtmo?.dispose();
+      glslOuterHalo?.dispose();
     },
-    [bodyMaterial, ringMaterial, innerAtmo, outerHalo],
+    [glslBody, glslRing, glslInnerAtmo, glslOuterHalo],
   );
 
   const ringGeometry = useMemo(
@@ -270,11 +431,20 @@ export function HeroPlanet({ tier, anchors }: HeroPlanetProps) {
     assembly.rotation.x += pitchVel.current * delta;
     drag.damp(Math.exp(-2.8 * delta));
 
-    // Shader clocks.
-    bodyMaterial.uniforms.uTime.value += delta;
-    ringMaterial.uniforms.uTime.value += delta;
-    ringMaterial.uniforms.uOpacity.value = 0.9 * fade;
+    // Shader clocks — skipped until the lazy TSL uniforms resolve on the ON
+    // path (synchronous on OFF). Drives either build via the shared `{ value }`.
+    if (bodyUniforms) bodyUniforms.uTime.value += delta;
+    if (ringUniforms) {
+      ringUniforms.uTime.value += delta;
+      ringUniforms.uOpacity.value = 0.9 * fade;
+    }
   });
+
+  // No render until the active body/ring materials exist (synchronous on OFF;
+  // after the lazy TSL chunk resolves on ON). Until then the poster covers the
+  // hero (heroReady stays false because announcedReady only fires from useFrame
+  // once the group renders).
+  if (!bodyMaterial || !ringMaterial || !innerAtmo || !outerHalo) return null;
 
   return (
     <group ref={groupRef} visible={false}>
