@@ -100,6 +100,8 @@ import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useFxStore } from "./store/fxStore";
 import { routeFx, HOME_FX } from "./store/routeFxStore";
+import { usePointerStore } from "./store/pointerStore";
+import { createPointerFlowmap, type PointerFlowmap } from "./fluid/PointerFlowmap";
 
 /**
  * Minimal structural shapes for the lazily-imported TSL objects. We never import
@@ -150,6 +152,13 @@ export function PostFXNodes({ pathname = "/" }: { pathname?: string }) {
   // re-running the (expensive) build effect. `null` until the lazy chunk lands.
   const postRef = useRef<PostProcessingLike | null>(null);
   const bloomRef = useRef<BloomNodeLike | null>(null);
+  // The pointer fluid flowmap (WebGPU-only). Null when disabled (coarse pointer
+  // / reduced-motion) or before the lazy build lands.
+  const flowRef = useRef<PointerFlowmap | null>(null);
+  // Resolve the fluid gate ONCE (matches custom-cursor.tsx / pointerStore): no
+  // fluid on coarse pointers or under prefers-reduced-motion. PostFXNodes only
+  // mounts at tier "full" already, so this just excludes touch/RM desktops.
+  const fluidEnabledRef = useRef(false);
 
   // Build the node graph once (per renderer). All `three/webgpu` + `three/tsl`
   // imports are lazy here, so the OFF build never bundles them.
@@ -157,13 +166,21 @@ export function PostFXNodes({ pathname = "/" }: { pathname?: string }) {
     let cancelled = false;
     let built: PostProcessingLike | null = null;
 
+    // Resolve the fluid gate once (no listener; the pointer listener lives in
+    // FrameDriver/pointerStore). Coarse-pointer + reduced-motion → no fluid.
+    fluidEnabledRef.current =
+      typeof window !== "undefined" &&
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches &&
+      !window.matchMedia("(pointer: coarse)").matches;
+
     void (async () => {
-      const [{ PostProcessing }, tsl, { bloom }] = await Promise.all([
+      const [webgpu, tsl, { bloom }] = await Promise.all([
         import("three/webgpu"),
         import("three/tsl"),
         import("three/addons/tsl/display/BloomNode.js"),
       ]);
       if (cancelled) return;
+      const { PostProcessing } = webgpu;
 
       // Loosely-typed views of the TSL helpers we use. The real `three/tsl`
       // types are extremely generic (every node is `Node` with a vast fluent
@@ -175,10 +192,19 @@ export function PostFXNodes({ pathname = "/" }: { pathname?: string }) {
         sub: (n: TslNode | number) => TslNode;
         mul: (n: TslNode | number) => TslNode;
         oneMinus: () => TslNode;
+        rg: TslNode;
+      };
+      // The scene-pass texture node is a PassTextureNode (extends TextureNode):
+      // `.sample(uvNode)` clones it sampling at a different UV — the supported
+      // way to read the scene at an offset UV (verified: TextureNode.sample,
+      // three.webgpu.js L12730). Plain color use stays a TslNode.
+      type ScenePassTextureNode = TslNode & {
+        sample: (uvNode: TslNode) => TslNode;
       };
       const {
         pass,
         screenUV,
+        uv,
         vec2,
         vec4,
         smoothstep,
@@ -191,8 +217,9 @@ export function PostFXNodes({ pathname = "/" }: { pathname?: string }) {
         pass: (
           scene: unknown,
           camera: unknown,
-        ) => { getTextureNode: (name?: string) => TslNode };
+        ) => { getTextureNode: (name?: string) => ScenePassTextureNode };
         screenUV: { distance: (p: TslNode) => TslNode; add: (n: TslNode) => TslNode };
+        uv: () => TslNode;
         vec2: (x: number, y: number) => TslNode;
         vec4: (
           x: TslNode | number,
@@ -215,20 +242,48 @@ export function PostFXNodes({ pathname = "/" }: { pathname?: string }) {
       const scenePass = pass(scene, camera);
       const color = scenePass.getTextureNode("output");
 
+      // 0) POINTER FLUID (WebGPU-only liquid-glass refraction). Build the
+      //    flowmap rig (offscreen ping-pong RT + splat/fade quad) and offset the
+      //    SCENE SAMPLE UV by `flow.rg * uStrength` BEFORE bloom, so the disturbed
+      //    line still blooms. uStrength is TINY (~0.006) → a premium breath, not a
+      //    warp. Gated: only when the fluid is enabled (fine pointer, no RM). When
+      //    disabled we sample the scene at the unmodified UV (identical to before).
+      let colorForBloom: ScenePassTextureNode = color;
+      if (fluidEnabledRef.current) {
+        const flow = createPointerFlowmap(
+          gl as never,
+          webgpu as never,
+          tsl as never,
+        );
+        flowRef.current = flow;
+        // Offset the scene-pass sample UV. `flowTexNode.rg` is the velocity field;
+        // `uStrength` scales it to a fraction of a screen. `.sample(uv)` returns a
+        // fresh textured color node — still a real texture node, so bloom() below
+        // receives a valid texture input (no null-input crash).
+        const flowVec = (flow.flowTexNode as unknown as TslNode).rg.mul(
+          flow.uStrength as unknown as TslNode,
+        );
+        const offsetUv = uv().add(flowVec);
+        colorForBloom = color.sample(offsetUv) as ScenePassTextureNode;
+      }
+
       // 1) SELECTIVE BLOOM (the priority): threshold ≈ 1.0 so only the >1.0
       //    emissive signal (line/planet/particles) blooms. Additive over the
       //    color (matches PostFX.tsx: `<Bloom intensity radius luminanceThreshold>`).
       //    `bloom()` accepts plain-number strength/radius/threshold (it wraps
       //    them in uniforms internally — that is the .strength/.radius/.threshold
-      //    we mutate on route change).
+      //    we mutate on route change). Fed the (optionally fluid-displaced) scene
+      //    color so the refracted line/planet still blooms.
       const bloomPass = bloom(
-        color as never,
+        colorForBloom as never,
         intensity,
         radius,
         threshold,
       );
       const bloomNode = bloomPass as unknown as TslNode;
-      let node: TslNode = color.add(bloomNode);
+      // Base the composite on the (optionally fluid-displaced) scene color so the
+      // whole scene — not just the bloom halo — breathes around the pointer.
+      let node: TslNode = (colorForBloom as TslNode).add(bloomNode);
 
       // 2) VIGNETTE (hand-rolled — no `vignette` export in three/tsl). Mirrors
       //    `<Vignette offset={0.35} darkness={...}>`: darken from ~0.5 of the way
@@ -277,6 +332,8 @@ export function PostFXNodes({ pathname = "/" }: { pathname?: string }) {
       built?.dispose();
       if (postRef.current === built) postRef.current = null;
       bloomRef.current = null;
+      flowRef.current?.dispose();
+      flowRef.current = null;
     };
     // Rebuild only when the renderer identity changes (route changes update the
     // bloom uniforms in the effect below — no graph rebuild needed).
@@ -300,6 +357,31 @@ export function PostFXNodes({ pathname = "/" }: { pathname?: string }) {
   // RAF. Until the lazy graph lands, fall back to a plain scene render so the
   // first frames are not black.
   useFrame(() => {
+    // Stamp + fade the pointer flowmap FIRST (renders the offscreen quad into its
+    // own RT and restores the previous target), so the post pipeline samples a
+    // fresh field this frame. Idle cursor → only the cheap fade runs (no stamp).
+    const flow = flowRef.current;
+    if (flow) {
+      const fx = useFxStore.getState();
+      const { smooth, vel } = usePointerStore.getState();
+      const w = (gl as unknown as { domElement?: { width?: number } }).domElement
+        ?.width;
+      const h = (gl as unknown as { domElement?: { height?: number } }).domElement
+        ?.height;
+      const aspect = w && h ? w / h : 1;
+      flow.uStrength.value = fx.fluidStrength;
+      flow.tick({
+        px: smooth.x,
+        py: smooth.y,
+        vx: vel.x,
+        vy: vel.y,
+        aspect,
+        dissipation: fx.dissipation,
+        splatRadius: fx.splatRadius,
+        strength: fx.fluidStrength,
+      });
+    }
+
     const post = postRef.current;
     if (post) {
       post.render();

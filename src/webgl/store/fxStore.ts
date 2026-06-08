@@ -35,6 +35,14 @@ interface FxState {
   heroScale: number;
   // Particle field
   particleOpacity: number;
+  // Pointer fluid (WebGPU/TSL path only — see PostFXNodes). A barely-there
+  // liquid-glass refraction of the scene around the cursor.
+  /** Max UV displacement of the scene sample, in screen fraction (~0.004–0.01). */
+  fluidStrength: number;
+  /** Per-frame flowmap accumulation fade (ping-pong), ~0.92–0.97. */
+  dissipation: number;
+  /** Gaussian splat radius in flowmap-UV units (~0.04–0.12). */
+  splatRadius: number;
   // Cinematic scroll camera (lookAt-ahead tilt — full tier only)
   /** How far AHEAD along the curve the camera aims, in curve-param units (0..1). */
   lookAhead: number;
@@ -66,6 +74,9 @@ export const useFxStore = create<FxState>((set) => ({
   heroPulseSpeed: 0.45,
   heroScale: 0.235,
   particleOpacity: 0.35,
+  fluidStrength: 0.006,
+  dissipation: 0.96,
+  splatRadius: 0.07,
   lookAhead: 0.05,
   lookTiltScale: 0.2,
   set: (partial) => set(partial),

@@ -42,6 +42,13 @@ export default function LineDebug() {
       lookAhead: { value: defaults.lookAhead, min: 0, max: 0.15, step: 0.005 },
       lookTiltScale: { value: defaults.lookTiltScale, min: 0, max: 0.5, step: 0.01 },
     }),
+    // Pointer fluid (WebGPU/TSL path only — see PostFXNodes). Live-tune the
+    // liquid-glass refraction strength + accumulation feel.
+    Fluid: folder({
+      fluidStrength: { value: defaults.fluidStrength, min: 0, max: 0.02, step: 0.0005 },
+      dissipation: { value: defaults.dissipation, min: 0.85, max: 0.99, step: 0.005 },
+      splatRadius: { value: defaults.splatRadius, min: 0.02, max: 0.2, step: 0.005 },
+    }),
   });
 
   useEffect(() => {

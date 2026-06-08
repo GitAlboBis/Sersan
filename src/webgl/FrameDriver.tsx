@@ -17,6 +17,7 @@
 import { useEffect } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { pumpLenis, setExternalPump } from "@/lib/lenis-singleton";
+import { installPointerTracking, updatePointer } from "./store/pointerStore";
 
 export function FrameDriver() {
   const gl = useThree((state) => state.gl);
@@ -38,8 +39,17 @@ export function FrameDriver() {
     };
   }, [gl]);
 
-  useFrame(() => {
+  // The single window pointer listener (gated: coarse-pointer/reduced-motion is
+  // a no-op). Writes only raw values; smoothing happens in the frame loop below
+  // so the cursor, magnetic CTAs and the WebGPU fluid share ONE source + ONE
+  // rAF (this same R3F loop) — never a second requestAnimationFrame.
+  useEffect(() => installPointerTracking(), []);
+
+  // Priority-0 frame: pump Lenis AND advance the smoothed pointer/velocity in
+  // the one render loop.
+  useFrame((_, delta) => {
     pumpLenis(performance.now());
+    updatePointer(delta);
   });
 
   return null;
