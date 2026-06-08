@@ -8,6 +8,7 @@ import { useLanguage } from "@/components/language-provider";
 import { Reveal } from "@/components/ui/reveal";
 import { SectionHeading } from "@/components/ui/section-heading";
 import WorkInProgress from "@/components/sections/work-in-progress";
+import { CardImageDistort } from "@/components/fx/card-image-distort";
 
 export function CaseStudiesClient() {
   const { language } = useLanguage();
@@ -75,38 +76,47 @@ export function CaseStudiesClient() {
                 const summary = isEn ? study.summary : study.summaryIt;
                 return (
                   <Reveal key={study.id} delay={(i % 2) * 90} className="h-full">
-                    {/* TODO(imagery-upgrade): these are asset-free DOM text cards,
-                        so the premium hover is CSS/GSAP only (3D tilt + signal
-                        sheen + proximity edge glow via CardTiltController +
-                        .card-steel). When product/case-study imagery is provided,
-                        a WebGL <Image>/shader hover (drei) with RGB-shift +
-                        parallax-on-pointer can replace/augment this here — wrap
-                        the image plane in a <View> teleported into the persistent
-                        canvas and keep this DOM hover as the reduced-motion/no-
-                        WebGL fallback. */}
+                    {/* Cards WITH a product preview (the three Sersan builds —
+                        SphereNode, Quantex, Terra Noa) get the Lusion-style
+                        hover-reveal: the shot fades in BEHIND the text and
+                        distorts (RGB-shift + parallax + zoom) via a self-
+                        contained WebGL2 canvas, with a CSS-only fade fallback for
+                        reduced-motion / touch / no-WebGL2. The media layer is the
+                        FIRST child so it sits behind the text under a navy scrim;
+                        the text is wrapped in a relative z-10 stack so it stays
+                        fully readable. Cards WITHOUT a preview keep the asset-free
+                        CSS/GSAP hover (tilt + sheen + glow + arrow) unchanged. */}
                     <Link
                       href={`/case-studies/${study.id}`}
                       data-cursor="view"
                       className="card-steel group flex flex-col h-full p-7"
                       aria-label={`${study.client}, ${engagement}`}
                     >
-                      <p
-                        className="text-[10px] font-mono uppercase tracking-[0.18em] mb-3"
-                        style={{ color: "hsl(var(--accent))" }}
-                      >
-                        {study.industry}
-                      </p>
-                      <h3 className="font-display text-2xl text-ink leading-tight mb-2 transition-colors duration-300 group-hover:text-[hsl(var(--accent))]">
-                        {study.client}
-                      </h3>
-                      <p className="text-sm text-ink-mute mb-4">{engagement}</p>
-                      <p className="text-sm text-ink/85 leading-[1.55] line-clamp-4 mb-6">{summary}</p>
-                      <div className="mt-auto flex items-center justify-between text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
-                        <span className="transition-colors duration-300 group-hover:text-ink">
-                          {role}
-                        </span>
-                        {/* Arrow slides + fades in on hover (asset-free affordance). */}
-                        <ArrowRight className="w-3.5 h-3.5 -translate-x-1 opacity-50 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100 group-hover:text-[hsl(var(--accent))] motion-reduce:transition-none motion-reduce:translate-x-0 motion-reduce:opacity-100" />
+                      {study.previewImage && (
+                        <CardImageDistort
+                          src={study.previewImage}
+                          alt={`${study.client} product preview`}
+                        />
+                      )}
+                      <div className="relative z-10 flex flex-col h-full">
+                        <p
+                          className="text-[10px] font-mono uppercase tracking-[0.18em] mb-3"
+                          style={{ color: "hsl(var(--accent))" }}
+                        >
+                          {study.industry}
+                        </p>
+                        <h3 className="font-display text-2xl text-ink leading-tight mb-2 transition-colors duration-300 group-hover:text-[hsl(var(--accent))]">
+                          {study.client}
+                        </h3>
+                        <p className="text-sm text-ink-mute mb-4">{engagement}</p>
+                        <p className="text-sm text-ink/85 leading-[1.55] line-clamp-4 mb-6">{summary}</p>
+                        <div className="mt-auto flex items-center justify-between text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
+                          <span className="transition-colors duration-300 group-hover:text-ink">
+                            {role}
+                          </span>
+                          {/* Arrow slides + fades in on hover (asset-free affordance). */}
+                          <ArrowRight className="w-3.5 h-3.5 -translate-x-1 opacity-50 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100 group-hover:text-[hsl(var(--accent))] motion-reduce:transition-none motion-reduce:translate-x-0 motion-reduce:opacity-100" />
+                        </div>
                       </div>
                     </Link>
                   </Reveal>

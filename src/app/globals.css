@@ -600,6 +600,70 @@ img { height: auto; max-width: 100%; }
   opacity: var(--glow, 0);
 }
 
+/* CardImageDistort — hover-reveal product imagery on the three case-study cards
+   that ship a preview (SphereNode, Quantex, Terra Noa). At REST the whole layer
+   is invisible, so the card reads as today's clean text card. On hover the base
+   <img> fades + scales in BEHIND the text, under a navy scrim that keeps the
+   white card text legible; the self-contained WebGL2 canvas (if it spun up)
+   composites the RGB-shift / parallax / zoom over the same <img>. The entire
+   stack is pointer-events:none so the card <Link>, tilt controller, custom
+   cursor and hover audio are untouched. The scrim/before/after must sit ABOVE
+   this media layer, and the text content above all of it — handled by the
+   element order inside .card-steel (this layer is the first child). */
+.card-image-distort {
+  /* Below the sheen (::after) and edge-glow (::before) and the text content,
+     above the card background. Negative z keeps it behind everything painted in
+     the normal flow without needing z-index on every text node. */
+  z-index: 0;
+}
+.card-image-distort__img,
+.card-image-distort__canvas {
+  opacity: 0;
+  transform: scale(1.02);
+  transition:
+    opacity 500ms cubic-bezier(0.215, 0.61, 0.355, 1),
+    transform 700ms cubic-bezier(0.215, 0.61, 0.355, 1);
+  will-change: opacity, transform;
+}
+/* On hover the base image reveals. The WebGL canvas, when live, fades over it;
+   its own opacity is toggled imperatively (inline style), so the CSS transition
+   here only governs the scale settle — guarded so the inline opacity wins. */
+.card-steel:hover .card-image-distort__img {
+  opacity: 1;
+  transform: scale(1);
+}
+.card-steel:hover .card-image-distort__canvas {
+  transform: scale(1);
+}
+/* Navy readability scrim. Stronger at the top/left where the eyebrow + heading
+   sit, lighter toward the lower-right so the product shot still reads. Fades in
+   with the imagery so the resting card keeps its flat gradient background. */
+.card-image-distort__scrim {
+  pointer-events: none;
+  opacity: 0;
+  background:
+    linear-gradient(
+      155deg,
+      hsl(216 30% 8% / 0.92) 0%,
+      hsl(216 30% 8% / 0.78) 42%,
+      hsl(216 30% 8% / 0.62) 100%
+    );
+  transition: opacity 500ms cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+.card-steel:hover .card-image-distort__scrim {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Touch/RM: no distortion canvas mounts. Keep a calm static fade only — drop
+     the scale + zoom transitions so the imagery just appears under the scrim. */
+  .card-image-distort__img,
+  .card-image-distort__canvas,
+  .card-image-distort__scrim {
+    transition: none;
+    transform: none;
+  }
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;
