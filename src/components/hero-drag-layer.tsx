@@ -25,6 +25,13 @@ export function HeroDragLayer() {
       aria-hidden
       className="absolute inset-y-0 right-0 w-[46%] z-[5] cursor-grab active:cursor-grabbing select-none"
       style={{ touchAction: "pan-y" }}
+      onPointerEnter={() => {
+        // Hovering the hero starts the logo dissolve (release/leave reforms it).
+        useHeroDragStore.getState().setHovering(true);
+      }}
+      onPointerLeave={() => {
+        useHeroDragStore.getState().setHovering(false);
+      }}
       onPointerDown={(e) => {
         e.currentTarget.setPointerCapture(e.pointerId);
         last.current = { x: e.clientX, y: e.clientY };
@@ -46,6 +53,7 @@ export function HeroDragLayer() {
       onPointerCancel={() => {
         last.current = null;
         useHeroDragStore.getState().setDragging(false);
+        useHeroDragStore.getState().setHovering(false);
       }}
     />
   );

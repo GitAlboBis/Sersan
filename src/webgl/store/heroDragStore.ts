@@ -14,9 +14,13 @@ interface HeroDragState {
   vx: number;
   vy: number;
   dragging: boolean;
+  /** Pointer is hovering the hero capture layer (desktop). Drives the logo
+   *  dissolve alongside `dragging`. */
+  hovering: boolean;
   addDelta: (dx: number, dy: number) => void;
   setDragging: (dragging: boolean) => void;
-  /** Decay velocities (called per-frame by the planet). */
+  setHovering: (hovering: boolean) => void;
+  /** Decay velocities (called per-frame by the hero object). */
   damp: (factor: number) => void;
 }
 
@@ -24,8 +28,10 @@ export const useHeroDragStore = create<HeroDragState>((set, get) => ({
   vx: 0,
   vy: 0,
   dragging: false,
+  hovering: false,
   addDelta: (dx, dy) => set({ vx: get().vx + dx, vy: get().vy + dy }),
   setDragging: (dragging) => set({ dragging }),
+  setHovering: (hovering) => set({ hovering }),
   damp: (factor) => {
     const { vx, vy } = get();
     set({ vx: vx * factor, vy: vy * factor });
