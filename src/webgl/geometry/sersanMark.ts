@@ -141,12 +141,30 @@ export interface MarkHomeField {
 }
 
 /**
+ * How strongly to bias surface sampling toward the camera-facing FRONT of the
+ * mark (the large +Z plate) over the back/bevel walls.
+ *
+ * The Blender mark is a flat wide plate (Z-depth ≈ 0.44 vs height 2). Plain
+ * area-weighted MeshSurfaceSampler scatters ~half the particles onto the BACK
+ * face (−Z, hidden behind the front from a head-on view) and onto the thin side
+ * bevels — which is exactly the "thin box outline" / sparse look the user
+ * rejected. We rejection-sample instead: a candidate is KEPT with probability
+ * `mix(FRONT_BIAS_MIN, 1, frontness)` where `frontness = saturate(normal.z)`
+ * (1 dead-on front, 0 back/edge). The kept points therefore COAT the front face
+ * densely, so the mark reads as a solid velvety skin face-on (like DDD's "D").
+ */
+const FRONT_BIAS_MIN = 0.12;
+
+/**
  * Sample a SIZE×SIZE grid of points across the mark's surface for the GPGPU
  * dissolve hero. Returns the home-position field (to seed the position/home
  * float textures) and the per-instance grid `aRef` UVs (so each rendered
  * billboard reads its own texel from the simulation state). The mesh itself is
  * NOT rendered — the sampler only generates the rest positions the particles
  * spring back to.
+ *
+ * Sampling is FRONT-BIASED (see FRONT_BIAS_MIN) so the camera-facing face is
+ * densely coated and the mark reads as a solid skin rather than a thin outline.
  *
  * `homeRGBA[i]` and `aRef[i]` share the SAME row-major index: particle `i` sits
  * at grid cell `(col = i % size, row = floor(i / size))`, whose texel center is
@@ -166,9 +184,21 @@ export function sampleMarkHomePositions(
   const homeRGBA = new Float32Array(count * 4);
   const aRef = new Float32Array(count * 2);
   const pos = new THREE.Vector3();
+  const nrm = new THREE.Vector3();
 
   for (let i = 0; i < count; i++) {
-    sampler.sample(pos);
+    // Rejection-sample toward the front face so the camera-facing plate is the
+    // densest. Cap the retries so a degenerate normal field can never spin —
+    // after MAX_TRIES we accept whatever we last drew (graceful, no crash).
+    let tries = 0;
+    const MAX_TRIES = 24;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      sampler.sample(pos, nrm);
+      const frontness = Math.max(0, nrm.z); // 1 = dead-on front, 0 = back/edge
+      const keepP = FRONT_BIAS_MIN + (1 - FRONT_BIAS_MIN) * frontness;
+      if (Math.random() < keepP || ++tries >= MAX_TRIES) break;
+    }
     homeRGBA[i * 4] = pos.x;
     homeRGBA[i * 4 + 1] = pos.y;
     homeRGBA[i * 4 + 2] = pos.z;

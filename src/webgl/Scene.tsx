@@ -17,7 +17,12 @@ import { FrameDriver } from "./FrameDriver";
 import { webgpuEnabled, createWebGPURenderer } from "./renderer/createRenderer";
 import { SignatureLine } from "./SignatureLine";
 import { HeroLogo } from "./HeroLogo";
-import { CurlTubeField } from "./CurlTubeField";
+// NOTE: CurlTubeField (the faint curl-noise background haze) is intentionally
+// UNMOUNTED — the user disliked the thin background arcs. The component file is
+// kept in place so it's trivial to restore (re-add the import + the gated mount
+// below). This is NOT the signature line / scroll trail (SignatureLine), which
+// stays.
+// import { CurlTubeField } from "./CurlTubeField";
 import { GatewayPortal } from "./GatewayPortal";
 import { RouteHero, type RouteHeroKind } from "./RouteHero";
 import { DriftParticles } from "./DriftParticles";
@@ -201,9 +206,11 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
       style={{ position: "absolute", inset: 0 }}
     >
       <FrameDriver />
-      {/* Faint curl-noise tube-field haze (full tier only) — deep behind the
-          content, subordinate to the line; shares the single Bloom. */}
-      {tier === "full" && <CurlTubeField anchors={anchors} />}
+      {/* The faint curl-noise tube-field haze (CurlTubeField) was removed here
+          — the user disliked the thin background curl arcs (confirmed live with
+          curlTubeIntensity: 0). The component file remains; to restore, re-add
+          the import above and `{tier === "full" && <CurlTubeField anchors={anchors} />}`.
+          The SignatureLine below (the signature scroll line) is unaffected. */}
       <SignatureLine tier={tier} pathname={pathname} anchors={anchors} />
       <DriftParticles tier={tier} anchors={anchors} pathname={pathname} />
       {/* The per-route ritual object: HeroLogo + GatewayPortal on home, a

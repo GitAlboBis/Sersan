@@ -66,6 +66,7 @@ const VELOCITY_FRAGMENT = /* glsl */ `
   uniform float uMaxSpeed;
   uniform float uTurbBase;
   uniform float uTurbMove;
+  uniform float uTurbDispK;
   varying vec2 vUv;
 
   void main() {
@@ -93,17 +94,19 @@ const VELOCITY_FRAGMENT = /* glsl */ `
       acc += normalize(fromMouse + 1e-5) * (f * f) * uPush;
     }
 
-    // (d) turbulence — reference sin-based per-axis form (replaces value-noise).
-    //     disp = clamp(length(home - pos) * 3, 0, 1); turb = vec3(
-    //       sin(pos.y*6 + t*1.3), sin(pos.z*6 + t*1.7), sin(pos.x*6 + t*1.1));
-    //     acc += turb * (uTurbBase + uTurbMove * disp);
-    float disp = clamp(length(toHome) * 3.0, 0.0, 1.0);
+    // (d) turbulence — sin-based per-axis shimmer, GATED HARD by displacement so
+    //     particles GLUED to the surface (disp≈0) get ~none (uTurbBase≈0) and
+    //     stay crisp; only lifted/hovered particles (disp→1) shimmer. The whole
+    //     turbulence term is additionally scaled by disp, so the resting skin is
+    //     still — this is the key fix vs the old constant TURB_BASE 0.35 that
+    //     loosened every particle into a drifting cloud.
+    float disp = clamp(length(toHome) * uTurbDispK, 0.0, 1.0);
     vec3 turb = vec3(
       sin(pos.y * 6.0 + uTime * 1.3),
       sin(pos.z * 6.0 + uTime * 1.7),
       sin(pos.x * 6.0 + uTime * 1.1)
     );
-    acc += turb * (uTurbBase + uTurbMove * disp);
+    acc += turb * (uTurbBase + uTurbMove * disp) * disp;
 
     // Integrate + exponential damping + max-speed clamp (ref order).
     //   vel += acc*dt; vel *= exp(-uDamping*dt); sp = length(vel);
@@ -145,6 +148,10 @@ export interface GpgpuForces {
   spring: number;
   push: number;
   radius: number;
+  /** Exponential damping rate — tune with spring for a tight, glued return. */
+  damping: number;
+  /** At-rest turbulence amplitude — keep ~0 so the skin stays crisp. */
+  turbBase: number;
 }
 
 export interface GpgpuSimRig {
@@ -234,6 +241,7 @@ export function createGpgpuSim(
       uMaxSpeed: { value: config.MAX_SPEED },
       uTurbBase: { value: config.TURB_BASE },
       uTurbMove: { value: config.TURB_MOVE },
+      uTurbDispK: { value: config.TURB_DISP_K },
     },
   });
   const posMat = new THREE.ShaderMaterial({
@@ -340,6 +348,8 @@ export function createGpgpuSim(
       velMat.uniforms.uSpring.value = f.spring;
       velMat.uniforms.uPush.value = f.push;
       velMat.uniforms.uRadius.value = f.radius;
+      velMat.uniforms.uDamping.value = f.damping;
+      velMat.uniforms.uTurbBase.value = f.turbBase;
     },
     dispose() {
       posRead.dispose();

@@ -49,19 +49,74 @@ export default function LineDebug() {
       lookAhead: { value: defaults.lookAhead, min: 0, max: 0.15, step: 0.005 },
       lookTiltScale: { value: defaults.lookTiltScale, min: 0, max: 0.5, step: 0.01 },
     }),
-    // GPGPU dissolve hero (HeroLogo). Spring = how snappy the mark recomposes;
-    // push/radius = the cursor dispersion; pointSize = sprite density/glow.
+    // GPGPU dissolve hero (HeroLogo). The FRAMING knobs (scale/offsetX/offsetY/
+    // posZ) place the mark as a prominent, fully-visible particle logo on the
+    // hero right — tune them live to fit the viewport. spring+damping = how
+    // tightly the mark snaps back (glued return); push/radius = the cursor
+    // dispersion; turbBase = at-rest shimmer (keep ~0 for a crisp glued skin);
+    // pointSize+pointAlpha = how densely the sprites overlap into a solid
+    // velvety skin; emissive = glow.
     "GPGPU hero": folder({
-      gpgpuSpring: { value: defaults.gpgpuSpring, min: 4, max: 60, step: 1, label: "spring" },
+      heroScale: {
+        value: defaults.heroScale,
+        min: 0.15,
+        max: 0.6,
+        step: 0.005,
+        label: "frame: scale",
+      },
+      heroOffsetX: {
+        value: defaults.heroOffsetX,
+        min: -0.2,
+        max: 0.45,
+        step: 0.005,
+        label: "frame: offset X",
+      },
+      heroOffsetY: {
+        value: defaults.heroOffsetY,
+        min: -0.3,
+        max: 0.3,
+        step: 0.005,
+        label: "frame: offset Y",
+      },
+      heroPosZ: {
+        value: defaults.heroPosZ,
+        min: -4,
+        max: 2,
+        step: 0.05,
+        label: "frame: pos Z",
+      },
+      gpgpuSpring: { value: defaults.gpgpuSpring, min: 4, max: 90, step: 1, label: "spring" },
+      gpgpuDamping: { value: defaults.gpgpuDamping, min: 1, max: 18, step: 0.5, label: "damping" },
       gpgpuPush: { value: defaults.gpgpuPush, min: 0, max: 120, step: 1, label: "push" },
       gpgpuRadius: { value: defaults.gpgpuRadius, min: 0.1, max: 1.5, step: 0.02, label: "radius" },
-      gpgpuPointSize: { value: defaults.gpgpuPointSize, min: 2, max: 20, step: 0.5, label: "point size" },
+      gpgpuTurbBase: {
+        value: defaults.gpgpuTurbBase,
+        min: 0,
+        max: 0.5,
+        step: 0.01,
+        label: "turb @ rest",
+      },
+      gpgpuPointSize: { value: defaults.gpgpuPointSize, min: 2, max: 28, step: 0.5, label: "point size" },
+      gpgpuPointAlpha: {
+        value: defaults.gpgpuPointAlpha,
+        min: 0.1,
+        max: 1,
+        step: 0.05,
+        label: "point alpha / skin",
+      },
       gpgpuEmissive: {
         value: defaults.gpgpuEmissive,
         min: 0.5,
         max: 6,
         step: 0.1,
         label: "GPGPU emissive / glow",
+      },
+      gpgpuTilt: {
+        value: defaults.gpgpuTilt,
+        min: 0,
+        max: 0.2,
+        step: 0.005,
+        label: "mouse tilt (rad)",
       },
     }),
     // Pointer fluid (WebGPU/TSL path only — see PostFXNodes). Live-tune the
