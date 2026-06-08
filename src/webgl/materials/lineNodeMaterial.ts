@@ -20,12 +20,11 @@
  *     passed through UNPERTURBED (the <0.2° facing tilt is dropped on purpose).
  *   - fragment: head-draw mask on uv.x with fwidth AA, bright head band,
  *     animated cyan→violet gradient, view-facing core glow (abs(viewNormal.z)
- *     ^ uGlowFalloff), color × uEmissive (HDR >1.0 for bloom-by-threshold),
- *     alpha = drawn * core * uReveal, additive, depthWrite/depthTest off,
- *     toneMapped off.
- *
- * NOT included (intentionally): the fresnel/scattering "gel" enhancement — that
- * is a separate later increment.
+ *     ^ uGlowFalloff), the "gel tube" fresnel rim + fake-scatter
+ *     (fres = pow(1 - abs(viewNormal.z), uFresnelPower); col += grad*fres*uScatter
+ *     added into HDR color BEFORE × uEmissive), color × uEmissive (HDR >1.0 for
+ *     bloom-by-threshold), alpha = drawn * core * uReveal, additive,
+ *     depthWrite/depthTest off, toneMapped off.
  *
  * TSL node names verified against the INSTALLED build:
  *   `node_modules/three/build/three.tsl.js` (via `require('three/tsl')`) and
@@ -70,6 +69,8 @@ export type LineNodeUniforms = {
   uFlowSpeed: { value: number };
   uReveal: { value: number };
   uBreath: { value: number };
+  uFresnelPower: { value: number };
+  uScatter: { value: number };
 };
 
 export function createLineNodeMaterial(): {
@@ -88,6 +89,8 @@ export function createLineNodeMaterial(): {
   const uFlowSpeed = uniform(0.05);
   const uReveal = uniform(1);
   const uBreath = uniform(0);
+  const uFresnelPower = uniform(2.5);
+  const uScatter = uniform(0.4);
 
   const material = new MeshBasicNodeMaterial();
 
@@ -141,8 +144,17 @@ export function createLineNodeMaterial(): {
   const facing = abs(normalView.z);
   const core = pow(facing, uGlowFalloff);
 
-  // col = mix(grad, uColorHot, head * 0.85) * uEmissive.
-  const col = mix(grad, uColorHot, head.mul(0.85)).mul(uEmissive);
+  // "Gel tube" enhancement (ANALISI_LUSION §3.2A), 1:1 with lineShader.ts:
+  // fres = pow(1.0 - facing, uFresnelPower); add grad*fres*uScatter into the
+  // HDR color BEFORE the emissive multiply so the >1.0 selective-bloom contract
+  // holds and the grazing rim blooms like translucent gel. View-dependent only
+  // → no new per-frame animation, safe on every tier.
+  const fres = pow(facing.oneMinus(), uFresnelPower);
+
+  // col = mix(grad, uColorHot, head * 0.85); col += grad*fres*uScatter; col *= uEmissive.
+  const col = mix(grad, uColorHot, head.mul(0.85))
+    .add(grad.mul(fres).mul(uScatter))
+    .mul(uEmissive);
   // alpha = drawn * core * uReveal.
   const alpha = drawn.mul(core).mul(uReveal);
 
@@ -170,6 +182,8 @@ export function createLineNodeMaterial(): {
     uFlowSpeed,
     uReveal,
     uBreath,
+    uFresnelPower,
+    uScatter,
   };
 
   return { material, uniforms };

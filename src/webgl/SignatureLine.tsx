@@ -251,6 +251,10 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     u.uGlowFalloff.value = fx.glowFalloff;
     u.uHeadSharp.value = fx.headSharp;
     u.uFlowSpeed.value = fx.flowSpeed;
+    // "Gel tube" fresnel rim + fake-scatter (ANALISI_LUSION §3.2A). View-
+    // dependent, no per-frame animation; same uniforms drive GLSL + TSL.
+    u.uFresnelPower.value = fx.fresnelPower;
+    u.uScatter.value = fx.scatter;
 
     // Breath (WI-2): RE-ENABLED after the P1 check, with the overscaled normal
     // correction removed in lineShader.ts. Only the radial POSITION breath

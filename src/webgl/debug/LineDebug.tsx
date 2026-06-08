@@ -27,6 +27,8 @@ export default function LineDebug() {
       glowFalloff: { value: defaults.glowFalloff, min: 0.5, max: 6, step: 0.1 },
       headSharp: { value: defaults.headSharp, min: 0.005, max: 0.2, step: 0.005 },
       flowSpeed: { value: defaults.flowSpeed, min: 0, max: 0.5, step: 0.005 },
+      fresnelPower: { value: defaults.fresnelPower, min: 0.5, max: 6, step: 0.1 },
+      scatter: { value: defaults.scatter, min: 0, max: 1.5, step: 0.05 },
       radiusFactor: { value: defaults.radiusFactor, min: 0.001, max: 0.03, step: 0.0005 },
     }),
     PostFX: folder({

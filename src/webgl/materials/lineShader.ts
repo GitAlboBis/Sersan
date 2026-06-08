@@ -71,6 +71,8 @@ const fragmentShader = /* glsl */ `
   uniform float uEmissive;
   uniform float uFlowSpeed;
   uniform float uReveal;
+  uniform float uFresnelPower;
+  uniform float uScatter;
 
   void main() {
     // three.js TubeGeometry maps uv.x ALONG the tube (0 = start, 1 = end)
@@ -95,7 +97,18 @@ const fragmentShader = /* glsl */ `
     float facing = abs(vViewNormal.z);
     float core = pow(facing, uGlowFalloff);
 
-    vec3 col = mix(grad, uColorHot, head * 0.85) * uEmissive;
+    // "Gel tube" enhancement (ANALISI_LUSION §3.2A): a thin fresnel rim where
+    // the surface grazes the view direction, plus a soft fake-scattering glow.
+    // fres peaks at the silhouette (facing → 0) and falls off toward the core;
+    // we add grad*fres*uScatter into the HDR color BEFORE the emissive multiply
+    // so the >1.0 selective-bloom contract still holds and the rim blooms like
+    // translucent gel. Kept subtle (uScatter ~0.4) → ~15-25% grazing lift, not
+    // a thick halo. View-dependent only → no new per-frame animation.
+    float fres = pow(1.0 - facing, uFresnelPower);
+
+    vec3 col = mix(grad, uColorHot, head * 0.85);
+    col += grad * fres * uScatter;
+    col *= uEmissive;
     float alpha = drawn * core * uReveal;
     if (alpha < 0.003) discard;
     gl_FragColor = vec4(col, alpha);
@@ -114,6 +127,8 @@ export type LineUniforms = {
   uFlowSpeed: { value: number };
   uReveal: { value: number };
   uBreath: { value: number };
+  uFresnelPower: { value: number };
+  uScatter: { value: number };
 };
 
 export function createLineMaterial(): THREE.ShaderMaterial & {
@@ -134,6 +149,8 @@ export function createLineMaterial(): THREE.ShaderMaterial & {
       uFlowSpeed: { value: 0.05 },
       uReveal: { value: 1 },
       uBreath: { value: 0 },
+      uFresnelPower: { value: 2.5 },
+      uScatter: { value: 0.4 },
     },
     transparent: true,
     depthWrite: false,

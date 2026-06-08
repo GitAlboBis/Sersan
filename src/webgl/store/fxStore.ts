@@ -16,6 +16,10 @@ interface FxState {
   glowFalloff: number;
   headSharp: number;
   flowSpeed: number;
+  /** Fresnel rim exponent for the "gel tube" grazing-edge glow. */
+  fresnelPower: number;
+  /** Strength of the fake-scatter glow added at grazing angles. */
+  scatter: number;
   /** Tube radius as a fraction of viewport world height. */
   radiusFactor: number;
   // Postprocessing
@@ -42,6 +46,8 @@ export const useFxStore = create<FxState>((set) => ({
   glowFalloff: 1.6,
   headSharp: 0.012,
   flowSpeed: 0.06,
+  fresnelPower: 2.5,
+  scatter: 0.4,
   radiusFactor: 0.013,
   bloomIntensity: 1.1,
   bloomThreshold: 1.0,
