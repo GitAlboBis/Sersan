@@ -9,11 +9,17 @@
  * navy body background (DOM) stays the backdrop, the canvas only adds
  * light on top.
  */
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Canvas } from "@react-three/fiber";
 import { usePathname } from "next/navigation";
 import { Suspense } from "react";
 import { FrameDriver } from "./FrameDriver";
+import {
+  webgpuEnabled,
+  createWebGPURenderer,
+  backendOf,
+  type Backend,
+} from "./renderer/createRenderer";
 import { SignatureLine } from "./SignatureLine";
 import { HeroPlanet } from "./HeroPlanet";
 import { GatewayPortal } from "./GatewayPortal";
@@ -150,6 +156,17 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
   const pathname = usePathname();
   const anchors = useSectionAnchors(pathname);
 
+  // F0.5 renderer seam: the flag is read once at module/build time. When OFF
+  // (default) `gl` stays EXACTLY today's object literal — R3F builds its
+  // implicit default WebGLRenderer and nothing here touches `three/webgpu`.
+  // When ON, `gl` becomes the async WebGPURenderer factory (with WebGL2
+  // fallback). `backend` is recorded in onCreated so the postprocessing path
+  // can be gated: the WebGPU backend cannot drive @react-three/postprocessing's
+  // EffectComposer (it's a WebGLRenderer library — spec §2.1), so PostFX is
+  // guarded off on that backend to boot without throwing this increment.
+  const webgpu = webgpuEnabled();
+  const [backend, setBackend] = useState<Backend>("webgl2");
+
   // Route-transition beat for the signature line: fade out, let the curve
   // rebuild against the new page's anchors, fade back in. On first mount
   // this doubles as the intro draw (0 → 1). The DOM enter animation in
@@ -164,14 +181,21 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
 
   return (
     <Canvas
-      gl={{
-        alpha: true,
-        antialias: false,
-        powerPreference: "high-performance",
-      }}
+      gl={
+        webgpu
+          ? createWebGPURenderer
+          : {
+              alpha: true,
+              antialias: false,
+              powerPreference: "high-performance",
+            }
+      }
       dpr={tier === "full" ? [1, 2] : [1, 1.5]}
       camera={{ fov: CAMERA_FOV, position: [0, 0, CAMERA_Z], near: 0.1, far: 200 }}
-      onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
+      onCreated={({ gl }) => {
+        gl.setClearColor(0x000000, 0);
+        if (webgpu) setBackend(backendOf(gl));
+      }}
       frameloop="always"
       style={{ position: "absolute", inset: 0 }}
     >
@@ -183,7 +207,11 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           HeroPlanet is mounted ONLY inside the pathname === "/" branch, so it
           never appears on an interior route. */}
       <RouteRitual pathname={pathname} tier={tier} anchors={anchors} />
-      {tier === "full" && <PostFX pathname={pathname} />}
+      {/* PostFX (@react-three/postprocessing) only on a WebGL backend. Under a
+          true WebGPU backend the EffectComposer can't accept the renderer
+          (spec §2.1); a TSL post pipeline replaces it in a later phase. With
+          the flag OFF, `backend` is always "webgl2" so this is unchanged. */}
+      {tier === "full" && backend === "webgl2" && <PostFX pathname={pathname} />}
     </Canvas>
   );
 }
