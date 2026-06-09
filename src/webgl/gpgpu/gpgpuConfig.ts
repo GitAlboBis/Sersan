@@ -92,10 +92,11 @@ export const DEFAULT_GPGPU_CONFIG: GpgpuConfig = {
   COL_HOT: [0.28, 0.95, 0.95],
 };
 
-/** Per-tier grid size. `off` never builds the rig (handled upstream). */
+/** Per-tier grid size → SIZE*SIZE particles per layer. Bumped (256→320 full)
+ * for a DENSER spore field per the DDD-feedback ("tutte le spore più dense"). */
 export const SIZE_BY_TIER: Record<"full" | "lite", number> = {
-  full: 256,
-  lite: 128,
+  full: 320,
+  lite: 160,
 };
 
 // ===========================================================================
@@ -145,10 +146,10 @@ export const BODY_LAYER: GpgpuLayerConfig = {
     TURB_BASE: 0.02,
     TURB_MOVE: 0.9,
     TURB_DISP_K: 6,
-    // BIG soft discs that overlap into a continuous violet mass (vs hard opaque
+    // BIG soft spores that overlap into a continuous violet mass (vs hard opaque
     // dots = grainy). With transparent NormalBlending below, the feathered alpha
     // blends neighbouring discs → a smooth solid-reading plate, no DOF needed.
-    POINT_SIZE: 11,
+    POINT_SIZE: 16,
     POINT_ALPHA: 0.85,
     // Lower emissive: the body is the dark violet solid, not the glow.
     EMISSIVE: 1.6,
@@ -182,7 +183,7 @@ export const SKIN_LAYER: GpgpuLayerConfig = {
     // modest emissive) so the violet BODY reads as the solid mark; the velocity
     // color/brightness term makes them POP cyan when sprayed on hover (like DDD,
     // dark body at rest → cyan burst on interaction).
-    POINT_SIZE: 14,
+    POINT_SIZE: 18,
     POINT_ALPHA: 0.4,
     EMISSIVE: 1.8,
     COL_COLD: [0.25, 0.95, 0.95], // cyan at rest
