@@ -764,6 +764,58 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     () => ({ dt: 1 / 60, time: 0, mouse: new THREE.Vector3() }),
     [],
   );
+  const raycastHits = useMemo<THREE.Intersection[]>(() => [], []);
+  // Invisible raycast target — the SAME normalized mark geometry under the SAME
+  // spin transform, so a cursor ray returns the exact surface point being
+  // pointed at. Fixes the parallax of the old plane-through-CENTER projection:
+  // with the mark high in the viewport, the center-depth plane hit lands a few
+  // tenths BELOW where the cursor visually sits on the front plate (user
+  // report: parked cursor on the top bar eroded nothing).
+  const raycastTargetRef = useRef<THREE.Mesh>(null);
+  // Model-space z of the front plate — the plane fallback (cursor just off the
+  // letter silhouette) passes through the FRONT FACE, not the center.
+  const markFrontZ = useMemo(() => {
+    bodyGeometry.computeBoundingBox();
+    return bodyGeometry.boundingBox?.max.z ?? 0;
+  }, [bodyGeometry]);
+
+  /**
+   * Project the smoothed cursor into the mark's model space → modelMouse.
+   * Raycast the mark mesh first (exact point under the cursor, perspective-
+   * correct); fall back to a camera-facing plane through the FRONT PLATE when
+   * the ray misses the silhouette. MOUSE_OFF when not hovering.
+   */
+  function projectCursorToModel(spin: THREE.Group) {
+    const drag = useHeroDragStore.getState();
+    const ptr = usePointerStore.getState();
+    if (!(drag.hovering && ptr.active)) {
+      modelMouse.copy(MOUSE_OFF);
+      return;
+    }
+    ndc.set(ptr.smooth.x * 2 - 1, -(ptr.smooth.y * 2 - 1));
+    raycaster.setFromCamera(ndc, camera);
+    const target = raycastTargetRef.current;
+    if (target) {
+      raycastHits.length = 0;
+      raycaster.intersectObject(target, false, raycastHits);
+      if (raycastHits.length > 0) {
+        modelMouse.copy(raycastHits[0].point);
+        spin.worldToLocal(modelMouse);
+        return;
+      }
+    }
+    // Near-miss fallback: plane through the front plate, camera-facing.
+    worldCenter.set(0, 0, markFrontZ);
+    spin.localToWorld(worldCenter);
+    camera.getWorldDirection(planeN);
+    plane.setFromNormalAndCoplanarPoint(planeN, worldCenter);
+    if (raycaster.ray.intersectPlane(plane, worldHit)) {
+      modelMouse.copy(worldHit);
+      spin.worldToLocal(modelMouse);
+    } else {
+      modelMouse.copy(MOUSE_OFF);
+    }
+  }
 
   useFrame((_, rawDelta) => {
     const group = groupRef.current;
@@ -866,25 +918,9 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         delta,
       );
 
-      // Model-space cursor — SAME computation the GPGPU path uses (raycast a
-      // camera-facing plane through the cloud center, then spin.worldToLocal),
-      // so the dispersion follows the faint parallax tilt. Far value when not
-      // hovering so the falloff → 0 (no displacement).
-      if (drag.hovering && ptr.active) {
-        spin.getWorldPosition(worldCenter);
-        camera.getWorldDirection(planeN);
-        plane.setFromNormalAndCoplanarPoint(planeN, worldCenter);
-        ndc.set(ptr.smooth.x * 2 - 1, -(ptr.smooth.y * 2 - 1));
-        raycaster.setFromCamera(ndc, camera);
-        if (raycaster.ray.intersectPlane(plane, worldHit)) {
-          modelMouse.copy(worldHit);
-          spin.worldToLocal(modelMouse);
-        } else {
-          modelMouse.copy(MOUSE_OFF);
-        }
-      } else {
-        modelMouse.copy(MOUSE_OFF);
-      }
+      // Model-space cursor — raycast the mark mesh / front-plate plane (shared
+      // helper), so the dispersion lands exactly under the cursor.
+      projectCursorToModel(spin);
 
       simTimeRef.current += delta;
 
@@ -926,24 +962,9 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     // layer's render uniforms from its OWN preset (body calm/violet/opaque,
     // skin reactive/cyan/additive). Body renders first (occludes), skin over it.
     if (show2Layer && (glsl2 || tsl2)) {
-      // Shared model-space cursor — identical projection to the single-layer
-      // path (raycast a camera-facing plane through the cloud center, then
-      // spin.worldToLocal). Far value when not hovering → repulsion vanishes.
-      if (drag.hovering && ptr.active) {
-        spin.getWorldPosition(worldCenter);
-        camera.getWorldDirection(planeN);
-        plane.setFromNormalAndCoplanarPoint(planeN, worldCenter);
-        ndc.set(ptr.smooth.x * 2 - 1, -(ptr.smooth.y * 2 - 1));
-        raycaster.setFromCamera(ndc, camera);
-        if (raycaster.ray.intersectPlane(plane, worldHit)) {
-          modelMouse.copy(worldHit);
-          spin.worldToLocal(modelMouse);
-        } else {
-          modelMouse.copy(MOUSE_OFF);
-        }
-      } else {
-        modelMouse.copy(MOUSE_OFF);
-      }
+      // Shared model-space cursor (raycast helper). Far value when not
+      // hovering → repulsion vanishes.
+      projectCursorToModel(spin);
 
       simTimeRef.current += delta;
       tickParams.dt = delta;
@@ -991,22 +1012,9 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       );
       if (!tslSpore) return; // occluder-only until the lazy build resolves
 
-      // Shared model-space cursor — identical projection to the other sim paths.
-      if (drag.hovering && ptr.active) {
-        spin.getWorldPosition(worldCenter);
-        camera.getWorldDirection(planeN);
-        plane.setFromNormalAndCoplanarPoint(planeN, worldCenter);
-        ndc.set(ptr.smooth.x * 2 - 1, -(ptr.smooth.y * 2 - 1));
-        raycaster.setFromCamera(ndc, camera);
-        if (raycaster.ray.intersectPlane(plane, worldHit)) {
-          modelMouse.copy(worldHit);
-          spin.worldToLocal(modelMouse);
-        } else {
-          modelMouse.copy(MOUSE_OFF);
-        }
-      } else {
-        modelMouse.copy(MOUSE_OFF);
-      }
+      // Model-space cursor via the raycast helper: the repulsion center is the
+      // exact mark-surface point under the cursor (perspective-correct).
+      projectCursorToModel(spin);
 
       simTimeRef.current += delta;
       tickParams.dt = delta;
@@ -1026,31 +1034,9 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     if (!rig) return;
 
     // --- Model-space mouse ---------------------------------------------------
-    // Project the smoothed cursor onto a camera-facing plane through the cloud
-    // center, then worldToLocal so repulsion stays aligned under the faint
-    // parallax tilt. The particle positions live in `spin`'s local space (spin =
-    // parallax yaw, nested under assembly = base TILT + parallax pitch), so we
-    // convert into `spin` — exact regardless of the tilt. Push the mouse to
-    // infinity when the hero isn't hovered (or no pointer), so repulsion
-    // vanishes on pointer-leave / coarse devices.
-    if (drag.hovering && ptr.active) {
-      spin.getWorldPosition(worldCenter);
-      camera.getWorldDirection(planeN);
-      plane.setFromNormalAndCoplanarPoint(planeN, worldCenter);
-      // pointerStore.smooth is clip [0..1] top-left → NDC.
-      ndc.set(ptr.smooth.x * 2 - 1, -(ptr.smooth.y * 2 - 1));
-      raycaster.setFromCamera(ndc, camera);
-      if (raycaster.ray.intersectPlane(plane, worldHit)) {
-        // worldToLocal mutates its argument in place — copy the hit into the
-        // scratch first, then convert (no per-frame allocation).
-        modelMouse.copy(worldHit);
-        spin.worldToLocal(modelMouse);
-      } else {
-        modelMouse.copy(MOUSE_OFF);
-      }
-    } else {
-      modelMouse.copy(MOUSE_OFF);
-    }
+    // Raycast helper: exact mark-surface point under the cursor (model space,
+    // exact under the parallax tilt); MOUSE_OFF when not hovering.
+    projectCursorToModel(spin);
 
     // --- Live force knobs (leva → fxStore) ----------------------------------
     rig.setForces({
@@ -1183,6 +1169,16 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
           follows the faint parallax tilt. `spin` carries the parallax yaw. */}
       <group ref={assemblyRef} rotation={[TILT, 0, 0]}>
         <group ref={spinRef}>
+          {/* Invisible cursor-raycast target: the SAME normalized mark geometry
+              under the SAME transform. Never rendered (visible=false — the
+              raycaster ignores visibility), purely the projection surface for
+              projectCursorToModel. */}
+          <mesh
+            ref={raycastTargetRef}
+            geometry={bodyGeometry}
+            material={solidMaterial}
+            visible={false}
+          />
           {solidMesh}
           {particleMesh}
           {staticMesh}

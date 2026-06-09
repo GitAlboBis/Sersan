@@ -420,20 +420,17 @@ Ispezione browser diretta del **2026-06-09** (Claude-in-Chrome) dell'intera pagi
 > Questa sezione è la **fonte di verità viva**. Le §1–§10 sopra restano valide come analisi;
 > qui sotto c'è lo stato reale dell'implementazione.
 
-### 11.1 Cosa abbiamo CAPITO — ⚠️ SUPERSEDED dal teardown del bundle (2026-06-09 sera)
+### 11.1 Cosa abbiamo CAPITO (decostruzione confermata dal vivo + feedback)
 
-> Il bundle di produzione DDD è stato scaricato e decompilato (vedi
-> `.trellis/tasks/06-08-gpgpu-particle-dissolve-hero-…/research/ddd-bundle-teardown-spore-render.md`).
-> La GROUND TRUTH corregge l'analisi a occhio qui sotto su 3 punti chiave:
-> 1. **Le spore NON sono punti additivi**: sono **emisferi low-poly istanziati ILLUMINATI**
->    (11 vert / 10 tri, lighting per-vertex + AO da light field voxel), opachi, depth-tested.
->    ~51k desktop / ~29k mobile, diametro ≈ **altezzaLettera/47** in world space.
-> 2. **NON sono due layer particellari**: UN sistema + attributo `dist` (core non si stacca,
->    pelle esterna flasha ciano) + **mesh interna solida occludente** (SOLID.buf).
-> 3. **Il DOF NON c'entra**: la pipeline ha il bokeh ma spedisce `bokehAmount: 0`. Il look =
->    dimensione geometrica + shading + bloom selettivo (threshold .35, emission nell'alpha).
-> Restano veri: molla/momentum percepito (da soft body XPBD + skinning), albedo viola ×0.25
-> a riposo (quasi nero), ciano solo su particelle veloci/in ricomposizione, sfondo quasi nero.
+- L'effetto è nel **footer della DDD**, su **WebGL2**, scena 3D scura con DOF/bokeh + bloom.
+- È a **DUE STRATI**:
+  - **INNER / corpo** — una massa **solida** scura (viola/navy), occlude, quasi ferma. Fa da base.
+  - **OUTER / pelle** — **spore CIANO** che sono il "materiale" PROTAGONISTA. ⚠️ **Chiarimento
+    utente (2026-06-09): sono le ESTERNE che devono essere più GRANDI e DENSE.** Non punti
+    piccoli sparsi: **spore grandi, dense, PACKED — tutte vicine tra loro, si toccano/fondono.**
+    Si disperdono dal cursore in hover (momentum) e **rientrano** (~1–2 s).
+- Motion = vera **molla del 2° ordine** (momentum: vola via → indugia → rientra), under-damped.
+- Look: sfondo quasi nero, **DOF** marcato (ammorbidisce/impacca le spore) + **Bloom** sul ciano.
 - NB: la "D" ciano a lame radiali dell'**intro/preloader** è un elemento DIVERSO (non l'hover).
 
 ### 11.2 Cosa abbiamo FATTO (commit su `feat/webgl-refactor`, **nessun push**)
@@ -454,7 +451,6 @@ hover disperde → rientra.**
 | `afd9253` | Look "spora": falloff gaussiana soft, varianza dimensione, pelle smorzata a riposo. |
 | `a2e8345` | Più dense + grandi (griglia 256→320). |
 | `ae85111` | **Packed**: griglia 448 (~200k/strato), varianza stretta (0.7–1.6×), core spora più pieno (`smoothstep 0.5→0.18`); brightness smorzata (corpo viola **sotto soglia bloom** = massa solida; pelle ciano tenue). |
-| (spores) | **Mode `spores`** — la primitiva DDD-corretta dopo il teardown del bundle: UN layer under-damped di **icosfere istanziate SHADED OPACHE** (`createSporeComputeNodeBuild`: stesso kernel compute, render via `positionNode = positionLocal·scale + positionBuffer.toAttribute()`, pattern snow r184; lambert + rim ciano + hash-AO, raggio world ≈ markHeight/47, griglia 192² ≈ 37k) + **mesh occluder scura** sotto la crosta. Verificato live su WebGPU: crosta viola packed a riposo → burst ciano con momentum su hover → ricomposizione ~2 s; console pulita; default ancora `particles-static`. |
 
 **File chiave:**
 - `src/webgl/gpgpu/gpgpuNodeSim.ts` → `createGpgpuComputeNodeSim` (compute), `createGpgpuNodeSim` (FBO, fallback WebGL2), `createStaticParticleNodeBuild` (analitico).
@@ -462,22 +458,22 @@ hover disperde → rientra.**
 - `src/webgl/HeroLogo.tsx` → routing backend + build dei due strati + feed per-frame.
 - `src/webgl/geometry/sersanMark.ts` → `sampleMarkHomePositions(geo, size, {frontBias,normalOffset,volumeJitter})`.
 
-### 11.3 Cosa resta DA FARE (aggiornato dopo il mode `spores`)
+### 11.3 Cosa resta DA FARE
 
-1. ⭐ **Approvazione look `spores`** (il candidato default). Toggle in dev:
-   `window.__sersanFx.getState().set({ heroRenderMode: "spores" })` — knob leva:
-   `sporeSize` / `sporeEmissive` (+ i force knob gpgpu* NON si applicano alle spore:
-   usano il preset `SPORE_LAYER`).
-2. **Perf a finestra attiva**: misurare i 60fps col tab in foreground (rAF è throttled in
-   background, la misura da CDP non è attendibile). 37k × 80 tri ≈ 3M tri opachi: atteso OK.
-3. **Fallback**: su sub-backend WebGL2 / flag-OFF il mode `spores` degrada a solo-occluder →
-   instradare a `createStaticParticleNodeBuild` (analitico) come per il 2layer. Il path WebGL
-   puro ha anche il crash preesistente del postprocessing (`EffectComposer.getContextAttributes`).
-4. **Flip del default** `heroRenderMode` → `spores` SOLO dopo il fallback (3): oggi un browser
-   senza WebGPU vedrebbe il mark senza particelle.
-5. **Fine-tuning vs DDD** (in leva): varianza di valore per-spora, intensità rim, soglia del
-   burst ciano (SPEED_COLOR_K), envelope di scala in volo (DDD: shrink in morte + pulse in
-   rinascita — opzionale).
-6. **QA** multi-viewport + cleanup: valutare il ritiro dei mode sprite (`particles-2layer`)
-   quando `spores` è approvato.
-7. ~~DOF locale all'hero~~ — **CASSATO**: il bundle DDD spedisce `bokehAmount: 0`.
+1. ⭐ **OUTER/skin = spore più GRANDI e DENSE** (feedback prioritario). Oggi la PELLE è
+   smorzata/piccola rispetto al corpo; va **invertito**: la pelle (strato esterno, ciano) deve
+   essere LA protagonista — spore grandi, dense, packed, vicine. Probabili leve: alzare
+   `SKIN_LAYER.POINT_SIZE` + densità della skin (griglia/conteggio skin) + alpha; tenere il
+   **corpo più contenuto/scuro** dietro. Valutare densità PER-STRATO (skin densa, body meno) per
+   non far esplodere il conteggio totale.
+2. **Bilanciamento colore**: corpo più scuro/navy (la D DDD è quasi nera al cuore), ciano sui
+   bordi + esplosione in hover.
+3. **Perf** ⚠️: 448²×2 ≈ **400k** sprite grandi additivi → pesante, primo render lento. Verificare
+   60fps; se scatta, densità per-strato o ridurre la griglia. Probabile sweet-spot: skin densa,
+   body meno denso.
+4. **DOF locale all'hero** (non globale: sfocerebbe testo/linea). È l'ultimo tocco "materico" DDD.
+5. **Fallback**: sub-backend WebGL2 (compute no-op lì, #31221) + flag-OFF per il mode 2-layer →
+   instradare a `createStaticParticleNodeBuild` (analitico, robusto ovunque). Il path WebGL puro
+   ha anche un crash preesistente nel postprocessing (`EffectComposer.getContextAttributes`).
+6. **Flip del default** `heroRenderMode` → `particles-2layer` quando il look è approvato.
+7. **QA** multi-viewport + console pulita; rimuovere l'eventuale codice di debug.

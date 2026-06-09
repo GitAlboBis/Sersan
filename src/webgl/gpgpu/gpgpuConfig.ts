@@ -275,11 +275,11 @@ export const SPORE_LAYER: {
     ...DEFAULT_GPGPU_CONFIG,
     // UNDER-DAMPED (ζ = 3.5/(2·√20) ≈ 0.39): sprays on hover, hangs, eases back
     // over ~1–2 s — the whole layer is the protagonist now (no separate skin).
-    SPRING: 20,
-    DAMPING: 3.5,
-    PUSH: 60,
-    RADIUS: 0.6,
-    MAX_SPEED: 4.5,
+    SPRING: 30,
+    DAMPING: 5,
+    PUSH: 70,
+    RADIUS: 0.5,
+    MAX_SPEED: 5,
     TURB_BASE: 0.03,
     TURB_MOVE: 1.6,
     TURB_DISP_K: 5,
@@ -301,10 +301,10 @@ export const SPORE_LAYER: {
     RIM: 0.5,
     SPEED_COLOR_K: 0.55,
     BASE_EMISSION: 0,
-    LIFE_DECAY: 50,
-    LIFE_HEAL: 0.3,
-    LIFE_DIE: 1.6,
-    LIFE_REGROW: 0.8,
+    LIFE_DECAY: 40,
+    LIFE_HEAL: 0.2,
+    LIFE_DIE: 1.5,
+    LIFE_REGROW: 1.0,
   },
 };
 
@@ -323,14 +323,17 @@ export const SPORE_CORE_LAYER: {
 } = {
   config: {
     ...DEFAULT_GPGPU_CONFIG,
-    // Stiff + calm: the core shivers under the cursor but holds the letterform.
-    SPRING: 48,
-    DAMPING: 8.5,
-    PUSH: 16,
-    RADIUS: 0.45,
-    MAX_SPEED: 2.5,
+    // PINNED: the core must hold the letterform even with the cursor parked on
+    // it (user report: PUSH 16 let the core spray too, exposing the dark
+    // occluder in the hole). Whisper of push for life, over-damped stiff
+    // spring + tiny speed clamp → it shivers, never leaves.
+    SPRING: 70,
+    DAMPING: 11,
+    PUSH: 4,
+    RADIUS: 0.35,
+    MAX_SPEED: 1.2,
     TURB_BASE: 0.02,
-    TURB_MOVE: 0.5,
+    TURB_MOVE: 0.2,
     TURB_DISP_K: 6,
   },
   // Centers slightly OUT of the mark surface (+0.008 ≈ 0.4 radius) so most of
