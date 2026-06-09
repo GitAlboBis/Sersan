@@ -1088,6 +1088,7 @@ export interface SporeRenderParams {
   LIFE_HEAL: number;
   LIFE_DIE: number;
   LIFE_REGROW: number;
+  BASE_EMISSION: number;
 }
 
 export function createSporeComputeNodeBuild(
@@ -1335,8 +1336,19 @@ export function createSporeComputeNodeBuild(
       .mul(uRim as unknown as AnyNode)
       .mul(float(0.25).add(t.mul(0.75)));
 
+    // Always-on baseline emission (CORE shell: the layer carries its own
+    // light, f_007 / live DDD zoom). Gently lambert-shaped so the lit side
+    // glows brighter (the "light effect" on the revealed layer) but WITHOUT
+    // the ao darkening — the glow fills the crevices, the albedo term above
+    // keeps the per-ball form.
+    const baseGlow = (uEmissionCol as unknown as AnyNode)
+      .toVec3()
+      .mul(float(spore.BASE_EMISSION))
+      .mul(float(0.55).add(lambert.mul(0.45)));
+
     const col = lit
       .add(emission)
+      .add(baseGlow)
       .add((uEmissionCol as unknown as AnyNode).toVec3().mul(rim));
     // Opaque pipeline → the scroll fade darkens toward the near-black bg
     // (the shell also scales/recedes during the fade, so this reads as a fade).

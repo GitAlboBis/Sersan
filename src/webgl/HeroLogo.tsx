@@ -75,6 +75,7 @@ import {
   BODY_LAYER,
   SKIN_LAYER,
   SPORE_LAYER,
+  SPORE_CORE_LAYER,
   SPORE_SIZE_BY_TIER,
   SPORE_LITE_RADIUS_SCALE,
   SPORE_OCCLUDER_COLOR,
@@ -188,6 +189,16 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // SPORES: the DDD-correct render — instanced SHADED icospheres on the compute
   // sim + a solid dark occluder mark (bundle teardown, see gpgpuConfig).
   const showSpores = heroRenderMode === "spores";
+  // Spore mode needs TRUE WebGPU compute. Flag-OFF (plain WebGL2 renderer) is
+  // known synchronously; the WebGPURenderer's WebGL2 sub-backend is detected in
+  // the spore build effect (async) and flips this state. Either way the mode
+  // DEGRADES to the robust static-particle mark instead of going blank.
+  const [sporeBackendFallback, setSporeBackendFallback] = useState(false);
+  const sporeStaticFallback =
+    showSpores && (!webgpuEnabled() || sporeBackendFallback);
+  // The static build now serves two masters: the explicit debug mode and the
+  // spores degradation path.
+  const showStaticBuild = showStatic || sporeStaticFallback;
 
   const worldViewWidth = WORLD_VIEW_HEIGHT * (size.width / size.height);
 
@@ -240,33 +251,52 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // === Home positions: SIZE×SIZE surface samples → the rest field. ==========
   // homeRGBA seeds the home/position float textures; aRef is the per-instance
   // grid UV the render uses to look up its own particle. The mesh is unrendered.
+  // GATED on the modes that consume it (448² ≈ 200k samples is real startup
+  // work — don't pay it under the shipping spores mode).
   const homeField = useMemo(
-    () => sampleMarkHomePositions(bodyGeometry, gridSize),
-    [bodyGeometry, gridSize],
+    () =>
+      showParticles || showStaticBuild
+        ? sampleMarkHomePositions(bodyGeometry, gridSize)
+        : null,
+    [bodyGeometry, gridSize, showParticles, showStaticBuild],
   );
 
-  // Two-layer home fields (particles-2layer). BODY: lower front-bias coats the
-  // depth + inward volume jitter → reads as a solid violet volume. SKIN: offset
-  // OUT along +normal so the reactive cyan glow floats just over the body.
+  // Two-layer home fields (particles-2layer only). BODY: lower front-bias coats
+  // the depth + inward volume jitter → reads as a solid violet volume. SKIN:
+  // offset OUT along +normal so the reactive cyan glow floats just over it.
   const bodyHome = useMemo(
-    () => sampleMarkHomePositions(bodyGeometry, gridSize, BODY_LAYER.sampling),
-    [bodyGeometry, gridSize],
+    () =>
+      show2Layer
+        ? sampleMarkHomePositions(bodyGeometry, gridSize, BODY_LAYER.sampling)
+        : null,
+    [bodyGeometry, gridSize, show2Layer],
   );
   const skinHome = useMemo(
-    () => sampleMarkHomePositions(bodyGeometry, gridSize, SKIN_LAYER.sampling),
-    [bodyGeometry, gridSize],
+    () =>
+      show2Layer
+        ? sampleMarkHomePositions(bodyGeometry, gridSize, SKIN_LAYER.sampling)
+        : null,
+    [bodyGeometry, gridSize, show2Layer],
   );
 
-  // Spore home field — its OWN (smaller) grid: ~37k full / ~16k lite, the DDD
-  // count ballpark. Gated on the mode so the sampling cost isn't paid by the
-  // shipping path; toggling the mode re-renders and builds it on demand.
+  // Spore home fields — TWO shells on their own (smaller) grid: the erodible
+  // violet CRUST outside + the immortal glowing cyan CORE inset beneath it
+  // (f_007: the revealed layer is the same spore material, lit). Gated on the
+  // mode so the sampling cost isn't paid by the shipping path.
   const sporeGridSize = SPORE_SIZE_BY_TIER[tier] ?? SPORE_SIZE_BY_TIER.lite;
-  const sporeHome = useMemo(
+  const sporeHomes = useMemo(
     () =>
-      showSpores
-        ? sampleMarkHomePositions(bodyGeometry, sporeGridSize, SPORE_LAYER.sampling)
+      showSpores && !sporeStaticFallback
+        ? [
+            sampleMarkHomePositions(bodyGeometry, sporeGridSize, SPORE_LAYER.sampling),
+            sampleMarkHomePositions(
+              bodyGeometry,
+              sporeGridSize,
+              SPORE_CORE_LAYER.sampling,
+            ),
+          ]
         : null,
-    [bodyGeometry, sporeGridSize, showSpores],
+    [bodyGeometry, sporeGridSize, showSpores, sporeStaticFallback],
   );
 
   // Base spore radius in MODEL space: DDD's diameter ≈ markHeight/47, scaled up
@@ -330,6 +360,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   const [glsl, setGlsl] = useState<GlslGpgpu | null>(null);
   useEffect(() => {
     if (webgpuEnabled() || !gpgpuOk || floatType == null) return;
+    if (!showParticles || !homeField) return;
     const rig = createGpgpuSim(
       gl as THREE.WebGLRenderer,
       homeField.homeRGBA,
@@ -353,12 +384,13 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       setGlsl(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gpgpuOk, floatType, gridSize, homeField]);
+  }, [gpgpuOk, floatType, gridSize, homeField, showParticles]);
 
   // === TSL lazy (ON) ========================================================
   const [tsl, setTsl] = useState<TslGpgpu | null>(null);
   useEffect(() => {
     if (!webgpuEnabled() || !gpgpuOk || floatType == null) return;
+    if (!showParticles || !homeField) return;
     let cancelled = false;
     let built: TslGpgpu | null = null;
     void Promise.all([
@@ -419,7 +451,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       setTsl(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gpgpuOk, floatType, gridSize, homeField]);
+  }, [gpgpuOk, floatType, gridSize, homeField, showParticles]);
 
   // === BISECTION static build ==============================================
   // Built only when the mode asks for it. OFF → synchronous GLSL static build;
@@ -434,7 +466,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   }
   const [glslStatic, setGlslStatic] = useState<GlslStatic | null>(null);
   useEffect(() => {
-    if (webgpuEnabled() || !showStatic) return;
+    if (webgpuEnabled() || !showStaticBuild || !homeField) return;
     const build = createGpgpuStaticBuild(
       config,
       homeField.homeRGBA,
@@ -447,11 +479,11 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       setGlslStatic(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showStatic, gridSize, homeField]);
+  }, [showStaticBuild, gridSize, homeField]);
 
   const [tslStatic, setTslStatic] = useState<TslStatic | null>(null);
   useEffect(() => {
-    if (!webgpuEnabled() || !showStatic) return;
+    if (!webgpuEnabled() || !showStaticBuild || !homeField) return;
     let cancelled = false;
     let built: TslStatic | null = null;
     void Promise.all([
@@ -492,7 +524,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       setTslStatic(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showStatic, gridSize, homeField]);
+  }, [showStaticBuild, gridSize, homeField]);
 
   // === TWO-LAYER build (particles-2layer) ===================================
   // Two independent momentum rigs (BODY then SKIN), same dual-backend discipline
@@ -508,6 +540,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   const [glsl2, setGlsl2] = useState<GlslLayer[] | null>(null);
   useEffect(() => {
     if (webgpuEnabled() || !gpgpuOk || floatType == null || !show2Layer) return;
+    if (!bodyHome || !skinHome) return;
     const defs = [
       { spec: BODY_LAYER, home: bodyHome },
       { spec: SKIN_LAYER, home: skinHome },
@@ -557,6 +590,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   const [tsl2, setTsl2] = useState<TslLayer[] | null>(null);
   useEffect(() => {
     if (!webgpuEnabled() || !gpgpuOk || floatType == null || !show2Layer) return;
+    if (!bodyHome || !skinHome) return;
     let cancelled = false;
     let built: TslLayer[] | null = null;
     void Promise.all([
@@ -639,11 +673,11 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     uEmissive: { value: number };
     dispose: () => void;
   }
-  const [tslSpore, setTslSpore] = useState<TslSpore | null>(null);
+  const [tslSpore, setTslSpore] = useState<TslSpore[] | null>(null);
   useEffect(() => {
-    if (!webgpuEnabled() || !gpgpuOk || !showSpores || !sporeHome) return;
+    if (!webgpuEnabled() || !gpgpuOk || !showSpores || !sporeHomes) return;
     let cancelled = false;
-    let built: TslSpore | null = null;
+    let built: TslSpore[] | null = null;
     void Promise.all([
       import("three/webgpu"),
       import("three/tsl"),
@@ -656,37 +690,45 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         !!bk &&
         bk.isWebGLBackend !== true &&
         typeof (gl as unknown as { compute?: unknown }).compute === "function";
-      if (!isWebGPUBackend) return;
-      const cfg: GpgpuConfig = { ...SPORE_LAYER.config, SIZE: sporeGridSize };
-      const b = mod.createSporeComputeNodeBuild(
-        gl as never,
-        webgpu as never,
-        tslNs as never,
-        sporeHome.homeRGBA,
-        sporeHome.aRef,
-        sporeGridSize,
-        cfg,
-        SPORE_LAYER.spore,
-        sporeBaseRadius,
-      );
-      built = {
-        rig: b.rig,
-        geometry: b.geometry as unknown as THREE.InstancedBufferGeometry,
-        material: b.material as unknown as THREE.Material,
-        uFade: b.uFade,
-        uSporeRadius: b.uSporeRadius,
-        uEmissive: b.uEmissive,
-        dispose: b.dispose,
-      };
+      if (!isWebGPUBackend) {
+        // WebGL2 sub-backend: storage compute no-ops there (#31221) → degrade
+        // the spores mode to the static-particle mark instead of going blank.
+        setSporeBackendFallback(true);
+        return;
+      }
+      const defs = [SPORE_LAYER, SPORE_CORE_LAYER];
+      built = defs.map((layer, i) => {
+        const cfg: GpgpuConfig = { ...layer.config, SIZE: sporeGridSize };
+        const b = mod.createSporeComputeNodeBuild(
+          gl as never,
+          webgpu as never,
+          tslNs as never,
+          sporeHomes[i].homeRGBA,
+          sporeHomes[i].aRef,
+          sporeGridSize,
+          cfg,
+          layer.spore,
+          sporeBaseRadius,
+        );
+        return {
+          rig: b.rig,
+          geometry: b.geometry as unknown as THREE.InstancedBufferGeometry,
+          material: b.material as unknown as THREE.Material,
+          uFade: b.uFade,
+          uSporeRadius: b.uSporeRadius,
+          uEmissive: b.uEmissive,
+          dispose: b.dispose,
+        };
+      });
       setTslSpore(built);
     });
     return () => {
       cancelled = true;
-      built?.dispose();
+      built?.forEach((b) => b.dispose());
       setTslSpore(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gpgpuOk, sporeGridSize, sporeHome, showSpores]);
+  }, [gpgpuOk, sporeGridSize, sporeHomes, showSpores]);
 
   // Active rig + render mesh. OFF → GLSL (synchronous); ON → TSL once resolved.
   const rig = glsl?.rig ?? tsl?.rig;
@@ -811,7 +853,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     // no rig to step) and analytically displaces particles near the cursor in
     // the vertex shader. Feed it the model-space cursor + eased hover so the
     // lift fades in/out, plus the live render/force knobs.
-    if (showStatic) {
+    if (showStaticBuild) {
       const dprStatic = Math.min(gl.getPixelRatio(), 2);
 
       // Eased hover: target 1 while the hero is hovered (and a pointer is
@@ -939,7 +981,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     }
 
     // --- SPORES (instanced shaded spheres on the compute sim) ---------------
-    if (showSpores) {
+    if (showSpores && !sporeStaticFallback) {
       // The opaque occluder follows the scroll fade by darkening toward the
       // near-black bg (the shell also scales/recedes, so it reads as a fade).
       sporeOccluderMaterial.color.setRGB(
@@ -970,11 +1012,12 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       tickParams.dt = delta;
       tickParams.time = simTimeRef.current;
       tickParams.mouse.copy(modelMouse);
-      tslSpore.rig.tick(tickParams);
-
-      tslSpore.uFade.value = fade;
-      tslSpore.uSporeRadius.value = sporeBaseRadius * fx.sporeSize;
-      tslSpore.uEmissive.value = fx.sporeEmissive;
+      for (const layer of tslSpore) {
+        layer.rig.tick(tickParams);
+        layer.uFade.value = fade;
+        layer.uSporeRadius.value = sporeBaseRadius * fx.sporeSize;
+        layer.uEmissive.value = fx.sporeEmissive;
+      }
       return;
     }
 
@@ -1084,7 +1127,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // exactly like solid + particles. Renders once the build resolves
   // (synchronous on OFF; after the lazy TSL chunk on ON).
   const staticMesh =
-    showStatic && staticGeometry && staticMaterial ? (
+    showStaticBuild && staticGeometry && staticMaterial ? (
       <mesh
         geometry={staticGeometry}
         material={staticMaterial}
@@ -1114,20 +1157,22 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         ))
       : null;
 
-  // SPORE meshes (spores): the solid dark occluder mark under the instanced
-  // sphere crust. BOTH opaque + depth-tested — the depth buffer does the
-  // compositing (front balls occlude back balls and nest into the occluder),
-  // so no renderOrder/blending is involved.
-  const sporeMeshes = showSpores ? (
+  // SPORE meshes (spores): dark occluder mark + TWO instanced sphere shells
+  // (violet erodible crust outside, glowing cyan immortal core beneath). ALL
+  // opaque + depth-tested — the depth buffer does the compositing (front balls
+  // occlude back balls and nest into the occluder), no renderOrder/blending.
+  const sporeMeshes =
+    showSpores && !sporeStaticFallback ? (
     <>
       <mesh geometry={bodyGeometry} material={sporeOccluderMaterial} />
-      {tslSpore ? (
+      {tslSpore?.map((layer, i) => (
         <mesh
-          geometry={tslSpore.geometry}
-          material={tslSpore.material}
+          key={i}
+          geometry={layer.geometry}
+          material={layer.material}
           frustumCulled={false}
         />
-      ) : null}
+      ))}
     </>
   ) : null;
 

@@ -172,10 +172,12 @@ export const SKIN_LAYER: GpgpuLayerConfig = {
   config: {
     ...DEFAULT_GPGPU_CONFIG,
     // UNDER-DAMPED: sprays far on hover, hangs, eases back over ~1–2 s.
+    // PUSH/RADIUS raised (user: the crust must move/shatter MORE — "si
+    // spostavano di più e si distruggevano"): wider kill zone, harder spray.
     SPRING: 20,
     DAMPING: 3.5,
-    PUSH: 60,
-    RADIUS: 0.6,
+    PUSH: 72,
+    RADIUS: 0.7,
     MAX_SPEED: 4.5,
     TURB_BASE: 0.04,
     TURB_MOVE: 1.8,
@@ -241,6 +243,12 @@ export interface SporeRenderConfig {
   RIM: number;
   /** Velocity → emission ramp factor (t = clamp(|vel|·K, 0, 1)). */
   SPEED_COLOR_K: number;
+  /**
+   * Resting HDR emission baseline (EMISSION color × this, always on). 0 for
+   * the dark outer crust; >0 on the CORE shell so it carries its own light —
+   * f_007 shows the revealed cyan layer GLOWING (bloom), not just tinted.
+   */
+  BASE_EMISSION: number;
   // --- Life state machine (DDD bundle ground truth) ------------------------
   // The cursor does NOT just push spores aside: excited spores DIE (shrink to
   // nothing mid-flight, exposing the azure core) and RESPAWN at home, regrowing
@@ -279,9 +287,9 @@ export const SPORE_LAYER: {
     // shared GpgpuConfig shape; the spore look lives in `spore` below).
   },
   // Moderate front bias (cover the front plate AND wrap the sides a little so
-  // the crust reads volumetric); centers pushed OUT along +normal ≈ 0.55×radius
-  // so the balls nest half-embedded on the occluder surface.
-  sampling: { frontBias: 0.3, normalOffset: 0.012, volumeJitter: 0.015 },
+  // the crust reads volumetric); centers pushed OUT along +normal ≈ one radius
+  // so the crust sits PROUD of the cyan core shell beneath (and erodes off it).
+  sampling: { frontBias: 0.3, normalOffset: 0.022, volumeJitter: 0.015 },
   spore: {
     DIAMETER_RATIO: 1 / 47,
     VAR_MIN: 0.7,
@@ -292,7 +300,66 @@ export const SPORE_LAYER: {
     EMISSIVE: 2.2,
     RIM: 0.5,
     SPEED_COLOR_K: 0.55,
+    BASE_EMISSION: 0,
     LIFE_DECAY: 50,
+    LIFE_HEAL: 0.3,
+    LIFE_DIE: 1.6,
+    LIFE_REGROW: 0.8,
+  },
+};
+
+/** CORE spore shell — the layer REVEALED when the violet crust erodes.
+ * f_007 ground truth: it is the SAME spore material (bumpy shaded balls, you
+ * can see the granularity), but CYAN and GLOWING, and it barely moves — DDD's
+ * `dist<0.5` population that never detaches. So: same icosphere render,
+ * azure-cyan albedo + always-on HDR emission (carries its own light → bloom),
+ * stiff calm spring (high SPRING/DAMPING, low PUSH = "lo strato sopra si
+ * sposta più facilmente"), and LIFE_DECAY 0 → immortal (never erodes). Sampled
+ * INSET along −normal so it sits a full spore-radius beneath the crust. */
+export const SPORE_CORE_LAYER: {
+  config: GpgpuConfig;
+  sampling: { frontBias: number; normalOffset: number; volumeJitter: number };
+  spore: SporeRenderConfig;
+} = {
+  config: {
+    ...DEFAULT_GPGPU_CONFIG,
+    // Stiff + calm: the core shivers under the cursor but holds the letterform.
+    SPRING: 48,
+    DAMPING: 8.5,
+    PUSH: 16,
+    RADIUS: 0.45,
+    MAX_SPEED: 2.5,
+    TURB_BASE: 0.02,
+    TURB_MOVE: 0.5,
+    TURB_DISP_K: 6,
+  },
+  // Centers slightly OUT of the mark surface (+0.008 ≈ 0.4 radius) so most of
+  // each cyan ball bulges out of the dark occluder → a FULLY-PACKED cyan crust
+  // (live DDD zoom: the revealed layer has no dark gaps), while still sitting
+  // under the violet shell at +0.022. A NEGATIVE inset buries the core inside
+  // the occluder volume → depth-tested away (first attempt's bug).
+  sampling: { frontBias: 0.3, normalOffset: 0.002, volumeJitter: 0.006 },
+  spore: {
+    DIAMETER_RATIO: 1 / 47,
+    // TIGHT variance, capped near 1: bigger core balls poke through the crust
+    // gap (crust sits only ~0.014 further out) and speckle the resting violet
+    // with white — the live DDD rest state is clean violet.
+    VAR_MIN: 0.8,
+    VAR_MAX: 1.05,
+    // BRIGHT luminous azure (user: the dimmed pastel pass killed the light —
+    // "la luce era meglio prima"): saturated blue-leaning emission well over
+    // the bloom threshold so the revealed core GLOWS electric, while the
+    // capped VAR above keeps it from speckling the resting crust. Albedo stays
+    // moderate so the per-ball shading still reads inside the glow.
+    ALBEDO: [0.55, 0.95, 1.0],
+    ALBEDO_MUL: 0.8,
+    EMISSION: [0.2, 0.95, 1.3],
+    EMISSIVE: 2.2,
+    RIM: 0.7,
+    SPEED_COLOR_K: 0.55,
+    BASE_EMISSION: 1.0,
+    // Immortal: decay 0 → the alive branch never drops below 1.
+    LIFE_DECAY: 0,
     LIFE_HEAL: 0.3,
     LIFE_DIE: 1.6,
     LIFE_REGROW: 0.8,
@@ -311,13 +378,10 @@ export const SPORE_SIZE_BY_TIER: Record<"full" | "lite", number> = {
  * exactly this: 0.015 → 0.0185). */
 export const SPORE_LITE_RADIUS_SCALE = 1.22;
 
-/** ELECTRIC-AZURE core of the inner occluder mesh under the spore crust (the
- * DDD "SOLID.buf" trick). User feedback vs the first pale pass: the revealed
- * interior must be "azzurro acceso ILLUMINATO, come il colore delle particelle"
- * — blue-dominant (not aqua-green) and GLOWING. HDR values above the ~1.0
- * selective-bloom threshold (+ toneMapped:false on the material) so the core
- * blooms like the excited cyan spores do; the fade multiplier still dims it on
- * scroll. */
+/** Inner occluder mesh — now BEHIND the cyan core shell (the glowing surface
+ * revealed on erosion is the SPORE_CORE_LAYER spheres, same material as the
+ * crust, per f_007). The occluder only plugs the deepest gaps so they read as
+ * shadowed cyan mass, not page background: dark navy-cyan, well below bloom. */
 export const SPORE_OCCLUDER_COLOR: [number, number, number] = [
-  0.35, 1.1, 1.7,
+  0.015, 0.1, 0.14,
 ];

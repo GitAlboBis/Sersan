@@ -198,10 +198,12 @@ export const useFxStore = create<FxState>((set) => ({
   heroOffsetX: 0.2,
   heroOffsetY: 0.0,
   heroPosZ: -0.3,
-  // SHIPPING hero: the static-particle render path (dense violet "52" + analytic
-  // cursor dispersion), which is the robust WebGPU look. "solid"/"particles"/
-  // "both" remain available for debugging via window.__sersanFx.
-  heroRenderMode: "particles-static",
+  // SHIPPING hero: the DDD spore mode (instanced shaded spheres — violet
+  // erodible crust + glowing azure core — on the compute momentum sim). Loads
+  // with the page like the rest of the WebGL scene; on browsers without true
+  // WebGPU compute, HeroLogo degrades it to the robust static-particle mark
+  // automatically. Other modes remain debug toggles via window.__sersanFx.
+  heroRenderMode: "spores",
   sporeSize: 1.0,
   sporeEmissive: SPORE_LAYER.spore.EMISSIVE,
   particleOpacity: 0.35,
