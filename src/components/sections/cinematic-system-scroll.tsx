@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Magnetic } from "@/components/ui/magnetic";
 import { HeroDragLayer } from "@/components/hero-drag-layer";
 import { useLanguage } from "@/components/language-provider";
+import { useTextMorphStore } from "@/webgl/store/textMorphStore";
 import type { Language } from "@/data/translations/types";
 import { START_HREF } from "@/lib/site";
 import { cn } from "@/lib/utils";
@@ -322,21 +323,32 @@ function StagePanel({
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
 
-  // Drive opacity via rAF (no React re-renders). Early-returns when progress
-  // is unchanged so an idle (un-scrolled) spine stops thrashing styles.
+  // Drive opacity via rAF (no React re-renders). Early-returns when the
+  // computed opacity is unchanged so an idle (un-scrolled) spine stops
+  // thrashing styles.
   useEffect(() => {
     let raf = 0;
-    let lastP = Number.NaN;
+    let lastO = Number.NaN;
     let lit = true; // last applied inert/aria state — start "lit" so first tick syncs
     const tick = () => {
       const el = ref.current;
       const p = progressRef.current;
-      if (el && p !== lastP) {
-        lastP = p;
-        const o = panelOpacity(p, stage.start, stage.end, isHero, isFinal);
+      // The WebGL text-particle intro (HeroTextParticles) owns the hero
+      // headline visuals while active: the hero panel multiplies in its
+      // domReveal (0 during "Sersan AI" + the scatter/recompose, → 1 as the
+      // particle headline settles). Inactive (any fallback) → multiplier 1,
+      // behavior identical to before.
+      const morph = isHero ? useTextMorphStore.getState() : null;
+      const domMul = morph && morph.active ? morph.domReveal : 1;
+      const baseO = panelOpacity(p, stage.start, stage.end, isHero, isFinal);
+      const o = baseO * domMul;
+      if (el && o !== lastO) {
+        lastO = o;
         el.style.opacity = String(o);
-        // Subtle Y offset for entry — anchored at the top of viewport
-        const yOffset = (1 - o) * 16;
+        // Subtle Y offset for entry — anchored at the top of viewport. Uses
+        // the BASE opacity (not the morph-multiplied one) so the H1 rect the
+        // particle system anchors to never shifts while the morph hides it.
+        const yOffset = (1 - baseO) * 16;
         el.style.transform = `translate3d(0, ${yOffset}px, 0)`;
         // Below this threshold the panel is visually hidden: disable pointer
         // events AND remove it from focus order + the a11y tree (inert).
@@ -406,7 +418,12 @@ function StagePanel({
           {isHero ? (
             // The hero stage is the page's H1. Subsequent stages are H2s
             // because the cinematic spine reads as one section to crawlers.
-            <h1 className="font-display text-[clamp(2.35rem,4.8vw,4.5rem)] leading-[0.98] tracking-[-0.03em] text-ink mb-4 text-balance">
+            // data-hero-headline: anchor + typography source for the WebGL
+            // text-particle intro (HeroTextParticles samples this element).
+            <h1
+              data-hero-headline
+              className="font-display text-[clamp(2.35rem,4.8vw,4.5rem)] leading-[0.98] tracking-[-0.03em] text-ink mb-4 text-balance"
+            >
               {stage.title}
             </h1>
           ) : (

@@ -1016,7 +1016,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       // progressively across the whole pin, fully scattered just before the
       // mark leaves the screen (user: "la dissolvenza totale andava bene
       // prima"). Regrows in place when scrolled back.
-      const burst = THREE.MathUtils.smoothstep(hp, 0.02, 0.88);
+      const burst = THREE.MathUtils.smoothstep(hp, 0.02, 1.5);
 
       // The opaque occluder follows the scroll fade AND the burst (a solid
       // dark slab can't hang around while its spore shells scatter).

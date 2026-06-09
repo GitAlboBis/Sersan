@@ -17,6 +17,7 @@ import { FrameDriver } from "./FrameDriver";
 import { webgpuEnabled, createWebGPURenderer } from "./renderer/createRenderer";
 import { SignatureLine } from "./SignatureLine";
 import { HeroLogo } from "./HeroLogo";
+import { HeroTextParticles } from "./HeroTextParticles";
 // NOTE: CurlTubeField (the faint curl-noise background haze) is intentionally
 // UNMOUNTED — the user disliked the thin background arcs. The component file is
 // kept in place so it's trivial to restore (re-add the import + the gated mount
@@ -130,6 +131,11 @@ function RouteRitual({
         <Suspense fallback={null}>
           <HeroLogo tier={tier} anchors={anchors} />
         </Suspense>
+        {/* Lusion-style pinned text intro: "Sersan AI" particles scatter and
+            recompose into the real headline on the first scroll (the hero is
+            already pinned, so only the text moves). True-WebGPU only; every
+            fallback leaves the DOM hero untouched. */}
+        <HeroTextParticles tier={tier} anchors={anchors} />
         {/* Blender-built gateway at the end of the home story (66KB GLB). */}
         <Suspense fallback={null}>
           <GatewayPortal tier={tier} anchors={anchors} />

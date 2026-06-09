@@ -1445,6 +1445,229 @@ export function createSporeComputeNodeBuild(
 }
 
 // ===========================================================================
+// TEXT MORPH — compute particles morphing between two sampled texts
+// (TSL / true-WebGPU only — same storage-buffer discipline as the spores)
+// ===========================================================================
+// The hero intro: home field A = "Sersan AI", home field B = the real
+// headline. uMorph (0..1, scroll-driven) sweeps a per-particle staggered
+// blend of the spring TARGET from A to B; the under-damped spring + a
+// mid-transit turbulence kick give the "scatter and recompose" feel. At
+// uMorph 0/1 the spring pins the text razor-crisp.
+export interface TextMorphNodeBuild {
+  geometry: InstancedGeoLike;
+  material: NodeMaterialLike;
+  /** Morph progress 0 (text A) → 1 (text B), scroll-driven. */
+  uMorph: UniformNode<number>;
+  /** Global alpha (cross-fade against the DOM headline). */
+  uFade: UniformNode<number>;
+  uPointSize: UniformNode<number>;
+  uPixelRatio: UniformNode<number>;
+  uViewport: UniformNode<unknown>;
+  tick: (p: { dt: number; time: number }) => void;
+  dispose: () => void;
+}
+
+export interface TextMorphParams {
+  SPRING: number;
+  DAMPING: number;
+  MAX_SPEED: number;
+  /** Mid-transit turbulence amplitude (world units/s²-ish). */
+  TURB: number;
+  POINT_SIZE: number;
+  POINT_ALPHA: number;
+  EMISSIVE: number;
+  COL_COLD: [number, number, number];
+  COL_HOT: [number, number, number];
+}
+
+export function createTextMorphComputeBuild(
+  gl: RendererLike,
+  webgpu: WebGPUSymbolsGpgpu,
+  tsl: TslSymbolsGpgpu,
+  homeA: Float32Array, // count×3 world-unit offsets from block center
+  homeB: Float32Array,
+  count: number,
+  params: TextMorphParams,
+): TextMorphNodeBuild {
+  const {
+    InstancedBufferGeometry,
+    BufferAttribute,
+    MeshBasicNodeMaterial,
+    Color,
+    Vector2,
+    AdditiveBlending,
+    DoubleSide,
+  } = webgpu;
+  const {
+    uniform,
+    positionLocal,
+    modelViewMatrix,
+    cameraProjectionMatrix,
+    Fn,
+    vec3,
+    vec4,
+    float,
+    length,
+    max,
+    min,
+    clamp,
+    exp,
+    sin,
+    mix,
+    smoothstep,
+    Discard,
+    varying,
+    hash,
+    instancedArray,
+    instanceIndex,
+  } = tsl;
+
+  const positionBuffer = instancedArray(homeA.slice(), "vec3");
+  const velocityBuffer = instancedArray(count, "vec3");
+  const homeABuffer = instancedArray(homeA.slice(), "vec3");
+  const homeBBuffer = instancedArray(homeB.slice(), "vec3");
+
+  const uMorph = uniform(0) as UniformNode<number>;
+  const uDelta = uniform(1 / 60) as UniformNode<number>;
+  const uTime = uniform(0) as UniformNode<number>;
+  const morphN = uMorph as unknown as AnyNode;
+  const dtN = uDelta as unknown as AnyNode;
+  const timeN = uTime as unknown as AnyNode;
+  const SPRING = float(params.SPRING);
+  const DAMPING = float(params.DAMPING);
+  const MAX_SPEED = float(params.MAX_SPEED);
+  const TURB = float(params.TURB);
+
+  const simulate = Fn(() => {
+    const pos = positionBuffer.element(instanceIndex);
+    const velH = velocityBuffer.element(instanceIndex);
+    const hA = homeABuffer.element(instanceIndex);
+    const hB = homeBBuffer.element(instanceIndex);
+
+    // Per-particle staggered transition: particle r starts its A→B journey at
+    // uMorph = r·0.55 and completes it 0.45 later → a travelling recomposition
+    // wave instead of a uniform pop.
+    const r = hash(instanceIndex).toVar();
+    const m = clamp(morphN.sub(r.mul(0.55)).div(0.45), 0.0, 1.0).toVar();
+    const target = mix(hA, hB, smoothstep(0.0, 1.0, m)).toVar();
+
+    const vel = velH.toVar();
+    const acc = target.sub(pos).mul(SPRING).toVar();
+
+    // Mid-transit scatter: peaks at m=0.5, zero at rest on either text, so
+    // particles wander organically while travelling and land crisp.
+    const transit = m.mul(float(1.0).sub(m)).mul(4.0).toVar();
+    const turb = vec3(
+      sin(pos.y.mul(7.0).add(timeN.mul(2.1)).add(r.mul(6.28))),
+      sin(pos.x.mul(8.0).add(timeN.mul(1.7)).add(r.mul(4.1))),
+      sin(pos.x.mul(5.0).add(pos.y.mul(5.0)).add(timeN.mul(1.3))).mul(0.4),
+    );
+    acc.addAssign(turb.mul(TURB).mul(transit));
+
+    vel.addAssign(acc.mul(dtN));
+    vel.mulAssign(exp(DAMPING.negate().mul(dtN)));
+    const sp = length(vel).toVar();
+    vel.assign(vel.mul(min(sp, MAX_SPEED).div(max(sp, 1e-4))));
+
+    velH.assign(vel);
+    pos.addAssign(vel.mul(dtN));
+  })().compute(count);
+
+  // --- Render: instanced billboard quads in device px (text = tiny motes) ---
+  const geometry = new InstancedBufferGeometry();
+  geometry.setAttribute(
+    "position",
+    new BufferAttribute(new Float32Array(QUAD_CORNERS), 3),
+  );
+  geometry.setIndex(new BufferAttribute(new Uint16Array(QUAD_INDEX), 1));
+  geometry.instanceCount = count;
+
+  const uPointSize = uniform(params.POINT_SIZE) as UniformNode<number>;
+  const uPixelRatio = uniform(1) as UniformNode<number>;
+  const uViewport = uniform(new Vector2(1, 1)) as UniformNode<unknown>;
+  const uFade = uniform(1) as UniformNode<number>;
+  const uColCold = uniform(
+    new Color().fromArray(params.COL_COLD),
+  ) as UniformNode<ColorLike>;
+  const uColHot = uniform(
+    new Color().fromArray(params.COL_HOT),
+  ) as UniformNode<ColorLike>;
+
+  const vSpeed = float(0).toVar();
+  const vRandSrc = float(0).toVar();
+
+  const material = new MeshBasicNodeMaterial();
+  material.vertexNode = Fn(() => {
+    const p = positionBuffer.element(instanceIndex).xyz.toVar();
+    const v = velocityBuffer.element(instanceIndex).xyz;
+    vSpeed.assign(length(v));
+    vRandSrc.assign(hash(instanceIndex));
+    const mv = modelViewMatrix.mul(vec4(p, 1.0)).toVar();
+    const dist = mv.z.negate();
+    const clip = cameraProjectionMatrix.mul(mv).toVar();
+    const sizeNode = (uPointSize as unknown as AnyNode)
+      .mul(uPixelRatio as unknown as AnyNode)
+      .mul(float(0.7).add(float(0.7).mul(vRandSrc)))
+      .div(max(dist, 0.001));
+    const corner = positionLocal.xy;
+    clip.xy.addAssign(
+      corner.mul(sizeNode).div(uViewport as unknown as AnyNode).mul(2.0).mul(clip.w),
+    );
+    return clip;
+  })();
+
+  const vQuadUv = varying(positionLocal.xy);
+  const vSpeedF = varying(vSpeed);
+  const vRandF = varying(vRandSrc);
+
+  const shade = Fn(() => {
+    const rr = length(vQuadUv);
+    const a = smoothstep(0.5, 0.12, rr).toVar();
+    const t = clamp(vSpeedF.mul(0.5), 0.0, 1.0);
+    const col = mix(uColCold as unknown as AnyNode, uColHot as unknown as AnyNode, t)
+      .toVec3()
+      .mul(float(1.0).add(vSpeedF.mul(0.25)))
+      .mul(float(0.75).add(float(0.4).mul(vRandF)))
+      .mul(float(params.EMISSIVE));
+    const alpha = a
+      .mul(float(params.POINT_ALPHA))
+      .mul(uFade as unknown as AnyNode)
+      .toVar();
+    Discard(alpha.lessThan(0.004));
+    return vec4(col, alpha);
+  })();
+  material.colorNode = (shade as AnyNode).xyz;
+  material.opacityNode = (shade as AnyNode).w;
+  material.transparent = true;
+  material.depthWrite = false;
+  material.depthTest = false;
+  material.blending = AdditiveBlending;
+  material.toneMapped = false;
+  material.side = DoubleSide;
+
+  function tick(p: { dt: number; time: number }) {
+    uDelta.value = p.dt;
+    uTime.value = p.time;
+    gl.compute(simulate);
+  }
+
+  return {
+    geometry,
+    material,
+    uMorph,
+    uFade,
+    uPointSize,
+    uPixelRatio,
+    uViewport,
+    tick,
+    dispose() {
+      geometry.dispose();
+      material.dispose();
+    },
+  };
+}
+
+// ===========================================================================
 // BISECTION DEBUG — STATIC billboard (TSL / flag-ON)
 // ===========================================================================
 export interface GpgpuStaticNodeBuild {
