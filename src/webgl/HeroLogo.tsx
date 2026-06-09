@@ -1008,12 +1008,15 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
 
     // --- SPORES (instanced shaded spheres on the compute sim) ---------------
     if (showSpores && !sporeStaticFallback) {
-      // Scroll-out dissolve: as the hero scrolls away the spores BURST from
-      // the logo center and die (staggered), so the mark scatters into space
-      // before it leaves the screen — and regrows when scrolled back. Window
-      // chosen just AHEAD of the recede/fade (0.74→0.97) so the scatter is the
-      // thing that dissolves the mark, not the opacity fade.
-      const burst = THREE.MathUtils.smoothstep(hp, 0.5, 0.88);
+      // Scroll-out dissolve: as soon as scrolling STARTS the spores begin to
+      // BURST from the logo center and die (staggered) — but the FULL
+      // dissolution completes late, where the recede/fade lives. Window
+      // (0.02 → 0.88): first spores fly with the first scroll ticks (user:
+      // "deve dissolversi da quando inizi a scrollare"), the mass erodes
+      // progressively across the whole pin, fully scattered just before the
+      // mark leaves the screen (user: "la dissolvenza totale andava bene
+      // prima"). Regrows in place when scrolled back.
+      const burst = THREE.MathUtils.smoothstep(hp, 0.02, 0.88);
 
       // The opaque occluder follows the scroll fade AND the burst (a solid
       // dark slab can't hang around while its spore shells scatter).
