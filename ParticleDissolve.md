@@ -415,45 +415,69 @@ Ispezione browser diretta del **2026-06-09** (Claude-in-Chrome) dell'intera pagi
 
 ---
 
-## 11. WebGPU FBO debug log (2026-06-09) — stato e localizzazione
+## 11. STATO — capito / fatto / da fare (aggiornato 2026-06-09)
 
-Implementato il mode **`particles-2layer`** (corpo+pelle momentum) su entrambi i backend;
-`tsc` pulito; default invariato (`particles-static`, sito non toccato). QA live su WebGPU:
+> Questa sezione è la **fonte di verità viva**. Le §1–§10 sopra restano valide come analisi;
+> qui sotto c'è lo stato reale dell'implementazione.
 
-**Sintomo:** in `particles` e `particles-2layer` su **WebGPU** le particelle **non
-formano il "52"** — nuvola diffusa + punto di convergenza luminoso. (Su WebGL il path è
-rotto a monte da un crash preesistente del postprocessing `EffectComposer` in `PostFX.tsx`
-— `getContextAttributes is not a function` — quindi niente A/B lì.)
+### 11.1 Cosa abbiamo CAPITO — ⚠️ SUPERSEDED dal teardown del bundle (2026-06-09 sera)
 
-**Localizzazione (decisiva):**
-- Leggendo la **`home` DataTexture** nel render via `textureLoad(home, ivec2(aRef·size))`
-  → il **"52" è PULITO**. ⇒ il **path di rendering è corretto** e `textureLoad` nel vertex
-  stage funziona su WebGPU.
-- Leggendo `posRead` (render-target seedato da `home`, anche congelando il sim) → **scramble**.
-  ⇒ il bug è nel **round-trip render-target** (scrittura via quad fullscreen → rilettura via
-  `textureLoad`): mismatch di **orientamento/layout** specifico WebGPU.
+> Il bundle di produzione DDD è stato scaricato e decompilato (vedi
+> `.trellis/tasks/06-08-gpgpu-particle-dissolve-hero-…/research/ddd-bundle-teardown-spore-render.md`).
+> La GROUND TRUTH corregge l'analisi a occhio qui sotto su 3 punti chiave:
+> 1. **Le spore NON sono punti additivi**: sono **emisferi low-poly istanziati ILLUMINATI**
+>    (11 vert / 10 tri, lighting per-vertex + AO da light field voxel), opachi, depth-tested.
+>    ~51k desktop / ~29k mobile, diametro ≈ **altezzaLettera/47** in world space.
+> 2. **NON sono due layer particellari**: UN sistema + attributo `dist` (core non si stacca,
+>    pelle esterna flasha ciano) + **mesh interna solida occludente** (SOLID.buf).
+> 3. **Il DOF NON c'entra**: la pipeline ha il bokeh ma spedisce `bokehAmount: 0`. Il look =
+>    dimensione geometrica + shading + bloom selettivo (threshold .35, emission nell'alpha).
+> Restano veri: molla/momentum percepito (da soft body XPBD + skinning), albedo viola ×0.25
+> a riposo (quasi nero), ciano solo su particelle veloci/in ricomposizione, sfondo quasi nero.
+- NB: la "D" ciano a lame radiali dell'**intro/preloader** è un elemento DIVERSO (non l'hover).
 
-**Tentativi fatti e NON risolutivi:**
-1. `textureLoad` (sampler-free) sulle letture del render — necessario per il vertex stage, ma non basta.
-2. `textureLoad` anche sulle letture del **sim** (fragment) — esclude il sampleType/sampler mismatch.
-3. **Seed dentro il frame-loop** (`tick`) invece che nell'effetto build — esclude "seed non eseguito su WebGPU".
-4. **Y-flip** del texel di lettura RT nel render — **né raw né flippato** combaciano con la scrittura
-   uv del seed ⇒ **non è un semplice flip**: il layout uv-write del seed non corrisponde ad `aRef`
-   in alcun orientamento banale.
+### 11.2 Cosa abbiamo FATTO (commit su `feat/webgl-refactor`, **nessun push**)
 
-Reference che FUNZIONA su WebGPU: `fluid/PointerFlowmap.ts` legge la RT con `texture(rt, uv())`
-(sampler, uv-space) ed è **self-consistent** (read+write nello stesso spazio uv), flippando Y
-solo verso lo spazio top-left del puntatore. Il nostro problema nasce perché il **render legge
-via `aRef`** (spazio della DataTexture, top-left) mentre la RT è bottom-left/storage-flipped.
+**La svolta — il FBO ping-pong si scrambla su WebGPU; la soluzione è il COMPUTE.** Il round-trip
+render-target (scrittura via quad → rilettura `textureLoad`) ha un mismatch di orientamento/layout
+solo su WebGPU (localizzato: leggere la `home` DataTexture rende pulito, leggere la RT no). Invece
+di combatterlo, si usa l'approccio **WebGPU-native: compute shader + storage buffer** (validato via
+Context7 + ricerca web + sorgente three r0.184). Il render legge la posizione via
+`positionBuffer.element(instanceIndex)` **nel vertex stage** → lettura storage, **niente
+sampler/texture/orientamento** → bug eliminato alla radice. **Verificato dal vivo: "52" pulito →
+hover disperde → rientra.**
 
-**Insight chiave per la soluzione:** poiché il render via **DataTexture** è pulito, una
-**DataTexture aggiornata da CPU** (posizioni della pelle simulate in JS, `needsUpdate` per
-frame) verrebbe letta dallo stesso render → pulita, **senza** il round-trip RT problematico.
-È l'**ibrido CPU→DataTexture**: stessa resa visiva (vero momentum), robusto su WebGPU.
+| Commit | Cosa |
+|---|---|
+| `6ed17a6` | `createGpgpuComputeNodeSim` (compute + `instancedArray` pos/vel/home + `Fn().compute()` + `gl.compute()` per frame). Routing in `HeroLogo`: **WebGPU → compute**, **WebGL2 sub-backend → FBO**. Detection: `backend.isWebGLBackend !== true && typeof gl.compute === 'function'` (il backend WebGPU lascia `isWebGLBackend` **undefined**, non `false`). |
+| `0fda914` | Mode **`particles-2layer`**: due strati (BODY+SKIN) entrambi su compute. Default invariato (`particles-static`). |
+| `afd9253` | Look "spora": falloff gaussiana soft, varianza dimensione, pelle smorzata a riposo. |
+| `a2e8345` | Più dense + grandi (griglia 256→320). |
+| `ae85111` | **Packed**: griglia 448 (~200k/strato), varianza stretta (0.7–1.6×), core spora più pieno (`smoothstep 0.5→0.18`); brightness smorzata (corpo viola **sotto soglia bloom** = massa solida; pelle ciano tenue). |
+| (spores) | **Mode `spores`** — la primitiva DDD-corretta dopo il teardown del bundle: UN layer under-damped di **icosfere istanziate SHADED OPACHE** (`createSporeComputeNodeBuild`: stesso kernel compute, render via `positionNode = positionLocal·scale + positionBuffer.toAttribute()`, pattern snow r184; lambert + rim ciano + hash-AO, raggio world ≈ markHeight/47, griglia 192² ≈ 37k) + **mesh occluder scura** sotto la crosta. Verificato live su WebGPU: crosta viola packed a riposo → burst ciano con momentum su hover → ricomposizione ~2 s; console pulita; default ancora `particles-static`. |
 
-**Prossime opzioni:**
-- (A) **Ibrido CPU→DataTexture** — riusa il render provato, evita il bug RT. *Consigliato.*
-- (B) Debug strumentato del round-trip RT: scrivere un pattern noto (es. il gradiente uv) nella
-  RT e leggerne la trasformazione esatta, per dedurre il rimappamento `uv↔storage`/`aRef` su
-  questo WebGPU e applicare l'esatta correzione. Incerto ma definitivo.
-- (C) Reverse-engineering degli shader esatti di Lusion (NB: il loro sito è **WebGL2**, non WebGPU).
+**File chiave:**
+- `src/webgl/gpgpu/gpgpuNodeSim.ts` → `createGpgpuComputeNodeSim` (compute), `createGpgpuNodeSim` (FBO, fallback WebGL2), `createStaticParticleNodeBuild` (analitico).
+- `src/webgl/gpgpu/gpgpuConfig.ts` → `BODY_LAYER`/`SKIN_LAYER`, `SIZE_BY_TIER` (448/224), falloff/varianza.
+- `src/webgl/HeroLogo.tsx` → routing backend + build dei due strati + feed per-frame.
+- `src/webgl/geometry/sersanMark.ts` → `sampleMarkHomePositions(geo, size, {frontBias,normalOffset,volumeJitter})`.
+
+### 11.3 Cosa resta DA FARE (aggiornato dopo il mode `spores`)
+
+1. ⭐ **Approvazione look `spores`** (il candidato default). Toggle in dev:
+   `window.__sersanFx.getState().set({ heroRenderMode: "spores" })` — knob leva:
+   `sporeSize` / `sporeEmissive` (+ i force knob gpgpu* NON si applicano alle spore:
+   usano il preset `SPORE_LAYER`).
+2. **Perf a finestra attiva**: misurare i 60fps col tab in foreground (rAF è throttled in
+   background, la misura da CDP non è attendibile). 37k × 80 tri ≈ 3M tri opachi: atteso OK.
+3. **Fallback**: su sub-backend WebGL2 / flag-OFF il mode `spores` degrada a solo-occluder →
+   instradare a `createStaticParticleNodeBuild` (analitico) come per il 2layer. Il path WebGL
+   puro ha anche il crash preesistente del postprocessing (`EffectComposer.getContextAttributes`).
+4. **Flip del default** `heroRenderMode` → `spores` SOLO dopo il fallback (3): oggi un browser
+   senza WebGPU vedrebbe il mark senza particelle.
+5. **Fine-tuning vs DDD** (in leva): varianza di valore per-spora, intensità rim, soglia del
+   burst ciano (SPEED_COLOR_K), envelope di scala in volo (DDD: shrink in morte + pulse in
+   rinascita — opzionale).
+6. **QA** multi-viewport + cleanup: valutare il ritiro dei mode sprite (`particles-2layer`)
+   quando `spores` è approvato.
+7. ~~DOF locale all'hero~~ — **CASSATO**: il bundle DDD spedisce `bokehAmount: 0`.

@@ -118,6 +118,21 @@ export default function LineDebug() {
         step: 0.005,
         label: "mouse tilt (rad)",
       },
+      // Spore mode (heroRenderMode "spores" — instanced shaded spheres).
+      sporeSize: {
+        value: defaults.sporeSize,
+        min: 0.4,
+        max: 3,
+        step: 0.05,
+        label: "spore size ×",
+      },
+      sporeEmissive: {
+        value: defaults.sporeEmissive,
+        min: 0,
+        max: 6,
+        step: 0.1,
+        label: "spore emission",
+      },
     }),
     // Pointer fluid (WebGPU/TSL path only — see PostFXNodes). Live-tune the
     // liquid-glass refraction strength + accumulation feel.

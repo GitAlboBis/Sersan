@@ -1,5 +1,42 @@
 # PRD — GPGPU particle "dissolve & regenerate" hero logo
 
+> **v4 (2026-06-09 evening) — DDD bundle reverse-engineered + `spores` mode in branch.**
+> The production DDD bundle teardown (research/ddd-bundle-teardown-spore-render.md) showed the
+> real effect is instanced LIT OPAQUE hemisphere meshes (~51k desktop, diameter ≈
+> letterHeight/47, per-vertex lighting + voxel-field AO, NO DOF (`bokehAmount:0`), a solid
+> inner occluder mesh, and ONE particle system with a `dist` attribute) — NOT additive
+> sprites, NOT two particle layers. New mode `heroRenderMode: "spores"`: the same compute
+> kernel + instanced SHADED icospheres (`createSporeComputeNodeBuild` in gpgpuNodeSim.ts —
+> `positionNode = positionLocal·scale + positionBuffer.toAttribute()`, the three-r184 snow
+> idiom; lambert + cyan rim + hash-AO darkening; world-space radius ≈ markHeight/47; grid
+> 192² ≈ 37k full / 128² lite ×1.22 radius) over a dark occluder mark mesh
+> (SPORE_OCCLUDER_COLOR). Live-verified on WebGPU in Chrome: packed matte violet crust at
+> rest → cyan momentum burst on hover → ~2 s recompose; clean console; the shipping default
+> is STILL `particles-static`. Leva knobs: sporeSize / sporeEmissive.
+> **TODO v4:** (1) look approval of `spores` (then retire the sprite `particles-2layer`);
+> (2) foreground FPS measure (rAF throttled in background tabs — CDP measure unreliable);
+> (3) WebGL2/flag-OFF fallback → `createStaticParticleNodeBuild`, THEN flip default to
+> `spores` (today a non-WebGPU browser would get occluder-only); (4) fine-tuning in leva
+> (rim, SPEED_COLOR_K burst threshold, optional life-scale envelope); (5) QA multi-viewport.
+>
+> **v3 STATUS (2026-06-09) — implementation is LIVE on WebGPU; full source of truth in repo
+> root `ParticleDissolve.md` §11.** What's DONE (committed on `feat/webgl-refactor`, no push):
+> the FBO ping-pong **scrambled on WebGPU** (render-target round-trip orientation bug), so the
+> sim was rebuilt the **WebGPU-native** way — TSL **compute + storage buffers**
+> (`createGpgpuComputeNodeSim`: `instancedArray` pos/vel/home + `Fn().compute()` + per-frame
+> `gl.compute()`; render reads `positionBuffer.element(instanceIndex)` in the vertex stage, so
+> NO sampler/orientation). Live-verified: clean "52" → hover disperses → recomposes. The
+> **`particles-2layer`** mode (BODY + SKIN, both on compute) ships too; default still
+> `particles-static`. Spore look tuned over `afd9253`/`a2e8345`/`ae85111` (gaussian-soft falloff,
+> grid 448 ≈ 200k/layer, packed, dimmed so violet body reads solid below bloom threshold).
+> Routing: **WebGPU → compute; WebGL2 sub-backend → FBO** (compute no-ops on WebGL2, #31221);
+> detect WebGPU as `backend.isWebGLBackend !== true && typeof gl.compute === 'function'`.
+> **TODO (priority order):** ⭐ (1) make the **OUTER/skin** spores the BIGGER + DENSER protagonist
+> — user feedback *"sono quelle esterne che devono essere piu grandi e dense"* (currently
+> inverted); (2) color balance (near-black body core, cyan rim/burst); (3) perf of ~400k sprites
+> (per-layer density); (4) hero-LOCAL DOF; (5) WebGL2 + flag-OFF fallback for 2layer →
+> `createStaticParticleNodeBuild`; (6) flip default to `particles-2layer`; (7) QA + strip debug.
+>
 > **v2 UPDATE (2026-06-09).** The reference is no longer empty: `particleDissolve.html`
 > now holds a working TWO-LAYER vanilla-Three reference, AND the live Lusion DDD effect was
 > inspected in-browser (footer "D"). Findings + the full v2 plan live in repo root

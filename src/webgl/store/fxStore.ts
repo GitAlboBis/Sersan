@@ -6,7 +6,7 @@
  * PostFX reads reactively (re-render on change is fine for dev tuning).
  */
 import { create } from "zustand";
-import { DEFAULT_GPGPU_CONFIG } from "../gpgpu/gpgpuConfig";
+import { DEFAULT_GPGPU_CONFIG, SPORE_LAYER } from "../gpgpu/gpgpuConfig";
 
 interface FxState {
   // Line material
@@ -77,23 +77,36 @@ interface FxState {
    *                 attribute) and ANALYTICALLY displace them near the cursor in
    *                 the vertex shader (lift + violet→cyan, eased hover). No FBO,
    *                 no sim, no vertex-stage texture read → robust on WebGPU.
-   *   "particles-2layer" → the Lusion-DDD TWO-LAYER MOMENTUM hero (verified live
-   *                 2026-06-09, see ParticleDissolve.md): a dense calm OPAQUE
-   *                 violet BODY (occludes, reads solid) + a reactive ADDITIVE
-   *                 cyan SKIN that sprays away from the cursor WITH MOMENTUM and
-   *                 eases back over ~1–2 s (true 2nd-order spring, not the
-   *                 analytic snap). Both run the momentum FBO sim with body/skin
-   *                 presets (gpgpuConfig BODY_LAYER / SKIN_LAYER). Candidate to
-   *                 become the default once verified on both backends.
+   *   "particles-2layer" → the earlier two-layer sprite attempt (opaque violet
+   *                 BODY + additive cyan SKIN, both on the momentum sim). Kept
+   *                 for A/B reference — superseded by "spores" below once the
+   *                 DDD production bundle was reverse-engineered and showed the
+   *                 real effect is NOT additive sprites at all.
+   *   "spores"    → THE DDD-CORRECT hero (bundle teardown 2026-06-09, see the
+   *                 task's research/ddd-bundle-teardown-spore-render.md): ONE
+   *                 under-damped momentum layer of ~37k instanced SHADED OPAQUE
+   *                 icospheres (lambert + rim + per-spore AO darkening, depth-
+   *                 tested, world-space radius ≈ markHeight/47) over a solid
+   *                 dark occluder mark mesh. Resting crust = near-black violet;
+   *                 fast spores lerp to cyan emission and bloom selectively.
+   *                 WebGPU-backend only (compute); other backends keep the
+   *                 static fallback. Candidate default once approved.
    * Live-settable from the console:
-   *   window.__sersanFx.getState().set({ heroRenderMode: "particles-2layer" })
+   *   window.__sersanFx.getState().set({ heroRenderMode: "spores" })
    */
   heroRenderMode:
     | "solid"
     | "particles"
     | "both"
     | "particles-static"
-    | "particles-2layer";
+    | "particles-2layer"
+    | "spores";
+  /**
+   * Spore-mode live knobs: base sphere radius multiplier (1 = DDD's
+   * markHeight/47 diameter) and HDR emission strength on fast spores.
+   */
+  sporeSize: number;
+  sporeEmissive: number;
   // Particle field
   particleOpacity: number;
   // GPGPU dissolve hero (HeroLogo) — the few live-tunable sim/render knobs.
@@ -189,6 +202,8 @@ export const useFxStore = create<FxState>((set) => ({
   // cursor dispersion), which is the robust WebGPU look. "solid"/"particles"/
   // "both" remain available for debugging via window.__sersanFx.
   heroRenderMode: "particles-static",
+  sporeSize: 1.0,
+  sporeEmissive: SPORE_LAYER.spore.EMISSIVE,
   particleOpacity: 0.35,
   gpgpuSpring: DEFAULT_GPGPU_CONFIG.SPRING,
   gpgpuDamping: DEFAULT_GPGPU_CONFIG.DAMPING,

@@ -74,6 +74,10 @@ import {
   SIZE_BY_TIER,
   BODY_LAYER,
   SKIN_LAYER,
+  SPORE_LAYER,
+  SPORE_SIZE_BY_TIER,
+  SPORE_LITE_RADIUS_SCALE,
+  SPORE_OCCLUDER_COLOR,
   type GpgpuConfig,
   type GpgpuLayerConfig,
 } from "./gpgpu/gpgpuConfig";
@@ -181,6 +185,9 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   const showStatic = heroRenderMode === "particles-static";
   // TWO-LAYER momentum hero (Lusion DDD): dense violet BODY + reactive cyan SKIN.
   const show2Layer = heroRenderMode === "particles-2layer";
+  // SPORES: the DDD-correct render — instanced SHADED icospheres on the compute
+  // sim + a solid dark occluder mark (bundle teardown, see gpgpuConfig).
+  const showSpores = heroRenderMode === "spores";
 
   const worldViewWidth = WORLD_VIEW_HEIGHT * (size.width / size.height);
 
@@ -249,6 +256,33 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     () => sampleMarkHomePositions(bodyGeometry, gridSize, SKIN_LAYER.sampling),
     [bodyGeometry, gridSize],
   );
+
+  // Spore home field — its OWN (smaller) grid: ~37k full / ~16k lite, the DDD
+  // count ballpark. Gated on the mode so the sampling cost isn't paid by the
+  // shipping path; toggling the mode re-renders and builds it on demand.
+  const sporeGridSize = SPORE_SIZE_BY_TIER[tier] ?? SPORE_SIZE_BY_TIER.lite;
+  const sporeHome = useMemo(
+    () =>
+      showSpores
+        ? sampleMarkHomePositions(bodyGeometry, sporeGridSize, SPORE_LAYER.sampling)
+        : null,
+    [bodyGeometry, sporeGridSize, showSpores],
+  );
+
+  // Base spore radius in MODEL space: DDD's diameter ≈ markHeight/47, scaled up
+  // on lite (fewer but bigger, like DDD mobile). fx.sporeSize multiplies live.
+  const sporeBaseRadius =
+    ((TARGET_HEIGHT * SPORE_LAYER.spore.DIAMETER_RATIO) / 2) *
+    (tier === "lite" ? SPORE_LITE_RADIUS_SCALE : 1);
+
+  // Solid dark occluder under the spore crust (the DDD "SOLID.buf" trick):
+  // interior gaps read as shadowed mass, not background. Color is written per
+  // frame (base × fade) so the opaque mesh follows the scroll fade.
+  const sporeOccluderMaterial = useMemo(
+    () => new THREE.MeshBasicMaterial({ color: 0x000000 }),
+    [],
+  );
+  useEffect(() => () => sporeOccluderMaterial.dispose(), [sporeOccluderMaterial]);
 
   // === Pick the float type once (FloatType when EXT_color_buffer_float is
   // available, else HalfFloat). If neither renders, gpgpuOk stays false and the
@@ -588,6 +622,69 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gpgpuOk, floatType, gridSize, bodyHome, skinHome, show2Layer]);
 
+  // === SPORE build (spores) ==================================================
+  // Compute sim + instanced SHADED icospheres — TRUE WebGPU sub-backend ONLY
+  // (storage-buffer compute no-ops on the WebGL2 fallback, three #31221). On
+  // any other backend the mode degrades to just the dark occluder mark (no
+  // crash); the shipping default stays `particles-static` until flipped.
+  interface TslSpore {
+    rig: GpgpuSimRig;
+    geometry: THREE.InstancedBufferGeometry;
+    material: THREE.Material;
+    uFade: { value: number };
+    uSporeRadius: { value: number };
+    uEmissive: { value: number };
+    dispose: () => void;
+  }
+  const [tslSpore, setTslSpore] = useState<TslSpore | null>(null);
+  useEffect(() => {
+    if (!webgpuEnabled() || !gpgpuOk || !showSpores || !sporeHome) return;
+    let cancelled = false;
+    let built: TslSpore | null = null;
+    void Promise.all([
+      import("three/webgpu"),
+      import("three/tsl"),
+      import("./gpgpu/gpgpuNodeSim"),
+    ]).then(([webgpu, tslNs, mod]) => {
+      if (cancelled) return;
+      const bk = (gl as unknown as { backend?: { isWebGLBackend?: boolean } })
+        .backend;
+      const isWebGPUBackend =
+        !!bk &&
+        bk.isWebGLBackend !== true &&
+        typeof (gl as unknown as { compute?: unknown }).compute === "function";
+      if (!isWebGPUBackend) return;
+      const cfg: GpgpuConfig = { ...SPORE_LAYER.config, SIZE: sporeGridSize };
+      const b = mod.createSporeComputeNodeBuild(
+        gl as never,
+        webgpu as never,
+        tslNs as never,
+        sporeHome.homeRGBA,
+        sporeHome.aRef,
+        sporeGridSize,
+        cfg,
+        SPORE_LAYER.spore,
+        sporeBaseRadius,
+      );
+      built = {
+        rig: b.rig,
+        geometry: b.geometry as unknown as THREE.InstancedBufferGeometry,
+        material: b.material as unknown as THREE.Material,
+        uFade: b.uFade,
+        uSporeRadius: b.uSporeRadius,
+        uEmissive: b.uEmissive,
+        dispose: b.dispose,
+      };
+      setTslSpore(built);
+    });
+    return () => {
+      cancelled = true;
+      built?.dispose();
+      setTslSpore(null);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gpgpuOk, sporeGridSize, sporeHome, showSpores]);
+
   // Active rig + render mesh. OFF → GLSL (synchronous); ON → TSL once resolved.
   const rig = glsl?.rig ?? tsl?.rig;
   const renderGeometry = glsl?.geometry ?? tsl?.geometry;
@@ -838,6 +935,46 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       return;
     }
 
+    // --- SPORES (instanced shaded spheres on the compute sim) ---------------
+    if (showSpores) {
+      // The opaque occluder follows the scroll fade by darkening toward the
+      // near-black bg (the shell also scales/recedes, so it reads as a fade).
+      sporeOccluderMaterial.color.setRGB(
+        SPORE_OCCLUDER_COLOR[0] * fade,
+        SPORE_OCCLUDER_COLOR[1] * fade,
+        SPORE_OCCLUDER_COLOR[2] * fade,
+      );
+      if (!tslSpore) return; // occluder-only until the lazy build resolves
+
+      // Shared model-space cursor — identical projection to the other sim paths.
+      if (drag.hovering && ptr.active) {
+        spin.getWorldPosition(worldCenter);
+        camera.getWorldDirection(planeN);
+        plane.setFromNormalAndCoplanarPoint(planeN, worldCenter);
+        ndc.set(ptr.smooth.x * 2 - 1, -(ptr.smooth.y * 2 - 1));
+        raycaster.setFromCamera(ndc, camera);
+        if (raycaster.ray.intersectPlane(plane, worldHit)) {
+          modelMouse.copy(worldHit);
+          spin.worldToLocal(modelMouse);
+        } else {
+          modelMouse.copy(MOUSE_OFF);
+        }
+      } else {
+        modelMouse.copy(MOUSE_OFF);
+      }
+
+      simTimeRef.current += delta;
+      tickParams.dt = delta;
+      tickParams.time = simTimeRef.current;
+      tickParams.mouse.copy(modelMouse);
+      tslSpore.rig.tick(tickParams);
+
+      tslSpore.uFade.value = fade;
+      tslSpore.uSporeRadius.value = sporeBaseRadius * fx.sporeSize;
+      tslSpore.uEmissive.value = fx.sporeEmissive;
+      return;
+    }
+
     // Nothing more to do until the active rig exists (synchronous on OFF; after
     // the lazy TSL chunk resolves on ON).
     if (!rig) return;
@@ -974,6 +1111,23 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         ))
       : null;
 
+  // SPORE meshes (spores): the solid dark occluder mark under the instanced
+  // sphere crust. BOTH opaque + depth-tested — the depth buffer does the
+  // compositing (front balls occlude back balls and nest into the occluder),
+  // so no renderOrder/blending is involved.
+  const sporeMeshes = showSpores ? (
+    <>
+      <mesh geometry={bodyGeometry} material={sporeOccluderMaterial} />
+      {tslSpore ? (
+        <mesh
+          geometry={tslSpore.geometry}
+          material={tslSpore.material}
+          frustumCulled={false}
+        />
+      ) : null}
+    </>
+  ) : null;
+
   return (
     <group ref={groupRef} visible={false}>
       {/* Assembly carries the pitch (base TILT + parallax); the model-space
@@ -985,6 +1139,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
           {particleMesh}
           {staticMesh}
           {twoLayerMeshes}
+          {sporeMeshes}
         </group>
       </group>
     </group>

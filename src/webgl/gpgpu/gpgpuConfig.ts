@@ -201,3 +201,100 @@ export const SKIN_LAYER: GpgpuLayerConfig = {
   sampling: { frontBias: 0.12, normalOffset: 0.03, volumeJitter: 0 },
   render: { blending: "additive", depthWrite: false, transparent: true },
 };
+
+// ===========================================================================
+// SPORE hero (DDD production-bundle ground truth, 2026-06-09) — instanced
+// shaded spheres, NOT sprites.
+// ===========================================================================
+// Reverse-engineering the shipped DDD bundle (see this task's
+// research/ddd-bundle-teardown-spore-render.md) showed the real effect is:
+//   • ONE particle system of ~51k (desktop) / ~29k (mobile, FEWER but BIGGER)
+//     instanced low-poly LIT hemisphere meshes — per-vertex diffuse + AO —
+//     opaque, depth-tested. NOT additive feathered discs: additive/feathered
+//     can only brighten, never occlude or show a shadow side, so it reads as
+//     fog. The "spore" read = per-ball shading + inter-ball occlusion + hard
+//     silhouettes.
+//   • Spore diameter ≈ letterHeight / 47 in WORLD space (not device px).
+//   • A SOLID dark inner occluder mesh under the shell (so gaps read as mass).
+//   • Albedo violet ×0.25 at rest (near-black); emission lerps violet→cyan and
+//     only fast/regrowing spores cross the selective-bloom threshold.
+//   • NO depth-of-field (their pipeline ships bokehAmount:0).
+// Our `spores` mode mirrors that on the compute sim: one under-damped layer of
+// instanced icospheres + the dark occluder mark mesh.
+
+/** Spore-look render constants (separate from the sim force model). */
+export interface SporeRenderConfig {
+  /** Sphere DIAMETER as a fraction of the mark's model height (DDD ≈ 1/47). */
+  DIAMETER_RATIO: number;
+  /** Per-instance radius variance multipliers [min, max]. */
+  VAR_MIN: number;
+  VAR_MAX: number;
+  /** Resting albedo (violet) — DDD's vec3(0.44,0.322,0.816). */
+  ALBEDO: [number, number, number];
+  /** Resting albedo multiplier — DDD darkens the resting crust to ×0.25. */
+  ALBEDO_MUL: number;
+  /** Emission target color for fast spores (cyan). */
+  EMISSION: [number, number, number];
+  /** HDR emission strength — drives the selective Bloom on fast spores. */
+  EMISSIVE: number;
+  /** Cyan rim-light strength at the sphere silhouette. */
+  RIM: number;
+  /** Velocity → emission ramp factor (t = clamp(|vel|·K, 0, 1)). */
+  SPEED_COLOR_K: number;
+}
+
+/** Spore layer: under-damped momentum sim + sampling + sphere-render look. */
+export const SPORE_LAYER: {
+  config: GpgpuConfig;
+  sampling: { frontBias: number; normalOffset: number; volumeJitter: number };
+  spore: SporeRenderConfig;
+} = {
+  config: {
+    ...DEFAULT_GPGPU_CONFIG,
+    // UNDER-DAMPED (ζ = 3.5/(2·√20) ≈ 0.39): sprays on hover, hangs, eases back
+    // over ~1–2 s — the whole layer is the protagonist now (no separate skin).
+    SPRING: 20,
+    DAMPING: 3.5,
+    PUSH: 60,
+    RADIUS: 0.6,
+    MAX_SPEED: 4.5,
+    TURB_BASE: 0.03,
+    TURB_MOVE: 1.6,
+    TURB_DISP_K: 5,
+    // POINT_* / EMISSIVE / COL_* are unused by the sphere render (kept for the
+    // shared GpgpuConfig shape; the spore look lives in `spore` below).
+  },
+  // Moderate front bias (cover the front plate AND wrap the sides a little so
+  // the crust reads volumetric); centers pushed OUT along +normal ≈ 0.55×radius
+  // so the balls nest half-embedded on the occluder surface.
+  sampling: { frontBias: 0.3, normalOffset: 0.012, volumeJitter: 0.015 },
+  spore: {
+    DIAMETER_RATIO: 1 / 47,
+    VAR_MIN: 0.7,
+    VAR_MAX: 1.45,
+    ALBEDO: [0.44, 0.322, 0.816],
+    ALBEDO_MUL: 0.25,
+    EMISSION: [0.0, 1.0, 1.0],
+    EMISSIVE: 2.2,
+    RIM: 0.5,
+    SPEED_COLOR_K: 0.55,
+  },
+};
+
+/** Spore-mode grid edge per tier → SIZE² instances. DDD ships ~51k desktop /
+ * ~29k mobile (mobile fewer but BIGGER — we scale radius up on lite). The
+ * spores OVERLAP heavily (≈20× flat front-face tiling) into a bumpy crust. */
+export const SPORE_SIZE_BY_TIER: Record<"full" | "lite", number> = {
+  full: 192, // 36,864 instances
+  lite: 128, // 16,384 instances (radius ×1.22 — see SPORE_LITE_RADIUS_SCALE)
+};
+
+/** Lite tier compensates lower density with bigger spores (DDD mobile does
+ * exactly this: 0.015 → 0.0185). */
+export const SPORE_LITE_RADIUS_SCALE = 1.22;
+
+/** Dark navy-violet of the inner occluder mesh under the spore crust (the DDD
+ * "SOLID.buf" trick: interior gaps read as shadowed mass, not background). */
+export const SPORE_OCCLUDER_COLOR: [number, number, number] = [
+  0.085, 0.06, 0.18,
+];

@@ -99,6 +99,9 @@ interface NodeMaterialLike {
   colorNode: unknown;
   opacityNode: unknown;
   vertexNode: unknown;
+  /** Object-space position override (standard pipeline still applies MVP) —
+   * the per-instance translate+scale hook for the spore sphere render. */
+  positionNode: unknown;
   transparent: boolean;
   depthTest: boolean;
   depthWrite: boolean;
@@ -144,6 +147,12 @@ export interface WebGPUSymbolsGpgpu {
   BufferAttribute: new (arr: ArrayLike<number>, itemSize: number) => unknown;
   InstancedBufferAttribute: new (arr: ArrayLike<number>, itemSize: number) => unknown;
   MeshBasicNodeMaterial: new () => NodeMaterialLike;
+  /** Low-poly icosphere — the spore instance geometry (detail 1 = 80 tris).
+   * PolyhedronGeometry output is NON-indexed (getIndex() → null). */
+  IcosahedronGeometry: new (
+    radius: number,
+    detail: number,
+  ) => { getAttribute: (name: string) => unknown; dispose: () => void };
   Color: new () => ColorLike;
   Vector2: new (x?: number, y?: number) => Vec2Like;
   Vector3: new (x?: number, y?: number, z?: number) => Vec3Like;
@@ -185,6 +194,9 @@ export interface TslSymbolsGpgpu {
   instanceIndex: AnyNode;
   uv: () => AnyNode;
   positionLocal: AnyNode;
+  /** View-space normal (normalMatrix × normalLocal) — correct under the spore
+   * positionNode (per-instance translate + UNIFORM scale leave normals alone). */
+  normalView: AnyNode;
   modelViewMatrix: AnyNode;
   cameraProjectionMatrix: AnyNode;
   Fn: (fn: () => AnyNode | void) => () => AnyNode;
@@ -1013,6 +1025,290 @@ export function createGpgpuComputeNodeSim(
     uViewport,
     uEmissive,
     uPointAlpha,
+    dispose() {
+      rig.dispose();
+    },
+  };
+}
+
+// ===========================================================================
+// SPORE render — compute sim + instanced SHADED icospheres (TSL / WebGPU only)
+// ===========================================================================
+// The DDD-correct primitive (production-bundle teardown, see the task's
+// research/ddd-bundle-teardown-spore-render.md): each particle is a small LIT
+// OPAQUE sphere mesh — lambert + rim + per-spore value variation (fake packed
+// AO) — depth-tested so front balls occlude back balls. NOT a feathered
+// additive disc: additive/feathered can only brighten, never occlude or show a
+// shadow side, so a dense cluster reads as fog instead of a packed-ball crust.
+//
+// Same compute kernel as createGpgpuComputeNodeSim (one under-damped layer);
+// the render swaps the billboard quad for an icosphere whose per-instance
+// translation comes from the position storage buffer via the STANDARD pipeline
+// (`positionNode = positionLocal·scale + positionBuffer.toAttribute()` — the
+// three r184 webgpu_compute_particles_snow idiom). `.toAttribute()` (not
+// `.element()`) in the render stage per three #31221. Spore radius is in MODEL
+// space (DDD: diameter ≈ letterHeight/47) so the packing survives zoom/scale —
+// unlike the device-px sizing of the sprite builds.
+export interface SporeNodeBuild {
+  rig: GpgpuSimRig;
+  geometry: InstancedGeoLike;
+  material: NodeMaterialLike;
+  /** Scroll fade 0..1 — multiplies the (opaque) color toward the dark bg. */
+  uFade: UniformNode<number>;
+  /** Base sphere radius in MODEL space (live-tunable; variance on top). */
+  uSporeRadius: UniformNode<number>;
+  /** HDR emission strength on fast spores (selective-bloom driver). */
+  uEmissive: UniformNode<number>;
+  dispose: () => void;
+}
+
+/** Spore-look constants consumed by the render (subset of SporeRenderConfig —
+ * kept structural so this module needs no import from gpgpuConfig). */
+export interface SporeRenderParams {
+  VAR_MIN: number;
+  VAR_MAX: number;
+  ALBEDO: [number, number, number];
+  ALBEDO_MUL: number;
+  EMISSION: [number, number, number];
+  EMISSIVE: number;
+  RIM: number;
+  SPEED_COLOR_K: number;
+}
+
+export function createSporeComputeNodeBuild(
+  gl: RendererLike,
+  webgpu: WebGPUSymbolsGpgpu,
+  tsl: TslSymbolsGpgpu,
+  homeRGBA: Float32Array,
+  aRef: Float32Array,
+  size: number,
+  config: GpgpuConfig,
+  spore: SporeRenderParams,
+  baseRadius: number,
+): SporeNodeBuild {
+  const {
+    InstancedBufferGeometry,
+    InstancedBufferAttribute,
+    IcosahedronGeometry,
+    MeshBasicNodeMaterial,
+    Color,
+    Vector3,
+    NormalBlending,
+  } = webgpu;
+  const {
+    uniform,
+    attribute,
+    positionLocal,
+    normalView,
+    Fn,
+    vec2,
+    vec3,
+    vec4,
+    float,
+    length,
+    max,
+    min,
+    clamp,
+    exp,
+    sin,
+    fract,
+    dot,
+    mix,
+    instancedArray,
+    instanceIndex,
+  } = tsl;
+
+  const count = size * size;
+
+  // --- Sim: identical storage-buffer kernel to createGpgpuComputeNodeSim ----
+  const aHome = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    aHome[i * 3] = homeRGBA[i * 4];
+    aHome[i * 3 + 1] = homeRGBA[i * 4 + 1];
+    aHome[i * 3 + 2] = homeRGBA[i * 4 + 2];
+  }
+  const positionBuffer = instancedArray(aHome.slice(), "vec3");
+  const velocityBuffer = instancedArray(count, "vec3"); // zero-initialised
+  const homeBuffer = instancedArray(aHome.slice(), "vec3");
+
+  const uMouse = uniform(new Vector3(1e9, 1e9, 1e9)) as UniformNode<Vec3Like>;
+  const uDelta = uniform(1 / 60) as UniformNode<number>;
+  const uTime = uniform(0) as UniformNode<number>;
+  const uSpring = uniform(config.SPRING) as UniformNode<number>;
+  const uPush = uniform(config.PUSH) as UniformNode<number>;
+  const uRadiusN = uniform(config.RADIUS) as UniformNode<number>;
+  const uDamping = uniform(config.DAMPING) as UniformNode<number>;
+  const uTurbBaseN = uniform(config.TURB_BASE) as UniformNode<number>;
+  const SPRING = uSpring as unknown as AnyNode;
+  const PUSH = uPush as unknown as AnyNode;
+  const RADIUS = uRadiusN as unknown as AnyNode;
+  const DAMPING = uDamping as unknown as AnyNode;
+  const TURB_BASE = uTurbBaseN as unknown as AnyNode;
+  const TURB_MOVE = float(config.TURB_MOVE);
+  const TURB_DISP_K = float(config.TURB_DISP_K);
+  const MAX_SPEED = float(config.MAX_SPEED);
+  const dtN = uDelta as unknown as AnyNode;
+  const timeN = uTime as unknown as AnyNode;
+  const mouseN = uMouse as unknown as AnyNode;
+
+  const simulate = Fn(() => {
+    const pos = positionBuffer.element(instanceIndex);
+    const vel = velocityBuffer.element(instanceIndex).toVar();
+    const home = homeBuffer.element(instanceIndex);
+
+    const toHome = home.sub(pos).toVar();
+    const acc = toHome.mul(SPRING).toVar();
+
+    const fromMouse = pos.sub(mouseN).toVar();
+    const d = length(fromMouse);
+    const f = max(float(0), RADIUS.sub(d)).div(RADIUS).toVar();
+    acc.addAssign(fromMouse.add(1e-5).normalize().mul(f.mul(f)).mul(PUSH));
+
+    const disp = clamp(length(toHome).mul(TURB_DISP_K), 0.0, 1.0).toVar();
+    const turb = vec3(
+      sin(pos.y.mul(6.0).add(timeN.mul(1.3))),
+      sin(pos.z.mul(6.0).add(timeN.mul(1.7))),
+      sin(pos.x.mul(6.0).add(timeN.mul(1.1))),
+    );
+    acc.addAssign(turb.mul(TURB_BASE.add(TURB_MOVE.mul(disp))).mul(disp));
+
+    vel.addAssign(acc.mul(dtN));
+    vel.mulAssign(exp(DAMPING.negate().mul(dtN)));
+    const sp = length(vel).toVar();
+    vel.assign(vel.mul(min(sp, MAX_SPEED).div(max(sp, 1e-4))));
+
+    velocityBuffer.element(instanceIndex).assign(vel);
+    pos.addAssign(vel.mul(dtN));
+  })().compute(count);
+
+  // --- Render: instanced icosphere through the STANDARD pipeline ------------
+  // Detail 1 = 80 tris / 240 verts (non-indexed soup) — at ~37k instances ≈ 3M
+  // tris in one draw, routine for the desktop tier; opaque + early-Z makes it
+  // cheaper per-pixel than the additive overdraw it replaces.
+  const ico = new IcosahedronGeometry(1, 1);
+  const geometry = new InstancedBufferGeometry();
+  geometry.setAttribute("position", ico.getAttribute("position"));
+  geometry.setAttribute("normal", ico.getAttribute("normal"));
+  geometry.setAttribute("aRef", new InstancedBufferAttribute(aRef, 2));
+  geometry.instanceCount = count;
+
+  const uFade = uniform(1) as UniformNode<number>;
+  const uSporeRadius = uniform(baseRadius) as UniformNode<number>;
+  const uEmissive = uniform(spore.EMISSIVE) as UniformNode<number>;
+  const uAlbedo = uniform(
+    new Color().fromArray(spore.ALBEDO),
+  ) as UniformNode<ColorLike>;
+  const uEmissionCol = uniform(
+    new Color().fromArray(spore.EMISSION),
+  ) as UniformNode<ColorLike>;
+  const uAlbedoMul = uniform(spore.ALBEDO_MUL) as UniformNode<number>;
+  const uRim = uniform(spore.RIM) as UniformNode<number>;
+
+  // Per-instance pseudo-random in [0,1] — same aRef hash as the sprite builds.
+  // Used in BOTH stages (vertex scale, fragment AO); TSL bridges the attribute
+  // into the fragment with an auto-generated varying.
+  const aRefNode = attribute("aRef");
+  const rnd = fract(
+    sin(dot(aRefNode.xy, vec2(127.1, 311.7))).mul(43758.5453123),
+  );
+
+  const material = new MeshBasicNodeMaterial();
+  material.positionNode = positionLocal
+    .mul(
+      (uSporeRadius as unknown as AnyNode).mul(
+        mix(float(spore.VAR_MIN), float(spore.VAR_MAX), rnd),
+      ),
+    )
+    .add(positionBuffer.toAttribute());
+
+  material.colorNode = Fn(() => {
+    const N = normalView.normalize().toVar();
+    // Fixed key light in VIEW space — stable as the mark parallax-tilts.
+    const L = vec3(0.35, 0.55, 0.78).normalize();
+    const lambert = max(dot(N, L), 0.0).toVar();
+    // Vertical sky ambient + per-spore value variation = the cheap stand-in
+    // for DDD's voxel-light-field AO (random darkening separates the balls).
+    const ambient = float(0.32).add(N.y.mul(0.14));
+    const ao = mix(float(0.55), float(1.0), rnd);
+    const albedo = (uAlbedo as unknown as AnyNode)
+      .toVec3()
+      .mul(uAlbedoMul as unknown as AnyNode);
+    const lit = albedo.mul(ambient.add(lambert.mul(0.95))).mul(ao).toVar();
+
+    // Excitement = speed (storage read auto-varied into the fragment).
+    // Quadratic ramp so the resting crust stays dark violet and only sprayed
+    // spores lerp toward cyan AND cross the selective-bloom threshold.
+    const speed = length(velocityBuffer.toAttribute());
+    const t = clamp(speed.mul(spore.SPEED_COLOR_K), 0.0, 1.0).toVar();
+    const emission = mix(
+      (uAlbedo as unknown as AnyNode).toVec3(),
+      (uEmissionCol as unknown as AnyNode).toVec3(),
+      t,
+    )
+      .mul(t.mul(t))
+      .mul(uEmissive as unknown as AnyNode);
+
+    // Cyan rim at the sphere silhouette (N.z→0): a hint at rest, stronger on
+    // excited spores — reads as backlight wrapping a solid ball, not glow.
+    const rimF = float(1.0).sub(max(N.z, 0.0)).toVar();
+    const rim = rimF
+      .mul(rimF)
+      .mul(uRim as unknown as AnyNode)
+      .mul(float(0.25).add(t.mul(0.75)));
+
+    const col = lit
+      .add(emission)
+      .add((uEmissionCol as unknown as AnyNode).toVec3().mul(rim));
+    // Opaque pipeline → the scroll fade darkens toward the near-black bg
+    // (the shell also scales/recedes during the fade, so this reads as a fade).
+    return vec4(col.mul(uFade as unknown as AnyNode), 1.0);
+  })();
+
+  material.transparent = false;
+  material.depthWrite = true;
+  material.depthTest = true;
+  material.blending = NormalBlending;
+  material.toneMapped = false;
+
+  const mouseScratch = uMouse.value;
+
+  function tick(p: GpgpuTickParams) {
+    uDelta.value = p.dt;
+    uTime.value = p.time;
+    mouseScratch.copy(p.mouse as unknown as Vec3Like);
+    gl.compute(simulate);
+  }
+
+  const rig: GpgpuSimRig = {
+    size,
+    get positionTexture() {
+      return null as unknown as import("three").Texture;
+    },
+    get velocityTexture() {
+      return null as unknown as import("three").Texture;
+    },
+    tick,
+    setForces(f: GpgpuForces) {
+      uSpring.value = f.spring;
+      uPush.value = f.push;
+      uRadiusN.value = f.radius;
+      uDamping.value = f.damping;
+      uTurbBaseN.value = f.turbBase;
+    },
+    dispose() {
+      geometry.dispose();
+      ico.dispose();
+      material.dispose();
+    },
+  };
+
+  return {
+    rig,
+    geometry,
+    material,
+    uFade,
+    uSporeRadius,
+    uEmissive,
     dispose() {
       rig.dispose();
     },
