@@ -176,10 +176,15 @@ export const SKIN_LAYER: GpgpuLayerConfig = {
     TURB_BASE: 0.04,
     TURB_MOVE: 1.8,
     TURB_DISP_K: 5,
-    // Larger, semi-transparent additive sprites → a glowing cyan velvet skin.
-    POINT_SIZE: 6.5,
-    POINT_ALPHA: 0.55,
-    EMISSIVE: 2.6,
+    // BIG soft "spore"-like glowing motes (Lusion DDD = chunky soft cyan spores,
+    // not tiny dots). Large base size + widened size variance + soft gaussian
+    // falloff (compute render) → varied glowing spores. DIM at rest (low alpha +
+    // modest emissive) so the violet BODY reads as the solid mark; the velocity
+    // color/brightness term makes them POP cyan when sprayed on hover (like DDD,
+    // dark body at rest → cyan burst on interaction).
+    POINT_SIZE: 14,
+    POINT_ALPHA: 0.4,
+    EMISSIVE: 1.8,
     COL_COLD: [0.25, 0.95, 0.95], // cyan at rest
     COL_HOT: [0.9, 1.0, 1.0], // → white when fast/sprayed
   },
