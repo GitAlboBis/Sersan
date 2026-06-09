@@ -1,5 +1,17 @@
 # PRD — GPGPU particle "dissolve & regenerate" hero logo
 
+> **v2 UPDATE (2026-06-09).** The reference is no longer empty: `particleDissolve.html`
+> now holds a working TWO-LAYER vanilla-Three reference, AND the live Lusion DDD effect was
+> inspected in-browser (footer "D"). Findings + the full v2 plan live in repo root
+> **`ParticleDissolve.md`** (source of truth). Key deltas vs the single-layer spec below:
+> 1) the shipped mode is `particles-static` (analytic, NO momentum) — switch to the momentum
+> sim; 2) add a SECOND layer — dense calm OPAQUE violet **BODY** + reactive ADDITIVE cyan
+> **SKIN** (under-damped ζ≈0.39, sprays + returns ~1–2 s); 3) add subtle **Depth-of-Field**.
+> Implemented behind a new `heroRenderMode: "particles-2layer"` (default unchanged until
+> verified on both backends in Chrome). The §6 WebGPU vertex-stage-RT-read + half-float-home
+> bugs are ALREADY fixed in `gpgpuNodeSim.ts`. The single-layer goal below still holds for
+> the SKIN layer's engine.
+
 ## Goal
 The home hero logo becomes a **dense cloud of GPU-simulated particles** that form the SERSAN mark. On pointer hover the particles near the cursor are pushed away, then a spring pulls them back to recompose the mark; particle color shifts violet→cyan by velocity, with additive glow. Lusion / Digital Design Days style, but sober/premium.
 

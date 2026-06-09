@@ -72,7 +72,10 @@ import {
 import {
   DEFAULT_GPGPU_CONFIG,
   SIZE_BY_TIER,
+  BODY_LAYER,
+  SKIN_LAYER,
   type GpgpuConfig,
+  type GpgpuLayerConfig,
 } from "./gpgpu/gpgpuConfig";
 import { webgpuEnabled } from "./renderer/createRenderer";
 import { useScrollStore } from "./store/scrollStore";
@@ -176,6 +179,8 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     heroRenderMode === "particles" || heroRenderMode === "both";
   // BISECTION: static billboards at HOME positions (per-instance aHome), no sim.
   const showStatic = heroRenderMode === "particles-static";
+  // TWO-LAYER momentum hero (Lusion DDD): dense violet BODY + reactive cyan SKIN.
+  const show2Layer = heroRenderMode === "particles-2layer";
 
   const worldViewWidth = WORLD_VIEW_HEIGHT * (size.width / size.height);
 
@@ -230,6 +235,18 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // grid UV the render uses to look up its own particle. The mesh is unrendered.
   const homeField = useMemo(
     () => sampleMarkHomePositions(bodyGeometry, gridSize),
+    [bodyGeometry, gridSize],
+  );
+
+  // Two-layer home fields (particles-2layer). BODY: lower front-bias coats the
+  // depth + inward volume jitter → reads as a solid violet volume. SKIN: offset
+  // OUT along +normal so the reactive cyan glow floats just over the body.
+  const bodyHome = useMemo(
+    () => sampleMarkHomePositions(bodyGeometry, gridSize, BODY_LAYER.sampling),
+    [bodyGeometry, gridSize],
+  );
+  const skinHome = useMemo(
+    () => sampleMarkHomePositions(bodyGeometry, gridSize, SKIN_LAYER.sampling),
     [bodyGeometry, gridSize],
   );
 
@@ -313,16 +330,38 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       import("./gpgpu/gpgpuNodeSim"),
     ]).then(([webgpu, tslNs, mod]) => {
       if (cancelled) return;
-      const b = mod.createGpgpuNodeSim(
-        gl as never,
-        webgpu as never,
-        tslNs as never,
-        homeField.homeRGBA,
-        homeField.aRef,
-        gridSize,
-        config,
-        floatType,
-      );
+      // TRUE WebGPU sub-backend → compute + storage buffers (no FBO round-trip,
+      // fixes the WebGPU scramble). WebGL2 fallback sub-backend → the FBO rig
+      // (storage-buffer dynamic indexing is broken on WebGL2, three #31221).
+      // The WebGPU backend leaves `isWebGLBackend` UNDEFINED; only the WebGL
+      // backend sets it `true`. So "is WebGPU" = backend present, NOT the WebGL
+      // backend, AND the renderer exposes `compute`. (`=== false` was wrong:
+      // undefined !== false, so it always fell through to the FBO path.)
+      const bk = (gl as unknown as { backend?: { isWebGLBackend?: boolean } })
+        .backend;
+      const hasCompute =
+        typeof (gl as unknown as { compute?: unknown }).compute === "function";
+      const isWebGPUBackend = !!bk && bk.isWebGLBackend !== true && hasCompute;
+      const b = isWebGPUBackend
+        ? mod.createGpgpuComputeNodeSim(
+            gl as never,
+            webgpu as never,
+            tslNs as never,
+            homeField.homeRGBA,
+            homeField.aRef,
+            gridSize,
+            config,
+          )
+        : mod.createGpgpuNodeSim(
+            gl as never,
+            webgpu as never,
+            tslNs as never,
+            homeField.homeRGBA,
+            homeField.aRef,
+            gridSize,
+            config,
+            floatType,
+          );
       built = {
         rig: b.rig,
         geometry: b.geometry as unknown as THREE.InstancedBufferGeometry,
@@ -417,6 +456,118 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showStatic, gridSize, homeField]);
+
+  // === TWO-LAYER build (particles-2layer) ===================================
+  // Two independent momentum rigs (BODY then SKIN), same dual-backend discipline
+  // as the single-layer build above, just mapped over the two presets. Each rig
+  // gets its own home field + config + render opts; the model-space cursor is
+  // shared and fed to both in useFrame. Built only in 2layer mode.
+  interface GlslLayer {
+    rig: GpgpuSimRig;
+    material: THREE.ShaderMaterial & { uniforms: GpgpuRenderUniforms };
+    geometry: THREE.InstancedBufferGeometry;
+    spec: GpgpuLayerConfig;
+  }
+  const [glsl2, setGlsl2] = useState<GlslLayer[] | null>(null);
+  useEffect(() => {
+    if (webgpuEnabled() || !gpgpuOk || floatType == null || !show2Layer) return;
+    const defs = [
+      { spec: BODY_LAYER, home: bodyHome },
+      { spec: SKIN_LAYER, home: skinHome },
+    ];
+    const built: GlslLayer[] = defs.map(({ spec, home }) => {
+      const cfg: GpgpuConfig = { ...spec.config, SIZE: gridSize };
+      const rig = createGpgpuSim(
+        gl as THREE.WebGLRenderer,
+        home.homeRGBA,
+        gridSize,
+        cfg,
+        floatType,
+      );
+      const material = createGpgpuRenderMaterial(cfg, spec.render);
+      const geometry = new THREE.InstancedBufferGeometry();
+      geometry.setAttribute("position", new THREE.BufferAttribute(QUAD_CORNERS, 3));
+      geometry.setIndex(new THREE.BufferAttribute(QUAD_INDEX, 1));
+      geometry.setAttribute("aRef", new THREE.InstancedBufferAttribute(home.aRef, 2));
+      geometry.instanceCount = home.count;
+      return { rig, material, geometry, spec };
+    });
+    setGlsl2(built);
+    return () => {
+      built.forEach((b) => {
+        b.rig.dispose();
+        b.material.dispose();
+        b.geometry.dispose();
+      });
+      setGlsl2(null);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gpgpuOk, floatType, gridSize, bodyHome, skinHome, show2Layer]);
+
+  interface TslLayer {
+    rig: GpgpuSimRig;
+    geometry: THREE.InstancedBufferGeometry;
+    material: THREE.Material;
+    uFade: { value: number };
+    uPointSize: { value: number };
+    uPixelRatio: { value: number };
+    uViewport: { value: THREE.Vector2 };
+    uEmissive: { value: number };
+    uPointAlpha: { value: number };
+    spec: GpgpuLayerConfig;
+    dispose: () => void;
+  }
+  const [tsl2, setTsl2] = useState<TslLayer[] | null>(null);
+  useEffect(() => {
+    if (!webgpuEnabled() || !gpgpuOk || floatType == null || !show2Layer) return;
+    let cancelled = false;
+    let built: TslLayer[] | null = null;
+    void Promise.all([
+      import("three/webgpu"),
+      import("three/tsl"),
+      import("./gpgpu/gpgpuNodeSim"),
+    ]).then(([webgpu, tslNs, mod]) => {
+      if (cancelled) return;
+      const defs = [
+        { spec: BODY_LAYER, home: bodyHome },
+        { spec: SKIN_LAYER, home: skinHome },
+      ];
+      built = defs.map(({ spec, home }) => {
+        const cfg: GpgpuConfig = { ...spec.config, SIZE: gridSize };
+        const b = mod.createGpgpuNodeSim(
+          gl as never,
+          webgpu as never,
+          tslNs as never,
+          home.homeRGBA,
+          home.aRef,
+          gridSize,
+          cfg,
+          floatType,
+          spec.render,
+        );
+        return {
+          rig: b.rig,
+          geometry: b.geometry as unknown as THREE.InstancedBufferGeometry,
+          material: b.material as unknown as THREE.Material,
+          uFade: b.uFade,
+          uPointSize: b.uPointSize,
+          uPixelRatio: b.uPixelRatio,
+          uViewport: b.uViewport as unknown as { value: THREE.Vector2 },
+          uEmissive: b.uEmissive,
+          uPointAlpha: b.uPointAlpha,
+          spec,
+          dispose: b.dispose,
+        };
+      });
+      setTsl2(built);
+    });
+    return () => {
+      cancelled = true;
+      built?.forEach((b) => b.dispose());
+      setTsl2(null);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gpgpuOk, floatType, gridSize, bodyHome, skinHome, show2Layer]);
 
   // Active rig + render mesh. OFF → GLSL (synchronous); ON → TSL once resolved.
   const rig = glsl?.rig ?? tsl?.rig;
@@ -609,6 +760,65 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       return;
     }
 
+    // --- TWO-LAYER momentum sim (body + skin) -------------------------------
+    // Step BOTH rigs with the SAME model-space cursor + dt, then feed each
+    // layer's render uniforms from its OWN preset (body calm/violet/opaque,
+    // skin reactive/cyan/additive). Body renders first (occludes), skin over it.
+    if (show2Layer && (glsl2 || tsl2)) {
+      // Shared model-space cursor — identical projection to the single-layer
+      // path (raycast a camera-facing plane through the cloud center, then
+      // spin.worldToLocal). Far value when not hovering → repulsion vanishes.
+      if (drag.hovering && ptr.active) {
+        spin.getWorldPosition(worldCenter);
+        camera.getWorldDirection(planeN);
+        plane.setFromNormalAndCoplanarPoint(planeN, worldCenter);
+        ndc.set(ptr.smooth.x * 2 - 1, -(ptr.smooth.y * 2 - 1));
+        raycaster.setFromCamera(ndc, camera);
+        if (raycaster.ray.intersectPlane(plane, worldHit)) {
+          modelMouse.copy(worldHit);
+          spin.worldToLocal(modelMouse);
+        } else {
+          modelMouse.copy(MOUSE_OFF);
+        }
+      } else {
+        modelMouse.copy(MOUSE_OFF);
+      }
+
+      simTimeRef.current += delta;
+      tickParams.dt = delta;
+      tickParams.time = simTimeRef.current;
+      tickParams.mouse.copy(modelMouse);
+
+      const dpr2 = Math.min(gl.getPixelRatio(), 2);
+      if (glsl2) {
+        for (const layer of glsl2) {
+          layer.rig.tick(tickParams);
+          const u = layer.material.uniforms;
+          u.uPosTex.value = layer.rig.positionTexture;
+          u.uVelTex.value = layer.rig.velocityTexture;
+          u.uPointSize.value = layer.spec.config.POINT_SIZE;
+          u.uPixelRatio.value = dpr2;
+          u.uViewport.value.set(size.width * dpr2, size.height * dpr2);
+          u.uFade.value = fade;
+          u.uEmissive.value = layer.spec.config.EMISSIVE;
+          u.uPointAlpha.value = layer.spec.config.POINT_ALPHA;
+        }
+      } else if (tsl2) {
+        for (const layer of tsl2) {
+          // TSL render samples the RTs via its own repointed texture nodes
+          // (done inside rig.tick); here we only drive the shared uniforms.
+          layer.rig.tick(tickParams);
+          layer.uPointSize.value = layer.spec.config.POINT_SIZE;
+          layer.uPixelRatio.value = dpr2;
+          layer.uViewport.value.set(size.width * dpr2, size.height * dpr2);
+          layer.uFade.value = fade;
+          layer.uEmissive.value = layer.spec.config.EMISSIVE;
+          layer.uPointAlpha.value = layer.spec.config.POINT_ALPHA;
+        }
+      }
+      return;
+    }
+
     // Nothing more to do until the active rig exists (synchronous on OFF; after
     // the lazy TSL chunk resolves on ON).
     if (!rig) return;
@@ -723,6 +933,28 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       />
     ) : null;
 
+  // TWO-LAYER meshes (particles-2layer): BODY first (renderOrder 0 — occludes,
+  // reads solid) then SKIN (renderOrder 1 — additive glow over it). Active on
+  // the OFF (glsl2) or ON (tsl2) path once the rigs are built.
+  type Render2Layer = {
+    geometry: THREE.InstancedBufferGeometry;
+    material: THREE.Material;
+    spec: GpgpuLayerConfig;
+  };
+  const twoLayer: Render2Layer[] | null = glsl2 ?? tsl2;
+  const twoLayerMeshes =
+    show2Layer && twoLayer
+      ? twoLayer.map((layer, i) => (
+          <mesh
+            key={i}
+            geometry={layer.geometry}
+            material={layer.material}
+            frustumCulled={false}
+            renderOrder={i}
+          />
+        ))
+      : null;
+
   return (
     <group ref={groupRef} visible={false}>
       {/* Assembly carries the pitch (base TILT + parallax); the model-space
@@ -733,6 +965,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
           {solidMesh}
           {particleMesh}
           {staticMesh}
+          {twoLayerMeshes}
         </group>
       </group>
     </group>

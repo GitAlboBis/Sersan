@@ -23,7 +23,7 @@
  * and never lands in the OFF bundle. Loosely typed for the same reason
  * PointerFlowmap is: the real node types are vast and generic.
  */
-import type { GpgpuConfig } from "./gpgpuConfig";
+import type { GpgpuConfig, GpgpuRenderOpts } from "./gpgpuConfig";
 import type { GpgpuTickParams, GpgpuSimRig, GpgpuForces } from "./gpgpuSim";
 
 // --- Loose structural types for the lazily-imported namespaces --------------
@@ -37,8 +37,15 @@ type AnyNode = {
   toVar: () => AnyNode;
   addAssign: (n: AnyNode | number) => void;
   mulAssign: (n: AnyNode | number) => void;
+  subAssign: (n: AnyNode | number) => void;
   assign: (n: AnyNode | number) => void;
   lessThan: (n: AnyNode | number) => AnyNode;
+  /** Storage-buffer element accessor (read/write handle) by index node. */
+  element: (index: AnyNode) => AnyNode & { value: unknown };
+  /** Expose a storage/instanced buffer as a per-instance vertex attribute. */
+  toAttribute: () => AnyNode;
+  /** Build a compute node from a kernel Fn result: `Fn(...)().compute(count)`. */
+  compute: (count: number) => AnyNode;
   /**
    * TSL `TextureNode.level(levelNode)` — pins an explicit mip level on a texture
    * sample (three 0.184 `src/nodes/accessors/TextureNode.js`). Required for any
@@ -107,6 +114,10 @@ interface RendererLike {
   setRenderTarget: (rt: RenderTargetLike | null) => void;
   render: (scene: unknown, camera: unknown) => void;
   clear: (color?: boolean, depth?: boolean, stencil?: boolean) => void;
+  /** Dispatch a TSL compute node (synchronous once the backend is initialised). */
+  compute: (node: unknown) => void;
+  /** Runtime backend probe — `false` on the true WebGPU sub-backend. */
+  backend?: { isWebGLBackend?: boolean };
 }
 
 export interface WebGPUSymbolsGpgpu {
@@ -144,6 +155,7 @@ export interface WebGPUSymbolsGpgpu {
   NearestFilter: number;
   ClampToEdgeWrapping: number;
   AdditiveBlending: number;
+  NormalBlending: number;
   NoBlending: number;
   DoubleSide: number;
 }
@@ -157,12 +169,25 @@ interface InstancedGeoLike {
 export interface TslSymbolsGpgpu {
   uniform: (v: unknown) => UniformNode<unknown>;
   texture: (tex: unknown, uvNode?: AnyNode) => AnyNode & { value: unknown };
+  /**
+   * `textureLoad(tex, ivec2Coord)` — sampler-FREE integer texel fetch
+   * (`texture(tex, uv).setSampler(false)`, three 0.184). The ROBUST vertex-stage
+   * read on the WebGPU backend: a plain `textureSampleLevel` (`.level(0)`) binds
+   * a filtering sampler and returned garbage in the vertex stage here, whereas
+   * `textureLoad` needs no sampler/derivatives and is valid in any stage.
+   */
+  textureLoad: (tex: unknown, uvNode: AnyNode) => AnyNode & { value: unknown };
+  ivec2: (x: AnyNode | number, y?: AnyNode | number) => AnyNode;
   attribute: (name: string) => AnyNode;
+  /** Allocate a GPU storage buffer (seed by passing a TypedArray as `count`). */
+  instancedArray: (count: number | Float32Array, type: string) => AnyNode & { value: unknown };
+  /** Per-invocation / per-instance index node (compute thread + vertex instance). */
+  instanceIndex: AnyNode;
   uv: () => AnyNode;
   positionLocal: AnyNode;
   modelViewMatrix: AnyNode;
   cameraProjectionMatrix: AnyNode;
-  Fn: (fn: () => AnyNode) => () => AnyNode;
+  Fn: (fn: () => AnyNode | void) => () => AnyNode;
   vec2: (x: AnyNode | number, y?: AnyNode | number) => AnyNode;
   vec3: (x: AnyNode | number, y?: AnyNode | number, z?: AnyNode | number) => AnyNode;
   vec4: (
@@ -226,6 +251,11 @@ export function createGpgpuNodeSim(
   size: number,
   config: GpgpuConfig,
   floatType: number,
+  renderOpts: GpgpuRenderOpts = {
+    blending: "additive",
+    depthWrite: false,
+    transparent: true,
+  },
 ): GpgpuNodeBuild {
   const {
     RenderTarget,
@@ -247,12 +277,15 @@ export function createGpgpuNodeSim(
     NearestFilter,
     ClampToEdgeWrapping,
     AdditiveBlending,
+    NormalBlending,
     NoBlending,
     DoubleSide,
   } = webgpu;
   const {
     uniform,
     texture,
+    textureLoad,
+    ivec2,
     attribute,
     uv,
     positionLocal,
@@ -340,14 +373,21 @@ export function createGpgpuNodeSim(
   const quadCam = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
   const quadGeo = new PlaneGeometry(2, 2);
 
-  // Texture nodes that sample the READ targets each pass; their `.value` is
-  // repointed before each render (the supported swap path, see PointerFlowmap).
-  const fragUv = uv();
-  const uPosRead = texture(posRead.texture, fragUv) as AnyNode & { value: unknown };
-  const uVelRead = texture(velRead.texture, fragUv) as AnyNode & { value: unknown };
-  const uHome = texture(home, fragUv) as AnyNode & { value: unknown };
-  // The position pass needs the JUST-written velocity (velWrite), sampled fresh.
-  const uVelForPos = texture(velWrite.texture, fragUv) as AnyNode & { value: unknown };
+  // Texture nodes for the sim passes. SAMPLER-FREE (`textureLoad`, integer
+  // texel) on EVERY read — including the fragment-stage sim reads — to sidestep
+  // the WebGPU sampleType/sampler mismatch entirely: a float/half RT or a
+  // half-float DataTexture paired with a FILTERING sampler is invalid per the
+  // WebGPU spec and read garbage on this backend (the diffuse/convergent cloud).
+  // `textureLoad` binds NO sampler, so the read is valid regardless of the
+  // texture's filterability. The fullscreen sim quad rasterises one fragment per
+  // texel; its uv pixel-centre ((i+0.5)/size) × size truncates to the exact texel
+  // `i`. `.value` is repointed each frame for the ping-pong swap (base nodes).
+  const simTexel = ivec2(uv().mul(float(size)));
+  const uPosRead = textureLoad(posRead.texture, simTexel) as AnyNode & { value: unknown };
+  const uVelRead = textureLoad(velRead.texture, simTexel) as AnyNode & { value: unknown };
+  const uHome = textureLoad(home, simTexel) as AnyNode & { value: unknown };
+  // The position pass needs the JUST-written velocity (velWrite), fetched fresh.
+  const uVelForPos = textureLoad(velWrite.texture, simTexel) as AnyNode & { value: unknown };
 
   const uMouse = uniform(new Vector3(1e9, 1e9, 1e9)) as UniformNode<Vec3Like>;
   const uDelta = uniform(1 / 60) as UniformNode<number>;
@@ -458,8 +498,16 @@ export function createGpgpuNodeSim(
   quad.frustumCulled = false;
   quadScene.add(quad);
 
-  // Seed both POSITION targets to the home shape; both VELOCITY targets to zero.
-  {
+  // SEED on the FIRST tick (inside the useFrame render loop), NOT here in the
+  // build. On the WebGPU backend a `gl.render(...)` issued from a React effect
+  // (outside the renderer's frame loop) does NOT execute — the offscreen seed
+  // silently no-ops, posRead stays at the cleared zero, and the sim then springs
+  // every particle from the origin through heavy turbulence → the diffuse
+  // scatter (home + the textureLoad render are fine; this was the FBO-pass bug).
+  // Running the seed from within tick() makes WebGPU actually execute it. WebGL
+  // is unaffected (it renders immediately in either place).
+  let seeded = false;
+  const runSeed = () => {
     const prevTarget = gl.getRenderTarget();
     quad.material = seedPosMat;
     gl.setRenderTarget(posRead);
@@ -472,8 +520,8 @@ export function createGpgpuNodeSim(
     gl.setRenderTarget(velWrite);
     gl.render(quadScene, quadCam);
     gl.setRenderTarget(prevTarget);
-    seedVelMat.dispose();
-  }
+    quad.material = velMat;
+  };
 
   // === Render: instanced billboard reading the live position field ===========
   const count = size * size;
@@ -503,34 +551,31 @@ export function createGpgpuNodeSim(
   const uEmissive = uniform(config.EMISSIVE) as UniformNode<number>;
 
   // The render samples the live POSITION/VELOCITY targets at this instance's
-  // grid texel. `.value` is repointed to the freshly-written targets each frame.
+  // grid texel, inside the render material's `vertexNode` (below). `.value` is
+  // repointed to the freshly-written targets each frame.
   //
-  // VERTEX-STAGE LOD FIX (WebGPU backend, three 0.184). These two reads happen
-  // inside the render material's `vertexNode` (below). On the WGSL backend a
-  // bare `texture(tex, uv)` auto-sample code-gens to `textureSample(...)`, which
-  // is only legal in the FRAGMENT stage (it needs implicit derivatives); in a
-  // vertex shader it returns garbage with no validation error → the scrambled
-  // cloud. The SIM's reads (uPosRead/uVelRead/uHome/uVelForPos) are inside
-  // `colorNode` (fragment stage), so they're unaffected and stay as-is.
-  //
-  // `.level(0)` pins an explicit mip level: `TextureNode.level()` sets the node's
-  // `levelNode`, which routes generation through `WGSLNodeBuilder.generateTexture
-  // Level` → an explicit-LOD fetch (`textureLoad`/`textureSampleLevel`) that is
-  // valid in the vertex stage. (Verified in node_modules/three:
-  // `src/nodes/accessors/TextureNode.js` line ~694 `level()`, and
-  // `src/renderers/webgpu/nodes/WGSLNodeBuilder.js` `generateTextureLevel` /
-  // `generateTextureLod`.)
-  //
-  // `.level()` returns a CLONE whose `referenceNode` is the base texture node, and
-  // TextureNode's `value` setter/getter forward through `referenceNode`. So the
-  // per-frame swap below MUST repoint `.value` on THESE wrapped nodes (kept here);
-  // doing so writes through to the shared base, keeping the live ping-pong swap
-  // working exactly as before.
+  // VERTEX-STAGE READ FIX (WebGPU backend, three 0.184). A vertex-stage texture
+  // read must NOT rely on implicit derivatives. The previous `.level(0)`
+  // (textureSampleLevel) still binds a FILTERING SAMPLER, and on this WebGPU
+  // backend that returned garbage in the vertex stage → the scrambled cloud.
+  // `textureLoad(tex, ivec2)` (= `texture(tex,uv).setSampler(false)`) is a
+  // sampler-FREE integer texel fetch — no sampler, no derivatives, no LOD — and
+  // is unambiguously valid in any stage. The SIM's reads (uPosRead/uVelRead/
+  // uHome/uVelForPos) are in `colorNode` (fragment stage) and stay as plain
+  // samples. `textureLoad` returns the base texture node, so the per-frame swap
+  // below repoints `.value` directly (no referenceNode forwarding needed).
   const aRefNode = attribute("aRef");
-  const uPosTexNode = texture(posRead.texture, aRefNode).level(0) as AnyNode & {
+  // Integer texel for the sampler-free vertex-stage fetch (works on WebGPU).
+  // NOTE: the RT round-trip (quad-write → textureLoad-read) has an unresolved
+  // orientation/layout mismatch on this WebGPU backend (neither raw nor Y-flipped
+  // aRef matches the seed's uv-write) — see ParticleDissolve.md. The render path
+  // itself is proven correct (reading the home DataTexture via this exact texel
+  // renders a clean "52"); the open issue is the render-target write/read layout.
+  const texelCoord = ivec2(aRefNode.mul(float(size)));
+  const uPosTexNode = textureLoad(posRead.texture, texelCoord) as AnyNode & {
     value: unknown;
   };
-  const uVelTexNode = texture(velRead.texture, aRefNode).level(0) as AnyNode & {
+  const uVelTexNode = textureLoad(velRead.texture, texelCoord) as AnyNode & {
     value: unknown;
   };
 
@@ -601,16 +646,25 @@ export function createGpgpuNodeSim(
   })();
   material.colorNode = (shade as AnyNode).xyz;
   material.opacityNode = (shade as AnyNode).w;
-  material.transparent = true;
-  material.depthWrite = false;
-  material.depthTest = false;
-  material.blending = AdditiveBlending;
+  // Render options per layer: BODY = NormalBlending + depthWrite (occludes, reads
+  // solid); SKIN = additive glow, no depth write (default). Mirrors the GLSL twin.
+  material.transparent = renderOpts.transparent;
+  material.depthWrite = renderOpts.depthWrite;
+  material.depthTest = renderOpts.depthWrite;
+  material.blending =
+    renderOpts.blending === "normal" ? NormalBlending : AdditiveBlending;
   material.toneMapped = false;
   material.side = DoubleSide;
 
   const mouseScratch = uMouse.value;
 
   function tick(p: GpgpuTickParams) {
+    // Seed on the first frame from INSIDE the render loop (WebGPU executes
+    // offscreen renders here, not from the build-time effect — see runSeed).
+    if (!seeded) {
+      runSeed();
+      seeded = true;
+    }
     const prevTarget = gl.getRenderTarget();
 
     // 1) VELOCITY: read pos/vel(read) → write velWrite.
@@ -669,6 +723,7 @@ export function createGpgpuNodeSim(
       velMat.dispose();
       posMat.dispose();
       seedPosMat.dispose();
+      seedVelMat.dispose();
       quadGeo.dispose();
     },
   };
@@ -687,6 +742,279 @@ export function createGpgpuNodeSim(
       rig.dispose();
       geometry.dispose();
       material.dispose();
+    },
+  };
+}
+
+// ===========================================================================
+// WebGPU-NATIVE sim — TSL COMPUTE + STORAGE BUFFERS (no FBO round-trip)
+// ===========================================================================
+// The idiomatic WebGPU GPGPU: particle position/velocity live in storage buffers
+// (`instancedArray`), advanced by a compute kernel (`Fn().compute(count)`,
+// dispatched with `gl.compute(node)` each frame). The render reads each
+// particle's position from the buffer via `.element(instanceIndex)` IN THE
+// VERTEX STAGE — a sampler-free storage read with NO texture, NO orientation,
+// NO LOD — which sidesteps the render-target round-trip layout bug that the FBO
+// path (createGpgpuNodeSim) hits on this WebGPU backend (see ParticleDissolve.md
+// §11). Seeding is trivial: pass the home Float32Array straight into
+// `instancedArray` (StorageInstancedBufferAttribute uses it as the backing
+// array). Same force model + billboard render + violet→cyan color as the FBO
+// twin, so the look is identical.
+//
+// IMPORTANT — only valid on the TRUE WebGPU sub-backend. Storage-buffer dynamic
+// indexing (`.element(i)`) is broken on WebGPURenderer's WebGL2 fallback
+// sub-backend (three issue #31221). HeroLogo must gate this on
+// `gl.backend.isWebGLBackend === false` and route the WebGL2 sub-backend to the
+// stateless analytic build (createStaticParticleNodeBuild) instead.
+export function createGpgpuComputeNodeSim(
+  gl: RendererLike,
+  webgpu: WebGPUSymbolsGpgpu,
+  tsl: TslSymbolsGpgpu,
+  homeRGBA: Float32Array,
+  aRef: Float32Array,
+  size: number,
+  config: GpgpuConfig,
+  renderOpts: GpgpuRenderOpts = {
+    blending: "additive",
+    depthWrite: false,
+    transparent: true,
+  },
+): GpgpuNodeBuild {
+  const {
+    InstancedBufferGeometry,
+    BufferAttribute,
+    InstancedBufferAttribute,
+    MeshBasicNodeMaterial,
+    Color,
+    Vector2,
+    Vector3,
+    AdditiveBlending,
+    NormalBlending,
+    DoubleSide,
+  } = webgpu;
+  const {
+    uniform,
+    attribute,
+    positionLocal,
+    modelViewMatrix,
+    cameraProjectionMatrix,
+    Fn,
+    vec2,
+    vec3,
+    vec4,
+    float,
+    length,
+    max,
+    min,
+    clamp,
+    exp,
+    sin,
+    fract,
+    dot,
+    mix,
+    smoothstep,
+    Discard,
+    varying,
+    instancedArray,
+    instanceIndex,
+  } = tsl;
+
+  const count = size * size;
+
+  // Per-particle home (vec3, row-major like aRef). Seed the live position buffer
+  // from it and keep an immutable copy as the spring target.
+  const aHome = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    aHome[i * 3] = homeRGBA[i * 4];
+    aHome[i * 3 + 1] = homeRGBA[i * 4 + 1];
+    aHome[i * 3 + 2] = homeRGBA[i * 4 + 2];
+  }
+  // Seeding by passing the TypedArray straight in (StorageInstancedBufferAttribute
+  // adopts it as backing storage). Separate copies so the live position can drift
+  // while `home` stays put.
+  const positionBuffer = instancedArray(aHome.slice(), "vec3");
+  const velocityBuffer = instancedArray(count, "vec3"); // zero-initialised
+  const homeBuffer = instancedArray(aHome.slice(), "vec3");
+
+  // Force uniforms (live-tunable via setForces); the rest are baked constants.
+  const uMouse = uniform(new Vector3(1e9, 1e9, 1e9)) as UniformNode<Vec3Like>;
+  const uDelta = uniform(1 / 60) as UniformNode<number>;
+  const uTime = uniform(0) as UniformNode<number>;
+  const uSpring = uniform(config.SPRING) as UniformNode<number>;
+  const uPush = uniform(config.PUSH) as UniformNode<number>;
+  const uRadiusN = uniform(config.RADIUS) as UniformNode<number>;
+  const uDamping = uniform(config.DAMPING) as UniformNode<number>;
+  const uTurbBaseN = uniform(config.TURB_BASE) as UniformNode<number>;
+  const SPRING = uSpring as unknown as AnyNode;
+  const PUSH = uPush as unknown as AnyNode;
+  const RADIUS = uRadiusN as unknown as AnyNode;
+  const DAMPING = uDamping as unknown as AnyNode;
+  const TURB_BASE = uTurbBaseN as unknown as AnyNode;
+  const TURB_MOVE = float(config.TURB_MOVE);
+  const TURB_DISP_K = float(config.TURB_DISP_K);
+  const MAX_SPEED = float(config.MAX_SPEED);
+  const dtN = uDelta as unknown as AnyNode;
+  const timeN = uTime as unknown as AnyNode;
+  const mouseN = uMouse as unknown as AnyNode;
+
+  // Compute kernel — identical force model to the FBO/GLSL twins (spring + mouse
+  // repulsion push² falloff + displacement-gated turbulence + exp damping +
+  // max-speed clamp), per thread keyed by instanceIndex.
+  const simulate = Fn(() => {
+    const pos = positionBuffer.element(instanceIndex);
+    const vel = velocityBuffer.element(instanceIndex).toVar();
+    const home = homeBuffer.element(instanceIndex);
+
+    const toHome = home.sub(pos).toVar();
+    const acc = toHome.mul(SPRING).toVar();
+
+    const fromMouse = pos.sub(mouseN).toVar();
+    const d = length(fromMouse);
+    const f = max(float(0), RADIUS.sub(d)).div(RADIUS).toVar();
+    acc.addAssign(fromMouse.add(1e-5).normalize().mul(f.mul(f)).mul(PUSH));
+
+    const disp = clamp(length(toHome).mul(TURB_DISP_K), 0.0, 1.0).toVar();
+    const turb = vec3(
+      sin(pos.y.mul(6.0).add(timeN.mul(1.3))),
+      sin(pos.z.mul(6.0).add(timeN.mul(1.7))),
+      sin(pos.x.mul(6.0).add(timeN.mul(1.1))),
+    );
+    acc.addAssign(turb.mul(TURB_BASE.add(TURB_MOVE.mul(disp))).mul(disp));
+
+    vel.addAssign(acc.mul(dtN));
+    vel.mulAssign(exp(DAMPING.negate().mul(dtN)));
+    const sp = length(vel).toVar();
+    vel.assign(vel.mul(min(sp, MAX_SPEED).div(max(sp, 1e-4))));
+
+    velocityBuffer.element(instanceIndex).assign(vel);
+    pos.addAssign(vel.mul(dtN));
+  })().compute(count);
+
+  // === Render: instanced billboard reading the buffers in the vertex stage =====
+  const geometry = new InstancedBufferGeometry();
+  geometry.setAttribute(
+    "position",
+    new BufferAttribute(new Float32Array(QUAD_CORNERS), 3),
+  );
+  geometry.setIndex(new BufferAttribute(new Uint16Array(QUAD_INDEX), 1));
+  geometry.setAttribute("aRef", new InstancedBufferAttribute(aRef, 2));
+  geometry.instanceCount = count;
+
+  const uPointSize = uniform(config.POINT_SIZE) as UniformNode<number>;
+  const uPixelRatio = uniform(1) as UniformNode<number>;
+  const uViewport = uniform(new Vector2(1, 1)) as UniformNode<unknown>;
+  const uFade = uniform(1) as UniformNode<number>;
+  const uPointAlpha = uniform(config.POINT_ALPHA) as UniformNode<number>;
+  const uColCold = uniform(
+    new Color().fromArray(config.COL_COLD),
+  ) as UniformNode<ColorLike>;
+  const uColHot = uniform(
+    new Color().fromArray(config.COL_HOT),
+  ) as UniformNode<ColorLike>;
+  const uEmissive = uniform(config.EMISSIVE) as UniformNode<number>;
+
+  const aRefNode = attribute("aRef");
+  const vRandSrc = fract(
+    sin(dot(aRefNode.xy, vec2(127.1, 311.7))).mul(43758.5453123),
+  ).toVar();
+  const vSpeed = float(0).toVar();
+
+  const material = new MeshBasicNodeMaterial();
+  material.vertexNode = Fn(() => {
+    // Vertex-stage STORAGE read (no sampler/texture/orientation) — the fix.
+    const p = positionBuffer.element(instanceIndex).xyz.toVar();
+    const v = velocityBuffer.element(instanceIndex).xyz;
+    vSpeed.assign(length(v));
+    const mv = modelViewMatrix.mul(vec4(p, 1.0)).toVar();
+    const dist = mv.z.negate();
+    const clip = cameraProjectionMatrix.mul(mv).toVar();
+    const sizeNode = (uPointSize as unknown as AnyNode)
+      .mul(uPixelRatio as unknown as AnyNode)
+      .mul(float(0.6).add(float(0.8).mul(vRandSrc)))
+      .div(max(dist, 0.001));
+    const corner = positionLocal.xy;
+    clip.xy.addAssign(
+      corner.mul(sizeNode).div(uViewport as unknown as AnyNode).mul(2.0).mul(clip.w),
+    );
+    return clip;
+  })();
+
+  const vQuadUv = varying(positionLocal.xy);
+  const vSpeedF = varying(vSpeed);
+  const vRandF = varying(vRandSrc);
+
+  const shade = Fn(() => {
+    const r = length(vQuadUv);
+    const a = smoothstep(0.5, 0.12, r).toVar();
+    const t = clamp(vSpeedF.mul(0.6), 0.0, 1.0);
+    const col = mix(uColCold as unknown as AnyNode, uColHot as unknown as AnyNode, t)
+      .toVec3()
+      .mul(float(1.0).add(vSpeedF.mul(0.35)))
+      .mul(float(0.7).add(float(0.5).mul(vRandF)))
+      .mul(uEmissive as unknown as AnyNode);
+    const alpha = a
+      .mul(uPointAlpha as unknown as AnyNode)
+      .mul(uFade as unknown as AnyNode)
+      .toVar();
+    Discard(alpha.lessThan(0.004));
+    return vec4(col, alpha);
+  })();
+  material.colorNode = (shade as AnyNode).xyz;
+  material.opacityNode = (shade as AnyNode).w;
+  material.transparent = renderOpts.transparent;
+  material.depthWrite = renderOpts.depthWrite;
+  material.depthTest = renderOpts.depthWrite;
+  material.blending =
+    renderOpts.blending === "normal" ? NormalBlending : AdditiveBlending;
+  material.toneMapped = false;
+  material.side = DoubleSide;
+
+  const mouseScratch = uMouse.value;
+
+  function tick(p: GpgpuTickParams) {
+    uDelta.value = p.dt;
+    uTime.value = p.time;
+    mouseScratch.copy(p.mouse as unknown as Vec3Like);
+    // Dispatch the compute kernel (synchronous; backend is up by useFrame).
+    gl.compute(simulate);
+  }
+
+  const rig: GpgpuSimRig = {
+    size,
+    // No textures on the compute path — the render reads the storage buffers
+    // directly. These getters exist only to satisfy the shared rig interface.
+    get positionTexture() {
+      return null as unknown as import("three").Texture;
+    },
+    get velocityTexture() {
+      return null as unknown as import("three").Texture;
+    },
+    tick,
+    setForces(f: GpgpuForces) {
+      uSpring.value = f.spring;
+      uPush.value = f.push;
+      uRadiusN.value = f.radius;
+      uDamping.value = f.damping;
+      uTurbBaseN.value = f.turbBase;
+    },
+    dispose() {
+      geometry.dispose();
+      material.dispose();
+    },
+  };
+
+  return {
+    rig,
+    geometry,
+    material,
+    uFade,
+    uPointSize,
+    uPixelRatio,
+    uViewport,
+    uEmissive,
+    uPointAlpha,
+    dispose() {
+      rig.dispose();
     },
   };
 }

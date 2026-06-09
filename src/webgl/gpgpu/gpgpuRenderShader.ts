@@ -20,7 +20,7 @@
  * GLSL twin of gpgpuRenderNode.ts (TSL, flag-ON). Imports only `three` core.
  */
 import * as THREE from "three";
-import type { GpgpuConfig } from "./gpgpuConfig";
+import type { GpgpuConfig, GpgpuRenderOpts } from "./gpgpuConfig";
 
 const vertexShader = /* glsl */ `
   attribute vec2 aRef;             // this particle's texel in the state grid
@@ -128,8 +128,20 @@ export type GpgpuRenderUniforms = {
  * frame from fxStore.gpgpuEmissive by HeroLogo.
  */
 
+/**
+ * Default render options reproduce the original single-layer look (additive
+ * glow, no depth write). The two-layer hero passes BODY opts (NormalBlending +
+ * depthWrite, so the violet body occludes) and SKIN opts (additive glow).
+ */
+const DEFAULT_RENDER_OPTS: GpgpuRenderOpts = {
+  blending: "additive",
+  depthWrite: false,
+  transparent: true,
+};
+
 export function createGpgpuRenderMaterial(
   config: GpgpuConfig,
+  renderOpts: GpgpuRenderOpts = DEFAULT_RENDER_OPTS,
 ): THREE.ShaderMaterial & { uniforms: GpgpuRenderUniforms } {
   const material = new THREE.ShaderMaterial({
     vertexShader,
@@ -146,10 +158,15 @@ export function createGpgpuRenderMaterial(
       uEmissive: { value: config.EMISSIVE },
       uPointAlpha: { value: config.POINT_ALPHA },
     },
-    transparent: true,
-    depthWrite: false,
-    depthTest: false,
-    blending: THREE.AdditiveBlending,
+    transparent: renderOpts.transparent,
+    depthWrite: renderOpts.depthWrite,
+    // Occluding body (depthWrite) also depth-tests so it reads solid; additive
+    // skin (no depthWrite) skips the test so it glows over everything.
+    depthTest: renderOpts.depthWrite,
+    blending:
+      renderOpts.blending === "normal"
+        ? THREE.NormalBlending
+        : THREE.AdditiveBlending,
     toneMapped: false,
     side: THREE.DoubleSide,
   });

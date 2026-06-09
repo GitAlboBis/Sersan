@@ -72,15 +72,28 @@ interface FxState {
    *   "particles" → the parked GPGPU FBO particle cloud (vertex-stage RT read
    *                 scrambles on WebGPU — kept gated for reference, not shipped).
    *   "both"      → solid + GPGPU particles, framed identically (sanity check).
-   *   "particles-static" → THE SHIPPING HERO: render the particle billboards at
-   *                 their HOME positions (per-instance vec3 attribute) and
-   *                 ANALYTICALLY displace them near the cursor in the vertex
-   *                 shader (lift + violet→cyan, eased hover). No FBO, no sim, no
-   *                 vertex-stage texture read → robust on WebGPU.
+   *   "particles-static" → THE CURRENT SHIPPING HERO: render the particle
+   *                 billboards at their HOME positions (per-instance vec3
+   *                 attribute) and ANALYTICALLY displace them near the cursor in
+   *                 the vertex shader (lift + violet→cyan, eased hover). No FBO,
+   *                 no sim, no vertex-stage texture read → robust on WebGPU.
+   *   "particles-2layer" → the Lusion-DDD TWO-LAYER MOMENTUM hero (verified live
+   *                 2026-06-09, see ParticleDissolve.md): a dense calm OPAQUE
+   *                 violet BODY (occludes, reads solid) + a reactive ADDITIVE
+   *                 cyan SKIN that sprays away from the cursor WITH MOMENTUM and
+   *                 eases back over ~1–2 s (true 2nd-order spring, not the
+   *                 analytic snap). Both run the momentum FBO sim with body/skin
+   *                 presets (gpgpuConfig BODY_LAYER / SKIN_LAYER). Candidate to
+   *                 become the default once verified on both backends.
    * Live-settable from the console:
-   *   window.__sersanFx.getState().set({ heroRenderMode: "particles" })
+   *   window.__sersanFx.getState().set({ heroRenderMode: "particles-2layer" })
    */
-  heroRenderMode: "solid" | "particles" | "both" | "particles-static";
+  heroRenderMode:
+    | "solid"
+    | "particles"
+    | "both"
+    | "particles-static"
+    | "particles-2layer";
   // Particle field
   particleOpacity: number;
   // GPGPU dissolve hero (HeroLogo) — the few live-tunable sim/render knobs.

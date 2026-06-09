@@ -97,3 +97,89 @@ export const SIZE_BY_TIER: Record<"full" | "lite", number> = {
   full: 256,
   lite: 128,
 };
+
+// ===========================================================================
+// TWO-LAYER hero (Lusion DDD footer-D, verified 2026-06-09) — body + skin
+// ===========================================================================
+// The live DDD effect is TWO particle layers (see ParticleDissolve.md §1):
+//   • BODY — a dense, calm, OPAQUE violet "D" that occludes (reads solid) and
+//     barely reacts to the cursor. NormalBlending + depthWrite so it composites
+//     as a solid base under the glow.
+//   • SKIN — a reactive, ADDITIVE cyan particle skin sitting a hair OUTSIDE the
+//     body (offset along +normal). UNDER-DAMPED spring (ζ≈0.39) so on hover it
+//     sprays away from the cursor WITH MOMENTUM and eases back over ~1–2 s — the
+//     "fly out, hang, return" feel, NOT the analytic snap of `particles-static`.
+// Both run the SAME momentum sim (createGpgpuSim / createGpgpuNodeSim) with
+// different force/render params; the model-space cursor is shared.
+
+/** Blending mode for a layer's render material (mapped to THREE constants). */
+export type GpgpuBlending = "additive" | "normal";
+
+/** Render-material options that differ per layer (body occludes, skin glows). */
+export interface GpgpuRenderOpts {
+  blending: GpgpuBlending;
+  depthWrite: boolean;
+  transparent: boolean;
+}
+
+/** A full layer spec: sim/render config + how to sample its home field. */
+export interface GpgpuLayerConfig {
+  /** Force + render constants (same shape as the single-layer config). */
+  config: GpgpuConfig;
+  /** Surface-sampling options for this layer's home field (see MarkLayerOptions). */
+  sampling: { frontBias: number; normalOffset: number; volumeJitter: number };
+  /** Render-material blending/depth/transparency. */
+  render: GpgpuRenderOpts;
+}
+
+/** ζ = DAMPING/(2·√SPRING). Body ≈0.58 (calm, tiny overshoot); skin ≈0.39 (drift). */
+export const BODY_LAYER: GpgpuLayerConfig = {
+  config: {
+    ...DEFAULT_GPGPU_CONFIG,
+    // Calm + fairly stiff so the body barely moves and reads as a solid base.
+    SPRING: 36,
+    DAMPING: 7,
+    PUSH: 26,
+    RADIUS: 0.5,
+    MAX_SPEED: 4,
+    TURB_BASE: 0.02,
+    TURB_MOVE: 0.9,
+    TURB_DISP_K: 6,
+    // Small dense dots, fully opaque → overlapping discs read as a solid volume.
+    POINT_SIZE: 5,
+    POINT_ALPHA: 1.0,
+    // Lower emissive: the body is the dark violet solid, not the glow.
+    EMISSIVE: 1.6,
+    COL_COLD: [0.4, 0.28, 0.85], // violet
+    COL_HOT: [0.55, 0.75, 1.0], // → azure/white when (rarely) moved
+  },
+  // Lower front-bias coats the depth too (solid volume, not a face-on shell);
+  // inward jitter fakes a filled volume from the surface sampler.
+  sampling: { frontBias: 0.4, normalOffset: 0, volumeJitter: 0.06 },
+  render: { blending: "normal", depthWrite: true, transparent: false },
+};
+
+export const SKIN_LAYER: GpgpuLayerConfig = {
+  config: {
+    ...DEFAULT_GPGPU_CONFIG,
+    // UNDER-DAMPED: sprays far on hover, hangs, eases back over ~1–2 s.
+    SPRING: 20,
+    DAMPING: 3.5,
+    PUSH: 60,
+    RADIUS: 0.6,
+    MAX_SPEED: 4.5,
+    TURB_BASE: 0.04,
+    TURB_MOVE: 1.8,
+    TURB_DISP_K: 5,
+    // Larger, semi-transparent additive sprites → a glowing cyan velvet skin.
+    POINT_SIZE: 6.5,
+    POINT_ALPHA: 0.55,
+    EMISSIVE: 2.6,
+    COL_COLD: [0.25, 0.95, 0.95], // cyan at rest
+    COL_HOT: [0.9, 1.0, 1.0], // → white when fast/sprayed
+  },
+  // Front-biased like the original; offset OUT along +normal so the cyan glow
+  // floats just outside the violet body surface.
+  sampling: { frontBias: 0.12, normalOffset: 0.03, volumeJitter: 0 },
+  render: { blending: "additive", depthWrite: false, transparent: true },
+};

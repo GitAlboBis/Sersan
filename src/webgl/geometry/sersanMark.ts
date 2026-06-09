@@ -156,6 +156,27 @@ export interface MarkHomeField {
 const FRONT_BIAS_MIN = 0.12;
 
 /**
+ * Per-layer sampling options for the two-layer Lusion-DDD hero (body + skin).
+ * All optional → the defaults reproduce the original single-layer behaviour, so
+ * `sampleMarkHomePositions(geometry, size)` is unchanged for existing callers.
+ *
+ * - `frontBias` — rejection-sampling keep floor (see FRONT_BIAS_MIN). Lower
+ *   (~0.4) coats the depth/back too so the BODY reads as a solid volume; the
+ *   default 0.12 keeps the front-face bias for a face-on skin.
+ * - `normalOffset` — push each home point OUT (+) / IN (−) along the surface
+ *   normal. The SKIN sits a hair outside the body (`+0.02–0.04`) so the cyan
+ *   glow floats over the violet solid (matches the DDD footer skin-over-body).
+ * - `volumeJitter` — push each point INWARD along −normal by a random
+ *   `[0, volumeJitter]`, faking a filled volume from a surface sampler so the
+ *   BODY reads dense/solid rather than a hollow shell.
+ */
+export interface MarkLayerOptions {
+  frontBias?: number;
+  normalOffset?: number;
+  volumeJitter?: number;
+}
+
+/**
  * Sample a SIZE×SIZE grid of points across the mark's surface for the GPGPU
  * dissolve hero. Returns the home-position field (to seed the position/home
  * float textures) and the per-instance grid `aRef` UVs (so each rendered
@@ -165,6 +186,8 @@ const FRONT_BIAS_MIN = 0.12;
  *
  * Sampling is FRONT-BIASED (see FRONT_BIAS_MIN) so the camera-facing face is
  * densely coated and the mark reads as a solid skin rather than a thin outline.
+ * `opts` tunes the bias + a normal offset + a volume jitter PER LAYER (body vs
+ * skin) — omitted, it reproduces the original single-layer field exactly.
  *
  * `homeRGBA[i]` and `aRef[i]` share the SAME row-major index: particle `i` sits
  * at grid cell `(col = i % size, row = floor(i / size))`, whose texel center is
@@ -176,7 +199,12 @@ const FRONT_BIAS_MIN = 0.12;
 export function sampleMarkHomePositions(
   geometry: THREE.BufferGeometry,
   size: number,
+  opts: MarkLayerOptions = {},
 ): MarkHomeField {
+  const frontBias = opts.frontBias ?? FRONT_BIAS_MIN;
+  const normalOffset = opts.normalOffset ?? 0;
+  const volumeJitter = opts.volumeJitter ?? 0;
+
   const count = size * size;
   const mesh = new THREE.Mesh(geometry);
   const sampler = new MeshSurfaceSampler(mesh).build();
@@ -196,9 +224,25 @@ export function sampleMarkHomePositions(
     while (true) {
       sampler.sample(pos, nrm);
       const frontness = Math.max(0, nrm.z); // 1 = dead-on front, 0 = back/edge
-      const keepP = FRONT_BIAS_MIN + (1 - FRONT_BIAS_MIN) * frontness;
+      const keepP = frontBias + (1 - frontBias) * frontness;
       if (Math.random() < keepP || ++tries >= MAX_TRIES) break;
     }
+
+    // Per-layer offset along the surface normal: SKIN floats out (+), and a
+    // random inward jitter fakes a filled VOLUME for the dense body. `nrm` is
+    // unit-length from MeshSurfaceSampler.
+    if (normalOffset !== 0) {
+      pos.x += nrm.x * normalOffset;
+      pos.y += nrm.y * normalOffset;
+      pos.z += nrm.z * normalOffset;
+    }
+    if (volumeJitter > 0) {
+      const j = Math.random() * volumeJitter;
+      pos.x -= nrm.x * j;
+      pos.y -= nrm.y * j;
+      pos.z -= nrm.z * j;
+    }
+
     homeRGBA[i * 4] = pos.x;
     homeRGBA[i * 4 + 1] = pos.y;
     homeRGBA[i * 4 + 2] = pos.z;
