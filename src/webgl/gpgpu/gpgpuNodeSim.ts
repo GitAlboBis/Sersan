@@ -224,6 +224,8 @@ export interface TslSymbolsGpgpu {
   varying: (n: AnyNode) => AnyNode;
   pow: (a: AnyNode, b: AnyNode | number) => AnyNode;
   abs: (n: AnyNode) => AnyNode;
+  /** Deterministic per-index hash → [0,1) (TSL built-in). */
+  hash: (n: AnyNode) => AnyNode;
   /** TSL stack-based branching: If(cond, fn).ElseIf(cond, fn).Else(fn). */
   If: (cond: AnyNode, fn: () => void) => TslIfChain;
 }
@@ -1070,6 +1072,13 @@ export interface SporeNodeBuild {
   uSporeRadius: UniformNode<number>;
   /** HDR emission strength on fast spores (selective-bloom driver). */
   uEmissive: UniformNode<number>;
+  /**
+   * Scroll-out dissolve 0..1 (fed from the hero scroll progress): radial push
+   * from the MODEL CENTER + staggered kill, with respawn parked until it
+   * clears — the mark scatters into space as it scrolls away and reassembles
+   * when scrolled back.
+   */
+  uBurst: UniformNode<number>;
   dispose: () => void;
 }
 
@@ -1132,6 +1141,7 @@ export function createSporeComputeNodeBuild(
     mix,
     pow,
     abs,
+    hash,
     If,
     instancedArray,
     instanceIndex,
@@ -1177,6 +1187,9 @@ export function createSporeComputeNodeBuild(
   const LIFE_HEAL = float(spore.LIFE_HEAL);
   const LIFE_DIE = float(spore.LIFE_DIE);
   const LIFE_REGROW = float(spore.LIFE_REGROW);
+  // Scroll-out dissolve (0..1, fed per frame from the hero scroll progress).
+  const uBurst = uniform(0) as UniformNode<number>;
+  const burstN = uBurst as unknown as AnyNode;
 
   // DDD life machine on top of the spring sim: the cursor pushes a spore →
   // its speed crosses the kill curve → it DIES mid-flight (ghost drift, the
@@ -1212,6 +1225,17 @@ export function createSporeComputeNodeBuild(
       );
       acc.addAssign(turb.mul(TURB_BASE.add(TURB_MOVE.mul(disp))).mul(disp));
 
+      // SCROLL-OUT burst: radial push from the model center (the mark is
+      // geometry.center()ed, so the origin IS the logo center), staggered per
+      // spore so the dissolve ripples instead of popping uniformly.
+      const rndI = hash(instanceIndex).toVar();
+      acc.addAssign(
+        pos
+          .add(1e-5)
+          .normalize()
+          .mul(burstN.mul(7.0).mul(float(0.6).add(rndI.mul(0.8)))),
+      );
+
       vel.addAssign(acc.mul(dtN));
       vel.mulAssign(exp(DAMPING.negate().mul(dtN)));
       const sp = length(vel).toVar();
@@ -1221,22 +1245,35 @@ export function createSporeComputeNodeBuild(
       pos.addAssign(vel.mul(dtN));
 
       // Velocity-gated decay — DDD's exact kill curve 50·min(1,|v|·0.35)⁵ —
-      // minus a small heal so grazed survivors knit back to full life.
-      const decay = pow(min(sp.mul(0.35), 1.0), 5.0).mul(LIFE_DECAY);
+      // minus a small heal so grazed survivors knit back to full life. The
+      // burst adds a direct staggered kill so the scroll dissolve completes
+      // even for spores the radial push barely moves (the pinned core).
+      const decay = pow(min(sp.mul(0.35), 1.0), 5.0)
+        .mul(LIFE_DECAY)
+        .add(burstN.mul(float(2.0).add(rndI.mul(2.5))));
       lifeH.assign(
         min(lifeH.add(LIFE_HEAL.sub(decay).mul(dtN)), 1.0),
       );
     }).Else(() => {
-      // DYING (−1,0] — free ghost flight (DDD: pos += 0.7·v·dt, damped, no
-      // forces); the render shrinks it to nothing as life → −1.
-      pos.addAssign(velH.mul(0.7).mul(dtN));
-      velH.mulAssign(exp(float(-2.5).mul(dtN)));
+      // DYING (−1,0] — free ghost flight (DDD-style, no forces); the render
+      // shrinks it to nothing as life → −1. Drift factor + gentler damping so
+      // the dying spores sail a touch FARTHER into space (user feedback).
+      pos.addAssign(velH.mul(0.85).mul(dtN));
+      velH.mulAssign(exp(float(-1.8).mul(dtN)));
       lifeH.subAssign(dtN.mul(LIFE_DIE));
       If(lifeH.lessThan(-1.0), () => {
-        // RESPAWN — back at home, regrow countdown starts (life 2 → 1).
-        pos.assign(home);
-        velH.assign(vec3(0.0, 0.0, 0.0));
-        lifeH.assign(2.0);
+        If(burstN.lessThan(0.05), () => {
+          // RESPAWN — back at home, regrow countdown starts (life 2 → 1).
+          pos.assign(home);
+          velH.assign(vec3(0.0, 0.0, 0.0));
+          lifeH.assign(2.0);
+        }).Else(() => {
+          // Scroll-out active: park DEAD at home (invisible) — no respawn
+          // until the mark scrolls back, then the crust regrows in place.
+          pos.assign(home);
+          velH.assign(vec3(0.0, 0.0, 0.0));
+          lifeH.assign(-1.0);
+        });
       });
     });
   })().compute(count);
@@ -1400,6 +1437,7 @@ export function createSporeComputeNodeBuild(
     uFade,
     uSporeRadius,
     uEmissive,
+    uBurst,
     dispose() {
       rig.dispose();
     },

@@ -313,6 +313,9 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   const sporeOccluderMaterial = useMemo(() => {
     const m = new THREE.MeshBasicMaterial({ color: 0x000000 });
     m.toneMapped = false;
+    // Transparent so the scroll-out burst can fade the solid slab away while
+    // its spore shells scatter (opacity driven per frame).
+    m.transparent = true;
     return m;
   }, []);
   useEffect(() => () => sporeOccluderMaterial.dispose(), [sporeOccluderMaterial]);
@@ -671,6 +674,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     uFade: { value: number };
     uSporeRadius: { value: number };
     uEmissive: { value: number };
+    uBurst: { value: number };
     dispose: () => void;
   }
   const [tslSpore, setTslSpore] = useState<TslSpore[] | null>(null);
@@ -717,6 +721,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
           uFade: b.uFade,
           uSporeRadius: b.uSporeRadius,
           uEmissive: b.uEmissive,
+          uBurst: b.uBurst,
           dispose: b.dispose,
         };
       });
@@ -1003,13 +1008,23 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
 
     // --- SPORES (instanced shaded spheres on the compute sim) ---------------
     if (showSpores && !sporeStaticFallback) {
-      // The opaque occluder follows the scroll fade by darkening toward the
-      // near-black bg (the shell also scales/recedes, so it reads as a fade).
+      // Scroll-out dissolve: as the hero scrolls away the spores BURST from
+      // the logo center and die (staggered), so the mark scatters into space
+      // before it leaves the screen — and regrows when scrolled back. Window
+      // chosen just AHEAD of the recede/fade (0.74→0.97) so the scatter is the
+      // thing that dissolves the mark, not the opacity fade.
+      const burst = THREE.MathUtils.smoothstep(hp, 0.5, 0.88);
+
+      // The opaque occluder follows the scroll fade AND the burst (a solid
+      // dark slab can't hang around while its spore shells scatter).
+      const occDim = fade * (1 - burst) * (1 - burst);
       sporeOccluderMaterial.color.setRGB(
-        SPORE_OCCLUDER_COLOR[0] * fade,
-        SPORE_OCCLUDER_COLOR[1] * fade,
-        SPORE_OCCLUDER_COLOR[2] * fade,
+        SPORE_OCCLUDER_COLOR[0] * occDim,
+        SPORE_OCCLUDER_COLOR[1] * occDim,
+        SPORE_OCCLUDER_COLOR[2] * occDim,
       );
+      sporeOccluderMaterial.opacity = 1 - burst;
+      sporeOccluderMaterial.visible = burst < 0.97;
       if (!tslSpore) return; // occluder-only until the lazy build resolves
 
       // Model-space cursor via the raycast helper: the repulsion center is the
@@ -1025,6 +1040,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         layer.uFade.value = fade;
         layer.uSporeRadius.value = sporeBaseRadius * fx.sporeSize;
         layer.uEmissive.value = fx.sporeEmissive;
+        layer.uBurst.value = burst;
       }
       return;
     }

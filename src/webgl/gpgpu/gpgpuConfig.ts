@@ -303,7 +303,10 @@ export const SPORE_LAYER: {
     BASE_EMISSION: 0,
     LIFE_DECAY: 40,
     LIFE_HEAL: 0.2,
-    LIFE_DIE: 1.5,
+    // ≈0.83 s of ghost flight (was 1.5 → ≈0.67 s): paired with the gentler
+    // ghost damping/drift in the kernel so dying spores sail a touch FARTHER
+    // into space (user feedback) without lingering forever.
+    LIFE_DIE: 1.2,
     LIFE_REGROW: 1.0,
   },
 };
@@ -361,10 +364,11 @@ export const SPORE_CORE_LAYER: {
     RIM: 0.7,
     SPEED_COLOR_K: 0.55,
     BASE_EMISSION: 1.0,
-    // Immortal: decay 0 → the alive branch never drops below 1.
+    // Immortal vs the CURSOR (decay 0 → the kill curve never fires); the
+    // scroll-out burst still dissolves it via the direct burst kill term.
     LIFE_DECAY: 0,
     LIFE_HEAL: 0.3,
-    LIFE_DIE: 1.6,
+    LIFE_DIE: 1.15,
     LIFE_REGROW: 0.8,
   },
 };
