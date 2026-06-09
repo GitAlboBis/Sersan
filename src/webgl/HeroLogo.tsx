@@ -532,19 +532,38 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         { spec: BODY_LAYER, home: bodyHome },
         { spec: SKIN_LAYER, home: skinHome },
       ];
+      // WebGPU backend → compute + storage buffers (per layer, no FBO round-trip);
+      // WebGL2 sub-backend → FBO rig. Same routing as the single-layer path.
+      const bk = (gl as unknown as { backend?: { isWebGLBackend?: boolean } })
+        .backend;
+      const isWebGPUBackend =
+        !!bk &&
+        bk.isWebGLBackend !== true &&
+        typeof (gl as unknown as { compute?: unknown }).compute === "function";
       built = defs.map(({ spec, home }) => {
         const cfg: GpgpuConfig = { ...spec.config, SIZE: gridSize };
-        const b = mod.createGpgpuNodeSim(
-          gl as never,
-          webgpu as never,
-          tslNs as never,
-          home.homeRGBA,
-          home.aRef,
-          gridSize,
-          cfg,
-          floatType,
-          spec.render,
-        );
+        const b = isWebGPUBackend
+          ? mod.createGpgpuComputeNodeSim(
+              gl as never,
+              webgpu as never,
+              tslNs as never,
+              home.homeRGBA,
+              home.aRef,
+              gridSize,
+              cfg,
+              spec.render,
+            )
+          : mod.createGpgpuNodeSim(
+              gl as never,
+              webgpu as never,
+              tslNs as never,
+              home.homeRGBA,
+              home.aRef,
+              gridSize,
+              cfg,
+              floatType,
+              spec.render,
+            );
         return {
           rig: b.rig,
           geometry: b.geometry as unknown as THREE.InstancedBufferGeometry,

@@ -145,18 +145,23 @@ export const BODY_LAYER: GpgpuLayerConfig = {
     TURB_BASE: 0.02,
     TURB_MOVE: 0.9,
     TURB_DISP_K: 6,
-    // Small dense dots, fully opaque → overlapping discs read as a solid volume.
-    POINT_SIZE: 5,
-    POINT_ALPHA: 1.0,
+    // BIG soft discs that overlap into a continuous violet mass (vs hard opaque
+    // dots = grainy). With transparent NormalBlending below, the feathered alpha
+    // blends neighbouring discs → a smooth solid-reading plate, no DOF needed.
+    POINT_SIZE: 11,
+    POINT_ALPHA: 0.85,
     // Lower emissive: the body is the dark violet solid, not the glow.
     EMISSIVE: 1.6,
     COL_COLD: [0.4, 0.28, 0.85], // violet
     COL_HOT: [0.55, 0.75, 1.0], // → azure/white when (rarely) moved
   },
-  // Lower front-bias coats the depth too (solid volume, not a face-on shell);
-  // inward jitter fakes a filled volume from the surface sampler.
-  sampling: { frontBias: 0.4, normalOffset: 0, volumeJitter: 0.06 },
-  render: { blending: "normal", depthWrite: true, transparent: false },
+  // STRONG front-bias so particles concentrate on the camera-facing plate (a
+  // dense solid read), with only a whisper of inward jitter for depth.
+  sampling: { frontBias: 0.82, normalOffset: 0, volumeJitter: 0.02 },
+  // Transparent NormalBlending (NOT opaque): the feathered discs blend/overlap
+  // into a smooth violet fill rather than hard grainy dots. Drawn first
+  // (renderOrder 0); the additive cyan skin composites over it.
+  render: { blending: "normal", depthWrite: false, transparent: true },
 };
 
 export const SKIN_LAYER: GpgpuLayerConfig = {

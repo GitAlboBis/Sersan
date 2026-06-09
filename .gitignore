@@ -42,3 +42,6 @@ next-env.d.ts
 
 # local audit artifacts
 lighthouse-*.json
+
+# Transient browser-capture screenshots (Claude-in-Chrome)
+f_*.png
