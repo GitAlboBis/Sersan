@@ -607,7 +607,7 @@ export function createGpgpuNodeSim(
     const clip = cameraProjectionMatrix.mul(mv).toVar();
     const sizeNode = (uPointSize as unknown as AnyNode)
       .mul(uPixelRatio as unknown as AnyNode)
-      .mul(float(0.4).add(float(1.5).mul(vRandSrc)))
+      .mul(float(0.7).add(float(0.9).mul(vRandSrc)))
       .div(max(dist, 0.001));
     const corner = positionLocal.xy;
     clip.xy.addAssign(
@@ -626,7 +626,7 @@ export function createGpgpuNodeSim(
     // than separate dots. smoothstep is already 0 at r ≥ 0.5, so the alpha-floor
     // discard below removes those fragments (no greaterThan node needed).
     const r = length(vQuadUv);
-    const a = smoothstep(0.5, 0.0, r).toVar();
+    const a = smoothstep(0.5, 0.18, r).toVar();
 
     // Color: violet→cyan by RAW speed. At rest vSpeed≈0 → pure violet (solid
     // purple skin); only hovered/lifted particles gain speed → bright cyan glow.
@@ -930,7 +930,7 @@ export function createGpgpuComputeNodeSim(
     const clip = cameraProjectionMatrix.mul(mv).toVar();
     const sizeNode = (uPointSize as unknown as AnyNode)
       .mul(uPixelRatio as unknown as AnyNode)
-      .mul(float(0.4).add(float(1.5).mul(vRandSrc)))
+      .mul(float(0.7).add(float(0.9).mul(vRandSrc)))
       .div(max(dist, 0.001));
     const corner = positionLocal.xy;
     clip.xy.addAssign(
@@ -945,7 +945,7 @@ export function createGpgpuComputeNodeSim(
 
   const shade = Fn(() => {
     const r = length(vQuadUv);
-    const a = smoothstep(0.5, 0.0, r).toVar();
+    const a = smoothstep(0.5, 0.18, r).toVar();
     const t = clamp(vSpeedF.mul(0.6), 0.0, 1.0);
     const col = mix(uColCold as unknown as AnyNode, uColHot as unknown as AnyNode, t)
       .toVec3()
@@ -1191,7 +1191,7 @@ export function createStaticParticleNodeBuild(
     const clip = cameraProjectionMatrix.mul(mv).toVar();
     const sizeNode = (uPointSize as unknown as AnyNode)
       .mul(uPixelRatio as unknown as AnyNode)
-      .mul(float(0.4).add(float(1.5).mul(vRandSrc)))
+      .mul(float(0.7).add(float(0.9).mul(vRandSrc)))
       .div(max(dist, 0.001));
     const corner = positionLocal.xy;
     clip.xy.addAssign(
@@ -1206,7 +1206,7 @@ export function createStaticParticleNodeBuild(
 
   const shade = Fn(() => {
     const r = length(vQuadUv);
-    const a = smoothstep(0.5, 0.0, r).toVar();
+    const a = smoothstep(0.5, 0.18, r).toVar();
     // Color: violet→cyan by lift (like the GPGPU render did by speed). At rest
     // lift≈0 → pure violet skin; lifted/hovered particles glow toward cyan.
     //   t = clamp(lift*1.2, 0, 1); col = mix(cold, hot, t);

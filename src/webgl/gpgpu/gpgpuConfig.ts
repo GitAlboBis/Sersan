@@ -92,11 +92,12 @@ export const DEFAULT_GPGPU_CONFIG: GpgpuConfig = {
   COL_HOT: [0.28, 0.95, 0.95],
 };
 
-/** Per-tier grid size → SIZE*SIZE particles per layer. Bumped (256→320 full)
- * for a DENSER spore field per the DDD-feedback ("tutte le spore più dense"). */
+/** Per-tier grid size → SIZE*SIZE particles per layer. High count so the big
+ * soft spores PACK edge-to-edge into a continuous mass (DDD look: spores touch,
+ * no gaps) rather than reading as spaced dots. full 448² ≈ 200k/layer. */
 export const SIZE_BY_TIER: Record<"full" | "lite", number> = {
-  full: 320,
-  lite: 160,
+  full: 448,
+  lite: 224,
 };
 
 // ===========================================================================
@@ -152,7 +153,9 @@ export const BODY_LAYER: GpgpuLayerConfig = {
     POINT_SIZE: 16,
     POINT_ALPHA: 0.85,
     // Lower emissive: the body is the dark violet solid, not the glow.
-    EMISSIVE: 1.6,
+    // Below the ~1.0 selective-bloom threshold so the packed violet body reads as
+    // a SOLID dark-violet mass (not a white-blooming blob) — like the DDD navy "D".
+    EMISSIVE: 1.05,
     COL_COLD: [0.4, 0.28, 0.85], // violet
     COL_HOT: [0.55, 0.75, 1.0], // → azure/white when (rarely) moved
   },
@@ -184,8 +187,12 @@ export const SKIN_LAYER: GpgpuLayerConfig = {
     // color/brightness term makes them POP cyan when sprayed on hover (like DDD,
     // dark body at rest → cyan burst on interaction).
     POINT_SIZE: 18,
-    POINT_ALPHA: 0.4,
-    EMISSIVE: 1.8,
+    // Very low at rest so the DENSE packed additive skin does NOT saturate to
+    // white (400k overlapping additive spores blow out fast). A subtle cyan sheen
+    // at rest; the velocity term brightens it so it POPS + blooms only when
+    // sprayed on hover (DDD: dark body at rest → cyan burst on interaction).
+    POINT_ALPHA: 0.16,
+    EMISSIVE: 0.7,
     COL_COLD: [0.25, 0.95, 0.95], // cyan at rest
     COL_HOT: [0.9, 1.0, 1.0], // → white when fast/sprayed
   },
