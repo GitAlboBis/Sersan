@@ -241,6 +241,20 @@ export interface SporeRenderConfig {
   RIM: number;
   /** Velocity → emission ramp factor (t = clamp(|vel|·K, 0, 1)). */
   SPEED_COLOR_K: number;
+  // --- Life state machine (DDD bundle ground truth) ------------------------
+  // The cursor does NOT just push spores aside: excited spores DIE (shrink to
+  // nothing mid-flight, exposing the azure core) and RESPAWN at home, regrowing
+  // with a scale pulse. life ∈ (0,1] pinned/alive; (−1,0] dying ghost flight;
+  // ≤−1 respawn with life=2; (1,2] regrow countdown (invisible 2→1.5, grows
+  // 1.5→1 with an overshoot pulse at 1.25 — DDD's exact envelope).
+  /** Velocity-gated decay rate — DDD: 50·min(1,|v|·0.35)⁵ per second. */
+  LIFE_DECAY: number;
+  /** Heal rate back toward 1 while alive & calm (DDD "regenerates otherwise"). */
+  LIFE_HEAL: number;
+  /** Dying-phase countdown rate (0 → −1): 1/rate s of shrinking ghost flight. */
+  LIFE_DIE: number;
+  /** Regrow countdown rate (2 → 1): the crust re-forms over ~1/rate·s ×2. */
+  LIFE_REGROW: number;
 }
 
 /** Spore layer: under-damped momentum sim + sampling + sphere-render look. */
@@ -278,6 +292,10 @@ export const SPORE_LAYER: {
     EMISSIVE: 2.2,
     RIM: 0.5,
     SPEED_COLOR_K: 0.55,
+    LIFE_DECAY: 50,
+    LIFE_HEAL: 0.3,
+    LIFE_DIE: 1.6,
+    LIFE_REGROW: 0.8,
   },
 };
 
@@ -293,8 +311,13 @@ export const SPORE_SIZE_BY_TIER: Record<"full" | "lite", number> = {
  * exactly this: 0.015 → 0.0185). */
 export const SPORE_LITE_RADIUS_SCALE = 1.22;
 
-/** Dark navy-violet of the inner occluder mesh under the spore crust (the DDD
- * "SOLID.buf" trick: interior gaps read as shadowed mass, not background). */
+/** ELECTRIC-AZURE core of the inner occluder mesh under the spore crust (the
+ * DDD "SOLID.buf" trick). User feedback vs the first pale pass: the revealed
+ * interior must be "azzurro acceso ILLUMINATO, come il colore delle particelle"
+ * — blue-dominant (not aqua-green) and GLOWING. HDR values above the ~1.0
+ * selective-bloom threshold (+ toneMapped:false on the material) so the core
+ * blooms like the excited cyan spores do; the fade multiplier still dims it on
+ * scroll. */
 export const SPORE_OCCLUDER_COLOR: [number, number, number] = [
-  0.085, 0.06, 0.18,
+  0.35, 1.1, 1.7,
 ];

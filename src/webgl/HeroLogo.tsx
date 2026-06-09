@@ -275,13 +275,16 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     ((TARGET_HEIGHT * SPORE_LAYER.spore.DIAMETER_RATIO) / 2) *
     (tier === "lite" ? SPORE_LITE_RADIUS_SCALE : 1);
 
-  // Solid dark occluder under the spore crust (the DDD "SOLID.buf" trick):
-  // interior gaps read as shadowed mass, not background. Color is written per
-  // frame (base × fade) so the opaque mesh follows the scroll fade.
-  const sporeOccluderMaterial = useMemo(
-    () => new THREE.MeshBasicMaterial({ color: 0x000000 }),
-    [],
-  );
+  // Solid GLOWING azure occluder under the spore crust (the DDD "SOLID.buf"
+  // trick): the interior revealed when spores disperse is the electric-azure
+  // core. toneMapped:false so the HDR SPORE_OCCLUDER_COLOR keeps its >1 values
+  // into the bloom pass (same discipline as the particle materials). Color is
+  // written per frame (base × fade) so the opaque mesh follows the scroll fade.
+  const sporeOccluderMaterial = useMemo(() => {
+    const m = new THREE.MeshBasicMaterial({ color: 0x000000 });
+    m.toneMapped = false;
+    return m;
+  }, []);
   useEffect(() => () => sporeOccluderMaterial.dispose(), [sporeOccluderMaterial]);
 
   // === Pick the float type once (FloatType when EXT_color_buffer_float is

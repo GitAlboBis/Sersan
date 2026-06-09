@@ -40,6 +40,7 @@ type AnyNode = {
   subAssign: (n: AnyNode | number) => void;
   assign: (n: AnyNode | number) => void;
   lessThan: (n: AnyNode | number) => AnyNode;
+  greaterThan: (n: AnyNode | number) => AnyNode;
   /** Storage-buffer element accessor (read/write handle) by index node. */
   element: (index: AnyNode) => AnyNode & { value: unknown };
   /** Expose a storage/instanced buffer as a per-instance vertex attribute. */
@@ -221,6 +222,16 @@ export interface TslSymbolsGpgpu {
   smoothstep: (a: AnyNode | number, b: AnyNode | number, x: AnyNode) => AnyNode;
   Discard: (cond: AnyNode) => void;
   varying: (n: AnyNode) => AnyNode;
+  pow: (a: AnyNode, b: AnyNode | number) => AnyNode;
+  abs: (n: AnyNode) => AnyNode;
+  /** TSL stack-based branching: If(cond, fn).ElseIf(cond, fn).Else(fn). */
+  If: (cond: AnyNode, fn: () => void) => TslIfChain;
+}
+
+/** Return shape of TSL `If` — chainable ElseIf/Else. */
+export interface TslIfChain {
+  ElseIf: (cond: AnyNode, fn: () => void) => TslIfChain;
+  Else: (fn: () => void) => void;
 }
 
 const QUAD_CORNERS = [-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0];
@@ -1073,6 +1084,10 @@ export interface SporeRenderParams {
   EMISSIVE: number;
   RIM: number;
   SPEED_COLOR_K: number;
+  LIFE_DECAY: number;
+  LIFE_HEAL: number;
+  LIFE_DIE: number;
+  LIFE_REGROW: number;
 }
 
 export function createSporeComputeNodeBuild(
@@ -1114,13 +1129,16 @@ export function createSporeComputeNodeBuild(
     fract,
     dot,
     mix,
+    pow,
+    abs,
+    If,
     instancedArray,
     instanceIndex,
   } = tsl;
 
   const count = size * size;
 
-  // --- Sim: identical storage-buffer kernel to createGpgpuComputeNodeSim ----
+  // --- Sim: storage-buffer spring kernel + the DDD LIFE state machine -------
   const aHome = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
     aHome[i * 3] = homeRGBA[i * 4];
@@ -1130,6 +1148,9 @@ export function createSporeComputeNodeBuild(
   const positionBuffer = instancedArray(aHome.slice(), "vec3");
   const velocityBuffer = instancedArray(count, "vec3"); // zero-initialised
   const homeBuffer = instancedArray(aHome.slice(), "vec3");
+  // Per-spore life, seeded ALIVE (1). States — see SporeRenderConfig docs:
+  // (0,1] alive/pinned · (−1,0] dying ghost flight · ≤−1 respawn · (1,2] regrow.
+  const lifeBuffer = instancedArray(new Float32Array(count).fill(1), "float");
 
   const uMouse = uniform(new Vector3(1e9, 1e9, 1e9)) as UniformNode<Vec3Like>;
   const uDelta = uniform(1 / 60) as UniformNode<number>;
@@ -1151,34 +1172,72 @@ export function createSporeComputeNodeBuild(
   const timeN = uTime as unknown as AnyNode;
   const mouseN = uMouse as unknown as AnyNode;
 
+  const LIFE_DECAY = float(spore.LIFE_DECAY);
+  const LIFE_HEAL = float(spore.LIFE_HEAL);
+  const LIFE_DIE = float(spore.LIFE_DIE);
+  const LIFE_REGROW = float(spore.LIFE_REGROW);
+
+  // DDD life machine on top of the spring sim: the cursor pushes a spore →
+  // its speed crosses the kill curve → it DIES mid-flight (ghost drift, the
+  // render shrinks it to nothing) → respawns AT HOME and regrows in place.
+  // "Spores disappear and regrow on top" — not just displaced and back.
   const simulate = Fn(() => {
     const pos = positionBuffer.element(instanceIndex);
-    const vel = velocityBuffer.element(instanceIndex).toVar();
+    const velH = velocityBuffer.element(instanceIndex);
     const home = homeBuffer.element(instanceIndex);
+    const lifeH = lifeBuffer.element(instanceIndex);
 
-    const toHome = home.sub(pos).toVar();
-    const acc = toHome.mul(SPRING).toVar();
+    If(lifeH.greaterThan(1.0), () => {
+      // REGROW (1,2] — pinned at home, invisible→grown via the render envelope.
+      pos.assign(home);
+      velH.assign(vec3(0.0, 0.0, 0.0));
+      lifeH.subAssign(dtN.mul(LIFE_REGROW));
+    }).ElseIf(lifeH.greaterThan(0.0), () => {
+      // ALIVE (0,1] — the original spring + repulsion + turbulence integration.
+      const vel = velH.toVar();
+      const toHome = home.sub(pos).toVar();
+      const acc = toHome.mul(SPRING).toVar();
 
-    const fromMouse = pos.sub(mouseN).toVar();
-    const d = length(fromMouse);
-    const f = max(float(0), RADIUS.sub(d)).div(RADIUS).toVar();
-    acc.addAssign(fromMouse.add(1e-5).normalize().mul(f.mul(f)).mul(PUSH));
+      const fromMouse = pos.sub(mouseN).toVar();
+      const d = length(fromMouse);
+      const f = max(float(0), RADIUS.sub(d)).div(RADIUS).toVar();
+      acc.addAssign(fromMouse.add(1e-5).normalize().mul(f.mul(f)).mul(PUSH));
 
-    const disp = clamp(length(toHome).mul(TURB_DISP_K), 0.0, 1.0).toVar();
-    const turb = vec3(
-      sin(pos.y.mul(6.0).add(timeN.mul(1.3))),
-      sin(pos.z.mul(6.0).add(timeN.mul(1.7))),
-      sin(pos.x.mul(6.0).add(timeN.mul(1.1))),
-    );
-    acc.addAssign(turb.mul(TURB_BASE.add(TURB_MOVE.mul(disp))).mul(disp));
+      const disp = clamp(length(toHome).mul(TURB_DISP_K), 0.0, 1.0).toVar();
+      const turb = vec3(
+        sin(pos.y.mul(6.0).add(timeN.mul(1.3))),
+        sin(pos.z.mul(6.0).add(timeN.mul(1.7))),
+        sin(pos.x.mul(6.0).add(timeN.mul(1.1))),
+      );
+      acc.addAssign(turb.mul(TURB_BASE.add(TURB_MOVE.mul(disp))).mul(disp));
 
-    vel.addAssign(acc.mul(dtN));
-    vel.mulAssign(exp(DAMPING.negate().mul(dtN)));
-    const sp = length(vel).toVar();
-    vel.assign(vel.mul(min(sp, MAX_SPEED).div(max(sp, 1e-4))));
+      vel.addAssign(acc.mul(dtN));
+      vel.mulAssign(exp(DAMPING.negate().mul(dtN)));
+      const sp = length(vel).toVar();
+      vel.assign(vel.mul(min(sp, MAX_SPEED).div(max(sp, 1e-4))));
 
-    velocityBuffer.element(instanceIndex).assign(vel);
-    pos.addAssign(vel.mul(dtN));
+      velH.assign(vel);
+      pos.addAssign(vel.mul(dtN));
+
+      // Velocity-gated decay — DDD's exact kill curve 50·min(1,|v|·0.35)⁵ —
+      // minus a small heal so grazed survivors knit back to full life.
+      const decay = pow(min(sp.mul(0.35), 1.0), 5.0).mul(LIFE_DECAY);
+      lifeH.assign(
+        min(lifeH.add(LIFE_HEAL.sub(decay).mul(dtN)), 1.0),
+      );
+    }).Else(() => {
+      // DYING (−1,0] — free ghost flight (DDD: pos += 0.7·v·dt, damped, no
+      // forces); the render shrinks it to nothing as life → −1.
+      pos.addAssign(velH.mul(0.7).mul(dtN));
+      velH.mulAssign(exp(float(-2.5).mul(dtN)));
+      lifeH.subAssign(dtN.mul(LIFE_DIE));
+      If(lifeH.lessThan(-1.0), () => {
+        // RESPAWN — back at home, regrow countdown starts (life 2 → 1).
+        pos.assign(home);
+        velH.assign(vec3(0.0, 0.0, 0.0));
+        lifeH.assign(2.0);
+      });
+    });
   })().compute(count);
 
   // --- Render: instanced icosphere through the STANDARD pipeline ------------
@@ -1213,11 +1272,25 @@ export function createSporeComputeNodeBuild(
   );
 
   const material = new MeshBasicNodeMaterial();
+
+  // DDD life→scale envelope (exact formula from the bundle):
+  //   linearStep(−1,−0.2,life) · (linearStep(1.5,1,life) + pulse(1.25)·0.5)
+  // alive = 1 · dying shrinks to 0 as life→−1 · regrow grows 1.5→1 with an
+  // overshoot pulse at 1.25 · freshly-respawned (life>1.5) = invisible.
+  const lifeAttr = lifeBuffer.toAttribute();
+  const dieEnv = clamp(lifeAttr.add(1.0).div(0.8), 0.0, 1.0);
+  const regrowEnv = clamp(float(1.5).sub(lifeAttr).div(0.5), 0.0, 1.0);
+  const pulse = max(
+    float(0.0),
+    float(1.0).sub(abs(lifeAttr.sub(1.25)).div(0.25)),
+  ).mul(0.5);
+  const lifeScale = dieEnv.mul(regrowEnv.add(pulse));
+
   material.positionNode = positionLocal
     .mul(
-      (uSporeRadius as unknown as AnyNode).mul(
-        mix(float(spore.VAR_MIN), float(spore.VAR_MAX), rnd),
-      ),
+      (uSporeRadius as unknown as AnyNode)
+        .mul(mix(float(spore.VAR_MIN), float(spore.VAR_MAX), rnd))
+        .mul(lifeScale),
     )
     .add(positionBuffer.toAttribute());
 
@@ -1235,11 +1308,17 @@ export function createSporeComputeNodeBuild(
       .mul(uAlbedoMul as unknown as AnyNode);
     const lit = albedo.mul(ambient.add(lambert.mul(0.95))).mul(ao).toVar();
 
-    // Excitement = speed (storage read auto-varied into the fragment).
-    // Quadratic ramp so the resting crust stays dark violet and only sprayed
-    // spores lerp toward cyan AND cross the selective-bloom threshold.
+    // Excitement = speed (storage read auto-varied into the fragment) OR the
+    // regrow flash (DDD: brightness = max(0, life−1) — re-forming spores flash
+    // cyan). Quadratic ramp so the resting crust stays dark violet and only
+    // excited spores lerp toward cyan AND cross the selective-bloom threshold.
     const speed = length(velocityBuffer.toAttribute());
-    const t = clamp(speed.mul(spore.SPEED_COLOR_K), 0.0, 1.0).toVar();
+    const regrowFlash = clamp(lifeAttr.sub(1.0), 0.0, 1.0); // max(0, life−1)
+    const t = clamp(
+      max(speed.mul(spore.SPEED_COLOR_K), regrowFlash),
+      0.0,
+      1.0,
+    ).toVar();
     const emission = mix(
       (uAlbedo as unknown as AnyNode).toVec3(),
       (uEmissionCol as unknown as AnyNode).toVec3(),
