@@ -1460,6 +1460,12 @@ export interface TextMorphNodeBuild {
   uMorph: UniformNode<number>;
   /** Global alpha (cross-fade against the DOM headline). */
   uFade: UniformNode<number>;
+  /**
+   * Per-particle target jitter radius (world units). >0 = the text is a
+   * DIFFUSE cloud shaped like the glyphs; → 0 = particles condense onto the
+   * exact glyph pixels. Scroll drives this for the "density grows" intro.
+   */
+  uSpread: UniformNode<number>;
   uPointSize: UniformNode<number>;
   uPixelRatio: UniformNode<number>;
   uViewport: UniformNode<unknown>;
@@ -1488,6 +1494,9 @@ export function createTextMorphComputeBuild(
   homeB: Float32Array,
   count: number,
   params: TextMorphParams,
+  /** Optional initial particle positions (e.g. a scattered cloud for the
+   * entry "particles assemble into the text" beat). Defaults to homeA. */
+  seedPositions?: Float32Array,
 ): TextMorphNodeBuild {
   const {
     InstancedBufferGeometry,
@@ -1522,15 +1531,20 @@ export function createTextMorphComputeBuild(
     instanceIndex,
   } = tsl;
 
-  const positionBuffer = instancedArray(homeA.slice(), "vec3");
+  const positionBuffer = instancedArray(
+    (seedPositions ?? homeA).slice(),
+    "vec3",
+  );
   const velocityBuffer = instancedArray(count, "vec3");
   const homeABuffer = instancedArray(homeA.slice(), "vec3");
   const homeBBuffer = instancedArray(homeB.slice(), "vec3");
 
   const uMorph = uniform(0) as UniformNode<number>;
+  const uSpread = uniform(0) as UniformNode<number>;
   const uDelta = uniform(1 / 60) as UniformNode<number>;
   const uTime = uniform(0) as UniformNode<number>;
   const morphN = uMorph as unknown as AnyNode;
+  const spreadN = uSpread as unknown as AnyNode;
   const dtN = uDelta as unknown as AnyNode;
   const timeN = uTime as unknown as AnyNode;
   const SPRING = float(params.SPRING);
@@ -1550,6 +1564,16 @@ export function createTextMorphComputeBuild(
     const r = hash(instanceIndex).toVar();
     const m = clamp(morphN.sub(r.mul(0.55)).div(0.45), 0.0, 1.0).toVar();
     const target = mix(hA, hB, smoothstep(0.0, 1.0, m)).toVar();
+
+    // Diffuse-cloud spread: a stable per-particle offset direction whose
+    // radius (uSpread) the scroll shrinks to 0 — the text visibly CONDENSES
+    // from a loose particle cloud into the exact glyph shape.
+    const jdir = vec3(
+      hash(instanceIndex.add(7919)).mul(2.0).sub(1.0),
+      hash(instanceIndex.add(104729)).mul(2.0).sub(1.0),
+      hash(instanceIndex.add(1299709)).mul(2.0).sub(1.0).mul(0.5),
+    );
+    target.addAssign(jdir.mul(spreadN));
 
     const vel = velH.toVar();
     const acc = target.sub(pos).mul(SPRING).toVar();
@@ -1656,6 +1680,7 @@ export function createTextMorphComputeBuild(
     material,
     uMorph,
     uFade,
+    uSpread,
     uPointSize,
     uPixelRatio,
     uViewport,

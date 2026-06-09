@@ -22,6 +22,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Button } from "@/components/ui/button";
 import { Magnetic } from "@/components/ui/magnetic";
 import { HeroDragLayer } from "@/components/hero-drag-layer";
+import { HeroIntroGate } from "@/components/fx/hero-intro-gate";
 import { useLanguage } from "@/components/language-provider";
 import { useTextMorphStore } from "@/webgl/store/textMorphStore";
 import type { Language } from "@/data/translations/types";
@@ -778,6 +779,28 @@ export default function CinematicSystemScroll() {
           }}
         />
 
+        {/* Brand intro headline — "Sersan AI", much larger than the H1. The
+            WebGL text-particle intro (HeroTextParticles) reveals it at the top
+            of the page and dissolves it into particles on the first scroll,
+            which then recompose into the real headline. Hidden by default
+            (opacity 0 inline) so every fallback path (no JS, mobile, non-
+            WebGPU, reduced motion) never shows it — the H1 owns the hero as
+            before. Decorative: the accessible heading stays the real H1. */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 flex items-center pointer-events-none pt-[max(var(--header-h),6rem)]"
+        >
+          <div className="container-px w-full">
+            <span
+              data-hero-brand
+              className="font-display text-[clamp(3.75rem,9vw,8.5rem)] leading-none tracking-[-0.03em] text-ink inline-block"
+              style={{ opacity: 0, willChange: "opacity" }}
+            >
+              Sersan AI
+            </span>
+          </div>
+        </div>
+
         {/* Stage rail (left) */}
         <StageRail progressRef={progressRef} stages={stages} />
 
@@ -801,6 +824,12 @@ export default function CinematicSystemScroll() {
         {/* Drag-to-rotate capture over the planet (right half). Mounts only
             once the WebGL hero is live; wheel scrolling bubbles through. */}
         <HeroDragLayer />
+
+        {/* Scroll hijack for the text intro: while the gate is engaged the
+            page does NOT scroll — wheel/touch input only drives the
+            "Sersan AI" → headline particle transition. Self-gates on the
+            WebGL morph being active; inert on every fallback. */}
+        <HeroIntroGate />
       </div>
     </section>
   );

@@ -131,11 +131,12 @@ function RouteRitual({
         <Suspense fallback={null}>
           <HeroLogo tier={tier} anchors={anchors} />
         </Suspense>
-        {/* Lusion-style pinned text intro: "Sersan AI" particles scatter and
-            recompose into the real headline on the first scroll (the hero is
-            already pinned, so only the text moves). True-WebGPU only; every
-            fallback leaves the DOM hero untouched. */}
-        <HeroTextParticles tier={tier} anchors={anchors} />
+        {/* Lusion-style scroll-hijacked text intro: the BIG solid "Sersan AI"
+            dissolves into particles that recompose into the real headline —
+            driven ONLY by the consumed scroll of HeroIntroGate, so the camera
+            and the whole scene stay perfectly still until the gate releases.
+            True-WebGPU only; every fallback leaves the DOM hero untouched. */}
+        <HeroTextParticles tier={tier} />
         {/* Blender-built gateway at the end of the home story (66KB GLB). */}
         <Suspense fallback={null}>
           <GatewayPortal tier={tier} anchors={anchors} />

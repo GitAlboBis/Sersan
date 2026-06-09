@@ -28,9 +28,22 @@ interface TextMorphState {
    * crisp DOM text takes over. 1 whenever the system is inactive.
    */
   domReveal: number;
+  /**
+   * Scroll-gate progress 0..1 — the TRUE Lusion intro: while the gate is
+   * engaged the PAGE DOES NOT SCROLL AT ALL (Lenis stopped, wheel/touch
+   * consumed by HeroIntroGate); the consumed input accumulates here and is
+   * the ONLY driver of the text transition. Camera, mark, line — everything
+   * scroll-bound — stay perfectly still until this reaches 1 and the gate
+   * releases the page.
+   */
+  gateProgress: number;
+  /** True while the gate is consuming scroll input (page locked). */
+  gateEngaged: boolean;
 }
 
 export const useTextMorphStore = create<TextMorphState>(() => ({
   active: false,
   domReveal: 1,
+  gateProgress: 0,
+  gateEngaged: false,
 }));
