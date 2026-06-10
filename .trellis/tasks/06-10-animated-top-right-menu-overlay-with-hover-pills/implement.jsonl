@@ -1,0 +1,2 @@
+{"file": "prd.md", "reason": "Full spec: real menu routes + EN/IT labels, 3-layer white→cyan pill hover technique, 2-col grid decision (ADR), Lenis stop/start, reduced-motion fallback, token mapping (--ink/--accent/--bg), acceptance criteria"}
+{"file": "research/api-notes.md", "reason": "context7-verified current APIs: framer-motion v12 (motion + AnimatePresence import path, variants/staggerChildren/delayChildren, useReducedMotion) and Radix Dialog v1.1 (forceMount + AnimatePresence exit pattern, modal focus-trap/scroll-lock/return-focus, asChild composition)"}

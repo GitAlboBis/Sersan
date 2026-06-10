@@ -1,31 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import * as Dialog from "@radix-ui/react-dialog";
-import { Menu, X, Volume2, VolumeX } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Menu, X, ArrowRight, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Magnetic } from "@/components/ui/magnetic";
 import { SersanLogo } from "@/components/sersan-logo";
 import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 import { START_HREF } from "@/lib/site";
+import { getLenis } from "@/lib/lenis-singleton";
 import { useAudioStore } from "@/webgl/store/audioStore";
 
-// Use homepage anchors so the nav works from /. On sub-pages the leading `/`
-// sends users back to the homepage with the hash, which is the right behavior.
+// Real site pages — the dropdown menu navigates the app, not homepage anchors.
 type NavItem = { href: string; label: string; labelIt: string };
 
-// Buyer-intent nav. "Start" is rendered as a primary CTA pill at the right,
-// not as a regular nav item — so it's excluded from this list and added
-// separately below.
 const NAV_ITEMS: NavItem[] = [
-  { href: "/#services", label: "Services", labelIt: "Servizi" },
-  { href: "/#use-cases", label: "Solutions", labelIt: "Soluzioni" },
-  { href: "/#work", label: "Case Studies", labelIt: "Case Study" },
-  { href: "/#process", label: "Process", labelIt: "Processo" },
+  { href: "/audit", label: "Audit", labelIt: "Audit" },
+  { href: "/consulting", label: "Consulting", labelIt: "Consulenza" },
+  { href: "/case-studies", label: "Work", labelIt: "Case Study" },
+  { href: "/resources", label: "Writing", labelIt: "Articoli" },
+  { href: "/about", label: "About", labelIt: "Chi siamo" },
+  { href: "/contact", label: "Contact", labelIt: "Contatti" },
+  { href: "/trust", label: "Trust", labelIt: "Trust" },
 ];
+
+// Shared entrance curve — mirrors --ease-entrance in globals.css (and the
+// repo's framer `EASE` convention in reveal-on-scroll.tsx).
+const EASE = [0.16, 1, 0.3, 1] as const;
 
 function LanguageToggle({ compact = false }: { compact?: boolean }) {
   const { language, setLanguage } = useLanguage();
@@ -102,17 +106,67 @@ function AudioToggle({ compact = false }: { compact?: boolean }) {
   );
 }
 
+/**
+ * MenuPill — a single dropdown entry. Three-layer hover (AGENTS.md tone:
+ * intentional, engineered):
+ *   1. resting label slides right + fades out
+ *   2. label + arrow enter from the right, above the blob (z-10)
+ *   3. a small cyan dot grows into a full cyan fill behind them
+ * Rest = white pill (`bg-ink`) / navy text (`text-bg`); hover = cyan blob fill,
+ * text stays navy for AA contrast on both white and cyan. `motion-reduce`
+ * disables the slide so the hover state still reads but doesn't animate.
+ */
+function MenuPill({
+  item,
+  active,
+  onNavigate,
+}: {
+  item: NavItem;
+  active: boolean;
+  onNavigate: () => void;
+}) {
+  const { language } = useLanguage();
+  const label = language === "it" ? item.labelIt : item.label;
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      aria-current={active ? "page" : undefined}
+      data-cursor="link"
+      className={cn(
+        "group relative block w-full overflow-hidden rounded-full border border-rule/60 bg-ink",
+        "px-6 py-4 text-center text-xl font-semibold text-bg",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--accent))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--bg))]",
+      )}
+    >
+      {/* resting label: scrolls off to the right and fades */}
+      <span className="inline-block translate-x-1 transition-all duration-300 group-hover:translate-x-12 group-hover:opacity-0 motion-reduce:transition-none">
+        {label}
+      </span>
+      {/* label + arrow: enters from the right ABOVE the blob (z-10) */}
+      <span className="absolute inset-0 z-10 flex items-center justify-center gap-2 translate-x-12 text-bg opacity-0 transition-all duration-300 group-hover:-translate-x-1 group-hover:opacity-100 motion-reduce:transition-none">
+        {label}
+        <ArrowRight className="h-5 w-5" aria-hidden />
+      </span>
+      {/* cyan blob: from dot to full fill */}
+      <span
+        aria-hidden
+        className="absolute left-[20%] top-[40%] h-2 w-2 scale-100 rounded-lg bg-accent transition-all duration-300 group-hover:left-0 group-hover:top-0 group-hover:h-full group-hover:w-full group-hover:scale-[1.8] motion-reduce:transition-none"
+      />
+    </Link>
+  );
+}
+
 export function Navbar() {
   const pathname = usePathname();
   const { language } = useLanguage();
+  const reduce = useReducedMotion();
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  // Anchor (without leading "#") of the homepage section the user is
-  // currently inside. Drives the active-state styling on nav items whose
-  // href is /#<anchor>. Empty string when none is in view.
-  const [activeSection, setActiveSection] = useState<string>("");
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
-  // Close mobile menu on route change
+  // Close the menu whenever the route changes (covers pill navigation).
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
@@ -125,107 +179,88 @@ export function Navbar() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Track which homepage section is in view via IntersectionObserver.
-  // Only attaches on the homepage. Each nav item with href "/#<id>" gets
-  // an "active" style when its section dominates the viewport.
+  // While the dropdown is open: lock the background (freeze Lenis smooth-scroll
+  // AND lock body overflow so touch/native scroll can't move the page behind
+  // the panel), close on Esc / outside-pointer, and return focus to the toggle
+  // on dismissal. This is the focus-return + scroll-lock the spec wanted, done
+  // by hand since we're not using a modal Radix primitive.
   useEffect(() => {
-    if (pathname !== "/") {
-      setActiveSection("");
-      return;
-    }
-    const ids = NAV_ITEMS
-      .map((item) => item.href)
-      .filter((href) => href.startsWith("/#"))
-      .map((href) => href.slice(2));
+    if (!open) return;
 
-    const sections = ids
-      .map((id) => document.getElementById(id))
-      .filter((el): el is HTMLElement => Boolean(el));
+    getLenis()?.stop();
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
 
-    if (sections.length === 0) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      // Ignore clicks on the toggle (its own handler toggles) and inside the
+      // panel — everything else dismisses.
+      if (
+        triggerRef.current?.contains(target) ||
+        panelRef.current?.contains(target)
+      ) {
+        return;
+      }
+      setOpen(false);
+    };
 
-    // Centered detection band: a section is "active" once it crosses the
-    // middle ~10% of the viewport (rootMargin shrinks the root to a thin
-    // horizontal band at the center). This works regardless of section
-    // height — a very tall section (e.g. #work) activates as its body
-    // passes the band, where an intersectionRatio threshold never would
-    // because a tall section's ratio stays low. We track the set of
-    // currently-intersecting ids and pick the one closest to band center.
-    const intersecting = new Set<string>();
-    const obs = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) intersecting.add(entry.target.id);
-          else intersecting.delete(entry.target.id);
-        }
-        if (intersecting.size === 0) return;
-        // Pick the intersecting section whose center is closest to the
-        // viewport center, so the indicator tracks the dominant section.
-        const mid = window.innerHeight / 2;
-        let best = "";
-        let bestDist = Infinity;
-        for (const id of intersecting) {
-          const el = document.getElementById(id);
-          if (!el) continue;
-          const rect = el.getBoundingClientRect();
-          const center = rect.top + rect.height / 2;
-          const dist = Math.abs(center - mid);
-          if (dist < bestDist) {
-            bestDist = dist;
-            best = id;
-          }
-        }
-        if (best) setActiveSection(best);
-      },
-      {
-        threshold: 0,
-        // Shrink the root to a centered horizontal band (~10% tall). A
-        // section "intersects" only while it overlaps that band.
-        rootMargin: "-45% 0px -45% 0px",
-      },
-    );
-    sections.forEach((s) => obs.observe(s));
-    return () => obs.disconnect();
-  }, [pathname]);
+    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("pointerdown", onPointerDown);
 
-  const isActive = (href: string) => {
-    if (href.startsWith("/#")) {
-      // Active when on homepage and the matching section is in view.
-      return pathname === "/" && href.slice(2) === activeSection;
-    }
-    return (
-      pathname === href ||
-      (href !== "/" && pathname?.startsWith(`${href}/`))
-    );
-  };
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.body.style.overflow = prevOverflow;
+      getLenis()?.start();
+    };
+  }, [open]);
 
-  const desktopLinkClasses = (active: boolean) =>
-    cn(
-      // Scaled up to actually belong in a 68px steel bar. Sans-serif
-      // body face (Geist Sans) keeps it premium — mono was reading too
-      // technical / cramped. 13.5px lets the label breathe against the
-      // tall bar; tracking 0.04em is conversational, not industrial.
-      "text-[13.5px] font-medium tracking-[0.005em] px-4 py-2.5 transition-colors duration-300 relative",
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--accent))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--bg))] focus-visible:rounded-sm",
-      // Active indicator — slightly wider 2px line in accent, anchored
-      // 6px below the label so it visibly tracks the active item without
-      // touching the text.
-      active
-        ? "text-ink after:absolute after:left-1/2 after:-translate-x-1/2 after:-bottom-px after:h-[2px] after:w-8 after:rounded-full after:bg-[hsl(var(--accent))]"
-        : // Soft animated underline on hover: a centred 2px accent rule that
-          // grows from 0 → 2rem. motion-reduce skips the width transition (the
-          // underline still appears on hover, just without the slide).
-          "text-ink-mute hover:text-ink after:absolute after:left-1/2 after:-translate-x-1/2 after:-bottom-px after:h-[2px] after:w-0 after:rounded-full after:bg-[hsl(var(--accent)/0.7)] after:transition-[width] after:duration-300 hover:after:w-8 motion-reduce:after:transition-none",
-    );
+  const isActive = (href: string) =>
+    pathname === href || (href !== "/" && !!pathname?.startsWith(`${href}/`));
 
-  const mobileLinkClasses = (active: boolean) =>
-    cn(
-      "font-display text-sm font-semibold tracking-widest uppercase px-4 py-3 rounded-lg transition-colors duration-200",
-      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--accent))]",
-      active
-        ? "text-ink bg-ink/[0.06] border border-ink/15"
-        : "text-ink-mute hover:text-ink hover:bg-ink/[0.04]",
-    );
+  // Stagger orchestration for the pill list. Reduced-motion drops the slide and
+  // the stagger so entries just fade in together.
+  const listVariants = reduce
+    ? { hidden: {}, visible: { transition: { staggerChildren: 0 } } }
+    : {
+        hidden: {},
+        visible: { transition: { delayChildren: 0.08, staggerChildren: 0.04 } },
+      };
+  const itemVariants = reduce
+    ? {
+        hidden: { opacity: 0 },
+        visible: { opacity: 1, transition: { duration: 0.25 } },
+      }
+    : {
+        hidden: { opacity: 0, y: 8 },
+        visible: {
+          opacity: 1,
+          y: 0,
+          transition: { duration: 0.35, ease: EASE },
+        },
+      };
+  // The "tenda" (curtain) unroll — panel grows downward from 0 height. Reduced
+  // motion: plain fade, no height animation.
+  const panelMotion = reduce
+    ? {
+        initial: { opacity: 0 },
+        animate: { opacity: 1 },
+        exit: { opacity: 0 },
+        transition: { duration: 0.2 },
+      }
+    : {
+        initial: { opacity: 0, height: 0 as number | "auto" },
+        animate: { opacity: 1, height: "auto" as const },
+        exit: { opacity: 0, height: 0 as number | "auto" },
+        transition: { duration: 0.4, ease: EASE },
+      };
 
   return (
     <nav
@@ -239,9 +274,7 @@ export function Navbar() {
         //   - bottom: 1px brand-blue rule (panel separation line)
         //   - drop:   soft glow that grows on scroll
         "border-b border-[hsl(var(--ink)/0.05)]",
-        scrolled
-          ? "backdrop-blur-2xl"
-          : "backdrop-blur-xl",
+        scrolled ? "backdrop-blur-2xl" : "backdrop-blur-xl",
       )}
       style={{
         background: scrolled
@@ -273,37 +306,16 @@ export function Navbar() {
             />
           </div>
 
-          {/* Desktop nav — perfectly balanced in the middle of the bar.
-              Plain anchor list; no menubar semantics (the role implies
-              arrow-key behaviour we don't ship). The outer <nav> landmark
-              is enough for screen readers. */}
-          <ul className="hidden lg:flex items-center gap-1 list-none">
-            {NAV_ITEMS.map((item) => {
-              const active = isActive(item.href);
-              return (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    aria-current={active ? "page" : undefined}
-                    className={desktopLinkClasses(!!active)}
-                  >
-                    {language === "it" ? item.labelIt : item.label}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-
+          {/* Right cluster — on desktop: EN/IT · audio · Book a call · Menu.
+              Below lg: only the Menu toggle (EN/IT, audio and the CTA live
+              inside the dropdown). */}
           <div className="flex items-center gap-3 sm:gap-4 shrink-0">
-            <div className="hidden sm:flex items-center gap-2">
+            <div className="hidden lg:flex items-center gap-2">
               <AudioToggle />
               <LanguageToggle />
             </div>
 
-            {/* Primary CTA — solid brand-blue pill. Geist Sans body face at
-                13px matches the nav links scale; tighter tracking + the
-                semibold weight from the hero variant keep it pill-shaped
-                rather than essay-shaped. */}
+            {/* Primary CTA — solid brand-blue pill. */}
             <Magnetic className="hidden lg:inline-block" strength={0.25}>
               <Button
                 asChild
@@ -317,86 +329,129 @@ export function Navbar() {
               </Button>
             </Magnetic>
 
-            {/* Mobile menu trigger */}
-            <Dialog.Root open={open} onOpenChange={setOpen}>
-              <Dialog.Trigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="lg:hidden text-ink h-11 w-11"
-                  aria-label="Open navigation menu"
-                  aria-expanded={open}
-                  aria-controls="mobile-menu"
-                >
-                  <Menu className="h-6 w-6" aria-hidden="true" />
-                </Button>
-              </Dialog.Trigger>
-
-              <Dialog.Portal>
-                <Dialog.Overlay className="fixed inset-0 z-40 bg-bg/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0" />
-                <Dialog.Content
-                  id="mobile-menu"
-                  aria-label="Mobile navigation"
+            {/* Menu toggle — opens the dropdown that unrolls below it. */}
+            <button
+              ref={triggerRef}
+              type="button"
+              data-cursor="link"
+              onClick={() => setOpen((o) => !o)}
+              aria-expanded={open}
+              aria-haspopup="true"
+              aria-controls="site-menu"
+              aria-label={
+                open
+                  ? language === "it"
+                    ? "Chiudi il menu"
+                    : "Close menu"
+                  : language === "it"
+                    ? "Apri il menu"
+                    : "Open menu"
+              }
+              className={cn(
+                "inline-flex items-center gap-2 rounded-full border h-10 px-4 transition-colors",
+                "bg-bg/40 backdrop-blur-md border-rule/60 text-ink",
+                "hover:text-[hsl(var(--accent))] hover:border-[hsl(var(--accent)/0.6)]",
+                open && "text-[hsl(var(--accent))] border-[hsl(var(--accent)/0.6)]",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--accent))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--bg))]",
+              )}
+            >
+              <span className="font-mono text-[11px] uppercase tracking-[0.12em]">
+                Menu
+              </span>
+              {/* Menu ⟷ X morph — two stacked icons cross-fade + rotate. */}
+              <span className="relative inline-flex h-4 w-4 items-center justify-center">
+                <Menu
+                  aria-hidden="true"
                   className={cn(
-                    "fixed top-0 right-0 z-50 h-full w-80 max-w-[88vw]",
-                    "bg-bg/95 backdrop-blur-2xl border-l border-[hsl(var(--accent)/0.15)]",
-                    "shadow-[-10px_0_40px_hsl(var(--bg)/0.5)]",
-                    "p-6 flex flex-col gap-8",
-                    "data-[state=open]:animate-in data-[state=closed]:animate-out",
-                    "data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right",
+                    "absolute h-4 w-4 transition-all duration-300 motion-reduce:transition-none",
+                    open
+                      ? "opacity-0 rotate-90 scale-50"
+                      : "opacity-100 rotate-0 scale-100",
                   )}
-                >
-                  <div className="flex items-center justify-between">
-                    <SersanLogo size="sm" />
-                    <div className="flex items-center gap-2">
-                      <AudioToggle compact />
-                      <LanguageToggle compact />
-                      <Dialog.Close asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Close navigation menu"
-                          className="text-ink h-11 w-11"
-                        >
-                          <X className="h-5 w-5" aria-hidden="true" />
-                        </Button>
-                      </Dialog.Close>
-                    </div>
-                  </div>
-
-                  <Dialog.Title className="sr-only">Navigation</Dialog.Title>
-                  <Dialog.Description className="sr-only">
-                    Primary site navigation
-                  </Dialog.Description>
-
-                  <ul className="flex flex-col gap-1 list-none" aria-label="Mobile navigation links">
-                    {NAV_ITEMS.map((item) => {
-                      const active = isActive(item.href);
-                      return (
-                        <li key={item.href}>
-                          <Link
-                            href={item.href}
-                            aria-current={active ? "page" : undefined}
-                            className={cn(mobileLinkClasses(!!active), "block")}
-                          >
-                            {language === "it" ? item.labelIt : item.label}
-                          </Link>
-                        </li>
-                      );
-                    })}
-                  </ul>
-
-                  <Button asChild variant="hero" size="lg" className="mt-2 w-full">
-                    <Link href={START_HREF}>
-                      {language === "it" ? "Prenota una call" : "Book a call"}
-                    </Link>
-                  </Button>
-                </Dialog.Content>
-              </Dialog.Portal>
-            </Dialog.Root>
+                />
+                <X
+                  aria-hidden="true"
+                  className={cn(
+                    "absolute h-4 w-4 transition-all duration-300 motion-reduce:transition-none",
+                    open
+                      ? "opacity-100 rotate-0 scale-100"
+                      : "opacity-0 -rotate-90 scale-50",
+                  )}
+                />
+              </span>
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Dropdown "a tenda" — fixed under the bar at the top-right gutter,
+          unrolls downward. AnimatePresence plays the exit (curtain rolls up). */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            id="site-menu"
+            ref={panelRef}
+            key="site-menu"
+            className={cn(
+              "fixed right-4 top-[68px] z-[60] w-[min(86vw,300px)] origin-top overflow-hidden",
+              "rounded-2xl border border-rule/60",
+              "sm:right-6 sm:top-[76px] lg:right-10",
+            )}
+            style={{
+              background:
+                "linear-gradient(180deg, hsl(220 24% 11% / 0.98) 0%, hsl(220 24% 8% / 0.98) 100%)",
+              backdropFilter: "blur(24px)",
+              boxShadow:
+                "inset 0 1px 0 hsl(var(--accent) / 0.14), 0 24px 60px -20px hsl(var(--bg) / 0.92), 0 8px 24px -12px hsl(220 30% 2% / 0.8)",
+            }}
+            initial={panelMotion.initial}
+            animate={panelMotion.animate}
+            exit={panelMotion.exit}
+            transition={panelMotion.transition}
+          >
+            <div className="p-3 sm:p-4">
+              <motion.ul
+                variants={listVariants}
+                initial="hidden"
+                animate="visible"
+                className="flex flex-col gap-2 list-none"
+                aria-label="Site pages"
+              >
+                {NAV_ITEMS.map((item) => (
+                  <motion.li key={item.href} variants={itemVariants}>
+                    <MenuPill
+                      item={item}
+                      active={isActive(item.href)}
+                      onNavigate={() => setOpen(false)}
+                    />
+                  </motion.li>
+                ))}
+              </motion.ul>
+
+              {/* Footer — CTA + EN/IT + audio. Only below lg: on desktop these
+                  already live in the bar, so the dropdown stays just the pages. */}
+              <div className="lg:hidden mt-3 flex flex-col gap-4 border-t border-rule/60 pt-4">
+                <Magnetic className="block" strength={0.2}>
+                  <Button
+                    asChild
+                    variant="hero"
+                    size="lg"
+                    className="w-full rounded-full"
+                  >
+                    <Link href={START_HREF} onClick={() => setOpen(false)}>
+                      {language === "it" ? "Prenota una call" : "Book a call"}
+                    </Link>
+                  </Button>
+                </Magnetic>
+                <div className="flex items-center justify-center gap-3">
+                  <LanguageToggle />
+                  <AudioToggle />
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </nav>
   );
 }

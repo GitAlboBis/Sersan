@@ -1,0 +1,2 @@
+{"file": "prd.md", "reason": "Acceptance criteria + Definition of Done to verify against: pills/routes, stagger + Menu→X morph, hover effect on every pill (AA contrast), EN/IT, CTA→/start, Lenis stop/start, reduced-motion fade-only, no dead IO code, untouched WebGL layer"}
+{"file": "research/api-notes.md", "reason": "Confirm implementation uses the current framer-motion v12 + Radix Dialog v1.1 APIs (no stale/deprecated usage)"}
