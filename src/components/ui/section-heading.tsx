@@ -57,6 +57,7 @@ export function SectionHeading({
     let cancelled = false;
     let split: SplitText | null = null;
     let tl: gsap.core.Timeline | null = null;
+    let io: IntersectionObserver | null = null;
 
     // Wait for the webfonts: SplitText measures line boxes, and the display
     // serif swapping in after the split would re-wrap lines under the masks.
@@ -75,9 +76,14 @@ export function SectionHeading({
       if (descEl) gsap.set(descEl, { opacity: 0, y: 12 });
       if (ctaEl) gsap.set(ctaEl, { opacity: 0, y: 10 });
 
-      tl = gsap.timeline({
-        scrollTrigger: { trigger: el, start: "top 85%", once: true },
-      });
+      // Paused timeline, PLAYED by an IntersectionObserver (created below) —
+      // NOT a ScrollTrigger. A once:true ScrollTrigger created already-in-view
+      // (which is the case on every client-side navigation, where the heading
+      // mounts at the top in view) never fires its onEnter — GSAP only fires on
+      // an active-state CHANGE, and ScrollTrigger.refresh() re-measures without
+      // firing it — so the whole heading stayed at opacity:0 until a hard
+      // refresh. IO fires on observe while already intersecting, fixing SPA nav.
+      tl = gsap.timeline({ paused: true });
 
       // Cascade: eyebrow → title → description → cta, each lagging the
       // previous by ~100-150ms so the heading reads as one staggered beat
@@ -127,6 +133,21 @@ export function SectionHeading({
           ">-0.4",
         );
       }
+
+      // Play the cascade the moment the heading is in view. The -15% bottom
+      // rootMargin reproduces the old "top 85%" start point; an in-view heading
+      // (SPA nav) fires immediately, a below-the-fold one waits for scroll.
+      io = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((e) => e.isIntersecting)) {
+            tl?.play();
+            io?.disconnect();
+            io = null;
+          }
+        },
+        { rootMargin: "0px 0px -15% 0px", threshold: 0 },
+      );
+      io.observe(el);
     });
 
     // On language change / unmount: stop a late fonts.ready from building anew,
@@ -135,9 +156,10 @@ export function SectionHeading({
     // re-created `once:true` reveal doesn't accumulate duplicate triggers.
     return () => {
       cancelled = true;
+      io?.disconnect();
+      io = null;
       split?.revert();
       split = null;
-      tl?.scrollTrigger?.kill();
       tl?.kill();
     };
   }, [language]);

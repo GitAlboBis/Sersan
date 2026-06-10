@@ -91,19 +91,29 @@ export function HeadingChoreographer() {
             paused: true,
           });
           tweens.push(tween);
+          // Velocity-modulated reveal body, shared by the scroll trigger AND the
+          // creation-time in-view check below.
+          const fire = () => {
+            const f = velocityFactor(useScrollStore.getState().velocity);
+            tween.vars.yPercent = BASE_Y_PERCENT * (1 + 0.18 * f); // 115 → ~136
+            tween.vars.stagger = BASE_STAGGER * (1 + 0.55 * f); // 0.09 → ~0.14
+            tween.vars.duration = BASE_DURATION * (1 - 0.12 * f); // 0.85 → ~0.75
+            tween.invalidate().restart();
+          };
           const st = ScrollTrigger.create({
             trigger: el,
             start: "top 88%",
             once: true,
-            onEnter: () => {
-              const f = velocityFactor(useScrollStore.getState().velocity);
-              tween.vars.yPercent = BASE_Y_PERCENT * (1 + 0.18 * f); // 115 → ~136
-              tween.vars.stagger = BASE_STAGGER * (1 + 0.55 * f); // 0.09 → ~0.14
-              tween.vars.duration = BASE_DURATION * (1 - 0.12 * f); // 0.85 → ~0.75
-              tween.invalidate().restart();
-            },
+            onEnter: fire,
           });
           triggers.push(st);
+          // On client-side navigation the heading mounts already in view, so the
+          // once-trigger is created already-active and never fires onEnter (GSAP
+          // only fires on an active-state CHANGE; refresh() can't rescue it).
+          // Fire at creation if already past the start so the split reveal plays
+          // on SPA nav (matches the IntersectionObserver fix in Reveal /
+          // SectionHeading). Below-the-fold headings still wait for scroll-in.
+          if (st.isActive || st.progress > 0) fire();
         });
       });
 

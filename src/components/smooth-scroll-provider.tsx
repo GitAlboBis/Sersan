@@ -8,17 +8,74 @@
  * scroll-linked animations stay in sync with the smoothed scroll position.
  */
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { acquireLenis, releaseLenis } from "@/lib/lenis-singleton";
+import { acquireLenis, getLenis, releaseLenis } from "@/lib/lenis-singleton";
 import { useScrollStore } from "@/webgl/store/scrollStore";
+import { useTextMorphStore } from "@/webgl/store/textMorphStore";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
 }
 
 export function SmoothScrollProvider({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const prevPathRef = useRef<string | null>(null);
+
+  // Per-route-change handling on client-side (SPA) navigation:
+  //  - Inner routes: reset to the top + re-refresh ScrollTrigger so scrub /
+  //    parallax triggers re-measure after layout settles. (Content reveals are
+  //    IntersectionObserver-driven now — Reveal / SectionHeading — so they no
+  //    longer depend on this; a once:true ScrollTrigger created already-in-view
+  //    can't be fired by refresh() anyway.)
+  //  - Returning to the homepage FROM another route: reset to the top AND clear
+  //    the persisted particle-intro journey so it replays from the start. The
+  //    textMorphStore is globalThis-pinned and otherwise survives a soft nav, so
+  //    without this the intro shows as already-complete. HeroTextParticles
+  //    re-mounts on '/' and reads `assembleDone` asynchronously (after its
+  //    dynamic imports), so this synchronous reset always lands first and its
+  //    entry clock replays. We do NOT run the refresh() cadence on '/': the
+  //    homepage cinematic owns its own refresh + intro gate and refreshing here
+  //    would race it / fight the gate.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const prev = prevPathRef.current;
+    prevPathRef.current = pathname;
+
+    if (pathname === "/") {
+      // Only on a genuine navigation INTO home (not the very first paint, not a
+      // same-route phantom remount) — replay the intro.
+      if (prev !== null && prev !== "/") {
+        getLenis()?.scrollTo(0, { immediate: true });
+        useTextMorphStore.setState({
+          assembleDone: false,
+          gateProgress: 0,
+          gateEngaged: false,
+          gateKick: 0,
+          morphDone: false,
+          morph2Done: false,
+          morph3Done: false,
+          camTilt: 0,
+          camDescend: 0,
+          tiltDone: false,
+          domReveal: 1,
+        });
+      }
+      return;
+    }
+
+    // New routes start at the top; keep Lenis in sync with App Router's reset.
+    getLenis()?.scrollTo(0, { immediate: true });
+    const raf = requestAnimationFrame(() => ScrollTrigger.refresh());
+    const timer = window.setTimeout(() => ScrollTrigger.refresh(), 450);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
+    };
+  }, [pathname]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
 

@@ -2,11 +2,6 @@
 
 import { useEffect, useRef } from "react";
 import gsap from "gsap";
-import { ScrollTrigger } from "gsap/ScrollTrigger";
-
-if (typeof window !== "undefined") {
-  gsap.registerPlugin(ScrollTrigger);
-}
 
 /**
  * Optional directional entrance. Default ("up") reproduces today's exact
@@ -42,7 +37,6 @@ export function Reveal({
   useEffect(() => {
     const el = ref.current;
     if (!el || playedRef.current) return;
-    playedRef.current = true;
 
     const prefersReduced =
       typeof window !== "undefined" &&
@@ -50,6 +44,7 @@ export function Reveal({
 
     if (prefersReduced) {
       gsap.set(el, { opacity: 1, x: 0, y: 0, clipPath: "inset(0%)" });
+      playedRef.current = true;
       return;
     }
 
@@ -74,26 +69,43 @@ export function Reveal({
     }
     gsap.set(el, initial);
 
-    const st = ScrollTrigger.create({
-      trigger: el,
-      // Fire a touch earlier so the reveal has room to breathe before the
-      // element is fully on screen (was "top 88%" — too late, near exit).
-      start: "top 82%",
-      once: true,
-      onEnter: () => {
-        gsap.to(el, {
-          opacity: 1,
-          x: 0,
-          y: 0,
-          clipPath: "inset(0%)",
-          duration: 0.85,
-          ease: "expo.out",
-          delay: delay / 1000,
-        });
-      },
-    });
+    const play = () => {
+      if (playedRef.current) return;
+      playedRef.current = true;
+      gsap.to(el, {
+        opacity: 1,
+        x: 0,
+        y: 0,
+        clipPath: "inset(0%)",
+        duration: 0.85,
+        ease: "expo.out",
+        delay: delay / 1000,
+      });
+    };
 
-    return () => st.kill();
+    // Trigger via IntersectionObserver rather than GSAP ScrollTrigger. IO
+    // fires its callback when the element is intersecting AT OBSERVE TIME —
+    // including immediately after a client-side (SPA) navigation, where the
+    // element mounts already in view. A ScrollTrigger created already-in-view
+    // does NOT fire its onEnter (and the root ScrollTrigger.refresh() only runs
+    // once, at first load), which left SPA-navigated content stuck at
+    // opacity:0 until a hard refresh. The -18% bottom rootMargin reproduces the
+    // old "top 82%" start point (reveal once the top crosses 82% of the view).
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            play();
+            io.disconnect();
+            break;
+          }
+        }
+      },
+      { rootMargin: "0px 0px -18% 0px", threshold: 0 },
+    );
+    io.observe(el);
+
+    return () => io.disconnect();
   }, [delay, variant, from]);
 
   return (
