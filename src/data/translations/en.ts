@@ -64,7 +64,7 @@ const en = {
     'hero.stats.247': '100%',
     'hero.stats.60': '60%',
     'hero.trustStrip': 'Used by teams in finance, public sector, healthcare, and software',
-    'hero.compliance': 'GDPR & SOC 2 aligned',
+    'hero.compliance': 'GDPR & ISO 27001 aligned',
     'hero.proofMetric': 'Cycle times cut from weeks to days',
 
     // Who We Help (Fit section)

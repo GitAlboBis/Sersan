@@ -146,8 +146,8 @@ const faqs: FaqItem[] = [
       it: "Siete conformi al GDPR?",
     },
     a: {
-      en: "Yes. We have the usual data processing agreements, consent handling, and retention policies in place. Infrastructure is hosted in the EU (London) and SOC 2 Type II certification is in progress.",
-      it: "Sì. Abbiamo in essere data processing agreement, gestione del consenso e policy di retention. L'infrastruttura è ospitata nell'UE (Londra) e la certificazione SOC 2 Type II è in corso.",
+      en: "Yes. We have the usual data processing agreements, consent handling, and retention policies in place. Infrastructure is hosted in London (UK) and ISO 27001 certification is in progress.",
+      it: "Sì. Abbiamo in essere data processing agreement, gestione del consenso e policy di retention. L'infrastruttura è ospitata a Londra (Regno Unito) e la certificazione ISO 27001 è in corso.",
     },
   },
   {
@@ -168,8 +168,8 @@ const faqs: FaqItem[] = [
       it: "Dove è ospitata la vostra infrastruttura?",
     },
     a: {
-      en: "Cloud providers in London (EU), with encryption at rest and in transit, SOC 2 Type II certification in progress, and regular security audits. Client data is never mixed between engagements.",
-      it: "Su cloud provider a Londra (UE), con cifratura at-rest e in-transit, certificazione SOC 2 Type II in corso e audit di sicurezza regolari. I dati dei clienti non vengono mai mescolati tra ingaggi diversi.",
+      en: "Cloud providers in London (UK), with encryption at rest and in transit, ISO 27001 certification in progress, and regular security audits. Client data is never mixed between engagements.",
+      it: "Su cloud provider a Londra (Regno Unito), con cifratura at-rest e in-transit, certificazione ISO 27001 in corso e audit di sicurezza regolari. I dati dei clienti non vengono mai mescolati tra ingaggi diversi.",
     },
   },
 ];
