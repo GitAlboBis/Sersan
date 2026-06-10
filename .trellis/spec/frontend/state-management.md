@@ -6,10 +6,12 @@
 
 ## Overview
 
-**No global state library** (no Redux, Zustand, Jotai, etc.). State is plain
-React: local `useState` for component state, **React Context** for the one piece
-of truly global state (language/i18n), and **refs** for high-frequency
-animation values.
+For DOM/UI state: **no global state library** — plain React (local `useState`,
+**React Context** for language/i18n, **refs** for high-frequency animation
+values). Exception: the **WebGL layer** (`src/webgl/store/*`) uses **zustand**
+stores (scroll, routeFx, tier, pointer, intro, …) read via
+`useFrame + getState()` to stay re-render-free. Don't add zustand for DOM/UI
+state; don't add Context for WebGL per-frame state.
 
 ---
 
@@ -73,6 +75,32 @@ the palette, edit the tokens — don't introduce per-component color state.
 - Adding a second Context for something that's really component-local.
 - Forgetting the SSR-safe default → hydration mismatch.
 - Storing animation/scroll values in `useState` instead of refs.
+
+---
+
+## Convention: per-route WebGL tone (routeFx + routeCurves)
+
+Per-route look lives in two **pure-data** modules, keyed by pathname:
+
+- [routeCurves.ts](src/webgl/curves/routeCurves.ts) — signature-line waypoints per route.
+- [routeFxStore.ts](src/webgl/store/routeFxStore.ts) — `routeFx(pathname)` merges small
+  `Partial<RouteFx>` deltas over `HOME_FX`.
+
+Rules (violating any of these broke pages in the past or would):
+
+1. **P0 invariant**: `routeFx('/')` and unknown paths return `HOME_FX` **verbatim**.
+   Never make a matcher that can catch `/`.
+2. **Deltas stay small** (±0.1–0.2 scale): routes differ in temperature/density,
+   never in identity (navy + cyan→violet only).
+3. **Detail/leaf routes** (`/case-studies/[slug]`, `/resources/[slug]`, `/services/*`,
+   `/start`) resolve to the shared quiet `detail` curve + `DETAIL_FX` via
+   `isDetailRoute()`. Matchers use **trailing-slash prefixes** (`startsWith('/case-studies/')`)
+   so index pages keep their bespoke entries.
+4. **Anchor-less pages are fine**: `SignatureLine` falls back to `wp.at ?? 0` per
+   waypoint, so a pure-`at` curve renders without any `[data-line-anchor]` in the page.
+   Add anchors only when waypoints must track real section positions.
+5. Keep `data-line-anchor` names in client pages and waypoint keys in `routeCurves.ts`
+   **in sync and truthful** (name = the section it wraps) — rename both sides together.
 
 ---
 

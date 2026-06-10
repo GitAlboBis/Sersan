@@ -89,9 +89,31 @@ a `sersan-design` skill for design-system rules — consult it for UI work.
 
 ---
 
+## Headless screenshot QA (gotchas)
+
+Visual checks via headless Chromium (npx-cached Playwright; NOT a repo dep) hit
+two project-specific traps:
+
+- **The preloader can linger in headless** (WebGPU adapter missing → WebGL2
+  fallback warmup). Before screenshotting, wait for the preloader's leaf element
+  (`INITIALISING SIGNAL`) to reach effective `opacity < 0.05` / `display:none`
+  up the whole ancestor chain — a fixed `waitForTimeout` is not enough. A real
+  gesture (`mouse.click` + `mouse.wheel`) reliably unblocks it.
+- **Drive scroll with real `mouse.wheel` events**, not `window.scrollTo` — Lenis
+  and the pinned ScrollTrigger stages respond to wheel; programmatic scrollTo can
+  leave stage opacity states unsettled.
+- Expected console noise (not failures): THREE deprecation warnings and
+  "WebGPU is not available, running under WebGL2 backend". Page errors = failures.
+
+---
+
 ## Common Mistakes
 
 - Assuming a test runner or eslint exists — they don't; verify via build + manual run.
+- **Compliance claims drift**: the only certification claim is
+  "ISO 27001 (in progress)" + DORA/EU AI Act alignment, address "London (UK)" —
+  never SOC 2, never "EU (London)". `/trust` is the source of truth; any page
+  mentioning compliance must match it (the /faq page drifted exactly this way).
 - Suppressing strict-mode errors with `any` / `@ts-ignore`.
 - Shipping `console.log` left over from debugging.
 - Adding motion without a reduced-motion fallback.
