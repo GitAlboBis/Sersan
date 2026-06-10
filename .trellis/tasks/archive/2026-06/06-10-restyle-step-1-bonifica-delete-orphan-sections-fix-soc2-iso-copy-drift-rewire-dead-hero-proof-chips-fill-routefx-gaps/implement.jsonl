@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend spec entry point: pre-development checklist + pointers to all guideline files"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Conventions for section components — needed when deleting orphans and rewiring the spine extras render site"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Zustand/store conventions — ROUTE_FX additions in routeFxStore.ts must follow the pure-data + small-delta pattern"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TS conventions for the pure-data route configs (routeCurves/routeFx additions)"}
+{"file": "PIANO_RESTYLE.md", "reason": "Approved restructuring plan — §1 diagnosis (verified findings with file:line), §9 step 1 defines this task's exact scope; do not pull in steps 2+"}
+{"file": ".trellis/tasks/06-06-webgl-visual-refactor-r3f-signature-line-blender-assets-gsap-lenis-on-next-js-16/research/signature-line-spec.md", "reason": "Signature line curve/anchor system spec — required to add the shared 'detail' route-curve config correctly without touching the impianto"}
+{"file": ".trellis/tasks/06-06-webgl-visual-refactor-r3f-signature-line-blender-assets-gsap-lenis-on-next-js-16/research/codebase-recon.md", "reason": "WebGL architecture map (CanvasHost/FrameDriver/stores) — context for where routeFx/routeCurves are consumed"}

@@ -1,0 +1,60 @@
+{
+  "chipsDesktop": false,
+  "faqHasISO": true,
+  "faqHasSOC2": false,
+  "servicesCanvas": true,
+  "slugCanvas": true,
+  "chipsMobile": true,
+  "console": {
+    "home-desktop": [
+      "[warning] THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+      "[warning] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+      "[warning] No available adapters.",
+      "[warning] THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend.",
+      "[warning] [.WebGL-0x2c1403fb8800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "[warning] [.WebGL-0x2c1403fb8800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "[warning] [.WebGL-0x2c1403fb8800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "[warning] THREE.PostProcessing: \"PostProcessing\" has been renamed to \"RenderPipeline\". Please update your code to use \"THREE.RenderPipeline\" instead.",
+      "[warning] [.WebGL-0x2c1403fb8800]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    ],
+    "faq-desktop": [
+      "[warning] THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+      "[warning] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+      "[warning] No available adapters.",
+      "[warning] THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend.",
+      "[warning] THREE.PostProcessing: \"PostProcessing\" has been renamed to \"RenderPipeline\". Please update your code to use \"THREE.RenderPipeline\" instead."
+    ],
+    "services-desktop": [
+      "[warning] THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+      "[warning] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+      "[warning] No available adapters.",
+      "[warning] THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend.",
+      "[warning] THREE.PostProcessing: \"PostProcessing\" has been renamed to \"RenderPipeline\". Please update your code to use \"THREE.RenderPipeline\" instead."
+    ],
+    "slug-desktop": [
+      "[warning] THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+      "[warning] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+      "[warning] No available adapters.",
+      "[warning] THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend.",
+      "[warning] THREE.PostProcessing: \"PostProcessing\" has been renamed to \"RenderPipeline\". Please update your code to use \"THREE.RenderPipeline\" instead."
+    ],
+    "home-mobile": [
+      "[warning] THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+      "[warning] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+      "[warning] No available adapters.",
+      "[warning] THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend."
+    ],
+    "faq-mobile": [
+      "[warning] THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+      "[warning] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+      "[warning] No available adapters.",
+      "[warning] THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend."
+    ],
+    "services-mobile": [
+      "[warning] THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
+      "[warning] The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+      "[warning] No available adapters.",
+      "[warning] THREE.WebGPURenderer: WebGPU is not available, running under WebGL2 backend."
+    ]
+  }
+}
