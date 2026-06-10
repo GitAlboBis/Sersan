@@ -94,11 +94,13 @@ a `sersan-design` skill for design-system rules — consult it for UI work.
 Visual checks via headless Chromium (npx-cached Playwright; NOT a repo dep) hit
 two project-specific traps:
 
-- **The preloader can linger in headless** (WebGPU adapter missing → WebGL2
-  fallback warmup). Before screenshotting, wait for the preloader's leaf element
+- **The preloader can linger when the tab is backgrounded** (headless or Chrome
+  extension): the browser throttles rAF on background tabs and the preloader
+  runs on the rAF loop — it is NOT stuck/broken. A real gesture
+  (`mouse.click` + `mouse.wheel`) or focusing the tab unblocks it immediately.
+  Before screenshotting, wait for the preloader's leaf element
   (`INITIALISING SIGNAL`) to reach effective `opacity < 0.05` / `display:none`
-  up the whole ancestor chain — a fixed `waitForTimeout` is not enough. A real
-  gesture (`mouse.click` + `mouse.wheel`) reliably unblocks it.
+  up the whole ancestor chain — a fixed `waitForTimeout` is not enough.
 - **Drive scroll with real `mouse.wheel` events**, not `window.scrollTo` — Lenis
   and the pinned ScrollTrigger stages respond to wheel; programmatic scrollTo can
   leave stage opacity states unsettled.
