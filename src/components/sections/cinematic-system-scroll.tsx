@@ -45,9 +45,10 @@ type Stage = {
   eyebrow: string;
   title: React.ReactNode;
   body: React.ReactNode;
-  // Optional extra content rendered under the body — used on the hero
-  // stage to surface a proof bullet (categorical commit) and a small
-  // credentials strip drawn from real founders.ts / case-studies.ts data.
+  // Optional extra content rendered under the body — used on the final
+  // handover stage to surface a proof bullet (categorical commit) and a
+  // small credentials strip drawn from real founders.ts / case-studies.ts
+  // data, right where the morph releases into the page.
   extras?: React.ReactNode;
 };
 
@@ -97,70 +98,6 @@ const STAGE_CONTENT: LocalizedStage[] = [
     body: {
       en: "SerSan builds custom software, AI agents, automations, MLOps architecture, and audit-ready systems for teams that need production reliability, not polished demos.",
       it: "SerSan costruisce software su misura, agenti AI, automazioni, architetture MLOps e sistemi pronti per l'audit per team che hanno bisogno di affidabilità in produzione, non di demo patinate.",
-    },
-    // Hero proof: categorical commit + real counts pulled from the actual
-    // case-studies.ts data and founders.ts credentials. No invented metrics.
-    extras: {
-      en: (
-        <div className="mt-5 flex flex-col gap-3">
-          <p className="text-[13px] sm:text-[14px] font-mono uppercase tracking-[0.14em] text-ink/85 leading-relaxed">
-            Custom Software <span aria-hidden="true">·</span> AI Agents{" "}
-            <span aria-hidden="true">·</span> Automation{" "}
-            <span aria-hidden="true">·</span> MLOps{" "}
-            <span aria-hidden="true">·</span> Audits
-            <br />
-            <span className="text-ink-mute/80">
-              For SaaS, fintech &amp; regulated teams
-            </span>
-          </p>
-          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-mono uppercase tracking-[0.14em] text-ink/75 list-none">
-            <li className="flex items-center gap-1.5">
-              <span className="text-ink tabular-nums">13</span>
-              <span>named engagements</span>
-            </li>
-            <li aria-hidden="true" className="text-ink-mute/55">/</li>
-            <li className="flex items-center gap-1.5">
-              <span className="text-ink tabular-nums">5</span>
-              <span>tier-1 institutions</span>
-            </li>
-            <li aria-hidden="true" className="text-ink-mute/55">/</li>
-            <li className="flex items-center gap-1.5">
-              <span className="text-ink tabular-nums">1</span>
-              <span>PhD, applied maths</span>
-            </li>
-          </ul>
-        </div>
-      ),
-      it: (
-        <div className="mt-5 flex flex-col gap-3">
-          <p className="text-[13px] sm:text-[14px] font-mono uppercase tracking-[0.14em] text-ink/85 leading-relaxed">
-            Software su misura <span aria-hidden="true">·</span> Agenti AI{" "}
-            <span aria-hidden="true">·</span> Automazione{" "}
-            <span aria-hidden="true">·</span> MLOps{" "}
-            <span aria-hidden="true">·</span> Audit
-            <br />
-            <span className="text-ink-mute/80">
-              Per SaaS, fintech e team regolamentati
-            </span>
-          </p>
-          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-mono uppercase tracking-[0.14em] text-ink/75 list-none">
-            <li className="flex items-center gap-1.5">
-              <span className="text-ink tabular-nums">13</span>
-              <span>progetti nominali</span>
-            </li>
-            <li aria-hidden="true" className="text-ink-mute/55">/</li>
-            <li className="flex items-center gap-1.5">
-              <span className="text-ink tabular-nums">5</span>
-              <span>istituzioni tier-1</span>
-            </li>
-            <li aria-hidden="true" className="text-ink-mute/55">/</li>
-            <li className="flex items-center gap-1.5">
-              <span className="text-ink tabular-nums">1</span>
-              <span>PhD, matematica applicata</span>
-            </li>
-          </ul>
-        </div>
-      ),
     },
   },
   {
@@ -261,6 +198,72 @@ const STAGE_CONTENT: LocalizedStage[] = [
     body: {
       en: "A production system with its evals, traces, and boundaries documented. Your team owns it from day one, and you talk to one of us, not an account manager.",
       it: "Un sistema in produzione con eval, trace e limiti documentati. Il vostro team lo gestisce dal primo giorno, e parlate con uno di noi, non con un account manager.",
+    },
+    // Closing proof (user decision 2026-06-10: rewired here from the hero,
+    // where the {!isHero} render gates kept it dead code): categorical commit
+    // + real counts pulled from the actual case-studies.ts data and
+    // founders.ts credentials. No invented metrics.
+    extras: {
+      en: (
+        <div className="mt-5 flex flex-col gap-3">
+          <p className="text-[13px] sm:text-[14px] font-mono uppercase tracking-[0.14em] text-ink/85 leading-relaxed">
+            Custom Software <span aria-hidden="true">·</span> AI Agents{" "}
+            <span aria-hidden="true">·</span> Automation{" "}
+            <span aria-hidden="true">·</span> MLOps{" "}
+            <span aria-hidden="true">·</span> Audits
+            <br />
+            <span className="text-ink-mute/80">
+              For SaaS, fintech &amp; regulated teams
+            </span>
+          </p>
+          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-mono uppercase tracking-[0.14em] text-ink/75 list-none">
+            <li className="flex items-center gap-1.5">
+              <span className="text-ink tabular-nums">13</span>
+              <span>named engagements</span>
+            </li>
+            <li aria-hidden="true" className="text-ink-mute/55">/</li>
+            <li className="flex items-center gap-1.5">
+              <span className="text-ink tabular-nums">5</span>
+              <span>tier-1 institutions</span>
+            </li>
+            <li aria-hidden="true" className="text-ink-mute/55">/</li>
+            <li className="flex items-center gap-1.5">
+              <span className="text-ink tabular-nums">1</span>
+              <span>PhD, applied maths</span>
+            </li>
+          </ul>
+        </div>
+      ),
+      it: (
+        <div className="mt-5 flex flex-col gap-3">
+          <p className="text-[13px] sm:text-[14px] font-mono uppercase tracking-[0.14em] text-ink/85 leading-relaxed">
+            Software su misura <span aria-hidden="true">·</span> Agenti AI{" "}
+            <span aria-hidden="true">·</span> Automazione{" "}
+            <span aria-hidden="true">·</span> MLOps{" "}
+            <span aria-hidden="true">·</span> Audit
+            <br />
+            <span className="text-ink-mute/80">
+              Per SaaS, fintech e team regolamentati
+            </span>
+          </p>
+          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-mono uppercase tracking-[0.14em] text-ink/75 list-none">
+            <li className="flex items-center gap-1.5">
+              <span className="text-ink tabular-nums">13</span>
+              <span>progetti nominali</span>
+            </li>
+            <li aria-hidden="true" className="text-ink-mute/55">/</li>
+            <li className="flex items-center gap-1.5">
+              <span className="text-ink tabular-nums">5</span>
+              <span>istituzioni tier-1</span>
+            </li>
+            <li aria-hidden="true" className="text-ink-mute/55">/</li>
+            <li className="flex items-center gap-1.5">
+              <span className="text-ink tabular-nums">1</span>
+              <span>PhD, matematica applicata</span>
+            </li>
+          </ul>
+        </div>
+      ),
     },
   },
 ];
