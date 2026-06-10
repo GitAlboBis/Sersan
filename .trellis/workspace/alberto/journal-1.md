@@ -5,3 +5,42 @@
 
 ---
 
+
+
+## Session 1: Restyle step 1 (bonifica): orphan cleanup, ISO copy fix, proof chips, route coverage
+
+**Date**: 2026-06-10
+**Task**: Restyle step 1 (bonifica): orphan cleanup, ISO copy fix, proof chips, route coverage
+**Branch**: `feat/webgl-refactor`
+
+### Summary
+
+Multi-agent research over 10 preset sources (51 candidates) + codebase audit produced PIANO_RESTYLE.md (elimina/cambia/sposta/aggiungi + preset mapping + 8-step order). Executed step 1: deleted 9 orphan section components (-2229 lines), fixed SOC2->ISO 27001 + London (UK) drift (EN+IT), rewired dead hero proof chips onto the handover spine panel, added routeFx for /case-studies /resources /contact and a shared quiet detail curve so the signature line reaches /services/*, /start and [slug] templates, renamed mislabeled /trust anchors. Typecheck+build green, headless visual QA desktop+mobile. Specs updated (routeFx conventions, headless QA + preloader background-tab throttling, compliance copy single source).
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `3ffc94c` | (see git log) |
+| `b168e2c` | (see git log) |
+| `005505b` | (see git log) |
+| `91b5f38` | (see git log) |
+| `feaf615` | (see git log) |
+| `47d5838` | (see git log) |
+| `8354526` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
