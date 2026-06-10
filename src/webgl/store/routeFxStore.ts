@@ -20,6 +20,8 @@
  * is a no-op. Interior routes carry small deltas, used by later phases.
  */
 
+import { isDetailRoute } from "../curves/routeCurves";
+
 export interface RouteFx {
   /** Bloom pass intensity (merged over fxStore.bloomIntensity). */
   bloomIntensity: number;
@@ -100,15 +102,49 @@ const ROUTE_FX: Record<string, Partial<RouteFx>> = {
     particleOpacity: 0.3,
     bloomIntensity: 1.05,
   },
+  // Case studies: a touch denser dust over the evidence floor; bloom stays
+  // neutral so the metric cards read crisp.
+  "/case-studies": {
+    particleCountScale: 1.1,
+    particleOpacity: 0.38,
+  },
+  // Resources: quiet reading room — sparser, dimmer dust, slightly softer
+  // bloom under the long-form list.
+  "/resources": {
+    particleCountScale: 0.85,
+    particleOpacity: 0.3,
+    bloomIntensity: 1.05,
+  },
+  // Contact: warm-calm closing page — low density, gentle bloom, the same
+  // faintly warmer tail as /consulting.
+  "/contact": {
+    particleCountScale: 0.8,
+    particleOpacity: 0.3,
+    bloomIntensity: 1.05,
+    lineColorB: "#8A6BFF",
+  },
+};
+
+/**
+ * Shared tone for the detail / reading routes ([slug] templates, /services/*,
+ * /start — see isDetailRoute in curves/routeCurves.ts): the quietest of all,
+ * sparse dim dust and neutral bloom that stay out of the way of long-form
+ * reading.
+ */
+const DETAIL_FX: Partial<RouteFx> = {
+  particleCountScale: 0.7,
+  particleOpacity: 0.28,
+  bloomIntensity: 1.0,
 };
 
 /**
  * Returns the resolved FX tone for a pathname. `'/'` and unknown paths return
  * the home/default tone verbatim; known interior routes merge their small
- * deltas over it.
+ * deltas over it, and detail / reading routes share the quiet DETAIL_FX tone.
  */
 export function routeFx(pathname: string): RouteFx {
   if (pathname === "/" || pathname == null) return HOME_FX;
-  const override = ROUTE_FX[pathname];
+  const override =
+    ROUTE_FX[pathname] ?? (isDetailRoute(pathname) ? DETAIL_FX : undefined);
   return override ? { ...HOME_FX, ...override } : HOME_FX;
 }

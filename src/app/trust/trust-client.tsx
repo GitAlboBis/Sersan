@@ -183,7 +183,7 @@ export function TrustClient() {
         </section>
 
         {/* GDPR Roles */}
-        <section data-line-anchor="rights" className="mb-20">
+        <section data-line-anchor="gdpr-roles" className="mb-20">
           <Reveal>
             <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-3">
               {isEn ? "GDPR roles" : "Ruoli GDPR"}
@@ -233,7 +233,7 @@ export function TrustClient() {
         </div>
 
         {/* Controls */}
-        <section data-line-anchor="subprocessors" className="mb-20">
+        <section data-line-anchor="controls" className="mb-20">
           <Reveal>
             <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
               {isEn ? "Technical controls" : "Controlli tecnici"}

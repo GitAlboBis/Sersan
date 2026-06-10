@@ -99,9 +99,9 @@ export const routeCurves: Record<string, RouteCurveConfig> = {
     waypoints: [
       { at: 0.0, x: 1.15, z: -0.3 },
       { anchor: "hero", x: -1.2, z: 0.2 },
-      { anchor: "rights", x: 1.2, z: -0.2 },
+      { anchor: "gdpr-roles", x: 1.2, z: -0.2 },
       { anchor: "pipeline", x: -1.25, z: 0.2 },
-      { anchor: "subprocessors", x: 1.2, z: -0.2 },
+      { anchor: "controls", x: 1.2, z: -0.2 },
       { anchor: "ritual", x: 0.0, z: 0.6 },
       { anchor: "final-cta", x: 0.0, z: 0.6 },
     ],
@@ -154,6 +154,18 @@ export const routeCurves: Record<string, RouteCurveConfig> = {
       { anchor: "final-cta", x: 0.0, z: 0.6 },
     ],
   },
+  // Detail / reading routes ([slug] templates, /services/*, /start): the
+  // quietest serpentine of all — three calm sweeps, shallow depth, resolving
+  // to center for the closing CTA. Pure `at` fractions: these pages carry no
+  // [data-line-anchor] nodes, so the curve spreads by document fraction alone.
+  detail: {
+    waypoints: [
+      { at: 0.0, x: 1.15, z: -0.3 },
+      { at: 0.35, x: -1.2, z: 0.2 },
+      { at: 0.7, x: 1.15, z: -0.2 },
+      { at: 1.0, x: 0.0, z: 0.5 },
+    ],
+  },
   // Generic gentle serpentine for routes without a bespoke config (e.g. any
   // future [slug] detail pages).
   default: {
@@ -167,6 +179,25 @@ export const routeCurves: Record<string, RouteCurveConfig> = {
   },
 };
 
+/** Path prefixes (trailing slash = [slug] children only, never the index
+ *  pages, which keep their bespoke configs above). */
+const DETAIL_PREFIXES = ["/case-studies/", "/resources/", "/services/"];
+
+/**
+ * Detail / reading routes that share the quiet "detail" curve + FX tone:
+ * the [slug] templates, the four /services pages and the /start intake.
+ * Bespoke configs always win — this only catches what would otherwise
+ * fall through to `default`.
+ */
+export function isDetailRoute(pathname: string): boolean {
+  return (
+    pathname === "/start" ||
+    DETAIL_PREFIXES.some((prefix) => pathname.startsWith(prefix))
+  );
+}
+
 export function getRouteCurve(pathname: string): RouteCurveConfig {
-  return routeCurves[pathname] ?? routeCurves.default;
+  const bespoke = routeCurves[pathname];
+  if (bespoke) return bespoke;
+  return isDetailRoute(pathname) ? routeCurves.detail : routeCurves.default;
 }
