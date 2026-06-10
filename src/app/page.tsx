@@ -34,9 +34,7 @@ import FinalCTA from "@/components/sections/final-cta";
  *   10  Fit                  — disqualify honestly
  *   11  Final CTA            — into /start
  *
- * Demoted (return when there's a reason): HowWeThinkSection,
- * FoundersNoteSection (older variant — superseded by FoundersSection),
- * ContactForm, AuditSection.
+ * Demoted (return when there's a reason): ContactForm.
  */
 export default function Home() {
   return (
