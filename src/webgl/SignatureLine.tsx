@@ -17,6 +17,7 @@ import { webgpuEnabled } from "./renderer/createRenderer";
 import { getRouteCurve } from "./curves/routeCurves";
 import { WORLD_VIEW_HEIGHT } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
+import { useTextMorphStore } from "./store/textMorphStore";
 import { useIntroStore } from "./store/introStore";
 import { useFxStore } from "./store/fxStore";
 import { routeFx } from "./store/routeFxStore";
@@ -31,6 +32,27 @@ interface SignatureLineProps {
 
 /** Damping speed for the drawn-progress chase (higher = snappier). */
 const PROGRESS_DAMP = 6;
+
+// --- Intro-gate camera shake (textMorphStore.gateKick consumer) -----------
+// While HeroIntroGate holds the page at scrollY=0, each consumed wheel/touch
+// gesture lands here as a signed px impulse. It drives a slightly
+// under-damped spring on the camera's Y (the same axis real scroll moves),
+// so the camera dips with the gesture and swings back — the scene keeps the
+// alive "scroll shake" while the document genuinely never moves. The kick is
+// only ever written by the gate, so normal scrolling is untouched.
+/** World-units/s of spring velocity per px of consumed gesture. */
+const GATE_KICK_SCALE = 0.01;
+/** Spring stiffness (ω² ≈ 90 → ~1.5 Hz wobble). */
+const GATE_SPRING = 90;
+/** Spring damping — under-damped (ζ ≈ 0.47): a couple of micro-overshoots. */
+const GATE_DAMP = 9;
+/** Hard clamp on the bob amplitude (world units, ~3% of viewport height). */
+const GATE_SHAKE_MAX = 0.35;
+/** px-ish energy per px of gesture, fed into the velocity glow/breath. */
+const GATE_ENERGY_SCALE = 0.5;
+const GATE_ENERGY_MAX = 150;
+/** damp() lambda for the energy decay back to rest. */
+const GATE_ENERGY_DECAY = 4;
 
 export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   const { camera, size } = useThree();
@@ -48,6 +70,15 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   const lookTarget = useRef(new THREE.Vector3());
   const lookInitialized = useRef(false);
   const aheadPoint = useRef(new THREE.Vector3());
+  // Intro-gate shake spring state (world units / world units per second) and
+  // the decaying px-ish energy that feeds the velocity glow/breath channels.
+  const shakeY = useRef(0);
+  const shakeVel = useRef(0);
+  const gateEnergy = useRef(0);
+  // Camera-descent beat state (tilt phase): last applied offset (for the
+  // velocity-coupled pitch) and the smoothed pitch itself.
+  const prevDescend = useRef(0);
+  const descendPitch = useRef(0);
 
   // Material selection by the build-time WebGPU flag (createRenderer.ts):
   //   flag OFF → the GLSL ShaderMaterial (unchanged, byte-identical to today),
@@ -275,6 +306,48 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // document position exactly (see file header for the k mapping).
     camera.position.y = -(scrollYWorld + ih / 2) * k;
 
+    // Intro-gate shake: consume the gesture impulse the gate accumulated and
+    // integrate the under-damped spring (semi-implicit Euler at a clamped dt
+    // so a background-tab hiccup can't explode the spring). Applied BEFORE
+    // the lookAt-ahead block so the tilt follows the bob. Screen-anchored
+    // objects (HeroLogo, the particle text) position themselves relative to
+    // camera.position.y per frame, so they stay readable while the
+    // world-anchored line/scene visibly shakes — exactly the intended feel.
+    const kick = useTextMorphStore.getState().gateKick;
+    if (kick !== 0) {
+      // Signed: scroll-down dips the camera down, then it springs back.
+      shakeVel.current -= kick * GATE_KICK_SCALE;
+      gateEnergy.current = Math.min(
+        gateEnergy.current + Math.abs(kick) * GATE_ENERGY_SCALE,
+        GATE_ENERGY_MAX,
+      );
+      useTextMorphStore.setState({ gateKick: 0 });
+    }
+    if (shakeY.current !== 0 || shakeVel.current !== 0) {
+      const dt = Math.min(delta, 1 / 30);
+      shakeVel.current +=
+        (-GATE_SPRING * shakeY.current - GATE_DAMP * shakeVel.current) * dt;
+      shakeY.current = THREE.MathUtils.clamp(
+        shakeY.current + shakeVel.current * dt,
+        -GATE_SHAKE_MAX,
+        GATE_SHAKE_MAX,
+      );
+      // Snap to rest once imperceptible so the idle frame loop stays a no-op.
+      if (Math.abs(shakeY.current) < 1e-4 && Math.abs(shakeVel.current) < 1e-3) {
+        shakeY.current = 0;
+        shakeVel.current = 0;
+      }
+      camera.position.y += shakeY.current;
+    }
+    gateEnergy.current =
+      gateEnergy.current < 0.01
+        ? 0
+        : THREE.MathUtils.damp(gateEnergy.current, 0, GATE_ENERGY_DECAY, delta);
+    // Velocity the "alive" channels see: real scroll velocity plus the gate
+    // gesture energy — during the gate scroll velocity is 0, this keeps the
+    // line glow/breath responding to the user's hand exactly like scrolling.
+    const aliveVelocity = Math.abs(velocity) + gateEnergy.current;
+
     // The lit head sits where the reader is: document fraction of the
     // viewport center. Curve param ≈ doc fraction (waypoints are spread by
     // doc fraction, so the approximation holds visually).
@@ -316,6 +389,46 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       camera.lookAt(lookTarget.current);
     }
 
+    // Camera-descent beat (textMorphStore.camTilt 0..1, written by the
+    // SpineExitGate clock at the END of the cinematic spine) — a TRUE
+    // immersive move, not a transient dip: the camera DESCENDS monotonically
+    // by ~one viewport, and the pitch follows the descent VELOCITY: diving →
+    // head looks down; reversing back up → head looks UP; at rest → level.
+    // Reversing the scroll therefore plays the move backwards instead of
+    // re-dipping. The offset eases out by |scroll − tiltAnchorY| (the spot
+    // where the beat anchored), restoring the exact camera↔document mapping
+    // within ~1.5 viewports on EITHER side — so even if the user escapes
+    // upward without the reverse beat, the world re-syncs. The applied
+    // offset is published to the store (camDescend) so camera-anchored hero
+    // objects can hold their pre-descent station. Applied AFTER the lookAt
+    // above so the rotateX composes absolutely per frame (lite tier resets
+    // orientation first — nothing else writes it there).
+    const { camTilt, tiltAnchorY } = useTextMorphStore.getState();
+    {
+      const tiltEase = camTilt * camTilt * (3 - 2 * camTilt);
+      const scrollPxNow = dampedProgress.current * Math.max(sh - ih, 0);
+      const scrollRamp =
+        1 - Math.min(Math.abs(scrollPxNow - tiltAnchorY) / (ih * 1.5), 1);
+      const desc = WORLD_VIEW_HEIGHT * 1.0 * tiltEase * scrollRamp;
+      // Pitch ∝ descent velocity (world units/s), damped for smoothness.
+      const dVel = (desc - prevDescend.current) / Math.max(delta, 1e-4);
+      prevDescend.current = desc;
+      descendPitch.current = THREE.MathUtils.damp(
+        descendPitch.current,
+        THREE.MathUtils.clamp(dVel * 0.055, -0.6, 0.6),
+        6,
+        delta,
+      );
+      if (desc !== 0 || Math.abs(descendPitch.current) > 0.0001) {
+        camera.position.y -= desc;
+        if (tier !== "full" || !curve) camera.quaternion.set(0, 0, 0, 1);
+        camera.rotateX(-descendPitch.current);
+      }
+      if (useTextMorphStore.getState().camDescend !== desc) {
+        useTextMorphStore.setState({ camDescend: desc });
+      }
+    }
+
     // On the ON path the TSL material loads lazily; until its chunk resolves
     // `uniforms` is undefined. The camera glide above still runs every frame
     // (so the view is in place when the material lands); the uniform writes are
@@ -329,7 +442,7 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // pulse adds a brief ~×1.2 bump as the head "arrives" at each section
     // (proportional to base emissive so it reads as ×1.0→1.2→1.0). Both are
     // SUMMED then clamped to the same single ceiling — no double-counting.
-    const velocityBoost = Math.abs(velocity) * 0.004;
+    const velocityBoost = aliveVelocity * 0.004;
     const pulseBoost = fx.emissive * 0.2 * decayedPulse;
     const boost = Math.min(velocityBoost + pulseBoost, 0.6);
     u.uEmissive.value = (fx.emissive + boost) * route.lineEmissiveScale;
@@ -352,7 +465,7 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // (uBreath <= 0.0001), and under prefers-reduced-motion the Canvas is
     // unmounted anyway (tier "off").
     const radius = WORLD_VIEW_HEIGHT * fx.radiusFactor;
-    const velNorm = Math.min(Math.abs(velocity) * 0.01, 1);
+    const velNorm = Math.min(aliveVelocity * 0.01, 1);
     u.uBreath.value =
       tier === "full" ? 0.4 * radius * (0.45 + 0.55 * velNorm) : 0;
     // Base = the live fxStore color (dev tuning), lerped toward the route tone

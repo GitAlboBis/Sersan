@@ -1458,6 +1458,12 @@ export interface TextMorphNodeBuild {
   material: NodeMaterialLike;
   /** Morph progress 0 (text A) → 1 (text B), scroll-driven. */
   uMorph: UniformNode<number>;
+  /** Second morph leg 0 (text B) → 1 (text C), scroll-driven. Lets the chain
+   * run A → B → C (e.g. "Sersan AI" → headline → "see what we build"). */
+  uMorph2: UniformNode<number>;
+  /** Third morph leg 0 (text C) → 1 (text D). Extends the chain to A → B →
+   * C → D (… → "see what we build" → "scroll", which travels to the bottom). */
+  uMorph3: UniformNode<number>;
   /** Global alpha (cross-fade against the DOM headline). */
   uFade: UniformNode<number>;
   /**
@@ -1466,6 +1472,26 @@ export interface TextMorphNodeBuild {
    * exact glyph pixels. Scroll drives this for the "density grows" intro.
    */
   uSpread: UniformNode<number>;
+  /**
+   * Entry assemble 0→1, TIME-driven (not scroll): the ICS-media particle-text
+   * choreography. Each particle's spring target sweeps from its scattered
+   * seed to the text with a LEFT→RIGHT stagger (delay = normalized home-A x)
+   * and its alpha fades in as its own journey starts. At 1 the entry is over
+   * and the buffers behave exactly as before this uniform existed. Callers
+   * that skip the entrance (replays, rebuilds) just leave it at its default 1.
+   */
+  uAssemble: UniformNode<number>;
+  /**
+   * Per-particle size multiplier applied as uMorph → 1 (default 1 = off).
+   * Compensates ink-area density: text B (the long headline) spreads the
+   * same particle count over more ink pixels than text A, so without this
+   * it reads dimmer/sparser. Callers set ≈ sqrt(inkB/inkA).
+   */
+  uSizeComp: UniformNode<number>;
+  /** Ink-density compensation for text C (the second morph target). */
+  uSizeComp2: UniformNode<number>;
+  /** Ink-density compensation for text D (the third morph target). */
+  uSizeComp3: UniformNode<number>;
   uPointSize: UniformNode<number>;
   uPixelRatio: UniformNode<number>;
   uViewport: UniformNode<unknown>;
@@ -1492,6 +1518,8 @@ export function createTextMorphComputeBuild(
   tsl: TslSymbolsGpgpu,
   homeA: Float32Array, // count×3 world-unit offsets from block center
   homeB: Float32Array,
+  homeC: Float32Array, // third target (B → C second morph leg)
+  homeD: Float32Array, // fourth target (C → D third morph leg)
   count: number,
   params: TextMorphParams,
   /** Optional initial particle positions (e.g. a scattered cloud for the
@@ -1538,25 +1566,62 @@ export function createTextMorphComputeBuild(
   const velocityBuffer = instancedArray(count, "vec3");
   const homeABuffer = instancedArray(homeA.slice(), "vec3");
   const homeBBuffer = instancedArray(homeB.slice(), "vec3");
+  const homeCBuffer = instancedArray(homeC.slice(), "vec3");
+  const homeDBuffer = instancedArray(homeD.slice(), "vec3");
+  // Entry-assemble fields: the scattered start each particle flies in FROM,
+  // and its stagger delay = normalized home-A x (ICS-media: "the normalized X
+  // position directly becomes the delay value" → a left→right forming wave).
+  const startBuffer = instancedArray((seedPositions ?? homeA).slice(), "vec3");
+  const delays = new Float32Array(count);
+  {
+    let minX = Infinity;
+    let maxX = -Infinity;
+    for (let i = 0; i < count; i++) {
+      const x = homeA[i * 3];
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+    }
+    const span = Math.max(maxX - minX, 1e-4);
+    for (let i = 0; i < count; i++) {
+      delays[i] = (homeA[i * 3] - minX) / span;
+    }
+  }
+  const delayBuffer = instancedArray(delays, "float");
 
   const uMorph = uniform(0) as UniformNode<number>;
+  const uMorph2 = uniform(0) as UniformNode<number>;
+  const uMorph3 = uniform(0) as UniformNode<number>;
   const uSpread = uniform(0) as UniformNode<number>;
+  // Default 1 = "entry already done" so rebuild/replay callers are unaffected.
+  const uAssemble = uniform(1) as UniformNode<number>;
+  const uSizeComp = uniform(1) as UniformNode<number>;
+  const uSizeComp2 = uniform(1) as UniformNode<number>;
+  const uSizeComp3 = uniform(1) as UniformNode<number>;
   const uDelta = uniform(1 / 60) as UniformNode<number>;
   const uTime = uniform(0) as UniformNode<number>;
   const morphN = uMorph as unknown as AnyNode;
+  const morph2N = uMorph2 as unknown as AnyNode;
+  const morph3N = uMorph3 as unknown as AnyNode;
   const spreadN = uSpread as unknown as AnyNode;
+  const assembleN = uAssemble as unknown as AnyNode;
   const dtN = uDelta as unknown as AnyNode;
   const timeN = uTime as unknown as AnyNode;
   const SPRING = float(params.SPRING);
   const DAMPING = float(params.DAMPING);
   const MAX_SPEED = float(params.MAX_SPEED);
   const TURB = float(params.TURB);
+  /** Per-particle assemble window: each particle's own start→text journey
+   * occupies this fraction of the global uAssemble sweep (the rest is its
+   * stagger delay). ~0.45 reads as a continuous travelling wave. */
+  const ASSEMBLE_WINDOW = 0.45;
 
   const simulate = Fn(() => {
     const pos = positionBuffer.element(instanceIndex);
     const velH = velocityBuffer.element(instanceIndex);
     const hA = homeABuffer.element(instanceIndex);
     const hB = homeBBuffer.element(instanceIndex);
+    const start = startBuffer.element(instanceIndex);
+    const delay = delayBuffer.element(instanceIndex);
 
     // Per-particle staggered transition: particle r starts its A→B journey at
     // uMorph = r·0.55 and completes it 0.45 later → a travelling recomposition
@@ -1564,6 +1629,16 @@ export function createTextMorphComputeBuild(
     const r = hash(instanceIndex).toVar();
     const m = clamp(morphN.sub(r.mul(0.55)).div(0.45), 0.0, 1.0).toVar();
     const target = mix(hA, hB, smoothstep(0.0, 1.0, m)).toVar();
+    // Second morph leg: headline B → cue C ("see what we build"), same
+    // per-particle staggered wave, driven by uMorph2.
+    const hC = homeCBuffer.element(instanceIndex);
+    const m2 = clamp(morph2N.sub(r.mul(0.55)).div(0.45), 0.0, 1.0).toVar();
+    target.assign(mix(target, hC, smoothstep(0.0, 1.0, m2)));
+    // Third morph leg: cue C → "scroll" D, whose home sits LOW in the block,
+    // so the particles travel downward and recompose at the bottom.
+    const hD = homeDBuffer.element(instanceIndex);
+    const m3 = clamp(morph3N.sub(r.mul(0.55)).div(0.45), 0.0, 1.0).toVar();
+    target.assign(mix(target, hD, smoothstep(0.0, 1.0, m3)));
 
     // Diffuse-cloud spread: a stable per-particle offset direction whose
     // radius (uSpread) the scroll shrinks to 0 — the text visibly CONDENSES
@@ -1575,12 +1650,35 @@ export function createTextMorphComputeBuild(
     );
     target.addAssign(jdir.mul(spreadN));
 
+    // ENTRY assemble (time-driven, ICS-media style): this particle's own
+    // journey runs aw 0→1 inside the global sweep, offset by its left→right
+    // delay. The spring TARGET glides start→text, so the spring + transit
+    // turbulence shape the flight organically; at uAssemble=1 this whole
+    // term is the identity (target unchanged).
+    const aw = clamp(
+      assembleN
+        .mul(1.0 + ASSEMBLE_WINDOW)
+        .sub(delay)
+        .div(ASSEMBLE_WINDOW),
+      0.0,
+      1.0,
+    ).toVar();
+    target.assign(mix(start, target, smoothstep(0.0, 1.0, aw)));
+
     const vel = velH.toVar();
     const acc = target.sub(pos).mul(SPRING).toVar();
 
-    // Mid-transit scatter: peaks at m=0.5, zero at rest on either text, so
-    // particles wander organically while travelling and land crisp.
-    const transit = m.mul(float(1.0).sub(m)).mul(4.0).toVar();
+    // Mid-transit scatter: peaks at the middle of EITHER journey (entry
+    // start→A or morph A→B), zero at rest, so particles wander organically
+    // while travelling and land crisp.
+    const transitMorph = m.mul(float(1.0).sub(m)).mul(4.0);
+    const transitMorph2 = m2.mul(float(1.0).sub(m2)).mul(4.0);
+    const transitMorph3 = m3.mul(float(1.0).sub(m3)).mul(4.0);
+    const transitEntry = aw.mul(float(1.0).sub(aw)).mul(4.0);
+    const transit = max(
+      max(max(transitMorph, transitMorph2), transitMorph3),
+      transitEntry,
+    ).toVar();
     const turb = vec3(
       sin(pos.y.mul(7.0).add(timeN.mul(2.1)).add(r.mul(6.28))),
       sin(pos.x.mul(8.0).add(timeN.mul(1.7)).add(r.mul(4.1))),
@@ -1619,6 +1717,9 @@ export function createTextMorphComputeBuild(
 
   const vSpeed = float(0).toVar();
   const vRandSrc = float(0).toVar();
+  // Per-particle entry visibility: alpha rises as the particle's own journey
+  // starts (ICS: each particle tweens `alpha: 0 → visible` with its delay).
+  const vAssemble = float(1).toVar();
 
   const material = new MeshBasicNodeMaterial();
   material.vertexNode = Fn(() => {
@@ -1626,12 +1727,41 @@ export function createTextMorphComputeBuild(
     const v = velocityBuffer.element(instanceIndex).xyz;
     vSpeed.assign(length(v));
     vRandSrc.assign(hash(instanceIndex));
+    const delay = delayBuffer.element(instanceIndex);
+    const aw = clamp(
+      assembleN
+        .mul(1.0 + ASSEMBLE_WINDOW)
+        .sub(delay)
+        .div(ASSEMBLE_WINDOW),
+      0.0,
+      1.0,
+    );
+    vAssemble.assign(smoothstep(0.0, 0.35, aw));
     const mv = modelViewMatrix.mul(vec4(p, 1.0)).toVar();
     const dist = mv.z.negate();
     const clip = cameraProjectionMatrix.mul(mv).toVar();
+    // Ink-density compensation: grow the discs as the morph settles into
+    // text B (uSizeComp), then re-target text C's density (uSizeComp2) as the
+    // second leg settles — so each text reads as bright/dense as the brand.
+    const sizeFB = mix(
+      float(1.0),
+      uSizeComp as unknown as AnyNode,
+      smoothstep(0.25, 0.75, morphN),
+    );
+    const sizeFC = mix(
+      sizeFB,
+      uSizeComp2 as unknown as AnyNode,
+      smoothstep(0.25, 0.75, morph2N),
+    );
+    const sizeFD = mix(
+      sizeFC,
+      uSizeComp3 as unknown as AnyNode,
+      smoothstep(0.25, 0.75, morph3N),
+    );
     const sizeNode = (uPointSize as unknown as AnyNode)
       .mul(uPixelRatio as unknown as AnyNode)
       .mul(float(0.7).add(float(0.7).mul(vRandSrc)))
+      .mul(sizeFD)
       .div(max(dist, 0.001));
     const corner = positionLocal.xy;
     clip.xy.addAssign(
@@ -1643,6 +1773,7 @@ export function createTextMorphComputeBuild(
   const vQuadUv = varying(positionLocal.xy);
   const vSpeedF = varying(vSpeed);
   const vRandF = varying(vRandSrc);
+  const vAssembleF = varying(vAssemble);
 
   const shade = Fn(() => {
     const rr = length(vQuadUv);
@@ -1656,6 +1787,7 @@ export function createTextMorphComputeBuild(
     const alpha = a
       .mul(float(params.POINT_ALPHA))
       .mul(uFade as unknown as AnyNode)
+      .mul(vAssembleF)
       .toVar();
     Discard(alpha.lessThan(0.004));
     return vec4(col, alpha);
@@ -1679,8 +1811,14 @@ export function createTextMorphComputeBuild(
     geometry,
     material,
     uMorph,
+    uMorph2,
+    uMorph3,
     uFade,
     uSpread,
+    uAssemble,
+    uSizeComp,
+    uSizeComp2,
+    uSizeComp3,
     uPointSize,
     uPixelRatio,
     uViewport,

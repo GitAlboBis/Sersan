@@ -25,6 +25,7 @@ import { HeroDragLayer } from "@/components/hero-drag-layer";
 import { HeroIntroGate } from "@/components/fx/hero-intro-gate";
 import { useLanguage } from "@/components/language-provider";
 import { useTextMorphStore } from "@/webgl/store/textMorphStore";
+import { getLenis } from "@/lib/lenis-singleton";
 import type { Language } from "@/data/translations/types";
 import { START_HREF } from "@/lib/site";
 import { cn } from "@/lib/utils";
@@ -63,8 +64,12 @@ type LocalizedStage = {
 const STAGE_CONTENT: LocalizedStage[] = [
   {
     id: "dormant",
+    // Hero owns a wider slice of the pin (0.1 → 0.16, user decision
+    // 2026-06-10): after the intro gate releases, "We build..." must survive
+    // real scrolling (~83vh of the 520vh pin) instead of dying within ~36vh.
+    // The five later stages are redistributed below to stay contiguous.
     start: 0.0,
-    end: 0.1,
+    end: 0.16,
     eyebrow: {
       en: "AI engineering studio · production systems",
       it: "Studio di ingegneria AI · sistemi in produzione",
@@ -160,8 +165,8 @@ const STAGE_CONTENT: LocalizedStage[] = [
   },
   {
     id: "signals",
-    start: 0.1,
-    end: 0.25,
+    start: 0.16,
+    end: 0.29,
     eyebrow: { en: "01 / Signals", it: "01 / Segnali" },
     title: {
       en: <>Every production system starts with messy signals.</>,
@@ -174,8 +179,8 @@ const STAGE_CONTENT: LocalizedStage[] = [
   },
   {
     id: "audit",
-    start: 0.25,
-    end: 0.4,
+    start: 0.29,
+    end: 0.43,
     eyebrow: { en: "02 / Audit", it: "02 / Audit" },
     title: {
       en: (
@@ -204,8 +209,8 @@ const STAGE_CONTENT: LocalizedStage[] = [
   },
   {
     id: "build",
-    start: 0.4,
-    end: 0.58,
+    start: 0.43,
+    end: 0.6,
     eyebrow: { en: "03 / Build", it: "03 / Sviluppo" },
     title: {
       en: <>Then we design and build the system.</>,
@@ -218,8 +223,8 @@ const STAGE_CONTENT: LocalizedStage[] = [
   },
   {
     id: "operate",
-    start: 0.58,
-    end: 0.75,
+    start: 0.6,
+    end: 0.76,
     eyebrow: { en: "04 / Operate", it: "04 / Operatività" },
     title: {
       en: <>Production is not launch day.</>,
@@ -232,7 +237,7 @@ const STAGE_CONTENT: LocalizedStage[] = [
   },
   {
     id: "handover",
-    start: 0.75,
+    start: 0.76,
     end: 1.0,
     eyebrow: { en: "05 / Handover", it: "05 / Consegna" },
     title: {
@@ -330,30 +335,65 @@ function StagePanel({
   useEffect(() => {
     let raf = 0;
     let lastO = Number.NaN;
+    let lastReveal = Number.NaN;
+    let lastActive = false;
     let lit = true; // last applied inert/aria state — start "lit" so first tick syncs
+    let kids: HTMLElement[] | null = null;
     const tick = () => {
       const el = ref.current;
       const p = progressRef.current;
       // The WebGL text-particle intro (HeroTextParticles) owns the hero
-      // headline visuals while active: the hero panel multiplies in its
-      // domReveal (0 during "Sersan AI" + the scatter/recompose, → 1 as the
-      // particle headline settles). Inactive (any fallback) → multiplier 1,
-      // behavior identical to before.
+      // headline visuals while active: the white H1 is SUPPRESSED for the
+      // whole hero stay (the particle text IS the title — user decision
+      // 2026-06-10), and the other elements ([data-hero-stagger]: eyebrow,
+      // body, chips/proof, CTAs) cascade in bottom-up as domReveal rises.
+      // Inactive (any fallback) → everything renders exactly as before.
       const morph = isHero ? useTextMorphStore.getState() : null;
-      const domMul = morph && morph.active ? morph.domReveal : 1;
+      const active = !!(morph && morph.active);
+      const reveal = active && morph ? morph.domReveal : 1;
       const baseO = panelOpacity(p, stage.start, stage.end, isHero, isFinal);
-      const o = baseO * domMul;
-      if (el && o !== lastO) {
+      const o = baseO;
+      if (el && (o !== lastO || (active && reveal !== lastReveal) || active !== lastActive)) {
         lastO = o;
+        lastReveal = reveal;
         el.style.opacity = String(o);
         // Subtle Y offset for entry — anchored at the top of viewport. Uses
-        // the BASE opacity (not the morph-multiplied one) so the H1 rect the
-        // particle system anchors to never shifts while the morph hides it.
+        // the BASE opacity so the H1 rect the particle system anchors to
+        // never shifts while the morph hides it.
         const yOffset = (1 - baseO) * 16;
         el.style.transform = `translate3d(0, ${yOffset}px, 0)`;
+        if (isHero) {
+          const h1 = el.querySelector<HTMLElement>("[data-hero-headline]");
+          if (active) {
+            if (h1) h1.style.opacity = "0";
+            if (!kids) {
+              kids = Array.from(
+                el.querySelectorAll<HTMLElement>("[data-hero-stagger]"),
+              );
+            }
+            kids.forEach((k, i) => {
+              const t = Math.min(
+                1,
+                Math.max(0, (reveal - i * 0.14) / 0.55),
+              );
+              const e = t * t * (3 - 2 * t); // smoothstep ease
+              k.style.opacity = String(e);
+              k.style.transform = `translate3d(0, ${(1 - e) * 26}px, 0)`;
+            });
+          } else if (lastActive) {
+            // Morph torn down (unmount/fallback) → restore the plain hero.
+            if (h1) h1.style.opacity = "";
+            kids?.forEach((k) => {
+              k.style.opacity = "";
+              k.style.transform = "";
+            });
+          }
+        }
         // Below this threshold the panel is visually hidden: disable pointer
         // events AND remove it from focus order + the a11y tree (inert).
-        const visible = o > 0.6;
+        // With the intro active the panel only counts as visible once the
+        // cascade is actually in (hidden CTAs must never be clickable).
+        const visible = o > 0.6 && (!active || reveal > 0.5);
         if (visible !== lit) {
           lit = visible;
           el.style.pointerEvents = visible ? "auto" : "none";
@@ -362,6 +402,7 @@ function StagePanel({
           if (visible) el.removeAttribute("aria-hidden");
           else el.setAttribute("aria-hidden", "true");
         }
+        lastActive = active;
       }
       raf = requestAnimationFrame(tick);
     };
@@ -404,18 +445,15 @@ function StagePanel({
     >
       <div className="container-px w-full">
         <div className="max-w-[42rem]">
-          <p
-            className={cn(
-              "eyebrow inline-flex items-center gap-2 text-ink/80",
-              // Hero rhythm tightened so the full block (eyebrow → 3-line H1 →
-              // subcopy → keyword strip → proof → 2 CTAs) clears top + bottom
-              // at ~600-720px viewport heights.
-              isHero ? "mb-3" : "mb-4",
-            )}
-          >
-            <span aria-hidden="true" className="status-dot" />
-            <span>{stage.eyebrow}</span>
-          </p>
+          {/* Eyebrow is NON-hero only. The hero is now particle-only: the
+              WebGL morph (Sersan AI → We build… → see what we build) is the
+              entire hero — no white DOM copy. */}
+          {!isHero && (
+            <p className="eyebrow inline-flex items-center gap-2 text-ink/80 mb-4">
+              <span aria-hidden="true" className="status-dot" />
+              <span>{stage.eyebrow}</span>
+            </p>
+          )}
           {isHero ? (
             // The hero stage is the page's H1. Subsequent stages are H2s
             // because the cinematic spine reads as one section to crawlers.
@@ -432,32 +470,14 @@ function StagePanel({
               {stage.title}
             </h2>
           )}
-          <p
-            className={cn(
-              "text-base sm:text-lg text-foreground/80 leading-[1.55] max-w-[40rem]",
-              isHero && "leading-[1.5]",
-            )}
-          >
-            {stage.body}
-          </p>
-          {stage.extras}
-          {isHero ? (
-            <div className="mt-5 flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
-              <Magnetic>
-                <Link href={START_HREF} className="block">
-                  <Button variant="hero" size="xl" className="group">
-                    {copy.ctaPrimary}
-                    <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
-                  </Button>
-                </Link>
-              </Magnetic>
-              <Link href="#services" className="block">
-                <Button variant="heroOutline" size="xl">
-                  {copy.seeWhatWeBuild}
-                </Button>
-              </Link>
-            </div>
-          ) : null}
+          {/* Body + extras (chips/stats) + the hero CTAs are NON-hero only —
+              stripped from the hero so it reads as pure particle text. */}
+          {!isHero && (
+            <p className="text-base sm:text-lg text-foreground/80 leading-[1.55] max-w-[40rem]">
+              {stage.body}
+            </p>
+          )}
+          {!isHero && stage.extras}
           {isFinal ? (
             <div className="mt-7 flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
               <Magnetic>
@@ -573,10 +593,15 @@ function MobileFallback({
               />
             ) : null}
             <div className={cn("max-w-2xl", isHero && "relative z-10")}>
-              <p className="eyebrow mb-4 inline-flex items-center gap-2 text-ink-mute">
-                <span aria-hidden="true" className="status-dot" />
-                <span>{stage.eyebrow}</span>
-              </p>
+              {/* Hero on mobile/fallback: keep only the headline (the desktop
+                  particle morph's text source), drop the white marketing copy
+                  + CTAs to match the stripped hero. */}
+              {!isHero && (
+                <p className="eyebrow mb-4 inline-flex items-center gap-2 text-ink-mute">
+                  <span aria-hidden="true" className="status-dot" />
+                  <span>{stage.eyebrow}</span>
+                </p>
+              )}
               {isHero ? (
                 <h1 className="font-display text-[clamp(2.25rem,8vw,3.25rem)] leading-[1.02] tracking-[-0.028em] text-ink mb-4">
                   {stage.title}
@@ -586,24 +611,12 @@ function MobileFallback({
                   {stage.title}
                 </h2>
               )}
-              <p className="text-base text-ink-mute leading-relaxed">
-                {stage.body}
-              </p>
-              {stage.extras}
-              {isHero ? (
-                <div className="mt-6 flex flex-col gap-3">
-                  <Link href={START_HREF}>
-                    <Button variant="hero" size="xl" className="w-full">
-                      {copy.ctaPrimary}
-                    </Button>
-                  </Link>
-                  <Link href="#services">
-                    <Button variant="heroOutline" size="lg" className="w-full">
-                      {copy.seeWhatWeBuild}
-                    </Button>
-                  </Link>
-                </div>
-              ) : null}
+              {!isHero && (
+                <p className="text-base text-ink-mute leading-relaxed">
+                  {stage.body}
+                </p>
+              )}
+              {!isHero && stage.extras}
               {isFinal ? (
                 <div className="mt-6 flex flex-col gap-3">
                   <Link href={START_HREF}>
@@ -628,6 +641,8 @@ export default function CinematicSystemScroll() {
   const copy = SPINE_COPY[language];
   const outerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
+  const leftScrimRef = useRef<HTMLDivElement | null>(null);
+  const radialScrimRef = useRef<HTMLDivElement | null>(null);
   const progressRef = useRef<number>(0);
   // Default to desktop layout on the server so the hero H1 + subhead are
   // present in the initial HTML (good for SEO, first paint, accessibility).
@@ -705,6 +720,30 @@ export default function CinematicSystemScroll() {
     };
   }, [isMobile, hasDetectedViewport]);
 
+  // Scrim dimmer: while the WebGL particle text owns the hero (textMorph
+  // active, DOM headline hidden) the two center-left contrast scrims drop to
+  // a whisper — they paint OVER the canvas and were swallowing the left half
+  // of the particle text — then ease back to full exactly as domReveal brings
+  // the crisp DOM H1 in (which is what they exist to keep readable). Inactive
+  // morph (every fallback path) → opacity 1, identical to before.
+  useEffect(() => {
+    let raf = 0;
+    let last = -1;
+    const tick = () => {
+      const m = useTextMorphStore.getState();
+      const o = m.active ? 0.15 + 0.85 * m.domReveal : 1;
+      if (o !== last) {
+        last = o;
+        const os = String(o);
+        if (leftScrimRef.current) leftScrimRef.current.style.opacity = os;
+        if (radialScrimRef.current) radialScrimRef.current.style.opacity = os;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
   // Mobile users — and anyone with prefers-reduced-motion (on any viewport)
   // — get the stacked fallback once detection has resolved. The pinned
   // 400vh scrub is motion-heavy by nature, so under reduced-motion we serve
@@ -754,8 +793,13 @@ export default function CinematicSystemScroll() {
             the left third of the viewport. Strongest near the left edge
             (where the H1 + paragraph sit), fading to transparent at the
             centre. Critical for the wider stage 0 / hero waypoint where
-            the planet drifts left at the wide-shot camera. */}
+            the planet drifts left at the wide-shot camera.
+            ScrimDimmer fades it (and the radial scrim below) way down while
+            the WebGL particle text owns the hero — these overlays paint OVER
+            the canvas and were eating the left half of the particle
+            headline — and eases it back in as the DOM H1 reveals. */}
         <div
+          ref={leftScrimRef}
           aria-hidden="true"
           className="absolute inset-y-0 left-0 w-[58%] pointer-events-none"
           style={{
@@ -771,6 +815,7 @@ export default function CinematicSystemScroll() {
             the push-in. Concentrated center-left and faded out toward the orb
             on the right so it never washes out the focal subject. */}
         <div
+          ref={radialScrimRef}
           aria-hidden="true"
           className="absolute inset-0 pointer-events-none"
           style={{
@@ -793,7 +838,10 @@ export default function CinematicSystemScroll() {
           <div className="container-px w-full">
             <span
               data-hero-brand
-              className="font-display text-[clamp(3.75rem,9vw,8.5rem)] leading-none tracking-[-0.03em] text-ink inline-block"
+              // ml-[114px] ≈ the ~3cm right shift requested live (2026-06-10);
+              // the span is the PARTICLE ANCHOR (opacity 0 forever), so
+              // moving it moves the assembled "Sersan AI" particles.
+              className="font-display text-[clamp(3.75rem,9vw,8.5rem)] leading-none tracking-[-0.03em] text-ink inline-block ml-[114px]"
               style={{ opacity: 0, willChange: "opacity" }}
             >
               Sersan AI
@@ -818,8 +866,9 @@ export default function CinematicSystemScroll() {
           />
         ))}
 
-        {/* Scroll hint, fades out after stage 0 */}
-        <ScrollHint progressRef={progressRef} label={copy.scroll} />
+        {/* The old "Scroll" hint is gone — the particle intro now ends on the
+            "see what we build" cue (third morph stage), which is the closing
+            call to action instead of a scroll label. */}
 
         {/* Drag-to-rotate capture over the planet (right half). Mounts only
             once the WebGL hero is live; wheel scrolling bubbles through. */}
@@ -830,49 +879,183 @@ export default function CinematicSystemScroll() {
             "Sersan AI" → headline particle transition. Self-gates on the
             WebGL morph being active; inert on every fallback. */}
         <HeroIntroGate />
+
+        {/* The 3D camera-descent hand-off at the END of the spine (after
+            stage 05) — locks the page once more and dives the WebGL camera
+            AND the pinned DOM stage into the rest of the site. */}
+        <SpineExitGate outerRef={outerRef} stageRef={stageRef} />
       </div>
     </section>
   );
 }
 
-// === Scroll hint (chevron + label) ========================================
-function ScrollHint({
-  progressRef,
-  label,
+// === Spine exit gate: the 3D camera-descent beat ==========================
+// At the END of the pinned spine (stage 05 "handover" fully read), one more
+// scroll hijacks the page a final time: the WebGL camera plays the immersive
+// "head looks down" descent (textMorphStore.camTilt clock, applied by
+// SignatureLine: monotonic ~1-viewport dive, pitch follows velocity) that
+// carries the visitor into the rest of the site, then the page releases.
+// Scrolling back up to the spine end replays it in reverse (the camera
+// rises, head looks up). Time-driven like the intro beats — scroll only
+// triggers and flips direction.
+function SpineExitGate({
+  outerRef,
+  stageRef,
 }: {
-  progressRef: React.MutableRefObject<number>;
-  label: string;
+  outerRef: React.RefObject<HTMLDivElement | null>;
+  stageRef: React.RefObject<HTMLDivElement | null>;
 }) {
-  const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
+    let engaged = false;
+    let target: 0 | 1 = 1;
     let raf = 0;
-    let lastP = Number.NaN;
+    let lastY = window.scrollY;
+    let lastBottom = Number.NaN;
+    let lastTilt = -1;
+    let touchY: number | null = null;
+    let prev = performance.now();
+
+    const release = () => {
+      if (!engaged) return;
+      engaged = false;
+      getLenis()?.start();
+    };
+    const engage = (dir: 0 | 1) => {
+      engaged = true;
+      target = dir;
+      useTextMorphStore.setState({ tiltAnchorY: window.scrollY });
+      getLenis()?.stop();
+    };
+
+    // While engaged: consume the gesture (page locked), feed the camera
+    // shake, and let the gesture direction steer the beat (down → dive,
+    // up → rise) so it stays fully reversible mid-flight.
+    const consume = (deltaPx: number, e: Event) => {
+      if (!engaged) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      target = deltaPx > 0 ? 1 : 0;
+      useTextMorphStore.setState({
+        gateKick: useTextMorphStore.getState().gateKick + deltaPx,
+      });
+    };
+    const onWheel = (e: WheelEvent) => {
+      const s = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 120 : 1;
+      consume(e.deltaY * s, e);
+    };
+    const onTouchStart = (e: TouchEvent) => {
+      touchY = e.touches[0]?.clientY ?? null;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (touchY == null) return;
+      const y = e.touches[0]?.clientY ?? touchY;
+      consume((touchY - y) * 2.2, e);
+      touchY = y;
+    };
+
     const tick = () => {
-      const p = progressRef.current;
-      if (p !== lastP) {
-        lastP = p;
-        const el = ref.current;
-        if (el) {
-          const o = Math.max(0, 1 - p / 0.05);
-          el.style.opacity = String(o);
+      const now = performance.now();
+      const dt = Math.min((now - prev) / 1000, 1 / 30);
+      prev = now;
+      const outer = outerRef.current;
+      if (outer) {
+        const ih = window.innerHeight;
+        const rect = outer.getBoundingClientRect();
+        const y = window.scrollY;
+        const st = useTextMorphStore.getState();
+        if (!engaged) {
+          // Engage ONLY on a plausible-speed CROSSING of the pin-end
+          // boundary (smooth scrolling, < ~300px/frame) — never on mere
+          // presence past it, and never on anchor-jump teleports, which
+          // would otherwise yank the user back to the spine end.
+          const crossedDown =
+            Number.isFinite(lastBottom) &&
+            lastBottom > ih + 2 &&
+            rect.bottom <= ih + 2 &&
+            lastBottom - rect.bottom < 300;
+          const crossedUp =
+            Number.isFinite(lastBottom) &&
+            lastBottom < ih - 2 &&
+            rect.bottom >= ih - 2 &&
+            rect.bottom - lastBottom < 300;
+          if (!st.tiltDone && y > lastY && crossedDown) {
+            window.scrollBy(0, rect.bottom - ih); // align exactly at pin end
+            engage(1);
+          } else if (st.tiltDone && y < lastY && crossedUp) {
+            window.scrollBy(0, rect.bottom - ih);
+            engage(0);
+          }
+        } else {
+          // Re-assert the Lenis stop every engaged frame (route code or the
+          // intro gate could have restarted it).
+          getLenis()?.stop();
+          const cur = st.camTilt;
+          if (cur !== target) {
+            const dir = target > cur ? 1 : -1;
+            const next = Math.min(1, Math.max(0, cur + (dir * dt) / 1.8));
+            useTextMorphStore.setState({ camTilt: next });
+            if (next >= 1) {
+              useTextMorphStore.setState({ tiltDone: true });
+              release();
+              // Land the dive: glide the page one viewport down so the next
+              // section arrives exactly as the camera move completes — the
+              // beat genuinely CARRIES the visitor into the rest of the
+              // site instead of dropping them on an empty frame.
+              const lenis = getLenis();
+              const dest = window.scrollY + ih;
+              if (lenis) lenis.scrollTo(dest, { duration: 1.1 });
+              else window.scrollTo({ top: dest, behavior: "smooth" });
+            } else if (next <= 0) {
+              useTextMorphStore.setState({ tiltDone: false });
+              release();
+            }
+          }
+          // Safety valve: if the page somehow moved while engaged
+          // (keyboard, anchor jump), hand control back immediately.
+          if (Math.abs(window.scrollY - st.tiltAnchorY) > 12) release();
         }
+        // Immersive DOM sweep: the pinned stage content (stage-05 texts,
+        // rail, scrims) rides the SAME move as the WebGL camera — sweeping
+        // up and softly dimming as the head dives, returning on the reverse
+        // beat. Without this the locked DOM sat still and the dive read as
+        // fake (user 2026-06-10).
+        const tilt = useTextMorphStore.getState().camTilt;
+        if (tilt !== lastTilt) {
+          lastTilt = tilt;
+          const stage = stageRef.current;
+          if (stage) {
+            const e = tilt * tilt * (3 - 2 * tilt);
+            stage.style.transform = `translate3d(0, ${(-e * ih * 0.85).toFixed(1)}px, 0)`;
+            stage.style.opacity = String(1 - 0.45 * e);
+          }
+        }
+        lastY = y;
+        lastBottom = rect.bottom;
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [progressRef]);
-  return (
-    <div
-      ref={ref}
-      aria-hidden="true"
-      className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-ink-mute"
-      style={{ opacity: 1 }}
-    >
-      <span className="font-mono text-[10px] tracking-[0.18em] uppercase">
-        {label}
-      </span>
-      <span className="block w-px h-8 bg-[hsl(var(--ink-mute)/0.5)] motion-safe:animate-pulse" />
-    </div>
-  );
+
+    window.addEventListener("wheel", onWheel, { passive: false, capture: true });
+    window.addEventListener("touchstart", onTouchStart, { passive: true });
+    window.addEventListener("touchmove", onTouchMove, {
+      passive: false,
+      capture: true,
+    });
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("wheel", onWheel, { capture: true });
+      window.removeEventListener("touchstart", onTouchStart);
+      window.removeEventListener("touchmove", onTouchMove, { capture: true });
+      const stage = stageRef.current;
+      if (stage) {
+        stage.style.transform = "";
+        stage.style.opacity = "";
+      }
+      release();
+    };
+  }, [outerRef, stageRef]);
+
+  return null;
 }
+

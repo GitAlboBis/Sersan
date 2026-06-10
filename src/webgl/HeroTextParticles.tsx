@@ -3,14 +3,20 @@
 /**
  * HeroTextParticles — the Lusion-style scroll-hijacked text intro.
  *
- * On entry the hero shows a BIG solid DOM "Sersan AI" ([data-hero-brand]).
- * The page does NOT scroll at the top: HeroIntroGate consumes wheel/touch and
- * accumulates textMorphStore.gateProgress, the SOLE driver here. As it
- * advances, the solid brand text dissolves INTO particles, the particles
- * scatter and recompose into the real localized headline shape, and the
- * crisp DOM H1 cross-fades in — particles exist ONLY during the transition;
- * both endpoints are solid text. Camera/mark/line never move (document
- * scroll is genuinely zero until the gate releases). Fully reversible.
+ * ENTRY (automatic, time-driven — ICS-media particle-text choreography): the
+ * moment the preloader lifts, "Sersan AI" assembles ITSELF out of a noisy
+ * scattered particle field — left→right staggered wave (delay = normalized
+ * glyph x), per-particle alpha fade-in, spring + transit turbulence shaping
+ * each flight. No scroll input is needed or counted during the entrance
+ * (the gate locks the page and only shakes the camera).
+ *
+ * SCROLL (gate-driven): once assembled, wheel/touch accumulates
+ * textMorphStore.gateProgress — the brand HOLDS as particles, then
+ * recomposes into the real localized headline shape, holds again, and the
+ * crisp DOM H1 cross-fades in. The DOM [data-hero-brand] element stays
+ * invisible forever (opacity 0 — layout anchor + typography source only).
+ * The camera keeps its alive scroll shake via gateKick while document
+ * scroll stays at zero. Fully reversible back to the assembled brand.
  *
  * Mounts its sim ONLY when: true WebGPU compute backend + fonts ready + the
  * desktop pinned H1 + brand elements exist. Every other path leaves
@@ -34,46 +40,71 @@ interface HeroTextParticlesProps {
   tier: Exclude<SceneTier, "off">;
 }
 
-// Gate-progress timeline (g = textMorphStore.gateProgress, smoothed locally).
-// ENTRY (g=0): "Sersan AI" exists ONLY as a small diffuse particle cloud —
-// no white text. Scrolling GROWS the block and CONDENSES the cloud (size +
-// density animate with scroll) until the white solid text takes over,
-// legible; further scroll dissolves it, morphs the particles into the real
-// headline shape and reveals the crisp DOM H1. Fully reversible.
-/** Particle cloud grows + condenses (scale up, spread → 0, alpha up). */
-const GROW_START = 0.0;
-const GROW_END = 0.42;
-/** Crossfade condensed particles → solid white brand text (the payoff). */
-const SOLID_IN_START = 0.42;
-const SOLID_IN_END = 0.52;
-/** Solid brand dissolves back into particles. */
-const BRAND_OUT_START = 0.6;
-const BRAND_OUT_END = 0.68;
-/** Particle A→B recomposition wave (brand → headline shape). */
-const MORPH_START = 0.62;
-const MORPH_END = 0.86;
-/** Crisp DOM H1 cross-fades in over the settled particle headline. */
-const REVEAL_START = 0.88;
-const REVEAL_END = 0.97;
+// ENTRY clock (seconds): the automatic "Sersan AI" assemble on site entry —
+// time-driven, NOT scroll-driven (user decision 2026-06-10). ~3.6s mirrors
+// the ICS-media reference's 4s tween; the per-particle stagger + easing live
+// in the sim (uAssemble + delay buffer).
+const ENTRY_DURATION = 3.6;
 
-/** Block scale at g=0 (grows to 1 across the GROW window). */
-const SCALE_MIN = 0.62;
-/** Diffuse-cloud jitter radius at g=0, world units (condenses to 0). */
-const SPREAD_MAX = 0.55;
-/** Cloud alpha at g=0 (density feel — brightens as it condenses). */
-const ALPHA_MIN = 0.4;
+// Gate-progress timeline (g = textMorphStore.gateProgress, smoothed locally).
+// gateProgress only advances AFTER the entry assemble completes (the gate
+// checks assembleDone), so g=0 always means "brand fully formed".
+//
+// The MORPH is NOT scrubbed (user decision 2026-06-10): scrolling past
+// MORPH_TRIGGER only STARTS it — it then plays to completion on its own
+// clock with the exact same staggered-wave choreography as the entry.
+// Scrolling back below the trigger plays it in reverse, again on its own
+// clock. The gate refuses to release the page until the headline is fully
+// composed (store.morphDone), so the visitor can never out-scroll it.
+//
+// The two payoffs HOLD against scroll (user decision 2026-06-10): the brand
+// owns 0→0.45 (~2070px of wheel at GATE_DISTANCE 4600), the revealed
+// headline owns 0.7→1.0 (~1380px). No solid white DOM text anywhere:
+// [data-hero-brand] stays opacity:0 forever (anchor/typography source only).
+/** Scroll-intent threshold that triggers the (automatic) A→B morph
+ * ("Sersan AI" → headline). Pulled in from 0.45 to make room for a third
+ * stage on the same gate. */
+const MORPH_TRIGGER = 0.22;
+/** Scroll-intent threshold that triggers the SECOND morph B→C (headline →
+ * "see what we build"). Only fires once the first morph has composed. */
+const MORPH2_TRIGGER = 0.44;
+/** Scroll-intent threshold that triggers the THIRD morph C→D ("see what we
+ * build" → "scroll", travelling to the bottom). Fires after the second. */
+const MORPH3_TRIGGER = 0.66;
+/** Seconds for the one-shot morph animation (entry-style wave). Shared by
+ * all morph legs. */
+const MORPH_DURATION = 2.6;
+/** Stage-3 cue: the headline dissolves into this, centered. */
+const CUE_TEXT = "see what we build";
+/** Stage-4 cue: "scroll", recomposed near the BOTTOM (replacing the old DOM
+ * scroll hint). Sampled smaller; its home block is pushed DOWN by
+ * CUE2_OFFSET_Y view-heights so the particles travel downward to form it. */
+const CUE2_TEXT = "scroll";
+const CUE2_OFFSET_Y = -0.38;
+/** White-panel cascade window (paragraph → chips → CTAs stagger in over the
+ * last gate stretch, gated on the morph having actually composed). The 3D
+ * camera-descent beat now lives at the END of the cinematic spine
+ * (SpineExitGate in cinematic-system-scroll.tsx), not here. */
+const REVEAL_START = 0.8;
+const REVEAL_END = 0.92;
 
 const COUNT_BY_TIER: Record<"full" | "lite", number> = {
-  full: 18000,
-  lite: 9000,
+  full: 26000,
+  lite: 12000,
 };
 
 interface MorphBuild {
   geometry: THREE.InstancedBufferGeometry;
   material: THREE.Material;
   uMorph: { value: number };
+  uMorph2: { value: number };
+  uMorph3: { value: number };
   uFade: { value: number };
   uSpread: { value: number };
+  uAssemble: { value: number };
+  uSizeComp: { value: number };
+  uSizeComp2: { value: number };
+  uSizeComp3: { value: number };
   uPointSize: { value: number };
   uPixelRatio: { value: number };
   uViewport: { value: THREE.Vector2 };
@@ -88,6 +119,21 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
   const brandRef = useRef<HTMLElement | null>(null);
   const timeRef = useRef(0);
   const gSmoothRef = useRef(0);
+  // Entry-assemble clock 0..1. Persists across rebuilds (resize / language
+  // switch re-run the build effect but never unmount the component), and is
+  // pre-completed when a previous mount already played the entrance
+  // (store.assembleDone is page-lifetime) — the entry plays ONCE per load.
+  const entryRef = useRef(0);
+  // One-shot morph clock 0..1 (brand → headline). Scroll only flips its
+  // direction (forward past MORPH_TRIGGER, reverse below); it advances on
+  // its own time like the entry. Persists across rebuilds like entryRef.
+  const morphTRef = useRef(0);
+  // Second morph clock 0..1 (headline → "see what we build"). Same one-shot,
+  // time-driven, reversible behaviour as morphTRef; persists across rebuilds.
+  const morph2TRef = useRef(0);
+  // Third morph clock 0..1 (cue → "scroll" at the bottom). Same one-shot,
+  // reversible, persists across rebuilds.
+  const morph3TRef = useRef(0);
   const [build, setBuild] = useState<MorphBuild | null>(null);
   // Bumped by the MutationObserver on language switch → resample + rebuild.
   const [textEpoch, setTextEpoch] = useState(0);
@@ -103,6 +149,19 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
     let cancelled = false;
     let built: MorphBuild | null = null;
     let observer: MutationObserver | null = null;
+
+    if (process.env.NODE_ENV !== "production" || typeof window !== "undefined") {
+      // TEMP diagnostic (2026-06-10): a phantom rebuild resets the intro mid
+      // morph in prod — log the dep values to identify which one changes.
+      console.debug("[HTP] build effect run", {
+        count,
+        worldPerPx,
+        sizeW: size.width,
+        textEpoch,
+        glId: (gl as unknown as { __htpId?: number }).__htpId ??
+          ((gl as unknown as { __htpId?: number }).__htpId = Math.floor(Math.random() * 1e6)),
+      });
+    }
 
     void Promise.all([
       import("three/webgpu"),
@@ -160,17 +219,37 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       const a = sampleTextPoints(brandSpec, count);
       const b = sampleTextPoints(headlineSpec, count);
 
-      // The instanced group anchors to the BRAND rect per frame (so the
-      // scroll-driven scale grows the cloud around its own center); the
-      // headline homes carry the offset to the H1 block instead.
-      const h1Rect = h1.getBoundingClientRect();
-      const brandRect = brand.getBoundingClientRect();
-      const offBx =
-        (h1Rect.left + h1Rect.width / 2 - (brandRect.left + brandRect.width / 2)) *
-        worldPerPx;
-      const offBy =
-        (brandRect.top + brandRect.height / 2 - (h1Rect.top + h1Rect.height / 2)) *
-        worldPerPx;
+      // --- CUE sample ("see what we build") — the THIRD morph target. -------
+      // Derived from the headline's own typography at a reduced size so the
+      // closing cue reads smaller than the headline. Single line, centered
+      // like brand + headline (offset 0,0) → it recomposes IN PLACE.
+      const cueSpec: TextSpec = {
+        ...headlineSpecBase,
+        fontSizePx: headlineSpecBase.fontSizePx * 0.62,
+        lineHeightPx: headlineSpecBase.fontSizePx * 0.62,
+        lines: [CUE_TEXT],
+      };
+      const c = sampleTextPoints(cueSpec, count);
+
+      // --- "scroll" sample — the FOURTH morph target. Smaller still; its
+      // world home is offset DOWN (below) so the C→D leg carries the particles
+      // toward the bottom, recomposing where the old scroll hint lived. -------
+      const cue2Spec: TextSpec = {
+        ...headlineSpecBase,
+        fontSizePx: headlineSpecBase.fontSizePx * 0.4,
+        lineHeightPx: headlineSpecBase.fontSizePx * 0.4,
+        lines: [CUE2_TEXT],
+      };
+      const d = sampleTextPoints(cue2Spec, count);
+
+      // The instanced group anchors to the BRAND rect per frame. The headline
+      // homes used to carry an offset to the H1 block; the user (2026-06-10)
+      // wants the morphed "We build..." particles to recompose IN PLACE —
+      // same position as "Sersan AI", not up at the H1 — so both home fields
+      // share the brand block center (offset 0,0). The crisp DOM H1 still
+      // fades in at its own layout spot at the very end of the gate.
+      const offBx = 0;
+      const offBy = 0;
 
       const toWorld = (xy: Float32Array, ox: number, oy: number) => {
         const out = new Float32Array(count * 3);
@@ -183,14 +262,41 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       };
 
       const homeAWorld = toWorld(a.xy, 0, 0);
-      // Entry seed: a loose cloud around the brand block — the spring pulls
-      // it home the moment the sim starts ticking (= when the preloader
-      // curtain lifts), playing the "particles assemble into Sersan AI" beat.
+      const homeCWorld = toWorld(c.xy, 0, 0);
+      const homeDWorld = toWorld(d.xy, 0, WORLD_VIEW_HEIGHT * CUE2_OFFSET_Y);
+      // Entry seed (ICS-media style): each particle starts at a noisy offset
+      // from its glyph home, spread WIDER toward the left of the block
+      // (ICS: `spread = (1 - nx) * 100 + 100`) so the left edge billows out
+      // and forms first while the right tail streams in — combined with the
+      // sim's left→right stagger this reads as the reference's travelling
+      // assemble wave. If a previous mount already played the entrance,
+      // seed at home instead (no replay on route round-trips).
+      const replayDone = useTextMorphStore.getState().assembleDone;
+      let minX = Infinity;
+      let maxX = -Infinity;
+      for (let i = 0; i < count; i++) {
+        const x = homeAWorld[i * 3];
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+      }
+      const spanX = Math.max(maxX - minX, 1e-4);
       const scatter = new Float32Array(count * 3);
       for (let i = 0; i < count; i++) {
-        scatter[i * 3] = homeAWorld[i * 3] + (Math.random() - 0.5) * 5.5;
-        scatter[i * 3 + 1] = homeAWorld[i * 3 + 1] + (Math.random() - 0.5) * 3.5;
-        scatter[i * 3 + 2] = homeAWorld[i * 3 + 2] + (Math.random() - 0.5) * 2.0;
+        if (replayDone) {
+          scatter[i * 3] = homeAWorld[i * 3];
+          scatter[i * 3 + 1] = homeAWorld[i * 3 + 1];
+          scatter[i * 3 + 2] = homeAWorld[i * 3 + 2];
+          continue;
+        }
+        const nx = (homeAWorld[i * 3] - minX) / spanX;
+        // Random unit-ish direction with damped z; magnitude leftward-biased.
+        const ang = Math.random() * Math.PI * 2;
+        const mag = ((1 - nx) * 2.6 + 1.3) * (0.4 + Math.random() * 0.9);
+        scatter[i * 3] = homeAWorld[i * 3] + Math.cos(ang) * mag;
+        scatter[i * 3 + 1] =
+          homeAWorld[i * 3 + 1] + Math.sin(ang) * mag * 0.75;
+        scatter[i * 3 + 2] =
+          homeAWorld[i * 3 + 2] + (Math.random() - 0.5) * 1.6;
       }
 
       const bm = mod.createTextMorphComputeBuild(
@@ -199,21 +305,42 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
         tslNs as never,
         homeAWorld,
         toWorld(b.xy, offBx, offBy),
+        homeCWorld,
+        homeDWorld,
         count,
+        // ICS-media-reference look (user 2026-06-10): bright glowing sprites,
+        // dense enough to read as solid strokes — bigger discs, hotter
+        // emissive, near-white ink.
         {
           SPRING: 42,
           DAMPING: 6.5,
           MAX_SPEED: 9,
           TURB: 14,
-          POINT_SIZE: 3.6,
+          POINT_SIZE: 7,
           POINT_ALPHA: 1.0,
-          EMISSIVE: 2.4,
-          COL_COLD: [0.85, 0.87, 1.0], // bright lavender-white ink
-          COL_HOT: [0.3, 0.95, 1.0], // cyan while travelling
+          EMISSIVE: 4,
+          COL_COLD: [1, 1, 1.0], // bright white-lavender ink
+          COL_HOT: [0.4, 1, 1.0], // cyan while travelling
         },
         scatter,
       );
       built = bm as unknown as MorphBuild;
+      // Resume state: a rebuild mid/after entry must not restart the wave.
+      if (replayDone) entryRef.current = 1;
+      built.uAssemble.value = entryRef.current;
+      built.uMorph.value = morphTRef.current;
+      built.uMorph2.value = morph2TRef.current;
+      built.uMorph3.value = morph3TRef.current;
+      // Ink-density compensation (uSizeComp): the same particle count covers
+      // the headline's larger ink area, so points grow by ~sqrt(areaB/areaA)
+      // (slight extra for the thinner strokes) as the morph settles — the
+      // headline reads as bright and dense as the brand.
+      built.uSizeComp.value =
+        Math.min(2.4, Math.sqrt(b.inkPx / Math.max(a.inkPx, 1))) * 1.1;
+      built.uSizeComp2.value =
+        Math.min(2.4, Math.sqrt(c.inkPx / Math.max(a.inkPx, 1))) * 1.1;
+      built.uSizeComp3.value =
+        Math.min(2.4, Math.sqrt(d.inkPx / Math.max(a.inkPx, 1))) * 1.1;
       setBuild(built);
       useTextMorphStore.setState({ active: true, domReveal: 0 });
 
@@ -231,11 +358,18 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       built?.dispose();
       setBuild(null);
       if (brandRef.current) brandRef.current.style.opacity = "0";
+      if (typeof window !== "undefined") {
+        console.debug("[HTP] build effect CLEANUP");
+      }
+      // Reset ONLY the visual-handoff fields. The gate/journey state
+      // (gateProgress, morphDone, …) deliberately SURVIVES: rebuilds happen
+      // mid-session (language switch, resize, and a phantom prod remount
+      // seen 2026-06-10) and zeroing the progress yanked the visitor's
+      // intro back to the start. The component refs (entryRef, morphTRef)
+      // persist across rebuilds and re-prime the fresh sim's uniforms.
       useTextMorphStore.setState({
         active: false,
         domReveal: 1,
-        gateProgress: 0,
-        gateEngaged: false,
       });
     };
     // worldPerPx/size changes re-run (resize → resample at the new metrics).
@@ -260,54 +394,120 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       return;
     }
 
+    // --- ENTRY clock: the automatic assemble, time-driven ----------------
+    // Advances once the curtain is up; flips the page-lifetime assembleDone
+    // when complete so the gate starts counting scroll from a formed brand.
+    if (entryRef.current < 1) {
+      entryRef.current = Math.min(entryRef.current + delta / ENTRY_DURATION, 1);
+      build.uAssemble.value = entryRef.current;
+      if (entryRef.current >= 1 && !useTextMorphStore.getState().assembleDone) {
+        useTextMorphStore.setState({ assembleDone: true });
+      }
+    }
+
     // The gate accumulates in discrete wheel ticks — smooth it here so the
     // whole transition glides (frame-rate independent damp).
     const gTarget = useTextMorphStore.getState().gateProgress;
     const g = THREE.MathUtils.damp(gSmoothRef.current, gTarget, 7, delta);
     gSmoothRef.current = g;
 
-    // --- Scroll-driven timeline ------------------------------------------
-    const grow = THREE.MathUtils.smoothstep(g, GROW_START, GROW_END);
-    const solidIn = THREE.MathUtils.smoothstep(g, SOLID_IN_START, SOLID_IN_END);
-    const brandOut = THREE.MathUtils.smoothstep(g, BRAND_OUT_START, BRAND_OUT_END);
-    const morph = THREE.MathUtils.smoothstep(g, MORPH_START, MORPH_END);
-    const reveal = THREE.MathUtils.smoothstep(g, REVEAL_START, REVEAL_END);
+    // --- Morph clock: scroll TRIGGERS it, time PLAYS it -------------------
+    // Past the trigger the morph runs to 1 on its own (entry-style wave);
+    // back below the trigger it runs to 0. Constant-speed, never scrubbed.
+    const morphTarget = g >= MORPH_TRIGGER ? 1 : 0;
+    if (morphTRef.current !== morphTarget) {
+      const dir = morphTarget > morphTRef.current ? 1 : -1;
+      morphTRef.current = THREE.MathUtils.clamp(
+        morphTRef.current + (dir * delta) / MORPH_DURATION,
+        0,
+        1,
+      );
+      build.uMorph.value = morphTRef.current;
+    }
+    const morphDone = morphTRef.current >= 0.95;
+    if (morphDone !== useTextMorphStore.getState().morphDone) {
+      useTextMorphStore.setState({ morphDone });
+    }
+
+    // --- Second morph clock: B (headline) → C ("see what we build") -------
+    // Triggers only once the first morph has fully composed AND scroll intent
+    // passes MORPH2_TRIGGER; plays / reverses on its own clock like the first.
+    const morph2Target =
+      g >= MORPH2_TRIGGER && morphTRef.current >= 0.95 ? 1 : 0;
+    if (morph2TRef.current !== morph2Target) {
+      const dir = morph2Target > morph2TRef.current ? 1 : -1;
+      morph2TRef.current = THREE.MathUtils.clamp(
+        morph2TRef.current + (dir * delta) / MORPH_DURATION,
+        0,
+        1,
+      );
+      build.uMorph2.value = morph2TRef.current;
+    }
+    const morph2Done = morph2TRef.current >= 0.95;
+    if (morph2Done !== useTextMorphStore.getState().morph2Done) {
+      useTextMorphStore.setState({ morph2Done });
+    }
+
+    // --- Third morph clock: C ("see what we build") → D ("scroll" @ bottom).
+    // Fires only after the second leg composes AND scroll passes MORPH3_TRIGGER.
+    const morph3Target =
+      g >= MORPH3_TRIGGER && morph2TRef.current >= 0.95 ? 1 : 0;
+    if (morph3TRef.current !== morph3Target) {
+      const dir = morph3Target > morph3TRef.current ? 1 : -1;
+      morph3TRef.current = THREE.MathUtils.clamp(
+        morph3TRef.current + (dir * delta) / MORPH_DURATION,
+        0,
+        1,
+      );
+      build.uMorph3.value = morph3TRef.current;
+    }
+    const morph3Done = morph3TRef.current >= 0.95;
+    if (morph3Done !== useTextMorphStore.getState().morph3Done) {
+      useTextMorphStore.setState({ morph3Done });
+    }
+
+    // DOM cascade: the hero panel's white texts ([data-hero-stagger]:
+    // paragraph → chips → CTAs) stagger in over the last gate stretch,
+    // gated on the morph having actually composed (rushing the wheel parks
+    // g at the cap; the cascade then eases in as the wave completes). The
+    // white H1 itself stays suppressed — the particle headline IS the title.
+    const morphGate = THREE.MathUtils.smoothstep(morphTRef.current, 0.85, 1);
+    const reveal =
+      THREE.MathUtils.smoothstep(g, REVEAL_START, REVEAL_END) * morphGate;
     useTextMorphStore.setState({ domReveal: reveal });
 
-    // ONE text at a time: the white brand appears only when the condensed
-    // particles hand off to it, and dissolves away as the gate advances.
-    const brand = brandRef.current;
-    if (brand) brand.style.opacity = String(solidIn * (1 - brandOut));
-
-    // Particles: visible at entry as the diffuse cloud (alpha grows with the
-    // density), hidden while the solid white brand holds, back for the
-    // dissolve→morph, gone as the DOM headline reveals.
-    const cloudAlpha = ALPHA_MIN + (1 - ALPHA_MIN) * grow;
-    const fade = Math.max(1 - solidIn, brandOut) * (1 - reveal) * cloudAlpha;
+    // After the gate releases, real scroll resumes (logo dissolve + comet
+    // descend, as before): the particle headline — anchor frozen below —
+    // slides up out of the viewport with the world, dissolving over the
+    // first ~70% of a screen of scroll.
+    const scrollPx = typeof window !== "undefined" ? window.scrollY : 0;
+    const fade = 1 - Math.min(scrollPx / (size.height * 0.7), 1);
     group.visible = fade > 0.004;
-
-    // Size + density animate with scroll: the block scales up while the
-    // per-particle spread shrinks to 0 (cloud condenses onto the glyphs).
-    group.scale.setScalar(SCALE_MIN + (1 - SCALE_MIN) * grow);
-    build.uSpread.value = SPREAD_MAX * (1 - grow);
-
-    build.uMorph.value = morph;
     build.uFade.value = fade;
     const dpr = Math.min(gl.getPixelRatio(), 2);
     build.uPixelRatio.value = dpr;
     build.uViewport.value.set(size.width * dpr, size.height * dpr);
 
     if (group.visible) {
-      // Anchor the particle block to the live BRAND rect (viewport == canvas).
+      // Anchor the particle block to the live BRAND rect — but ONLY while
+      // the page is parked at the very top (the gate). The moment real
+      // scroll starts the position FREEZES in world space, so the camera's
+      // descent carries the text up and out of the viewport in true 3D
+      // (instead of it tracking the pinned hero forever).
       const el = brandRef.current;
-      if (el) {
+      if (el && scrollPx <= 2) {
         const rect = el.getBoundingClientRect();
         const cx = rect.left + rect.width / 2;
         const cy = rect.top + rect.height / 2;
         const worldViewWidth = WORLD_VIEW_HEIGHT * (size.width / size.height);
+        // + camDescend: hold the pre-descent station during the camera-dive
+        // beat (SignatureLine publishes the applied offset) so the camera
+        // genuinely leaves the text behind above the frame.
         scratch.set(
           (cx / size.width - 0.5) * worldViewWidth,
-          camera.position.y + (0.5 - cy / size.height) * WORLD_VIEW_HEIGHT,
+          camera.position.y +
+            useTextMorphStore.getState().camDescend +
+            (0.5 - cy / size.height) * WORLD_VIEW_HEIGHT,
           0,
         );
         group.position.copy(scratch);

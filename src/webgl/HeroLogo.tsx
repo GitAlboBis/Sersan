@@ -57,6 +57,7 @@ import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
 import { WORLD_VIEW_HEIGHT } from "./constants";
+import { useTextMorphStore } from "./store/textMorphStore";
 import { sampleMarkHomePositions } from "./geometry/sersanMark";
 import {
   createGpgpuSim,
@@ -865,9 +866,17 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     // choreography on top of those rest values: the mark drifts gently left,
     // sinks a touch, and recedes as the camera "passes" it, Lusion-style.
     const baseScale = WORLD_VIEW_HEIGHT * fx.heroScale;
+    // camDescend: during the intro's camera-descent beat the camera dives
+    // ~one viewport while the page is still pinned — subtracting the applied
+    // offset keeps the mark at its pre-descent station so the camera
+    // genuinely leaves it behind (above the frame) instead of dragging it
+    // along. 0 in every other state → identical to before.
+    const camDescend = useTextMorphStore.getState().camDescend;
     group.position.set(
       worldViewWidth * (fx.heroOffsetX - hp * 0.05),
-      camera.position.y - WORLD_VIEW_HEIGHT * (fx.heroOffsetY + hp * 0.04),
+      camera.position.y +
+        camDescend -
+        WORLD_VIEW_HEIGHT * (fx.heroOffsetY + hp * 0.04),
       fx.heroPosZ - hp * 2.2,
     );
     group.scale.setScalar(baseScale * (1 - 0.2 * hp) * (0.92 + 0.08 * fade));

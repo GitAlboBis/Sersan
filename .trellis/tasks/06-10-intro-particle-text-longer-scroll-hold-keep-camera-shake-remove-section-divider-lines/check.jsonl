@@ -1,0 +1,2 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Verify lint/typecheck/build quality bar and fallback-path safety"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Verify store changes follow zustand conventions (no per-frame React subscriptions)"}

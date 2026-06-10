@@ -52,6 +52,9 @@ if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
   import("./store/heroDragStore").then((m) => {
     (window as unknown as Record<string, unknown>).__sersanHeroDrag = m.useHeroDragStore;
   });
+  import("./store/textMorphStore").then((m) => {
+    (window as unknown as Record<string, unknown>).__sersanTextMorph = m.useTextMorphStore;
+  });
 }
 
 /**

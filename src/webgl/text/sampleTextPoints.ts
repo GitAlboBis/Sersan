@@ -28,6 +28,14 @@ export interface TextPoints {
   xy: Float32Array;
   widthPx: number;
   heightPx: number;
+  /**
+   * Number of covered (ink) sample cells found on the stride grid — a
+   * proportional measure of the text's ink AREA. With a fixed particle
+   * count, points-per-ink-pixel ∝ 1/inkPx: callers use the A/B ratio to
+   * compensate per-particle size so a long thin headline reads as dense
+   * and bright as a short fat brand mark.
+   */
+  inkPx: number;
 }
 
 /** Word-wraps `text` to `maxWidthPx` with the spec's font (canvas measure). */
@@ -72,7 +80,7 @@ export function sampleTextPoints(spec: TextSpec, count: number): TextPoints {
   const pad = Math.ceil(spec.fontSizePx * 0.25);
   const measure = document.createElement("canvas").getContext("2d");
   if (!measure) {
-    return { xy: new Float32Array(count * 2), widthPx: 1, heightPx: 1 };
+    return { xy: new Float32Array(count * 2), widthPx: 1, heightPx: 1, inkPx: 0 };
   }
   applyFont(measure, spec);
   const lineWidths = spec.lines.map((l) => measure.measureText(l).width);
@@ -84,7 +92,12 @@ export function sampleTextPoints(spec: TextSpec, count: number): TextPoints {
   canvas.height = Math.ceil(blockH + pad * 2);
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   if (!ctx) {
-    return { xy: new Float32Array(count * 2), widthPx: blockW, heightPx: blockH };
+    return {
+      xy: new Float32Array(count * 2),
+      widthPx: blockW,
+      heightPx: blockH,
+      inkPx: 0,
+    };
   }
   applyFont(ctx, spec);
   ctx.fillStyle = "#fff";
@@ -109,12 +122,12 @@ export function sampleTextPoints(spec: TextSpec, count: number): TextPoints {
   const n = candidates.length / 2;
   const cx = canvas.width / 2;
   const cy = canvas.height / 2;
-  if (n === 0) return { xy, widthPx: blockW, heightPx: blockH };
+  if (n === 0) return { xy, widthPx: blockW, heightPx: blockH, inkPx: 0 };
   for (let i = 0; i < count; i++) {
     const k = (Math.random() * n) | 0;
     // Jitter inside the stride cell so points don't grid-align.
     xy[i * 2] = candidates[k * 2] + Math.random() * stride - cx;
     xy[i * 2 + 1] = -(candidates[k * 2 + 1] + Math.random() * stride - cy); // y-up
   }
-  return { xy, widthPx: blockW, heightPx: blockH };
+  return { xy, widthPx: blockW, heightPx: blockH, inkPx: n };
 }

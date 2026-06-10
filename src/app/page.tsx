@@ -1,5 +1,9 @@
 import CinematicSystemScroll from "@/components/sections/cinematic-system-scroll";
-import CredibilityStrip from "@/components/sections/credibility-strip";
+// CredibilityStrip ("Pensato per SaaS · fintech · …") temporarily unmounted
+// (user 2026-06-10): the spine now hands off to the rest of the page through
+// the 3D camera-descent beat, and the divider strip broke that flow. Restore
+// by re-adding the import + the block below.
+// import CredibilityStrip from "@/components/sections/credibility-strip";
 import ProblemSection from "@/components/sections/problem-section";
 import ServicesSection from "@/components/sections/services-section";
 import UseCasesSection from "@/components/sections/use-cases-section";
@@ -10,7 +14,6 @@ import FoundersSection from "@/components/sections/founders-section";
 import ProcessSection from "@/components/sections/process-section";
 import FitSection from "@/components/sections/fit-section";
 import FinalCTA from "@/components/sections/final-cta";
-import { SectionDivider } from "@/components/ui/section-divider";
 
 /**
  * SerSan v2 — cinematic homepage.
@@ -49,51 +52,40 @@ export default function Home() {
       <div data-line-anchor="hero">
         <CinematicSystemScroll />
       </div>
-      <div data-line-anchor="credibility">
-        <CredibilityStrip />
-      </div>
-      <SectionDivider />
+      {/* Zero-height anchor kept so the signature-line curve waypoints stay
+          stable while the strip is unmounted. */}
+      <div data-line-anchor="credibility" />
       <div data-line-anchor="problem">
         <ProblemSection />
       </div>
-      <SectionDivider />
       <div data-line-anchor="services">
         <ServicesSection />
       </div>
-      <SectionDivider />
       <div data-line-anchor="production">
         <ProductionGradeSection />
       </div>
-      <SectionDivider />
       <div data-line-anchor="use-cases">
         <UseCasesSection />
       </div>
-      <SectionDivider />
       <div data-line-anchor="case-studies">
         <CaseStudiesSection />
       </div>
-      <SectionDivider />
       <div data-line-anchor="work-in-progress">
         <WorkInProgress variant="teaser" />
       </div>
-      <SectionDivider />
       <div data-line-anchor="founders">
         <FoundersSection />
       </div>
-      <SectionDivider />
       <div data-line-anchor="process">
         <ProcessSection />
       </div>
-      <SectionDivider />
       <div data-line-anchor="fit">
         <FitSection />
       </div>
       {/* The gateway gap: the WebGL portal world-anchors here (transparent
           backdrop between sections) and the signature line threads it on
           its way into the final CTA. */}
-      <div data-line-anchor="gateway" className="py-36 sm:py-52">
-        <SectionDivider />
-      </div>
+      <div data-line-anchor="gateway" className="py-36 sm:py-52" />
       <div data-line-anchor="final-cta">
         <FinalCTA />
       </div>
