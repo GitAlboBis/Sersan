@@ -27,6 +27,7 @@ import { HeroTextParticles } from "./HeroTextParticles";
 import { GatewayPortal } from "./GatewayPortal";
 import { RouteHero, type RouteHeroKind } from "./RouteHero";
 import { DriftParticles } from "./DriftParticles";
+import { RailPlanes } from "./RailPlanes";
 import { PostFX } from "./PostFX";
 import { PostFXNodes } from "./PostFXNodes";
 import { useSectionAnchors } from "./hooks/useSectionAnchors";
@@ -54,6 +55,9 @@ if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
   });
   import("./store/textMorphStore").then((m) => {
     (window as unknown as Record<string, unknown>).__sersanTextMorph = m.useTextMorphStore;
+  });
+  import("./store/railStore").then((m) => {
+    (window as unknown as Record<string, unknown>).__sersanRail = m.useRailStore;
   });
 }
 
@@ -228,6 +232,17 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           HeroLogo is mounted ONLY inside the pathname === "/" branch, so it
           never appears on an interior route. */}
       <RouteRitual pathname={pathname} tier={tier} anchors={anchors} />
+      {/* Home case-studies rail card planes (restyle step 2 part B). Gates:
+          home route + full tier (lite = DOM-only rail) + the WebGPU flag —
+          the planes are TSL-only (no GLSL twin; see railPlaneNodeMaterial
+          header), so the classic flag-OFF WebGLRenderer path never mounts
+          them. Inside the component an additional railStore.pinned gate keeps
+          the planes off while the DOM rail runs its native (unpinned)
+          fallback. MUST stay mounted AFTER SignatureLine: the per-frame plane
+          placement is camera-relative and relies on the single camera
+          authority having written camera.position.y earlier in the same
+          priority-0 frame pass. */}
+      {pathname === "/" && tier === "full" && webgpu && <RailPlanes />}
       {/* Postprocessing — desktop ("full") only, exactly as before. Which rig
           mounts is a BUILD-TIME split on `webgpuEnabled()`, not a runtime backend
           check:
