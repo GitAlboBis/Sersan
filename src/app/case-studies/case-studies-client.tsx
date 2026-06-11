@@ -61,9 +61,6 @@ export function CaseStudiesClient() {
         </div>
       </section>
 
-      {/* Work in progress — internal builds shown before the shipped archive */}
-      <WorkInProgress variant="full" />
-
       {/* Grid */}
       <section data-line-anchor="grid" className="py-16 sm:py-24">
         <div className="container-px">
@@ -126,6 +123,10 @@ export function CaseStudiesClient() {
           </div>
         </div>
       </section>
+
+      {/* Work in progress — internal builds, shown after the shipped archive
+          (restyle step 2: the archive grid leads, in-development work trails). */}
+      <WorkInProgress variant="full" />
 
       {/* Disclaimer */}
       <section data-line-anchor="disclaimer" className="pb-12">

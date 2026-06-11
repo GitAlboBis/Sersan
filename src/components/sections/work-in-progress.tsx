@@ -19,14 +19,16 @@ import { useLanguage } from "@/components/language-provider";
  * Items are an array so adding more in-progress builds later is a one-liner.
  */
 
-interface WorkInProgressItem {
+export interface WorkInProgressItem {
   title: string;
   status: string;
   description: string;
   tags: string[];
 }
 
-const ITEMS_EN: WorkInProgressItem[] = [
+// Exported: the home case-studies rail renders the first entry as its closing
+// "In development" card (restyle step 2 part B) — one copy source, two surfaces.
+export const ITEMS_EN: WorkInProgressItem[] = [
   {
     title: "Multichannel Outbound",
     status: "In development",
@@ -36,7 +38,7 @@ const ITEMS_EN: WorkInProgressItem[] = [
   },
 ];
 
-const ITEMS_IT: WorkInProgressItem[] = [
+export const ITEMS_IT: WorkInProgressItem[] = [
   {
     title: "Multichannel Outbound",
     status: "In sviluppo",
@@ -46,12 +48,18 @@ const ITEMS_IT: WorkInProgressItem[] = [
   },
 ];
 
-function WorkInProgressCard({ item }: { item: WorkInProgressItem }) {
+function WorkInProgressCard({
+  item,
+  isIt,
+}: {
+  item: WorkInProgressItem;
+  isIt: boolean;
+}) {
   return (
     <article className="card-steel flex flex-col gap-5 p-7 sm:p-8 h-full">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-[hsl(var(--accent))]">
-          Sersan · Internal build
+          {isIt ? "Sersan · Build interna" : "Sersan · Internal build"}
         </span>
         <span className="status-pill">
           <span className="status-dot" aria-hidden="true" />
@@ -99,7 +107,7 @@ export default function WorkInProgress({
       <SectionGlow position="top-right" intensity={0.8} size="50rem" />
       <div className="container-px relative">
         <SectionHeading
-          eyebrow="Work in progress"
+          eyebrow={isIt ? "Lavori in corso" : "Work in progress"}
           title={
             isIt ? (
               <>
@@ -129,7 +137,7 @@ export default function WorkInProgress({
         >
           {items.map((item, i) => (
             <Reveal key={item.title} delay={(i % 3) * 100}>
-              <WorkInProgressCard item={item} />
+              <WorkInProgressCard item={item} isIt={isIt} />
             </Reveal>
           ))}
         </div>
