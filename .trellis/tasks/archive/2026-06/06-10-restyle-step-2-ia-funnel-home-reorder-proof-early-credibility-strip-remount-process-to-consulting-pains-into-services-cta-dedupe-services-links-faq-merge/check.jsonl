@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Quality check entry point"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Gates: tsc + next build, a11y/reduced-motion, compliance copy single source (ISO 27001, London (UK)), headless QA gotchas"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Verify EN/IT parity on all moved copy and routeFx/anchor sync rules"}
+{"file": "PIANO_RESTYLE.md", "reason": "Trace acceptance: step 2+5 scope only; copy moves not rewrites; CTA count; no fullPage/framer-motion deps"}
+{"file": ".trellis/tasks/06-10-restyle-step-2-ia-funnel-home-reorder-proof-early-credibility-strip-remount-process-to-consulting-pains-into-services-cta-dedupe-services-links-faq-merge/research/horizontal-rail-pattern.md", "reason": "Check rail implementation against the researched pattern (no pin-spacer, refresh order, fallbacks)"}
+{"file": ".trellis/tasks/06-10-restyle-step-2-ia-funnel-home-reorder-proof-early-credibility-strip-remount-process-to-consulting-pains-into-services-cta-dedupe-services-links-faq-merge/research/webgl-card-planes.md", "reason": "Check plane sync/material/tier gating against the researched architecture"}

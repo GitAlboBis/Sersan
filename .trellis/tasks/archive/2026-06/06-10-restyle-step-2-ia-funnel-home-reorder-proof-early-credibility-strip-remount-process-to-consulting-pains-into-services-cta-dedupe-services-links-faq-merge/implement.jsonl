@@ -1,0 +1,10 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend spec entry point: pre-development checklist + quality gates"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Section component conventions for the reorder, rail section, and FAQ blocks"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Bilingual EN/IT convention (mandatory for moved FAQ/pains copy) + routeFx/routeCurves conventions (home waypoints change) + zustand-only-for-WebGL rule (new rail store)"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Hook conventions for the rail scrub hook and hover store wiring"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TS conventions for new store + TSL material data"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality bar: build+typecheck gates, a11y (reduced-motion fallbacks mandatory), headless QA gotchas (preloader background-tab, wheel events)"}
+{"file": "PIANO_RESTYLE.md", "reason": "Approved plan: §3 new home order, §4 case-studies treatment, §9 — this task = step 2 + step 5 merged by user decision"}
+{"file": ".trellis/tasks/06-10-restyle-step-2-ia-funnel-home-reorder-proof-early-credibility-strip-remount-process-to-consulting-pains-into-services-cta-dedupe-services-links-faq-merge/research/horizontal-rail-pattern.md", "reason": "Sticky rail DOM structure, ScrollTrigger+Lenis scrub config, mobile fallback, two-pinned-sections pitfalls"}
+{"file": ".trellis/tasks/06-10-restyle-step-2-ia-funnel-home-reorder-proof-early-credibility-strip-remount-process-to-consulting-pains-into-services-cta-dedupe-services-links-faq-merge/research/webgl-card-planes.md", "reason": "RailPlanes architecture in our CanvasHost/Scene, TSL material sketch (procedural backdrop, velocity bend, scan hover), tier gating, perf pitfalls"}
+{"file": ".trellis/tasks/06-06-webgl-visual-refactor-r3f-signature-line-blender-assets-gsap-lenis-on-next-js-16/research/signature-line-spec.md", "reason": "Signature line anchor/waypoint system — home anchors change order; must stay valid with the sticky rail"}

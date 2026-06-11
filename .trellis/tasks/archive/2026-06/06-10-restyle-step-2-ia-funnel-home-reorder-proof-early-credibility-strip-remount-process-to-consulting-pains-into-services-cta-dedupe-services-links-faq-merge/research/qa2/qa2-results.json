@@ -1,0 +1,72 @@
+{
+  "console": {
+    "home": [],
+    "consulting": [],
+    "faq-redirect": [],
+    "trust": [],
+    "home-mobile": []
+  },
+  "preloaderHome": false,
+  "anchorOrder": [
+    {
+      "a": "hero",
+      "top": 0
+    },
+    {
+      "a": "credibility",
+      "top": 4680
+    },
+    {
+      "a": "problem",
+      "top": 4798
+    },
+    {
+      "a": "case-studies",
+      "top": 5389
+    },
+    {
+      "a": "work-in-progress",
+      "top": 10240
+    },
+    {
+      "a": "services",
+      "top": 10240
+    },
+    {
+      "a": "production",
+      "top": 11554
+    },
+    {
+      "a": "founders",
+      "top": 12467
+    },
+    {
+      "a": "process",
+      "top": 13687
+    },
+    {
+      "a": "fit",
+      "top": 13906
+    },
+    {
+      "a": "gateway",
+      "top": 14833
+    },
+    {
+      "a": "final-cta",
+      "top": 15171
+    }
+  ],
+  "railSectionHeight": 4852,
+  "railState": {
+    "totalCards": 14,
+    "visibleCards": 5
+  },
+  "hoverShot": true,
+  "startCtas": 4,
+  "consultingFaq": true,
+  "faqFinalUrl": "http://localhost:3000/consulting#faq",
+  "faqStatus": 200,
+  "trustFaq": true,
+  "mobileNative": true
+}
