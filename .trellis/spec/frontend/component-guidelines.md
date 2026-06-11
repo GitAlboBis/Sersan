@@ -142,3 +142,22 @@ The homepage hero is the 400vh pinned `cinematic-system-scroll` spine with a **s
 image (`public/images/hero/orb-core.webp`) backdrop + `NeuralNetLayer` (Canvas2D). `MobileFallback`
 (≤768px) renders stacked sections with the orb as an **ambient top-right glow** (not the WebGL/spine).
 See `state-management.md` for the i18n of the spine copy.
+
+### Pinned sections — CSS sticky, never ScrollTrigger pin
+Pinned scroll sections (hero spine, case-studies rail) use a **CSS `position: sticky`
+frame inside a tall section** (`height = 100vh + travel`) — never ScrollTrigger `pin:`.
+A pin-spacer mutates the DOM and invalidates the signature line's `[data-line-anchor]`
+document measurements. Pattern (see [case-studies-rail.tsx](src/components/sections/case-studies-rail.tsx)):
+
+- `ScrollTrigger.create` with `start: "top top"`, `end: "bottom bottom"`,
+  `invalidateOnRefresh: true`, `onRefreshInit: measure`, and an `onUpdate` writing via
+  `gsap.quickSetter` — **no scrub tween** (Lenis already smooths), **no `scroller` option**
+  (the provider's scrollerProxy covers it).
+- The smooth-scroll provider does NOT run `ScrollTrigger.refresh()` on `/`: a pinned
+  section must do its own one-shot `document.fonts.ready → ScrollTrigger.refresh()`.
+- Rail/track item widths must be **fixed rem-based** (`w-[min(85vw,26rem)]`), never
+  font-dependent — width changes document height and shifts every downstream anchor.
+- Fallback (coarse pointer / reduced-motion / tier off): native `overflow-x: auto` +
+  scroll-snap with `data-lenis-prevent`, no pinning. Cards stay real focusable links.
+- Multiple sticky-pinned sections on one page coexist safely (verified: spine + rail,
+  zero anchor drift) — precisely because neither uses a pin-spacer.

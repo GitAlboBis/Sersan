@@ -104,6 +104,32 @@ Rules (violating any of these broke pages in the past or would):
 
 ---
 
+## Convention: DOM-synced WebGL planes are camera-locked
+
+When a WebGL plane must track a DOM element (e.g. [RailPlanes.tsx](src/webgl/RailPlanes.tsx)
+behind the rail cards):
+
+- **Do NOT world-anchor** planes on the camera strip (`y = -(docY + h/2) * k`): the
+  `SignatureLine` camera authority applies lookAt-ahead tilt (up to ~0.4 rad mid-page)
+  plus descent/gate beats, which shift a z=0 world plane by hundreds of px on screen.
+- **Camera-lock instead**: position the plane in camera space
+  (`camera.position + camera.quaternion`-rotated offset at `-CAMERA_Z`), which projects
+  to an exact affine screen rect under any camera pose — tilt/damping/shake cancel by
+  construction. Verified tracking delta: 0.0px.
+- Measure DOM rects only on resize/`ScrollTrigger.refresh` (a `measureVersion` bump in
+  the store), never `getBoundingClientRect` per frame; interpolate the moving axis from
+  store progress in `useFrame` via `getState()`.
+- **Only `SignatureLine` writes the camera.** Plane components read the pose; they mount
+  after `SignatureLine` in `Scene.tsx` so the authority writes first within the same
+  frame pass.
+- Canvas sits BEHIND the DOM (`z-0` vs `z-[1]`): any DOM element that should reveal a
+  plane needs a (semi)transparent background.
+- TSL node materials must keep procedural backdrops below the bloom threshold (<1.0);
+  only deliberate HDR accents (scan sweep) go above. Gate planes on
+  `tier === "full" && webgpuEnabled()`; the DOM must be complete without them.
+
+---
+
 ## Convention: every user-facing string is bilingual (EN/IT)
 
 The site ships English + Italian. **No user-facing string may be hardcoded in one
