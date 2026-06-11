@@ -20,6 +20,19 @@ import { z } from "zod";
  */
 
 const IntakeSchema = z.object({
+  // Optional self-locator (restyle step 2): the six buyer pains from the
+  // retired homepage UseCasesSection, now the intake's first question.
+  situation: z
+    .enum([
+      "demo-fails-production",
+      "automation-duct-tape",
+      "models-in-notebooks",
+      "committing-cycles",
+      "readiness-review",
+      "senior-judgment",
+      "none",
+    ])
+    .optional(),
   name: z.string().min(1).max(120),
   email: z.string().email(),
   company: z.string().min(1).max(120),
@@ -104,6 +117,19 @@ export async function POST(request: Request) {
 
 // ----- internal helpers -----
 
+const SITUATION_LABEL: Record<
+  NonNullable<IntakePayload["situation"]>,
+  string
+> = {
+  "demo-fails-production": "Agent works in demo, fails in production",
+  "automation-duct-tape": "Automation stack is duct tape",
+  "models-in-notebooks": "Models still trapped in notebooks",
+  "committing-cycles": "About to commit engineering cycles to an AI product",
+  "readiness-review": "Needs readiness before a board, customer, or regulator",
+  "senior-judgment": "Needs senior AI engineering judgment without hiring",
+  none: "None of these quite fit",
+};
+
 const STAGE_LABEL: Record<IntakePayload["stage"], string> = {
   idea: "Idea",
   prototype: "Prototype",
@@ -136,6 +162,7 @@ function renderIntakeEmail(d: IntakePayload): string {
       <p style="margin:0 0 24px;color:#9aa3ad;font-size:13px;">${escape(d.company)} · ${escape(d.role)}</p>
       <table style="border-collapse:collapse;width:100%;">
         ${row("Email", d.email)}
+        ${row("Situation", d.situation ? SITUATION_LABEL[d.situation] : "")}
         ${row("Stage", STAGE_LABEL[d.stage])}
         ${row("Timeline", TIMELINE_LABEL[d.timeline])}
         ${row("Budget", BUDGET_LABEL[d.budget])}

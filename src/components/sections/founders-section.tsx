@@ -268,27 +268,20 @@ export default function FoundersSection() {
         {/* Closer + CTA */}
         <div className="mt-12 sm:mt-14 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-5">
           <p className="max-w-2xl text-[14px] text-ink-mute leading-relaxed">
+            {/* Plain text on purpose: the /start link that lived here was
+                removed in the restyle-step-2 CTA dedupe (home keeps exactly
+                three /start moments). */}
             {isEn ? (
               <>
                 Read by one of us, not a queue. Briefs sent through{" "}
-                <Link
-                  href="/start"
-                  className="text-ink underline underline-offset-4 decoration-[hsl(var(--ink-mute)/0.4)] hover:decoration-[hsl(var(--accent))] transition-colors"
-                >
-                  /start
-                </Link>{" "}
-                get a reply within one business day.
+                <span className="text-ink">/start</span> get a reply within
+                one business day.
               </>
             ) : (
               <>
                 Letto da uno di noi, non da una coda. I brief inviati tramite{" "}
-                <Link
-                  href="/start"
-                  className="text-ink underline underline-offset-4 decoration-[hsl(var(--ink-mute)/0.4)] hover:decoration-[hsl(var(--accent))] transition-colors"
-                >
-                  /start
-                </Link>{" "}
-                ricevono risposta entro un giorno lavorativo.
+                <span className="text-ink">/start</span> ricevono risposta
+                entro un giorno lavorativo.
               </>
             )}
           </p>

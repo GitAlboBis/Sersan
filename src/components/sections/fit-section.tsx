@@ -1,8 +1,6 @@
 "use client";
 
-import { ArrowRight, Check, X } from "lucide-react";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { Check, X } from "lucide-react";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Reveal } from "@/components/ui/reveal";
 import { SectionGlow } from "@/components/ui/section-glow";
@@ -52,8 +50,6 @@ const NOT_A_FIT_IT = [
   "Vi serve un partner per convincere il vostro CTO che sia una buona idea.",
   "«Lo fareste in cambio di equity?»",
 ];
-
-const START_HREF = "/start";
 
 export default function FitSection() {
   const { language } = useLanguage();
@@ -150,7 +146,10 @@ export default function FitSection() {
           </div>
         </div>
 
-        <div className="mt-10 sm:mt-12 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
+        {/* Plain closer — the /start button that lived here was removed in
+            the restyle-step-2 CTA dedupe (FinalCTA sits right below this
+            section, past the gateway gap). */}
+        <div className="mt-10 sm:mt-12">
           <p className="text-[14px] text-ink-mute max-w-md">
             {isEn ? (
               <>
@@ -164,14 +163,6 @@ export default function FitSection() {
               </>
             )}
           </p>
-          <Link href={START_HREF}>
-            <Button variant="hero" size="lg" className="group">
-              {isEn
-                ? "Book a 30-min scoping call"
-                : "Prenota una scoping call di 30 min"}
-              <ArrowRight className="ml-1 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
-            </Button>
-          </Link>
         </div>
       </div>
 

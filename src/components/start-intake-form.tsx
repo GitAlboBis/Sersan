@@ -23,11 +23,20 @@ import { useLanguage } from "@/components/language-provider";
  * for the rest.
  */
 
+type Situation =
+  | "demo-fails-production"
+  | "automation-duct-tape"
+  | "models-in-notebooks"
+  | "committing-cycles"
+  | "readiness-review"
+  | "senior-judgment"
+  | "none";
 type Stage = "idea" | "prototype" | "internal-pilot" | "production" | "broken-system";
 type Timeline = "asap" | "this-month" | "this-quarter" | "exploring";
 type Budget = "under-15k" | "15-50k" | "50-150k" | "150k-plus" | "not-sure";
 
 interface FormState {
+  situation: Situation | "";
   name: string;
   email: string;
   company: string;
@@ -42,6 +51,7 @@ interface FormState {
 }
 
 const EMPTY: FormState = {
+  situation: "",
   name: "",
   email: "",
   company: "",
@@ -54,6 +64,46 @@ const EMPTY: FormState = {
   compliance: "",
   links: "",
 };
+
+/** Self-locator pains — moved verbatim from the retired homepage
+ *  UseCasesSection (restyle step 2: the six pains open the intake). */
+const SITUATION_OPTIONS: { value: Situation; label: string; labelIt: string }[] = [
+  {
+    value: "demo-fails-production",
+    label: "Your agent works in demo, but fails in production.",
+    labelIt: "Il tuo agente funziona nelle demo, ma fallisce in produzione.",
+  },
+  {
+    value: "automation-duct-tape",
+    label: "Your automation stack is duct tape.",
+    labelIt: "Il tuo stack di automazioni è fatto di nastro adesivo.",
+  },
+  {
+    value: "models-in-notebooks",
+    label: "Your models are still trapped in notebooks.",
+    labelIt: "I tuoi modelli sono ancora intrappolati nei notebook.",
+  },
+  {
+    value: "committing-cycles",
+    label: "You're about to commit engineering cycles to an AI product.",
+    labelIt: "Stai per impegnare cicli di sviluppo su un prodotto AI.",
+  },
+  {
+    value: "readiness-review",
+    label: "You need readiness before a board, customer, or regulator.",
+    labelIt: "Ti serve essere pronti prima di un consiglio, un cliente o un'autorità.",
+  },
+  {
+    value: "senior-judgment",
+    label: "You need senior AI engineering judgment without hiring a full team.",
+    labelIt: "Ti serve giudizio ingegneristico AI senior senza assumere un team completo.",
+  },
+  {
+    value: "none",
+    label: "None of these quite fit?",
+    labelIt: "Nessuna di queste calza del tutto?",
+  },
+];
 
 const STAGE_OPTIONS: { value: Stage; label: string; labelIt: string }[] = [
   {
@@ -192,7 +242,9 @@ export default function StartIntakeForm() {
       const res = await fetch("/api/intake", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        // The optional self-locator is an enum server-side — omit it when
+        // unanswered instead of sending an empty string.
+        body: JSON.stringify({ ...form, situation: form.situation || undefined }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSubmitState("success");
@@ -246,6 +298,34 @@ export default function StartIntakeForm() {
 
   return (
     <form ref={formRef} onSubmit={onSubmit} className="flex flex-col gap-6" noValidate>
+      {/* Self-locator — first question, optional. Pains moved verbatim from
+          the retired homepage UseCasesSection. */}
+      <div>
+        <label htmlFor="situation" className={LABEL}>
+          {isEn ? "Which situation are you in?" : "In quale situazione ti trovi?"}
+        </label>
+        <select
+          id="situation"
+          name="situation"
+          value={form.situation}
+          onChange={(e) => update("situation", e.target.value as Situation)}
+          className={cn(FIELD_BASE, "appearance-none cursor-pointer pr-8")}
+          style={{
+            backgroundImage:
+              "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='none' stroke='%239aa3ad' stroke-width='1.5' d='M1 1l4 4 4-4'/></svg>\")",
+            backgroundRepeat: "no-repeat",
+            backgroundPosition: "right 12px center",
+          }}
+        >
+          <option value="">{isEn ? "Select…" : "Seleziona…"}</option>
+          {SITUATION_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {isEn ? o.label : o.labelIt}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {/* Identity */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
         <div>
