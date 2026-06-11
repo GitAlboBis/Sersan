@@ -1,40 +1,36 @@
 import CinematicSystemScroll from "@/components/sections/cinematic-system-scroll";
-// CredibilityStrip ("Pensato per SaaS · fintech · …") temporarily unmounted
-// (user 2026-06-10): the spine now hands off to the rest of the page through
-// the 3D camera-descent beat, and the divider strip broke that flow. Restore
-// by re-adding the import + the block below.
-// import CredibilityStrip from "@/components/sections/credibility-strip";
+import CredibilityStrip from "@/components/sections/credibility-strip";
 import ProblemSection from "@/components/sections/problem-section";
+import CaseStudiesRail from "@/components/sections/case-studies-rail";
 import ServicesSection from "@/components/sections/services-section";
-import UseCasesSection from "@/components/sections/use-cases-section";
 import ProductionGradeSection from "@/components/sections/production-grade-section";
-import CaseStudiesSection from "@/components/sections/case-studies-section";
-import WorkInProgress from "@/components/sections/work-in-progress";
 import FoundersSection from "@/components/sections/founders-section";
-import ProcessSection from "@/components/sections/process-section";
+import FixedScopeStrip from "@/components/sections/fixed-scope-strip";
 import FitSection from "@/components/sections/fit-section";
 import FinalCTA from "@/components/sections/final-cta";
 
 /**
  * SerSan v2 — cinematic homepage.
  *
- * Section order is set in docs/STRATEGY.md (the consolidated rebuild brief).
- * Re-ordering here without updating that doc will desync the two. The flow
- * answers a CTO's questions in the order they actually ask them:
+ * Section order follows PIANO_RESTYLE.md §3 (restyle step 2: proof lands by
+ * viewport ~5). This intentionally desyncs docs/STRATEGY.md — the restyle
+ * plan supersedes it. The flow front-loads credibility and named work:
  *
  *   01  Cinematic spine      — who/what/why-now (the wedge + H1)
- *   02  Credibility strip    — earn permission to keep reading
+ *   02  Credibility strip    — tier-1 names immediately after the spine
  *   03  Problem              — name the demo → production gap
- *   04  Services             — what we build, concretely
- *   05  Production-grade     — operational definition + live artifacts
- *   06  Use cases            — self-locate ("that's our situation")
- *   07  Work                 — real named engagements (13 case studies)
- *   08  Founders             — the two people who ship every engagement
- *   09  Process              — Diagnose / Architect / Build / Harden
- *   10  Fit                  — disqualify honestly
- *   11  Final CTA            — into /start
+ *   04  Work                 — sticky horizontal rail (13 engagements + WIP)
+ *   05  Services             — what we build (pains surfaced per card)
+ *   06  Production-grade     — operational definition + live artifacts
+ *   07  Founders             — the two people who ship every engagement
+ *   08  Fixed-scope strip    — one-line process distillation (full map → /consulting)
+ *   09  Fit                  — disqualify honestly
+ *   10  Final CTA            — into /start
  *
- * Demoted (return when there's a reason): ContactForm.
+ * Removed in restyle step 2: UseCasesSection (pains absorbed into Services +
+ * /start intake), WorkInProgress teaser (its entry is the rail's closing
+ * "In development" card), ProcessSection (moved to /consulting "How we
+ * engage"), and the old CaseStudiesSection grid (replaced by the rail).
  */
 export default function Home() {
   return (
@@ -50,32 +46,33 @@ export default function Home() {
       <div data-line-anchor="hero">
         <CinematicSystemScroll />
       </div>
-      {/* Zero-height anchor kept so the signature-line curve waypoints stay
-          stable while the strip is unmounted. */}
-      <div data-line-anchor="credibility" />
+      <div data-line-anchor="credibility">
+        <CredibilityStrip />
+      </div>
       <div data-line-anchor="problem">
         <ProblemSection />
       </div>
+      {/* Restyle part B: the sticky horizontal rail of all 13 case studies +
+          the "In development" card, scrubbed by vertical scroll (desktop) or
+          natively swipeable (mobile/reduced-motion). The WebGL card planes
+          (webgl/RailPlanes) sync to its [data-rail-card] rects. */}
+      <div data-line-anchor="case-studies">
+        <CaseStudiesRail />
+      </div>
+      {/* Zero-height anchor kept so the signature-line curve waypoint stays
+          stable now that the WIP teaser's entry lives on the rail above. */}
+      <div data-line-anchor="work-in-progress" />
       <div data-line-anchor="services">
         <ServicesSection />
       </div>
       <div data-line-anchor="production">
         <ProductionGradeSection />
       </div>
-      <div data-line-anchor="use-cases">
-        <UseCasesSection />
-      </div>
-      <div data-line-anchor="case-studies">
-        <CaseStudiesSection />
-      </div>
-      <div data-line-anchor="work-in-progress">
-        <WorkInProgress variant="teaser" />
-      </div>
       <div data-line-anchor="founders">
         <FoundersSection />
       </div>
       <div data-line-anchor="process">
-        <ProcessSection />
+        <FixedScopeStrip />
       </div>
       <div data-line-anchor="fit">
         <FitSection />

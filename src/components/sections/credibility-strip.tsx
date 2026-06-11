@@ -81,6 +81,9 @@ export default function CredibilityStrip() {
     };
   }, []);
 
+  // Borderless + transparent on purpose (restyle step 2): the strip sits
+  // right after the spine's camera-descent beat and must fuse into the top
+  // of Problem — the old border-y divider broke that 3D handoff.
   return (
     <section
       id="credibility"
@@ -89,7 +92,7 @@ export default function CredibilityStrip() {
           ? "Trust band: audience and tier-1 institutions"
           : "Fascia di fiducia: pubblico e istituzioni di primo livello"
       }
-      className="relative border-y border-[hsl(var(--rule))] bg-[hsl(var(--bg))]"
+      className="relative"
     >
       <div
         ref={parallaxRef}

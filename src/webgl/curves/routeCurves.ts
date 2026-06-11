@@ -32,6 +32,12 @@ export const routeCurves: Record<string, RouteCurveConfig> = {
   // TURN-AROUNDS beyond the viewport edges, so on screen the line only ever
   // reads as elegant sweeping diagonals — never a visible hairpin (tight
   // on-screen turns render as polygonal elbows and can self-intersect).
+  // Waypoint order mirrors the restyle-step-2 home order (PIANO_RESTYLE.md
+  // §3: proof early — credibility + case studies before services). The
+  // "use-cases" waypoint was removed with its section (pains absorbed into
+  // Services); "work-in-progress" survives as a zero-height anchor between
+  // the case-studies section and Services (its entry joins the rail in
+  // part B), and "process" now wraps the one-line fixed-scope strip.
   "/": {
     waypoints: [
       // Hero: enter from beyond the right edge so the beam doesn't park
@@ -39,14 +45,13 @@ export const routeCurves: Record<string, RouteCurveConfig> = {
       { at: 0.0, x: 1.15, z: -1.0 },
       { anchor: "credibility", x: -1.2, z: 0.2 },
       { anchor: "problem", x: 1.15, z: -0.2 },
+      { anchor: "case-studies", x: -1.25, z: 0.2 },
+      { anchor: "work-in-progress", x: 1.2, z: 0.4 },
       { anchor: "services", x: -1.25, z: 0.1 },
       { anchor: "production", x: 1.1, z: 0.5 },
-      { anchor: "use-cases", x: -1.2, z: -0.3 },
-      { anchor: "case-studies", x: 1.25, z: 0.2 },
-      { anchor: "work-in-progress", x: -1.15, z: 0.4 },
-      { anchor: "founders", x: 1.2, z: -0.2 },
-      { anchor: "process", x: -1.25, z: 0.3 },
-      { anchor: "fit", x: 1.1, z: -0.4 },
+      { anchor: "founders", x: -1.2, z: -0.2 },
+      { anchor: "process", x: 1.25, z: 0.3 },
+      { anchor: "fit", x: -1.1, z: -0.4 },
       // The line resolves to center and THREADS THE GATEWAY (the Blender
       // portal world-anchors to the same "gateway" gap), then runs straight
       // down into the CTA.
