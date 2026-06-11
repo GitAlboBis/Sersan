@@ -1,24 +1,43 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, Building2, Cog, Database, Brain, Container, Code2, LineChart, Users } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Building2, Cog, Database, Brain, Container, Code2, LineChart, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MultiStepIntake } from "@/components/multi-step-intake";
+import ProcessSection from "@/components/sections/process-section";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Reveal } from "@/components/ui/reveal";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { useLanguage } from "@/components/language-provider";
 
 export function ConsultingClient() {
   const { language } = useLanguage();
   const isEn = language === "en";
 
-  const services = [
+  // Practice cards link out where a real detail page exists (restyle step 2:
+  // resolves the orphaned /services/* pages). Data platforms routes to the
+  // audit (its data & ML readiness surface is the entry engagement; no
+  // dedicated detail page). Fractional CTO anchors to the engagement formats
+  // on this page. FinTech engineering and Quantitative ML have no sensible
+  // target yet and stay non-link.
+  const services: {
+    icon: typeof Building2;
+    title: string;
+    desc: string;
+    href?: string;
+  }[] = [
     {
       icon: Building2,
       title: isEn ? "Enterprise architecture" : "Architettura enterprise",
       desc: isEn
         ? "We design the system before we ship it. Boundaries, data flow, failure modes, and the upgrade path."
         : "Progettiamo il sistema prima di metterlo in produzione. Confini, flussi dati, modalità di errore e percorso di upgrade.",
+      href: "/services/architecture",
     },
     {
       icon: Cog,
@@ -26,6 +45,7 @@ export function ConsultingClient() {
       desc: isEn
         ? "Repetitive, rule-bound work that humans shouldn't be doing. We map it, automate it, monitor it."
         : "Lavoro ripetitivo e basato su regole che non dovrebbero fare le persone. Lo mappiamo, lo automatizziamo, lo monitoriamo.",
+      href: "/services/automation",
     },
     {
       icon: Database,
@@ -33,6 +53,7 @@ export function ConsultingClient() {
       desc: isEn
         ? "From ingest to warehouse to BI. Built to be queried, governed, and understood."
         : "Dall'ingest al warehouse alla BI. Costruite per essere interrogate, governate e comprese.",
+      href: "/audit",
     },
     {
       icon: Brain,
@@ -40,6 +61,7 @@ export function ConsultingClient() {
       desc: isEn
         ? "Models that get to production and stay there. Pre-training, fine-tuning, RAG, agentic systems."
         : "Modelli che arrivano in produzione e ci restano. Pre-training, fine-tuning, RAG, sistemi agentici.",
+      href: "/services/engineering",
     },
     {
       icon: Container,
@@ -47,6 +69,7 @@ export function ConsultingClient() {
       desc: isEn
         ? "The boring infrastructure that makes AI shippable: feature stores, registries, monitoring, rollbacks."
         : "L'infrastruttura noiosa che rende l'AI rilasciabile: feature store, registry, monitoring, rollback.",
+      href: "/services/mlops",
     },
     {
       icon: Code2,
@@ -68,6 +91,7 @@ export function ConsultingClient() {
       desc: isEn
         ? "We own the roadmap, architecture governance, hiring, and delivery rituals for 3–12 months."
         : "Ci prendiamo carico di roadmap, governance architetturale, hiring e riti di delivery per 3–12 mesi.",
+      href: "#engage",
     },
   ];
 
@@ -125,6 +149,34 @@ export function ConsultingClient() {
             "Allineamento dei fornitori",
             "Supporto al hiring",
           ],
+    },
+  ];
+
+  // Engagement FAQ — absorbed verbatim from the retired /faq page (which
+  // now 308-redirects to /consulting#faq). The pilot/trial answer moved to
+  // /audit's "Honest answers"; the data-privacy answers moved to /trust.
+  const faqs = [
+    {
+      q: isEn ? "How much does it cost?" : "Quanto costa?",
+      a: isEn
+        ? "It depends on the work. Tech Audits are fixed-price. Delivery Sprints are scoped per project. Fractional CTO is based on time allocation. After a short scoping call we'll come back with a clear proposal, usually within a business day."
+        : "Dipende dal lavoro. I Tech Audit sono a prezzo fisso. I Delivery Sprint sono dimensionati progetto per progetto. Il Fractional CTO è basato sull'allocazione di tempo. Dopo una breve call di scoping vi mandiamo una proposta chiara, di solito entro un giorno lavorativo.",
+    },
+    {
+      q: isEn
+        ? "How long does a typical engagement last?"
+        : "Quanto dura un ingaggio tipico?",
+      a: isEn
+        ? "Tech Audits are usually 1–2 weeks. Delivery Sprints run 4–8 weeks. Fractional CTO engagements are ongoing, typically 3–12 months. We scope each one up front so nothing comes out of nowhere later."
+        : "I Tech Audit durano in genere 1–2 settimane. I Delivery Sprint 4–8 settimane. Gli ingaggi di Fractional CTO sono continuativi, tipicamente 3–12 mesi. Definiamo lo scope in anticipo, così non emergono sorprese in corso d'opera.",
+    },
+    {
+      q: isEn
+        ? "How do you handle knowledge transfer?"
+        : "Come gestite il passaggio di conoscenze?",
+      a: isEn
+        ? "Every engagement ends with documentation, architecture decision records, team walkthroughs, and a proper handover. The goal is that your team owns the thing long after we've gone. We'd rather you don't need us next year than that you do."
+        : "Ogni ingaggio si chiude con documentazione, architecture decision record, walkthrough con il team e un handover formale. L'obiettivo è che il vostro team mantenga in autonomia il sistema molto dopo la nostra uscita. Preferiamo che l'anno prossimo non abbiate bisogno di noi piuttosto che il contrario.",
     },
   ];
 
@@ -210,17 +262,37 @@ export function ConsultingClient() {
             }
           />
           <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {services.map((s, i) => (
-              <Reveal key={s.title} delay={i * 60}>
-                <div className="card-steel h-full p-6">
-                  <div className="mb-4" style={{ color: "hsl(var(--accent))" }}>
+            {services.map((s, i) => {
+              const cardBody = (
+                <>
+                  <div className="mb-4 flex items-start justify-between" style={{ color: "hsl(var(--accent))" }}>
                     <s.icon className="w-5 h-5" />
+                    {s.href ? (
+                      <ArrowUpRight
+                        className="w-3.5 h-3.5 text-ink-mute opacity-60 transition-all duration-200 group-hover:opacity-100 group-hover:text-[hsl(var(--accent))] group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                        aria-hidden="true"
+                      />
+                    ) : null}
                   </div>
                   <h3 className="font-display text-lg text-ink mb-2 leading-tight">{s.title}</h3>
                   <p className="text-sm text-ink-mute leading-[1.55]">{s.desc}</p>
-                </div>
-              </Reveal>
-            ))}
+                </>
+              );
+              return (
+                <Reveal key={s.title} delay={i * 60}>
+                  {s.href ? (
+                    <Link
+                      href={s.href}
+                      className="card-steel group block h-full p-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--accent)/0.45)] focus-visible:border-[hsl(var(--accent)/0.5)]"
+                    >
+                      {cardBody}
+                    </Link>
+                  ) : (
+                    <div className="card-steel h-full p-6">{cardBody}</div>
+                  )}
+                </Reveal>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -228,7 +300,7 @@ export function ConsultingClient() {
 
       {/* Packages */}
       <div data-line-anchor="engage">
-      <section className="section-lg">
+      <section id="engage" className="section-lg scroll-mt-24">
         <div className="container-px">
           <SectionHeading
             align="center"
@@ -281,8 +353,64 @@ export function ConsultingClient() {
       </section>
       </div>
 
-      {/* Intake form */}
+      {/* Process map — the four-phase delivery table, moved here from the
+          homepage (restyle step 2: "How we engage" owns the full process;
+          home keeps a one-line fixed-scope strip). The section carries the
+          "process" line anchor that previously wrapped the intake. */}
       <div data-line-anchor="process">
+        <ProcessSection />
+      </div>
+
+      {/* FAQ — engagement answers absorbed from the retired /faq page
+          (/faq 308-redirects to /consulting#faq). */}
+      <section id="faq" className="section-lg scroll-mt-24">
+        <div className="container-px">
+          <SectionHeading
+            align="center"
+            className="mx-auto mb-10"
+            eyebrow="FAQ"
+            titleClassName="font-display text-3xl sm:text-[2.25rem] text-ink leading-[1.12] tracking-tight text-balance"
+            title={
+              isEn ? (
+                <>
+                  The questions buyers{" "}
+                  <span className="italic" style={{ color: "hsl(var(--accent))" }}>
+                    actually ask.
+                  </span>
+                </>
+              ) : (
+                <>
+                  Le domande che i clienti{" "}
+                  <span className="italic" style={{ color: "hsl(var(--accent))" }}>
+                    ci fanno davvero.
+                  </span>
+                </>
+              )
+            }
+          />
+          <div className="max-w-3xl mx-auto">
+            <Accordion type="single" collapsible className="space-y-3">
+              {faqs.map((f, i) => (
+                <AccordionItem
+                  key={f.q}
+                  value={`faq-${i}`}
+                  className="rounded-xl border border-rule/70 bg-surface/40 backdrop-blur-[1px] px-6 transition-colors data-[state=open]:border-[hsl(var(--accent)/0.5)] data-[state=open]:bg-surface/60"
+                >
+                  <AccordionTrigger className="text-ink hover:text-[hsl(var(--accent))] hover:no-underline font-medium text-left py-5 text-sm">
+                    {f.q}
+                  </AccordionTrigger>
+                  <AccordionContent className="text-ink-mute pb-5 text-sm leading-[1.6]">
+                    {f.a}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </div>
+        </div>
+      </section>
+
+      {/* Intake form */}
+      <div>
       <section id="intake" className="section-lg relative">
         <div className="container-px relative">
           <SectionHeading

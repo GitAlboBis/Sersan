@@ -120,6 +120,9 @@ export function AuditClient() {
         { q: "What if we don't know what we need yet?", a: "Most of our clients don't. That's literally what the audit is for: finding the AI opportunities you can't see from the inside, plus the rebuilds, automations, and fixes that need to happen first before AI can do anything useful in your product." },
         { q: "How is this different from a sales discovery call?", a: "A discovery call is 30 minutes of questions to qualify you. The audit is a week of work where senior engineers go inside your business and produce a written deliverable. The output is the same whether you hire us or not." },
         { q: "What if you find nothing?", a: "It happens, rarely, but it happens. If we genuinely think the work isn't there right now, we'll tell you, give you the reasoning in writing, and not waste anyone's time." },
+        // Absorbed from the retired /faq page (engagement answer that fits
+        // the audit: the audit IS the pilot).
+        { q: "Do you offer a pilot or trial?", a: "Yes. For larger AI builds, we'll do a scoped pilot to make sure the idea actually works before anyone commits to the full thing. For consulting more generally, the Tech Audit plays the same role. You get a complete picture before we touch implementation." },
       ]
     : [
         { q: "Perché è a pagamento?", a: "Perché il deliverable è lavoro ingegneristico vero. Ingegneri senior passano due o tre settimane dentro il vostro stack producendo un portfolio di opportunità con punteggio, una roadmap sequenziata e un deck per la leadership. Lo definiamo strettamente, così niente teatrino di discovery e nessun obbligo di ingaggiarci dopo." },
@@ -128,6 +131,7 @@ export function AuditClient() {
         { q: "E se ancora non sappiamo cosa ci serve?", a: "La maggior parte dei nostri clienti non lo sa. È letteralmente per questo che esiste l'audit: trovare le opportunità AI che non vedete dall'interno, oltre ai rebuild, alle automazioni e ai fix che vanno fatti prima che l'AI possa fare qualcosa di utile nel vostro prodotto." },
         { q: "In cosa è diverso da una call di discovery commerciale?", a: "Una discovery call sono 30 minuti di domande per qualificarvi. L'audit è una settimana di lavoro in cui ingegneri senior entrano nel vostro business e producono un deliverable scritto. Il risultato è lo stesso, che ci ingaggiate poi o no." },
         { q: "E se non trovate nulla?", a: "Succede, raramente, ma succede. Se pensiamo davvero che il lavoro adesso non ci sia, ve lo diciamo, vi diamo il ragionamento per iscritto e non facciamo perdere tempo a nessuno." },
+        { q: "Offrite un pilot o un periodo di prova?", a: "Sì. Per i build AI più grandi facciamo un pilot a scope definito, per verificare che l'idea funzioni davvero prima di impegnarci sul progetto pieno. Più in generale per la consulenza, è il Tech Audit a svolgere questo ruolo: avete un quadro completo prima di toccare l'implementazione." },
       ];
 
   const fitItems = isEn

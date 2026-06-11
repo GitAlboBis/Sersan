@@ -70,7 +70,7 @@ const COLUMNS: Array<{ heading: string; headingIt: string; links: LinkRow[] }> =
     links: [
       { href: "/about", label: "Founders", labelIt: "Fondatori" },
       { href: "/resources", label: "Writing", labelIt: "Scritti" },
-      { href: "/faq", label: "FAQ", labelIt: "FAQ" },
+      { href: "/consulting#faq", label: "FAQ", labelIt: "FAQ" },
       { href: "/contact", label: "Contact", labelIt: "Contatti" },
     ],
   },

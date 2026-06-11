@@ -106,6 +106,34 @@ export function TrustClient() {
     },
   ];
 
+  // Data-privacy answers absorbed verbatim from the retired /faq page
+  // (which now 308-redirects to /consulting#faq). Compliance claims match
+  // this page: ISO 27001 in progress, infrastructure in London (UK).
+  const privacyFaqs = [
+    {
+      q: isEn ? "Are you GDPR compliant?" : "Siete conformi al GDPR?",
+      a: isEn
+        ? "Yes. We have the usual data processing agreements, consent handling, and retention policies in place. Infrastructure is hosted in London (UK) and ISO 27001 certification is in progress."
+        : "Sì. Abbiamo in essere data processing agreement, gestione del consenso e policy di retention. L'infrastruttura è ospitata a Londra (Regno Unito) e la certificazione ISO 27001 è in corso.",
+    },
+    {
+      q: isEn
+        ? "Who owns the intellectual property?"
+        : "A chi appartiene la proprietà intellettuale?",
+      a: isEn
+        ? "You do. All code, documentation, and deliverables produced during the engagement are yours. We don't retain rights to anything we build for you."
+        : "A voi. Tutto il codice, la documentazione e i deliverable prodotti durante l'ingaggio sono vostri. Non manteniamo diritti su nulla di ciò che costruiamo per voi.",
+    },
+    {
+      q: isEn
+        ? "Where is your infrastructure hosted?"
+        : "Dove è ospitata la vostra infrastruttura?",
+      a: isEn
+        ? "Cloud providers in London (UK), with encryption at rest and in transit, ISO 27001 certification in progress, and regular security audits. Client data is never mixed between engagements."
+        : "Su cloud provider a Londra (Regno Unito), con cifratura at-rest e in-transit, certificazione ISO 27001 in corso e audit di sicurezza regolari. I dati dei clienti non vengono mai mescolati tra ingaggi diversi.",
+    },
+  ];
+
   return (
     <div className="min-h-screen pt-24 pb-24 relative">
       <div className="container-px max-w-5xl">
@@ -245,6 +273,25 @@ export function TrustClient() {
                 <div className="card-steel p-6">
                   <h3 className="font-display text-lg text-ink mb-2 leading-tight">{c.title}</h3>
                   <p className="text-sm text-ink-mute leading-[1.55]">{c.desc}</p>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+        </section>
+
+        {/* Data & privacy FAQ — absorbed from the retired /faq page */}
+        <section className="mb-20">
+          <Reveal>
+            <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
+              {isEn ? "Frequently asked questions" : "Domande frequenti"}
+            </h2>
+          </Reveal>
+          <div className="grid grid-cols-1 gap-4">
+            {privacyFaqs.map((f, i) => (
+              <Reveal key={f.q} delay={i * 70}>
+                <div className="card-steel p-6">
+                  <h3 className="font-display text-lg text-ink mb-2 leading-tight">{f.q}</h3>
+                  <p className="text-sm text-ink-mute leading-[1.55]">{f.a}</p>
                 </div>
               </Reveal>
             ))}

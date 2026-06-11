@@ -2,6 +2,17 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["*.trycloudflare.com"],
+  async redirects() {
+    return [
+      // /faq was retired in restyle step 2: its engagement answers moved to
+      // /consulting#faq (+ one to /audit), data-privacy answers to /trust.
+      {
+        source: "/faq",
+        destination: "/consulting#faq",
+        permanent: true,
+      },
+    ];
+  },
   images: {
     // AVIF first for better compression on photographic assets, with WebP
     // fallback for older clients.
