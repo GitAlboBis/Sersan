@@ -44,3 +44,41 @@ Multi-agent research over 10 preset sources (51 candidates) + codebase audit pro
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: Restyle step 2: IA + funnel reorder, case-studies rail + WebGL planes
+
+**Date**: 2026-06-11
+**Task**: Restyle step 2: IA + funnel reorder, case-studies rail + WebGL planes
+**Branch**: `feat/webgl-refactor`
+
+### Summary
+
+Home reordered for time-to-proof (credibility strip + case studies before pitch, viewport ~5); pains folded into Services cards + /start self-locator; CTA deduped to 3 section moments; FAQ merged into /consulting#faq, /audit, /trust with /faq 308-redirect; sitemap/footer updated. New case-studies horizontal rail: 14 cards on a CSS-sticky scrub (no pin-spacer, anchors stable with two pinned sections), native snap scroller fallback. WebGL RailPlanes: camera-locked DOM-synced planes (lookAt-ahead tilt makes world-anchoring impossible; 0.0px tracking), TSL seeded navy backdrop + velocity bend + cyan-violet HDR scan-sweep hover under selective bloom, full-tier+WebGPU gated. Checks: tsc+build green, headless QA desktop/mobile, zero console errors. Specs updated (pinned-section sticky pattern, camera-locked plane conventions). Also: git core.longpaths enabled after archive hit Windows 260-char limit.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `64e485e` | (see git log) |
+| `2df7efa` | (see git log) |
+| `5ec112d` | (see git log) |
+| `92a7c41` | (see git log) |
+| `4a4b084` | (see git log) |
+| `a754e70` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
