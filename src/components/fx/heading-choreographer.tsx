@@ -9,6 +9,15 @@
  * text in place — re-splitting by construction kills the recon's stale-
  * splits risk). Reduced-motion: no split, headings just exist.
  *
+ * CONTRACT for subscribers: a heading whose text depends on the language MUST
+ * also carry `key={language}`. SplitText owns the heading's subtree once
+ * split (revert() restores an innerHTML snapshot), so React's child fibers
+ * are orphaned — an in-place EN/IT text update would write to detached nodes
+ * and the visible heading would stay stuck in the old language. key={language}
+ * remounts a fresh React-owned subtree each toggle; this effect's cleanup
+ * reverts the old (now detached) split harmlessly and re-splits the new node.
+ * Same rule SectionHeading documents for its own h2.
+ *
  * SplitText is free since GSAP joined Webflow; `mask: "lines"` wraps each
  * line in an overflow clip so no CSS is needed.
  */
@@ -78,27 +87,39 @@ export function HeadingChoreographer() {
             linesClass: "split-line",
           });
           splits.push(split);
-          // Created paused; the velocity sample is taken the instant the heading
-          // reveals (onEnter) — not at split-build time. Faster scroll → a
-          // snappier, slightly larger stagger + offset + a hair quicker duration;
-          // slow/idle → the gentle baseline. The clamp keeps fast scroll premium,
-          // never chaotic. Easing token (expo.out) is untouched.
-          const tween = gsap.from(split.lines, {
-            yPercent: BASE_Y_PERCENT,
-            duration: BASE_DURATION,
-            stagger: BASE_STAGGER,
-            ease: "expo.out",
-            paused: true,
-          });
-          tweens.push(tween);
+          // Hide the lines deterministically below their mask. The reveal tween
+          // itself is built lazily inside fire(): the velocity sample is taken
+          // the instant the heading reveals (onEnter) — not at split-build time.
+          // Faster scroll → a snappier, slightly larger stagger + offset + a
+          // hair quicker duration; slow/idle → the gentle baseline. The clamp
+          // keeps fast scroll premium, never chaotic. Easing token (expo.out)
+          // is untouched.
+          //
+          // NOTE: a paused gsap.from + invalidate().restart() is a trap here —
+          // invalidate() makes the from-tween re-capture the CURRENT value as
+          // its destination, and by fire-time the lines already sit at 115, so
+          // the tween becomes 115→115 and the heading stays masked forever.
+          // gsap.fromTo with explicit endpoints is immune to that capture.
+          gsap.set(split.lines, { yPercent: BASE_Y_PERCENT });
           // Velocity-modulated reveal body, shared by the scroll trigger AND the
-          // creation-time in-view check below.
+          // creation-time in-view check below. fired-guard: the creation-time
+          // in-view check and a later onEnter can BOTH call fire().
+          let fired = false;
           const fire = () => {
+            if (fired) return;
+            fired = true;
             const f = velocityFactor(useScrollStore.getState().velocity);
-            tween.vars.yPercent = BASE_Y_PERCENT * (1 + 0.18 * f); // 115 → ~136
-            tween.vars.stagger = BASE_STAGGER * (1 + 0.55 * f); // 0.09 → ~0.14
-            tween.vars.duration = BASE_DURATION * (1 - 0.12 * f); // 0.85 → ~0.75
-            tween.invalidate().restart();
+            const tween = gsap.fromTo(
+              split.lines,
+              { yPercent: BASE_Y_PERCENT * (1 + 0.18 * f) }, // 115 → ~136
+              {
+                yPercent: 0,
+                duration: BASE_DURATION * (1 - 0.12 * f), // 0.85 → ~0.75
+                stagger: BASE_STAGGER * (1 + 0.55 * f), // 0.09 → ~0.14
+                ease: "expo.out",
+              },
+            );
+            tweens.push(tween);
           };
           const st = ScrollTrigger.create({
             trigger: el,

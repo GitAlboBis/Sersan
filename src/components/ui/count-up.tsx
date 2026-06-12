@@ -70,15 +70,36 @@ interface CountUpProps {
   value: string;
   duration?: number;
   className?: string;
+  /**
+   * Bypass the metric-token heuristic for values the CALLER knows are real
+   * metrics (e.g. the /about proof strip's bare "8" / "5" / "1", which carry
+   * their unit in a sibling span). The number must still lead the string —
+   * the prefix rule is never bypassed, so label-led values stay static.
+   * Deliberately a per-call-site opt-in instead of loosening METRIC_TOKEN_RE:
+   * the global regex keeps protecting every other surface from animating
+   * non-metrics like "32" or ordinals.
+   */
+  force?: boolean;
 }
 
-export function CountUp({ value, duration = 1.2, className }: CountUpProps) {
+export function CountUp({ value, duration = 1.2, className, force = false }: CountUpProps) {
   const ref = useRef<HTMLSpanElement | null>(null);
   // The animated text is written directly to this node's textContent during
   // the tween — never through React state — so the count-up runs at 60fps
   // without firing a re-render per frame (a metric grid would otherwise churn
   // hundreds of renders/sec).
   const outRef = useRef<HTMLSpanElement | null>(null);
+  // One-shot guard. The immediate-fire path below (for triggers born already
+  // in view) means fire() can be reached again if the effect ever re-runs
+  // while the element is still in view — without this ref every such re-run
+  // would replay the count. Reset ONLY when the value prop genuinely changes;
+  // metric values are language-invariant, so EN/IT toggles never replay.
+  const firedRef = useRef(false);
+  const lastValueRef = useRef(value);
+  if (lastValueRef.current !== value) {
+    lastValueRef.current = value;
+    firedRef.current = false;
+  }
   const parsed = parseMetric(value);
   // Three conditions to animate:
   //   1. The string contains a parseable number.
@@ -89,7 +110,7 @@ export function CountUp({ value, duration = 1.2, className }: CountUpProps) {
   //      or "F1" or "p99".
   const shouldAnimate =
     !!parsed
-    && METRIC_TOKEN_RE.test(value)
+    && (force || METRIC_TOKEN_RE.test(value))
     && ANIMATABLE_PREFIX_RE.test(parsed.before);
 
   // CRITICAL: the visible / SSR / screen-reader / crawler fallback must
@@ -113,30 +134,50 @@ export function CountUp({ value, duration = 1.2, className }: CountUpProps) {
     if (prefersReduced) return;
 
     const obj = { n: parsed.num };
+    let tween: gsap.core.Tween | null = null;
+
+    const fire = () => {
+      if (firedRef.current) return;
+      firedRef.current = true;
+      // Snap to 0 then tween up to the target, writing each frame straight
+      // to the DOM node — no setState, so zero re-renders during the count.
+      obj.n = 0;
+      out.textContent = formatPart(parsed, 0);
+      tween = gsap.to(obj, {
+        n: parsed.num,
+        duration,
+        ease: "expo.out",
+        onUpdate: () => {
+          out.textContent = formatPart(parsed, obj.n);
+        },
+        onComplete: () => {
+          out.textContent = value;
+        },
+      });
+    };
+
     const st = ScrollTrigger.create({
       trigger: el,
       start: "top 90%",
       once: true,
-      onEnter: () => {
-        // Snap to 0 then tween up to the target, writing each frame straight
-        // to the DOM node — no setState, so zero re-renders during the count.
-        obj.n = 0;
-        out.textContent = formatPart(parsed, 0);
-        gsap.to(obj, {
-          n: parsed.num,
-          duration,
-          ease: "expo.out",
-          onUpdate: () => {
-            out.textContent = formatPart(parsed, obj.n);
-          },
-          onComplete: () => {
-            out.textContent = value;
-          },
-        });
-      },
+      onEnter: fire,
     });
-    return () => st.kill();
-  }, [value, duration, parsed, shouldAnimate]);
+    // A once:true trigger created when the element is ALREADY past its start
+    // (e.g. metrics near the top of a detail page, or SPA-nav landing mid-page)
+    // is born active and never fires onEnter — fire immediately in that case.
+    // Same convention as heading-choreographer.tsx.
+    if (st.isActive || st.progress > 0) fire();
+
+    return () => {
+      st.kill();
+      // Kill a mid-count tween too — the ScrollTrigger kill alone leaves the
+      // tween running and writing into a detached node after unmount.
+      tween?.kill();
+    };
+    // `parsed` is deliberately NOT a dependency: it's derived purely from
+    // `value` but is a fresh object every render, so including it would
+    // re-run this effect (killing a mid-count tween) on every parent render.
+  }, [value, duration, shouldAnimate]);
 
   // AT users always get the static final value (sr-only), never the
   // intermediate animation frames — the animated span is aria-hidden.
@@ -145,7 +186,10 @@ export function CountUp({ value, duration = 1.2, className }: CountUpProps) {
   return (
     <span ref={ref} className={className}>
       <span className="sr-only">{value}</span>
-      <span ref={outRef} aria-hidden="true">
+      {/* tabular-nums: fixed-width digits stop the string jittering
+          horizontally while the number rolls (final state keeps the same
+          figures, so there's no settle-shift when the tween completes). */}
+      <span ref={outRef} aria-hidden="true" className="tabular-nums">
         {value}
       </span>
     </span>

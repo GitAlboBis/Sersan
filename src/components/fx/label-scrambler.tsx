@@ -15,28 +15,32 @@
  * listeners and no per-section wiring. Removing this single component removes
  * the whole effect — the labels just render their static text.
  *
+ * Composite eyebrows (a decorative dot/status-dot/rule <span> next to the text,
+ * the dominant page-hero idiom) are fully supported: the scramble walks the
+ * element's TEXT NODES and mutates their `nodeValue` in place, so decorative
+ * element children are never touched and the DOM structure React rendered is
+ * preserved verbatim. The settle boundary sweeps left-to-right across ALL text
+ * nodes in document order, so multi-node labels decode as one string.
+ *
+ * The lone exception is SectionHeading's eyebrow ([data-eyebrow-text]): that
+ * component animates its own eyebrow (rule-line scaleX + text fade), so it is
+ * explicitly skipped here — one reveal owner per element, never two.
+ *
  * Accessibility / SSR:
  *   - SSR and the pre-observe DOM always contain the REAL text (we never touch
- *     server output). The scramble only mutates a private visual span on the
- *     client, after the element is in view.
- *   - The element gets aria-label = the real text and the visual span is
- *     aria-hidden, so the accessible name is the final string for the entire
- *     animation (and a screen reader never reads the transient gibberish).
+ *     server output). The scramble only mutates text nodes on the client, after
+ *     the element is in view.
+ *   - The element gets aria-label = the real text for the whole animation, so
+ *     the accessible name is the final string and a screen reader never reads
+ *     the transient gibberish. The label is removed once the text settles.
  *   - prefers-reduced-motion: no scramble at all — the static text stays.
  *   - Runs ONCE per element (unobserved after it settles).
  *
- * Cooperates with the rest of the motion system: `.eyebrow` is mono micro-copy,
- * not a heading (`data-split-reveal`) nor a card body, so this never
- * double-animates an element another reveal already owns. The visual span keeps
- * the eyebrow's own opacity/transform reveals (RevealOnScroll) intact — those
- * animate the parent; this only swaps text content inside it.
- *
- * Composite eyebrows are SKIPPED. Some eyebrows (notably SectionHeading's, and
- * a few in who-and-why) wrap their text in child <span>s (a decorative rule
- * line, an accent middot, a [data-eyebrow-text] node that SectionHeading itself
- * already reveals). Replacing their children would destroy that structure and
- * collide with SectionHeading's own eyebrow animation. So we only scramble
- * "leaf" eyebrows: those whose direct content is a single text node.
+ * React safety: because we mutate the SAME text nodes React created (no
+ * replaceChildren / no wrapper spans), React's reconciler keeps working — an
+ * EN/IT toggle simply writes the new string into the node. If that happens
+ * mid-decode we detect the external write (nodeValue no longer matches what we
+ * last wrote) and abort immediately, leaving React's fresh text untouched.
  */
 import { useEffect } from "react";
 
@@ -65,11 +69,44 @@ function isStructural(ch: string): boolean {
   );
 }
 
-// A "leaf" eyebrow has no element children — its content is plain text we can
-// safely swap. Composite eyebrows (with <span> rules / accent dots / a
-// SectionHeading [data-eyebrow-text]) are left to their own reveals.
-function isLeafEyebrow(el: HTMLElement): boolean {
-  return el.childElementCount === 0;
+// One scrambling text node: the final glyphs, the last string WE wrote (to
+// detect external writes, i.e. a React language swap mid-decode), and the
+// node's character offset within the whole label (for the global L→R sweep).
+interface NodeRecord {
+  node: Text;
+  final: string[];
+  written: string;
+  offset: number;
+}
+
+// Collect the element's non-empty text nodes in document order, skipping any
+// inside aria-hidden subtrees (decorative children own no label text; if one
+// ever carries visible glyphs — e.g. a middot span — it must stay static).
+function collectTextNodes(el: HTMLElement): NodeRecord[] {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if (!(node.nodeValue ?? "").trim()) return NodeFilter.FILTER_REJECT;
+      let parent = node.parentElement;
+      while (parent && parent !== el) {
+        if (parent.getAttribute("aria-hidden") === "true") {
+          return NodeFilter.FILTER_REJECT;
+        }
+        parent = parent.parentElement;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  const records: NodeRecord[] = [];
+  let offset = 0;
+  let current: Node | null;
+  while ((current = walker.nextNode())) {
+    const text = current as Text;
+    const value = text.nodeValue ?? "";
+    const final = Array.from(value);
+    records.push({ node: text, final, written: value, offset });
+    offset += final.length;
+  }
+  return records;
 }
 
 export function LabelScrambler() {
@@ -78,58 +115,84 @@ export function LabelScrambler() {
       return;
     }
 
-    // Track in-flight intervals so a route change / unmount can stop them and
+    // Track in-flight runs so a route change / unmount can stop them and
     // restore the real text immediately (no half-decoded labels left behind).
-    const running = new Map<HTMLElement, number>();
+    const running = new Map<
+      HTMLElement,
+      { tick: number; records: NodeRecord[] }
+    >();
 
     const scramble = (el: HTMLElement) => {
       if (el.dataset.scrambleDone === "1") return;
-      // Read once, before any DOM swap, so the source is always the real text
-      // (even after an EN/IT language swap re-renders the label in place).
-      const finalText = (el.textContent ?? "").trim();
-      if (!finalText) {
-        el.dataset.scrambleDone = "1";
-        return;
-      }
       el.dataset.scrambleDone = "1";
 
-      // Keep the accessible name = the real string for the whole animation, and
-      // hide the transiently-mutated visual text from assistive tech.
-      el.setAttribute("aria-label", finalText);
-      const visual = document.createElement("span");
-      visual.setAttribute("aria-hidden", "true");
-      visual.textContent = finalText; // start from final (no flash of blank)
-      el.replaceChildren(visual);
+      // Snapshot the real text nodes before any mutation — works for leaf
+      // eyebrows (one node) and composites (dot span + text, multiple nodes).
+      const records = collectTextNodes(el);
+      const totalChars = records.reduce((sum, r) => sum + r.final.length, 0);
+      if (totalChars === 0) return;
 
-      const chars = Array.from(finalText);
+      // Keep the accessible name = the real string for the whole animation,
+      // so assistive tech never reads the transient gibberish.
+      const finalText = (el.textContent ?? "").trim();
+      el.setAttribute("aria-label", finalText);
+
       const start = performance.now();
+      const stop = (completed: boolean) => {
+        window.clearInterval(tick);
+        running.delete(el);
+        records.forEach((r) => {
+          // On completion restore every node byte-identical to what React
+          // rendered. On abort (external write detected, e.g. React swapping
+          // the language mid-decode) restore only the nodes WE still own:
+          // multi-node labels ("ISO 27001 " + ternary + " · DORA …") get only
+          // their CHANGED node rewritten by React, so the untouched siblings
+          // would otherwise be stranded as frozen gibberish.
+          if (completed || r.node.nodeValue === r.written) {
+            r.node.nodeValue = r.final.join("");
+          }
+        });
+        el.removeAttribute("aria-label");
+      };
+
       const tick = window.setInterval(() => {
-        const progress = Math.min(1, (performance.now() - start) / SCRAMBLE_MS);
-        // Reveal left-to-right: characters before the moving "settle" boundary
-        // are locked to their final glyph; the rest keep cycling. Gives a clean
-        // decode sweep rather than uniform noise.
-        const settled = Math.floor(progress * chars.length);
-        let out = "";
-        for (let i = 0; i < chars.length; i++) {
-          const ch = chars[i];
-          if (isStructural(ch) || i < settled) {
-            out += ch;
-          } else {
-            out += GLYPHS[(Math.random() * GLYPHS.length) | 0];
+        // External write detection: if React (EN/IT toggle) or anything else
+        // touched a node since our last write, abandon the decode and leave
+        // the fresh text alone — never clobber a language swap.
+        for (const r of records) {
+          if (r.node.nodeValue !== r.written) {
+            stop(false);
+            return;
           }
         }
-        visual.textContent = out;
+        if (!el.isConnected) {
+          stop(false);
+          return;
+        }
+
+        const progress = Math.min(1, (performance.now() - start) / SCRAMBLE_MS);
+        // Reveal left-to-right ACROSS the whole label: characters before the
+        // moving "settle" boundary are locked to their final glyph; the rest
+        // keep cycling. Gives a clean decode sweep rather than uniform noise.
+        const settled = Math.floor(progress * totalChars);
+        for (const r of records) {
+          let out = "";
+          for (let i = 0; i < r.final.length; i++) {
+            const ch = r.final[i];
+            if (isStructural(ch) || r.offset + i < settled) {
+              out += ch;
+            } else {
+              out += GLYPHS[(Math.random() * GLYPHS.length) | 0];
+            }
+          }
+          r.node.nodeValue = out;
+          r.written = out;
+        }
         if (progress >= 1) {
-          window.clearInterval(tick);
-          running.delete(el);
-          // Hand the real text back to a plain text node so the DOM is exactly
-          // as it started (and a later language swap reconciles cleanly).
-          el.removeChild(visual);
-          el.textContent = finalText;
-          el.removeAttribute("aria-label");
+          stop(true);
         }
       }, TICK_MS);
-      running.set(el, tick);
+      running.set(el, { tick, records });
     };
 
     const io = new IntersectionObserver(
@@ -150,8 +213,9 @@ export function LabelScrambler() {
     // on a timer, no per-element wiring.
     const tryObserve = (el: HTMLElement) => {
       if (el.dataset.scrambleDone === "1") return;
-      if (!isLeafEyebrow(el)) {
-        // Composite eyebrow — its own reveal owns it; don't re-check it.
+      if (el.querySelector("[data-eyebrow-text]")) {
+        // SectionHeading eyebrow — its own cascade (rule scaleX + text fade)
+        // owns the reveal; one animation owner per element. Don't re-check it.
         el.dataset.scrambleDone = "1";
         return;
       }
@@ -180,7 +244,14 @@ export function LabelScrambler() {
     return () => {
       io.disconnect();
       mo.disconnect();
-      running.forEach((tick) => window.clearInterval(tick));
+      // Settle any in-flight decode on its real text before leaving.
+      running.forEach(({ tick, records }, el) => {
+        window.clearInterval(tick);
+        records.forEach((r) => {
+          r.node.nodeValue = r.final.join("");
+        });
+        el.removeAttribute("aria-label");
+      });
       running.clear();
     };
   }, []);

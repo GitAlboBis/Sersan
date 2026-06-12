@@ -402,6 +402,32 @@ img { height: auto; max-width: 100%; }
   font-family: var(--font-fraunces), Georgia, serif;
 }
 
+/* SplitText line-mask headroom (HeadingChoreographer / [data-split-reveal]).
+   GSAP's `mask: "lines"` wraps each `.split-line` in a generated
+   `.split-line-mask` clone with `overflow: clip`, which clips at the padding
+   box. The tight line box of display headings (leading ~1.0-1.15) would shave
+   Fraunces italic overshoot and descenders (g/j/y, accent-span swashes), so
+   the clip window is extended with padding and the layout impact cancelled
+   with equal negative margins. The heading is flexed (column) while masks
+   exist: in normal block flow the adjacent masks' negative block margins
+   would COLLAPSE (-0.12em + -0.12em → a single -0.12em), growing the heading
+   by 0.12em per line break and shifting every [data-line-anchor] measurement
+   below it — flex items never collapse margins, so each mask's outer size is
+   exactly its line box and document height is untouched (lines land on the
+   same pixels as the unsplit text). The reveal still hides fully at rest:
+   lines enter at yPercent ≥ 115, i.e. ≥ 0.15 × line-height below the slot,
+   which clears the 0.12em extended window. */
+[data-split-reveal]:has(> .split-line-mask) {
+  display: flex;
+  flex-direction: column;
+}
+.split-line-mask {
+  padding-block: 0.12em;
+  margin-block: -0.12em;
+  padding-inline: 0.1em;
+  margin-inline: -0.1em;
+}
+
 /* Section padding scales. Mobile values bumped (was 2.5/3.5/4rem) so
    sections breathe on small screens — premium sites need air around
    content even at 360px. The desktop values stay generous. */
