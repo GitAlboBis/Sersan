@@ -19,7 +19,10 @@ export function CaseStudiesClient() {
       {/* Hero */}
       <section data-line-anchor="hero" className="py-20 sm:py-32 relative">
         <div className="container-px relative">
-          <Reveal className="max-w-3xl mx-auto text-center">
+          {/* H1 outside the Reveal: the choreographer's line-mask reveal owns
+              it (data-split-reveal) — no double animation. Eyebrow entrance =
+              LabelScrambler decode; sub + divider keep the Reveal fade. */}
+          <div className="max-w-3xl mx-auto text-center">
             <p className="eyebrow mb-6 inline-flex items-center justify-center gap-2">
               <span
                 className="inline-block w-1.5 h-1.5 rounded-full"
@@ -28,7 +31,10 @@ export function CaseStudiesClient() {
               />
               {isEn ? "Selected work" : "Lavori selezionati"}
             </p>
-            <h1 className="font-display text-[clamp(2.25rem,7vw,4.5rem)] leading-[1.15] tracking-[-0.025em] text-ink text-balance mb-8 pb-1">
+            {/* key={language}: SplitText owns this subtree once split; a language
+                swap must remount it or React reconciles against orphaned nodes
+                (same contract as SectionHeading's h2). */}
+            <h1 key={language} data-split-reveal className="font-display text-[clamp(2.25rem,7vw,4.5rem)] leading-[1.15] tracking-[-0.025em] text-ink text-balance mb-8 pb-1">
               {isEn ? (
                 <>
                   Engineering{" "}
@@ -45,19 +51,21 @@ export function CaseStudiesClient() {
                 </>
               )}
             </h1>
-            <p className="text-base sm:text-lg text-ink-mute max-w-2xl mx-auto leading-[1.55]">
-              {isEn
-                ? "AI-powered software CPTO Michele Sanna has shipped across tier-1 institutions, plus current Sersan product builds. Each entry labels the role and the delivery context."
-                : "Software AI-powered che il CPTO Michele Sanna ha portato in produzione in istituzioni tier-1, insieme ai build di prodotto attuali di Sersan. Ogni voce indica il ruolo e il contesto di delivery."}
-            </p>
-            <div
-              className="mt-10 mx-auto h-px w-48 origin-center"
-              style={{
-                background:
-                  "linear-gradient(90deg, transparent 0%, hsl(var(--accent) / 0.6) 50%, transparent 100%)",
-              }}
-            />
-          </Reveal>
+            <Reveal delay={150}>
+              <p className="text-base sm:text-lg text-ink-mute max-w-2xl mx-auto leading-[1.55]">
+                {isEn
+                  ? "AI-powered software CPTO Michele Sanna has shipped across tier-1 institutions, plus current Sersan product builds. Each entry labels the role and the delivery context."
+                  : "Software AI-powered che il CPTO Michele Sanna ha portato in produzione in istituzioni tier-1, insieme ai build di prodotto attuali di Sersan. Ogni voce indica il ruolo e il contesto di delivery."}
+              </p>
+              <div
+                className="mt-10 mx-auto h-px w-48 origin-center"
+                style={{
+                  background:
+                    "linear-gradient(90deg, transparent 0%, hsl(var(--accent) / 0.6) 50%, transparent 100%)",
+                }}
+              />
+            </Reveal>
+          </div>
         </div>
       </section>
 

@@ -79,7 +79,10 @@ export function ContactClient() {
           />
         </div>
         <div className="container-px relative z-10">
-          <Reveal className="text-center max-w-3xl mx-auto">
+          {/* H1 outside the Reveal: the choreographer's line-mask reveal owns
+              it (data-split-reveal) — no double animation. Eyebrow entrance =
+              LabelScrambler decode; the sub keeps the Reveal fade. */}
+          <div className="text-center max-w-3xl mx-auto">
             <p className="eyebrow mb-6 inline-flex items-center justify-center gap-2">
               <span
                 className="inline-block w-1.5 h-1.5 rounded-full"
@@ -90,7 +93,10 @@ export function ContactClient() {
                 ? "Senior reply within 1 business day"
                 : "Risposta senior entro 1 giorno lavorativo"}
             </p>
-            <h1 className="font-display text-[clamp(2.25rem,7vw,4.5rem)] leading-[1.15] tracking-[-0.02em] text-ink text-balance mb-8 pb-1">
+            {/* key={language}: SplitText owns this subtree once split; a language
+                swap must remount it or React reconciles against orphaned nodes
+                (same contract as SectionHeading's h2). */}
+            <h1 key={language} data-split-reveal className="font-display text-[clamp(2.25rem,7vw,4.5rem)] leading-[1.15] tracking-[-0.02em] text-ink text-balance mb-8 pb-1">
               {isEn ? (
                 <>
                   Talk to the people who&apos;ll{" "}
@@ -107,12 +113,14 @@ export function ContactClient() {
                 </>
               )}
             </h1>
-            <p className="text-lg text-ink-mute max-w-xl mx-auto">
-              {isEn
-                ? "No SDR funnel, no junior triage. A short note and a senior engineer reads it."
-                : "Nessun funnel di SDR, nessun triage junior. Una nota breve, e la legge un ingegnere senior."}
-            </p>
-          </Reveal>
+            <Reveal delay={150}>
+              <p className="text-lg text-ink-mute max-w-xl mx-auto">
+                {isEn
+                  ? "No SDR funnel, no junior triage. A short note and a senior engineer reads it."
+                  : "Nessun funnel di SDR, nessun triage junior. Una nota breve, e la legge un ingegnere senior."}
+              </p>
+            </Reveal>
+          </div>
         </div>
       </section>
 
@@ -127,10 +135,12 @@ export function ContactClient() {
                   <p className="eyebrow mb-4" style={{ color: "hsl(var(--accent))" }}>
                     {isEn ? "Reach us directly" : "Contattaci direttamente"}
                   </p>
-                  <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
-                    {isEn ? "Same channels, no triage." : "Gli stessi canali, nessun triage."}
-                  </h2>
                 </Reveal>
+                {/* Outside the Reveal — the choreographer's line-mask owns it.
+                    key={language} remounts the split subtree on EN/IT toggle. */}
+                <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
+                  {isEn ? "Same channels, no triage." : "Gli stessi canali, nessun triage."}
+                </h2>
 
                 <div className="space-y-5">
                   {contactInfo.map((info, index) => (
@@ -255,24 +265,26 @@ export function ContactClient() {
                 <p className="eyebrow mb-4" style={{ color: "hsl(var(--accent))" }}>
                   {isEn ? "Or pick a slot directly" : "O scegliete uno slot direttamente"}
                 </p>
-                <h2 className="font-display text-2xl sm:text-[2rem] text-ink leading-[1.15] tracking-tight mb-5">
-                  {isEn ? (
-                    <>
-                      Skip the inbox.{" "}
-                      <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                        Book the call.
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      Saltate l&apos;inbox.{" "}
-                      <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                        Prenotate la call.
-                      </span>
-                    </>
-                  )}
-                </h2>
               </Reveal>
+              {/* Outside the Reveal — the choreographer's line-mask owns it.
+                  key={language} remounts the split subtree on EN/IT toggle. */}
+              <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[2rem] text-ink leading-[1.15] tracking-tight mb-5">
+                {isEn ? (
+                  <>
+                    Skip the inbox.{" "}
+                    <span className="italic" style={{ color: "hsl(var(--accent))" }}>
+                      Book the call.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Saltate l&apos;inbox.{" "}
+                    <span className="italic" style={{ color: "hsl(var(--accent))" }}>
+                      Prenotate la call.
+                    </span>
+                  </>
+                )}
+              </h2>
               <p className="text-base text-ink-mute leading-[1.6] mb-4">
                 {isEn
                   ? "Pick a 30-minute slot. We'll reply with a calendar link within 1 business day."

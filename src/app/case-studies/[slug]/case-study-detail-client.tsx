@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowLeft, ArrowUpRight, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CountUp } from "@/components/ui/count-up";
 import { useLanguage } from "@/components/language-provider";
 import { type CaseStudy } from "@/data/case-studies";
 
@@ -66,8 +67,10 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
           {study.industry} · {engagement}
         </p>
 
-        {/* Headline */}
-        <h1 className="font-display text-[clamp(2.25rem,7vw,4.75rem)] leading-[1.12] tracking-[-0.025em] text-ink text-balance mb-6">
+        {/* Headline. key={language}: SplitText owns this subtree once split;
+            a language swap must remount it or React reconciles against
+            orphaned nodes (same contract as SectionHeading's h2). */}
+        <h1 key={language} data-split-reveal className="font-display text-[clamp(2.25rem,7vw,4.75rem)] leading-[1.12] tracking-[-0.025em] text-ink text-balance mb-6">
           {firstWord}
           {rest.length > 0 ? (
             <>
@@ -119,7 +122,12 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
                     className="font-display text-[clamp(2rem,5vw,3.25rem)] leading-[1.1] text-ink mb-3"
                     style={{ letterSpacing: "-0.02em" }}
                   >
-                    {metric.value}
+                    {/* CountUp animates only values its parser classifies as
+                        metrics (leading number + unit token: −47%, ~€18M/year,
+                        0.94 AUC…). Label-led, date, and word values ("p99 220ms
+                        → 38ms", "Exit · Oct 2024", "Live") render statically —
+                        that contract lives in count-up.tsx, not here. */}
+                    <CountUp value={metric.value} />
                   </span>
                   <span className="text-sm text-ink-mute leading-[1.5]">
                     {isEn ? metric.label : metric.labelIt}

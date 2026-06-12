@@ -70,7 +70,10 @@ export default function FinalCTA() {
                 </span>
               </p>
 
-              <h2 className="font-display text-[clamp(2.25rem,4.5vw,3.75rem)] font-semibold leading-[1.02] tracking-[-0.028em] text-ink text-balance">
+              {/* key={language}: SplitText owns this subtree once split; a
+                  language swap must remount it or React reconciles against
+                  orphaned nodes (same contract as SectionHeading's h2). */}
+              <h2 key={language} data-split-reveal className="font-display text-[clamp(2.25rem,4.5vw,3.75rem)] font-semibold leading-[1.02] tracking-[-0.028em] text-ink text-balance">
                 {isEn ? (
                   <>
                     Bring us the system you{" "}

@@ -200,7 +200,10 @@ export function ConsultingClient() {
               />
               {isEn ? "Practice areas" : "Aree di intervento"}
             </p>
-            <h1 className="font-display text-[clamp(2.25rem,7vw,4.75rem)] leading-[1.15] tracking-[-0.025em] text-ink text-balance mb-8 pb-1">
+            {/* key={language}: SplitText owns this subtree once split; a language
+                swap must remount it or React reconciles against orphaned nodes
+                (same contract as SectionHeading's h2). */}
+            <h1 key={language} data-split-reveal className="font-display text-[clamp(2.25rem,7vw,4.75rem)] leading-[1.15] tracking-[-0.025em] text-ink text-balance mb-8 pb-1">
               {isEn ? (
                 <>
                   Senior engineering.{" "}

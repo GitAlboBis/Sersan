@@ -104,7 +104,10 @@ export function ResourceDetailClient({ resource, prev, next }: ResourceDetailCli
               <Clock className="w-3 h-3" /> {resource.readMinutes} min
             </span>
           </div>
-          <h1 className="font-display text-[clamp(2rem,5.5vw,3.5rem)] leading-[1.1] tracking-[-0.02em] text-ink text-balance mb-6">
+          {/* key={language}: SplitText owns this subtree once split; a
+              language swap must remount it or React reconciles against
+              orphaned nodes (same contract as SectionHeading's h2). */}
+          <h1 key={language} data-split-reveal className="font-display text-[clamp(2rem,5.5vw,3.5rem)] leading-[1.1] tracking-[-0.02em] text-ink text-balance mb-6">
             {title}
           </h1>
           <p className="text-lg text-ink-mute leading-[1.55] mb-6">{excerpt}</p>

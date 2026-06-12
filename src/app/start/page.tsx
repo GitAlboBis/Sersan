@@ -30,7 +30,7 @@ export default function StartPage() {
               <span aria-hidden="true" className="status-dot" />
               <span>Technical scoping call</span>
             </p>
-            <h1 className="font-display text-[clamp(2.5rem,5.5vw,4.5rem)] leading-[0.98] tracking-[-0.03em] text-ink mb-6">
+            <h1 data-split-reveal className="font-display text-[clamp(2.5rem,5.5vw,4.5rem)] leading-[0.98] tracking-[-0.03em] text-ink mb-6">
               Start with a{" "}
               <span className="text-[hsl(var(--accent))] font-display font-medium">
                 technical scoping call.
@@ -83,7 +83,7 @@ export default function StartPage() {
           {/* Form */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-16">
             <div className="lg:col-span-7">
-              <h2 className="font-display text-2xl sm:text-3xl leading-[1.05] tracking-[-0.022em] text-ink mb-2">
+              <h2 data-split-reveal className="font-display text-2xl sm:text-3xl leading-[1.05] tracking-[-0.022em] text-ink mb-2">
                 Send a brief
               </h2>
               <p className="text-[13.5px] text-ink-mute mb-8 leading-relaxed">

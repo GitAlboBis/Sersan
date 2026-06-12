@@ -3,6 +3,7 @@
 import { Check, X } from "lucide-react";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Reveal } from "@/components/ui/reveal";
+import { RedactedReveal } from "@/components/fx/redacted-reveal";
 import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
 
@@ -90,10 +91,13 @@ export default function FitSection() {
           className="mb-12 sm:mb-16 max-w-3xl"
         />
 
-        {/* Two columns. Good-fit rows stagger in from the LEFT, not-a-fit
-            rows mirror from the RIGHT. Hovering one column dims the other via
-            the `fit-grid`/`fit-col` sibling-hover rule (CSS only). Reduced
-            motion settles rows immediately (handled inside Reveal). */}
+        {/* Two columns. Good-fit rows stagger in from the LEFT; not-a-fit
+            rows arrive REDACTED — each word covered by a solid bar that
+            clears in a quick L→R cascade (the de-classification metaphor:
+            this column is what we refuse). Hovering one column dims the
+            other via the `fit-grid`/`fit-col` sibling-hover rule (CSS only).
+            Reduced motion settles both columns immediately (handled inside
+            Reveal / RedactedReveal). */}
         <div className="fit-grid grid grid-cols-1 lg:grid-cols-2 gap-px bg-[hsl(var(--rule))] border border-[hsl(var(--rule))] rounded-lg overflow-hidden">
           {/* Good fit column */}
           <div className="fit-col fit-col--good bg-[hsl(var(--bg))] p-6 sm:p-8">
@@ -136,11 +140,14 @@ export default function FitSection() {
             </div>
             <ul className="flex flex-col gap-3.5">
               {notAFit.map((line, i) => (
-                <Reveal key={i} delay={i * 50} from="right" as="li">
+                <li key={i}>
                   <p className="fit-warn rounded-md px-3 py-2 text-[14px] sm:text-[15px] text-ink-mute leading-relaxed">
-                    {line}
+                    {/* 50ms-per-row stagger preserved from the old Reveal. The
+                        row itself is always visible — the redaction bars ARE
+                        the entrance. */}
+                    <RedactedReveal text={line} delay={i * 50} />
                   </p>
-                </Reveal>
+                </li>
               ))}
             </ul>
           </div>

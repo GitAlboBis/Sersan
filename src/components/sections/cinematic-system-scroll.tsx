@@ -62,6 +62,65 @@ type LocalizedStage = {
   extras?: { en: React.ReactNode; it: React.ReactNode };
 };
 
+// === Proof-chip count-up ===================================================
+// The handover stage's 13 / 5 / 1 proof chips count up ONCE, the first time
+// their panel actually lights. Inside the pinned spine an IntersectionObserver
+// or ScrollTrigger would be the WRONG trigger — the panel sits in the viewport
+// for the whole 520vh pin and only *lights* via the rAF-driven panelOpacity —
+// so the desktop trigger is the same `visible` threshold crossing that flips
+// the panel's inert state. The mobile fallback is normal document flow and
+// uses a standard one-shot IO instead.
+//
+// A11y contract mirrors CountUp (ui/count-up.tsx): sr-only static final value,
+// aria-hidden animated span, direct textContent writes (no React state per
+// frame), and reduced-motion never animates (the animated span ships with the
+// final value in the SSR HTML, so "do nothing" = render the final value).
+function ProofChip({ value, label }: { value: string; label: string }) {
+  return (
+    <li className="flex items-center gap-1.5">
+      <span className="text-ink tabular-nums">
+        <span className="sr-only">{value}</span>
+        <span data-chip-count={value} aria-hidden="true">
+          {value}
+        </span>
+      </span>
+      <span>{label}</span>
+    </li>
+  );
+}
+
+function animateChipCount(node: HTMLElement) {
+  // One-shot per DOM node. A language toggle remounts the chips (fresh nodes,
+  // no flag), so a re-light after EN↔IT replays once — same re-arm semantics
+  // as the site's other text engines.
+  if (node.dataset.chipCounted === "1") return;
+  node.dataset.chipCounted = "1";
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const final = node.dataset.chipCount ?? "";
+  const target = Number.parseInt(final, 10);
+  if (!Number.isFinite(target)) return;
+  const obj = { n: 0 };
+  node.textContent = "0";
+  gsap.to(obj, {
+    n: target,
+    duration: 0.8,
+    ease: "expo.out",
+    onUpdate: () => {
+      if (!node.isConnected) return; // remounted mid-tween (language toggle)
+      node.textContent = String(Math.round(obj.n));
+    },
+    onComplete: () => {
+      if (node.isConnected) node.textContent = final;
+    },
+  });
+}
+
+function animateChipCounts(root: HTMLElement) {
+  root
+    .querySelectorAll<HTMLElement>("[data-chip-count]")
+    .forEach((node) => animateChipCount(node));
+}
+
 const STAGE_CONTENT: LocalizedStage[] = [
   {
     id: "dormant",
@@ -217,20 +276,11 @@ const STAGE_CONTENT: LocalizedStage[] = [
             </span>
           </p>
           <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-mono uppercase tracking-[0.14em] text-ink/75 list-none">
-            <li className="flex items-center gap-1.5">
-              <span className="text-ink tabular-nums">13</span>
-              <span>named engagements</span>
-            </li>
+            <ProofChip value="13" label="named engagements" />
             <li aria-hidden="true" className="text-ink-mute/55">/</li>
-            <li className="flex items-center gap-1.5">
-              <span className="text-ink tabular-nums">5</span>
-              <span>tier-1 institutions</span>
-            </li>
+            <ProofChip value="5" label="tier-1 institutions" />
             <li aria-hidden="true" className="text-ink-mute/55">/</li>
-            <li className="flex items-center gap-1.5">
-              <span className="text-ink tabular-nums">1</span>
-              <span>PhD, applied maths</span>
-            </li>
+            <ProofChip value="1" label="PhD, applied maths" />
           </ul>
         </div>
       ),
@@ -247,20 +297,11 @@ const STAGE_CONTENT: LocalizedStage[] = [
             </span>
           </p>
           <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-mono uppercase tracking-[0.14em] text-ink/75 list-none">
-            <li className="flex items-center gap-1.5">
-              <span className="text-ink tabular-nums">13</span>
-              <span>progetti nominali</span>
-            </li>
+            <ProofChip value="13" label="progetti nominali" />
             <li aria-hidden="true" className="text-ink-mute/55">/</li>
-            <li className="flex items-center gap-1.5">
-              <span className="text-ink tabular-nums">5</span>
-              <span>istituzioni tier-1</span>
-            </li>
+            <ProofChip value="5" label="istituzioni tier-1" />
             <li aria-hidden="true" className="text-ink-mute/55">/</li>
-            <li className="flex items-center gap-1.5">
-              <span className="text-ink tabular-nums">1</span>
-              <span>PhD, matematica applicata</span>
-            </li>
+            <ProofChip value="1" label="PhD, matematica applicata" />
           </ul>
         </div>
       ),
@@ -404,6 +445,11 @@ function StagePanel({
           (el as HTMLElement & { inert: boolean }).inert = !visible;
           if (visible) el.removeAttribute("aria-hidden");
           else el.setAttribute("aria-hidden", "true");
+          // First light of the handover panel → run the one-shot proof-chip
+          // count-up (13/5/1). This lit-threshold crossing is the panel's only
+          // honest "entered view" signal inside the pin; the per-node
+          // data-chip-counted flag guards replays on later re-lights.
+          if (visible && isFinal) animateChipCounts(el);
         }
         lastActive = active;
       }
@@ -566,8 +612,38 @@ function MobileFallback({
   stages: Stage[];
   copy: (typeof SPINE_COPY)[Language];
 }) {
+  const rootRef = useRef<HTMLElement | null>(null);
+
+  // Proof chips (13/5/1) sit in NORMAL document flow here (no pin), so the
+  // standard one-shot IO trigger applies. Re-runs when `stages` changes
+  // (language toggle remounts the chips) to observe the fresh nodes;
+  // animateChipCount itself bails under reduced motion, but skipping the
+  // observer entirely keeps this path zero-cost for those users.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const targets = Array.from(
+      root.querySelectorAll<HTMLElement>("[data-chip-count]"),
+    );
+    if (targets.length === 0) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            io.unobserve(entry.target);
+            animateChipCount(entry.target as HTMLElement);
+          }
+        }
+      },
+      { rootMargin: "0px 0px -10% 0px", threshold: 0.4 },
+    );
+    targets.forEach((t) => io.observe(t));
+    return () => io.disconnect();
+  }, [stages]);
+
   return (
-    <section className="relative">
+    <section ref={rootRef} className="relative">
       {stages.map((stage, i) => {
         const isHero = i === 0;
         const isFinal = i === stages.length - 1;

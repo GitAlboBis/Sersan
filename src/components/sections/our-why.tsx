@@ -45,15 +45,23 @@ export default function OurWhy() {
       aria-labelledby="our-why-heading"
     >
       <div className="container-px relative z-10">
-        <RevealOnScroll delay={0}>
-          <div className="max-w-4xl mx-auto text-center">
-            <p className="eyebrow mb-6">
-              {isEn ? "Our Why" : "Il nostro perché"}
-            </p>
-            <h2
-              id="our-why-heading"
-              className="heading-2 mb-10 sm:mb-12 text-balance"
-            >
+        {/* Eyebrow + H2 sit OUTSIDE the RevealOnScroll fade: the eyebrow's
+            entrance is the LabelScrambler decode, the H2's is the
+            HeadingChoreographer line-mask (data-split-reveal) — wrapping
+            either in the block fade would double-animate them. */}
+        <div className="max-w-4xl mx-auto text-center">
+          <p className="eyebrow mb-6">
+            {isEn ? "Our Why" : "Il nostro perché"}
+          </p>
+          {/* key={language}: SplitText owns this subtree once split; a
+              language swap must remount it or React reconciles against
+              orphaned nodes (same contract as SectionHeading's h2). */}
+          <h2
+            key={language}
+            data-split-reveal
+            id="our-why-heading"
+            className="heading-2 mb-10 sm:mb-12 text-balance"
+          >
               {isEn ? (
                 <>
                   AI works best when it{" "}
@@ -71,8 +79,9 @@ export default function OurWhy() {
                   , non quando lo sostituisce.
                 </>
               )}
-            </h2>
+          </h2>
 
+          <RevealOnScroll delay={0}>
             <div className="space-y-6 sm:space-y-7 font-display text-[clamp(1.35rem,2.6vw,2.15rem)] leading-[1.2] tracking-[-0.015em] text-ink/92 max-w-3xl mx-auto">
               {isEn ? (
                 <>
@@ -111,8 +120,8 @@ export default function OurWhy() {
                 </>
               )}
             </div>
-          </div>
-        </RevealOnScroll>
+          </RevealOnScroll>
+        </div>
 
         {/* Operating principles */}
         <div className="mt-16 sm:mt-20 grid grid-cols-1 md:grid-cols-2 gap-px bg-rule/60 border-y border-rule/60 max-w-5xl mx-auto">

@@ -293,36 +293,46 @@ export default function CompliancePipeline() {
       aria-labelledby="compliance-pipeline-heading"
     >
       <div className="container mx-auto max-w-5xl relative z-10 px-0 sm:px-6">
-        <RevealOnScroll delay={0}>
-          <div className="max-w-3xl mb-12 sm:mb-14">
-            <p className="eyebrow mb-5">
-              {isEn ? "How data flows" : "Come fluiscono i dati"}
-            </p>
-            <h2
-              id="compliance-pipeline-heading"
-              className="font-display text-2xl sm:text-[2rem] leading-[1.15] tracking-tight text-ink text-balance mb-5"
-            >
-              {isEn ? (
-                <>
-                  Compliance{" "}
-                  <span className="italic text-accent">wired in</span>, not
-                  stuck on at the end.
-                </>
-              ) : (
-                <>
-                  Conformità{" "}
-                  <span className="italic text-accent">integrata</span>,
-                  non appiccicata alla fine.
-                </>
-              )}
-            </h2>
+        {/* Eyebrow + H2 outside the RevealOnScroll fade: the eyebrow's
+            entrance is the LabelScrambler decode, the H2's is the
+            HeadingChoreographer line-mask (data-split-reveal) — keeping them
+            in the block fade would double-animate. The description keeps the
+            fade. */}
+        <div className="max-w-3xl mb-12 sm:mb-14">
+          <p className="eyebrow mb-5">
+            {isEn ? "How data flows" : "Come fluiscono i dati"}
+          </p>
+          {/* key={language}: SplitText owns this subtree once split; a
+              language swap must remount it or React reconciles against
+              orphaned nodes (same contract as SectionHeading's h2). */}
+          <h2
+            key={language}
+            data-split-reveal
+            id="compliance-pipeline-heading"
+            className="font-display text-2xl sm:text-[2rem] leading-[1.15] tracking-tight text-ink text-balance mb-5"
+          >
+            {isEn ? (
+              <>
+                Compliance{" "}
+                <span className="italic text-accent">wired in</span>, not
+                stuck on at the end.
+              </>
+            ) : (
+              <>
+                Conformità{" "}
+                <span className="italic text-accent">integrata</span>,
+                non appiccicata alla fine.
+              </>
+            )}
+          </h2>
+          <RevealOnScroll delay={0}>
             <p className="text-base text-ink-mute leading-[1.55]">
               {isEn
                 ? "Every request through a Sersan system passes the same controlled pipeline. The diagram below mirrors the actual checkpoints your data crosses."
                 : "Ogni richiesta in un sistema Sersan attraversa la stessa pipeline controllata. Lo schema qui sotto rispecchia i checkpoint reali che i vostri dati attraversano."}
             </p>
-          </div>
-        </RevealOnScroll>
+          </RevealOnScroll>
+        </div>
 
         <div
           role="img"

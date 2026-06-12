@@ -147,7 +147,10 @@ export function TrustClient() {
             />
             ISO 27001 {isEn ? "(in progress)" : "(in corso)"} · DORA · EU AI Act · GDPR
           </p>
-          <h1 className="font-display text-[clamp(2.25rem,6vw,4rem)] leading-[1.15] tracking-[-0.025em] text-ink text-balance mb-6 pb-1">
+          {/* key={language} on every split heading here: SplitText owns the
+              subtree once split; a language swap must remount it or React
+              reconciles against orphaned nodes (SectionHeading contract). */}
+          <h1 key={language} data-split-reveal className="font-display text-[clamp(2.25rem,6vw,4rem)] leading-[1.15] tracking-[-0.025em] text-ink text-balance mb-6 pb-1">
             {isEn ? (
               <>
                 Compliance is{" "}
@@ -190,11 +193,9 @@ export function TrustClient() {
 
         {/* Standards */}
         <section className="mb-20">
-          <Reveal>
-            <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
-              {isEn ? "Standards" : "Standard"}
-            </h2>
-          </Reveal>
+          <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
+            {isEn ? "Standards" : "Standard"}
+          </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {standards.map((s, i) => (
               <Reveal key={s.title} delay={i * 70}>
@@ -212,10 +213,10 @@ export function TrustClient() {
 
         {/* GDPR Roles */}
         <section data-line-anchor="gdpr-roles" className="mb-20">
+          <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-3">
+            {isEn ? "GDPR roles" : "Ruoli GDPR"}
+          </h2>
           <Reveal>
-            <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-3">
-              {isEn ? "GDPR roles" : "Ruoli GDPR"}
-            </h2>
             <p className="text-sm text-ink-mute leading-[1.55] mb-8 max-w-3xl">
               {isEn
                 ? "Under GDPR, responsibilities differ depending on whether an organisation is a Controller or a Processor. Sersan can act in either capacity depending on the engagement."
@@ -262,11 +263,9 @@ export function TrustClient() {
 
         {/* Controls */}
         <section data-line-anchor="controls" className="mb-20">
-          <Reveal>
-            <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
-              {isEn ? "Technical controls" : "Controlli tecnici"}
-            </h2>
-          </Reveal>
+          <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
+            {isEn ? "Technical controls" : "Controlli tecnici"}
+          </h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {controls.map((c, i) => (
               <Reveal key={c.title} delay={i * 70}>
@@ -281,11 +280,9 @@ export function TrustClient() {
 
         {/* Data & privacy FAQ — absorbed from the retired /faq page */}
         <section className="mb-20">
-          <Reveal>
-            <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
-              {isEn ? "Frequently asked questions" : "Domande frequenti"}
-            </h2>
-          </Reveal>
+          <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
+            {isEn ? "Frequently asked questions" : "Domande frequenti"}
+          </h2>
           <div className="grid grid-cols-1 gap-4">
             {privacyFaqs.map((f, i) => (
               <Reveal key={f.q} delay={i * 70}>
@@ -300,11 +297,9 @@ export function TrustClient() {
 
         {/* Retention */}
         <section className="mb-20">
-          <Reveal>
-            <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-6">
-              {isEn ? "Retention" : "Conservazione"}
-            </h2>
-          </Reveal>
+          <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-6">
+            {isEn ? "Retention" : "Conservazione"}
+          </h2>
           <div className="card-steel p-7">
             <div className="flex items-start gap-4 mb-4">
               <div
@@ -331,11 +326,9 @@ export function TrustClient() {
 
         {/* Contact */}
         <section data-line-anchor="final-cta">
-          <Reveal>
-            <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-6">
-              {isEn ? "Contact" : "Contatti"}
-            </h2>
-          </Reveal>
+          <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-6">
+            {isEn ? "Contact" : "Contatti"}
+          </h2>
           <div className="card-steel p-7">
             <p className="text-sm text-ink/85 mb-4 leading-[1.6]">
               {isEn

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { LinkedinIcon } from "@/components/icons/brand";
 import { Button } from "@/components/ui/button";
+import { CountUp } from "@/components/ui/count-up";
 import OurWhy from "@/components/sections/our-why";
 import { Reveal } from "@/components/ui/reveal";
 import { SectionHeading } from "@/components/ui/section-heading";
@@ -56,7 +57,12 @@ export function AboutClient() {
           </div>
 
           <div className="container-px relative z-10">
-            <Reveal className="max-w-4xl mx-auto text-center">
+            {/* H1 lives OUTSIDE the Reveal: HeadingChoreographer owns its
+                line-mask reveal (data-split-reveal) — wrapping it in the block
+                fade would double-animate. Eyebrow entrance = LabelScrambler
+                decode; sub + CTAs keep the Reveal fade, slightly delayed so
+                they sequence under the rising lines. */}
+            <div className="max-w-4xl mx-auto text-center">
               <p className="eyebrow mb-6 inline-flex items-center justify-center gap-2">
                 <span
                   className="inline-block w-1.5 h-1.5 rounded-full"
@@ -65,7 +71,10 @@ export function AboutClient() {
                 />
                 {isEn ? "The founding pair" : "La coppia fondatrice"}
               </p>
-              <h1 className="font-display text-[clamp(2.5rem,8vw,5.5rem)] leading-[1.15] tracking-[-0.025em] text-ink text-balance mb-8 pb-1">
+              {/* key={language}: SplitText owns this subtree once split; a
+                  language swap must remount it or React reconciles against
+                  orphaned nodes (same contract as SectionHeading's h2). */}
+              <h1 key={language} data-split-reveal className="font-display text-[clamp(2.5rem,8vw,5.5rem)] leading-[1.15] tracking-[-0.025em] text-ink text-balance mb-8 pb-1">
                 {isEn ? (
                   <>
                     Two operators.{" "}
@@ -82,25 +91,27 @@ export function AboutClient() {
                   </>
                 )}
               </h1>
-              <p className="text-lg sm:text-xl text-ink-mute max-w-2xl mx-auto leading-[1.5]">
-                {isEn
-                  ? "Deep engineering and deep commercial in the same room. Both senior. Both staffed on every engagement. No layer of juniors between you and the people doing the work."
-                  : "Ingegneria profonda e dimensione commerciale profonda nella stessa stanza. Entrambi senior. Entrambi assegnati a ogni ingaggio. Nessuno strato di junior tra voi e le persone che fanno il lavoro."}
-              </p>
-              <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center mt-10">
-                <Button asChild size="lg" className="group">
-                  <Link href={START_HREF}>
-                    {isEn ? "Book a 30-min scoping call" : "Prenota una call di scoping di 30 min"}
-                    <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                  </Link>
-                </Button>
-                <Button asChild variant="outline" size="lg">
-                  <Link href="/consulting">
-                    {isEn ? "Practice areas" : "Aree di intervento"}
-                  </Link>
-                </Button>
-              </div>
-            </Reveal>
+              <Reveal delay={150}>
+                <p className="text-lg sm:text-xl text-ink-mute max-w-2xl mx-auto leading-[1.5]">
+                  {isEn
+                    ? "Deep engineering and deep commercial in the same room. Both senior. Both staffed on every engagement. No layer of juniors between you and the people doing the work."
+                    : "Ingegneria profonda e dimensione commerciale profonda nella stessa stanza. Entrambi senior. Entrambi assegnati a ogni ingaggio. Nessuno strato di junior tra voi e le persone che fanno il lavoro."}
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center mt-10">
+                  <Button asChild size="lg" className="group">
+                    <Link href={START_HREF}>
+                      {isEn ? "Book a 30-min scoping call" : "Prenota una call di scoping di 30 min"}
+                      <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                    </Link>
+                  </Button>
+                  <Button asChild variant="outline" size="lg">
+                    <Link href="/consulting">
+                      {isEn ? "Practice areas" : "Aree di intervento"}
+                    </Link>
+                  </Button>
+                </div>
+              </Reveal>
+            </div>
           </div>
         </section>
 
@@ -233,10 +244,14 @@ export function AboutClient() {
               <p className="text-center eyebrow mb-8" style={{ color: "hsl(var(--accent))" }}>
                 {isEn ? "Verifiable, not vibes" : "Verificabile, non a sensazione"}
               </p>
+              {/* Bare small ints carry their unit in the sibling span, so the
+                  CountUps need `force` (no metric token to satisfy the global
+                  parser) and a shorter run (1.2s on a single digit reads
+                  glitchy, 0.8s reads like a settle). */}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-8 text-center">
                 <div>
                   <div className="font-display text-4xl md:text-5xl text-ink leading-none mb-2">
-                    8
+                    <CountUp value="8" duration={0.8} force />
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
                       {" "}
                       {isEn ? "yrs" : "anni"}
@@ -247,14 +262,16 @@ export function AboutClient() {
                   </p>
                 </div>
                 <div>
-                  <div className="font-display text-4xl md:text-5xl text-ink leading-none mb-2">5</div>
+                  <div className="font-display text-4xl md:text-5xl text-ink leading-none mb-2">
+                    <CountUp value="5" duration={0.8} force />
+                  </div>
                   <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
                     {isEn ? "Tier-1 institutions" : "Istituzioni tier-1"}
                   </p>
                 </div>
                 <div className="col-span-2 md:col-span-1">
                   <div className="font-display text-4xl md:text-5xl text-ink leading-none mb-2">
-                    1
+                    <CountUp value="1" duration={0.8} force />
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
                       {" "}
                       PhD

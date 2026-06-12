@@ -169,7 +169,10 @@ export function AuditClient() {
                 ? "Six surfaces · one week · fixed scope"
                 : "Sei superfici · una settimana · scope fisso"}
             </p>
-            <h1 className="font-display text-[clamp(2.25rem,7vw,4.75rem)] leading-[1.15] tracking-[-0.025em] text-ink text-balance mb-8 pb-1">
+            {/* key={language}: SplitText owns this subtree once split; a language
+                swap must remount it or React reconciles against orphaned nodes
+                (same contract as SectionHeading's h2). */}
+            <h1 key={language} data-split-reveal className="font-display text-[clamp(2.25rem,7vw,4.75rem)] leading-[1.15] tracking-[-0.025em] text-ink text-balance mb-8 pb-1">
               {isEn ? (
                 <>
                   A scored map of what to{" "}

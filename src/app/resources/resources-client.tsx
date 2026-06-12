@@ -37,7 +37,10 @@ export function ResourcesClient() {
           />
         </div>
         <div className="container-px relative z-10">
-          <Reveal className="max-w-3xl mx-auto text-center">
+          {/* H1 outside the Reveal: the choreographer's line-mask reveal owns
+              it (data-split-reveal) — no double animation. Eyebrow entrance =
+              LabelScrambler decode; the sub keeps the Reveal fade. */}
+          <div className="max-w-3xl mx-auto text-center">
             <p className="eyebrow mb-6 inline-flex items-center justify-center gap-2">
               <span
                 className="inline-block w-1.5 h-1.5 rounded-full"
@@ -46,7 +49,10 @@ export function ResourcesClient() {
               />
               {isEn ? "Field notes" : "Appunti dal campo"}
             </p>
-            <h1 className="font-display text-[clamp(2.25rem,7vw,4.5rem)] leading-[1.15] tracking-[-0.025em] text-ink text-balance mb-8 pb-1">
+            {/* key={language}: SplitText owns this subtree once split; a language
+                swap must remount it or React reconciles against orphaned nodes
+                (same contract as SectionHeading's h2). */}
+            <h1 key={language} data-split-reveal className="font-display text-[clamp(2.25rem,7vw,4.5rem)] leading-[1.15] tracking-[-0.025em] text-ink text-balance mb-8 pb-1">
               {isEn ? (
                 <>
                   What we&apos;ve learned{" "}
@@ -63,12 +69,14 @@ export function ResourcesClient() {
                 </>
               )}
             </h1>
-            <p className="text-lg md:text-xl text-ink-mute max-w-xl mx-auto leading-[1.5]">
-              {isEn
-                ? "No frameworks-of-frameworks. Just what worked, what failed, and why."
-                : "Niente framework di framework. Solo cosa ha funzionato, cosa è andato male e perché."}
-            </p>
-          </Reveal>
+            <Reveal delay={150}>
+              <p className="text-lg md:text-xl text-ink-mute max-w-xl mx-auto leading-[1.5]">
+                {isEn
+                  ? "No frameworks-of-frameworks. Just what worked, what failed, and why."
+                  : "Niente framework di framework. Solo cosa ha funzionato, cosa è andato male e perché."}
+              </p>
+            </Reveal>
+          </div>
         </div>
       </section>
 

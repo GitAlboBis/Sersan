@@ -77,7 +77,10 @@ export default function ServiceDetail({
                 <span aria-hidden="true" className="status-dot" />
                 <span>SerSan · {name}</span>
               </p>
-              <h1 className="font-display text-[clamp(2.5rem,5.2vw,4.5rem)] leading-[0.98] tracking-[-0.03em] text-ink mb-6 text-balance">
+              {/* key={language}: SplitText owns this subtree once split; a
+                  language swap must remount it or React reconciles against
+                  orphaned nodes (same contract as SectionHeading's h2). */}
+              <h1 key={language} data-split-reveal className="font-display text-[clamp(2.5rem,5.2vw,4.5rem)] leading-[0.98] tracking-[-0.03em] text-ink mb-6 text-balance">
                 {name}
                 <span className="block mt-2 text-[hsl(var(--accent))] font-display font-medium">
                   {positioning}
