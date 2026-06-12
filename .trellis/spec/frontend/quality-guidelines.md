@@ -106,6 +106,18 @@ two project-specific traps:
   leave stage opacity states unsettled.
 - Expected console noise (not failures): THREE deprecation warnings and
   "WebGPU is not available, running under WebGL2 backend". Page errors = failures.
+  Locally `/_vercel/insights/script.js` 404s on every page (Vercel Analytics only
+  exists on deploy) — filter it, don't chase it.
+- **Pinned-stage elements have geometry while invisible**: spine panels are
+  always in the viewport at opacity 0, so a Playwright `boundingBox()` check (or
+  IO) "finds" them long before they're lit. Visibility checks inside pinned
+  sections must compute **effective opacity up the ancestor chain**, not geometry.
+- `locator.boundingBox()` waits up to 30s for a non-existent element — pass
+  `{ timeout: ~350 }` inside wheel-hunt loops or a missing locator hangs the run.
+- Counters/scrambles write via `textContent =` (replaces the text node):
+  MutationObserver `characterData` sees nothing — observe `childList` or rAF-poll.
+  To catch animations that fire at mount (in-view immediate-fire), attach loggers
+  with `page.addInitScript`, not post-load `evaluate` (the count may already be done).
 
 ---
 

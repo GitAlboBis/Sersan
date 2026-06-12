@@ -161,3 +161,63 @@ document measurements. Pattern (see [case-studies-rail.tsx](src/components/secti
   scroll-snap with `data-lenis-prevent`, no pinning. Cards stay real focusable links.
 - Multiple sticky-pinned sections on one page coexist safely (verified: spine + rail,
   zero anchor drift) — precisely because neither uses a pin-spacer.
+
+### Text-reveal engines — one owner per surface (typography pass, step 3)
+
+Four global/opt-in engines exist; never double-animate a surface:
+
+| Engine | Targets | Opt-in |
+|---|---|---|
+| [heading-choreographer.tsx](src/components/fx/heading-choreographer.tsx) | H1s + hand-rolled display H2s | `data-split-reveal` attribute |
+| [section-heading.tsx](src/components/ui/section-heading.tsx) | its own `<h2>` (self-splits) | automatic — do NOT also stamp `data-split-reveal` |
+| [label-scrambler.tsx](src/components/fx/label-scrambler.tsx) | every `.eyebrow` (incl. composite dot-eyebrows) | automatic; skips `[data-eyebrow-text]` (SectionHeading owns those) |
+| [count-up.tsx](src/components/ui/count-up.tsx) / [redacted-reveal.tsx](src/components/fx/redacted-reveal.tsx) | metric values / fit-warn rows | explicit component wrap |
+
+Rules:
+- **`key={language}` is mandatory** on every bilingual `data-split-reveal` heading.
+  `SplitText.revert()` restores an innerHTML snapshot and orphans React's child fibers;
+  an in-place EN/IT text swap then writes to detached nodes and the heading freezes in
+  the old language. Same contract SectionHeading documents.
+- A heading carrying `data-split-reveal` must NOT sit inside a `Reveal` /
+  `RevealOnScroll` block (double animation) — lift the heading out, keep the
+  sub-copy in the fade.
+- Mask headroom for serif italic overshoot lives in `globals.css`: `.split-line-mask`
+  gets `padding-block: 0.12em` cancelled by negative margins, and the parent
+  `[data-split-reveal]:has(> .split-line-mask)` is `display: flex; flex-direction:
+  column` — flex items don't collapse margins, so the cancellation is exact and
+  **document height does not change** (anchor-drift rule). Don't "simplify" this
+  back to block flow.
+- LabelScrambler mutates the text nodes React created (TreeWalker, no
+  `replaceChildren`); decorative child spans are untouched. If an external write
+  (language toggle) lands mid-decode, it aborts and restores only its own writes.
+
+### Don't: deferred reveal via paused `gsap.from` + `invalidate().restart()`
+
+```ts
+// WRONG — heading stays hidden forever
+const tween = gsap.from(lines, { yPercent: 115, paused: true });
+const fire = () => tween.invalidate().restart();
+```
+`invalidate()` makes the from-tween re-capture its destination from the CURRENT
+value — by fire time the lines already sit at 115 (immediateRender), so it tweens
+115→115. Reproduced and shipped-broken once (choreographer). Correct shape — hide
+deterministically, build the tween at fire time:
+
+```ts
+gsap.set(lines, { yPercent: 115 });            // deterministic hidden state
+const fire = () => {                            // guard with a `fired` flag
+  gsap.fromTo(lines, { yPercent: 115 }, { yPercent: 0, ... });
+};
+```
+
+### Convention: `once: true` ScrollTriggers need a creation-time in-view fire
+
+A `once: true` trigger created when the element is already past `start` never fires
+(GSAP only fires on an active-state CHANGE; `refresh()` can't rescue it). Every
+once-trigger must pair with `if (st.isActive || st.progress > 0) fire();` plus a
+`fired` guard against effect re-runs. Implemented in heading-choreographer.tsx AND
+count-up.tsx (the detail-page metrics sit ~500px from the top — born-active was a
+shipped bug). Inside pinned stages even that is wrong: panels are always
+IO/ST-visible, so reveals/counters there key off the stage's own lit state (the rAF
+`panelOpacity` 0.6 threshold in cinematic-system-scroll.tsx, or railStore progress
+for the rail) — see the spine proof chips' `animateChipCounts`.
