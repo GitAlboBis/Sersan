@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
+import { CustomEase } from "gsap/CustomEase";
 import { Menu, X, ArrowRight, Volume2, VolumeX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Magnetic } from "@/components/ui/magnetic";
@@ -28,9 +30,19 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/trust", label: "Trust", labelIt: "Trust" },
 ];
 
-// Shared entrance curve — mirrors --ease-entrance in globals.css (and the
-// repo's framer `EASE` convention in reveal-on-scroll.tsx).
-const EASE = [0.16, 1, 0.3, 1] as const;
+// CustomEase ships with this gsap 3.15 install and is registerable, so the
+// dropdown can use a bespoke open/close pair instead of the built-in named
+// eases. Registration is idempotent and module-scoped (runs once per load).
+// `ease-menu-open` mirrors the repo's --ease-entrance / `[0.16,1,0.3,1]` feel
+// (a soft expo.out landing); `ease-menu-close` is a DISTINCT, snappier curve
+// so closing reads as a deliberately different gesture from opening.
+gsap.registerPlugin(useGSAP, CustomEase);
+// Registering by a stable id is idempotent — re-creating the same id just
+// overwrites it — so this is safe to run once at module load.
+CustomEase.create("ease-menu-open", "0.16, 1, 0.3, 1");
+// Accelerating roll-up: eases in, then snaps shut — the close "gesture",
+// deliberately distinct from the soft open landing.
+CustomEase.create("ease-menu-close", "0.7, 0, 0.84, 0");
 
 function LanguageToggle({ compact = false }: { compact?: boolean }) {
   const { language, setLanguage } = useLanguage();
@@ -161,16 +173,28 @@ function MenuPill({
 export function Navbar() {
   const pathname = usePathname();
   const { language } = useLanguage();
-  const reduce = useReducedMotion();
   const [open, setOpen] = useState(false);
+  // `render` keeps the panel in the DOM while it animates closed. It is set
+  // true the instant `open` flips true, and dropped to false only by the close
+  // tween's onComplete (or immediately under reduced motion). This lets the
+  // GSAP close animation play on a still-mounted node, then unmount cleanly.
+  const [render, setRender] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
 
   // Close the menu whenever the route changes (covers pill navigation).
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
+
+  // Mount the panel the moment it opens. Unmounting on close is deferred to the
+  // close tween's onComplete (see the useGSAP block below) so the roll-up can
+  // animate on a live node; this effect only ever turns rendering ON.
+  useEffect(() => {
+    if (open) setRender(true);
+  }, [open]);
 
   // Sharpen the nav border once the user has scrolled past the hero edge.
   // Reads the shared scroll source (scrollStore, fed by Lenis or the
@@ -232,42 +256,93 @@ export function Navbar() {
   const isActive = (href: string) =>
     pathname === href || (href !== "/" && !!pathname?.startsWith(`${href}/`));
 
-  // Stagger orchestration for the pill list. Reduced-motion drops the slide and
-  // the stagger so entries just fade in together.
-  const listVariants = reduce
-    ? { hidden: {}, visible: { transition: { staggerChildren: 0 } } }
-    : {
-        hidden: {},
-        visible: { transition: { delayChildren: 0.08, staggerChildren: 0.04 } },
-      };
-  const itemVariants = reduce
-    ? {
-        hidden: { opacity: 0 },
-        visible: { opacity: 1, transition: { duration: 0.25 } },
+  // Dropdown open/close — GSAP, EaseReverseClipMenu style. The panel "unrolls"
+  // downward via a clip-path inset (NOT a height-to-auto tween, which GSAP
+  // can't do), and the pill list staggers in. OPEN uses the soft expo landing
+  // (`ease-menu-open`); CLOSE uses the snappier, distinct `ease-menu-close`.
+  //
+  // Interruptible: each pass kills any in-flight tweens on the same targets
+  // (`gsap.killTweensOf`) and starts a fresh timeline, so re-opening mid-close
+  // (or vice-versa) resolves cleanly to the correct end state. The timeline is
+  // stored on a ref so a later toggle can supersede it. Reduced motion: an
+  // instant fade with no clip/scale/stagger, staying fully usable.
+  //
+  // The driver keys on `render` (so it runs once the panel node exists) and
+  // `open` (direction). On close-complete it drops `render` to unmount the
+  // panel; on reduced-motion close it unmounts immediately.
+  const tlRef = useRef<gsap.core.Timeline | null>(null);
+  useGSAP(
+    () => {
+      const panel = panelRef.current;
+      if (!panel) return;
+
+      const reduce =
+        typeof window !== "undefined" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const items = listRef.current
+        ? Array.from(listRef.current.children)
+        : [];
+
+      tlRef.current?.kill();
+      gsap.killTweensOf([panel, ...items]);
+
+      if (open) {
+        if (reduce) {
+          // Instant, usable: no clip/scale/stagger — just present.
+          gsap.set(panel, {
+            clipPath: "inset(0% 0% 0% 0%)",
+            autoAlpha: 1,
+          });
+          gsap.set(items, { autoAlpha: 1, y: 0 });
+          return;
+        }
+        const tl = gsap.timeline();
+        tl.fromTo(
+          panel,
+          { clipPath: "inset(0% 0% 100% 0%)", autoAlpha: 0 },
+          {
+            clipPath: "inset(0% 0% 0% 0%)",
+            autoAlpha: 1,
+            duration: 0.42,
+            ease: "ease-menu-open",
+          },
+        ).fromTo(
+          items,
+          { autoAlpha: 0, y: 8 },
+          {
+            autoAlpha: 1,
+            y: 0,
+            duration: 0.35,
+            ease: "ease-menu-open",
+            stagger: 0.04,
+          },
+          0.08,
+        );
+        tlRef.current = tl;
+        return;
       }
-    : {
-        hidden: { opacity: 0, y: 8 },
-        visible: {
-          opacity: 1,
-          y: 0,
-          transition: { duration: 0.35, ease: EASE },
-        },
-      };
-  // The "tenda" (curtain) unroll — panel grows downward from 0 height. Reduced
-  // motion: plain fade, no height animation.
-  const panelMotion = reduce
-    ? {
-        initial: { opacity: 0 },
-        animate: { opacity: 1 },
-        exit: { opacity: 0 },
-        transition: { duration: 0.2 },
+
+      // CLOSE. Only meaningful when the node is still rendered.
+      if (!render) return;
+
+      if (reduce) {
+        gsap.set(panel, { autoAlpha: 0 });
+        setRender(false);
+        return;
       }
-    : {
-        initial: { opacity: 0, height: 0 as number | "auto" },
-        animate: { opacity: 1, height: "auto" as const },
-        exit: { opacity: 0, height: 0 as number | "auto" },
-        transition: { duration: 0.4, ease: EASE },
-      };
+      const tl = gsap.timeline({
+        onComplete: () => setRender(false),
+      });
+      tl.to(panel, {
+        clipPath: "inset(0% 0% 100% 0%)",
+        autoAlpha: 0,
+        duration: 0.3,
+        ease: "ease-menu-close",
+      });
+      tlRef.current = tl;
+    },
+    { dependencies: [open, render], scope: panelRef },
+  );
 
   return (
     <nav
@@ -392,73 +467,70 @@ export function Navbar() {
       </div>
 
       {/* Dropdown "a tenda" — fixed under the bar at the top-right gutter,
-          unrolls downward. AnimatePresence plays the exit (curtain rolls up). */}
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            id="site-menu"
-            ref={panelRef}
-            key="site-menu"
-            className={cn(
-              "fixed right-4 top-[68px] z-[60] w-[min(86vw,300px)] origin-top overflow-hidden",
-              "rounded-2xl border border-rule/60",
-              "sm:right-6 sm:top-[76px] lg:right-10",
-            )}
-            style={{
-              background:
-                "linear-gradient(180deg, hsl(220 24% 11% / 0.98) 0%, hsl(220 24% 8% / 0.98) 100%)",
-              backdropFilter: "blur(24px)",
-              boxShadow:
-                "inset 0 1px 0 hsl(var(--accent) / 0.14), 0 24px 60px -20px hsl(var(--bg) / 0.92), 0 8px 24px -12px hsl(220 30% 2% / 0.8)",
-            }}
-            initial={panelMotion.initial}
-            animate={panelMotion.animate}
-            exit={panelMotion.exit}
-            transition={panelMotion.transition}
-          >
-            <div className="p-3 sm:p-4">
-              <motion.ul
-                variants={listVariants}
-                initial="hidden"
-                animate="visible"
-                className="flex flex-col gap-2 list-none"
-                aria-label="Site pages"
-              >
-                {NAV_ITEMS.map((item) => (
-                  <motion.li key={item.href} variants={itemVariants}>
-                    <MenuPill
-                      item={item}
-                      active={isActive(item.href)}
-                      onNavigate={() => setOpen(false)}
-                    />
-                  </motion.li>
-                ))}
-              </motion.ul>
+          unrolls downward. Stays mounted (`render`) while the GSAP close tween
+          rolls it back up; the tween's onComplete unmounts it. The opening
+          clip-path/stagger and the snappier close both run in the useGSAP
+          block above (interruptible, reduced-motion aware). */}
+      {render && (
+        <div
+          id="site-menu"
+          ref={panelRef}
+          className={cn(
+            "fixed right-4 top-[68px] z-[60] w-[min(86vw,300px)] origin-top overflow-hidden",
+            "rounded-2xl border border-rule/60",
+            "sm:right-6 sm:top-[76px] lg:right-10",
+          )}
+          style={{
+            background:
+              "linear-gradient(180deg, hsl(220 24% 11% / 0.98) 0%, hsl(220 24% 8% / 0.98) 100%)",
+            backdropFilter: "blur(24px)",
+            boxShadow:
+              "inset 0 1px 0 hsl(var(--accent) / 0.14), 0 24px 60px -20px hsl(var(--bg) / 0.92), 0 8px 24px -12px hsl(220 30% 2% / 0.8)",
+            // Hidden until the open tween paints it — prevents a flash of the
+            // fully-laid-out panel on the frame before GSAP runs.
+            visibility: "hidden",
+          }}
+        >
+          <div className="p-3 sm:p-4">
+            <ul
+              ref={listRef}
+              className="flex flex-col gap-2 list-none"
+              aria-label="Site pages"
+            >
+              {NAV_ITEMS.map((item) => (
+                <li key={item.href}>
+                  <MenuPill
+                    item={item}
+                    active={isActive(item.href)}
+                    onNavigate={() => setOpen(false)}
+                  />
+                </li>
+              ))}
+            </ul>
 
-              {/* Footer — CTA + EN/IT + audio. Only below lg: on desktop these
-                  already live in the bar, so the dropdown stays just the pages. */}
-              <div className="lg:hidden mt-3 flex flex-col gap-4 border-t border-rule/60 pt-4">
-                <Magnetic className="block" strength={0.2}>
-                  <Button
-                    asChild
-                    variant="hero"
-                    size="lg"
-                    className="w-full rounded-full"
-                  >
-                    <Link href={START_HREF} onClick={() => setOpen(false)}>
-                      {language === "it" ? "Prenota una call" : "Book a call"}
-                    </Link>
-                  </Button>
-                </Magnetic>
-                <div className="flex items-center justify-center gap-3">
-                  <LanguageToggle />
-                  <AudioToggle />
-                </div>
+            {/* Footer — CTA + EN/IT + audio. Only below lg: on desktop these
+                already live in the bar, so the dropdown stays just the pages. */}
+            <div className="lg:hidden mt-3 flex flex-col gap-4 border-t border-rule/60 pt-4">
+              <Magnetic className="block" strength={0.2}>
+                <Button
+                  asChild
+                  variant="hero"
+                  size="lg"
+                  className="w-full rounded-full"
+                >
+                  <Link href={START_HREF} onClick={() => setOpen(false)}>
+                    {language === "it" ? "Prenota una call" : "Book a call"}
+                  </Link>
+                </Button>
+              </Magnetic>
+              <div className="flex items-center justify-center gap-3">
+                <LanguageToggle />
+                <AudioToggle />
               </div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }

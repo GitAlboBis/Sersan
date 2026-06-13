@@ -236,6 +236,30 @@ shipped-and-caught regression). Buttons transparent by default, `focus-visible` 
 SVG `role="img"` + `aria-label`; the hotspots are additive focusable text reusing the frozen
 labels.
 
+### framer-motion removed: reveals + navbar menu are GSAP (step 8)
+
+framer-motion is GONE — its last 2 consumers were ported to GSAP and the dependency was dropped
+from package.json + bun.lock (run `bun install`, NEVER `npm install`, to keep bun.lock the
+authoritative lockfile vercel.json builds with). Do NOT reintroduce framer-motion; GSAP (+
+`@gsap/react` useGSAP) owns all animation now.
+
+- [reveal-on-scroll.tsx](src/components/reveal-on-scroll.tsx) `RevealOnScroll` is now GSAP +
+  IntersectionObserver (mirrors `ui/reveal.tsx`: `gsap.set` initial + IO `threshold: 0.3` +
+  `gsap.to` expo.out + played-once guard + RM-static). **GOTCHA:** its `delay` prop is in
+  SECONDS (the old framer `transition.delay` contract — ~40 consumers pass seconds like
+  `delay={i * 0.1}`), so it is passed to gsap `delay:` AS-IS — do NOT divide by 1000. `Reveal`
+  (ui/reveal.tsx) takes `delay` in MILLISECONDS (`delay / 1000`). The two reveal components have
+  DIFFERENT delay units on purpose; do not "unify" them.
+- [navbar.tsx](src/components/navbar.tsx) dropdown menu is a GSAP open/close, EaseReverseClipMenu
+  style: two module-scope `CustomEase`s (`ease-menu-open` 0.16,1,0.3,1 / a snappier
+  `ease-menu-close`), a `clip-path inset` unroll (NOT `height:auto`, which GSAP cannot tween),
+  staggered pills, and INTERRUPTIBLE (kill + rebuild the timeline on each open/close pass so a
+  re-open mid-close resolves cleanly). A `render` state keeps the panel mounted during the close
+  tween and unmounts it in `onComplete`. All scroll-lock / Esc / outside-click / focus-return /
+  route-change-close logic is plain React (unchanged); reduced-motion = instant fade, no
+  clip/stagger. The route curtain ([template.tsx](src/app/template.tsx)) was already GSAP (a
+  one-way per-navigation wipe) and is unchanged — easeReverse there is N/A.
+
 ### Text-reveal engines — one owner per surface (typography pass, step 3)
 
 Four global/opt-in engines exist; never double-animate a surface:
