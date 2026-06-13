@@ -177,7 +177,9 @@ function RouteRitual({
 
 export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
   const pathname = usePathname();
-  const anchors = useSectionAnchors(pathname);
+  // Geometry adapter over the section-state bus — the measurement itself is
+  // owned by the layout-level SectionBus (single writer, all tiers).
+  const anchors = useSectionAnchors();
 
   // F0.5 renderer seam: the flag is read once at module/build time. When OFF
   // (default) `gl` stays EXACTLY today's object literal — R3F builds its

@@ -6,6 +6,7 @@ import { LanguageProvider } from "@/components/language-provider";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { SmoothScrollProvider } from "@/components/smooth-scroll-provider";
+import { SectionBus } from "@/components/section-bus";
 import { CanvasHost } from "@/webgl/CanvasHost";
 import { Preloader } from "@/components/fx/preloader";
 import { CardTiltController } from "@/components/fx/card-tilt-controller";
@@ -193,6 +194,11 @@ export default function RootLayout({
                 changes. Decorative only: aria-hidden + pointer-events:none
                 live inside CanvasHost. */}
             <CanvasHost />
+            {/* Section-state bus writer — measures [data-line-anchor] spans,
+                publishes the active section + scroll direction to
+                useSectionStore. Lives OUTSIDE the Canvas so the bus works on
+                every tier, including "off". Renders nothing. */}
+            <SectionBus />
             <CardTiltController />
             <HeadingChoreographer />
             {/* Mono eyebrow/label decode-scramble — one delegated observer. */}

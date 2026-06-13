@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { START_HREF } from "@/lib/site";
 import { getLenis } from "@/lib/lenis-singleton";
 import { useAudioStore } from "@/webgl/store/audioStore";
+import { useScrollStore } from "@/webgl/store/scrollStore";
 
 // Real site pages — the dropdown menu navigates the app, not homepage anchors.
 type NavItem = { href: string; label: string; labelIt: string };
@@ -172,11 +173,17 @@ export function Navbar() {
   }, [pathname]);
 
   // Sharpen the nav border once the user has scrolled past the hero edge.
+  // Reads the shared scroll source (scrollStore, fed by Lenis or the
+  // reduced-motion native fallback in SmoothScrollProvider) instead of a
+  // private native scroll listener — section-state-bus convention: one
+  // scroll source for the whole app. setScrolled with an unchanged boolean
+  // is a React bail-out, so this re-renders only on threshold flips, never
+  // per scroll tick.
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+    const update = () => setScrolled(window.scrollY > 24);
+    update();
+    const unsubscribe = useScrollStore.subscribe(update);
+    return unsubscribe;
   }, []);
 
   // While the dropdown is open: lock the background (freeze Lenis smooth-scroll

@@ -17,6 +17,7 @@ import { webgpuEnabled } from "./renderer/createRenderer";
 import { getRouteCurve } from "./curves/routeCurves";
 import { WORLD_VIEW_HEIGHT } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
+import { useSectionStore } from "./store/sectionStore";
 import { useTextMorphStore } from "./store/textMorphStore";
 import { useIntroStore } from "./store/introStore";
 import { useFxStore } from "./store/fxStore";
@@ -270,19 +271,22 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
 
   useFrame((_, delta) => {
     const scroll = useScrollStore.getState();
-    const { progress, velocity, reveal, anchorPulse } = scroll;
+    const { progress, velocity, reveal } = scroll;
     const fx = useFxStore.getState();
 
-    // Section-arrival pulse: the store holds a TARGET bumped to 1 each time a
-    // new section centers (set in useSectionAnchors). Decay it toward 0 here
-    // (~400ms feel, frame-rate independent) and write the damped value back so
-    // the store stays the single source of truth — never incremented per frame.
+    // Section-arrival pulse: the section-state bus holds a TARGET bumped to 1
+    // each time a new section centers (set by SectionBus). Decay it toward 0
+    // here (~400ms feel, frame-rate independent) and write the damped value
+    // back so the bus stays the single source of truth — never incremented
+    // per frame.
+    const section = useSectionStore.getState();
+    const anchorPulse = section.pulse;
     const decayedPulse = THREE.MathUtils.damp(anchorPulse, 0, 7, delta);
     // Write the damped value back only while there's actually a pulse to
     // decay — once it has settled to 0, skip the store write so the idle
     // line never churns the store every frame (no spurious set/notify).
     if (anchorPulse !== 0) {
-      scroll.setAnchorPulse(decayedPulse < 0.001 ? 0 : decayedPulse);
+      section.setPulse(decayedPulse < 0.001 ? 0 : decayedPulse);
     }
 
     dampedProgress.current = THREE.MathUtils.damp(
