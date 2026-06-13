@@ -2,42 +2,49 @@
 
 /**
  * Hero logo — the SERSAN mark as a GPGPU particle cloud that dissolves &
- * regenerates. Replaces the procedural Saturn (HeroPlanet) as the home-page
- * hero object, and REPLACES the earlier ~12k CPU-seeded billboard dissolve
- * engine with a true GPU particle simulation.
+ * regenerates.
  *
- * THE ENGINE (PRD + research spec, Option B — FBO ping-pong, both backends)
- * ------------------------------------------------------------------------
- * SIZE×SIZE particles live entirely on the GPU in FLOAT render targets
- * (position + velocity, ping-pong), advanced every frame by a sim shader — NO
- * CPU per-particle updates. Their HOME (rest) positions are sampled on the GLB
- * mesh SURFACE via MeshSurfaceSampler (geometry/sersanMark.ts); the solid mesh
- * is NEVER drawn — it only generates the rest target the spring pulls back to.
+ * THE ENGINE (post-C3 consolidation, restyle step 4, 2026-06-13)
+ * --------------------------------------------------------------
+ * Two render paths survive (the FBO ping-pong rigs and the sprite debug modes
+ * `solid` / `both` / `particles` / `particles-2layer` were retired — see
+ * gpgpu/gpgpuNodeSim.ts):
  *
- * Per-particle forces (model space, so repulsion follows the drag rotation):
- *   (a) elastic SPRING toward home  → the mark recomposes (regeneration)
- *   (b) mouse REPULSION within RADIUS, cursor PROJECTED into model space
- *       (raycast a camera-facing plane through the center, then worldToLocal)
- *   (c) DAMPING + max-speed clamp
- *   (d) light TURBULENCE (low at rest, more far from home)
- * Particles render as instanced billboard quads (NOT THREE.Points — WebGPU
- * clamps points to 1px), colored violet→cyan by velocity, additive HDR + glow
- * via the single existing selective Bloom.
+ *   "spores" (DEFAULT) — TRUE-WebGPU compute only. Two shells of instanced
+ *   SHADED OPAQUE icospheres (violet erodible crust + glowing cyan immortal
+ *   core) over a solid occluder mark, driven by the storage-buffer momentum
+ *   sim: the unified anchor-spring force model + cursor attractor (radial
+ *   push² repulsion + orbital swirl) + the DDD life machine (hover erode,
+ *   scroll-out burst, respawn/regrow).
  *
- * BACKEND SPLIT (mirrors DriftParticles / the old HeroLogo):
- *   flag OFF (WebGL2)  → synchronous GLSL FBO rig (gpgpu/gpgpuSim.ts) + GLSL
- *                        billboard (gpgpu/gpgpuRenderShader.ts). Never imports
+ *   "particles-static" — the analytic fallback (and a debug toggle): billboard
+ *   sprites at their HOME positions (per-instance vec3 attribute), displaced
+ *   ANALYTICALLY near the cursor in the vertex stage (lift + violet→cyan,
+ *   eased hover). Stateless, no compute — robust on every backend. The spores
+ *   mode DEGRADES to this automatically off true WebGPU.
+ *
+ * HOME (rest) positions are sampled on the GLB mesh SURFACE via
+ * MeshSurfaceSampler (geometry/sersanMark.ts); the solid mesh is never drawn —
+ * it feeds the sampler, the spore occluder slab and the invisible raycast
+ * target.
+ *
+ * BACKEND SPLIT (the dual-import discipline, mirrors DriftParticles):
+ *   flag OFF (WebGL2)  → synchronous GLSL static build
+ *                        (gpgpu/gpgpuRenderShader.ts). Never imports
  *                        three/webgpu.
- *   flag ON  (WebGPU)  → lazy-imported TSL rig+render (gpgpu/gpgpuNodeSim.ts);
- *                        same FBO-via-gl.setRenderTarget technique, proven on
- *                        WebGPURenderer by fluid/PointerFlowmap.ts. The heavy
- *                        three/webgpu + three/tsl namespaces are imported ONCE
- *                        here and passed in, so they never reach the OFF bundle.
+ *   flag ON  (WebGPU)  → lazy-imported TSL builds (gpgpu/gpgpuNodeSim.ts); the
+ *                        heavy three/webgpu + three/tsl namespaces are imported
+ *                        ONCE here and passed in, so they never reach the OFF
+ *                        bundle. Spores additionally require the TRUE WebGPU
+ *                        sub-backend (`backend.isWebGLBackend !== true` AND
+ *                        `gl.compute` — storage indexing no-ops on the WebGL2
+ *                        sub-backend, three #31221) and degrade to the static
+ *                        build otherwise.
  *
- * INTEGRATION CONTRACT (kept verbatim from the previous HeroLogo / HeroPlanet):
+ * INTEGRATION CONTRACT (kept verbatim across engine swaps):
  *  - announces heroReady on the first frame (arms the drag-capture layer),
  *    resets on unmount;
- *  - screen-anchored across the 520vh sticky pin (position relative to
+ *  - screen-anchored across the sticky spine pin (position relative to
  *    camera.position.y, worldViewWidth, the `hp` hero-span progress, the
  *    `fade = 1 - smoothstep(hp,0.74,0.97)` recede+fade handoff, group.visible);
  *  - delta clamp for tab-refocus stalls;
@@ -47,41 +54,34 @@
  *    layer still feeds heroDragStore.hovering (the repulsion gate); its drag
  *    velocity is ignored, so click-and-hold never moves the mark.
  *
- * FALLBACKS (PRD constraints): tier `off` / reduced-motion never mounts this
- * (Scene gates home → HeroLogo to full/lite). If float AND half-float render
- * targets are both unusable, the GPGPU rig is not built — nothing renders, no
- * crash, and heroReady still fires so the poster/drag handoff is unaffected.
+ * FALLBACKS: tier `off` / reduced-motion never mounts this (Scene gates home →
+ * HeroLogo to full/lite). Every degradation lands on the static build or, at
+ * worst, nothing renders — no crash, and heroReady still fires so the
+ * poster/drag handoff is unaffected.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useGLTF } from "@react-three/drei";
+import { SPINE_TRAVEL_VH } from "@/lib/spine";
 import { WORLD_VIEW_HEIGHT } from "./constants";
 import { useTextMorphStore } from "./store/textMorphStore";
 import { sampleMarkHomePositions } from "./geometry/sersanMark";
 import {
-  createGpgpuSim,
-  type GpgpuSimRig,
-  type GpgpuTickParams,
-} from "./gpgpu/gpgpuSim";
-import {
-  createGpgpuRenderMaterial,
   createGpgpuStaticBuild,
-  type GpgpuRenderUniforms,
   type GpgpuStaticUniforms,
 } from "./gpgpu/gpgpuRenderShader";
 import {
   DEFAULT_GPGPU_CONFIG,
   SIZE_BY_TIER,
-  BODY_LAYER,
-  SKIN_LAYER,
   SPORE_LAYER,
   SPORE_CORE_LAYER,
   SPORE_SIZE_BY_TIER,
   SPORE_LITE_RADIUS_SCALE,
   SPORE_OCCLUDER_COLOR,
   type GpgpuConfig,
-  type GpgpuLayerConfig,
+  type GpgpuSimRig,
+  type GpgpuTickParams,
 } from "./gpgpu/gpgpuConfig";
 import { webgpuEnabled } from "./renderer/createRenderer";
 import { useScrollStore } from "./store/scrollStore";
@@ -128,23 +128,10 @@ useGLTF.preload(MARK_GLB);
 /** Cursor far away → repulsion vanishes (pointer-leave / coarse pointer). */
 const MOUSE_OFF = new THREE.Vector3(1e9, 1e9, 1e9);
 
-/** TSL build returned by the lazy gpgpuNodeSim import (loose-typed there). */
-interface TslGpgpu {
-  rig: GpgpuSimRig;
-  geometry: THREE.InstancedBufferGeometry;
-  material: THREE.Material;
-  uFade: { value: number };
-  uPointSize: { value: number };
-  uPixelRatio: { value: number };
-  uViewport: { value: THREE.Vector2 };
-  uEmissive: { value: number };
-  uPointAlpha: { value: number };
-  dispose: () => void;
-}
-
 /**
- * TSL STATIC bisection build (the home-position billboards, no sim). Shape
- * mirrors createStaticParticleNodeBuild's return, loose-typed like TslGpgpu.
+ * TSL STATIC build (the home-position billboards, analytic dispersion). Shape
+ * mirrors createStaticParticleNodeBuild's return, loose-typed because the
+ * builder module is loose-typed for the lazy dual-import discipline.
  */
 interface TslStatic {
   geometry: THREE.InstancedBufferGeometry;
@@ -176,19 +163,14 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // the particles settle back softly when the cursor leaves.
   const hoverRef = useRef(0);
 
-  // DEBUG render mode (fxStore). Subscribed REACTIVELY so toggling it live
+  // Render mode (fxStore). Subscribed REACTIVELY so toggling it live
   // (window.__sersanFx.getState().set({ heroRenderMode: "..." })) re-renders
-  // the component and mounts/unmounts the solid / particle meshes accordingly.
+  // the component and mounts/unmounts the particle meshes accordingly.
   const heroRenderMode = useFxStore((s) => s.heroRenderMode);
-  const showSolid = heroRenderMode === "solid" || heroRenderMode === "both";
-  const showParticles =
-    heroRenderMode === "particles" || heroRenderMode === "both";
-  // BISECTION: static billboards at HOME positions (per-instance aHome), no sim.
+  // Explicit static debug toggle (also the shape of every degradation).
   const showStatic = heroRenderMode === "particles-static";
-  // TWO-LAYER momentum hero (Lusion DDD): dense violet BODY + reactive cyan SKIN.
-  const show2Layer = heroRenderMode === "particles-2layer";
-  // SPORES: the DDD-correct render — instanced SHADED icospheres on the compute
-  // sim + a solid dark occluder mark (bundle teardown, see gpgpuConfig).
+  // SPORES: the DDD-correct shipping render — instanced SHADED icospheres on
+  // the compute sim + a solid occluder mark (bundle teardown, see gpgpuConfig).
   const showSpores = heroRenderMode === "spores";
   // Spore mode needs TRUE WebGPU compute. Flag-OFF (plain WebGL2 renderer) is
   // known synchronously; the WebGPURenderer's WebGL2 sub-backend is detected in
@@ -197,13 +179,13 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   const [sporeBackendFallback, setSporeBackendFallback] = useState(false);
   const sporeStaticFallback =
     showSpores && (!webgpuEnabled() || sporeBackendFallback);
-  // The static build now serves two masters: the explicit debug mode and the
+  // The static build serves two masters: the explicit debug mode and the
   // spores degradation path.
   const showStaticBuild = showStatic || sporeStaticFallback;
 
   const worldViewWidth = WORLD_VIEW_HEIGHT * (size.width / size.height);
 
-  // GPGPU grid size for the active tier (full 256², lite 128²).
+  // Static-fallback grid size for the active tier (full 448², lite 224²).
   const gridSize = SIZE_BY_TIER[tier] ?? SIZE_BY_TIER.lite;
 
   // === Geometry: the Blender-built mark (sampled, NEVER rendered). ==========
@@ -238,52 +220,31 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   }, [nodes]);
   useEffect(() => () => bodyGeometry.dispose(), [bodyGeometry]);
 
-  // === DEBUG solid material ================================================
-  // Unlit MeshBasicMaterial so the mark is GUARANTEED visible on BOTH backends
-  // (the WebGPU renderer auto-converts it to a NodeMaterial) regardless of
-  // scene lighting — used to verify the GLB's size/position/orientation in
-  // isolation. Brand violet, clearly readable as a solid "52".
-  const solidMaterial = useMemo(
+  // === Raycast-target material ==============================================
+  // The invisible cursor-raycast mesh needs SOME material on both backends
+  // (never drawn — visible:false; the raycaster ignores visibility). Basic so
+  // the WebGPU renderer auto-converts it without scene-lighting dependencies.
+  const raycastMaterial = useMemo(
     () => new THREE.MeshBasicMaterial({ color: 0x7c5cff }),
     [],
   );
-  useEffect(() => () => solidMaterial.dispose(), [solidMaterial]);
+  useEffect(() => () => raycastMaterial.dispose(), [raycastMaterial]);
 
   // === Home positions: SIZE×SIZE surface samples → the rest field. ==========
-  // homeRGBA seeds the home/position float textures; aRef is the per-instance
-  // grid UV the render uses to look up its own particle. The mesh is unrendered.
-  // GATED on the modes that consume it (448² ≈ 200k samples is real startup
+  // homeRGBA seeds the per-instance aHome attribute; aRef is the per-instance
+  // grid UV (hashed for size variance). The mesh is unrendered. GATED on the
+  // static build actually being shown (448² ≈ 200k samples is real startup
   // work — don't pay it under the shipping spores mode).
   const homeField = useMemo(
     () =>
-      showParticles || showStaticBuild
-        ? sampleMarkHomePositions(bodyGeometry, gridSize)
-        : null,
-    [bodyGeometry, gridSize, showParticles, showStaticBuild],
-  );
-
-  // Two-layer home fields (particles-2layer only). BODY: lower front-bias coats
-  // the depth + inward volume jitter → reads as a solid violet volume. SKIN:
-  // offset OUT along +normal so the reactive cyan glow floats just over it.
-  const bodyHome = useMemo(
-    () =>
-      show2Layer
-        ? sampleMarkHomePositions(bodyGeometry, gridSize, BODY_LAYER.sampling)
-        : null,
-    [bodyGeometry, gridSize, show2Layer],
-  );
-  const skinHome = useMemo(
-    () =>
-      show2Layer
-        ? sampleMarkHomePositions(bodyGeometry, gridSize, SKIN_LAYER.sampling)
-        : null,
-    [bodyGeometry, gridSize, show2Layer],
+      showStaticBuild ? sampleMarkHomePositions(bodyGeometry, gridSize) : null,
+    [bodyGeometry, gridSize, showStaticBuild],
   );
 
   // Spore home fields — TWO shells on their own (smaller) grid: the erodible
   // violet CRUST outside + the immortal glowing cyan CORE inset beneath it
   // (f_007: the revealed layer is the same spore material, lit). Gated on the
-  // mode so the sampling cost isn't paid by the shipping path.
+  // mode so the sampling cost isn't paid by the fallback path.
   const sporeGridSize = SPORE_SIZE_BY_TIER[tier] ?? SPORE_SIZE_BY_TIER.lite;
   const sporeHomes = useMemo(
     () =>
@@ -321,147 +282,16 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   }, []);
   useEffect(() => () => sporeOccluderMaterial.dispose(), [sporeOccluderMaterial]);
 
-  // === Pick the float type once (FloatType when EXT_color_buffer_float is
-  // available, else HalfFloat). If neither renders, gpgpuOk stays false and the
-  // rig is never built (static/no mark, no crash). ==========================
-  const floatType = useMemo<THREE.TextureDataType | null>(() => {
-    // On the WebGL2 / flag-OFF path we can probe the extension directly.
-    const ctx = (gl as { getContext?: () => WebGL2RenderingContext | null })
-      .getContext?.();
-    if (ctx && typeof ctx.getExtension === "function") {
-      if (ctx.getExtension("EXT_color_buffer_float")) return THREE.FloatType;
-      if (ctx.getExtension("EXT_color_buffer_half_float"))
-        return THREE.HalfFloatType;
-      // WebGL2 with neither float-render extension → no GPGPU.
-      // (WebGPU exposes a different context; the `?.` above returns undefined
-      //  there and we fall through to HalfFloat, which WebGPU always supports.)
-      return null;
-    }
-    // WebGPU backend (no classic getContext) → HalfFloat is universally
-    // supported for render targets there.
-    return THREE.HalfFloatType;
-  }, [gl]);
-
-  const gpgpuOk = floatType != null;
-
-  // Live config (defaults + the few leva-tunable knobs). Rebuilt only when the
-  // tunable subset changes; per-frame writes use getState (cheap).
+  // Static-build config (defaults + the live leva knobs applied per frame).
   const config = useMemo<GpgpuConfig>(
     () => ({ ...DEFAULT_GPGPU_CONFIG, SIZE: gridSize }),
     [gridSize],
   );
 
-  // === GLSL (OFF) ===========================================================
-  // Built only on the OFF path AND only when float/half RTs are usable. In an
-  // effect (not useMemo) so the rig's seed renders run outside React's render
-  // pass — same discipline as PointerFlowmap.
-  interface GlslGpgpu {
-    rig: GpgpuSimRig;
-    material: THREE.ShaderMaterial & { uniforms: GpgpuRenderUniforms };
-    geometry: THREE.InstancedBufferGeometry;
-    uniforms: GpgpuRenderUniforms;
-  }
-  const [glsl, setGlsl] = useState<GlslGpgpu | null>(null);
-  useEffect(() => {
-    if (webgpuEnabled() || !gpgpuOk || floatType == null) return;
-    if (!showParticles || !homeField) return;
-    const rig = createGpgpuSim(
-      gl as THREE.WebGLRenderer,
-      homeField.homeRGBA,
-      gridSize,
-      config,
-      floatType,
-    );
-    const renderMat = createGpgpuRenderMaterial(config);
-
-    const geo = new THREE.InstancedBufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(QUAD_CORNERS, 3));
-    geo.setIndex(new THREE.BufferAttribute(QUAD_INDEX, 1));
-    geo.setAttribute("aRef", new THREE.InstancedBufferAttribute(homeField.aRef, 2));
-    geo.instanceCount = homeField.count;
-
-    setGlsl({ rig, material: renderMat, geometry: geo, uniforms: renderMat.uniforms });
-    return () => {
-      rig.dispose();
-      renderMat.dispose();
-      geo.dispose();
-      setGlsl(null);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gpgpuOk, floatType, gridSize, homeField, showParticles]);
-
-  // === TSL lazy (ON) ========================================================
-  const [tsl, setTsl] = useState<TslGpgpu | null>(null);
-  useEffect(() => {
-    if (!webgpuEnabled() || !gpgpuOk || floatType == null) return;
-    if (!showParticles || !homeField) return;
-    let cancelled = false;
-    let built: TslGpgpu | null = null;
-    void Promise.all([
-      import("three/webgpu"),
-      import("three/tsl"),
-      import("./gpgpu/gpgpuNodeSim"),
-    ]).then(([webgpu, tslNs, mod]) => {
-      if (cancelled) return;
-      // TRUE WebGPU sub-backend → compute + storage buffers (no FBO round-trip,
-      // fixes the WebGPU scramble). WebGL2 fallback sub-backend → the FBO rig
-      // (storage-buffer dynamic indexing is broken on WebGL2, three #31221).
-      // The WebGPU backend leaves `isWebGLBackend` UNDEFINED; only the WebGL
-      // backend sets it `true`. So "is WebGPU" = backend present, NOT the WebGL
-      // backend, AND the renderer exposes `compute`. (`=== false` was wrong:
-      // undefined !== false, so it always fell through to the FBO path.)
-      const bk = (gl as unknown as { backend?: { isWebGLBackend?: boolean } })
-        .backend;
-      const hasCompute =
-        typeof (gl as unknown as { compute?: unknown }).compute === "function";
-      const isWebGPUBackend = !!bk && bk.isWebGLBackend !== true && hasCompute;
-      const b = isWebGPUBackend
-        ? mod.createGpgpuComputeNodeSim(
-            gl as never,
-            webgpu as never,
-            tslNs as never,
-            homeField.homeRGBA,
-            homeField.aRef,
-            gridSize,
-            config,
-          )
-        : mod.createGpgpuNodeSim(
-            gl as never,
-            webgpu as never,
-            tslNs as never,
-            homeField.homeRGBA,
-            homeField.aRef,
-            gridSize,
-            config,
-            floatType,
-          );
-      built = {
-        rig: b.rig,
-        geometry: b.geometry as unknown as THREE.InstancedBufferGeometry,
-        material: b.material as unknown as THREE.Material,
-        uFade: b.uFade,
-        uPointSize: b.uPointSize,
-        uPixelRatio: b.uPixelRatio,
-        uViewport: b.uViewport as unknown as { value: THREE.Vector2 },
-        uEmissive: b.uEmissive,
-        uPointAlpha: b.uPointAlpha,
-        dispose: b.dispose,
-      };
-      setTsl(built);
-    });
-    return () => {
-      cancelled = true;
-      built?.dispose();
-      setTsl(null);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gpgpuOk, floatType, gridSize, homeField, showParticles]);
-
-  // === BISECTION static build ==============================================
-  // Built only when the mode asks for it. OFF → synchronous GLSL static build;
-  // ON → lazy TSL static build (same dual-import discipline as the live rig).
-  // Reads POSITION from a per-instance `aHome` vec3 attribute — bypasses the
-  // GPGPU position texture + the sim entirely.
+  // === STATIC build =========================================================
+  // OFF → synchronous GLSL static build; ON → lazy TSL static build (same
+  // dual-import discipline as the spore build). Reads POSITION from a
+  // per-instance `aHome` vec3 attribute — no sim, no storage buffers.
   interface GlslStatic {
     geometry: THREE.InstancedBufferGeometry;
     material: THREE.ShaderMaterial & { uniforms: GpgpuStaticUniforms };
@@ -530,144 +360,11 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showStaticBuild, gridSize, homeField]);
 
-  // === TWO-LAYER build (particles-2layer) ===================================
-  // Two independent momentum rigs (BODY then SKIN), same dual-backend discipline
-  // as the single-layer build above, just mapped over the two presets. Each rig
-  // gets its own home field + config + render opts; the model-space cursor is
-  // shared and fed to both in useFrame. Built only in 2layer mode.
-  interface GlslLayer {
-    rig: GpgpuSimRig;
-    material: THREE.ShaderMaterial & { uniforms: GpgpuRenderUniforms };
-    geometry: THREE.InstancedBufferGeometry;
-    spec: GpgpuLayerConfig;
-  }
-  const [glsl2, setGlsl2] = useState<GlslLayer[] | null>(null);
-  useEffect(() => {
-    if (webgpuEnabled() || !gpgpuOk || floatType == null || !show2Layer) return;
-    if (!bodyHome || !skinHome) return;
-    const defs = [
-      { spec: BODY_LAYER, home: bodyHome },
-      { spec: SKIN_LAYER, home: skinHome },
-    ];
-    const built: GlslLayer[] = defs.map(({ spec, home }) => {
-      const cfg: GpgpuConfig = { ...spec.config, SIZE: gridSize };
-      const rig = createGpgpuSim(
-        gl as THREE.WebGLRenderer,
-        home.homeRGBA,
-        gridSize,
-        cfg,
-        floatType,
-      );
-      const material = createGpgpuRenderMaterial(cfg, spec.render);
-      const geometry = new THREE.InstancedBufferGeometry();
-      geometry.setAttribute("position", new THREE.BufferAttribute(QUAD_CORNERS, 3));
-      geometry.setIndex(new THREE.BufferAttribute(QUAD_INDEX, 1));
-      geometry.setAttribute("aRef", new THREE.InstancedBufferAttribute(home.aRef, 2));
-      geometry.instanceCount = home.count;
-      return { rig, material, geometry, spec };
-    });
-    setGlsl2(built);
-    return () => {
-      built.forEach((b) => {
-        b.rig.dispose();
-        b.material.dispose();
-        b.geometry.dispose();
-      });
-      setGlsl2(null);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gpgpuOk, floatType, gridSize, bodyHome, skinHome, show2Layer]);
-
-  interface TslLayer {
-    rig: GpgpuSimRig;
-    geometry: THREE.InstancedBufferGeometry;
-    material: THREE.Material;
-    uFade: { value: number };
-    uPointSize: { value: number };
-    uPixelRatio: { value: number };
-    uViewport: { value: THREE.Vector2 };
-    uEmissive: { value: number };
-    uPointAlpha: { value: number };
-    spec: GpgpuLayerConfig;
-    dispose: () => void;
-  }
-  const [tsl2, setTsl2] = useState<TslLayer[] | null>(null);
-  useEffect(() => {
-    if (!webgpuEnabled() || !gpgpuOk || floatType == null || !show2Layer) return;
-    if (!bodyHome || !skinHome) return;
-    let cancelled = false;
-    let built: TslLayer[] | null = null;
-    void Promise.all([
-      import("three/webgpu"),
-      import("three/tsl"),
-      import("./gpgpu/gpgpuNodeSim"),
-    ]).then(([webgpu, tslNs, mod]) => {
-      if (cancelled) return;
-      const defs = [
-        { spec: BODY_LAYER, home: bodyHome },
-        { spec: SKIN_LAYER, home: skinHome },
-      ];
-      // WebGPU backend → compute + storage buffers (per layer, no FBO round-trip);
-      // WebGL2 sub-backend → FBO rig. Same routing as the single-layer path.
-      const bk = (gl as unknown as { backend?: { isWebGLBackend?: boolean } })
-        .backend;
-      const isWebGPUBackend =
-        !!bk &&
-        bk.isWebGLBackend !== true &&
-        typeof (gl as unknown as { compute?: unknown }).compute === "function";
-      built = defs.map(({ spec, home }) => {
-        const cfg: GpgpuConfig = { ...spec.config, SIZE: gridSize };
-        const b = isWebGPUBackend
-          ? mod.createGpgpuComputeNodeSim(
-              gl as never,
-              webgpu as never,
-              tslNs as never,
-              home.homeRGBA,
-              home.aRef,
-              gridSize,
-              cfg,
-              spec.render,
-            )
-          : mod.createGpgpuNodeSim(
-              gl as never,
-              webgpu as never,
-              tslNs as never,
-              home.homeRGBA,
-              home.aRef,
-              gridSize,
-              cfg,
-              floatType,
-              spec.render,
-            );
-        return {
-          rig: b.rig,
-          geometry: b.geometry as unknown as THREE.InstancedBufferGeometry,
-          material: b.material as unknown as THREE.Material,
-          uFade: b.uFade,
-          uPointSize: b.uPointSize,
-          uPixelRatio: b.uPixelRatio,
-          uViewport: b.uViewport as unknown as { value: THREE.Vector2 },
-          uEmissive: b.uEmissive,
-          uPointAlpha: b.uPointAlpha,
-          spec,
-          dispose: b.dispose,
-        };
-      });
-      setTsl2(built);
-    });
-    return () => {
-      cancelled = true;
-      built?.forEach((b) => b.dispose());
-      setTsl2(null);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gpgpuOk, floatType, gridSize, bodyHome, skinHome, show2Layer]);
-
   // === SPORE build (spores) ==================================================
-  // Compute sim + instanced SHADED icospheres — TRUE WebGPU sub-backend ONLY
-  // (storage-buffer compute no-ops on the WebGL2 fallback, three #31221). On
-  // any other backend the mode degrades to just the dark occluder mark (no
-  // crash); the shipping default stays `particles-static` until flipped.
+  // Unified compute sim + instanced SHADED icospheres — TRUE WebGPU sub-backend
+  // ONLY (storage-buffer compute no-ops on the WebGL2 fallback, three #31221).
+  // On any other backend the mode degrades to the static-particle mark above
+  // (no crash, no blank canvas).
   interface TslSpore {
     rig: GpgpuSimRig;
     geometry: THREE.InstancedBufferGeometry;
@@ -675,12 +372,14 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     uFade: { value: number };
     uSporeRadius: { value: number };
     uEmissive: { value: number };
+    uOrbit: { value: number };
+    uOrbitFalloff: { value: number };
     uBurst: { value: number };
     dispose: () => void;
   }
   const [tslSpore, setTslSpore] = useState<TslSpore[] | null>(null);
   useEffect(() => {
-    if (!webgpuEnabled() || !gpgpuOk || !showSpores || !sporeHomes) return;
+    if (!webgpuEnabled() || !showSpores || !sporeHomes) return;
     let cancelled = false;
     let built: TslSpore[] | null = null;
     void Promise.all([
@@ -689,6 +388,10 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       import("./gpgpu/gpgpuNodeSim"),
     ]).then(([webgpu, tslNs, mod]) => {
       if (cancelled) return;
+      // TRUE WebGPU sub-backend detection. The WebGPU backend leaves
+      // `isWebGLBackend` UNDEFINED; only the WebGL backend sets it `true`. So
+      // "is WebGPU" = backend present, NOT the WebGL backend, AND the renderer
+      // exposes `compute`. (`=== false` was wrong: undefined !== false.)
       const bk = (gl as unknown as { backend?: { isWebGLBackend?: boolean } })
         .backend;
       const isWebGPUBackend =
@@ -722,6 +425,8 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
           uFade: b.uFade,
           uSporeRadius: b.uSporeRadius,
           uEmissive: b.uEmissive,
+          uOrbit: b.uOrbit,
+          uOrbitFalloff: b.uOrbitFalloff,
           uBurst: b.uBurst,
           dispose: b.dispose,
         };
@@ -734,16 +439,9 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       setTslSpore(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gpgpuOk, sporeGridSize, sporeHomes, showSpores]);
+  }, [sporeGridSize, sporeHomes, showSpores]);
 
-  // Active rig + render mesh. OFF → GLSL (synchronous); ON → TSL once resolved.
-  const rig = glsl?.rig ?? tsl?.rig;
-  const renderGeometry = glsl?.geometry ?? tsl?.geometry;
-  const renderMaterial = (glsl?.material ?? tsl?.material) as
-    | THREE.Material
-    | undefined;
-
-  // Active static build (bisection). OFF → GLSL; ON → TSL once resolved.
+  // Active static build. OFF → GLSL; ON → TSL once resolved.
   const staticGeometry = glslStatic?.geometry ?? tslStatic?.geometry;
   const staticMaterial = (glslStatic?.material ?? tslStatic?.material) as
     | THREE.Material
@@ -846,7 +544,12 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     const scrollPx = progress * Math.max(sh - ih, 0);
 
     const heroSpan = anchors.spans["hero"];
-    const heroEndPx = heroSpan ? Math.max(heroSpan.end * sh - ih, 1) : ih * 4.2;
+    // No-span fallback = the spine's scrub travel (outer height − viewport),
+    // derived from the shared SPINE constants instead of a stale hard-coded
+    // multiple so a height change can never silently desync the choreography.
+    const heroEndPx = heroSpan
+      ? Math.max(heroSpan.end * sh - ih, 1)
+      : ih * (SPINE_TRAVEL_VH / 100);
     const hp = THREE.MathUtils.clamp(scrollPx / heroEndPx, 0, 1);
 
     // Hold through the pin; recede + fade over the last quarter (identical to
@@ -914,7 +617,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       delta,
     );
 
-    // --- SHIPPING static feed (analytic dispersion) -------------------------
+    // --- STATIC fallback feed (analytic dispersion) --------------------------
     // The static render reads its own per-instance `aHome` positions (no sim,
     // no rig to step) and analytically displaces particles near the cursor in
     // the vertex shader. Feed it the model-space cursor + eased hover so the
@@ -971,51 +674,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       return;
     }
 
-    // --- TWO-LAYER momentum sim (body + skin) -------------------------------
-    // Step BOTH rigs with the SAME model-space cursor + dt, then feed each
-    // layer's render uniforms from its OWN preset (body calm/violet/opaque,
-    // skin reactive/cyan/additive). Body renders first (occludes), skin over it.
-    if (show2Layer && (glsl2 || tsl2)) {
-      // Shared model-space cursor (raycast helper). Far value when not
-      // hovering → repulsion vanishes.
-      projectCursorToModel(spin);
-
-      simTimeRef.current += delta;
-      tickParams.dt = delta;
-      tickParams.time = simTimeRef.current;
-      tickParams.mouse.copy(modelMouse);
-
-      const dpr2 = Math.min(gl.getPixelRatio(), 2);
-      if (glsl2) {
-        for (const layer of glsl2) {
-          layer.rig.tick(tickParams);
-          const u = layer.material.uniforms;
-          u.uPosTex.value = layer.rig.positionTexture;
-          u.uVelTex.value = layer.rig.velocityTexture;
-          u.uPointSize.value = layer.spec.config.POINT_SIZE;
-          u.uPixelRatio.value = dpr2;
-          u.uViewport.value.set(size.width * dpr2, size.height * dpr2);
-          u.uFade.value = fade;
-          u.uEmissive.value = layer.spec.config.EMISSIVE;
-          u.uPointAlpha.value = layer.spec.config.POINT_ALPHA;
-        }
-      } else if (tsl2) {
-        for (const layer of tsl2) {
-          // TSL render samples the RTs via its own repointed texture nodes
-          // (done inside rig.tick); here we only drive the shared uniforms.
-          layer.rig.tick(tickParams);
-          layer.uPointSize.value = layer.spec.config.POINT_SIZE;
-          layer.uPixelRatio.value = dpr2;
-          layer.uViewport.value.set(size.width * dpr2, size.height * dpr2);
-          layer.uFade.value = fade;
-          layer.uEmissive.value = layer.spec.config.EMISSIVE;
-          layer.uPointAlpha.value = layer.spec.config.POINT_ALPHA;
-        }
-      }
-      return;
-    }
-
-    // --- SPORES (instanced shaded spheres on the compute sim) ---------------
+    // --- SPORES (instanced shaded spheres on the unified compute sim) -------
     if (showSpores && !sporeStaticFallback) {
       // Scroll-out dissolve: as soon as scrolling STARTS the spores begin to
       // BURST from the logo center and die (staggered) — but the FULL
@@ -1052,94 +711,22 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         layer.uFade.value = fade;
         layer.uSporeRadius.value = sporeBaseRadius * fx.sporeSize;
         layer.uEmissive.value = fx.sporeEmissive;
+        // Attractor orbit term (C3): ratio of each layer's own PUSH, so the
+        // pinned core keeps its whisper while the crust swirls. Falloff-gated
+        // → the resting crust is untouched at any knob value.
+        layer.uOrbit.value = fx.sporeAttractor;
+        layer.uOrbitFalloff.value = fx.sporeOrbitFalloff;
         layer.uBurst.value = burst;
       }
       return;
     }
-
-    // Nothing more to do until the active rig exists (synchronous on OFF; after
-    // the lazy TSL chunk resolves on ON).
-    if (!rig) return;
-
-    // --- Model-space mouse ---------------------------------------------------
-    // Raycast helper: exact mark-surface point under the cursor (model space,
-    // exact under the parallax tilt); MOUSE_OFF when not hovering.
-    projectCursorToModel(spin);
-
-    // --- Live force knobs (leva → fxStore) ----------------------------------
-    rig.setForces({
-      spring: fx.gpgpuSpring,
-      push: fx.gpgpuPush,
-      radius: fx.gpgpuRadius,
-      damping: fx.gpgpuDamping,
-      turbBase: fx.gpgpuTurbBase,
-    });
-
-    // --- Advance the GPU simulation one step --------------------------------
-    simTimeRef.current += delta;
-    tickParams.dt = delta;
-    tickParams.time = simTimeRef.current;
-    tickParams.mouse.copy(modelMouse);
-    rig.tick(tickParams);
-
-    // --- Feed the render material -------------------------------------------
-    // devicePixelRatio capped at 2 (PRD §5). The billboard converts a
-    // device-pixel sprite size to a clip-space corner offset, so it needs the
-    // real drawing-buffer resolution (CSS px × dpr).
-    const dpr = Math.min(gl.getPixelRatio(), 2);
-    if (glsl) {
-      const u = glsl.uniforms;
-      u.uPosTex.value = rig.positionTexture;
-      u.uVelTex.value = rig.velocityTexture;
-      u.uPointSize.value = fx.gpgpuPointSize;
-      u.uPixelRatio.value = dpr;
-      u.uViewport.value.set(size.width * dpr, size.height * dpr);
-      u.uFade.value = fade;
-      u.uEmissive.value = fx.gpgpuEmissive;
-      u.uPointAlpha.value = fx.gpgpuPointAlpha;
-    } else if (tsl) {
-      // The TSL render material samples the RTs via its own repointed texture
-      // nodes (done inside rig.tick); here we only drive the shared uniforms.
-      tsl.uPointSize.value = fx.gpgpuPointSize;
-      tsl.uPixelRatio.value = dpr;
-      tsl.uViewport.value.set(size.width * dpr, size.height * dpr);
-      tsl.uFade.value = fade;
-      tsl.uEmissive.value = fx.gpgpuEmissive;
-      tsl.uPointAlpha.value = fx.gpgpuPointAlpha;
-    }
   });
 
-  // The particle mesh renders only when the rig + render mesh exist (synchronous
-  // on OFF; after the lazy TSL chunk resolves on ON) AND the mode asks for it.
-  // When gpgpuOk is false this stays null forever — nothing renders, no crash —
-  // but heroReady still fires from useFrame so the poster/drag handoff is
-  // unaffected. The solid DEBUG mesh is independent of the rig, so the group is
-  // always mounted (it also keeps useFrame running so heroReady is announced).
-  const particleMesh =
-    showParticles && renderGeometry && renderMaterial ? (
-      // The GPU particle cloud. frustumCulled off: the instanced quad's
-      // bounding sphere is the tiny unit quad, so a naive cull would drop the
-      // whole field.
-      <mesh
-        geometry={renderGeometry}
-        material={renderMaterial}
-        frustumCulled={false}
-      />
-    ) : null;
-
-  // The DEBUG solid mark — the SAME normalized bodyGeometry that feeds
-  // MeshSurfaceSampler, drawn as an unlit violet mesh under the identical
-  // spin/assembly/group transform stack so it's framed exactly like the
-  // particles. React mounts/unmounts it with the mode.
-  const solidMesh = showSolid ? (
-    <mesh geometry={bodyGeometry} material={solidMaterial} />
-  ) : null;
-
-  // BISECTION static mesh — the particle billboards placed at their HOME
-  // positions (per-instance `aHome`), bypassing the GPGPU position texture +
-  // sim. Parented under the SAME spin/assembly/group stack so it's framed
-  // exactly like solid + particles. Renders once the build resolves
-  // (synchronous on OFF; after the lazy TSL chunk on ON).
+  // STATIC mesh — the particle billboards at their HOME positions
+  // (per-instance `aHome`), analytic cursor dispersion in the vertex stage.
+  // Parented under the SAME spin/assembly/group stack as the spores so every
+  // path is framed identically. Renders once the build resolves (synchronous
+  // on OFF; after the lazy TSL chunk on ON).
   const staticMesh =
     showStaticBuild && staticGeometry && staticMaterial ? (
       <mesh
@@ -1148,28 +735,6 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         frustumCulled={false}
       />
     ) : null;
-
-  // TWO-LAYER meshes (particles-2layer): BODY first (renderOrder 0 — occludes,
-  // reads solid) then SKIN (renderOrder 1 — additive glow over it). Active on
-  // the OFF (glsl2) or ON (tsl2) path once the rigs are built.
-  type Render2Layer = {
-    geometry: THREE.InstancedBufferGeometry;
-    material: THREE.Material;
-    spec: GpgpuLayerConfig;
-  };
-  const twoLayer: Render2Layer[] | null = glsl2 ?? tsl2;
-  const twoLayerMeshes =
-    show2Layer && twoLayer
-      ? twoLayer.map((layer, i) => (
-          <mesh
-            key={i}
-            geometry={layer.geometry}
-            material={layer.material}
-            frustumCulled={false}
-            renderOrder={i}
-          />
-        ))
-      : null;
 
   // SPORE meshes (spores): dark occluder mark + TWO instanced sphere shells
   // (violet erodible crust outside, glowing cyan immortal core beneath). ALL
@@ -1204,23 +769,13 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
           <mesh
             ref={raycastTargetRef}
             geometry={bodyGeometry}
-            material={solidMaterial}
+            material={raycastMaterial}
             visible={false}
           />
-          {solidMesh}
-          {particleMesh}
           {staticMesh}
-          {twoLayerMeshes}
           {sporeMeshes}
         </group>
       </group>
     </group>
   );
 }
-
-// The shared unit-quad corners for the billboard (z=0, xy in [-0.5,0.5]). The
-// vertex shader expands these to a per-instance screen size in clip space.
-const QUAD_CORNERS = new Float32Array([
-  -0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0,
-]);
-const QUAD_INDEX = new Uint16Array([0, 1, 2, 0, 2, 3]);

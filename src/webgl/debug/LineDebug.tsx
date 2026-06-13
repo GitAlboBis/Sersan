@@ -49,13 +49,14 @@ export default function LineDebug() {
       lookAhead: { value: defaults.lookAhead, min: 0, max: 0.15, step: 0.005 },
       lookTiltScale: { value: defaults.lookTiltScale, min: 0, max: 0.5, step: 0.01 },
     }),
-    // GPGPU dissolve hero (HeroLogo). The FRAMING knobs (scale/offsetX/offsetY/
-    // posZ) place the mark as a prominent, fully-visible particle logo on the
-    // hero right — tune them live to fit the viewport. spring+damping = how
-    // tightly the mark snaps back (glued return); push/radius = the cursor
-    // dispersion; turbBase = at-rest shimmer (keep ~0 for a crisp glued skin);
-    // pointSize+pointAlpha = how densely the sprites overlap into a solid
-    // velvety skin; emissive = glow.
+    // GPGPU hero (HeroLogo). The FRAMING knobs (scale/offsetX/offsetY/posZ)
+    // place the mark as a prominent, fully-visible particle logo on the hero
+    // right — tune them live to fit the viewport. push/radius/pointSize/
+    // pointAlpha/emissive drive the STATIC fallback's analytic dispersion;
+    // the spore* knobs drive the shipping spores mode (size, emission, and
+    // the C3 cursor-attractor orbit term — strength as a ratio of each
+    // layer's PUSH + its falloff exponent; rest state is falloff-gated so
+    // these only shape hover/burst motion).
     "GPGPU hero": folder({
       heroScale: {
         value: defaults.heroScale,
@@ -85,17 +86,8 @@ export default function LineDebug() {
         step: 0.05,
         label: "frame: pos Z",
       },
-      gpgpuSpring: { value: defaults.gpgpuSpring, min: 4, max: 90, step: 1, label: "spring" },
-      gpgpuDamping: { value: defaults.gpgpuDamping, min: 1, max: 18, step: 0.5, label: "damping" },
       gpgpuPush: { value: defaults.gpgpuPush, min: 0, max: 120, step: 1, label: "push" },
       gpgpuRadius: { value: defaults.gpgpuRadius, min: 0.1, max: 1.5, step: 0.02, label: "radius" },
-      gpgpuTurbBase: {
-        value: defaults.gpgpuTurbBase,
-        min: 0,
-        max: 0.5,
-        step: 0.01,
-        label: "turb @ rest",
-      },
       gpgpuPointSize: { value: defaults.gpgpuPointSize, min: 2, max: 28, step: 0.5, label: "point size" },
       gpgpuPointAlpha: {
         value: defaults.gpgpuPointAlpha,
@@ -132,6 +124,20 @@ export default function LineDebug() {
         max: 6,
         step: 0.1,
         label: "spore emission",
+      },
+      sporeAttractor: {
+        value: defaults.sporeAttractor,
+        min: 0,
+        max: 3,
+        step: 0.05,
+        label: "attractor orbit ×push",
+      },
+      sporeOrbitFalloff: {
+        value: defaults.sporeOrbitFalloff,
+        min: 0.5,
+        max: 6,
+        step: 0.25,
+        label: "orbit falloff exp",
       },
     }),
     // Pointer fluid (WebGPU/TSL path only — see PostFXNodes). Live-tune the

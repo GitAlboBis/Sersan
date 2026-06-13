@@ -1,30 +1,43 @@
 /**
- * GPGPU "dissolve & regenerate" simulation + render — TSL build (WebGPU backend
- * / flag-ON path).
+ * GPGPU hero simulations — TSL compute + storage buffers (true-WebGPU backend)
+ * plus the stateless analytic fallback render.
  *
- * TSL twin of gpgpuSim.ts + gpgpuRenderShader.ts. Same FBO ping-pong technique
- * proven on WebGPURenderer by fluid/PointerFlowmap.ts: an offscreen quad +
- * OrthographicCamera, two pairs of float RenderTargets (POSITION / VELOCITY),
- * advanced with `gl.setRenderTarget(rt); gl.render(quad, cam); gl.setRenderTarget
- * (prev)` inside the SINGLE useFrame, then swapped. `Renderer.render()` is
- * synchronous and works on BOTH the WebGPU and WebGL2 sub-backends of
- * WebGPURenderer, so this one TSL path covers the whole flag-ON build with no
- * sub-backend special-case (unlike storage-buffer compute, which silently
- * no-ops on the WebGL2 fallback sub-backend — see the research spec §5.3).
+ * ENGINE (post-C3 consolidation, restyle step 4, 2026-06-13)
+ * ----------------------------------------------------------
+ * Particle state (position / velocity / homes / life) lives in GPU storage
+ * buffers (`instancedArray`, seeded straight from CPU Float32Arrays), advanced
+ * by compute kernels (`Fn(...)().compute(count)`) dispatched with
+ * `gl.compute(node)` once per frame from the caller's useFrame. Render
+ * materials read the buffers in the VERTEX stage via `.toAttribute()` ONLY —
+ * `.element(i)` outside compute is broken on the WebGL fallback backend
+ * (three #31221), and `.toAttribute()` is sampler-free (no texture round-trip,
+ * no orientation/LOD pitfalls), which is what retired the FBO rigs for good.
  *
- * The sim MATH (spring + mouse repulsion + turbulence + damping/clamp) and the
- * render (instanced billboard, violet→cyan by RAW velocity, HDR additive) mirror
- * the GLSL twin and particleDissolve.html formula-for-formula. Turbulence is the
- * reference's sin-based per-axis shimmer (both backends identical).
+ * RETIRED in C3: createGpgpuNodeSim (the TSL FBO ping-pong rig — its RT
+ * round-trip scrambled on the WebGPU backend and it only served the parked
+ * `particles` debug mode), createGpgpuComputeNodeSim (the billboard compute
+ * sim behind `particles` / `particles-2layer`), and their GLSL twins
+ * (gpgpuSim.ts deleted; createGpgpuRenderMaterial removed from
+ * gpgpuRenderShader.ts). Survivors:
+ *   - createSporeComputeNodeBuild   — the SHIPPING spores hero (HeroLogo)
+ *   - createTextMorphComputeBuild   — the hero text intro (HeroTextParticles)
+ *   - createStaticParticleNodeBuild — the analytic non-WebGPU fallback
+ * The two compute kernels integrate through ONE shared force model
+ * (`unifiedForceStep` below); the GLSL static twin stays in
+ * gpgpuRenderShader.ts for the flag-OFF bundle.
  *
- * ALL `three/webgpu` + `three/tsl` symbols are passed IN by HeroLogo (which
+ * ALL `three/webgpu` + `three/tsl` symbols are passed IN by the caller (which
  * lazy-imports the namespaces, exactly like PostFXNodes feeds PointerFlowmap),
- * so this module imports the heavy build only via the dynamic import in HeroLogo
- * and never lands in the OFF bundle. Loosely typed for the same reason
- * PointerFlowmap is: the real node types are vast and generic.
+ * so this module never lands in the OFF bundle. Loosely typed for the same
+ * reason PointerFlowmap is: the real node types are vast and generic.
+ *
+ * BACKEND CONTRACT — the compute kernels are only valid on the TRUE WebGPU
+ * sub-backend (storage `.element()` indexing no-ops / misindexes under the
+ * WebGL2 transform-feedback emulation, three #31221). Callers gate on
+ *   `backend.isWebGLBackend !== true && typeof gl.compute === "function"`
+ * and route every other backend to the static builds.
  */
-import type { GpgpuConfig, GpgpuRenderOpts } from "./gpgpuConfig";
-import type { GpgpuTickParams, GpgpuSimRig, GpgpuForces } from "./gpgpuSim";
+import type { GpgpuConfig, GpgpuTickParams, GpgpuSimRig } from "./gpgpuConfig";
 
 // --- Loose structural types for the lazily-imported namespaces --------------
 type AnyNode = {
@@ -41,22 +54,14 @@ type AnyNode = {
   assign: (n: AnyNode | number) => void;
   lessThan: (n: AnyNode | number) => AnyNode;
   greaterThan: (n: AnyNode | number) => AnyNode;
-  /** Storage-buffer element accessor (read/write handle) by index node. */
+  /** Storage-buffer element accessor (read/write handle) by index node —
+   * COMPUTE-STAGE ONLY (broken in render stages on WebGL, three #31221). */
   element: (index: AnyNode) => AnyNode & { value: unknown };
-  /** Expose a storage/instanced buffer as a per-instance vertex attribute. */
+  /** Expose a storage/instanced buffer as a per-instance vertex attribute —
+   * the ONLY legal render-stage read of a storage buffer. */
   toAttribute: () => AnyNode;
   /** Build a compute node from a kernel Fn result: `Fn(...)().compute(count)`. */
   compute: (count: number) => AnyNode;
-  /**
-   * TSL `TextureNode.level(levelNode)` — pins an explicit mip level on a texture
-   * sample (three 0.184 `src/nodes/accessors/TextureNode.js`). Required for any
-   * texture read used inside a VERTEX stage on the WebGPU backend: a plain
-   * `texture()` auto-sample emits a fragment-only `textureSample` (no implicit
-   * LOD is legal in a WGSL vertex shader), so the vertex-stage read returns
-   * garbage. `.level(0)` routes code-gen through `generateTextureLevel`, which
-   * emits an explicit-LOD fetch valid in the vertex stage.
-   */
-  level: (n: AnyNode | number) => AnyNode & { value: unknown };
   x: AnyNode;
   y: AnyNode;
   z: AnyNode;
@@ -81,21 +86,6 @@ interface Vec2Like {
 interface ColorLike {
   fromArray: (a: number[]) => ColorLike;
 }
-interface TextureLike {
-  needsUpdate: boolean;
-  minFilter: number;
-  magFilter: number;
-  wrapS: number;
-  wrapT: number;
-}
-interface RenderTargetLike {
-  texture: TextureLike;
-  dispose: () => void;
-}
-interface MeshLike {
-  frustumCulled: boolean;
-  material: unknown;
-}
 interface NodeMaterialLike {
   colorNode: unknown;
   opacityNode: unknown;
@@ -109,41 +99,14 @@ interface NodeMaterialLike {
   blending: number;
   toneMapped: boolean;
   side: number;
-  // Sim passes write raw float data → no implicit color-space conversion on out.
-  outputColorTransform?: boolean;
   dispose: () => void;
 }
 interface RendererLike {
-  getRenderTarget: () => RenderTargetLike | null;
-  setRenderTarget: (rt: RenderTargetLike | null) => void;
-  render: (scene: unknown, camera: unknown) => void;
-  clear: (color?: boolean, depth?: boolean, stencil?: boolean) => void;
   /** Dispatch a TSL compute node (synchronous once the backend is initialised). */
   compute: (node: unknown) => void;
-  /** Runtime backend probe — `false` on the true WebGPU sub-backend. */
-  backend?: { isWebGLBackend?: boolean };
 }
 
 export interface WebGPUSymbolsGpgpu {
-  RenderTarget: new (w: number, h: number, opts: Record<string, unknown>) => RenderTargetLike;
-  DataTexture: new (
-    data: Float32Array,
-    w: number,
-    h: number,
-    format: number,
-    type: number,
-  ) => TextureLike;
-  Scene: new () => { add: (o: unknown) => void };
-  OrthographicCamera: new (
-    l: number,
-    r: number,
-    t: number,
-    b: number,
-    n: number,
-    f: number,
-  ) => unknown;
-  Mesh: new (geo: unknown, mat: unknown) => MeshLike;
-  PlaneGeometry: new (w: number, h: number) => { dispose: () => void };
   InstancedBufferGeometry: new () => InstancedGeoLike;
   BufferAttribute: new (arr: ArrayLike<number>, itemSize: number) => unknown;
   InstancedBufferAttribute: new (arr: ArrayLike<number>, itemSize: number) => unknown;
@@ -157,16 +120,8 @@ export interface WebGPUSymbolsGpgpu {
   Color: new () => ColorLike;
   Vector2: new (x?: number, y?: number) => Vec2Like;
   Vector3: new (x?: number, y?: number, z?: number) => Vec3Like;
-  /** Float32 → IEEE-754 half-float encode (for a HalfFloat `home` DataTexture). */
-  DataUtils: { toHalfFloat: (v: number) => number };
-  FloatType: number;
-  HalfFloatType: number;
-  RGBAFormat: number;
-  NearestFilter: number;
-  ClampToEdgeWrapping: number;
   AdditiveBlending: number;
   NormalBlending: number;
-  NoBlending: number;
   DoubleSide: number;
 }
 interface InstancedGeoLike {
@@ -178,22 +133,11 @@ interface InstancedGeoLike {
 
 export interface TslSymbolsGpgpu {
   uniform: (v: unknown) => UniformNode<unknown>;
-  texture: (tex: unknown, uvNode?: AnyNode) => AnyNode & { value: unknown };
-  /**
-   * `textureLoad(tex, ivec2Coord)` — sampler-FREE integer texel fetch
-   * (`texture(tex, uv).setSampler(false)`, three 0.184). The ROBUST vertex-stage
-   * read on the WebGPU backend: a plain `textureSampleLevel` (`.level(0)`) binds
-   * a filtering sampler and returned garbage in the vertex stage here, whereas
-   * `textureLoad` needs no sampler/derivatives and is valid in any stage.
-   */
-  textureLoad: (tex: unknown, uvNode: AnyNode) => AnyNode & { value: unknown };
-  ivec2: (x: AnyNode | number, y?: AnyNode | number) => AnyNode;
   attribute: (name: string) => AnyNode;
   /** Allocate a GPU storage buffer (seed by passing a TypedArray as `count`). */
   instancedArray: (count: number | Float32Array, type: string) => AnyNode & { value: unknown };
   /** Per-invocation / per-instance index node (compute thread + vertex instance). */
   instanceIndex: AnyNode;
-  uv: () => AnyNode;
   positionLocal: AnyNode;
   /** View-space normal (normalMatrix × normalLocal) — correct under the spore
    * positionNode (per-instance translate + UNIFORM scale leave normals alone). */
@@ -218,6 +162,7 @@ export interface TslSymbolsGpgpu {
   sin: (n: AnyNode) => AnyNode;
   fract: (n: AnyNode) => AnyNode;
   dot: (a: AnyNode, b: AnyNode) => AnyNode;
+  cross: (a: AnyNode, b: AnyNode) => AnyNode;
   mix: (a: AnyNode, b: AnyNode, t: AnyNode | number) => AnyNode;
   smoothstep: (a: AnyNode | number, b: AnyNode | number, x: AnyNode) => AnyNode;
   Discard: (cond: AnyNode) => void;
@@ -239,829 +184,137 @@ export interface TslIfChain {
 const QUAD_CORNERS = [-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0];
 const QUAD_INDEX = [0, 1, 2, 0, 2, 3];
 
-export interface GpgpuNodeBuild {
-  rig: GpgpuSimRig;
-  /** Instanced billboard geometry (one quad per particle, `aRef` per instance). */
-  geometry: InstancedGeoLike;
-  /** TSL render material reading position/velocity from the sim's RTs. */
-  material: NodeMaterialLike;
-  /** Live-tunable scroll fade (the render's uFade). */
-  uFade: UniformNode<number>;
-  /** Base sprite size in device px (leva-tunable). */
-  uPointSize: UniformNode<number>;
-  /** Device-pixel-ratio uniform (capped upstream). */
-  uPixelRatio: UniformNode<number>;
-  /** Framebuffer size in DEVICE pixels. */
-  uViewport: UniformNode<unknown>;
-  /** HDR emissive / at-rest glow multiplier (leva-tunable, mirrors GLSL). */
-  uEmissive: UniformNode<number>;
-  /** Disc-center alpha — solid-skin density (leva-tunable, mirrors GLSL). */
-  uPointAlpha: UniformNode<number>;
-  dispose: () => void;
+// ===========================================================================
+// UNIFIED FORCE MODEL — the single integration code path shared by BOTH
+// compute kernels (spores + text morph). C3 consolidation, 2026-06-13.
+// ===========================================================================
+// Model (the determinism contract from the 06-13 research): pos = anchor +
+// offset. `anchor` is ALWAYS analytic — a pure function of the system's
+// uniforms (the mark's home field; the text morph's staggered A→B→C→D blend +
+// entry wave) plus per-particle hashes — so it is deterministic for ANY scrub
+// state in either direction. The integrated state only ever RELAXES the
+// implicit offset (pos − anchor) toward 0: the spring's unique fixed point is
+// the anchor, exponential damping bounds the relaxation time, and the
+// velocity clamp bounds the excursion. A hard "offset = 0" reset (respawn at
+// home, rebuild-seeding at home) is therefore always legal.
+//
+// The attractor term is the force shape of the official r184
+// `webgpu_tsl_compute_attractors_particles` example, adapted to our bounded
+// cursor interaction:
+//   - RADIAL: the approved push² falloff `(max(0, R − d)/R)² · PUSH`,
+//     pointing AWAY from the attractor (negative-mass attractor = repulsion).
+//   - ORBIT (new): the example's spin term `axis × direction`, scaled by the
+//     SAME strength family (PUSH × orbit-ratio) and its own falloff exponent,
+//     so displaced particles swirl around the cursor axis while the radial
+//     term throws them out.
+// Both terms perturb only the offset and are exactly zero with the cursor
+// parked at 1e9 — the resting crust and every morph rest state are unchanged
+// by construction.
+
+interface UnifiedAttractorOpts {
+  /** Attractor position (model space). Park at ~1e9 to disable. */
+  position: AnyNode;
+  /** Radial strength — POSITIVE pushes AWAY (our cursor repulsion). */
+  push: AnyNode;
+  /** Influence radius (model space). */
+  radius: AnyNode;
+  /** Orbit (spin) strength as a RATIO of `push`. 0 = radial only. */
+  orbit: AnyNode;
+  /** Falloff exponent for the orbit term (radial keeps its push² shape). */
+  orbitFalloff: AnyNode;
+  /** Spin axis (unit, model space) — `cross(axis, dir)` is the swirl. */
+  axis: AnyNode;
+}
+
+interface UnifiedForceStepOpts {
+  /** Current position (storage element handle; advanced by the CALLER after
+   * the step so system-specific state machines stay in control). */
+  pos: AnyNode;
+  /** Velocity WORKING VAR (`velH.toVar()`); assigned in place. */
+  vel: AnyNode;
+  /** The analytic anchor target — a pure function of uniforms (see above). */
+  anchor: AnyNode;
+  dt: AnyNode;
+  spring: AnyNode;
+  damping: AnyNode;
+  maxSpeed: AnyNode;
+  attractor?: UnifiedAttractorOpts;
+  /** System-specific extra acceleration (turbulence, scroll burst), summed
+   * into the accumulator before integration. */
+  extraAcc?: (
+    acc: AnyNode,
+    ctx: { toAnchor: AnyNode; attractorFalloff: AnyNode | null },
+  ) => void;
 }
 
 /**
- * Build the TSL GPGPU sim + render on the WebGPURenderer.
- *
- * `floatType` is FloatType or HalfFloatType (chosen by HeroLogo). `aRef` is the
- * per-instance grid-UV array from sampleMarkHomePositions; `homeRGBA` seeds the
- * home/position fields.
+ * Emit the shared force/integration statements into the calling kernel:
+ * anchor spring + (optional) attractor radial/orbit + caller extras, then
+ * `vel += acc·dt; vel *= exp(−damping·dt); |vel| ≤ maxSpeed`. Returns the
+ * PRE-CLAMP speed (the spores' DDD kill curve keys off it, exactly as the
+ * previous inline integration did) and the anchor delta.
  */
-export function createGpgpuNodeSim(
-  gl: RendererLike,
-  webgpu: WebGPUSymbolsGpgpu,
+function unifiedForceStep(
   tsl: TslSymbolsGpgpu,
-  homeRGBA: Float32Array,
-  aRef: Float32Array,
-  size: number,
-  config: GpgpuConfig,
-  floatType: number,
-  renderOpts: GpgpuRenderOpts = {
-    blending: "additive",
-    depthWrite: false,
-    transparent: true,
-  },
-): GpgpuNodeBuild {
-  const {
-    RenderTarget,
-    DataTexture,
-    Scene,
-    OrthographicCamera,
-    Mesh,
-    PlaneGeometry,
-    InstancedBufferGeometry,
-    BufferAttribute,
-    InstancedBufferAttribute,
-    MeshBasicNodeMaterial,
-    Color,
-    Vector2,
-    Vector3,
-    DataUtils,
-    HalfFloatType,
-    RGBAFormat,
-    NearestFilter,
-    ClampToEdgeWrapping,
-    AdditiveBlending,
-    NormalBlending,
-    NoBlending,
-    DoubleSide,
-  } = webgpu;
-  const {
-    uniform,
-    texture,
-    textureLoad,
-    ivec2,
-    attribute,
-    uv,
-    positionLocal,
-    modelViewMatrix,
-    cameraProjectionMatrix,
-    Fn,
-    vec3,
-    vec4,
-    float,
-    length,
-    max,
-    min,
-    clamp,
-    exp,
-    sin,
-    fract,
-    dot,
-    mix,
-    smoothstep,
-    Discard,
-    varying,
-    vec2,
-  } = tsl;
+  opts: UnifiedForceStepOpts,
+): { speed: AnyNode; toAnchor: AnyNode } {
+  const { float, length, max, min, exp, pow, cross } = tsl;
 
-  const rtOpts = {
-    type: floatType,
-    format: RGBAFormat,
-    minFilter: NearestFilter,
-    magFilter: NearestFilter,
-    wrapS: ClampToEdgeWrapping,
-    wrapT: ClampToEdgeWrapping,
-    depthBuffer: false,
-    stencilBuffer: false,
-    generateMipmaps: false,
-  };
-  let posRead = new RenderTarget(size, size, rtOpts);
-  let posWrite = new RenderTarget(size, size, rtOpts);
-  let velRead = new RenderTarget(size, size, rtOpts);
-  let velWrite = new RenderTarget(size, size, rtOpts);
+  // (a) elastic spring toward the analytic anchor — relaxes offset → 0.
+  const toAnchor = opts.anchor.sub(opts.pos).toVar();
+  const acc = toAnchor.mul(opts.spring).toVar();
 
-  // Immutable home (rest target). Its TYPE MUST MATCH the render targets'
-  // `floatType`, NOT a hardcoded FloatType — this is the WebGPU-backend fix.
-  //
-  // WHY (three 0.184, WebGPURenderer): an RGBA32Float (FloatType) DataTexture is
-  // bound with `sampleType = unfilterable-float` unless the device exposes the
-  // `float32-filterable` feature (which this renderer does NOT request — see
-  // createRenderer.ts). But three's WebGPU bind-group LAYOUT declares the
-  // accompanying sampler as the default FILTERING type for any non-depth texture
-  // (WebGPUBindingUtils.js). An unfilterable-float texture paired with a
-  // filtering sampler is INVALID per the WebGPU spec → the sim's `texture(home,
-  // …)` and the seed's `vec4(uHome.xyz,1)` read garbage → every particle springs
-  // toward a garbage target → the diffuse "vertical-seam" cloud instead of the
-  // "52". (The position/velocity RTs never hit this: they are HalfFloat on
-  // WebGPU, and a HalfFloat render-target texture keeps the filterable `float`
-  // sampleType — RGBA16Float is filterable by default.)
-  //
-  // FIX: build `home` as the SAME `floatType` the RTs use. On WebGPU that is
-  // HalfFloatType → RGBA16Float, which is filterable-by-default → the sampleType
-  // matches the filtering sampler layout → the sim reads the REAL home positions.
-  // A HalfFloat DataTexture wants IEEE-754 half-encoded Uint16 data, so encode
-  // homeRGBA when HalfFloat. Half precision (~0.001 near 1.0) is ample for the
-  // ±1.4 home coords, and positions already live in HalfFloat RTs on WebGPU. On
-  // the forced-WebGL sub-backend `floatType` is whatever HeroLogo probed (Float
-  // or Half) and RGBA32F is fine there, so the same code path is correct for both
-  // WebGPU sub-backends. NearestFilter both ways (exact texel reads).
-  const homeIsHalf = floatType === HalfFloatType;
-  const homeData = homeIsHalf
-    ? (() => {
-        const half = new Uint16Array(homeRGBA.length);
-        for (let i = 0; i < homeRGBA.length; i++) {
-          half[i] = DataUtils.toHalfFloat(homeRGBA[i]);
-        }
-        return half as unknown as Float32Array;
-      })()
-    : homeRGBA;
-  const home = new DataTexture(homeData, size, size, RGBAFormat, floatType);
-  home.needsUpdate = true;
-  home.minFilter = NearestFilter;
-  home.magFilter = NearestFilter;
-  home.wrapS = ClampToEdgeWrapping;
-  home.wrapT = ClampToEdgeWrapping;
-
-  // --- Offscreen quad ---------------------------------------------------------
-  const quadScene = new Scene();
-  const quadCam = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
-  const quadGeo = new PlaneGeometry(2, 2);
-
-  // Texture nodes for the sim passes. SAMPLER-FREE (`textureLoad`, integer
-  // texel) on EVERY read — including the fragment-stage sim reads — to sidestep
-  // the WebGPU sampleType/sampler mismatch entirely: a float/half RT or a
-  // half-float DataTexture paired with a FILTERING sampler is invalid per the
-  // WebGPU spec and read garbage on this backend (the diffuse/convergent cloud).
-  // `textureLoad` binds NO sampler, so the read is valid regardless of the
-  // texture's filterability. The fullscreen sim quad rasterises one fragment per
-  // texel; its uv pixel-centre ((i+0.5)/size) × size truncates to the exact texel
-  // `i`. `.value` is repointed each frame for the ping-pong swap (base nodes).
-  const simTexel = ivec2(uv().mul(float(size)));
-  const uPosRead = textureLoad(posRead.texture, simTexel) as AnyNode & { value: unknown };
-  const uVelRead = textureLoad(velRead.texture, simTexel) as AnyNode & { value: unknown };
-  const uHome = textureLoad(home, simTexel) as AnyNode & { value: unknown };
-  // The position pass needs the JUST-written velocity (velWrite), fetched fresh.
-  const uVelForPos = textureLoad(velWrite.texture, simTexel) as AnyNode & { value: unknown };
-
-  const uMouse = uniform(new Vector3(1e9, 1e9, 1e9)) as UniformNode<Vec3Like>;
-  const uDelta = uniform(1 / 60) as UniformNode<number>;
-  const uTime = uniform(0) as UniformNode<number>;
-
-  // Spring/push/radius/damping/turbBase are uniforms so leva can tune them live
-  // (mirrors the GLSL twin's setForces); the rest are baked constants.
-  const uSpring = uniform(config.SPRING) as UniformNode<number>;
-  const uPush = uniform(config.PUSH) as UniformNode<number>;
-  const uRadiusN = uniform(config.RADIUS) as UniformNode<number>;
-  const uDamping = uniform(config.DAMPING) as UniformNode<number>;
-  const uTurbBaseN = uniform(config.TURB_BASE) as UniformNode<number>;
-  const SPRING = uSpring as unknown as AnyNode;
-  const DAMPING = uDamping as unknown as AnyNode;
-  const PUSH = uPush as unknown as AnyNode;
-  const RADIUS = uRadiusN as unknown as AnyNode;
-  const MAX_SPEED = float(config.MAX_SPEED);
-  const TURB_BASE = uTurbBaseN as unknown as AnyNode;
-  const TURB_MOVE = float(config.TURB_MOVE);
-  const TURB_DISP_K = float(config.TURB_DISP_K);
-
-  // Sim passes write RAW float data into the targets — disable blending, tone
-  // mapping and any output color-space transform so the bytes are preserved.
-  const configureSimMat = (m: NodeMaterialLike) => {
-    m.transparent = false;
-    m.depthTest = false;
-    m.depthWrite = false;
-    m.blending = NoBlending;
-    m.toneMapped = false;
-    m.outputColorTransform = false;
-  };
-
-  // --- VELOCITY sim material --------------------------------------------------
-  const velMat = new MeshBasicNodeMaterial();
-  configureSimMat(velMat);
-  velMat.colorNode = Fn(() => {
-    const pos = uPosRead.xyz.toVar();
-    const vel = uVelRead.xyz.toVar();
-    const homePos = uHome.xyz;
-    const dt = uDelta as unknown as AnyNode;
-    const time = uTime as unknown as AnyNode;
-
-    // Mirror of particleDissolve.html: accumulate an acceleration vector from
-    // the three forces, then integrate (vel += acc*dt). Faithful TSL of the
-    // reference velocity shader.
-
-    // (a) elastic spring toward home — ref: acc = (home - pos) * uSpring.
-    const toHome = homePos.sub(pos).toVar();
-    const acc = toHome.mul(SPRING).toVar();
-
-    // (b) mouse repulsion within RADIUS (model space), push² falloff. The
-    //     reference's `if (d < uRadius) { f = 1 - d/uRadius; ... f*f }` equals
-    //     `(max(0, R - d)/R)²`, which is 0 outside the radius — same branch,
-    //     branch-free. normalize(fromMouse + 1e-5) is the outward push direction.
-    const fromMouse = pos.sub(uMouse as unknown as AnyNode).toVar();
-    const d = length(fromMouse);
-    const f = max(float(0), RADIUS.sub(d)).div(RADIUS).toVar();
-    acc.addAssign(fromMouse.add(1e-5).normalize().mul(f.mul(f)).mul(PUSH));
-
-    // (d) turbulence — sin-based per-axis shimmer GATED HARD by displacement so
-    //     particles glued to the surface (disp≈0) get ~none and stay crisp; only
-    //     lifted/hovered particles shimmer. The whole term is ×disp so the
-    //     resting skin is still (mirrors the GLSL twin's fix vs the old constant
-    //     TURB_BASE 0.35 that loosened every particle).
-    //     disp = clamp(length(home - pos) * TURB_DISP_K, 0, 1);
-    //     acc += turb * (uTurbBase + uTurbMove * disp) * disp.
-    const disp = clamp(length(toHome).mul(TURB_DISP_K), 0.0, 1.0).toVar();
-    const turb = vec3(
-      sin(pos.y.mul(6.0).add(time.mul(1.3))),
-      sin(pos.z.mul(6.0).add(time.mul(1.7))),
-      sin(pos.x.mul(6.0).add(time.mul(1.1))),
+  // (b) cursor attractor: radial push² repulsion + orbital spin term.
+  let attractorFalloff: AnyNode | null = null;
+  if (opts.attractor) {
+    const a = opts.attractor;
+    const fromA = opts.pos.sub(a.position).toVar();
+    const d = length(fromA);
+    const f = max(float(0), a.radius.sub(d)).div(a.radius).toVar();
+    attractorFalloff = f;
+    // Radial — the approved shape, unchanged: `(max(0,R−d)/R)² · PUSH`.
+    acc.addAssign(fromA.add(1e-5).normalize().mul(f.mul(f)).mul(a.push));
+    // Orbit — attractors-example spin: axis × (direction TOWARD the cursor),
+    // strength = PUSH × ratio, gated by its own falloff exponent. The 1e-6
+    // bias dodges pow(0, e) driver quirks; at rest it contributes ~1e-12.
+    const dirIn = fromA.add(1e-5).normalize().negate();
+    acc.addAssign(
+      cross(a.axis, dirIn)
+        .mul(pow(f.add(1e-6), a.orbitFalloff))
+        .mul(a.push)
+        .mul(a.orbit),
     );
-    acc.addAssign(turb.mul(TURB_BASE.add(TURB_MOVE.mul(disp))).mul(disp));
-
-    // Integrate + exponential damping + max-speed clamp (ref order):
-    //   vel += acc*dt; vel *= exp(-uDamping*dt);
-    //   sp = length(vel); if (sp > uMaxSpeed) vel *= uMaxSpeed/sp;
-    vel.addAssign(acc.mul(dt));
-    vel.mulAssign(exp(DAMPING.negate().mul(dt)));
-    const sp = length(vel).toVar();
-    vel.assign(vel.mul(min(sp, MAX_SPEED).div(max(sp, 1e-4))));
-
-    return vec4(vel, 1.0);
-  })();
-
-  // --- POSITION sim material --------------------------------------------------
-  const posMat = new MeshBasicNodeMaterial();
-  configureSimMat(posMat);
-  posMat.colorNode = Fn(() => {
-    const pos = uPosRead.xyz;
-    const vel = uVelForPos.xyz;
-    return vec4(pos.add(vel.mul(uDelta as unknown as AnyNode)), 1.0);
-  })();
-
-  // --- Seed materials (home → position targets; zero → velocity targets) -----
-  // Render explicit seed values rather than relying on the renderer's clear
-  // color (which differs across the WebGPU/WebGL2 sub-backends and is the
-  // scene's navy, not zero).
-  const seedPosMat = new MeshBasicNodeMaterial();
-  configureSimMat(seedPosMat);
-  seedPosMat.colorNode = vec4(uHome.xyz, 1.0);
-
-  const seedVelMat = new MeshBasicNodeMaterial();
-  configureSimMat(seedVelMat);
-  seedVelMat.colorNode = vec4(0, 0, 0, 1.0);
-
-  const quad = new Mesh(quadGeo, seedPosMat);
-  quad.frustumCulled = false;
-  quadScene.add(quad);
-
-  // SEED on the FIRST tick (inside the useFrame render loop), NOT here in the
-  // build. On the WebGPU backend a `gl.render(...)` issued from a React effect
-  // (outside the renderer's frame loop) does NOT execute — the offscreen seed
-  // silently no-ops, posRead stays at the cleared zero, and the sim then springs
-  // every particle from the origin through heavy turbulence → the diffuse
-  // scatter (home + the textureLoad render are fine; this was the FBO-pass bug).
-  // Running the seed from within tick() makes WebGPU actually execute it. WebGL
-  // is unaffected (it renders immediately in either place).
-  let seeded = false;
-  const runSeed = () => {
-    const prevTarget = gl.getRenderTarget();
-    quad.material = seedPosMat;
-    gl.setRenderTarget(posRead);
-    gl.render(quadScene, quadCam);
-    gl.setRenderTarget(posWrite);
-    gl.render(quadScene, quadCam);
-    quad.material = seedVelMat;
-    gl.setRenderTarget(velRead);
-    gl.render(quadScene, quadCam);
-    gl.setRenderTarget(velWrite);
-    gl.render(quadScene, quadCam);
-    gl.setRenderTarget(prevTarget);
-    quad.material = velMat;
-  };
-
-  // === Render: instanced billboard reading the live position field ===========
-  const count = size * size;
-  const geometry = new InstancedBufferGeometry();
-  geometry.setAttribute(
-    "position",
-    new BufferAttribute(new Float32Array(QUAD_CORNERS), 3),
-  );
-  geometry.setIndex(new BufferAttribute(new Uint16Array(QUAD_INDEX), 1));
-  geometry.setAttribute("aRef", new InstancedBufferAttribute(aRef, 2));
-  geometry.instanceCount = count;
-
-  const uPointSize = uniform(config.POINT_SIZE) as UniformNode<number>;
-  const uPixelRatio = uniform(1) as UniformNode<number>;
-  const uViewport = uniform(new Vector2(1, 1)) as UniformNode<unknown>;
-  const uFade = uniform(1) as UniformNode<number>;
-  // Disc-center alpha (default 0.85, was a flat 0.55) so the dense field paints a
-  // solid skin instead of separate dots; mirrors the GLSL twin's uPointAlpha.
-  const uPointAlpha = uniform(config.POINT_ALPHA) as UniformNode<number>;
-  const uColCold = uniform(new Color().fromArray(config.COL_COLD)) as UniformNode<ColorLike>;
-  const uColHot = uniform(new Color().fromArray(config.COL_HOT)) as UniformNode<ColorLike>;
-  // HDR multiplier — keeps the selective-bloom contract while controlling the
-  // at-rest glow (see gpgpuRenderShader.ts EMISSIVE). A live uniform so HeroLogo
-  // can drive it from fxStore.gpgpuEmissive each frame; initialised from
-  // config.EMISSIVE (single source of truth, default ~3.0) so the resting violet
-  // crosses the Bloom threshold and the fast cyan motes bloom hard.
-  const uEmissive = uniform(config.EMISSIVE) as UniformNode<number>;
-
-  // The render samples the live POSITION/VELOCITY targets at this instance's
-  // grid texel, inside the render material's `vertexNode` (below). `.value` is
-  // repointed to the freshly-written targets each frame.
-  //
-  // VERTEX-STAGE READ FIX (WebGPU backend, three 0.184). A vertex-stage texture
-  // read must NOT rely on implicit derivatives. The previous `.level(0)`
-  // (textureSampleLevel) still binds a FILTERING SAMPLER, and on this WebGPU
-  // backend that returned garbage in the vertex stage → the scrambled cloud.
-  // `textureLoad(tex, ivec2)` (= `texture(tex,uv).setSampler(false)`) is a
-  // sampler-FREE integer texel fetch — no sampler, no derivatives, no LOD — and
-  // is unambiguously valid in any stage. The SIM's reads (uPosRead/uVelRead/
-  // uHome/uVelForPos) are in `colorNode` (fragment stage) and stay as plain
-  // samples. `textureLoad` returns the base texture node, so the per-frame swap
-  // below repoints `.value` directly (no referenceNode forwarding needed).
-  const aRefNode = attribute("aRef");
-  // Integer texel for the sampler-free vertex-stage fetch (works on WebGPU).
-  // NOTE: the RT round-trip (quad-write → textureLoad-read) has an unresolved
-  // orientation/layout mismatch on this WebGPU backend (neither raw nor Y-flipped
-  // aRef matches the seed's uv-write) — see ParticleDissolve.md. The render path
-  // itself is proven correct (reading the home DataTexture via this exact texel
-  // renders a clean "52"); the open issue is the render-target write/read layout.
-  const texelCoord = ivec2(aRefNode.mul(float(size)));
-  const uPosTexNode = textureLoad(posRead.texture, texelCoord) as AnyNode & {
-    value: unknown;
-  };
-  const uVelTexNode = textureLoad(velRead.texture, texelCoord) as AnyNode & {
-    value: unknown;
-  };
-
-  const material = new MeshBasicNodeMaterial();
-
-  // Per-instance pseudo-random in [0,1] — the TSL stand-in for the reference's
-  // ref.z (Math.random() per particle). aRef is unique per particle, so hashing
-  // it gives stable per-point size+color variance without changing the (vec2)
-  // aRef attribute the integration shell supplies. Same hash as the GLSL twin:
-  //   fract(sin(dot(aRef, (127.1, 311.7))) * 43758.5453123).
-  const vRandSrc = fract(
-    sin(dot(aRefNode.xy, vec2(127.1, 311.7))).mul(43758.5453123),
-  ).toVar();
-
-  // vSpeed is the RAW velocity magnitude at the instance center (the reference
-  // uses raw length, NOT normalized to uMaxSpeed); interpolated to the fragment.
-  const vSpeed = float(0).toVar();
-  material.vertexNode = Fn(() => {
-    const p = uPosTexNode.xyz.toVar();
-    const v = uVelTexNode.xyz;
-    vSpeed.assign(length(v));
-
-    // Center → view space (dist = -mv.z), billboard the unit-quad corner in clip
-    // space at a perspective-scaled device-pixel size (same math as the GLSL
-    // twin / particleNodeMaterial). Reference size:
-    //   uSize * uPR * (0.6 + 0.8*ref.z) / max(-mv.z, 0.001).
-    const mv = modelViewMatrix.mul(vec4(p, 1.0)).toVar();
-    const dist = mv.z.negate();
-    const clip = cameraProjectionMatrix.mul(mv).toVar();
-    const sizeNode = (uPointSize as unknown as AnyNode)
-      .mul(uPixelRatio as unknown as AnyNode)
-      .mul(float(0.7).add(float(0.9).mul(vRandSrc)))
-      .div(max(dist, 0.001));
-    const corner = positionLocal.xy;
-    clip.xy.addAssign(
-      corner.mul(sizeNode).div(uViewport as unknown as AnyNode).mul(2.0).mul(clip.w),
-    );
-    return clip;
-  })();
-
-  const vQuadUv = varying(positionLocal.xy);
-  const vSpeedF = varying(vSpeed);
-  const vRandF = varying(vRandSrc);
-
-  const shade = Fn(() => {
-    // Soft round disc with a WIDE feathered core (smoothstep 0.5→0.12, was
-    // 0.05) so neighbouring discs OVERLAP into a continuous velvety skin rather
-    // than separate dots. smoothstep is already 0 at r ≥ 0.5, so the alpha-floor
-    // discard below removes those fragments (no greaterThan node needed).
-    const r = length(vQuadUv);
-    const a = smoothstep(0.5, 0.18, r).toVar();
-
-    // Color: violet→cyan by RAW speed. At rest vSpeed≈0 → pure violet (solid
-    // purple skin); only hovered/lifted particles gain speed → bright cyan glow.
-    //   t = clamp(vSpeed*0.6, 0, 1); col = mix(uCold, uHot, t);
-    //   col *= (1 + vSpeed*0.35); col *= (0.7 + 0.5*vRand);
-    const t = clamp(vSpeedF.mul(0.6), 0.0, 1.0);
-    const col = mix(uColCold as unknown as AnyNode, uColHot as unknown as AnyNode, t)
-      .toVec3()
-      .mul(float(1.0).add(vSpeedF.mul(0.35)))
-      .mul(float(0.7).add(float(0.5).mul(vRandF)))
-      .mul(uEmissive); // fold the HDR push into the reference relationship
-
-    // uPointAlpha (default 0.85, was a flat 0.55), modulated by the scroll fade.
-    const alpha = a.mul(uPointAlpha as unknown as AnyNode).mul(uFade as unknown as AnyNode).toVar();
-    Discard(alpha.lessThan(0.004));
-    return vec4(col, alpha);
-  })();
-  material.colorNode = (shade as AnyNode).xyz;
-  material.opacityNode = (shade as AnyNode).w;
-  // Render options per layer: BODY = NormalBlending + depthWrite (occludes, reads
-  // solid); SKIN = additive glow, no depth write (default). Mirrors the GLSL twin.
-  material.transparent = renderOpts.transparent;
-  material.depthWrite = renderOpts.depthWrite;
-  material.depthTest = renderOpts.depthWrite;
-  material.blending =
-    renderOpts.blending === "normal" ? NormalBlending : AdditiveBlending;
-  material.toneMapped = false;
-  material.side = DoubleSide;
-
-  const mouseScratch = uMouse.value;
-
-  function tick(p: GpgpuTickParams) {
-    // Seed on the first frame from INSIDE the render loop (WebGPU executes
-    // offscreen renders here, not from the build-time effect — see runSeed).
-    if (!seeded) {
-      runSeed();
-      seeded = true;
-    }
-    const prevTarget = gl.getRenderTarget();
-
-    // 1) VELOCITY: read pos/vel(read) → write velWrite.
-    uPosRead.value = posRead.texture;
-    uVelRead.value = velRead.texture;
-    uHome.value = home;
-    uDelta.value = p.dt;
-    uTime.value = p.time;
-    mouseScratch.copy(p.mouse as unknown as Vec3Like);
-    quad.material = velMat;
-    gl.setRenderTarget(velWrite);
-    gl.render(quadScene, quadCam);
-
-    // 2) POSITION: read pos(read) + just-written velWrite → write posWrite.
-    uPosRead.value = posRead.texture;
-    uVelForPos.value = velWrite.texture;
-    uDelta.value = p.dt;
-    quad.material = posMat;
-    gl.setRenderTarget(posWrite);
-    gl.render(quadScene, quadCam);
-
-    gl.setRenderTarget(prevTarget);
-
-    // 3) swap; repoint the render lookups to the fresh fields.
-    let tmp = posRead;
-    posRead = posWrite;
-    posWrite = tmp;
-    tmp = velRead;
-    velRead = velWrite;
-    velWrite = tmp;
-    uPosTexNode.value = posRead.texture;
-    uVelTexNode.value = velRead.texture;
   }
 
-  const rig: GpgpuSimRig = {
-    size,
-    get positionTexture() {
-      return posRead.texture as unknown as import("three").Texture;
-    },
-    get velocityTexture() {
-      return velRead.texture as unknown as import("three").Texture;
-    },
-    tick,
-    setForces(f: GpgpuForces) {
-      uSpring.value = f.spring;
-      uPush.value = f.push;
-      uRadiusN.value = f.radius;
-      uDamping.value = f.damping;
-      uTurbBaseN.value = f.turbBase;
-    },
-    dispose() {
-      posRead.dispose();
-      posWrite.dispose();
-      velRead.dispose();
-      velWrite.dispose();
-      velMat.dispose();
-      posMat.dispose();
-      seedPosMat.dispose();
-      seedVelMat.dispose();
-      quadGeo.dispose();
-    },
-  };
+  // (c) system-specific extras (turbulence, scroll-out burst).
+  opts.extraAcc?.(acc, { toAnchor, attractorFalloff });
 
-  return {
-    rig,
-    geometry,
-    material,
-    uFade,
-    uPointSize,
-    uPixelRatio,
-    uViewport,
-    uEmissive,
-    uPointAlpha,
-    dispose() {
-      rig.dispose();
-      geometry.dispose();
-      material.dispose();
-    },
-  };
-}
+  // (d) integrate + exponential damping + max-speed clamp (reference order).
+  opts.vel.addAssign(acc.mul(opts.dt));
+  opts.vel.mulAssign(exp(opts.damping.negate().mul(opts.dt)));
+  const sp = length(opts.vel).toVar();
+  opts.vel.assign(opts.vel.mul(min(sp, opts.maxSpeed).div(max(sp, 1e-4))));
 
-// ===========================================================================
-// WebGPU-NATIVE sim — TSL COMPUTE + STORAGE BUFFERS (no FBO round-trip)
-// ===========================================================================
-// The idiomatic WebGPU GPGPU: particle position/velocity live in storage buffers
-// (`instancedArray`), advanced by a compute kernel (`Fn().compute(count)`,
-// dispatched with `gl.compute(node)` each frame). The render reads each
-// particle's position from the buffer via `.element(instanceIndex)` IN THE
-// VERTEX STAGE — a sampler-free storage read with NO texture, NO orientation,
-// NO LOD — which sidesteps the render-target round-trip layout bug that the FBO
-// path (createGpgpuNodeSim) hits on this WebGPU backend (see ParticleDissolve.md
-// §11). Seeding is trivial: pass the home Float32Array straight into
-// `instancedArray` (StorageInstancedBufferAttribute uses it as the backing
-// array). Same force model + billboard render + violet→cyan color as the FBO
-// twin, so the look is identical.
-//
-// IMPORTANT — only valid on the TRUE WebGPU sub-backend. Storage-buffer dynamic
-// indexing (`.element(i)`) is broken on WebGPURenderer's WebGL2 fallback
-// sub-backend (three issue #31221). HeroLogo must gate this on
-// `gl.backend.isWebGLBackend === false` and route the WebGL2 sub-backend to the
-// stateless analytic build (createStaticParticleNodeBuild) instead.
-export function createGpgpuComputeNodeSim(
-  gl: RendererLike,
-  webgpu: WebGPUSymbolsGpgpu,
-  tsl: TslSymbolsGpgpu,
-  homeRGBA: Float32Array,
-  aRef: Float32Array,
-  size: number,
-  config: GpgpuConfig,
-  renderOpts: GpgpuRenderOpts = {
-    blending: "additive",
-    depthWrite: false,
-    transparent: true,
-  },
-): GpgpuNodeBuild {
-  const {
-    InstancedBufferGeometry,
-    BufferAttribute,
-    InstancedBufferAttribute,
-    MeshBasicNodeMaterial,
-    Color,
-    Vector2,
-    Vector3,
-    AdditiveBlending,
-    NormalBlending,
-    DoubleSide,
-  } = webgpu;
-  const {
-    uniform,
-    attribute,
-    positionLocal,
-    modelViewMatrix,
-    cameraProjectionMatrix,
-    Fn,
-    vec2,
-    vec3,
-    vec4,
-    float,
-    length,
-    max,
-    min,
-    clamp,
-    exp,
-    sin,
-    fract,
-    dot,
-    mix,
-    smoothstep,
-    Discard,
-    varying,
-    instancedArray,
-    instanceIndex,
-  } = tsl;
-
-  const count = size * size;
-
-  // Per-particle home (vec3, row-major like aRef). Seed the live position buffer
-  // from it and keep an immutable copy as the spring target.
-  const aHome = new Float32Array(count * 3);
-  for (let i = 0; i < count; i++) {
-    aHome[i * 3] = homeRGBA[i * 4];
-    aHome[i * 3 + 1] = homeRGBA[i * 4 + 1];
-    aHome[i * 3 + 2] = homeRGBA[i * 4 + 2];
-  }
-  // Seeding by passing the TypedArray straight in (StorageInstancedBufferAttribute
-  // adopts it as backing storage). Separate copies so the live position can drift
-  // while `home` stays put.
-  const positionBuffer = instancedArray(aHome.slice(), "vec3");
-  const velocityBuffer = instancedArray(count, "vec3"); // zero-initialised
-  const homeBuffer = instancedArray(aHome.slice(), "vec3");
-
-  // Force uniforms (live-tunable via setForces); the rest are baked constants.
-  const uMouse = uniform(new Vector3(1e9, 1e9, 1e9)) as UniformNode<Vec3Like>;
-  const uDelta = uniform(1 / 60) as UniformNode<number>;
-  const uTime = uniform(0) as UniformNode<number>;
-  const uSpring = uniform(config.SPRING) as UniformNode<number>;
-  const uPush = uniform(config.PUSH) as UniformNode<number>;
-  const uRadiusN = uniform(config.RADIUS) as UniformNode<number>;
-  const uDamping = uniform(config.DAMPING) as UniformNode<number>;
-  const uTurbBaseN = uniform(config.TURB_BASE) as UniformNode<number>;
-  const SPRING = uSpring as unknown as AnyNode;
-  const PUSH = uPush as unknown as AnyNode;
-  const RADIUS = uRadiusN as unknown as AnyNode;
-  const DAMPING = uDamping as unknown as AnyNode;
-  const TURB_BASE = uTurbBaseN as unknown as AnyNode;
-  const TURB_MOVE = float(config.TURB_MOVE);
-  const TURB_DISP_K = float(config.TURB_DISP_K);
-  const MAX_SPEED = float(config.MAX_SPEED);
-  const dtN = uDelta as unknown as AnyNode;
-  const timeN = uTime as unknown as AnyNode;
-  const mouseN = uMouse as unknown as AnyNode;
-
-  // Compute kernel — identical force model to the FBO/GLSL twins (spring + mouse
-  // repulsion push² falloff + displacement-gated turbulence + exp damping +
-  // max-speed clamp), per thread keyed by instanceIndex.
-  const simulate = Fn(() => {
-    const pos = positionBuffer.element(instanceIndex);
-    const vel = velocityBuffer.element(instanceIndex).toVar();
-    const home = homeBuffer.element(instanceIndex);
-
-    const toHome = home.sub(pos).toVar();
-    const acc = toHome.mul(SPRING).toVar();
-
-    const fromMouse = pos.sub(mouseN).toVar();
-    const d = length(fromMouse);
-    const f = max(float(0), RADIUS.sub(d)).div(RADIUS).toVar();
-    acc.addAssign(fromMouse.add(1e-5).normalize().mul(f.mul(f)).mul(PUSH));
-
-    const disp = clamp(length(toHome).mul(TURB_DISP_K), 0.0, 1.0).toVar();
-    const turb = vec3(
-      sin(pos.y.mul(6.0).add(timeN.mul(1.3))),
-      sin(pos.z.mul(6.0).add(timeN.mul(1.7))),
-      sin(pos.x.mul(6.0).add(timeN.mul(1.1))),
-    );
-    acc.addAssign(turb.mul(TURB_BASE.add(TURB_MOVE.mul(disp))).mul(disp));
-
-    vel.addAssign(acc.mul(dtN));
-    vel.mulAssign(exp(DAMPING.negate().mul(dtN)));
-    const sp = length(vel).toVar();
-    vel.assign(vel.mul(min(sp, MAX_SPEED).div(max(sp, 1e-4))));
-
-    velocityBuffer.element(instanceIndex).assign(vel);
-    pos.addAssign(vel.mul(dtN));
-  })().compute(count);
-
-  // === Render: instanced billboard reading the buffers in the vertex stage =====
-  const geometry = new InstancedBufferGeometry();
-  geometry.setAttribute(
-    "position",
-    new BufferAttribute(new Float32Array(QUAD_CORNERS), 3),
-  );
-  geometry.setIndex(new BufferAttribute(new Uint16Array(QUAD_INDEX), 1));
-  geometry.setAttribute("aRef", new InstancedBufferAttribute(aRef, 2));
-  geometry.instanceCount = count;
-
-  const uPointSize = uniform(config.POINT_SIZE) as UniformNode<number>;
-  const uPixelRatio = uniform(1) as UniformNode<number>;
-  const uViewport = uniform(new Vector2(1, 1)) as UniformNode<unknown>;
-  const uFade = uniform(1) as UniformNode<number>;
-  const uPointAlpha = uniform(config.POINT_ALPHA) as UniformNode<number>;
-  const uColCold = uniform(
-    new Color().fromArray(config.COL_COLD),
-  ) as UniformNode<ColorLike>;
-  const uColHot = uniform(
-    new Color().fromArray(config.COL_HOT),
-  ) as UniformNode<ColorLike>;
-  const uEmissive = uniform(config.EMISSIVE) as UniformNode<number>;
-
-  const aRefNode = attribute("aRef");
-  const vRandSrc = fract(
-    sin(dot(aRefNode.xy, vec2(127.1, 311.7))).mul(43758.5453123),
-  ).toVar();
-  const vSpeed = float(0).toVar();
-
-  const material = new MeshBasicNodeMaterial();
-  material.vertexNode = Fn(() => {
-    // Vertex-stage STORAGE read (no sampler/texture/orientation) — the fix.
-    const p = positionBuffer.element(instanceIndex).xyz.toVar();
-    const v = velocityBuffer.element(instanceIndex).xyz;
-    vSpeed.assign(length(v));
-    const mv = modelViewMatrix.mul(vec4(p, 1.0)).toVar();
-    const dist = mv.z.negate();
-    const clip = cameraProjectionMatrix.mul(mv).toVar();
-    const sizeNode = (uPointSize as unknown as AnyNode)
-      .mul(uPixelRatio as unknown as AnyNode)
-      .mul(float(0.7).add(float(0.9).mul(vRandSrc)))
-      .div(max(dist, 0.001));
-    const corner = positionLocal.xy;
-    clip.xy.addAssign(
-      corner.mul(sizeNode).div(uViewport as unknown as AnyNode).mul(2.0).mul(clip.w),
-    );
-    return clip;
-  })();
-
-  const vQuadUv = varying(positionLocal.xy);
-  const vSpeedF = varying(vSpeed);
-  const vRandF = varying(vRandSrc);
-
-  const shade = Fn(() => {
-    const r = length(vQuadUv);
-    const a = smoothstep(0.5, 0.18, r).toVar();
-    const t = clamp(vSpeedF.mul(0.6), 0.0, 1.0);
-    const col = mix(uColCold as unknown as AnyNode, uColHot as unknown as AnyNode, t)
-      .toVec3()
-      .mul(float(1.0).add(vSpeedF.mul(0.35)))
-      .mul(float(0.7).add(float(0.5).mul(vRandF)))
-      .mul(uEmissive as unknown as AnyNode);
-    const alpha = a
-      .mul(uPointAlpha as unknown as AnyNode)
-      .mul(uFade as unknown as AnyNode)
-      .toVar();
-    Discard(alpha.lessThan(0.004));
-    return vec4(col, alpha);
-  })();
-  material.colorNode = (shade as AnyNode).xyz;
-  material.opacityNode = (shade as AnyNode).w;
-  material.transparent = renderOpts.transparent;
-  material.depthWrite = renderOpts.depthWrite;
-  material.depthTest = renderOpts.depthWrite;
-  material.blending =
-    renderOpts.blending === "normal" ? NormalBlending : AdditiveBlending;
-  material.toneMapped = false;
-  material.side = DoubleSide;
-
-  const mouseScratch = uMouse.value;
-
-  function tick(p: GpgpuTickParams) {
-    uDelta.value = p.dt;
-    uTime.value = p.time;
-    mouseScratch.copy(p.mouse as unknown as Vec3Like);
-    // Dispatch the compute kernel (synchronous; backend is up by useFrame).
-    gl.compute(simulate);
-  }
-
-  const rig: GpgpuSimRig = {
-    size,
-    // No textures on the compute path — the render reads the storage buffers
-    // directly. These getters exist only to satisfy the shared rig interface.
-    get positionTexture() {
-      return null as unknown as import("three").Texture;
-    },
-    get velocityTexture() {
-      return null as unknown as import("three").Texture;
-    },
-    tick,
-    setForces(f: GpgpuForces) {
-      uSpring.value = f.spring;
-      uPush.value = f.push;
-      uRadiusN.value = f.radius;
-      uDamping.value = f.damping;
-      uTurbBaseN.value = f.turbBase;
-    },
-    dispose() {
-      geometry.dispose();
-      material.dispose();
-    },
-  };
-
-  return {
-    rig,
-    geometry,
-    material,
-    uFade,
-    uPointSize,
-    uPixelRatio,
-    uViewport,
-    uEmissive,
-    uPointAlpha,
-    dispose() {
-      rig.dispose();
-    },
-  };
+  return { speed: sp, toAnchor };
 }
 
 // ===========================================================================
 // SPORE render — compute sim + instanced SHADED icospheres (TSL / WebGPU only)
 // ===========================================================================
-// The DDD-correct primitive (production-bundle teardown, see the task's
+// The DDD-correct primitive (production-bundle teardown, see task 06-08's
 // research/ddd-bundle-teardown-spore-render.md): each particle is a small LIT
 // OPAQUE sphere mesh — lambert + rim + per-spore value variation (fake packed
 // AO) — depth-tested so front balls occlude back balls. NOT a feathered
 // additive disc: additive/feathered can only brighten, never occlude or show a
 // shadow side, so a dense cluster reads as fog instead of a packed-ball crust.
 //
-// Same compute kernel as createGpgpuComputeNodeSim (one under-damped layer);
-// the render swaps the billboard quad for an icosphere whose per-instance
-// translation comes from the position storage buffer via the STANDARD pipeline
-// (`positionNode = positionLocal·scale + positionBuffer.toAttribute()` — the
-// three r184 webgpu_compute_particles_snow idiom). `.toAttribute()` (not
-// `.element()`) in the render stage per three #31221. Spore radius is in MODEL
-// space (DDD: diameter ≈ letterHeight/47) so the packing survives zoom/scale —
-// unlike the device-px sizing of the sprite builds.
+// The sim is the unified anchor-spring kernel above + the DDD LIFE state
+// machine; the render places an icosphere per instance through the STANDARD
+// pipeline (`positionNode = positionLocal·scale + positionBuffer.toAttribute()`
+// — the three r184 webgpu_compute_particles_snow idiom). `.toAttribute()`
+// (not `.element()`) in the render stage per three #31221. Spore radius is in
+// MODEL space (DDD: diameter ≈ letterHeight/47) so the packing survives
+// zoom/scale.
 export interface SporeNodeBuild {
   rig: GpgpuSimRig;
   geometry: InstancedGeoLike;
@@ -1072,6 +325,11 @@ export interface SporeNodeBuild {
   uSporeRadius: UniformNode<number>;
   /** HDR emission strength on fast spores (selective-bloom driver). */
   uEmissive: UniformNode<number>;
+  /** Cursor-attractor ORBIT strength as a ratio of the layer's PUSH
+   * (live-tunable via fxStore.sporeAttractor; 0 = radial repulsion only). */
+  uOrbit: UniformNode<number>;
+  /** Orbit falloff exponent (live via fxStore.sporeOrbitFalloff). */
+  uOrbitFalloff: UniformNode<number>;
   /**
    * Scroll-out dissolve 0..1 (fed from the hero scroll progress): radial push
    * from the MODEL CENTER + staggered kill, with respawn parked until it
@@ -1149,7 +407,7 @@ export function createSporeComputeNodeBuild(
 
   const count = size * size;
 
-  // --- Sim: storage-buffer spring kernel + the DDD LIFE state machine -------
+  // --- Sim: storage-buffer anchor-spring kernel + the DDD LIFE machine ------
   const aHome = new Float32Array(count * 3);
   for (let i = 0; i < count; i++) {
     aHome[i * 3] = homeRGBA[i * 4];
@@ -1171,11 +429,18 @@ export function createSporeComputeNodeBuild(
   const uRadiusN = uniform(config.RADIUS) as UniformNode<number>;
   const uDamping = uniform(config.DAMPING) as UniformNode<number>;
   const uTurbBaseN = uniform(config.TURB_BASE) as UniformNode<number>;
+  // Cursor-attractor ORBIT term (C3 attractors port): swirl strength as a
+  // ratio of PUSH (the pinned core's whisper-push keeps a whisper-orbit) and
+  // its falloff exponent. Live-driven from fxStore by HeroLogo per frame.
+  const uOrbit = uniform(config.ORBIT) as UniformNode<number>;
+  const uOrbitFalloff = uniform(config.ORBIT_FALLOFF) as UniformNode<number>;
   const SPRING = uSpring as unknown as AnyNode;
   const PUSH = uPush as unknown as AnyNode;
   const RADIUS = uRadiusN as unknown as AnyNode;
   const DAMPING = uDamping as unknown as AnyNode;
   const TURB_BASE = uTurbBaseN as unknown as AnyNode;
+  const ORBIT = uOrbit as unknown as AnyNode;
+  const ORBIT_FALLOFF = uOrbitFalloff as unknown as AnyNode;
   const TURB_MOVE = float(config.TURB_MOVE);
   const TURB_DISP_K = float(config.TURB_DISP_K);
   const MAX_SPEED = float(config.MAX_SPEED);
@@ -1187,14 +452,16 @@ export function createSporeComputeNodeBuild(
   const LIFE_HEAL = float(spore.LIFE_HEAL);
   const LIFE_DIE = float(spore.LIFE_DIE);
   const LIFE_REGROW = float(spore.LIFE_REGROW);
+
   // Scroll-out dissolve (0..1, fed per frame from the hero scroll progress).
   const uBurst = uniform(0) as UniformNode<number>;
   const burstN = uBurst as unknown as AnyNode;
 
-  // DDD life machine on top of the spring sim: the cursor pushes a spore →
-  // its speed crosses the kill curve → it DIES mid-flight (ghost drift, the
-  // render shrinks it to nothing) → respawns AT HOME and regrows in place.
-  // "Spores disappear and regrow on top" — not just displaced and back.
+  // DDD life machine on top of the unified spring/attractor sim: the cursor
+  // pushes a spore → its speed crosses the kill curve → it DIES mid-flight
+  // (ghost drift, the render shrinks it to nothing) → respawns AT HOME and
+  // regrows in place. "Spores disappear and regrow on top" — not just
+  // displaced and back.
   const simulate = Fn(() => {
     const pos = positionBuffer.element(instanceIndex);
     const velH = velocityBuffer.element(instanceIndex);
@@ -1207,53 +474,66 @@ export function createSporeComputeNodeBuild(
       velH.assign(vec3(0.0, 0.0, 0.0));
       lifeH.subAssign(dtN.mul(LIFE_REGROW));
     }).ElseIf(lifeH.greaterThan(0.0), () => {
-      // ALIVE (0,1] — the original spring + repulsion + turbulence integration.
+      // ALIVE (0,1] — the unified anchor-spring + cursor attractor/orbit
+      // integration, plus the spore-specific extras (displacement-gated
+      // turbulence + the scroll-out burst).
       const vel = velH.toVar();
-      const toHome = home.sub(pos).toVar();
-      const acc = toHome.mul(SPRING).toVar();
-
-      const fromMouse = pos.sub(mouseN).toVar();
-      const d = length(fromMouse);
-      const f = max(float(0), RADIUS.sub(d)).div(RADIUS).toVar();
-      acc.addAssign(fromMouse.add(1e-5).normalize().mul(f.mul(f)).mul(PUSH));
-
-      const disp = clamp(length(toHome).mul(TURB_DISP_K), 0.0, 1.0).toVar();
-      const turb = vec3(
-        sin(pos.y.mul(6.0).add(timeN.mul(1.3))),
-        sin(pos.z.mul(6.0).add(timeN.mul(1.7))),
-        sin(pos.x.mul(6.0).add(timeN.mul(1.1))),
-      );
-      acc.addAssign(turb.mul(TURB_BASE.add(TURB_MOVE.mul(disp))).mul(disp));
-
-      // SCROLL-OUT burst: radial push from the model center (the mark is
-      // geometry.center()ed, so the origin IS the logo center), staggered per
-      // spore so the dissolve ripples instead of popping uniformly.
       const rndI = hash(instanceIndex).toVar();
-      acc.addAssign(
-        pos
-          .add(1e-5)
-          .normalize()
-          .mul(burstN.mul(7.0).mul(float(0.6).add(rndI.mul(0.8)))),
-      );
+      const step = unifiedForceStep(tsl, {
+        pos,
+        vel,
+        anchor: home,
+        dt: dtN,
+        spring: SPRING,
+        damping: DAMPING,
+        maxSpeed: MAX_SPEED,
+        attractor: {
+          position: mouseN,
+          push: PUSH,
+          radius: RADIUS,
+          orbit: ORBIT,
+          orbitFalloff: ORBIT_FALLOFF,
+          // The mark is front-facing (+Z toward the camera) and only
+          // parallax-tilts a few degrees — the view axis is the natural spin
+          // axis, so displaced spores swirl in the mark's plane.
+          axis: vec3(0.0, 0.0, 1.0),
+        },
+        extraAcc: (acc, { toAnchor }) => {
+          // Turbulence — sin-based per-axis shimmer GATED HARD by
+          // displacement so particles glued to the surface (disp≈0) get
+          // ~none and stay crisp; only lifted/hovered particles shimmer.
+          const disp = clamp(length(toAnchor).mul(TURB_DISP_K), 0.0, 1.0).toVar();
+          const turb = vec3(
+            sin(pos.y.mul(6.0).add(timeN.mul(1.3))),
+            sin(pos.z.mul(6.0).add(timeN.mul(1.7))),
+            sin(pos.x.mul(6.0).add(timeN.mul(1.1))),
+          );
+          acc.addAssign(turb.mul(TURB_BASE.add(TURB_MOVE.mul(disp))).mul(disp));
 
-      vel.addAssign(acc.mul(dtN));
-      vel.mulAssign(exp(DAMPING.negate().mul(dtN)));
-      const sp = length(vel).toVar();
-      vel.assign(vel.mul(min(sp, MAX_SPEED).div(max(sp, 1e-4))));
+          // SCROLL-OUT burst: radial push from the model center (the mark is
+          // geometry.center()ed, so the origin IS the logo center), staggered
+          // per spore so the dissolve ripples instead of popping uniformly.
+          acc.addAssign(
+            pos
+              .add(1e-5)
+              .normalize()
+              .mul(burstN.mul(7.0).mul(float(0.6).add(rndI.mul(0.8)))),
+          );
+        },
+      });
 
       velH.assign(vel);
       pos.addAssign(vel.mul(dtN));
 
       // Velocity-gated decay — DDD's exact kill curve 50·min(1,|v|·0.35)⁵ —
-      // minus a small heal so grazed survivors knit back to full life. The
-      // burst adds a direct staggered kill so the scroll dissolve completes
-      // even for spores the radial push barely moves (the pinned core).
-      const decay = pow(min(sp.mul(0.35), 1.0), 5.0)
+      // minus a small heal so grazed survivors knit back to full life. Keys
+      // off the PRE-CLAMP speed exactly as the previous inline kernel did.
+      // The burst adds a direct staggered kill so the scroll dissolve
+      // completes even for spores the radial push barely moves (pinned core).
+      const decay = pow(min(step.speed.mul(0.35), 1.0), 5.0)
         .mul(LIFE_DECAY)
         .add(burstN.mul(float(2.0).add(rndI.mul(2.5))));
-      lifeH.assign(
-        min(lifeH.add(LIFE_HEAL.sub(decay).mul(dtN)), 1.0),
-      );
+      lifeH.assign(min(lifeH.add(LIFE_HEAL.sub(decay).mul(dtN)), 1.0));
     }).Else(() => {
       // DYING (−1,0] — free ghost flight (DDD-style, no forces); the render
       // shrinks it to nothing as life → −1. Drift factor + gentler damping so
@@ -1409,20 +689,7 @@ export function createSporeComputeNodeBuild(
 
   const rig: GpgpuSimRig = {
     size,
-    get positionTexture() {
-      return null as unknown as import("three").Texture;
-    },
-    get velocityTexture() {
-      return null as unknown as import("three").Texture;
-    },
     tick,
-    setForces(f: GpgpuForces) {
-      uSpring.value = f.spring;
-      uPush.value = f.push;
-      uRadiusN.value = f.radius;
-      uDamping.value = f.damping;
-      uTurbBaseN.value = f.turbBase;
-    },
     dispose() {
       geometry.dispose();
       ico.dispose();
@@ -1437,6 +704,8 @@ export function createSporeComputeNodeBuild(
     uFade,
     uSporeRadius,
     uEmissive,
+    uOrbit,
+    uOrbitFalloff,
     uBurst,
     dispose() {
       rig.dispose();
@@ -1453,6 +722,13 @@ export function createSporeComputeNodeBuild(
 // blend of the spring TARGET from A to B; the under-damped spring + a
 // mid-transit turbulence kick give the "scatter and recompose" feel. At
 // uMorph 0/1 the spring pins the text razor-crisp.
+//
+// DETERMINISM (the anchor+offset contract): the spring target below is the
+// ANALYTIC ANCHOR — a pure function of uMorph/uMorph2/uMorph3/uAssemble/
+// uSpread + per-particle hashes, valid for any scrub state in either
+// direction. The integrated velocity only relaxes the offset onto it
+// (unifiedForceStep), so a scrub reversal converges back within the spring's
+// bounded relaxation time and a rebuild seeded at home is always legal.
 export interface TextMorphNodeBuild {
   geometry: InstancedGeoLike;
   material: NodeMaterialLike;
@@ -1546,9 +822,7 @@ export function createTextMorphComputeBuild(
     float,
     length,
     max,
-    min,
     clamp,
-    exp,
     sin,
     mix,
     smoothstep,
@@ -1623,6 +897,7 @@ export function createTextMorphComputeBuild(
     const start = startBuffer.element(instanceIndex);
     const delay = delayBuffer.element(instanceIndex);
 
+    // === ANALYTIC ANCHOR — a pure function of the morph/assemble uniforms ===
     // Per-particle staggered transition: particle r starts its A→B journey at
     // uMorph = r·0.55 and completes it 0.45 later → a travelling recomposition
     // wave instead of a uniform pop.
@@ -1665,12 +940,10 @@ export function createTextMorphComputeBuild(
     ).toVar();
     target.assign(mix(start, target, smoothstep(0.0, 1.0, aw)));
 
-    const vel = velH.toVar();
-    const acc = target.sub(pos).mul(SPRING).toVar();
-
+    // === Integrated offset relaxing onto the anchor (unified force model) ===
     // Mid-transit scatter: peaks at the middle of EITHER journey (entry
-    // start→A or morph A→B), zero at rest, so particles wander organically
-    // while travelling and land crisp.
+    // start→A or any morph leg), zero at rest, so particles wander
+    // organically while travelling and land crisp.
     const transitMorph = m.mul(float(1.0).sub(m)).mul(4.0);
     const transitMorph2 = m2.mul(float(1.0).sub(m2)).mul(4.0);
     const transitMorph3 = m3.mul(float(1.0).sub(m3)).mul(4.0);
@@ -1684,12 +957,22 @@ export function createTextMorphComputeBuild(
       sin(pos.x.mul(8.0).add(timeN.mul(1.7)).add(r.mul(4.1))),
       sin(pos.x.mul(5.0).add(pos.y.mul(5.0)).add(timeN.mul(1.3))).mul(0.4),
     );
-    acc.addAssign(turb.mul(TURB).mul(transit));
 
-    vel.addAssign(acc.mul(dtN));
-    vel.mulAssign(exp(DAMPING.negate().mul(dtN)));
-    const sp = length(vel).toVar();
-    vel.assign(vel.mul(min(sp, MAX_SPEED).div(max(sp, 1e-4))));
+    const vel = velH.toVar();
+    unifiedForceStep(tsl, {
+      pos,
+      vel,
+      anchor: target,
+      dt: dtN,
+      spring: SPRING,
+      damping: DAMPING,
+      maxSpeed: MAX_SPEED,
+      // No attractor: the intro has no pointer interaction by design — the
+      // shared code path here is the anchor-spring/damping/clamp integration.
+      extraAcc: (acc) => {
+        acc.addAssign(turb.mul(TURB).mul(transit));
+      },
+    });
 
     velH.assign(vel);
     pos.addAssign(vel.mul(dtN));
@@ -1723,11 +1006,16 @@ export function createTextMorphComputeBuild(
 
   const material = new MeshBasicNodeMaterial();
   material.vertexNode = Fn(() => {
-    const p = positionBuffer.element(instanceIndex).xyz.toVar();
-    const v = velocityBuffer.element(instanceIndex).xyz;
+    // Render-stage reads via `.toAttribute()` ONLY (three #31221): the
+    // storage buffers written by the compute kernel are bound as per-instance
+    // vertex attributes — sampler-free, valid in any stage, and the only form
+    // that also works under the WebGL fallback. (Migrated from the previous
+    // `.element(instanceIndex)` vertex reads in C3.)
+    const p = positionBuffer.toAttribute().toVar();
+    const v = velocityBuffer.toAttribute();
     vSpeed.assign(length(v));
     vRandSrc.assign(hash(instanceIndex));
-    const delay = delayBuffer.element(instanceIndex);
+    const delay = delayBuffer.toAttribute();
     const aw = clamp(
       assembleN
         .mul(1.0 + ASSEMBLE_WINDOW)
@@ -1831,7 +1119,7 @@ export function createTextMorphComputeBuild(
 }
 
 // ===========================================================================
-// BISECTION DEBUG — STATIC billboard (TSL / flag-ON)
+// STATIC fallback — analytic billboard (TSL / flag-ON, non-WebGPU backends)
 // ===========================================================================
 export interface GpgpuStaticNodeBuild {
   geometry: InstancedGeoLike;
@@ -1856,18 +1144,18 @@ export interface GpgpuStaticNodeBuild {
 }
 
 /**
- * Build the SHIPPING hero render on the WebGPURenderer — each instance is
+ * Build the FALLBACK hero render on the WebGPURenderer — each instance is
  * placed at its HOME position read from a per-instance `aHome` vec3 attribute
- * (a CRISP dense violet "52" on WebGPU, no vertex-stage texture read) and then
- * ANALYTICALLY displaced near the cursor: particles within `uRadius` of the
- * model-space mouse lift outward + toward the camera, shifting violet→CYAN
- * (glowing) gated by the eased `uHover`, and settle back smoothly when the
- * cursor leaves. Stateless (no FBO, no sim) so it is robust on the WebGPU
- * backend — the GPGPU FBO sim above is parked (gated) because its vertex-stage
- * float-RT read scrambled on WebGPU.
+ * (a CRISP dense violet "52", no storage/texture reads) and then ANALYTICALLY
+ * displaced near the cursor: particles within `uRadius` of the model-space
+ * mouse lift outward + toward the camera, shifting violet→CYAN (glowing)
+ * gated by the eased `uHover`, and settle back smoothly when the cursor
+ * leaves. Stateless (no sim, no compute) so it is robust on EVERY backend —
+ * this is where the `spores` mode degrades when true-WebGPU compute is
+ * unavailable (WebGL2 sub-backend, three #31221).
  *
- * SAME perspective-scaled device-pixel billboard math as the live render
- * material; additive, soft round disc, selective-bloom HDR contract preserved.
+ * SAME perspective-scaled device-pixel billboard math as the compute renders;
+ * additive, soft round disc, selective-bloom HDR contract preserved.
  * GLSL twin: createGpgpuStaticBuild in gpgpuRenderShader.ts (kept in lockstep,
  * same displacement + color math).
  */
@@ -1996,7 +1284,7 @@ export function createStaticParticleNodeBuild(
       ).mul(lift.mul(0.04)),
     );
 
-    // SAME billboard math as the live render, around the displaced center.
+    // SAME billboard math as the compute renders, around the displaced center.
     const mv = modelViewMatrix.mul(vec4(center, 1.0)).toVar();
     const dist = mv.z.negate();
     const clip = cameraProjectionMatrix.mul(mv).toVar();

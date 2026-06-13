@@ -150,19 +150,6 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
     let built: MorphBuild | null = null;
     let observer: MutationObserver | null = null;
 
-    if (process.env.NODE_ENV !== "production" || typeof window !== "undefined") {
-      // TEMP diagnostic (2026-06-10): a phantom rebuild resets the intro mid
-      // morph in prod — log the dep values to identify which one changes.
-      console.debug("[HTP] build effect run", {
-        count,
-        worldPerPx,
-        sizeW: size.width,
-        textEpoch,
-        glId: (gl as unknown as { __htpId?: number }).__htpId ??
-          ((gl as unknown as { __htpId?: number }).__htpId = Math.floor(Math.random() * 1e6)),
-      });
-    }
-
     void Promise.all([
       import("three/webgpu"),
       import("three/tsl"),
@@ -358,15 +345,14 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       built?.dispose();
       setBuild(null);
       if (brandRef.current) brandRef.current.style.opacity = "0";
-      if (typeof window !== "undefined") {
-        console.debug("[HTP] build effect CLEANUP");
-      }
       // Reset ONLY the visual-handoff fields. The gate/journey state
       // (gateProgress, morphDone, …) deliberately SURVIVES: rebuilds happen
       // mid-session (language switch, resize, and a phantom prod remount
-      // seen 2026-06-10) and zeroing the progress yanked the visitor's
-      // intro back to the start. The component refs (entryRef, morphTRef)
-      // persist across rebuilds and re-prime the fresh sim's uniforms.
+      // seen 2026-06-10 — never reproduced with a changed dep; the refs-based
+      // resume below makes any such rebuild harmless, diagnostic removed in
+      // C3) and zeroing the progress yanked the visitor's intro back to the
+      // start. The component refs (entryRef, morphTRef) persist across
+      // rebuilds and re-prime the fresh sim's uniforms.
       useTextMorphStore.setState({
         active: false,
         domReveal: 1,
@@ -392,6 +378,25 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
     if (!useIntroStore.getState().introComplete) {
       group.visible = false;
       return;
+    }
+
+    // --- Intro skip (double wheel-flick / session flag): jump every clock
+    // to its end state ONCE. The clocks live in refs (persist across
+    // rebuilds), so this also covers fresh builds on later home visits when
+    // the provider pinned the store at its end state. After the jump the
+    // normal derivations below keep morphDone/morph2Done/morph3Done true and
+    // domReveal at 1 — the timeline stays deterministic (g is pinned at 1,
+    // nothing can flip a direction back).
+    if (useTextMorphStore.getState().introSkipped && morph3TRef.current < 1) {
+      entryRef.current = 1;
+      morphTRef.current = 1;
+      morph2TRef.current = 1;
+      morph3TRef.current = 1;
+      gSmoothRef.current = 1;
+      build.uAssemble.value = 1;
+      build.uMorph.value = 1;
+      build.uMorph2.value = 1;
+      build.uMorph3.value = 1;
     }
 
     // --- ENTRY clock: the automatic assemble, time-driven ----------------

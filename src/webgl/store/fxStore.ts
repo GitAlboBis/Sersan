@@ -65,69 +65,56 @@ interface FxState {
    */
   heroPosZ: number;
   /**
-   * DEBUG render mode for the hero mark (HeroLogo). Lets us verify the GLB's
-   * size/position/orientation BEFORE the GPGPU particle engine is in play:
-   *   "solid"     → draw the loaded, normalized mark as a plain unlit mesh,
-   *                 NO particles (default while we debug the baseline).
-   *   "particles" → the parked GPGPU FBO particle cloud (vertex-stage RT read
-   *                 scrambles on WebGPU — kept gated for reference, not shipped).
-   *   "both"      → solid + GPGPU particles, framed identically (sanity check).
-   *   "particles-static" → THE CURRENT SHIPPING HERO: render the particle
-   *                 billboards at their HOME positions (per-instance vec3
-   *                 attribute) and ANALYTICALLY displace them near the cursor in
-   *                 the vertex shader (lift + violet→cyan, eased hover). No FBO,
-   *                 no sim, no vertex-stage texture read → robust on WebGPU.
-   *   "particles-2layer" → the earlier two-layer sprite attempt (opaque violet
-   *                 BODY + additive cyan SKIN, both on the momentum sim). Kept
-   *                 for A/B reference — superseded by "spores" below once the
-   *                 DDD production bundle was reverse-engineered and showed the
-   *                 real effect is NOT additive sprites at all.
-   *   "spores"    → THE DDD-CORRECT hero (bundle teardown 2026-06-09, see the
-   *                 task's research/ddd-bundle-teardown-spore-render.md): ONE
-   *                 under-damped momentum layer of ~37k instanced SHADED OPAQUE
-   *                 icospheres (lambert + rim + per-spore AO darkening, depth-
-   *                 tested, world-space radius ≈ markHeight/47) over a solid
-   *                 dark occluder mark mesh. Resting crust = near-black violet;
-   *                 fast spores lerp to cyan emission and bloom selectively.
-   *                 WebGPU-backend only (compute); other backends keep the
-   *                 static fallback. Candidate default once approved.
+   * Render mode for the hero mark (HeroLogo).
+   *   "spores" → THE SHIPPING HERO (DDD bundle teardown 2026-06-09, see task
+   *                 06-08's research/ddd-bundle-teardown-spore-render.md): two
+   *                 shells of instanced SHADED OPAQUE icospheres (lambert +
+   *                 rim + per-spore AO darkening, depth-tested, world-space
+   *                 radius ≈ markHeight/47) over a solid occluder mark, on the
+   *                 unified compute momentum sim (anchor spring + cursor
+   *                 attractor/orbit + DDD life machine). TRUE-WebGPU backend
+   *                 only — every other backend auto-degrades to:
+   *   "particles-static" → the analytic fallback (and a debug toggle): the
+   *                 particle billboards at their HOME positions (per-instance
+   *                 vec3 attribute), ANALYTICALLY displaced near the cursor in
+   *                 the vertex shader (lift + violet→cyan, eased hover). No
+   *                 sim, no compute → robust on every backend.
+   * Retired 2026-06-13 (restyle step 4, C3): "solid" / "both" / "particles"
+   * (FBO rig) / "particles-2layer" — the modes AND their rigs were deleted
+   * (gpgpuSim.ts, createGpgpuNodeSim, createGpgpuComputeNodeSim,
+   * createGpgpuRenderMaterial, BODY_LAYER/SKIN_LAYER).
    * Live-settable from the console:
-   *   window.__sersanFx.getState().set({ heroRenderMode: "spores" })
+   *   window.__sersanFx.getState().set({ heroRenderMode: "particles-static" })
    */
-  heroRenderMode:
-    | "solid"
-    | "particles"
-    | "both"
-    | "particles-static"
-    | "particles-2layer"
-    | "spores";
+  heroRenderMode: "particles-static" | "spores";
   /**
    * Spore-mode live knobs: base sphere radius multiplier (1 = DDD's
    * markHeight/47 diameter) and HDR emission strength on fast spores.
    */
   sporeSize: number;
   sporeEmissive: number;
+  /**
+   * Cursor-attractor ORBIT (swirl) strength for the spores sim, as a ratio of
+   * each layer's own PUSH (the attractors-example spin term `axis ×
+   * direction-to-cursor`). Enriches hover/burst motion only — the term is
+   * gated by the cursor-radius falloff, so the RESTING crust is unchanged by
+   * construction at any value. 0 disables the swirl entirely.
+   */
+  sporeAttractor: number;
+  /** Falloff exponent shaping the orbit term (higher hugs the cursor
+   * tighter; the radial push keeps its approved push² shape independently). */
+  sporeOrbitFalloff: number;
   // Particle field
   particleOpacity: number;
-  // GPGPU dissolve hero (HeroLogo) — the few live-tunable sim/render knobs.
-  // Full param set + defaults live in gpgpu/gpgpuConfig.ts; these override it.
-  /** Elastic spring constant pulling particles back to the mark (regeneration). */
-  gpgpuSpring: number;
-  /**
-   * Exponential velocity damping rate — tune WITH spring for a tight, glued
-   * snap-back (no loose overshoot/jitter).
-   */
-  gpgpuDamping: number;
-  /** Mouse-repulsion strength. */
+  // GPGPU hero STATIC fallback (HeroLogo "particles-static") — the few
+  // live-tunable render/dispersion knobs. Full param set + defaults live in
+  // gpgpu/gpgpuConfig.ts; these override it. (The spore-mode forces are baked
+  // per layer in SPORE_LAYER / SPORE_CORE_LAYER; the retired sim knobs
+  // gpgpuSpring/gpgpuDamping/gpgpuTurbBase were removed in C3.)
+  /** Analytic-dispersion push strength near the cursor. */
   gpgpuPush: number;
-  /** Mouse-repulsion radius in model space. */
+  /** Analytic-dispersion radius in model space. */
   gpgpuRadius: number;
-  /**
-   * At-rest turbulence amplitude. Keep ~0 so settled particles stay GLUED to the
-   * surface and the mark reads razor-crisp; raise only for a livelier resting
-   * skin.
-   */
-  gpgpuTurbBase: number;
   /** Sprite size in device px (before perspective scale). */
   gpgpuPointSize: number;
   /**
@@ -206,12 +193,14 @@ export const useFxStore = create<FxState>((set) => ({
   heroRenderMode: "spores",
   sporeSize: 1.0,
   sporeEmissive: SPORE_LAYER.spore.EMISSIVE,
+  // Attractor orbit defaults from gpgpuConfig (single source of truth) —
+  // rest state is identical at any value (falloff-gated); these only shape
+  // the hover/burst swirl.
+  sporeAttractor: DEFAULT_GPGPU_CONFIG.ORBIT,
+  sporeOrbitFalloff: DEFAULT_GPGPU_CONFIG.ORBIT_FALLOFF,
   particleOpacity: 0.35,
-  gpgpuSpring: DEFAULT_GPGPU_CONFIG.SPRING,
-  gpgpuDamping: DEFAULT_GPGPU_CONFIG.DAMPING,
   gpgpuPush: DEFAULT_GPGPU_CONFIG.PUSH,
   gpgpuRadius: DEFAULT_GPGPU_CONFIG.RADIUS,
-  gpgpuTurbBase: DEFAULT_GPGPU_CONFIG.TURB_BASE,
   gpgpuPointSize: DEFAULT_GPGPU_CONFIG.POINT_SIZE,
   gpgpuPointAlpha: DEFAULT_GPGPU_CONFIG.POINT_ALPHA,
   gpgpuEmissive: DEFAULT_GPGPU_CONFIG.EMISSIVE,

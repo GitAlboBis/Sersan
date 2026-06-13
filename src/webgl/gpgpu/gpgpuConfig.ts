@@ -1,13 +1,16 @@
 /**
  * Tunable parameters for the GPGPU dissolve hero (PRD §"Params").
  *
- * Shared by the GLSL (flag-OFF) and TSL (flag-ON) rigs so both backends run the
- * SAME numbers. HeroLogo overlays the few live-tunable knobs from fxStore
- * (LineDebug leva) onto a copy of DEFAULT_GPGPU_CONFIG each frame.
+ * Shared by the GLSL static fallback (flag-OFF, gpgpuRenderShader.ts) and the
+ * TSL builds (flag-ON, gpgpuNodeSim.ts) so both backends run the SAME numbers.
+ * HeroLogo overlays the few live-tunable knobs from fxStore (LineDebug leva)
+ * onto a copy of DEFAULT_GPGPU_CONFIG each frame.
  *
  * Colors are [r,g,b] in 0..1 (passed straight to a THREE.Color in the render
  * material): COL_COLD = violet (slow particles), COL_HOT = cyan (fast particles).
  */
+import type { Vector3 } from "three";
+
 export interface GpgpuConfig {
   /** Grid edge → SIZE*SIZE particles. Tier-scaled (full 256, lite 128). */
   SIZE: number;
@@ -35,6 +38,22 @@ export interface GpgpuConfig {
    * well off the surface get any shimmer, so the resting skin stays still.
    */
   TURB_DISP_K: number;
+  /**
+   * Cursor-attractor ORBIT (swirl) strength as a RATIO of PUSH — the
+   * three.js attractors-example spin term (`axis × direction-to-attractor`)
+   * that swirls displaced particles around the cursor while the radial push
+   * throws them out. Scaling by the layer's own PUSH preserves the per-layer
+   * balance automatically (the pinned core's whisper-push gets a whisper-
+   * orbit). The term is gated by the same radius falloff, so the RESTING
+   * crust (cursor parked at 1e9 → falloff 0) is unchanged by construction.
+   * 0 disables the swirl entirely.
+   */
+  ORBIT: number;
+  /**
+   * Falloff exponent for the orbit term (higher hugs the cursor tighter).
+   * The radial push keeps its approved push² shape independently.
+   */
+  ORBIT_FALLOFF: number;
   /** Sprite size in device px (before perspective scale). */
   POINT_SIZE: number;
   /**
@@ -75,6 +94,12 @@ export const DEFAULT_GPGPU_CONFIG: GpgpuConfig = {
   // Only particles lifted well off home (hovered) ramp into turbulence. Was an
   // inline ×3; raised to 6 so the resting skin contributes ~zero disp.
   TURB_DISP_K: 6.0,
+  // Subordinate swirl: at the falloff midpoint the orbit acc is well under the
+  // radial push, so hover still reads as "thrown out", now with rotation. Rest
+  // state is unaffected at ANY value (falloff-gated). Live via
+  // fxStore.sporeAttractor / sporeOrbitFalloff (LineDebug "GPGPU hero").
+  ORBIT: 0.6,
+  ORBIT_FALLOFF: 2.0,
   // Sprite size in device px. Reframed smaller now that the mark sits at a sober
   // heroScale 0.17 (was 0.32): at the smaller world size 12px bridged the "52"
   // counters into a blob. 9px keeps neighbouring sprites overlapping into a
@@ -101,108 +126,30 @@ export const SIZE_BY_TIER: Record<"full" | "lite", number> = {
 };
 
 // ===========================================================================
-// TWO-LAYER hero (Lusion DDD footer-D, verified 2026-06-09) — body + skin
+// Shared sim-rig contracts (moved here from the deleted gpgpuSim.ts — C3
+// consolidation 2026-06-13: the GLSL FBO ping-pong rig and the two-layer
+// sprite presets that consumed it were retired; only the compute rigs in
+// gpgpuNodeSim.ts implement these now). Type-only `three` import — erased at
+// compile time, so this stays a pure-data module for the OFF bundle.
 // ===========================================================================
-// The live DDD effect is TWO particle layers (see ParticleDissolve.md §1):
-//   • BODY — a dense, calm, OPAQUE violet "D" that occludes (reads solid) and
-//     barely reacts to the cursor. NormalBlending + depthWrite so it composites
-//     as a solid base under the glow.
-//   • SKIN — a reactive, ADDITIVE cyan particle skin sitting a hair OUTSIDE the
-//     body (offset along +normal). UNDER-DAMPED spring (ζ≈0.39) so on hover it
-//     sprays away from the cursor WITH MOMENTUM and eases back over ~1–2 s — the
-//     "fly out, hang, return" feel, NOT the analytic snap of `particles-static`.
-// Both run the SAME momentum sim (createGpgpuSim / createGpgpuNodeSim) with
-// different force/render params; the model-space cursor is shared.
 
-/** Blending mode for a layer's render material (mapped to THREE constants). */
-export type GpgpuBlending = "additive" | "normal";
-
-/** Render-material options that differ per layer (body occludes, skin glows). */
-export interface GpgpuRenderOpts {
-  blending: GpgpuBlending;
-  depthWrite: boolean;
-  transparent: boolean;
+export interface GpgpuTickParams {
+  /** Clamped frame delta (seconds). */
+  dt: number;
+  /** Wall-clock-ish accumulator for turbulence animation. */
+  time: number;
+  /** Model-space cursor; set far away (1e9) to disable repulsion. */
+  mouse: Vector3;
 }
 
-/** A full layer spec: sim/render config + how to sample its home field. */
-export interface GpgpuLayerConfig {
-  /** Force + render constants (same shape as the single-layer config). */
-  config: GpgpuConfig;
-  /** Surface-sampling options for this layer's home field (see MarkLayerOptions). */
-  sampling: { frontBias: number; normalOffset: number; volumeJitter: number };
-  /** Render-material blending/depth/transparency. */
-  render: GpgpuRenderOpts;
+/** Minimal sim handle the integration shell (HeroLogo) drives per frame. */
+export interface GpgpuSimRig {
+  /** Edge of the SIZE×SIZE state grid. */
+  size: number;
+  /** Advance one sim step (one compute dispatch). Called once per frame. */
+  tick: (p: GpgpuTickParams) => void;
+  dispose: () => void;
 }
-
-/** ζ = DAMPING/(2·√SPRING). Body ≈0.58 (calm, tiny overshoot); skin ≈0.39 (drift). */
-export const BODY_LAYER: GpgpuLayerConfig = {
-  config: {
-    ...DEFAULT_GPGPU_CONFIG,
-    // Calm + fairly stiff so the body barely moves and reads as a solid base.
-    SPRING: 36,
-    DAMPING: 7,
-    PUSH: 26,
-    RADIUS: 0.5,
-    MAX_SPEED: 4,
-    TURB_BASE: 0.02,
-    TURB_MOVE: 0.9,
-    TURB_DISP_K: 6,
-    // BIG soft spores that overlap into a continuous violet mass (vs hard opaque
-    // dots = grainy). With transparent NormalBlending below, the feathered alpha
-    // blends neighbouring discs → a smooth solid-reading plate, no DOF needed.
-    POINT_SIZE: 16,
-    POINT_ALPHA: 0.85,
-    // Lower emissive: the body is the dark violet solid, not the glow.
-    // Below the ~1.0 selective-bloom threshold so the packed violet body reads as
-    // a SOLID dark-violet mass (not a white-blooming blob) — like the DDD navy "D".
-    EMISSIVE: 1.05,
-    COL_COLD: [0.4, 0.28, 0.85], // violet
-    COL_HOT: [0.55, 0.75, 1.0], // → azure/white when (rarely) moved
-  },
-  // STRONG front-bias so particles concentrate on the camera-facing plate (a
-  // dense solid read), with only a whisper of inward jitter for depth.
-  sampling: { frontBias: 0.82, normalOffset: 0, volumeJitter: 0.02 },
-  // Transparent NormalBlending (NOT opaque): the feathered discs blend/overlap
-  // into a smooth violet fill rather than hard grainy dots. Drawn first
-  // (renderOrder 0); the additive cyan skin composites over it.
-  render: { blending: "normal", depthWrite: false, transparent: true },
-};
-
-export const SKIN_LAYER: GpgpuLayerConfig = {
-  config: {
-    ...DEFAULT_GPGPU_CONFIG,
-    // UNDER-DAMPED: sprays far on hover, hangs, eases back over ~1–2 s.
-    // PUSH/RADIUS raised (user: the crust must move/shatter MORE — "si
-    // spostavano di più e si distruggevano"): wider kill zone, harder spray.
-    SPRING: 20,
-    DAMPING: 3.5,
-    PUSH: 72,
-    RADIUS: 0.7,
-    MAX_SPEED: 4.5,
-    TURB_BASE: 0.04,
-    TURB_MOVE: 1.8,
-    TURB_DISP_K: 5,
-    // BIG soft "spore"-like glowing motes (Lusion DDD = chunky soft cyan spores,
-    // not tiny dots). Large base size + widened size variance + soft gaussian
-    // falloff (compute render) → varied glowing spores. DIM at rest (low alpha +
-    // modest emissive) so the violet BODY reads as the solid mark; the velocity
-    // color/brightness term makes them POP cyan when sprayed on hover (like DDD,
-    // dark body at rest → cyan burst on interaction).
-    POINT_SIZE: 18,
-    // Very low at rest so the DENSE packed additive skin does NOT saturate to
-    // white (400k overlapping additive spores blow out fast). A subtle cyan sheen
-    // at rest; the velocity term brightens it so it POPS + blooms only when
-    // sprayed on hover (DDD: dark body at rest → cyan burst on interaction).
-    POINT_ALPHA: 0.16,
-    EMISSIVE: 0.7,
-    COL_COLD: [0.25, 0.95, 0.95], // cyan at rest
-    COL_HOT: [0.9, 1.0, 1.0], // → white when fast/sprayed
-  },
-  // Front-biased like the original; offset OUT along +normal so the cyan glow
-  // floats just outside the violet body surface.
-  sampling: { frontBias: 0.12, normalOffset: 0.03, volumeJitter: 0 },
-  render: { blending: "additive", depthWrite: false, transparent: true },
-};
 
 // ===========================================================================
 // SPORE hero (DDD production-bundle ground truth, 2026-06-09) — instanced
