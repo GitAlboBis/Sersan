@@ -91,6 +91,26 @@ a `sersan-design` skill for design-system rules — consult it for UI work.
 
 ## Headless screenshot QA (gotchas)
 
+> **CRITICAL — headless Chromium has NO WebGPU here** (`navigator.gpu.requestAdapter()`
+> returns null even with `--enable-unsafe-webgpu` / SwiftShader flags; no D3D12 adapter in
+> this env). Headless therefore ALWAYS runs the **WebGL2 fallback**, NOT the WebGPU compute
+> path. Anything WebGPU-gated is invisible to headless QA: the GPGPU spore/text-morph
+> compute sims AND the hero intro gate (it only engages when `textMorphStore.active` is
+> true, which the WebGPU-only `HeroTextParticles` sets). Two step-4 regressions shipped past
+> a "green" headless pass for exactly this reason — a `vec4()` TSL overflow on the compute
+> render path, and the intro-skip false-fire. **WebGPU-path changes (gpgpu, hero intro,
+> TSL materials, selective bloom) MUST be verified in a real browser** (the developer's
+> Chrome), not just headless. Headless still validates DOM, fallback render, scroll, and
+> console-clean on the WebGL2 path.
+>
+> Note also: `three`'s `error()` (e.g. the TSL "exceeds maximum length" JoinNode error) is
+> `console.error`, **non-fatal** — it logs and truncates the node, so a malformed shader
+> renders WRONG (e.g. `vec4(paddedVec3Attr, 1.0)` drops the `1.0`, leaving `w` = the vec3
+> padding 0 → `modelViewMatrix·vec4(pos,0)` transforms the point as a DIRECTION, collapsing
+> the particles out of view) rather than crashing. A red console + invisible geometry, not a
+> white screen. (Storage-buffer fix: a `"vec3"` `instancedArray` is 16-byte padded →
+> `.toAttribute()` is 4-wide → swizzle `.xyz` before any `vec4(...)`/`length()`/vec3 op.)
+
 Visual checks via headless Chromium (npx-cached Playwright; NOT a repo dep) hit
 two project-specific traps:
 

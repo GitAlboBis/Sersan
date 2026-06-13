@@ -192,12 +192,18 @@ frame. `snap.stop()` while `textMorphStore.gateEngaged`; `snap.destroy()` on unm
 never construct it on the reduced-motion path (no Lenis there). ScrollTrigger's own
 `snap:` fights the Lenis scrollerProxy (both write scroll position) — don't use it.
 
-## Convention: sessionStorage flags (intro skip)
+## Convention: sessionStorage flags
 
-Session-scoped flags follow [intro-skip.ts](src/lib/intro-skip.ts) (key
-`"sersan_skip_intro"`): never read at module scope or during render (SSR answers false),
-lazy reads from effects/handlers only, try/catch around storage access (privacy mode),
-and the read cache lives on **globalThis** (not module scope — dual-bundle coherence,
-same reason as the store pin). The skip composes with SmoothScrollProvider's
-nav-into-home replay reset: the flag WINS (pins the morph store at its end state instead
-of rewinding); cross-bundle consumers read `textMorphStore.introSkipped`, not the flag.
+Session-scoped flags follow the [intro-skip.ts](src/lib/intro-skip.ts) idiom: never read
+at module scope or during render (SSR answers false), lazy reads from effects/handlers
+only, try/catch around storage access (privacy mode), and the read cache lives on
+**globalThis** (not module scope — dual-bundle coherence, same reason as the store pin).
+
+> **The hero-intro double-wheel-flick skip was REMOVED (2026-06-13).** It auto-fired on
+> normal scrolling and persisted, permanently killing the WebGPU particle intro. A
+> mouse-wheel notch is a fixed ~100px, so two ordinary notches 250–750ms apart were
+> indistinguishable from a deliberate "double flick" — a gesture-based skip on the wheel
+> is unsalvageable. `intro-skip.ts` + `textMorphStore.introSkipped` remain as inert dead
+> code (no writer). **Lesson: never auto-skip a deferred experience on a scroll heuristic;
+> any skip must be an explicit, unambiguous affordance (Esc / button).** The intro is a
+> deliberate ~4-swipe scroll-through block, replayable, with no gesture skip.
