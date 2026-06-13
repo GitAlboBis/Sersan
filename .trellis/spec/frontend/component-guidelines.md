@@ -165,6 +165,45 @@ document measurements. Pattern (see [case-studies-rail.tsx](src/components/secti
   scroll-snap with `data-lenis-prevent`, no pinning. Cards stay real focusable links.
 - Multiple sticky-pinned sections on one page coexist safely (verified: spine + rail,
   zero anchor drift) — precisely because neither uses a pin-spacer.
+- **Vertical phased-chapter timeline** (step 6, [audit-week-timeline.tsx](src/components/sections/audit-week-timeline.tsx)):
+  composes the rail's sticky-frame ScrollTrigger with the spine's rAF `panelOpacity` crossfade
+  (inert/aria/pointer-events discipline) over N contiguous sub-ranges, exactly one chapter lit
+  at a time. The section height is a **constant** `100vh + count * TRAVEL_VH` — derived from the
+  (frozen) chapter COUNT, never from card content — so whichever chapter is lit the
+  document-height contribution is identical and no downstream `[data-line-anchor]` drifts. Snap
+  the N-1 INTERIOR chapter boundaries only (`lenis/snap`, never 0/1), one fade-inset past each.
+  The native fallback (mobile / coarse / reduced-motion) renders the prior flat cards verbatim
+  and focusable. The signature line "walks" the chapters as emissive ticks via a section-local
+  store (see `state-management.md` line-pulse convention), never a camera move.
+
+### Draggable ↔ Lenis drag-to-scrub (step 6)
+
+The first GSAP `Draggable` use in `src/` (the audit week timeline). Lenis owns the scroll
+position, so a drag must drive Lenis, never `ScrollTrigger.scroll()` (that fights the
+scrollerProxy). Recipe:
+
+```ts
+if (typeof window !== "undefined") gsap.registerPlugin(Draggable, InertiaPlugin);
+// invisible 1px proxy; map its x to a document Y inside the pin's travel
+Draggable.create(proxy, {
+  type: "x", inertia: true, dragResistance: 0.35, bounds: { minX: -SPAN, maxX: 0 },
+  onPressInit()    { snap?.stop(); getLenis()?.stop(); /* seed proxy at current scroll */ },
+  onDrag()         { getLenis()?.scrollTo(y, { immediate: true, force: true }); },
+  onThrowUpdate()  { getLenis()?.scrollTo(y, { immediate: true, force: true }); },
+  onDragEnd()      { getLenis()?.start(); snap?.start(); },
+  onThrowComplete(){ getLenis()?.start(); snap?.start(); },
+});
+```
+
+- `immediate: true` skips the Lenis lerp (the hand is the clock); **`force: true` is required**
+  because Lenis is `stop()`ed for the duration of the drag and `scrollTo` is a no-op on a
+  stopped Lenis without it.
+- `snap.stop()` during the drag so a pending proximity debounce can't fire mid-drag; restart
+  both Lenis and snap on drag/throw end.
+- Full teardown on unmount: `drag.kill()`, clear every snap point, `snap.destroy()`, `st.kill()`,
+  restore `section.style.height`, and `store.reset()` so the WebGL layer never reads a stale
+  timeline after a route change.
+- Never construct any of this on the reduced-motion / no-Lenis path (native fallback only).
 
 ### Text-reveal engines — one owner per surface (typography pass, step 3)
 

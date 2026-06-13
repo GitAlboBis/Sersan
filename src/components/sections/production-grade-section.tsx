@@ -6,6 +6,7 @@ import { SectionGlow } from "@/components/ui/section-glow";
 import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
 import { useScrollStore } from "@/webgl/store/scrollStore";
+import { useProductionPulseStore } from "@/webgl/store/productionPulseStore";
 
 /**
  * ProductionGradeSection — the SIGNATURE section.
@@ -54,6 +55,28 @@ function useInView<T extends HTMLElement>(margin = "0px 0px -10% 0px") {
     return () => obs.disconnect();
   }, [margin]);
   return { ref, inView };
+}
+
+// === Shared: bump the signature-line pulse on a panel's first appearance ===
+// Each of the 3 panels calls this with its own `inView` flag. On the false→true
+// edge it bumps the globalThis-pinned production pulse store; SignatureLine
+// (the lazy WebGL island) reads + decays it, lifting the line's emissive above
+// the bloom threshold near the production section (BEAT 1). The three panels
+// enter the viewport sequentially, so this fires three staggered pulses — the
+// line beats once per panel scan. Inert under reduced-motion (the WebGL layer
+// is unmounted at tier "off", and we early-return here too so the store is
+// never even touched). No DOM copy/layout effect — pure side-effect.
+function useProductionPulseOnEnter(inView: boolean) {
+  const bump = useProductionPulseStore((s) => s.bump);
+  useEffect(() => {
+    if (!inView) return;
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
+      return;
+    bump();
+  }, [inView, bump]);
 }
 
 // Status colors, reused across panels so the visual language is consistent.
@@ -132,6 +155,7 @@ function EvalPanel() {
   const { language } = useLanguage();
   const isEn = language === "en";
   const { ref, inView } = useInView<HTMLDivElement>();
+  useProductionPulseOnEnter(inView);
 
   return (
     <div ref={ref}>
@@ -214,6 +238,7 @@ function TracePanel() {
   const isEn = language === "en";
   const { ref, inView } = useInView<HTMLDivElement>();
   const [active, setActive] = useState(-1);
+  useProductionPulseOnEnter(inView);
 
   // A single quiet sweep: the cursor steps down the spans, then rests. The
   // per-row STEP is gently modulated by the page scroll progress so the sweep
@@ -331,6 +356,7 @@ function PermissionsPanel() {
   const { language } = useLanguage();
   const isEn = language === "en";
   const { ref, inView } = useInView<HTMLDivElement>();
+  useProductionPulseOnEnter(inView);
 
   return (
     <div ref={ref}>

@@ -17,7 +17,9 @@ import { webgpuEnabled } from "./renderer/createRenderer";
 import { getRouteCurve } from "./curves/routeCurves";
 import { WORLD_VIEW_HEIGHT } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
-import { useSectionStore } from "./store/sectionStore";
+import { useSectionStore, sectionProgress } from "./store/sectionStore";
+import { useProductionPulseStore } from "./store/productionPulseStore";
+import { useAuditTimelineStore } from "./store/auditTimelineStore";
 import { useTextMorphStore } from "./store/textMorphStore";
 import { useIntroStore } from "./store/introStore";
 import { useFxStore } from "./store/fxStore";
@@ -289,6 +291,21 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       section.setPulse(decayedPulse < 0.001 ? 0 : decayedPulse);
     }
 
+    // Production-grade per-panel pulse (BEAT 1). Same decay discipline as the
+    // section-arrival pulse: the globalThis-pinned store holds the TARGET
+    // (bumped to 1 by the ProductionGrade DOM panels as each scans into view);
+    // we decay it toward 0 here and write the damped value back, skipping the
+    // write once settled so the idle line never churns the store. The boost is
+    // gated spatially (prodGate, below) to a 0→1→0 triangle across the
+    // production section, so a stray late-decaying pulse never lifts a
+    // far-away part of the line or any other route/section.
+    const prodPulse = useProductionPulseStore.getState();
+    const prodPulseTarget = prodPulse.pulse;
+    const decayedProdPulse = THREE.MathUtils.damp(prodPulseTarget, 0, 7, delta);
+    if (prodPulseTarget !== 0) {
+      prodPulse.setPulse(decayedProdPulse < 0.001 ? 0 : decayedProdPulse);
+    }
+
     dampedProgress.current = THREE.MathUtils.damp(
       dampedProgress.current,
       progress,
@@ -448,7 +465,46 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // SUMMED then clamped to the same single ceiling — no double-counting.
     const velocityBoost = aliveVelocity * 0.004;
     const pulseBoost = fx.emissive * 0.2 * decayedPulse;
-    const boost = Math.min(velocityBoost + pulseBoost, 0.6);
+    // BEAT 1 — production-grade per-panel pulse, gated to a smooth 0→1→0
+    // triangle across the production section so the lift only ever reads near
+    // it (and never on interior routes, where the store stays 0 anyway).
+    // sectionProgress is 0→1 as the viewport center traverses the span;
+    // 1 - |2p - 1| folds that to a centered triangle. Weight 0.25 ≈ the
+    // section pulse's 0.2 — a brief ~×1.25 emissive lift across the bloom
+    // threshold. ADD further gated line-beat terms (Beat 2: an /audit term)
+    // right here, into the SAME clamped sum.
+    const prodTri = sectionProgress("production", progress, ih);
+    const prodGate = 1 - Math.abs(2 * prodTri - 1);
+    const prodPulseBoost = fx.emissive * 0.25 * decayedProdPulse * prodGate;
+    // BEAT 2 — /audit "How the week runs" timeline walk. While the pinned
+    // timeline owns the page, its scrub progress (0..1 across the six Days) is
+    // published to auditTimelineStore. We derive six evenly-spaced per-Day
+    // boundary pulses: each Day boundary is a damped 0→1→0 triangle in the
+    // local progress, so the head visibly "ticks" Day1→Day6 as the reader
+    // scrubs. Gated to pathname==="/audit" + active (the store stays inert on
+    // every other route, and the Canvas is unmounted under reduced motion), so
+    // this only ever lifts the line near the timeline waypoint. Writes ONLY the
+    // shared uEmissive boost — works identically on GLSL + TSL, no camera or
+    // geometry change. Weight 0.22 ≈ the section pulse's 0.2 → a brief ~×1.2
+    // emissive tick per Day. ADDED into the SAME clamped sum as the beats above.
+    let auditWalkBoost = 0;
+    if (pathname === "/audit") {
+      const at = useAuditTimelineStore.getState();
+      if (at.active) {
+        // Six Day "bands" over [0,1]; the pulse peaks at the centre of each
+        // band and folds to 0 at the band edges (1 - |2f - 1| triangle),
+        // sharpened by squaring so the tick reads as a discrete per-Day beat.
+        const days = 6;
+        const band = Math.min(0.999999, Math.max(0, at.progress)) * days;
+        const frac = band - Math.floor(band);
+        const tri = 1 - Math.abs(2 * frac - 1);
+        auditWalkBoost = fx.emissive * 0.22 * (tri * tri);
+      }
+    }
+    const boost = Math.min(
+      velocityBoost + pulseBoost + prodPulseBoost + auditWalkBoost,
+      0.6,
+    );
     u.uEmissive.value = (fx.emissive + boost) * route.lineEmissiveScale;
     u.uGlowFalloff.value = fx.glowFalloff;
     u.uHeadSharp.value = fx.headSharp;

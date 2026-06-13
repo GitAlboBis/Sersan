@@ -5,10 +5,17 @@ import { ArrowRight, Clock } from "lucide-react";
 import { resources } from "@/data/resources";
 import { useLanguage } from "@/components/language-provider";
 import { Reveal } from "@/components/ui/reveal";
+import { SectionHeading } from "@/components/ui/section-heading";
+import { Button } from "@/components/ui/button";
+import {
+  useResourcePreview,
+  ResourcePreviewCard,
+} from "@/components/resources/resource-preview";
 
 export function ResourcesClient() {
   const { language } = useLanguage();
   const isEn = language === "en";
+  const { getItemHandlers, onListPointerLeave } = useResourcePreview();
 
   const categoryLabel: Record<string, string> = isEn
     ? {
@@ -83,12 +90,17 @@ export function ResourcesClient() {
       {/* Articles list */}
       <section data-line-anchor="list" className="pb-24">
         <div className="container-px">
-          <div className="max-w-4xl mx-auto space-y-5">
+          <div
+            className="max-w-4xl mx-auto space-y-5"
+            onPointerLeave={onListPointerLeave}
+          >
             {resources.map((r, i) => (
               <Reveal key={r.slug} delay={Math.min(i, 4) * 70}>
               <Link
                 href={`/resources/${r.slug}`}
+                data-resource-index={i}
                 className="card-steel group block p-7"
+                {...getItemHandlers(i)}
               >
                 <div className="flex items-center gap-3 mb-3 text-[10px] font-mono uppercase tracking-[0.16em] text-ink-mute">
                   <span style={{ color: "hsl(var(--accent))" }}>{categoryLabel[r.category]}</span>
@@ -129,9 +141,68 @@ export function ResourcesClient() {
           here and the signature line threads it before the CTA. */}
       <div data-line-anchor="ritual" aria-hidden="true" className="py-28 sm:py-40" />
 
-      {/* Closing anchor — gives the signature line a tail waypoint (P5b).
-          Zero-content block div, no layout/copy impact. */}
-      <div data-line-anchor="final-cta" aria-hidden="true" />
+      {/* Closing CTA — a REAL section (BEAT 3) so the signature line gets a
+          genuine terminus band instead of dying in the void. Copy + structure
+          reuse the /case-studies closing CTA verbatim (frozen EN/IT strings);
+          giving final-cta real height shifts its measured center fraction down
+          the document, fixing the curve tail via the existing waypoint (no
+          routeCurves edit). */}
+      <section data-line-anchor="final-cta" className="section-lg relative">
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] opacity-20 pointer-events-none"
+          aria-hidden="true"
+        >
+          <div className="absolute inset-0 rounded-full bg-[radial-gradient(circle,hsl(var(--accent))_0%,transparent_60%)] blur-[140px]" />
+        </div>
+        <div className="container-px relative z-10">
+          <div className="max-w-2xl mx-auto text-center">
+            {/* SectionHeading owns the line-mask reveal AND carries
+                key={language} on its internal h2 (data-heading-title) — adding
+                data-split-reveal here would double-animate the title via
+                HeadingChoreographer, so we reuse the /case-studies pattern as-is. */}
+            <SectionHeading
+              align="center"
+              className="mx-auto mb-10 max-w-2xl"
+              title={
+                isEn ? (
+                  <>
+                    Want this kind of work in{" "}
+                    <span className="italic" style={{ color: "hsl(var(--accent))" }}>
+                      your business?
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Volete questo tipo di lavoro nella{" "}
+                    <span className="italic" style={{ color: "hsl(var(--accent))" }}>
+                      vostra azienda?
+                    </span>
+                  </>
+                )
+              }
+              description={
+                isEn
+                  ? "A free scoping call is the easiest way to find out where it would have the highest impact."
+                  : "Una call di scoping gratuita è il modo più semplice per capire dove avrebbe l'impatto maggiore."
+              }
+            />
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+              <Button asChild size="lg" className="px-10 py-7 text-base font-semibold rounded-full">
+                <Link href="/audit">
+                  {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* DOM/CSS fallback hover-preview card (BEAT 3). Renders only on the
+          non-WebGPU paths (lite tier / flag-off desktop); suppressed on the
+          desktop WebGPU full path where ResourcePreviewPlane is the preview,
+          and on coarse/reduced-motion. */}
+      <ResourcePreviewCard />
     </div>
   );
 }

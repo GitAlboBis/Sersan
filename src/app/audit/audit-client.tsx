@@ -7,6 +7,7 @@ import { CalEmbed } from "@/components/cal-embed";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
+import AuditWeekTimeline from "@/components/sections/audit-week-timeline";
 
 export function AuditClient() {
   const { language } = useLanguage();
@@ -326,53 +327,11 @@ export function AuditClient() {
       </section>
       </div>
 
-      {/* The week */}
+      {/* The week — pinned phased chapters (BEAT 2, audit-week-timeline). The
+          data-line-anchor="timeline" wrapper stays (the curve waypoint lives
+          here); the component owns the SectionHeading + the six Day cards. */}
       <div data-line-anchor="timeline">
-      <section className="section-lg relative">
-        <div className="container-px relative">
-          <SectionHeading
-            align="center"
-            className="mx-auto mb-12"
-            eyebrow={isEn ? "The week, day by day" : "La settimana, giorno per giorno"}
-            titleClassName="font-display text-3xl sm:text-[2.5rem] text-ink leading-[1.12] tracking-tight text-balance"
-            title={
-              isEn ? (
-                <>
-                  Six days.{" "}
-                  <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                    Real work each.
-                  </span>
-                </>
-              ) : (
-                <>
-                  Sei giorni.{" "}
-                  <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                    Lavoro vero ognuno.
-                  </span>
-                </>
-              )
-            }
-          />
-          <div className="max-w-4xl mx-auto space-y-4">
-            {week.map((w, i) => (
-              <Reveal key={i} delay={i * 70}>
-                <div className="card-steel flex flex-col sm:flex-row gap-4 sm:gap-6 p-6">
-                  <div
-                    className="sm:w-28 shrink-0 text-[11px] font-mono uppercase tracking-[0.18em]"
-                    style={{ color: "hsl(var(--accent))" }}
-                  >
-                    {w.day}
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-display text-lg text-ink mb-1.5 leading-tight">{w.title}</h3>
-                    <p className="text-sm text-ink-mute leading-[1.55]">{w.desc}</p>
-                  </div>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
+        <AuditWeekTimeline week={week} isEn={isEn} />
       </div>
 
       {/* What happens after */}

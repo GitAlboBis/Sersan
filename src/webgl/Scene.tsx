@@ -28,6 +28,7 @@ import { GatewayPortal } from "./GatewayPortal";
 import { RouteHero, type RouteHeroKind } from "./RouteHero";
 import { DriftParticles } from "./DriftParticles";
 import { RailPlanes } from "./RailPlanes";
+import { ResourcePreviewPlane } from "./ResourcePreviewPlane";
 import { PostFX } from "./PostFX";
 import { PostFXNodes } from "./PostFXNodes";
 import { useSectionAnchors } from "./hooks/useSectionAnchors";
@@ -245,6 +246,16 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           authority having written camera.position.y earlier in the same
           priority-0 frame pass. */}
       {pathname === "/" && tier === "full" && webgpu && <RailPlanes />}
+      {/* /resources article-hover signal plane (BEAT 3). Same gates as
+          RailPlanes — route + full tier + the WebGPU flag (TSL-only, no GLSL
+          twin; on the classic flag-OFF path the DOM gradient card in
+          resource-preview.tsx is the whole preview). MUST stay mounted AFTER
+          SignatureLine: the camera-locked placement relies on the single camera
+          authority having written camera.position/quaternion earlier in the
+          same priority-0 frame pass. */}
+      {pathname === "/resources" && tier === "full" && webgpu && (
+        <ResourcePreviewPlane />
+      )}
       {/* Postprocessing — desktop ("full") only, exactly as before. Which rig
           mounts is a BUILD-TIME split on `webgpuEnabled()`, not a runtime backend
           check:

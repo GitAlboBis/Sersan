@@ -101,6 +101,14 @@ Rules (violating any of these broke pages in the past or would):
    Add anchors only when waypoints must track real section positions.
 5. Keep `data-line-anchor` names in client pages and waypoint keys in `routeCurves.ts`
    **in sync and truthful** (name = the section it wraps) — rename both sides together.
+6. **A `final-cta` waypoint needs a real terminus section.** The tail waypoint resolves to
+   the `final-cta` anchor's MEASURED center fraction (section-bus → `sectionStore.spans`).
+   A zero-content `<div data-line-anchor="final-cta">` collapses that fraction onto the
+   preceding gap and the line "dies in the void". Every route's `final-cta` must wrap a real
+   `<section>` with height (it is NOT in `DECORATIVE_ANCHORS`); giving it content shifts the
+   measured fraction down the document and fixes the tail **without editing `routeCurves.ts`**
+   (the waypoint already exists). /resources was the lone offender (step 6) — fixed by reusing
+   the /case-studies closing CTA verbatim, no curve edit.
 
 ---
 
@@ -127,6 +135,49 @@ behind the rail cards):
 - TSL node materials must keep procedural backdrops below the bloom threshold (<1.0);
   only deliberate HDR accents (scan sweep) go above. Gate planes on
   `tier === "full" && webgpuEnabled()`; the DOM must be complete without them.
+- **Two such planes ship**: [RailPlanes.tsx](src/webgl/RailPlanes.tsx) (home rail) and
+  [ResourcePreviewPlane.tsx](src/webgl/ResourcePreviewPlane.tsx) (the /resources article
+  hover preview, step 6) — same gate, same camera-space placement, each TSL-only with a DOM
+  fallback (a `position:fixed` gradient card) on the flag-off / lite path. A plane that wants
+  the cursor "flow" reads the SAME `pointerStore.vel` that feeds
+  [PointerFlowmap.ts](src/webgl/fluid/PointerFlowmap.ts) — do NOT export and share
+  PostFXNodes' private flowmap render-target across components (uuid-rebind / dispose-order
+  fragility for no visual gain).
+
+---
+
+## Convention: line-pulse signal stores + the SignatureLine `boost` accumulator
+
+A DOM surface that wants the signature line to react (a section scan, a scrubbed timeline, a
+hover) publishes through a NEW transient zustand store that is **globalThis-pinned** — written
+by the route bundle (a DOM component) and read by the lazy WebGL island (`SignatureLine` / a
+plane), the same cross-bundle split that bit `sectionStore`/`textMorphStore`. Shipped examples
+(step 6): `productionPulseStore` (per-panel pulse), `auditTimelineStore` (scrub progress),
+`resourcePreviewStore` (hover follower). Rules:
+
+1. **One store per surface; never hijack `sectionStore.pulse`** — that field is
+   section-arrival, single-writer (`SectionBus`), and fires on every section everywhere. A
+   section/route-local signal needs its own field or readers on other routes get spurious lifts.
+2. **DOM writer / WebGL reader.** The writer `set`s/`bump`s a target; `SignatureLine` reads
+   `getState()` in `useFrame` (no re-render) and decays it with
+   `THREE.MathUtils.damp(target, 0, 7, delta)`, writing the damped value back and **skipping
+   the write once it settles** (`< 0.001 → 0`, guarded by `target !== 0`) so an idle line never
+   churns the store. Mirror the section-arrival pulse block exactly.
+3. **The `boost` accumulator is shared and additive.** Every line-driving beat adds a
+   clearly-named, gated term into the SINGLE clamp that feeds the line emissive:
+   ```ts
+   const boost = Math.min(velocityBoost + pulseBoost + prodPulseBoost + auditWalkBoost, 0.6);
+   u.uEmissive.value = (fx.emissive + boost) * route.lineEmissiveScale;
+   ```
+   Never rewrite the assignment, never add a second uniform. Because it only writes the shared
+   `u.uEmissive.value`, it works identically on the GLSL (`lineShader`) and TSL
+   (`lineNodeMaterial`) paths and the existing selective bloom catches it for free. Gate each
+   term so it is 0 off its surface (a `sectionProgress("…")` triangle for a home section; a
+   `pathname === "/x" && store.active` guard for a route).
+4. **Express a "walk" as emissive ticks, not camera/head motion.** `SignatureLine` is the
+   single camera authority; moving the head/camera from a section store fights it. A scrubbed
+   timeline's progress becomes N damped emissive pulses (e.g. a squared triangle per band),
+   never a second writer of `camera.position`.
 
 ---
 
