@@ -12,6 +12,12 @@
  * `.element(i)` outside compute is broken on the WebGL fallback backend
  * (three #31221), and `.toAttribute()` is sampler-free (no texture round-trip,
  * no orientation/LOD pitfalls), which is what retired the FBO rigs for good.
+ * WIDTH CAVEAT: `.toAttribute()` is NOT a drop-in for `.element(i).xyz`. A
+ * `"vec3"` storage buffer is padded to 16 bytes in the WebGPU storage layout,
+ * so `.toAttribute()` yields a 4-COMPONENT node — every vec3-buffer render read
+ * MUST trail `.xyz` (feeding a bare 4-comp into `vec4(p, 1.0)` / `length()` /
+ * a vec3 `.add()` throws "Length of parameters exceeds maximum" or truncates).
+ * Scalar `"float"` buffers are unpadded — no `.xyz` on those.
  *
  * RETIRED in C3: createGpgpuNodeSim (the TSL FBO ping-pong rig — its RT
  * round-trip scrambled on the WebGPU backend and it only served the parked
@@ -604,13 +610,17 @@ export function createSporeComputeNodeBuild(
   ).mul(0.5);
   const lifeScale = dieEnv.mul(regrowEnv.add(pulse));
 
+  // `.xyz` is MANDATORY on a `"vec3"` storage buffer read: `.toAttribute()`
+  // returns a 4-component node (vec3 padded to 16 bytes in the WebGPU storage
+  // layout), and positionNode must stay vec3 — `positionLocal.mul(scale)` is
+  // vec3, so the `.add()` summand has to be vec3 too.
   material.positionNode = positionLocal
     .mul(
       (uSporeRadius as unknown as AnyNode)
         .mul(mix(float(spore.VAR_MIN), float(spore.VAR_MAX), rnd))
         .mul(lifeScale),
     )
-    .add(positionBuffer.toAttribute());
+    .add(positionBuffer.toAttribute().xyz);
 
   material.colorNode = Fn(() => {
     const N = normalView.normalize().toVar();
@@ -630,7 +640,9 @@ export function createSporeComputeNodeBuild(
     // regrow flash (DDD: brightness = max(0, life−1) — re-forming spores flash
     // cyan). Quadratic ramp so the resting crust stays dark violet and only
     // excited spores lerp toward cyan AND cross the selective-bloom threshold.
-    const speed = length(velocityBuffer.toAttribute());
+    // `.xyz` MANDATORY: `velocityBuffer` is a padded `"vec3"` storage buffer,
+    // so `.toAttribute()` is 4-component — `length()` must see the true vec3.
+    const speed = length(velocityBuffer.toAttribute().xyz);
     const regrowFlash = clamp(lifeAttr.sub(1.0), 0.0, 1.0); // max(0, life−1)
     const t = clamp(
       max(speed.mul(spore.SPEED_COLOR_K), regrowFlash),
@@ -1010,11 +1022,16 @@ export function createTextMorphComputeBuild(
     // storage buffers written by the compute kernel are bound as per-instance
     // vertex attributes — sampler-free, valid in any stage, and the only form
     // that also works under the WebGL fallback. (Migrated from the previous
-    // `.element(instanceIndex)` vertex reads in C3.)
-    const p = positionBuffer.toAttribute().toVar();
-    const v = velocityBuffer.toAttribute();
+    // `.element(instanceIndex)` vertex reads in C3.) NOTE: `.toAttribute()` on
+    // a `"vec3"` storage buffer yields a 4-COMPONENT node — vec3 is padded to
+    // 16 bytes in the WebGPU storage layout — so the trailing `.xyz` swizzle is
+    // MANDATORY (it is NOT a drop-in for `.element(i).xyz`); without it
+    // `vec4(p, 1.0)` becomes 5 components and the shader throws / truncates.
+    const p = positionBuffer.toAttribute().xyz.toVar();
+    const v = velocityBuffer.toAttribute().xyz;
     vSpeed.assign(length(v));
     vRandSrc.assign(hash(instanceIndex));
+    // delayBuffer is a `"float"` (scalar) storage buffer — no padding, no `.xyz`.
     const delay = delayBuffer.toAttribute();
     const aw = clamp(
       assembleN
