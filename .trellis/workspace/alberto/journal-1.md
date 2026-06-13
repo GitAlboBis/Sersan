@@ -117,3 +117,39 @@ Executed PIANO_RESTYLE step 3 (DOM-only typography pass) via research fan-out (4
 ### Next Steps
 
 - None - task complete
+
+
+## Session 4: Restyle step 4: section-state bus, spine 390vh + snap + skip, unified attractor sim
+
+**Date**: 2026-06-13
+**Task**: Restyle step 4: section-state bus, spine 390vh + snap + skip, unified attractor sim
+**Branch**: `feat/webgl-refactor`
+
+### Summary
+
+Executed PIANO_RESTYLE step 4 in three chunks via research fan-out (4 agents, which corrected two stale assumptions: hero already ships the spores TSL compute momentum sim since 9bf6519 — memory updated; lenis 1.3.23 ships native snap). C1 bus: globalThis-pinned sectionStore + layout-level SectionBus writer (IO over non-decorative line anchors, direction from the provider write path), useSectionAnchors reduced to adapter, scrollStore.activeAnchor/anchorPulse removed, navbar off its private scroll listener. C2 spine: DESKTOP_GROUPS grouping layer (copy byte-identical, hero/map/ship/handover), 520->390vh via lib/spine.ts, lenis/snap proximity on interior boundaries [.23/.51/.77] with gateEngaged stop/start, double wheel-flick skip + sessionStorage sersan_skip_intro composing with the nav-into-home replay reset (camTilt/tiltDone untouched - SpineExitGate invariant). C3 sim (dispatch killed by session limit mid-flight; audit dispatch confirmed it was complete): unifiedForceStep shared kernel (analytic anchor + sim offset + cursor attractor/orbit, damping, clamps) for spores + text-morph, all render reads .toAttribute(), retired FBO rig/sprite modes (union particles-static|spores), leva attractor knobs, diagnostics stripped. Check pass: zero code defects, spec conventions recorded. Headless QA: grouped panels lit in sequence with full copy, chips 13/5/1 once, skip + reload persistence, snap settle 1215->1331 with gates owning their zones (lenis stopped => scrollTo no-op — spec'd as QA gotcha), mobile 6 ungrouped blocks, reduced-motion unhijacked, console clean. tsc+build green (40/40). Archived 06-13 and superseded 06-08 (open leftovers: foreground FPS measure, runtime auto-degrade). Next: step 6 beat interni (step 5 rail/scan-hover already shipped in step 2).
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `24a87ae` | (see git log) |
+| `f8bee36` | (see git log) |
+| `586a2b4` | (see git log) |
+| `5de6c66` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
