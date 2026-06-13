@@ -118,6 +118,13 @@ two project-specific traps:
   MutationObserver `characterData` sees nothing — observe `childList` or rAF-poll.
   To catch animations that fire at mount (in-view immediate-fire), attach loggers
   with `page.addInitScript`, not post-load `evaluate` (the count may already be done).
+- **Scroll gates own their zones**: while HeroIntroGate or SpineExitGate is engaged,
+  Lenis is stopped and `lenis.scrollTo()` is a **no-op** — a QA script that parks at
+  the spine's end and expects `scrollTo` to work will silently stay put, and a wheel
+  there triggers the exit dive (≈+1 viewport), which is intended behavior, not a snap
+  miss. Test snap settle only between interior points, away from both gates. The
+  intro gate is skippable in scripts with the double wheel-flick (two ~160px wheels
+  ~350ms apart).
 
 ---
 

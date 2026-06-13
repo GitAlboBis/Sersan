@@ -151,3 +151,53 @@ dynamic rendering — keep pages static).
 
 **Common mistake:** adding `useLanguage()` for a component's CTA but leaving its body copy
 hardcoded English — translate the WHOLE component, not just the button.
+
+---
+
+## Convention: section-state bus (sectionStore + SectionBus)
+
+"Which section is the reader in" has ONE source of truth: `src/webgl/store/sectionStore.ts`
+(zustand), written ONLY by the layout-level [section-bus.tsx](src/components/section-bus.tsx)
+(measures `[data-line-anchor]` spans, one IntersectionObserver for the active section +
+arrival pulse, scroll direction from the shared scrollStore). Rules:
+
+1. **globalThis-pin every store imported by both the route bundle and the lazy WebGL
+   island** (`globalThis.__sersan… ??= createStore()`, like textMorphStore /
+   sectionStore). Turbopack inlined separate copies of small store modules into each
+   chunk in prod — two live zustand instances, writers and readers split (2026-06-10).
+2. The bus writer lives OUTSIDE the Canvas so it works on tier `"off"` and under reduced
+   motion. Don't put section-identity writers inside Scene-mounted hooks again
+   (`scrollStore.activeAnchor` rotted as a write-only field exactly that way; it was
+   removed in favor of the bus).
+3. `useSectionAnchors` is now a thin adapter deriving curve fractions
+   (`(span.start+span.end)/2`) from the bus — geometry consumers keep their props API.
+4. Decorative zero-height anchors (`work-in-progress`, `gateway`, `ritual`) are measured
+   for curve geometry but EXCLUDED from section identity (`DECORATIVE_ANCHORS`).
+5. Per-section progress is a pure helper (`sectionProgress()`), never a per-frame store
+   field. Hot paths read `getState()`; reactive consumers subscribe only to
+   rare-change fields (`active`/`index`/`measureVersion`).
+6. **One scroll source:** components needing scroll-cadence state subscribe to
+   `scrollStore` (fed by Lenis or the reduced-motion native fallback) — no private
+   `window` scroll listeners (navbar's was removed).
+
+## Convention: scroll snap = `lenis/snap`, never ScrollTrigger snap
+
+Lenis 1.3.23 ships the snap plugin (`import Snap from "lenis/snap"`). For pinned-section
+snapping (home spine): `new Snap(lenis, { type: "proximity", debounce, distanceThreshold })`,
+points registered as absolute px via `snap.add()` and re-derived on every
+`ScrollTrigger.refresh()`/resize. Snap only INTERIOR boundaries — never 0 (HeroIntroGate
+owns the top) or 1 (SpineExitGate owns the pin end) — and place each point one
+panel-fade inside the boundary so the settle lands on a lit panel, not a blank crossfade
+frame. `snap.stop()` while `textMorphStore.gateEngaged`; `snap.destroy()` on unmount;
+never construct it on the reduced-motion path (no Lenis there). ScrollTrigger's own
+`snap:` fights the Lenis scrollerProxy (both write scroll position) — don't use it.
+
+## Convention: sessionStorage flags (intro skip)
+
+Session-scoped flags follow [intro-skip.ts](src/lib/intro-skip.ts) (key
+`"sersan_skip_intro"`): never read at module scope or during render (SSR answers false),
+lazy reads from effects/handlers only, try/catch around storage access (privacy mode),
+and the read cache lives on **globalThis** (not module scope — dual-bundle coherence,
+same reason as the store pin). The skip composes with SmoothScrollProvider's
+nav-into-home replay reset: the flag WINS (pins the morph store at its end state instead
+of rewinding); cross-bundle consumers read `textMorphStore.introSkipped`, not the flag.

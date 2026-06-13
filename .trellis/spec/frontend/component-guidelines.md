@@ -138,10 +138,14 @@ Do **not** use `—` or `–` as clause separators in user-facing copy (reads AI
 Use commas, periods, or colons. Hyphens in compounds/ranges (`tier-1`, `30-min`) are fine.
 
 ### Hero
-The homepage hero is the 400vh pinned `cinematic-system-scroll` spine with a **static** orb
-image (`public/images/hero/orb-core.webp`) backdrop + `NeuralNetLayer` (Canvas2D). `MobileFallback`
-(≤768px) renders stacked sections with the orb as an **ambient top-right glow** (not the WebGL/spine).
-See `state-management.md` for the i18n of the spine copy.
+The homepage hero is the pinned `cinematic-system-scroll` spine: outer height =
+`SPINE_HEIGHT_VH` (390vh, single source in `src/lib/spine.ts` — HeroLogo derives its
+fallback from it too; never hardcode the number elsewhere). The 6 `STAGE_CONTENT` copy
+blocks are canonical and render through a desktop grouping layer (`DESKTOP_GROUPS`:
+hero / map / ship / handover — merged panels render both blocks, copy untouched).
+`MobileFallback` (≤768px or reduced motion) iterates the UNGROUPED 6 blocks — desktop
+compression must never change the copy source. See `state-management.md` for the i18n
+of the spine copy and the lenis/snap convention for the spine's soft snap.
 
 ### Pinned sections — CSS sticky, never ScrollTrigger pin
 Pinned scroll sections (hero spine, case-studies rail) use a **CSS `position: sticky`
