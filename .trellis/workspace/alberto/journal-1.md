@@ -82,3 +82,38 @@ Home reordered for time-to-proof (credibility strip + case studies before pitch,
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: Restyle step 3: typography presets (split reveals, scramble, counters, redacted fit)
+
+**Date**: 2026-06-13
+**Task**: Restyle step 3: typography presets (split reveals, scramble, counters, redacted fit)
+**Branch**: `feat/webgl-refactor`
+
+### Summary
+
+Executed PIANO_RESTYLE step 3 (DOM-only typography pass) via research fan-out (4 agents) + 3 implement dispatches + check. Wired the orphaned HeadingChoreographer: data-split-reveal + key={language} on 11 H1s and all hand-rolled display H2s, heroes lifted out of block Reveals, .split-line-mask italic-overshoot headroom (collapse-proof via :has flex). LabelScrambler extended to composite dot-eyebrows (TreeWalker text nodes, abort-safe). CountUp resurrected: detail metrics, /about strip (force prop for bare ints), spine proof chips counting at the rAF panelOpacity lit threshold. New RedactedReveal primitive on the 6 Not-a-fit rows (copy 6+6 verbatim; PIANO 4+4 trim rejected per copy-stays-current-site memory). Fixed 3 shipped-broken latencies: choreographer paused-from+invalidate().restart() trap (115->115, nothing ever revealed; rewritten set+lazy fromTo, confirmed in isolation), CountUp born-active once:true ST never firing on detail pages (isActive immediate-fire + replay guards), check-pass fixes (language-freeze on 21 headings, mask margin-collapse height drift, scramble abort corruption). Headless QA (npx playwright-core + system Chrome on next start :3311): frame-level proof of counting (-0%->-47%, chips 0->13), EN->IT re-split, reduced-motion static, console clean desktop+mobile. tsc + build green (40/40). Specs updated: engine ownership table + GSAP traps + pinned-stage trigger regime + headless QA gotchas. Next: step 4 (section-state bus, hero compression, TSL compute attractors port).
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2ba2e45` | (see git log) |
+| `2eb2fb1` | (see git log) |
+| `5e18385` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
