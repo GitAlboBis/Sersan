@@ -243,6 +243,43 @@ export function CardImageDistort({ src, alt }: CardImageDistortProps) {
     setCanDistort(!reduced && !coarse);
   }, []);
 
+  // Force-load the base <img> via IntersectionObserver. Native lazy-load does
+  // NOT fire inside the home rail's `position: sticky` + `overflow: hidden` +
+  // `transform: translateX(...)` frame (the browser's lazy IO never triggers in
+  // that transformed/clipped scroll container), so the preview never fetches
+  // and both the CSS reveal and the WebGL distortion (which gates on
+  // img.complete && naturalWidth > 0) stay dead. This self-contained IO forces
+  // the fetch the moment the card nears the viewport. NOT gated on canDistort:
+  // the static <img> must load on mobile/reduced-motion too, where the canvas
+  // never mounts. On the grid / mobile, native lazy fires first and this is a
+  // harmless no-op (early-returns on already-loaded).
+  useEffect(() => {
+    const root = rootRef.current;
+    const img = imgRef.current;
+    if (!root || !img || typeof IntersectionObserver === "undefined") return;
+    // Already loaded (grid / native lazy already fired) — nothing to do.
+    if (img.complete && img.naturalWidth > 0) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        // Native lazy-load never fires inside the rail's sticky/overflow-hidden
+        // transformed frame. Force the fetch the moment the card nears view.
+        img.loading = "eager";
+        if (!img.complete || img.naturalWidth === 0) {
+          const s = img.currentSrc || img.getAttribute("src");
+          if (s) {
+            img.removeAttribute("src");
+            img.setAttribute("src", s);
+          }
+        }
+        io.disconnect();
+      },
+      { rootMargin: "300px" },
+    );
+    io.observe(root);
+    return () => io.disconnect();
+  }, []);
+
   useEffect(() => {
     const root = rootRef.current;
     if (!root || !canDistort) return;

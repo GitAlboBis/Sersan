@@ -690,6 +690,43 @@ img { height: auto; max-width: 100%; }
   }
 }
 
+/* Home case-studies RAIL distort cards (case-studies-rail.tsx StudyCard).
+   The three SerSan-build rail cards carry `.card-steel` ONLY to reuse the
+   CardImageDistort hover-reveal hook (its JS `closest('.card-steel')` listener
+   + the `.card-steel:hover .card-image-distort__*` reveal CSS). They are NOT
+   real brushed-steel panels: the rail card must stay translucent so the
+   DOM-synced WebGL RailPlanes keep painting through, and its own chrome
+   (CARD_CLASS bg/border/radius) leads. So neutralise the steel surface here —
+   two-class selector outscopes the single-class `.card-steel` rules; the rail's
+   Tailwind utilities (in @layer utilities) would otherwise lose to the
+   unlayered `.card-steel`. The tilt/lift transform is suppressed in JS via
+   `data-no-tilt` (CardTiltController), so the box never moves and the planes
+   stay registered. */
+.card-steel.rail-card-distort {
+  /* The rail's intended translucent navy (CARD_CLASS bg-[hsl(216 28% 10%/0.45)])
+     — NOT the opaque .card-steel gradient — so the WebGL RailPlanes keep
+     painting through. The CardImageDistort scrim/img layer reveals on hover
+     ABOVE this. */
+  background: hsl(216 28% 10% / 0.45);
+  box-shadow: none;
+  /* Restore the rail's own border so the 3 distort cards match the other 10
+     rail cards (CARD_CLASS: border-[hsl(var(--rule))], hover accent/0.45). */
+  border-color: hsl(var(--rule));
+}
+.card-steel.rail-card-distort:hover {
+  background: hsl(216 28% 10% / 0.45);
+  box-shadow: none;
+  border-color: hsl(var(--accent) / 0.45);
+}
+/* No pointer-tracked sheen / proximity glow on these cards: the tilt
+   controller never runs for them (data-no-tilt), so the --sheen and --glow
+   vars stay at rest — make doubly sure the pseudo-layers add nothing over the
+   planes. */
+.card-steel.rail-card-distort::after,
+.card-steel.rail-card-distort::before {
+  content: none;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;

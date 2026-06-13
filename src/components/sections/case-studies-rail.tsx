@@ -14,6 +14,7 @@ import {
 import { useLanguage } from "@/components/language-provider";
 import { useRailStore } from "@/webgl/store/railStore";
 import { getLenis } from "@/lib/lenis-singleton";
+import { CardImageDistort } from "@/components/fx/card-image-distort";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
@@ -88,46 +89,70 @@ function StudyCard({
 }) {
   const metric = study.metrics[0];
   const engagement = isEn ? study.engagement : study.engagementIt;
+  // The three SerSan builds (SphereNode, Quantex, Terra Noa) ship a product
+  // preview → reuse the exact grid treatment: the Lusion-style hover-reveal
+  // glitch image fades in BEHIND the text under a navy scrim. CardImageDistort
+  // and its reveal CSS key off the `.card-steel` ancestor, so the distort cards
+  // carry `card-steel` for the hook only — `data-no-tilt` keeps the global
+  // CardTiltController from transforming the box (RailPlanes registration), and
+  // the scoped `rail-card-distort` override (globals.css) restores the rail's
+  // translucent chrome so the planes still paint through. The card box (fixed
+  // w/h from CARD_CLASS / the <li>) is unchanged; the media is an absolute
+  // inset-0 overlay clipped to the card radius.
+  const hasPreview = Boolean(study.previewImage);
   return (
     <Link
       href={`/case-studies/${study.id}`}
-      className={CARD_CLASS}
+      className={
+        hasPreview ? `${CARD_CLASS} card-steel rail-card-distort` : CARD_CLASS
+      }
+      {...(hasPreview ? { "data-no-tilt": "" } : {})}
       onPointerEnter={() => onHover(index, 1)}
       onPointerLeave={() => onHover(index, 0)}
       onFocus={() => onHover(index, 1)}
       onBlur={() => onHover(index, 0)}
     >
-      <div className="flex items-center justify-between gap-2 pb-4 border-b border-[hsl(var(--rule)/0.7)]">
-        <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-dim tabular-nums">
-          {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
-        </span>
-        <span
-          className={`font-mono text-[10px] tracking-[0.16em] uppercase ${INDUSTRY_COLOR[study.industry]}`}
-        >
-          {study.industry}
-        </span>
-      </div>
-
-      {/* The big mono metric — the card's proof, front and center. */}
-      <div className="flex flex-1 flex-col justify-center gap-2.5 py-6">
-        <span className="font-mono text-[1.9rem] sm:text-[2.2rem] leading-none tracking-tight tabular-nums text-ink transition-colors duration-300 group-hover:text-[hsl(var(--accent))]">
-          {metric?.value}
-        </span>
-        {metric ? (
-          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-ink-mute leading-snug line-clamp-2 max-w-[18rem]">
-            {isEn ? metric.label : metric.labelIt}
+      {study.previewImage && (
+        <CardImageDistort
+          src={study.previewImage}
+          alt={`${study.client} product preview`}
+        />
+      )}
+      {/* Text content sits ABOVE the media layer (mirrors the grid's
+          `relative z-10` wrapper); at rest the metric/text card reads as today. */}
+      <div className="relative z-10 flex h-full flex-col">
+        <div className="flex items-center justify-between gap-2 pb-4 border-b border-[hsl(var(--rule)/0.7)]">
+          <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-dim tabular-nums">
+            {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
           </span>
-        ) : null}
-      </div>
+          <span
+            className={`font-mono text-[10px] tracking-[0.16em] uppercase ${INDUSTRY_COLOR[study.industry]}`}
+          >
+            {study.industry}
+          </span>
+        </div>
 
-      <div className="mt-auto flex flex-col gap-2 pt-4 border-t border-[hsl(var(--rule)/0.7)]">
-        <h3 className="flex items-start justify-between gap-2 font-display text-[1.3rem] text-ink leading-tight">
-          {study.client}
-          <ArrowUpRight className="mt-1 h-4 w-4 shrink-0 text-ink-mute opacity-0 transition-all group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-        </h3>
-        <p className="font-mono text-[11.5px] text-ink-mute leading-relaxed line-clamp-2">
-          {engagement}
-        </p>
+        {/* The big mono metric — the card's proof, front and center. */}
+        <div className="flex flex-1 flex-col justify-center gap-2.5 py-6">
+          <span className="font-mono text-[1.9rem] sm:text-[2.2rem] leading-none tracking-tight tabular-nums text-ink transition-colors duration-300 group-hover:text-[hsl(var(--accent))]">
+            {metric?.value}
+          </span>
+          {metric ? (
+            <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-ink-mute leading-snug line-clamp-2 max-w-[18rem]">
+              {isEn ? metric.label : metric.labelIt}
+            </span>
+          ) : null}
+        </div>
+
+        <div className="mt-auto flex flex-col gap-2 pt-4 border-t border-[hsl(var(--rule)/0.7)]">
+          <h3 className="flex items-start justify-between gap-2 font-display text-[1.3rem] text-ink leading-tight">
+            {study.client}
+            <ArrowUpRight className="mt-1 h-4 w-4 shrink-0 text-ink-mute opacity-0 transition-all group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+          </h3>
+          <p className="font-mono text-[11.5px] text-ink-mute leading-relaxed line-clamp-2">
+            {engagement}
+          </p>
+        </div>
       </div>
     </Link>
   );

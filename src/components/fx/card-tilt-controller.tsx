@@ -100,7 +100,11 @@ export function CardTiltController() {
       const card = (e.target as HTMLElement | null)?.closest<HTMLElement>(
         ".card-steel",
       );
-      if (!card) return;
+      // Cards that opt out of the tilt/lift transform (e.g. the home rail's
+      // distort cards, whose box must stay fixed so the DOM-synced RailPlanes
+      // keep registration) still use .card-steel for the CardImageDistort
+      // hover-reveal — but must never be transformed here.
+      if (!card || card.hasAttribute("data-no-tilt")) return;
       const s = init(card);
       const r = card.getBoundingClientRect();
       const px = (e.clientX - r.left) / r.width; // 0..1
@@ -123,7 +127,7 @@ export function CardTiltController() {
       const card = (e.target as HTMLElement | null)?.closest<HTMLElement>(
         ".card-steel",
       );
-      if (!card) return;
+      if (!card || card.hasAttribute("data-no-tilt")) return;
       // Still inside the card? (pointerout fires on child boundaries too.)
       if (card.contains(e.relatedTarget as Node | null)) return;
       const s = states.get(card);
