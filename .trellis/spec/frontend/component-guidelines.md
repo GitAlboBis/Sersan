@@ -205,6 +205,37 @@ Draggable.create(proxy, {
   timeline after a route change.
 - Never construct any of this on the reduced-motion / no-Lenis path (native fallback only).
 
+### WebGPU node path: author lines/wireframes in TSL, never drei `<Line>` (step 7)
+
+On the `webgpuEnabled()` build (WebGPURenderer), **drei `<Line>` / `<QuadraticBezierLine>` /
+`<CatmullRomLine>` do NOT work**: they build a `three-stdlib` `Line2` + `LineMaterial`, a raw GLSL
+`ShaderMaterial` → the WebGPU NodeBuilder rejects it ("Material ShaderMaterial is not compatible")
+and the line renders as a black silhouette. `three/webgpu`'s `Line2NodeMaterial` is WGSL-capable,
+but its `LineGeometry`/`LineSegmentsGeometry` import from bare `'three'` → mixing `three` +
+`three/webgpu` in one scene graph, the forbidden dual-namespace (see the `createRenderer` /
+`lineNodeMaterial` headers). So author the geometry from **core `three`** you build yourself
+(`TubeGeometry` along a `CatmullRomCurve3`, or a hand-built `BufferGeometry`/`LineSegments`) + a
+**TSL node material** (`MeshBasicNodeMaterial` with a `fract()` dash mask, emissive >1.0,
+`toneMapped:false`) — the pattern every line/particle/tube material in `src/webgl/materials/`
+already follows (`lineNodeMaterial`, `railPlaneNodeMaterial`, `compliancePipelineNodeMaterial`).
+The `LineSegments` / `Points` PRIMITIVE renders fine under WebGPURenderer; only the MATERIAL must
+be a NodeMaterial.
+
+### Focusable hotspots over a `role="img"` SVG must be sibling overlays, not children (step 7)
+
+A `role="img"` element collapses its whole subtree into one presentational image for assistive
+tech, so interactive children (buttons/links) inside it are **hidden from screen readers and the
+tab order**. To annotate an SVG diagram with focusable hotspots (the /trust pipeline stages,
+Radian-EXR pattern): keep the hotspot layer a **DOM sibling** of the `role="img"` div (never a
+child), wrap both in a `position: relative` container, and `position: absolute` the transparent
+hotspot buttons over the SVG stage centers by **percentage of the SVG viewBox**
+(`left: (D_STAGE_X[i] / D_VB_W) * 100%`, vertical analog for the mobile viewBox) so they track the
+responsive scale — NOT a separate stacked row (which visibly DUPLICATES the SVG's own labels — a
+shipped-and-caught regression). Buttons transparent by default, `focus-visible` ring on focus,
+`pointer-events` only on the buttons (the overlay container is `pointer-events-none`). Keep the
+SVG `role="img"` + `aria-label`; the hotspots are additive focusable text reusing the frozen
+labels.
+
 ### Text-reveal engines — one owner per surface (typography pass, step 3)
 
 Four global/opt-in engines exist; never double-animate a surface:

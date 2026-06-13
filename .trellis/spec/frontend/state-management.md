@@ -117,9 +117,13 @@ Rules (violating any of these broke pages in the past or would):
 When a WebGL plane must track a DOM element (e.g. [RailPlanes.tsx](src/webgl/RailPlanes.tsx)
 behind the rail cards):
 
-- **Do NOT world-anchor** planes on the camera strip (`y = -(docY + h/2) * k`): the
-  `SignatureLine` camera authority applies lookAt-ahead tilt (up to ~0.4 rad mid-page)
-  plus descent/gate beats, which shift a z=0 world plane by hundreds of px on screen.
+- **Do NOT world-anchor** a plane/group that must register to a DOM rect (`y = -(docY + h/2) * k`):
+  the `SignatureLine` camera authority applies lookAt-ahead tilt (up to ~0.4 rad mid-page)
+  plus descent/gate beats, which shift a z=0 world plane by hundreds of px on screen. The
+  deciding factor is the **camera tilt, not pinning** — a mid-page, NON-pinned section (e.g.
+  /trust's pipeline card, step 7) de-registers just as badly as a pinned one. World-anchoring is
+  correct ONLY for an object floating in a transparent `ritual` gap (RouteHero's closing ring),
+  where a few px of tilt drift on a free object is invisible and there is no DOM rect to hit.
 - **Camera-lock instead**: position the plane in camera space
   (`camera.position + camera.quaternion`-rotated offset at `-CAMERA_Z`), which projects
   to an exact affine screen rect under any camera pose — tilt/damping/shake cancel by
@@ -135,14 +139,22 @@ behind the rail cards):
 - TSL node materials must keep procedural backdrops below the bloom threshold (<1.0);
   only deliberate HDR accents (scan sweep) go above. Gate planes on
   `tier === "full" && webgpuEnabled()`; the DOM must be complete without them.
-- **Two such planes ship**: [RailPlanes.tsx](src/webgl/RailPlanes.tsx) (home rail) and
-  [ResourcePreviewPlane.tsx](src/webgl/ResourcePreviewPlane.tsx) (the /resources article
-  hover preview, step 6) — same gate, same camera-space placement, each TSL-only with a DOM
-  fallback (a `position:fixed` gradient card) on the flag-off / lite path. A plane that wants
-  the cursor "flow" reads the SAME `pointerStore.vel` that feeds
-  [PointerFlowmap.ts](src/webgl/fluid/PointerFlowmap.ts) — do NOT export and share
-  PostFXNodes' private flowmap render-target across components (uuid-rebind / dispose-order
-  fragility for no visual gain).
+- **Three such camera-locked layers ship**: [RailPlanes.tsx](src/webgl/RailPlanes.tsx) (home
+  rail), [ResourcePreviewPlane.tsx](src/webgl/ResourcePreviewPlane.tsx) (the /resources article
+  hover preview, step 6), and [CompliancePipeline3D.tsx](src/webgl/CompliancePipeline3D.tsx) (the
+  /trust pipeline centerpiece, step 7 — a camera-locked GROUP at a MID-PAGE, non-pinned anchor,
+  proving the rule is about the tilt, not pinning). Same gate (`route + tier full +
+  webgpuEnabled()`, mount after `SignatureLine`), same camera-space placement, each TSL-only with
+  a complete DOM baseline on the flag-off / lite / off path. A layer that wants the cursor "flow"
+  reads the SAME `pointerStore.vel` that feeds [PointerFlowmap.ts](src/webgl/fluid/PointerFlowmap.ts)
+  — do NOT export and share PostFXNodes' private flowmap render-target across components
+  (uuid-rebind / dispose-order fragility for no visual gain).
+- **AUGMENT, don't replace** (step 7 user decision): the camera-locked WebGL layer enhances
+  BEHIND the accessible DOM (`renderOrder -1`); the DOM (SVG diagram / cards / band) stays the
+  complete, legible, a11y baseline on every non-`full+webgpu` path. Never hide the DOM baseline
+  on the full path. Keep the HDR accents emissive >1.0 + `toneMapped:false` for the existing
+  PostFXNodes selective bloom, but CONTAIN the field inside the DOM rect with bloom-halo margin
+  (local X within ~±0.42 of the ±0.5 rect, step 7) so the glow doesn't bleed to the viewport.
 
 ---
 
@@ -151,9 +163,10 @@ behind the rail cards):
 A DOM surface that wants the signature line to react (a section scan, a scrubbed timeline, a
 hover) publishes through a NEW transient zustand store that is **globalThis-pinned** — written
 by the route bundle (a DOM component) and read by the lazy WebGL island (`SignatureLine` / a
-plane), the same cross-bundle split that bit `sectionStore`/`textMorphStore`. Shipped examples
-(step 6): `productionPulseStore` (per-panel pulse), `auditTimelineStore` (scrub progress),
-`resourcePreviewStore` (hover follower). Rules:
+plane), the same cross-bundle split that bit `sectionStore`/`textMorphStore`. Shipped examples:
+`productionPulseStore` (per-panel pulse), `auditTimelineStore` (scrub progress),
+`resourcePreviewStore` (hover follower), `compliancePipelineStore` (step 7, /trust pipeline
+hotspot focus/hover → per-stage ignition). Rules:
 
 1. **One store per surface; never hijack `sectionStore.pulse`** — that field is
    section-arrival, single-writer (`SectionBus`), and fires on every section everywhere. A

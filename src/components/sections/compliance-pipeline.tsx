@@ -16,6 +16,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
 import { useLanguage } from "@/components/language-provider";
 import { RevealOnScroll } from "@/components/reveal-on-scroll";
+import { useCompliancePipelineStore } from "@/webgl/store/compliancePipelineStore";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
@@ -277,6 +278,91 @@ function PipelineDiagram({ mobile, stageLabel }: DiagramProps) {
   );
 }
 
+/**
+ * Focusable, keyboard-navigable annotated-hotspot OVERLAY (Radian-EXR pattern):
+ * one focusable element per stage carrying the FROZEN STAGE_LABELS + REGULATIONS,
+ * tab-ordered Input→Output, with a bilingual composed aria-label. These are
+ * ADDITIVE real focusable elements positioned as a TRANSPARENT overlay directly
+ * over the SVG's stage boxes (using the SVG viewBox geometry as percentages, so
+ * they track the responsive SVG scale) — they do NOT replace the SVG role=img
+ * label or any copy, and they render NO visible duplicate row (transparent by
+ * default; only a focus/hover ring shows). The overlay must stay a DOM SIBLING
+ * of the role="img" div (never a child — interactive elements inside role=img
+ * are hidden from assistive tech). On focus/hover a hotspot bumps
+ * compliancePipelineStore so the (full+webgpu only) CompliancePipeline3D ignites
+ * that stage; on every other tier the reader is unmounted and the set is a
+ * harmless no-op.
+ *
+ * `mobile` selects the vertical (M_*) vs horizontal (D_*) viewBox mapping so the
+ * overlay matches whichever PipelineDiagram its sibling card is rendering.
+ */
+function PipelineHotspots({
+  isEn,
+  stageLabel,
+  mobile,
+}: {
+  isEn: boolean;
+  stageLabel: (k: StageKey) => string;
+  mobile: boolean;
+}) {
+  const setHovered = useCompliancePipelineStore((s) => s.setHovered);
+  const bump = useCompliancePipelineStore((s) => s.bump);
+
+  const ignite = (idx: number) => {
+    setHovered(idx);
+    bump(idx);
+  };
+  const clear = () => setHovered(-1);
+
+  const ariaFor = (k: StageKey, idx: number) => {
+    const label = stageLabel(k);
+    const regs = REGULATIONS[k];
+    return isEn
+      ? `Stage ${idx + 1} of ${STAGE_KEYS.length}: ${label}. ${regs}`
+      : `Fase ${idx + 1} di ${STAGE_KEYS.length}: ${label}. ${regs}`;
+  };
+
+  return (
+    // pointer-events-none so the SVG underneath stays the visual; only the
+    // buttons re-enable pointer events. inset-0 matches the SVG's rendered rect
+    // (same content box as its sibling card, see caller).
+    <div
+      className="pointer-events-none absolute inset-0"
+      aria-label={
+        isEn ? "Pipeline stage details" : "Dettagli delle fasi della pipeline"
+      }
+    >
+      {STAGE_KEYS.map((k, idx) => {
+        // Percentage-of-viewBox positioning tracks the responsive SVG scale.
+        const leftPct = mobile
+          ? (M_CENTER_X / M_VB_W) * 100
+          : (D_STAGE_X[idx] / D_VB_W) * 100;
+        const topPct = mobile
+          ? (M_STAGE_Y[idx] / M_VB_H) * 100
+          : (D_CENTER_Y / D_VB_H) * 100;
+
+        return (
+          <button
+            key={k}
+            type="button"
+            aria-label={ariaFor(k, idx)}
+            onFocus={() => ignite(idx)}
+            onBlur={clear}
+            onMouseEnter={() => ignite(idx)}
+            onMouseLeave={clear}
+            style={{
+              left: `${leftPct}%`,
+              top: `${topPct}%`,
+              transform: "translate(-50%, -50%)",
+            }}
+            className="pointer-events-auto absolute h-10 w-24 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 hover:ring-2 hover:ring-accent/40"
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export default function CompliancePipeline() {
   const { language } = useLanguage();
   const isEn = language === "en";
@@ -334,19 +420,44 @@ export default function CompliancePipeline() {
           </RevealOnScroll>
         </div>
 
-        <div
-          role="img"
-          aria-label={ariaLabel}
-          className="w-full rounded-xl border border-rule/70 bg-surface/40 p-6 sm:p-8"
-        >
-          {/* Desktop horizontal */}
-          <div className="hidden sm:block w-full overflow-x-auto">
-            <PipelineDiagram mobile={false} stageLabel={stageLabel} />
+        {/* position: relative so the focusable hotspot OVERLAY (a DOM sibling
+            of the role="img" div, never a child) can lay over the SVG's stage
+            boxes. The overlay matches the SVG's rendered content box: it is
+            inset by the card padding (p-6 sm:p-8) so inset-0 inside it lands on
+            the SVG rect, not the card border. */}
+        <div className="relative">
+          <div
+            role="img"
+            aria-label={ariaLabel}
+            className="w-full rounded-xl border border-rule/70 bg-surface/40 p-6 sm:p-8"
+          >
+            {/* Desktop horizontal */}
+            <div className="hidden sm:block w-full overflow-x-auto">
+              <PipelineDiagram mobile={false} stageLabel={stageLabel} />
+            </div>
+
+            {/* Mobile vertical */}
+            <div className="sm:hidden w-full">
+              <PipelineDiagram mobile stageLabel={stageLabel} />
+            </div>
           </div>
 
-          {/* Mobile vertical */}
-          <div className="sm:hidden w-full">
-            <PipelineDiagram mobile stageLabel={stageLabel} />
+          {/* Focusable, keyboard-navigable stage hotspots (ADDITIVE to the SVG
+              role=img diagram above). Kept OUTSIDE (a SIBLING of) the role="img"
+              wrapper: that element collapses its whole subtree into one
+              presentational image for assistive tech, which would hide these
+              real interactive buttons. Rendered as a TRANSPARENT overlay over
+              the SVG stage boxes — no visible duplicate row. The padding insets
+              align the overlay's inset-0 with the SVG content box. Separate
+              desktop/mobile instances so each maps the matching viewBox.
+              Tab Input→Output; bilingual aria-labels reuse the frozen
+              STAGE_LABELS/REGULATIONS. On focus/hover they ignite the full+webgpu
+              CompliancePipeline3D via compliancePipelineStore. */}
+          <div className="pointer-events-none absolute inset-0 hidden p-6 sm:block sm:p-8">
+            <PipelineHotspots isEn={isEn} stageLabel={stageLabel} mobile={false} />
+          </div>
+          <div className="pointer-events-none absolute inset-0 p-6 sm:hidden">
+            <PipelineHotspots isEn={isEn} stageLabel={stageLabel} mobile />
           </div>
         </div>
 

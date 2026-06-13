@@ -29,6 +29,7 @@ import { RouteHero, type RouteHeroKind } from "./RouteHero";
 import { DriftParticles } from "./DriftParticles";
 import { RailPlanes } from "./RailPlanes";
 import { ResourcePreviewPlane } from "./ResourcePreviewPlane";
+import { CompliancePipeline3D } from "./CompliancePipeline3D";
 import { PostFX } from "./PostFX";
 import { PostFXNodes } from "./PostFXNodes";
 import { useSectionAnchors } from "./hooks/useSectionAnchors";
@@ -106,8 +107,10 @@ const ROUTE_HERO: Record<string, RouteHeroConfig> = {
   "/resources": { kind: { type: "procedural", shape: "ring" } },
   "/about": { kind: { type: "procedural", shape: "ring" } },
   "/contact": { kind: { type: "procedural", shape: "ring" } },
-  // Trust: a cooler closing ring here. Its dedicated WebGL CompliancePipeline3D
-  // centerpiece (at the "pipeline" anchor) arrives later in P6 — NOT here.
+  // Trust: a cooler closing ring here (the ritual anchor). Its dedicated WebGL
+  // CompliancePipeline3D centerpiece (at the SEPARATE "pipeline" anchor) now
+  // ships — mounted below, gated full+webgpu, BEHIND the SVG card. This ring is
+  // a distinct object at the ritual anchor and is unaffected.
   "/trust": {
     kind: { type: "procedural", shape: "ring" },
     emissiveB: "#6E7BFF",
@@ -255,6 +258,20 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           same priority-0 frame pass. */}
       {pathname === "/resources" && tier === "full" && webgpu && (
         <ResourcePreviewPlane />
+      )}
+      {/* /trust compliance-pipeline centerpiece (step 7). Same gates as
+          RailPlanes/ResourcePreviewPlane — route + full tier + the WebGPU flag
+          (TSL-only, no GLSL twin; on the classic flag-OFF path the SVG diagram
+          in compliance-pipeline.tsx is the whole pipeline). Inside, the COMPUTE
+          particle sim additionally requires the TRUE WebGPU sub-backend and
+          renders nothing on WebGL2-fallback. The camera-locked group draws
+          BEHIND the SVG card (renderOrder -1); the SVG stays the legible,
+          accessible diagram (AUGMENT). MUST stay mounted AFTER SignatureLine:
+          the camera-locked placement relies on the single camera authority
+          having written camera.position/quaternion earlier in the same
+          priority-0 frame pass. */}
+      {pathname === "/trust" && tier === "full" && webgpu && (
+        <CompliancePipeline3D tier={tier} />
       )}
       {/* Postprocessing — desktop ("full") only, exactly as before. Which rig
           mounts is a BUILD-TIME split on `webgpuEnabled()`, not a runtime backend
