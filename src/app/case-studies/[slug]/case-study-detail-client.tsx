@@ -1,6 +1,9 @@
 "use client";
 
+import { useRef } from "react";
 import Link from "next/link";
+import { useGSAP } from "@gsap/react";
+import gsap from "gsap";
 import { ArrowLeft, ArrowUpRight, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CountUp } from "@/components/ui/count-up";
@@ -35,6 +38,39 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
   const accent = INDUSTRY_ACCENT[study.industry] || "var(--accent)";
   const [firstWord, ...rest] = study.client.split(" ");
 
+  const hasHero = Boolean(study.previewImage);
+  const heroRef = useRef<HTMLElement>(null);
+
+  // Hero image entrance. The hook is called unconditionally (rules of hooks);
+  // `if (!el) return` covers the no-figure case so the effect is a no-op when
+  // !hasHero. The 0.62 / expo.out timing deliberately echoes the route
+  // curtain's open beat (CURTAIN_DURATION = 0.62, expo.inOut in
+  // src/app/template.tsx) so the image resolves in as the curtain lifts.
+  useGSAP(
+    () => {
+      const el = heroRef.current;
+      if (!el) return;
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        gsap.set(el, { clipPath: "inset(0 0 0 0)", autoAlpha: 1 });
+        return;
+      }
+      gsap.fromTo(
+        el,
+        { clipPath: "inset(0 0 100% 0)", autoAlpha: 0, scale: 1.03 },
+        {
+          clipPath: "inset(0 0 0% 0)",
+          autoAlpha: 1,
+          scale: 1,
+          duration: 0.62,
+          ease: "expo.out",
+          delay: 0.05,
+          clearProps: "clipPath,scale",
+        },
+      );
+    },
+    { scope: heroRef },
+  );
+
   return (
     <div className="min-h-screen pt-24 relative">
       {/* Hero halo */}
@@ -56,6 +92,33 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
             {isEn ? "All work" : "Tutti i lavori"}
           </Link>
         </nav>
+
+        {/* Hero product image. Rendered only for studies with a previewImage
+            (SphereNode, Quantex, Terra Noa). data-flip-id / data-flip-hero are
+            inert hooks for a future cross-route Flip transition. Height-capped
+            so the eyebrow + h1 stay near the top of the viewport. */}
+        {study.previewImage && (
+          <figure
+            ref={heroRef}
+            data-flip-id={study.id}
+            data-flip-hero
+            aria-hidden="true"
+            className="relative mb-12 overflow-hidden rounded-xl border border-rule/70 h-[min(44vh,24rem)] bg-[hsl(216_28%_10%)]"
+          >
+            <img
+              src={study.previewImage}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover"
+              draggable={false}
+            />
+            {/* subtle bottom-up navy scrim for depth + to seat it against the page */}
+            <div
+              aria-hidden="true"
+              className="absolute inset-0"
+              style={{ background: "linear-gradient(180deg, transparent 40%, hsl(216 30% 6% / 0.55) 100%)" }}
+            />
+          </figure>
+        )}
 
         {/* Eyebrow */}
         <p className="eyebrow mb-5 inline-flex items-center gap-2">
