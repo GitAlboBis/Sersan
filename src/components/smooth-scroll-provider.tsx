@@ -12,7 +12,6 @@ import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { isIntroSkipped } from "@/lib/intro-skip";
 import { acquireLenis, getLenis, releaseLenis } from "@/lib/lenis-singleton";
 import { useScrollStore } from "@/webgl/store/scrollStore";
 import { useTextMorphStore } from "@/webgl/store/textMorphStore";
@@ -46,64 +45,21 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
     prevPathRef.current = pathname;
 
     if (pathname === "/") {
-      // The session skip flag WINS over the replay reset (restyle step 4):
-      // once the visitor double-flicked through the intro, every later home
-      // visit this tab session short-circuits the gate entirely.
-      const skipped = isIntroSkipped();
       // Only on a genuine navigation INTO home (not the very first paint, not a
-      // same-route phantom remount) — replay the intro (or, if skipped, replay
-      // only the page scroll position + the exit-dive beat).
+      // same-route phantom remount) — replay the particle intro from the start.
       if (prev !== null && prev !== "/") {
         getLenis()?.scrollTo(0, { immediate: true });
-        if (skipped) {
-          // Pin the intro journey at its END state instead of rewinding it:
-          // the gate never re-engages, HeroTextParticles fast-forwards its
-          // clocks (introSkipped), the H1/scrims render revealed. The
-          // camera-descent beat (camTilt/camDescend/tiltDone) still resets
-          // like a normal visit — the exit dive is NOT part of the intro.
-          useTextMorphStore.setState({
-            introSkipped: true,
-            assembleDone: true,
-            gateProgress: 1,
-            gateEngaged: false,
-            gateKick: 0,
-            morphDone: true,
-            morph2Done: true,
-            morph3Done: true,
-            camTilt: 0,
-            camDescend: 0,
-            tiltDone: false,
-            domReveal: 1,
-          });
-        } else {
-          useTextMorphStore.setState({
-            assembleDone: false,
-            gateProgress: 0,
-            gateEngaged: false,
-            gateKick: 0,
-            morphDone: false,
-            morph2Done: false,
-            morph3Done: false,
-            camTilt: 0,
-            camDescend: 0,
-            tiltDone: false,
-            domReveal: 1,
-          });
-        }
-      } else if (skipped) {
-        // First client paint (hard reload mid-session) or a same-route
-        // phantom remount with the skip flag set: pin ONLY the intro flags at
-        // their end state. Deliberately narrower than the nav-into-home write
-        // — a phantom remount must never disturb the live camera-descent
-        // state (camTilt/tiltDone) or an in-flight gateKick.
         useTextMorphStore.setState({
-          introSkipped: true,
-          assembleDone: true,
-          gateProgress: 1,
+          assembleDone: false,
+          gateProgress: 0,
           gateEngaged: false,
-          morphDone: true,
-          morph2Done: true,
-          morph3Done: true,
+          gateKick: 0,
+          morphDone: false,
+          morph2Done: false,
+          morph3Done: false,
+          camTilt: 0,
+          camDescend: 0,
+          tiltDone: false,
           domReveal: 1,
         });
       }

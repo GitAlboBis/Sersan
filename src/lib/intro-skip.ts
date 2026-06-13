@@ -1,4 +1,10 @@
 /**
+ * CURRENTLY UNUSED (2026-06-13): the gesture-based auto-skip was removed
+ * (mouse-wheel notches are fixed-magnitude — a flick can't be distinguished
+ * from normal scrolling, which false-fired the skip). This module has no
+ * writer now; it is kept inert, reserved for a future explicit skip
+ * affordance (e.g. an Esc key / button).
+ *
  * Intro-skip session flag — "the visitor double wheel-flicked through the
  * hero particle intro; don't gate them again this tab session".
  *
