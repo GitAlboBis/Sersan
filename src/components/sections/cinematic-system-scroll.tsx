@@ -1,17 +1,21 @@
 "use client";
 
 /**
- * CinematicSystemScroll — pinned 600vh cinematic spine of the homepage.
+ * CinematicSystemScroll — pinned 390vh cinematic spine of the homepage.
  *
- * One ScrollTrigger pins the inner viewport for 6 stages × 100vh of scroll
- * distance. Scroll progress (0..1) is written into progressRef on every
- * ScrollTrigger update. The 3D scene reads from progressRef each frame; no
- * React state churn.
+ * One ScrollTrigger scrubs the CSS-sticky pin across 4 GROUPED panels
+ * (hero · map · ship · handover — the 6 canonical STAGE_CONTENT copy blocks
+ * compressed via DESKTOP_GROUPS, restyle step 4 / merge option A). Scroll
+ * progress (0..1) is written into progressRef on every ScrollTrigger update.
+ * The 3D scene reads from progressRef each frame; no React state churn.
  *
  * Text panels are absolutely positioned over the scene and fade in/out
- * across their stage range, with a small lead-in/lead-out.
+ * across their group range, with a small lead-in/lead-out. lenis/snap softly
+ * settles wheel flicks onto the INTERIOR group boundaries only — never 0
+ * (HeroIntroGate owns the top) and never 1 (SpineExitGate owns the pin end).
  *
- * Mobile (≤768px) returns to a normal stacked layout — no pin, no Canvas.
+ * Mobile (≤768px) returns to a normal stacked layout — no pin, no Canvas —
+ * iterating the UNGROUPED 6 copy blocks (compression is desktop-only).
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -19,6 +23,7 @@ import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import Snap from "lenis/snap";
 import { Button } from "@/components/ui/button";
 import { Magnetic } from "@/components/ui/magnetic";
 import { HeroDragLayer } from "@/components/hero-drag-layer";
@@ -28,6 +33,7 @@ import { useTextMorphStore } from "@/webgl/store/textMorphStore";
 import { getLenis } from "@/lib/lenis-singleton";
 import type { Language } from "@/data/translations/types";
 import { START_HREF } from "@/lib/site";
+import { SPINE_HEIGHT_VH } from "@/lib/spine";
 import { cn } from "@/lib/utils";
 
 if (typeof window !== "undefined") {
@@ -38,10 +44,10 @@ if (typeof window !== "undefined") {
 // Each stage carries both EN and IT copy. `localizeStages(language)` resolves
 // them into a flat `Stage[]` for the active language; the default/SSR render
 // is always English (the language provider starts at "en" on the server).
+// Stages are pure COPY BLOCKS — the desktop scroll ranges live in
+// DESKTOP_GROUPS below (a block can share a panel with a sibling).
 type Stage = {
   id: string;
-  start: number;
-  end: number;
   eyebrow: string;
   title: React.ReactNode;
   body: React.ReactNode;
@@ -54,8 +60,6 @@ type Stage = {
 
 type LocalizedStage = {
   id: string;
-  start: number;
-  end: number;
   eyebrow: { en: string; it: string };
   title: { en: React.ReactNode; it: React.ReactNode };
   body: { en: React.ReactNode; it: React.ReactNode };
@@ -66,7 +70,7 @@ type LocalizedStage = {
 // The handover stage's 13 / 5 / 1 proof chips count up ONCE, the first time
 // their panel actually lights. Inside the pinned spine an IntersectionObserver
 // or ScrollTrigger would be the WRONG trigger — the panel sits in the viewport
-// for the whole 520vh pin and only *lights* via the rAF-driven panelOpacity —
+// for the whole pin and only *lights* via the rAF-driven panelOpacity —
 // so the desktop trigger is the same `visible` threshold crossing that flips
 // the panel's inert state. The mobile fallback is normal document flow and
 // uses a standard one-shot IO instead.
@@ -124,12 +128,6 @@ function animateChipCounts(root: HTMLElement) {
 const STAGE_CONTENT: LocalizedStage[] = [
   {
     id: "dormant",
-    // Hero owns a wider slice of the pin (0.1 → 0.16, user decision
-    // 2026-06-10): after the intro gate releases, "We build..." must survive
-    // real scrolling (~83vh of the 520vh pin) instead of dying within ~36vh.
-    // The five later stages are redistributed below to stay contiguous.
-    start: 0.0,
-    end: 0.16,
     eyebrow: {
       en: "AI engineering studio · production systems",
       it: "Studio di ingegneria AI · sistemi in produzione",
@@ -161,8 +159,6 @@ const STAGE_CONTENT: LocalizedStage[] = [
   },
   {
     id: "signals",
-    start: 0.16,
-    end: 0.29,
     eyebrow: { en: "01 / Signals", it: "01 / Segnali" },
     title: {
       en: <>Every production system starts with messy signals.</>,
@@ -175,8 +171,6 @@ const STAGE_CONTENT: LocalizedStage[] = [
   },
   {
     id: "audit",
-    start: 0.29,
-    end: 0.43,
     eyebrow: { en: "02 / Audit", it: "02 / Audit" },
     title: {
       en: (
@@ -205,8 +199,6 @@ const STAGE_CONTENT: LocalizedStage[] = [
   },
   {
     id: "build",
-    start: 0.43,
-    end: 0.6,
     eyebrow: { en: "03 / Build", it: "03 / Sviluppo" },
     title: {
       en: <>Then we design and build the system.</>,
@@ -219,8 +211,6 @@ const STAGE_CONTENT: LocalizedStage[] = [
   },
   {
     id: "operate",
-    start: 0.6,
-    end: 0.76,
     eyebrow: { en: "04 / Operate", it: "04 / Operatività" },
     title: {
       en: <>Production is not launch day.</>,
@@ -233,8 +223,6 @@ const STAGE_CONTENT: LocalizedStage[] = [
   },
   {
     id: "handover",
-    start: 0.76,
-    end: 1.0,
     eyebrow: { en: "05 / Handover", it: "05 / Consegna" },
     title: {
       en: (
@@ -312,14 +300,51 @@ const STAGE_CONTENT: LocalizedStage[] = [
 function localizeStages(language: Language): Stage[] {
   return STAGE_CONTENT.map((s) => ({
     id: s.id,
-    start: s.start,
-    end: s.end,
     eyebrow: s.eyebrow[language],
     title: s.title[language],
     body: s.body[language],
     extras: s.extras ? s.extras[language] : undefined,
   }));
 }
+
+// === Desktop grouping layer (restyle step 4 — merge option A) =============
+// STAGE_CONTENT stays the canonical, byte-identical 6 copy blocks (the
+// mobile fallback and the IT localisation iterate it UNGROUPED). The desktop
+// pin renders them as 4 grouped panels: hero · map (signals+audit) · ship
+// (build+operate) · handover. Ranges are fractions of the spine's own
+// ScrollTrigger progress; the scrub travel is SPINE_HEIGHT_VH − 100vh =
+// 290vh, so: hero 58vh (the 2026-06-10 hero-widening decision set a ~60vh
+// readability floor — after the intro gate releases, "We build..." must
+// survive real scrolling), map 81vh, ship 75vh, handover 75vh. The handover
+// group MUST stay final: the proof-chip count-up and the CTA cluster key off
+// the final panel's lit state.
+type StageGroup = {
+  id: string;
+  /** Spine-ScrollTrigger progress where this panel's lit window starts. */
+  start: number;
+  /** Progress where the lit window ends. Groups stay contiguous 0 → 1. */
+  end: number;
+  /** STAGE_CONTENT block ids rendered inside this panel (1-2, stage order). */
+  blockIds: string[];
+};
+
+const DESKTOP_GROUPS: StageGroup[] = [
+  { id: "hero", start: 0, end: 0.2, blockIds: ["dormant"] },
+  { id: "map", start: 0.2, end: 0.48, blockIds: ["signals", "audit"] },
+  { id: "ship", start: 0.48, end: 0.74, blockIds: ["build", "operate"] },
+  { id: "handover", start: 0.74, end: 1, blockIds: ["handover"] },
+];
+
+// Soft-snap targets: the INTERIOR group boundaries only — never 0 (the
+// HeroIntroGate owns the top of the page) and never 1 (SpineExitGate owns
+// the pin end; snapping there would double-trigger the camera-descent beat).
+// Each target sits one panel-fade PAST its boundary: panelOpacity fades
+// strictly INSIDE [start, end], so the exact boundary is a blank crossfade
+// frame (outgoing panel already 0, incoming still 0) — the inset settles the
+// scroll on the incoming panel at full opacity instead.
+const INTERIOR_SNAP_PROGRESS = DESKTOP_GROUPS.slice(1).map(
+  (g) => g.start + Math.min(0.03, (g.end - g.start) * 0.3),
+);
 
 // CTA + hint labels used in both the desktop spine and the mobile fallback.
 const SPINE_COPY = {
@@ -358,14 +383,23 @@ function panelOpacity(
 }
 
 // === Stage panel ==========================================================
+// Renders one DESKTOP_GROUPS entry. Single-block groups (hero, handover)
+// look exactly like the pre-compression panels; merged groups render BOTH
+// copy blocks inside one lit window — the first block as a compact companion
+// (its own eyebrow + smaller heading + body), the second as the lead with
+// the display-size title (research: "audit title leads, signals as the
+// upper companion"; same two-block layout for build/operate). Eyebrow
+// numbering order (01 before 02, 03 before 04) is preserved in the DOM.
 function StagePanel({
-  stage,
+  group,
+  blocks,
   progressRef,
   isFinal,
   isHero,
   copy,
 }: {
-  stage: Stage;
+  group: StageGroup;
+  blocks: Stage[];
   progressRef: React.MutableRefObject<number>;
   isFinal?: boolean;
   isHero?: boolean;
@@ -395,7 +429,7 @@ function StagePanel({
       const morph = isHero ? useTextMorphStore.getState() : null;
       const active = !!(morph && morph.active);
       const reveal = active && morph ? morph.domReveal : 1;
-      const baseO = panelOpacity(p, stage.start, stage.end, isHero, isFinal);
+      const baseO = panelOpacity(p, group.start, group.end, isHero, isFinal);
       const o = baseO;
       if (el && (o !== lastO || (active && reveal !== lastReveal) || active !== lastActive)) {
         lastO = o;
@@ -457,13 +491,13 @@ function StagePanel({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [progressRef, stage.start, stage.end, isHero, isFinal]);
+  }, [progressRef, group.start, group.end, isHero, isFinal]);
 
   // Initial opacity is computed from progress = 0 so the hero stage (which
   // begins at start=0) is fully visible in the server-rendered HTML. The
   // rAF loop in useEffect takes over once JS hydrates. This makes the H1
   // present and visible without waiting for client hydration.
-  const initialOpacity = panelOpacity(0, stage.start, stage.end, isHero, isFinal);
+  const initialOpacity = panelOpacity(0, group.start, group.end, isHero, isFinal);
   const initialY = (1 - initialOpacity) * 16;
   const initiallyHidden = initialOpacity <= 0.6;
 
@@ -494,39 +528,71 @@ function StagePanel({
     >
       <div className="container-px w-full">
         <div className="max-w-[42rem]">
-          {/* Eyebrow is NON-hero only. The hero is now particle-only: the
-              WebGL morph (Sersan AI → We build… → see what we build) is the
-              entire hero — no white DOM copy. */}
-          {!isHero && (
-            <p className="eyebrow inline-flex items-center gap-2 text-ink/80 mb-4">
-              <span aria-hidden="true" className="status-dot" />
-              <span>{stage.eyebrow}</span>
-            </p>
-          )}
           {isHero ? (
-            // The hero stage is the page's H1. Subsequent stages are H2s
-            // because the cinematic spine reads as one section to crawlers.
+            // The hero stage is the page's H1 — particle-only otherwise: the
+            // WebGL morph (Sersan AI → We build… → see what we build) is the
+            // entire hero, no white DOM copy (no eyebrow/body/CTAs).
             // data-hero-headline: anchor + typography source for the WebGL
             // text-particle intro (HeroTextParticles samples this element).
             <h1
               data-hero-headline
               className="font-display text-[clamp(2.35rem,4.8vw,4.5rem)] leading-[0.98] tracking-[-0.03em] text-ink mb-4 text-balance"
             >
-              {stage.title}
+              {blocks[0]?.title}
             </h1>
           ) : (
-            <h2 className="font-display text-[clamp(2.25rem,4.5vw,4rem)] leading-[0.98] tracking-[-0.028em] text-ink mb-5 text-balance">
-              {stage.title}
-            </h2>
+            (() => {
+              // Merged groups: every block but the last renders as a compact
+              // companion ABOVE the lead — stage order (and the 01/02 eyebrow
+              // numbering) preserved, while the second block's title carries
+              // the display weight. Single-block groups have no companions
+              // and render exactly the pre-compression panel.
+              const lead = blocks[blocks.length - 1];
+              const companions = blocks.slice(0, -1);
+              if (!lead) return null;
+              return (
+                <>
+                  {companions.map((block) => (
+                    <div key={block.id} className="mb-7 sm:mb-9">
+                      <p className="eyebrow inline-flex items-center gap-2 text-ink/80 mb-3">
+                        <span aria-hidden="true" className="status-dot" />
+                        <span>{block.eyebrow}</span>
+                      </p>
+                      <h2 className="font-display text-[clamp(1.35rem,2.3vw,1.9rem)] leading-[1.12] tracking-[-0.02em] text-ink mb-2.5 text-balance">
+                        {block.title}
+                      </h2>
+                      <p className="text-sm sm:text-[15px] text-foreground/70 leading-[1.55] max-w-[36rem]">
+                        {block.body}
+                      </p>
+                      {block.extras}
+                    </div>
+                  ))}
+                  <p className="eyebrow inline-flex items-center gap-2 text-ink/80 mb-4">
+                    <span aria-hidden="true" className="status-dot" />
+                    <span>{lead.eyebrow}</span>
+                  </p>
+                  {/* Subsequent stages are H2s because the cinematic spine
+                      reads as one section to crawlers. The lead title drops
+                      one step in scale when it shares the panel with a
+                      companion block (two blocks must fit laptop heights). */}
+                  <h2
+                    className={cn(
+                      "font-display leading-[0.98] text-ink mb-5 text-balance",
+                      companions.length > 0
+                        ? "text-[clamp(2rem,3.6vw,3.25rem)] tracking-[-0.026em]"
+                        : "text-[clamp(2.25rem,4.5vw,4rem)] tracking-[-0.028em]",
+                    )}
+                  >
+                    {lead.title}
+                  </h2>
+                  <p className="text-base sm:text-lg text-foreground/80 leading-[1.55] max-w-[40rem]">
+                    {lead.body}
+                  </p>
+                  {lead.extras}
+                </>
+              );
+            })()
           )}
-          {/* Body + extras (chips/stats) + the hero CTAs are NON-hero only —
-              stripped from the hero so it reads as pure particle text. */}
-          {!isHero && (
-            <p className="text-base sm:text-lg text-foreground/80 leading-[1.55] max-w-[40rem]">
-              {stage.body}
-            </p>
-          )}
-          {!isHero && stage.extras}
           {isFinal ? (
             <div className="mt-7 flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
               <Magnetic>
@@ -551,12 +617,14 @@ function StagePanel({
 }
 
 // === Stage progress indicator (left rail) =================================
+// One tick per GROUPED panel (4 post-compression) — generated from
+// DESKTOP_GROUPS so a range change renumbers it automatically.
 function StageRail({
   progressRef,
-  stages,
+  groups,
 }: {
   progressRef: React.MutableRefObject<number>;
-  stages: Stage[];
+  groups: StageGroup[];
 }) {
   const rail = useRef<Array<HTMLSpanElement | null>>([]);
 
@@ -567,10 +635,10 @@ function StageRail({
       const p = progressRef.current;
       if (p !== lastP) {
         lastP = p;
-        stages.forEach((stage, i) => {
+        groups.forEach((group, i) => {
           const el = rail.current[i];
           if (!el) return;
-          const active = p >= stage.start - 0.02 && p <= stage.end + 0.02;
+          const active = p >= group.start - 0.02 && p <= group.end + 0.02;
           // Quiet secondary detail: only the active tick lights (in accent);
           // everything else is a faint uniform rule. No past/future contrast.
           el.style.background = active
@@ -583,11 +651,11 @@ function StageRail({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [progressRef, stages]);
+  }, [progressRef, groups]);
 
   return (
     <div className="hidden lg:flex absolute left-8 top-1/2 -translate-y-1/2 flex-col gap-3.5 z-20">
-      {stages.map((s, i) => (
+      {groups.map((s, i) => (
         <span
           key={s.id}
           ref={(el) => {
@@ -777,10 +845,65 @@ export default function CinematicSystemScroll() {
       },
     });
 
+    // --- Soft snap (lenis/snap, NOT ScrollTrigger snap) -------------------
+    // Proximity-type: the debounced settle rides lenis.scrollTo with no
+    // input lock, so a fresh wheel gesture cancels it naturally — a "soft
+    // settle", never a fight with the Lenis lerp. Snap points are the
+    // interior grouped boundaries only (INTERIOR_SNAP_PROGRESS); the snap
+    // plugin triggers exclusively on Lenis' virtual-scroll (user input), so
+    // its own programmatic scroll never re-triggers it, and the intro/exit
+    // gates — which consume wheel at capture before Lenis sees it — keep it
+    // naturally quiet while engaged. Reduced motion never creates Lenis, so
+    // no snap exists on that path by construction.
+    let snap: Snap | null = null;
+    let clearSnapPoints: Array<() => void> = [];
+    const registerSnapPoints = () => {
+      if (!snap) return;
+      clearSnapPoints.forEach((off) => off());
+      clearSnapPoints = [];
+      const ih = window.innerHeight;
+      // Header-proof absolute base: the spine is the first section (top ≈ 0)
+      // but measure it instead of assuming.
+      const base = outer.getBoundingClientRect().top + window.scrollY;
+      const travel = outer.offsetHeight - ih;
+      if (travel <= 0) return;
+      for (const p of INTERIOR_SNAP_PROGRESS) {
+        clearSnapPoints.push(snap.add(Math.round(base + p * travel)));
+      }
+    };
+    let unsubGate: (() => void) | null = null;
+    const lenis = getLenis();
+    if (lenis) {
+      snap = new Snap(lenis, {
+        type: "proximity",
+        duration: 0.9,
+        // Capture radius ≈ the crossfade neighbourhood of a boundary —
+        // flicks that die mid-transition settle onto the incoming panel;
+        // deliberate reading positions mid-stage are never pulled.
+        distanceThreshold: "16%",
+        debounce: 400,
+      });
+      registerSnapPoints();
+      // Belt + braces: the intro gate already consumes input before Lenis,
+      // but stop the snap outright while it's engaged so a pending debounce
+      // can never land a scroll during the hijack.
+      const syncGate = (engaged: boolean) => {
+        if (!snap) return;
+        if (engaged) snap.stop();
+        else snap.start();
+      };
+      syncGate(useTextMorphStore.getState().gateEngaged);
+      unsubGate = useTextMorphStore.subscribe((s) => syncGate(s.gateEngaged));
+    }
+
     // Force a refresh after layout settles. Multiple short timeouts catch
     // late-arriving font / texture / canvas layout shifts. The final
     // resize listener catches mobile rotation + browser-chrome reveal.
-    const refresh = () => ScrollTrigger.refresh();
+    // Snap points re-derive on the same cadence (they are absolute px).
+    const refresh = () => {
+      ScrollTrigger.refresh();
+      registerSnapPoints();
+    };
     const ids = [60, 250, 700, 1500].map((ms) => window.setTimeout(refresh, ms));
     // Debounced resize handler — coalesce the event burst from a resize /
     // orientation change into a single re-measure once it settles.
@@ -796,6 +919,10 @@ export default function CinematicSystemScroll() {
       ids.forEach((id) => window.clearTimeout(id));
       window.clearTimeout(resizeId);
       window.removeEventListener("resize", onResize);
+      unsubGate?.();
+      clearSnapPoints.forEach((off) => off());
+      snap?.destroy();
+      snap = null;
     };
   }, [isMobile, hasDetectedViewport]);
 
@@ -825,23 +952,28 @@ export default function CinematicSystemScroll() {
 
   // Mobile users — and anyone with prefers-reduced-motion (on any viewport)
   // — get the stacked fallback once detection has resolved. The pinned
-  // 400vh scrub is motion-heavy by nature, so under reduced-motion we serve
+  // scrub is motion-heavy by nature, so under reduced-motion we serve
   // the static stacked layout on desktop too. On the server we always render
   // the desktop layout, so the hero copy is in the initial HTML regardless.
   if (hasDetectedViewport && (isMobile || reduceMotion)) {
     return <MobileFallback stages={stages} copy={copy} />;
   }
 
+  // Desktop blocks are looked up per group (the same localized array the
+  // mobile fallback iterates ungrouped — one copy source, two layouts).
+  const stageById = new Map(stages.map((s) => [s.id, s]));
+
   return (
     <section
       ref={outerRef}
       id="top"
       className="relative"
-      // 520vh gives each of the six stages a bit more scroll distance so the
-      // transitions read calmer (less sensitive) than the previous 400vh,
-      // while still releasing the user into the rest of the page well before
-      // the old 600vh spine did.
-      style={{ height: "520vh" }}
+      // 390vh (restyle step 4 — merge option A): four grouped panels over a
+      // 290vh scrub. Each merged stage keeps 75-81vh of scroll (above the
+      // ~60vh readability floor from the 2026-06-10 hero-widening decision)
+      // while releasing the visitor into the page ~130vh sooner than the
+      // previous 520vh six-panel spine.
+      style={{ height: `${SPINE_HEIGHT_VH}vh` }}
     >
       {/* Pinned viewport. The text panels render immediately (so the H1 is in
           the initial paint). The hero visual is owned entirely by the
@@ -928,19 +1060,22 @@ export default function CinematicSystemScroll() {
           </div>
         </div>
 
-        {/* Stage rail (left) */}
-        <StageRail progressRef={progressRef} stages={stages} />
+        {/* Stage rail (left) — one tick per grouped panel. */}
+        <StageRail progressRef={progressRef} groups={DESKTOP_GROUPS} />
 
-        {/* Stage panels stacked, each fades in during its range. The hero
-            panel (index 0) is the page H1; the final panel carries the
-            scoping CTA cluster. */}
-        {stages.map((stage, i) => (
+        {/* Grouped stage panels stacked, each fades in during its range.
+            The hero group (index 0) is the page H1; the final (handover)
+            group carries the proof chips + scoping CTA cluster. */}
+        {DESKTOP_GROUPS.map((group, i) => (
           <StagePanel
-            key={stage.id}
-            stage={stage}
+            key={group.id}
+            group={group}
+            blocks={group.blockIds
+              .map((id) => stageById.get(id))
+              .filter((s): s is Stage => s !== undefined)}
             progressRef={progressRef}
             isHero={i === 0}
-            isFinal={i === stages.length - 1}
+            isFinal={i === DESKTOP_GROUPS.length - 1}
             copy={copy}
           />
         ))}

@@ -21,8 +21,17 @@
  * the preloader has finished — every fallback path never locks scrolling.
  * Safety valve: if the page somehow scrolls while engaged (keyboard, anchor
  * jump, scrollbar drag), the gate force-releases immediately.
+ *
+ * SKIP (restyle step 4): a DOUBLE WHEEL-FLICK while engaged — two distinct
+ * fast downward wheel bursts within a short window — skips the whole intro:
+ * the morph store is fast-forwarded to its end state, the gate releases, and
+ * a sessionStorage flag (src/lib/intro-skip.ts) keeps it released for the
+ * rest of the tab session (canEngage refuses; the provider composes the flag
+ * with its nav-into-home replay reset). Reduced-motion users never see the
+ * gate at all (the morph never activates), unchanged.
  */
 import { useEffect } from "react";
+import { isIntroSkipped, markIntroSkipped } from "@/lib/intro-skip";
 import { getLenis } from "@/lib/lenis-singleton";
 import { useIntroStore } from "@/webgl/store/introStore";
 import { useTextMorphStore } from "@/webgl/store/textMorphStore";
@@ -36,11 +45,34 @@ const GATE_DISTANCE = 8500;
 /** Touch drag maps a bit faster (smaller screens, shorter gestures). */
 const TOUCH_FACTOR = 2.2;
 
+// --- Double wheel-flick skip detection -------------------------------------
+// A "flick" is the LEADING wheel event of a fresh downward burst. A burst
+// starts after a quiet gap (mouse wheels: distinct spins arrive as separated
+// events) OR on a sudden magnitude spike against the decaying inertia tail
+// (trackpads: a second flick lands while the first tail is still streaming).
+/** Minimum px delta for a burst-leading event to count as a deliberate flick
+ * (a mouse notch is ~100px; slow deliberate scrolling stays below this). */
+const FLICK_MIN_DELTA = 50;
+/** Quiet gap (ms) since the previous wheel event that marks a new burst. */
+const FLICK_GAP_MS = 200;
+/** Spike rule: a new burst mid-tail = delta this much larger than the last
+ * event's, above an absolute floor. */
+const FLICK_SPIKE_RATIO = 2.5;
+const FLICK_SPIKE_MIN = 120;
+/** Two counted flicks closer than this are the same gesture's echo. */
+const FLICK_REFRACTORY_MS = 250;
+/** Max spacing between the two flicks for the pair to read as "double". */
+const DOUBLE_FLICK_WINDOW_MS = 750;
+
 export function HeroIntroGate() {
   useEffect(() => {
     let engaged = false;
     let raf = 0;
     let touchY: number | null = null;
+    // Double-flick detector state (wheel only).
+    let lastWheelT = -Infinity;
+    let lastWheelAbs = 0;
+    let lastFlickT = -Infinity;
 
     const setProgress = (p: number) => {
       useTextMorphStore.setState({
@@ -64,7 +96,58 @@ export function HeroIntroGate() {
     const canEngage = () => {
       const morph = useTextMorphStore.getState();
       const intro = useIntroStore.getState();
-      return morph.active && intro.introComplete && window.scrollY <= 2;
+      return (
+        !morph.introSkipped &&
+        !isIntroSkipped() &&
+        morph.active &&
+        intro.introComplete &&
+        window.scrollY <= 2
+      );
+    };
+
+    /** Fast-forward the whole intro and hand the page back. The flag set is
+     * the store's end state for the GATE journey (cross-checked against the
+     * writer table): gateProgress 1 keeps the forward poll from re-engaging,
+     * the morph flags + introSkipped make HeroTextParticles jump its clocks
+     * to their end (so its per-frame derivation keeps the flags true), and
+     * domReveal 1 restores the scrims/H1 cascade immediately. camTilt /
+     * tiltDone are deliberately NOT touched — they belong to the SEPARATE
+     * SpineExitGate descent beat at the END of the pin (forcing tiltDone
+     * without camTilt=1 breaks that gate's invariant, and camTilt=1 at
+     * scrollY 0 would misplace the camera) — the skip ends the INTRO only. */
+    const skip = () => {
+      markIntroSkipped();
+      useTextMorphStore.setState({
+        introSkipped: true,
+        gateProgress: 1,
+        gateKick: 0,
+        assembleDone: true,
+        morphDone: true,
+        morph2Done: true,
+        morph3Done: true,
+        domReveal: 1,
+      });
+      release();
+    };
+
+    /** Returns true when `deltaPx` is the SECOND fast downward flick within
+     * the double-flick window. Must be called for every wheel event while
+     * engaged so the burst tracker sees the full stream. */
+    const detectDoubleFlick = (deltaPx: number, now: number): boolean => {
+      const abs = Math.abs(deltaPx);
+      const gap = now - lastWheelT;
+      const burstStart =
+        gap > FLICK_GAP_MS ||
+        (abs > FLICK_SPIKE_MIN && abs > lastWheelAbs * FLICK_SPIKE_RATIO);
+      lastWheelT = now;
+      lastWheelAbs = abs;
+      if (!burstStart || deltaPx <= 0 || abs < FLICK_MIN_DELTA) return false;
+      // Same-gesture echo (e.g. the spike rule re-firing during the ramp-up
+      // of one flick): ignore WITHOUT resetting the flick clock.
+      if (now - lastFlickT < FLICK_REFRACTORY_MS) return false;
+      const since = now - lastFlickT;
+      lastFlickT = now;
+      return since < DOUBLE_FLICK_WINDOW_MS;
     };
 
     const consume = (deltaPx: number, e: Event) => {
@@ -107,7 +190,17 @@ export function HeroIntroGate() {
     const onWheel = (e: WheelEvent) => {
       // Normalize line/page wheel modes to px-ish.
       const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 120 : 1;
-      consume(e.deltaY * scale, e);
+      const deltaPx = e.deltaY * scale;
+      // Double wheel-flick while engaged → skip the whole intro. The event
+      // is still consumed (the page must not lurch on the trigger itself);
+      // the NEXT gesture scrolls the released page normally.
+      if (engaged && detectDoubleFlick(deltaPx, e.timeStamp)) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        skip();
+        return;
+      }
+      consume(deltaPx, e);
     };
     const onTouchStart = (e: TouchEvent) => {
       touchY = e.touches[0]?.clientY ?? null;

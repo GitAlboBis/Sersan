@@ -3,7 +3,7 @@
  *
  * The intro is a Lusion-style pinned text sequence: on entry the headline
  * area shows "Sersan AI" as a particle field; the first scroll (inside the
- * already-pinned 520vh hero, so the PAGE doesn't move — only the text) makes
+ * already-pinned 390vh hero, so the PAGE doesn't move — only the text) makes
  * the particles scatter and recompose into the real headline, then the crisp
  * DOM H1 cross-fades in over the particle text.
  *
@@ -110,6 +110,17 @@ interface TextMorphState {
   /** True once the camera-tilt beat has fully played — the gate releases
    * the page only after this (morphDone alone is no longer enough). */
   tiltDone: boolean;
+  /**
+   * True once the visitor has SKIPPED the intro this tab session — either a
+   * double wheel-flick while the gate was engaged (HeroIntroGate) or the
+   * persisted sessionStorage flag on a later home visit (composed by
+   * SmoothScrollProvider; see src/lib/intro-skip.ts). Readers:
+   * HeroTextParticles jumps every morph clock to its end state once this is
+   * true, and HeroIntroGate's canEngage refuses to re-engage. Unlike the
+   * other journey flags this is NEVER reset by the provider's nav-into-home
+   * replay reset — the skip wins for the rest of the session.
+   */
+  introSkipped: boolean;
 }
 
 const createTextMorphStore = () =>
@@ -127,6 +138,7 @@ const createTextMorphStore = () =>
     tiltAnchorY: 0,
     camDescend: 0,
     tiltDone: false,
+    introSkipped: false,
   }));
 
 declare global {
