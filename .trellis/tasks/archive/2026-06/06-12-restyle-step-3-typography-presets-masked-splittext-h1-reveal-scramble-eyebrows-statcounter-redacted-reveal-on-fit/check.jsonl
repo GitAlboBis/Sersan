@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Quality check entry point"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality bar: lint/typecheck/build, a11y, performance budget"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Verify wiring respects component + pinned-section conventions"}
+{"file": ".trellis/tasks/06-12-restyle-step-3-typography-presets-masked-splittext-h1-reveal-scramble-eyebrows-statcounter-redacted-reveal-on-fit/research/headings-eyebrows-inventory.md", "reason": "Check coverage: every listed target wired, every exclusion respected, no double animation"}
+{"file": ".trellis/tasks/06-12-restyle-step-3-typography-presets-masked-splittext-h1-reveal-scramble-eyebrows-statcounter-redacted-reveal-on-fit/research/statcounter-redacted-targets.md", "reason": "Check counter parse contract + trigger regimes + a11y contract"}
