@@ -1,0 +1,28 @@
+{
+  "id": "restyle-step-4-section-state-bus-spine-compression-soft-snap-skip-tsl-compute-attractors-hero-sim",
+  "name": "restyle-step-4-section-state-bus-spine-compression-soft-snap-skip-tsl-compute-attractors-hero-sim",
+  "title": "Restyle step 4: section-state bus, spine compression + soft snap + skip, TSL compute attractors hero sim",
+  "description": "",
+  "status": "completed",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "alberto",
+  "assignee": "alberto",
+  "createdAt": "2026-06-13",
+  "completedAt": "2026-06-13",
+  "branch": null,
+  "base_branch": "feat/webgl-refactor",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "06-08-gpgpu-particle-dissolve-hero-logo-fbo-spring-mouse-repulsion-webgpu-native"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "",
+  "meta": {}
+}

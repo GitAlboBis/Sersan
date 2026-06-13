@@ -1,0 +1,11 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Frontend spec entry point"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Pinned-section sticky pattern, text-reveal engine ownership, once:true ST in-view fire convention, anchor-drift rules"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Store conventions (globalThis pinning, writers/readers) for the new sectionStore"}
+{"file": ".trellis/spec/frontend/hook-guidelines.md", "reason": "Effect/hook conventions for gate, snap and bus writers"}
+{"file": ".trellis/spec/frontend/type-safety.md", "reason": "TS conventions"}
+{"file": ".trellis/tasks/06-13-restyle-step-4-section-state-bus-spine-compression-soft-snap-skip-tsl-compute-attractors-hero-sim/research/spine-anatomy.md", "reason": "Spine structure, stage ranges, morph store writer/reader table, merge option A details, snap offsets, mobile fallback"}
+{"file": ".trellis/tasks/06-13-restyle-step-4-section-state-bus-spine-compression-soft-snap-skip-tsl-compute-attractors-hero-sim/research/stores-snap-bus.md", "reason": "Store inventory, duplicated section derivations to migrate, lenis/snap API, sessionStorage convention, bus shape recommendation"}
+{"file": ".trellis/tasks/06-13-restyle-step-4-section-state-bus-spine-compression-soft-snap-skip-tsl-compute-attractors-hero-sim/research/hero-sim-current.md", "reason": "Current spores/text-morph compute sims, what the attractors port replaces vs keeps, determinism model"}
+{"file": ".trellis/tasks/06-13-restyle-step-4-section-state-bus-spine-compression-soft-snap-skip-tsl-compute-attractors-hero-sim/research/tsl-compute-api.md", "reason": "r184 TSL compute API snippets, WebGL2 fallback, toAttribute vs element"}
+{"file": ".trellis/tasks/06-08-gpgpu-particle-dissolve-hero-logo-fbo-spring-mouse-repulsion-webgpu-native/research/gpgpu-webgpu-spec.md", "reason": "Authoritative three-0.184 compute API spec from task 06-08 (instancedArray, Fn().compute, fallback probes)"}
+{"file": ".trellis/tasks/06-08-gpgpu-particle-dissolve-hero-logo-fbo-spring-mouse-repulsion-webgpu-native/research/ddd-bundle-teardown-spore-render.md", "reason": "DDD reference teardown: life machine, lit-instance render, attractors-example scale (render contract C3 must preserve)"}

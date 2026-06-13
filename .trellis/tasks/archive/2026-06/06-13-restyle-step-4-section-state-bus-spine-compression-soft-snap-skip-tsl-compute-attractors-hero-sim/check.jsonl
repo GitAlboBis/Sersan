@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/index.md", "reason": "Quality check entry point"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Quality bar + headless QA gotchas (effective-opacity in pinned stages, addInitScript loggers)"}
+{"file": ".trellis/spec/frontend/component-guidelines.md", "reason": "Pinned-section + anchor-drift + engine ownership rules to verify against"}
+{"file": ".trellis/spec/frontend/state-management.md", "reason": "Verify sectionStore follows store conventions (globalThis pin, writer placement)"}
+{"file": ".trellis/tasks/06-13-restyle-step-4-section-state-bus-spine-compression-soft-snap-skip-tsl-compute-attractors-hero-sim/research/spine-anatomy.md", "reason": "Verify compression preserved copy verbatim, ranges renumbered, mobile fallback untouched"}
+{"file": ".trellis/tasks/06-13-restyle-step-4-section-state-bus-spine-compression-soft-snap-skip-tsl-compute-attractors-hero-sim/research/stores-snap-bus.md", "reason": "Verify bus subsumed the right duplications and snap doesn't fight gates"}
