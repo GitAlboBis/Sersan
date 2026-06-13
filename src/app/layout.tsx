@@ -13,6 +13,7 @@ import { CardTiltController } from "@/components/fx/card-tilt-controller";
 import { HeadingChoreographer } from "@/components/fx/heading-choreographer";
 import { LabelScrambler } from "@/components/fx/label-scrambler";
 import { CustomCursor } from "@/components/fx/custom-cursor";
+import { FlipHandoffOverlay } from "@/components/fx/flip-handoff-overlay";
 import { AudioTriggers } from "@/components/fx/audio-triggers";
 import { Analytics } from "@vercel/analytics/next";
 
@@ -204,6 +205,11 @@ export default function RootLayout({
             {/* Mono eyebrow/label decode-scramble — one delegated observer. */}
             <LabelScrambler />
             <CustomCursor />
+            {/* Persistent card→detail Flip "flying image" handoff overlay.
+                Renders null normally; on arrival at a /case-studies/<slug> with
+                a fresh armed snapshot it flies a fixed image clone (z-70, above
+                the curtain) from the clicked card onto the detail hero. */}
+            <FlipHandoffOverlay />
             {/* Procedural UI sounds (hover/click via delegated listeners +
                 AudioContext autoplay-gesture unlock). Renders nothing. */}
             <AudioTriggers />

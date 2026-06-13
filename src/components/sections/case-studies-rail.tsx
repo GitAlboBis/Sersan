@@ -15,6 +15,7 @@ import { useLanguage } from "@/components/language-provider";
 import { useRailStore } from "@/webgl/store/railStore";
 import { getLenis } from "@/lib/lenis-singleton";
 import { CardImageDistort } from "@/components/fx/card-image-distort";
+import { useFlipSource } from "@/lib/use-flip-source";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
@@ -100,13 +101,18 @@ function StudyCard({
   // w/h from CARD_CLASS / the <li>) is unchanged; the media is an absolute
   // inset-0 overlay clipped to the card radius.
   const hasPreview = Boolean(study.previewImage);
+  // Hook called unconditionally (rules of hooks); the handler/attr are only
+  // attached for cards WITH a preview so the other studies navigate as today.
+  const onFlip = useFlipSource(study.id, study.previewImage);
   return (
     <Link
       href={`/case-studies/${study.id}`}
       className={
         hasPreview ? `${CARD_CLASS} card-steel rail-card-distort` : CARD_CLASS
       }
-      {...(hasPreview ? { "data-no-tilt": "" } : {})}
+      {...(hasPreview
+        ? { "data-no-tilt": "", onClick: onFlip, "data-flip-source": study.id }
+        : {})}
       onPointerEnter={() => onHover(index, 1)}
       onPointerLeave={() => onHover(index, 0)}
       onFocus={() => onHover(index, 1)}

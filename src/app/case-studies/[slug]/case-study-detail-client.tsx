@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { CountUp } from "@/components/ui/count-up";
 import { useLanguage } from "@/components/language-provider";
 import { type CaseStudy } from "@/data/case-studies";
+import { isFlipArmedFor } from "@/lib/flip-handoff-store";
 
 const INDUSTRY_ACCENT: Record<CaseStudy["industry"], string> = {
   FinTech: "var(--accent)",
@@ -50,6 +51,20 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
     () => {
       const el = heroRef.current;
       if (!el) return;
+      if (isFlipArmedFor(study.id)) {
+        // A card→detail Flip is incoming: the flying clone IS the entrance.
+        // Stay hidden until the overlay lands it; safety-reveal if the flight
+        // never runs. This PEEKS (non-consuming) while the overlay CONSUMES, so
+        // the figure reliably sees "armed" and hides before the overlay flies
+        // (useGSAP is a layout effect, runs child-before-parent ahead of the
+        // overlay's useEffect). The figure must NEVER stay stuck hidden — this
+        // 1.3s safety plus the overlay's reveal-on-complete both guarantee it.
+        gsap.set(el, { autoAlpha: 0 });
+        const safety = gsap.delayedCall(1.3, () =>
+          gsap.to(el, { autoAlpha: 1, duration: 0.3 }),
+        );
+        return () => safety.kill();
+      }
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
         gsap.set(el, { clipPath: "inset(0 0 0 0)", autoAlpha: 1 });
         return;
