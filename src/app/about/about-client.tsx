@@ -180,6 +180,7 @@ export function AboutClient() {
           <div className="container-px">
             <div className="max-w-3xl mx-auto text-center">
               <p className="eyebrow mb-6">{isEn ? "The job" : "Il mestiere"}</p>
+              <Reveal>
               <blockquote
                 className="font-display text-2xl sm:text-[2rem] leading-[1.2] text-ink text-balance italic"
                 style={{ borderLeft: "2px solid hsl(var(--accent))" }}
@@ -190,6 +191,7 @@ export function AboutClient() {
                     : "“La strategia senza esecuzione è una presentazione. Noi mandiamo in produzione sistemi reali, e li facciamo girare quando si rompono.”"}
                 </span>
               </blockquote>
+              </Reveal>
             </div>
           </div>
         </section>
@@ -249,7 +251,7 @@ export function AboutClient() {
                   parser) and a shorter run (1.2s on a single digit reads
                   glitchy, 0.8s reads like a settle). */}
               <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-8 text-center">
-                <div>
+                <Reveal delay={0}>
                   <div className="font-display text-4xl md:text-5xl text-ink leading-none mb-2">
                     <CountUp value="8" duration={0.8} force />
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
@@ -260,16 +262,16 @@ export function AboutClient() {
                   <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
                     {isEn ? "Senior delivery" : "Delivery senior"}
                   </p>
-                </div>
-                <div>
+                </Reveal>
+                <Reveal delay={80}>
                   <div className="font-display text-4xl md:text-5xl text-ink leading-none mb-2">
                     <CountUp value="5" duration={0.8} force />
                   </div>
                   <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
                     {isEn ? "Tier-1 institutions" : "Istituzioni tier-1"}
                   </p>
-                </div>
-                <div className="col-span-2 md:col-span-1">
+                </Reveal>
+                <Reveal delay={160} className="col-span-2 md:col-span-1">
                   <div className="font-display text-4xl md:text-5xl text-ink leading-none mb-2">
                     <CountUp value="1" duration={0.8} force />
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
@@ -280,9 +282,9 @@ export function AboutClient() {
                   <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
                     {isEn ? "Applied Mathematics, LSE" : "Matematica Applicata, LSE"}
                   </p>
-                </div>
+                </Reveal>
               </div>
-              <p className="text-center text-[10px] font-mono uppercase tracking-[0.18em] text-ink-mute mt-10">
+              <p className="eyebrow text-center text-[10px] tracking-[0.18em] mt-10">
                 Revolut · JP Morgan · Deloitte · Brevan Howard · Accenture
               </p>
             </div>

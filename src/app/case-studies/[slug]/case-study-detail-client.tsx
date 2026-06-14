@@ -7,6 +7,7 @@ import gsap from "gsap";
 import { ArrowLeft, ArrowUpRight, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CountUp } from "@/components/ui/count-up";
+import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
 import { type CaseStudy } from "@/data/case-studies";
 import { isFlipArmedFor } from "@/lib/flip-handoff-store";
@@ -195,7 +196,7 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
               {study.metrics.map((metric, i) => (
-                <div key={i} className="flex flex-col">
+                <Reveal key={i} delay={i * 70} className="flex flex-col">
                   <span
                     className="font-display text-[clamp(2rem,5vw,3.25rem)] leading-[1.1] text-ink mb-3"
                     style={{ letterSpacing: "-0.02em" }}
@@ -210,7 +211,7 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
                   <span className="text-sm text-ink-mute leading-[1.5]">
                     {isEn ? metric.label : metric.labelIt}
                   </span>
-                </div>
+                </Reveal>
               ))}
             </div>
           </section>
@@ -221,13 +222,14 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
           <section className="mb-20">
             <p className="eyebrow mb-6">{isEn ? "Tech stack" : "Stack tecnologico"}</p>
             <div className="flex flex-wrap gap-2">
-              {study.techStack.map((tech) => (
+              {study.techStack.map((tech, i) => (
+                <Reveal key={tech} as="span" delay={i * 40} from="left">
                 <span
-                  key={tech}
                   className="px-3 py-1.5 text-[11px] font-mono uppercase tracking-[0.12em] rounded-full border border-rule/70 bg-surface/40 text-ink-mute"
                 >
                   {tech}
                 </span>
+                </Reveal>
               ))}
             </div>
           </section>
@@ -235,6 +237,7 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
 
         {/* CTA */}
         <section className="mb-20">
+          <Reveal>
           <div className="rounded-xl border border-rule/70 bg-surface/40 backdrop-blur-sm p-8 sm:p-10">
             <p className="eyebrow mb-4" style={{ color: "hsl(var(--accent))" }}>
               {isEn ? "Next" : "Prossimo"}
@@ -281,6 +284,7 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
               </Button>
             </div>
           </div>
+          </Reveal>
         </section>
 
         {/* Prev / Next */}

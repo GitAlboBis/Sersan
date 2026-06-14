@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Cookie } from "lucide-react";
+import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
 
 export function CookiesClient() {
@@ -40,7 +41,7 @@ export function CookiesClient() {
               </span>
             </span>
           </div>
-          <h1 className="heading-display text-balance mb-4">
+          <h1 key={language} data-split-reveal className="heading-display text-balance mb-4">
             {isEn ? "Cookie Policy" : "Cookie Policy"}
           </h1>
           <p className="text-lg text-muted-foreground leading-[1.65]">
@@ -74,6 +75,7 @@ export function CookiesClient() {
 
           <div className="flex-1 min-w-0">
             <div className="space-y-10 text-foreground/70 leading-[1.72] text-[0.9375rem]">
+              <Reveal>
               <section id="intro" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
                   {isEn ? "1. Introduction" : "1. Introduzione"}
@@ -84,7 +86,9 @@ export function CookiesClient() {
                     : "Questa Cookie Policy spiega come SERSAN utilizza cookie e tecnologie simili per riconoscervi quando visitate il nostro sito. Spiega inoltre cosa sono queste tecnologie, perché le utilizziamo e i vostri diritti per controllarne l'uso."}
                 </p>
               </section>
+              </Reveal>
 
+              <Reveal>
               <section id="what" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
                   {isEn ? "2. What Are Cookies" : "2. Cosa sono i cookie"}
@@ -95,7 +99,9 @@ export function CookiesClient() {
                     : "I cookie sono piccoli file di testo memorizzati sul vostro dispositivo quando visitate un sito. Sono ampiamente utilizzati per far funzionare i siti, o per farli funzionare in modo più efficiente, e per fornire informazioni di reporting."}
                 </p>
               </section>
+              </Reveal>
 
+              <Reveal>
               <section id="types" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
                   {isEn ? "3. Types of Cookies We Use" : "3. Tipi di cookie utilizzati"}
@@ -135,7 +141,9 @@ export function CookiesClient() {
                   </li>
                 </ul>
               </section>
+              </Reveal>
 
+              <Reveal>
               <section id="third-party" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
                   {isEn ? "4. Third-Party Cookies" : "4. Cookie di terze parti"}
@@ -146,7 +154,9 @@ export function CookiesClient() {
                     : "Alcuni cookie sono installati da servizi di terze parti presenti sulle nostre pagine (es. analytics, calendari o video integrati). Non controlliamo questi cookie; vi invitiamo a consultare le rispettive informative su privacy e cookie."}
                 </p>
               </section>
+              </Reveal>
 
+              <Reveal>
               <section id="managing" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
                   {isEn ? "5. Managing Cookies" : "5. Gestione dei cookie"}
@@ -162,7 +172,9 @@ export function CookiesClient() {
                     : "Disattivando alcuni cookie potreste compromettere la funzionalità del sito e limitarne alcune funzionalità."}
                 </p>
               </section>
+              </Reveal>
 
+              <Reveal>
               <section id="changes" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
                   {isEn ? "6. Changes to This Policy" : "6. Modifiche a questa policy"}
@@ -173,7 +185,9 @@ export function CookiesClient() {
                     : "Potremmo aggiornare questa Cookie Policy di tanto in tanto. Le modifiche sostanziali verranno pubblicate su questa pagina con una nuova data “Ultimo aggiornamento”."}
                 </p>
               </section>
+              </Reveal>
 
+              <Reveal>
               <section id="contact" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
                   {isEn ? "7. Contact Us" : "7. Contatti"}
@@ -194,6 +208,7 @@ export function CookiesClient() {
                   </a>
                 </p>
               </section>
+              </Reveal>
 
               <div className="pt-10 border-t border-rule/50">
                 <p className="eyebrow mb-5">
@@ -211,14 +226,15 @@ export function CookiesClient() {
                         { href: "/terms", label: "Termini di servizio" },
                         { href: "/contact", label: "Contatti" },
                       ]
-                  ).map((link) => (
+                  ).map((link, i) => (
+                    <Reveal key={link.href} as="span" delay={i * 70} from="left">
                     <Link
-                      key={link.href}
                       href={link.href}
                       className="inline-flex items-center px-3.5 py-1.5 rounded-full border border-border/60 bg-background/40 backdrop-blur-sm text-xs font-medium text-muted-foreground hover:text-foreground hover:border-rule/70 transition-colors"
                     >
                       {link.label}
                     </Link>
+                    </Reveal>
                   ))}
                 </div>
               </div>

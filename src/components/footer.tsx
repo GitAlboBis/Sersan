@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Mail } from "lucide-react";
 import { SersanLogo } from "@/components/sersan-logo";
+import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
 import { CONTACT_EMAIL, START_HREF } from "@/lib/site";
 
@@ -149,8 +150,8 @@ export function Footer() {
 
           {/* Link columns */}
           <div className="lg:col-span-7 grid grid-cols-2 md:grid-cols-4 gap-8">
-            {COLUMNS.map((col) => (
-              <div key={col.heading} className="flex flex-col gap-3">
+            {COLUMNS.map((col, i) => (
+              <Reveal key={col.heading} delay={i * 60} from="left" className="flex flex-col gap-3">
                 <h3 className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-mute pb-3 border-b border-[hsl(var(--rule))]">
                   {isEn ? col.heading : col.headingIt}
                 </h3>
@@ -166,7 +167,7 @@ export function Footer() {
                     </li>
                   ))}
                 </ul>
-              </div>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -185,6 +186,7 @@ export function Footer() {
           </div>
 
           <div className="sm:col-span-3 flex items-center gap-2 sm:justify-center">
+            <Reveal as="span" delay={0} from="left">
             <a
               href="https://www.linkedin.com/company/sersan-limited/about/"
               target="_blank"
@@ -194,6 +196,8 @@ export function Footer() {
             >
               <LinkedinIcon className="h-4 w-4" />
             </a>
+            </Reveal>
+            <Reveal as="span" delay={60} from="left">
             <a
               href="https://twitter.com/sersan_io"
               target="_blank"
@@ -203,6 +207,8 @@ export function Footer() {
             >
               <TwitterIcon className="h-4 w-4" />
             </a>
+            </Reveal>
+            <Reveal as="span" delay={120} from="left">
             <a
               href="https://github.com/sersan"
               target="_blank"
@@ -212,6 +218,8 @@ export function Footer() {
             >
               <GithubIcon className="h-4 w-4" />
             </a>
+            </Reveal>
+            <Reveal as="span" delay={180} from="left">
             <a
               href={`mailto:${CONTACT_EMAIL}`}
               aria-label="Email"
@@ -219,6 +227,7 @@ export function Footer() {
             >
               <Mail className="h-4 w-4" />
             </a>
+            </Reveal>
           </div>
 
           <div className="sm:col-span-3 sm:text-right text-[10.5px] font-mono uppercase tracking-[0.14em] text-ink-mute">

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FileText } from "lucide-react";
+import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
 
 export function PrivacyClient() {
@@ -48,7 +49,7 @@ export function PrivacyClient() {
               </span>
             </span>
           </div>
-          <h1 className="heading-display text-balance mb-4">
+          <h1 key={language} data-split-reveal className="heading-display text-balance mb-4">
             {isEn ? "Privacy Policy" : "Informativa sulla Privacy"}
           </h1>
           <p className="text-lg text-muted-foreground leading-[1.65]">
@@ -82,6 +83,7 @@ export function PrivacyClient() {
 
           <div className="flex-1 min-w-0">
             <div className="space-y-10 text-foreground/70 leading-[1.72] text-[0.9375rem]">
+              <Reveal>
               <section id="intro" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
                   {isEn ? "1. Introduction" : "1. Introduzione"}
@@ -92,7 +94,9 @@ export function PrivacyClient() {
                     : "SERSAN (“noi”, “nostro”, “ci”) si impegna a proteggere la vostra privacy. Questa Informativa spiega come raccogliamo, utilizziamo, divulghiamo e proteggiamo le vostre informazioni quando usate i nostri servizi di consulenza, interagite con il nostro sito o contattate il nostro team."}
                 </p>
               </section>
+              </Reveal>
 
+              <Reveal>
               <section id="info-collected" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
                   {isEn ? "2. Information We Collect" : "2. Informazioni che raccogliamo"}
@@ -137,7 +141,9 @@ export function PrivacyClient() {
                   </li>
                 </ul>
               </section>
+              </Reveal>
 
+              <Reveal>
               <section id="how-used" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
                   {isEn ? "3. How We Use Your Information" : "3. Come utilizziamo le informazioni"}
@@ -168,7 +174,9 @@ export function PrivacyClient() {
                   ))}
                 </ul>
               </section>
+              </Reveal>
 
+              <Reveal>
               <section id="sharing" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
                   {isEn ? "4. Data Sharing and Disclosure" : "4. Condivisione e divulgazione dei dati"}
@@ -210,7 +218,9 @@ export function PrivacyClient() {
                     : "Non vendiamo i vostri dati personali a terze parti."}
                 </p>
               </section>
+              </Reveal>
 
+              <Reveal>
               <section id="security" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
                   {isEn ? "5. Data Security" : "5. Sicurezza dei dati"}
@@ -221,7 +231,9 @@ export function PrivacyClient() {
                     : "Adottiamo misure di sicurezza conformi agli standard di settore per proteggere i vostri dati, inclusi cifratura, server sicuri e controlli di accesso. Tuttavia, nessun metodo di trasmissione su Internet è sicuro al 100%, e non possiamo garantire una sicurezza assoluta."}
                 </p>
               </section>
+              </Reveal>
 
+              <Reveal>
               <section id="retention" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
                   {isEn ? "6. Data Retention" : "6. Conservazione dei dati"}
@@ -232,7 +244,9 @@ export function PrivacyClient() {
                     : "Conserviamo le vostre informazioni per il tempo necessario a perseguire le finalità indicate in questa policy, salvo che un periodo di conservazione più lungo sia richiesto dalla legge. Potete chiedere in qualsiasi momento la cancellazione dei vostri dati."}
                 </p>
               </section>
+              </Reveal>
 
+              <Reveal>
               <section id="rights" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
                   {isEn ? "7. Your Rights" : "7. I vostri diritti"}
@@ -265,7 +279,9 @@ export function PrivacyClient() {
                   ))}
                 </ul>
               </section>
+              </Reveal>
 
+              <Reveal>
               <section id="cookies" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
                   {isEn ? "8. Cookies and Tracking" : "8. Cookie e tracciamento"}
@@ -300,7 +316,9 @@ export function PrivacyClient() {
                   )}
                 </p>
               </section>
+              </Reveal>
 
+              <Reveal>
               <section id="third-party" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
                   {isEn ? "9. Third-Party Links" : "9. Link a terze parti"}
@@ -311,7 +329,9 @@ export function PrivacyClient() {
                     : "Il nostro sito può contenere link a siti di terze parti. Non siamo responsabili delle pratiche di privacy di questi siti esterni e vi invitiamo a consultarne le rispettive informative."}
                 </p>
               </section>
+              </Reveal>
 
+              <Reveal>
               <section id="changes" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
                   {isEn ? "10. Changes to This Policy" : "10. Modifiche a questa policy"}
@@ -322,7 +342,9 @@ export function PrivacyClient() {
                     : "Potremmo aggiornare questa Informativa di tanto in tanto. Comunicheremo eventuali modifiche sostanziali pubblicando la versione aggiornata sul sito con una nuova data “Ultimo aggiornamento”."}
                 </p>
               </section>
+              </Reveal>
 
+              <Reveal>
               <section id="contact" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
                   {isEn ? "11. Contact Us" : "11. Contatti"}
@@ -343,6 +365,7 @@ export function PrivacyClient() {
                   </a>
                 </p>
               </section>
+              </Reveal>
 
               {/* Related */}
               <div className="pt-10 border-t border-rule/50">
@@ -365,14 +388,15 @@ export function PrivacyClient() {
                         { href: "/consulting", label: "Consulenza" },
                         { href: "/about", label: "Chi siamo" },
                       ]
-                  ).map((link) => (
+                  ).map((link, i) => (
+                    <Reveal key={link.href} as="span" delay={i * 70} from="left">
                     <Link
-                      key={link.href}
                       href={link.href}
                       className="inline-flex items-center px-3.5 py-1.5 rounded-full border border-border/60 bg-background/40 backdrop-blur-sm text-xs font-medium text-muted-foreground hover:text-foreground hover:border-rule/70 transition-colors"
                     >
                       {link.label}
                     </Link>
+                    </Reveal>
                   ))}
                 </div>
               </div>

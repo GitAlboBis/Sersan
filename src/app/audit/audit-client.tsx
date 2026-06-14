@@ -431,15 +431,15 @@ export function AuditClient() {
                 )}
               </h3>
               <ul className="space-y-3.5">
-                {fitItems.map((line) => (
-                  <li key={line} className="flex items-start gap-3">
+                {fitItems.map((line, i) => (
+                  <Reveal key={line} as="li" delay={i * 60} className="flex items-start gap-3">
                     <Check
                       className="w-4 h-4 mt-1 shrink-0"
                       style={{ color: "hsl(var(--accent))" }}
                       strokeWidth={2.5}
                     />
                     <span className="text-sm sm:text-base text-ink/90 leading-[1.55]">{line}</span>
-                  </li>
+                  </Reveal>
                 ))}
               </ul>
             </div>
