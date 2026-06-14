@@ -123,7 +123,6 @@ interface GLContext {
     uCover: WebGLUniformLocation | null;
     uAspectFix: WebGLUniformLocation | null;
   };
-  loseExt: WEBGL_lose_context | null;
 }
 
 function createGL(
@@ -209,7 +208,6 @@ function createGL(
       uCover: gl.getUniformLocation(program, "uCover"),
       uAspectFix: gl.getUniformLocation(program, "uAspectFix"),
     },
-    loseExt: gl.getExtension("WEBGL_lose_context"),
   };
 }
 
@@ -219,8 +217,13 @@ function disposeGL(ctx: GLContext) {
   gl.deleteBuffer(ctx.buffer);
   gl.deleteVertexArray(ctx.vao);
   gl.deleteProgram(ctx.program);
-  // Force the driver to release the context so repeated hovers never pile up.
-  ctx.loseExt?.loseContext();
+  // NOTE: we deliberately do NOT call WEBGL_lose_context.loseContext() here.
+  // React keeps the same <canvas> element mounted across hovers, and
+  // loseContext() permanently lost-flags that element's context for its
+  // lifetime — so a 2nd getContext('webgl2') returns a dead context and the
+  // distortion never reappears. We free the real GPU objects above and keep
+  // the context reusable. A real context release only happens when the canvas
+  // element itself unmounts (the React effect cleanup).
 }
 
 /* -------------------------------------------------------------------------- */
@@ -365,13 +368,18 @@ export function CardImageDistort({ src, alt }: CardImageDistortProps) {
       if (hovering || settling) {
         raf = requestAnimationFrame(render);
       } else {
-        // Fully idle and not hovering — release the context to avoid leaks.
+        // Fully idle and not hovering — park the loop and hide the canvas, but
+        // KEEP the live context so the next hover can reuse it. Tearing the
+        // context down here (and force-losing it) is what poisoned the canvas
+        // on the 2nd hover; the context is only really released on unmount.
         raf = 0;
-        teardown();
+        const cv = canvasRef.current;
+        if (cv) cv.style.opacity = "0";
       }
     };
 
     const ensureContext = (): boolean => {
+      // Context is created ONCE per mounted canvas and reused on every hover.
       if (ctx) return true;
       const cv = canvasRef.current;
       const img = imgRef.current;
@@ -379,7 +387,6 @@ export function CardImageDistort({ src, alt }: CardImageDistortProps) {
       ctx = createGL(cv, img);
       if (!ctx) return false;
       resize();
-      cv.style.opacity = "1";
       return true;
     };
 
@@ -399,8 +406,11 @@ export function CardImageDistort({ src, alt }: CardImageDistortProps) {
     const onEnter = () => {
       hovering = true;
       hover = 1;
+      // Creates the context on the first hover, reuses it on every later hover.
       if (!ensureContext()) return;
       resize();
+      const cv = canvasRef.current;
+      if (cv) cv.style.opacity = "1";
       if (!raf) raf = requestAnimationFrame(render);
     };
 
@@ -409,7 +419,8 @@ export function CardImageDistort({ src, alt }: CardImageDistortProps) {
       if (card.contains(e.relatedTarget as Node | null)) return;
       hovering = false;
       hover = 0;
-      // render() keeps the loop alive through the ease-out, then teardown()s.
+      // render() keeps the loop alive through the ease-out, then parks the rAF
+      // and hides the canvas while keeping the context alive for the next hover.
       if (ctx && !raf) raf = requestAnimationFrame(render);
     };
 
