@@ -154,7 +154,13 @@ export function createLineMaterial(): THREE.ShaderMaterial & {
     },
     transparent: true,
     depthWrite: false,
-    depthTest: false,
+    // depthTest ON (depthWrite stays OFF): the opaque hero mark writes depth and
+    // is drawn before this transparent line, so line fragments BEHIND the mark
+    // (hero waypoint z:-1.0 vs the mark at heroPosZ:-0.3) are discarded instead
+    // of additively compositing over the silhouette (PIANO_FIX_VISUAL FIX 1a).
+    // depthWrite off keeps the line from blocking the additive drift particles /
+    // rail planes that intentionally sit behind it at renderOrder:-1.
+    depthTest: true,
     blending: THREE.AdditiveBlending,
   });
   return material as THREE.ShaderMaterial & { uniforms: LineUniforms };

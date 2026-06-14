@@ -78,9 +78,11 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   const shakeY = useRef(0);
   const shakeVel = useRef(0);
   const gateEnergy = useRef(0);
-  // Camera-descent beat state (tilt phase): last applied offset (for the
-  // velocity-coupled pitch) and the smoothed pitch itself.
-  const prevDescend = useRef(0);
+  // Camera-descent beat state (tilt phase): the previous camTilt clock (the
+  // pitch is now derived from the SMOOTH 0→1 beat clock velocity, not
+  // world-units/sec, so it can't spike on the gate's odd dt) and the smoothed
+  // pitch itself.
+  const prevCamTilt = useRef(0);
   const descendPitch = useRef(0);
 
   // Material selection by the build-time WebGPU flag (createRenderer.ts):
@@ -369,10 +371,66 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // line glow/breath responding to the user's hand exactly like scrolling.
     const aliveVelocity = Math.abs(velocity) + gateEnergy.current;
 
+    // === Camera-descent beat (textMorphStore.camTilt 0..1) ===================
+    // The FINAL hijacked beat at the END of the cinematic spine: while the page
+    // is LOCKED (SpineExitGate stopped Lenis, scroll frozen at tiltAnchorY) the
+    // camera DESCENDS monotonically by ~one viewport on the smooth camTilt
+    // clock, and the lit head TRACKS the descent so the move reads as a genuine
+    // dive instead of the head sliding through a parked frame.
+    //
+    // Computed HERE (before headFraction + the lookAt-ahead) so:
+    //  (1) the world→px descent can be folded into headFraction below — the lit
+    //      head follows the camera through the locked beat (kills the "scatto");
+    //  (2) camera.position.y already carries the descent when the full-tier
+    //      lookAt runs, and the descent pitch is applied by biasing the lookAt
+    //      TARGET downward (no second camera.rotateX on the full path — that was
+    //      the double-rotation wobble). Lite/no-curve keeps a single rotateX.
+    // The applied offset is still published to camDescend (parity: HeroLogo +
+    // HeroTextParticles SUBTRACT-by-adding it to hold their pre-descent station).
+    const { camTilt, tiltAnchorY } = useTextMorphStore.getState();
+    const tiltEase = camTilt * camTilt * (3 - 2 * camTilt);
+    // scrollRamp eases the descent OUT by scroll distance from the anchor for
+    // the post-release re-sync. During the lock the page sits at the anchor so
+    // distance ≈ 0 → ramp ≈ 1; while the beat is mid-flight (0 < camTilt < 1)
+    // we FORCE ramp = 1 so a frozen/teleported scrollPxNow can never corrupt the
+    // descent — the camTilt clock is the sole driver of the locked move (FIX 1b).
+    const scrollPxNow = dampedProgress.current * Math.max(sh - ih, 0);
+    const distRamp =
+      1 - Math.min(Math.abs(scrollPxNow - tiltAnchorY) / (ih * 1.5), 1);
+    const beatInFlight = camTilt > 0.0001 && camTilt < 0.9999;
+    const scrollRamp = beatInFlight ? 1 : distRamp;
+    const desc = WORLD_VIEW_HEIGHT * 1.0 * tiltEase * scrollRamp;
+    // descPx: world-units descent → document px (inverse of the k mapping), so
+    // it can be added to the head's scroll position below.
+    const descPx = k > 0 ? desc / k : 0;
+    // Pitch ∝ the SMOOTH camTilt clock velocity (per-second), NOT world-units/s:
+    // the gate advances camTilt by dt/1.8 each frame, so this is a clean, small,
+    // bounded signal that can't spike on the gate's odd dt the way the old
+    // (desc - prevDescend)/delta did. Diving (camTilt↑) pitches the head down;
+    // reversing (camTilt↓) pitches it up; at rest → level.
+    const tiltVel = (camTilt - prevCamTilt.current) / Math.max(delta, 1e-4);
+    prevCamTilt.current = camTilt;
+    descendPitch.current = THREE.MathUtils.damp(
+      descendPitch.current,
+      THREE.MathUtils.clamp(tiltVel * 0.45, -0.4, 0.4),
+      6,
+      delta,
+    );
+    // Apply the vertical descent now (after the gate shake, before lookAt) so
+    // every downstream camera read includes it. Orientation (pitch) is applied
+    // per-tier below: full+curve folds it into the lookAt target; lite/no-curve
+    // gets the single rotateX.
+    camera.position.y -= desc;
+    if (useTextMorphStore.getState().camDescend !== desc) {
+      useTextMorphStore.setState({ camDescend: desc });
+    }
+
     // The lit head sits where the reader is: document fraction of the
     // viewport center. Curve param ≈ doc fraction (waypoints are spread by
-    // doc fraction, so the approximation holds visually).
-    const headFraction = sh > 0 ? (scrollYWorld + ih * 0.5) / sh : 0;
+    // doc fraction, so the approximation holds visually). + descPx so during the
+    // locked camera-descent beat the head TRACKS the diving camera (FIX 1b) —
+    // descPx is 0 in every other state, so this is byte-identical otherwise.
+    const headFraction = sh > 0 ? (scrollYWorld + ih * 0.5 + descPx) / sh : 0;
 
     // Cinematic lookAt-ahead (ANALISI_LUSION §3.7) — FULL tier only.
     // The camera aims slightly ahead along the SAME signature curve, producing
@@ -396,8 +454,18 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       // the full page strip — using it directly would over-pitch).
       const tilt = fx.lookTiltScale;
       const targetX = aheadPoint.current.x * tilt;
-      const targetY = camera.position.y + (aheadPoint.current.y - camera.position.y) * tilt;
       const targetZ = aheadPoint.current.z * tilt;
+      // Camera-descent pitch (FIX 1b): bias the look TARGET downward by the
+      // descent pitch instead of composing a second camera.rotateX after the
+      // lookAt (the old double-rotation wobble). For a target on the content
+      // plane the geometric drop for a pitch θ is tan(θ) × (camera→plane depth);
+      // descendPitch is 0 outside the beat, so this is a no-op otherwise.
+      const lookDepth = Math.abs(camera.position.z - targetZ);
+      const pitchDrop = Math.tan(descendPitch.current) * lookDepth;
+      const targetY =
+        camera.position.y +
+        (aheadPoint.current.y - camera.position.y) * tilt -
+        pitchDrop;
       if (!lookInitialized.current) {
         // First frame at full tier: snap (no swing-in from origin).
         lookTarget.current.set(targetX, targetY, targetZ);
@@ -410,44 +478,18 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       camera.lookAt(lookTarget.current);
     }
 
-    // Camera-descent beat (textMorphStore.camTilt 0..1, written by the
-    // SpineExitGate clock at the END of the cinematic spine) — a TRUE
-    // immersive move, not a transient dip: the camera DESCENDS monotonically
-    // by ~one viewport, and the pitch follows the descent VELOCITY: diving →
-    // head looks down; reversing back up → head looks UP; at rest → level.
-    // Reversing the scroll therefore plays the move backwards instead of
-    // re-dipping. The offset eases out by |scroll − tiltAnchorY| (the spot
-    // where the beat anchored), restoring the exact camera↔document mapping
-    // within ~1.5 viewports on EITHER side — so even if the user escapes
-    // upward without the reverse beat, the world re-syncs. The applied
-    // offset is published to the store (camDescend) so camera-anchored hero
-    // objects can hold their pre-descent station. Applied AFTER the lookAt
-    // above so the rotateX composes absolutely per frame (lite tier resets
-    // orientation first — nothing else writes it there).
-    const { camTilt, tiltAnchorY } = useTextMorphStore.getState();
-    {
-      const tiltEase = camTilt * camTilt * (3 - 2 * camTilt);
-      const scrollPxNow = dampedProgress.current * Math.max(sh - ih, 0);
-      const scrollRamp =
-        1 - Math.min(Math.abs(scrollPxNow - tiltAnchorY) / (ih * 1.5), 1);
-      const desc = WORLD_VIEW_HEIGHT * 1.0 * tiltEase * scrollRamp;
-      // Pitch ∝ descent velocity (world units/s), damped for smoothness.
-      const dVel = (desc - prevDescend.current) / Math.max(delta, 1e-4);
-      prevDescend.current = desc;
-      descendPitch.current = THREE.MathUtils.damp(
-        descendPitch.current,
-        THREE.MathUtils.clamp(dVel * 0.055, -0.6, 0.6),
-        6,
-        delta,
-      );
-      if (desc !== 0 || Math.abs(descendPitch.current) > 0.0001) {
-        camera.position.y -= desc;
-        if (tier !== "full" || !curve) camera.quaternion.set(0, 0, 0, 1);
-        camera.rotateX(-descendPitch.current);
-      }
-      if (useTextMorphStore.getState().camDescend !== desc) {
-        useTextMorphStore.setState({ camDescend: desc });
-      }
+    // Camera-descent PITCH application (FIX 1b). The vertical descent
+    // (camera.position.y -= desc), the camTilt-velocity pitch and the camDescend
+    // store-publish were all computed earlier (before headFraction) so the head
+    // tracks the dive and the lookAt below already saw the descent. Here we only
+    // apply the ORIENTATION:
+    //  - full + curve → the pitch was folded into the lookAt target above (no
+    //    second rotateX → no double-rotation wobble); nothing to do here.
+    //  - lite / no-curve → no lookAt ran, so reset orientation and apply the
+    //    single descent rotateX (this is the ONLY orientation writer there).
+    if ((tier !== "full" || !curve) && Math.abs(descendPitch.current) > 0.0001) {
+      camera.quaternion.set(0, 0, 0, 1);
+      camera.rotateX(-descendPitch.current);
     }
 
     // On the ON path the TSL material loads lazily; until its chunk resolves

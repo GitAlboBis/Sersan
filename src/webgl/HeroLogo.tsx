@@ -282,6 +282,29 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   }, []);
   useEffect(() => () => sporeOccluderMaterial.dispose(), [sporeOccluderMaterial]);
 
+  // Depth-only occluder for the STATIC fallback path (PIANO_FIX_VISUAL FIX 1a
+  // fallback). The static particle build is additive with depthWrite:false, and
+  // the spore occluder above is NOT mounted on this path — so with the line now
+  // depthTest:true there would be nothing for it to test against and it would
+  // float back over the static mark. This invisible mesh (colorWrite:false →
+  // writes ONLY depth, no color, no visual change to the particle look) supplies
+  // the solid mark-shaped depth footprint the line tests against, exactly like
+  // the spore occluder does on the WebGPU path. Opaque so it draws before the
+  // transparent line; visibility/depthWrite are gated by the scroll fade per
+  // frame so the line can draw through once the mark recedes and leaves.
+  const staticOccluderMaterial = useMemo(() => {
+    const m = new THREE.MeshBasicMaterial();
+    m.colorWrite = false; // depth-only: no color output, mark look unchanged
+    m.depthWrite = true;
+    m.depthTest = true;
+    m.toneMapped = false;
+    return m;
+  }, []);
+  useEffect(
+    () => () => staticOccluderMaterial.dispose(),
+    [staticOccluderMaterial],
+  );
+
   // Static-build config (defaults + the live leva knobs applied per frame).
   const config = useMemo<GpgpuConfig>(
     () => ({ ...DEFAULT_GPGPU_CONFIG, SIZE: gridSize }),
@@ -625,6 +648,14 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     if (showStaticBuild) {
       const dprStatic = Math.min(gl.getPixelRatio(), 2);
 
+      // Depth-only occluder follows the scroll fade: while the mark is on screen
+      // it writes depth so the signature line is clipped behind the mark's
+      // silhouette; once the mark recedes/fades out (fade → 0) stop writing depth
+      // so the line can draw through the empty frame the mark left behind.
+      const occlude = fade > 0.5;
+      staticOccluderMaterial.depthWrite = occlude;
+      staticOccluderMaterial.visible = occlude;
+
       // Eased hover: target 1 while the hero is hovered (and a pointer is
       // active), else 0. Damping it gives the soft settle on cursor-leave.
       const hoverTarget = drag.hovering && ptr.active ? 1 : 0;
@@ -736,6 +767,19 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       />
     ) : null;
 
+  // Depth-only occluder for the static path (FIX 1a fallback) — invisible
+  // (colorWrite:false) solid mark that writes depth so the signature line is
+  // clipped behind the static mark, mirroring the spore occluder on the WebGPU
+  // path. Parented under the SAME spin/assembly/group stack as the particles so
+  // its depth footprint lines up exactly with the rendered mark.
+  const staticOccluderMesh = showStaticBuild ? (
+    <mesh
+      geometry={bodyGeometry}
+      material={staticOccluderMaterial}
+      frustumCulled={false}
+    />
+  ) : null;
+
   // SPORE meshes (spores): dark occluder mark + TWO instanced sphere shells
   // (violet erodible crust outside, glowing cyan immortal core beneath). ALL
   // opaque + depth-tested — the depth buffer does the compositing (front balls
@@ -772,6 +816,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
             material={raycastMaterial}
             visible={false}
           />
+          {staticOccluderMesh}
           {staticMesh}
           {sporeMeshes}
         </group>

@@ -164,7 +164,12 @@ export function createLineNodeMaterial(): {
   // Match the GLSL ShaderMaterial flags exactly.
   material.transparent = true;
   material.depthWrite = false;
-  material.depthTest = false;
+  // depthTest ON (depthWrite stays OFF) — twin of lineShader.ts FIX 1a: the
+  // opaque hero mark writes depth and draws first, so line fragments behind it
+  // (hero waypoint z:-1.0 vs the mark at heroPosZ:-0.3) are discarded rather
+  // than additively brightening its silhouette. depthWrite off still lets the
+  // additive drift particles / rail planes at renderOrder:-1 show through.
+  material.depthTest = true;
   material.blending = AdditiveBlending;
   // Unlit + HDR: keep emissive values above 1.0 intact so the bloom-by-
   // luminance-threshold (approach A) still selects ONLY this line.
