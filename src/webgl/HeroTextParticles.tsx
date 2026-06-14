@@ -134,6 +134,20 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
   // Third morph clock 0..1 (cue → "scroll" at the bottom). Same one-shot,
   // reversible, persists across rebuilds.
   const morph3TRef = useRef(0);
+  // Per-leg completion LATCHES (FIX 2). A leg's target is normally a pure
+  // function of the smoothed gate progress `g`, so it reverses whenever `g`
+  // dips back below the trigger. At unlock the gate hands the page back
+  // (gateProgress→1, release) then re-engages in reverse on the next up-scroll,
+  // dragging `g` back DOWN across the triggers — which would un-build and
+  // rebuild a just-completed leg ("scroll" replay bug). Once a leg has finished
+  // AND the gate has fully handed off (gateProgress >= 1), latch it so its
+  // target is pinned at 1 and the advance block can never reverse it. The latch
+  // engages ONLY after completion+handoff, so scrolling up BEFORE a leg
+  // finishes still reverses normally. Cleared only on a genuine full-intro
+  // replay (assembleDone observed false at build time).
+  const morph1LatchedRef = useRef(false);
+  const morph2LatchedRef = useRef(false);
+  const morph3LatchedRef = useRef(false);
   const [build, setBuild] = useState<MorphBuild | null>(null);
   // Bumped by the MutationObserver on language switch → resample + rebuild.
   const [textEpoch, setTextEpoch] = useState(0);
@@ -313,7 +327,25 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       );
       built = bm as unknown as MorphBuild;
       // Resume state: a rebuild mid/after entry must not restart the wave.
-      if (replayDone) entryRef.current = 1;
+      // When a previous mount already completed the intro (replayDone), pin the
+      // morph clocks AND re-latch every leg (FIX 2) so a remount / nav-return
+      // shows the assembled state, not a replay. On a genuine full-intro replay
+      // (replayDone false — the same `assembleDone: false` reset the
+      // nav-into-home path uses) clear all latches so the whole intro can play
+      // (and reverse) from the top again.
+      if (replayDone) {
+        entryRef.current = 1;
+        morphTRef.current = 1;
+        morph2TRef.current = 1;
+        morph3TRef.current = 1;
+        morph1LatchedRef.current = true;
+        morph2LatchedRef.current = true;
+        morph3LatchedRef.current = true;
+      } else {
+        morph1LatchedRef.current = false;
+        morph2LatchedRef.current = false;
+        morph3LatchedRef.current = false;
+      }
       built.uAssemble.value = entryRef.current;
       built.uMorph.value = morphTRef.current;
       built.uMorph2.value = morph2TRef.current;
@@ -419,7 +451,11 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
     // --- Morph clock: scroll TRIGGERS it, time PLAYS it -------------------
     // Past the trigger the morph runs to 1 on its own (entry-style wave);
     // back below the trigger it runs to 0. Constant-speed, never scrubbed.
-    const morphTarget = g >= MORPH_TRIGGER ? 1 : 0;
+    const morphTarget = morph1LatchedRef.current
+      ? 1
+      : g >= MORPH_TRIGGER
+        ? 1
+        : 0;
     if (morphTRef.current !== morphTarget) {
       const dir = morphTarget > morphTRef.current ? 1 : -1;
       morphTRef.current = THREE.MathUtils.clamp(
@@ -430,6 +466,8 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       build.uMorph.value = morphTRef.current;
     }
     const morphDone = morphTRef.current >= 0.95;
+    if (morphDone && useTextMorphStore.getState().gateProgress >= 1)
+      morph1LatchedRef.current = true;
     if (morphDone !== useTextMorphStore.getState().morphDone) {
       useTextMorphStore.setState({ morphDone });
     }
@@ -437,8 +475,11 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
     // --- Second morph clock: B (headline) → C ("see what we build") -------
     // Triggers only once the first morph has fully composed AND scroll intent
     // passes MORPH2_TRIGGER; plays / reverses on its own clock like the first.
-    const morph2Target =
-      g >= MORPH2_TRIGGER && morphTRef.current >= 0.95 ? 1 : 0;
+    const morph2Target = morph2LatchedRef.current
+      ? 1
+      : g >= MORPH2_TRIGGER && morphTRef.current >= 0.95
+        ? 1
+        : 0;
     if (morph2TRef.current !== morph2Target) {
       const dir = morph2Target > morph2TRef.current ? 1 : -1;
       morph2TRef.current = THREE.MathUtils.clamp(
@@ -449,14 +490,19 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       build.uMorph2.value = morph2TRef.current;
     }
     const morph2Done = morph2TRef.current >= 0.95;
+    if (morph2Done && useTextMorphStore.getState().gateProgress >= 1)
+      morph2LatchedRef.current = true;
     if (morph2Done !== useTextMorphStore.getState().morph2Done) {
       useTextMorphStore.setState({ morph2Done });
     }
 
     // --- Third morph clock: C ("see what we build") → D ("scroll" @ bottom).
     // Fires only after the second leg composes AND scroll passes MORPH3_TRIGGER.
-    const morph3Target =
-      g >= MORPH3_TRIGGER && morph2TRef.current >= 0.95 ? 1 : 0;
+    const morph3Target = morph3LatchedRef.current
+      ? 1
+      : g >= MORPH3_TRIGGER && morph2TRef.current >= 0.95
+        ? 1
+        : 0;
     if (morph3TRef.current !== morph3Target) {
       const dir = morph3Target > morph3TRef.current ? 1 : -1;
       morph3TRef.current = THREE.MathUtils.clamp(
@@ -467,6 +513,8 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       build.uMorph3.value = morph3TRef.current;
     }
     const morph3Done = morph3TRef.current >= 0.95;
+    if (morph3Done && useTextMorphStore.getState().gateProgress >= 1)
+      morph3LatchedRef.current = true;
     if (morph3Done !== useTextMorphStore.getState().morph3Done) {
       useTextMorphStore.setState({ morph3Done });
     }
