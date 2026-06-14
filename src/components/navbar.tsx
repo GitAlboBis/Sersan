@@ -21,6 +21,7 @@ import { useScrollStore } from "@/webgl/store/scrollStore";
 type NavItem = { href: string; label: string; labelIt: string };
 
 const NAV_ITEMS: NavItem[] = [
+  { href: "/", label: "Home", labelIt: "Home" },
   { href: "/audit", label: "Audit", labelIt: "Audit" },
   { href: "/consulting", label: "Consulting", labelIt: "Consulenza" },
   { href: "/case-studies", label: "Work", labelIt: "Case Study" },
@@ -380,7 +381,7 @@ export function Navbar() {
               touch: the same pulse the eyebrow status-dot uses elsewhere,
               telling the visitor the studio is active. */}
           <div className="flex items-center gap-3 shrink-0">
-            <SersanLogo size="md" />
+            <SersanLogo size="md" href="/" />
             <span
               aria-hidden="true"
               className="hidden sm:inline-block status-dot"
