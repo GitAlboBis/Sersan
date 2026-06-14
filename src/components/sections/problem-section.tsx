@@ -8,25 +8,25 @@ import { Reveal } from "@/components/ui/reveal";
 import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
 import { useScrollParallax } from "@/components/ui/use-scroll-parallax";
+import { useNeuralLatticeStore } from "@/webgl/store/neuralLatticeStore";
+import { NeuralGraphFallback } from "@/components/fx/neural-graph-fallback";
+import { useNeuralLatticeFallback } from "@/components/fx/use-neural-lattice-fallback";
 
 /**
  * ProblemSection — names the pain (demo-to-production gap).
  *
  * Split layout, conforming to the shared section grammar:
  *   - Left: eyebrow + editorial headline + paragraph (SectionHeading).
- *   - Right: a dark "incident console" panel listing the three failure
- *     modes as operational incident rows.
+ *   - Right: the three failure modes as a "network that BREAKS" — three
+ *     pathways through the site's neural-lattice visual language (FIX 3). The
+ *     terminal/incident-console chrome (macOS dots, radar sweep, row-scan,
+ *     "incident console" label) is GONE; the copy from getFailures() stays as
+ *     accessible, selectable DOM rows, and a decorative lattice (WebGL when
+ *     available, SVG fallback otherwise) shows the three severed signal paths.
  *
- * The console reads as a real monitoring surface: a header bar with a
- * status line, then three rows (No evals → no signal / No traces → no
- * debugging / No boundaries → no trust). Warning accents (amber/red) are
- * used sparingly on the severity dots and cause→effect arrow only —
- * brand blue stays dominant on the active/structural chrome so the
- * section still belongs to the page's one system.
- *
- * Three failure modes, deliberately framed as engineering problems rather
- * than business problems — because the buyer is technical and "we can't
- * tell why our agent is failing" lands harder than "AI ROI is unclear".
+ * Three failure modes, deliberately framed as engineering problems rather than
+ * business problems — because the buyer is technical and "we can't tell why our
+ * agent is failing" lands harder than "AI ROI is unclear".
  */
 
 type Failure = {
@@ -74,190 +74,136 @@ function getFailures(isEn: boolean): Failure[] {
   ];
 }
 
-// === Incident console ======================================================
-// A real-monitoring-surface card: the cursor scans down the incident rows
-// over ~4s then rests, the active row's severity dot pulses, and a faint
-// radar sweep loops across the card. ONE shared rAF, IntersectionObserver-
-// gated so it never burns frames off-screen. Pure ref/style updates — the
-// DOM structure and all copy are unchanged.
-const SCAN_STEP_MS = 900; // ~0.9s per row → ~2.7s sweep over 3 rows
-const SCAN_REST_MS = 1300; // then rest before looping (≈4s total cycle)
+// === in-view bump =========================================================
+// On the false→true edge, bump the neural-lattice store's "broken" surface so
+// the WebGL lattice fires its three pathway packets (which then die at the
+// break). Inert under reduced-motion (the WebGL layer is unmounted at tier
+// "off" and we early-return so the store is never even touched). Pure
+// side-effect — no DOM copy/layout change.
+function useBrokenLatticeOnEnter(inView: boolean) {
+  const bump = useNeuralLatticeStore((s) => s.bump);
+  useEffect(() => {
+    if (!inView) return;
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    )
+      return;
+    bump("broken");
+  }, [inView, bump]);
+}
 
-function IncidentConsole({
+function useInView<T extends HTMLElement>(margin = "0px 0px -12% 0px") {
+  const ref = useRef<T | null>(null);
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) setInView(true);
+      },
+      { rootMargin: margin, threshold: 0.2 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [margin]);
+  return { ref, inView };
+}
+
+// === Failure lattice =======================================================
+// The three failures rendered as accessible rows over the decorative lattice.
+// The lattice itself is the persistent WebGL canvas (NeuralLattice, anchored to
+// [data-lattice-anchor="problem"]) when available, or the SVG fallback when the
+// WebGL island is absent (lite/off/reduced-motion/no-WebGPU). The copy is
+// byte-identical to the previous IncidentConsole — only the chrome changed.
+function FailureLattice({
   failures,
   isEn,
 }: {
   failures: Failure[];
   isEn: boolean;
 }) {
-  const cardRef = useRef<HTMLDivElement | null>(null);
-  // Parallax lives on a wrapper (separate from the tilt-owned .card-steel
-  // root): a tiny scroll-linked Y drift that never touches the card's
-  // rotationX/Y/scale transform.
+  const { ref, inView } = useInView<HTMLDivElement>();
+  useBrokenLatticeOnEnter(inView);
+  const showFallback = useNeuralLatticeFallback();
+  // A tiny scroll-linked Y drift, kept off the lattice anchor's measured rect
+  // so the WebGL placement stays stable (parallax lives on an outer wrapper).
   const parallaxRef = useScrollParallax<HTMLDivElement>(5);
-  const [active, setActive] = useState(-1);
 
-  useEffect(() => {
-    const el = cardRef.current;
-    if (!el) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-
-    let raf = 0;
-    let start = 0;
-    let running = false;
-    const rows = failures.length;
-    const cycle = rows * SCAN_STEP_MS + SCAN_REST_MS;
-
-    const tick = (now: number) => {
-      if (!start) start = now;
-      const e = (now - start) % cycle;
-      const idx =
-        e < rows * SCAN_STEP_MS
-          ? Math.min(Math.floor(e / SCAN_STEP_MS), rows - 1)
-          : -1;
-      setActive((prev) => (prev === idx ? prev : idx));
-      raf = requestAnimationFrame(tick);
-    };
-
-    // Gate the loop with an IntersectionObserver: only run while on-screen.
-    const obs = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && !running) {
-          running = true;
-          start = 0;
-          raf = requestAnimationFrame(tick);
-        } else if (!entry.isIntersecting && running) {
-          running = false;
-          cancelAnimationFrame(raf);
-          setActive(-1);
-        }
-      },
-      { threshold: 0.15 },
-    );
-    obs.observe(el);
-
-    return () => {
-      obs.disconnect();
-      cancelAnimationFrame(raf);
-    };
-  }, [failures.length]);
+  const toneColor = (tone: Failure["tone"]) =>
+    tone === "critical" ? "hsl(0 72% 56%)" : "hsl(36 84% 56%)";
 
   return (
     <div ref={parallaxRef}>
-    <div ref={cardRef} className="card-steel relative overflow-hidden">
-      {/* Radar sweep — a faint conic light that rotates across the card,
-          masked to the card bounds. Decorative, low-opacity, ~7s loop.
-          Removed entirely under reduced-motion (see globals motion-reduce). */}
-      <span
-        aria-hidden="true"
-        className="incident-radar pointer-events-none absolute inset-0 -z-0"
-      />
-      {/* Console header bar */}
-      <div className="relative flex items-center justify-between gap-3 border-b border-[hsl(var(--rule))] px-5 py-3">
-        <div className="flex items-center gap-2.5">
-          <span aria-hidden="true" className="inline-flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-[hsl(0_72%_56%/0.85)]" />
-            <span className="w-2 h-2 rounded-full bg-[hsl(36_84%_56%/0.85)]" />
-            <span className="w-2 h-2 rounded-full bg-[hsl(var(--accent)/0.85)]" />
-          </span>
-          <span className="font-mono text-[11px] tracking-[0.16em] uppercase text-ink-mute">
-            {isEn ? "incident console" : "console incidenti"}
-          </span>
+      <div ref={ref} className="relative">
+        {/* Decorative lattice layer. The WebGL NeuralLattice paints behind this
+            via the persistent canvas (anchored to the rect below); when WebGL is
+            absent the SVG fallback shows the same severed-pathway metaphor. Both
+            are aria-hidden. The anchor element is the rect the WebGL island
+            camera-locks to — give it real height so the lattice has room. */}
+        <div
+          data-lattice-anchor="problem"
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 flex items-center justify-center"
+        >
+          {showFallback && (
+            <NeuralGraphFallback
+              variant="broken"
+              className="w-full max-w-md opacity-90"
+            />
+          )}
         </div>
-        <span className="font-mono text-[11px] tracking-[0.14em] uppercase text-[hsl(36_70%_62%)]">
-          {isEn ? "3 unresolved" : "3 non risolti"}
-        </span>
-      </div>
 
-      {/* Incident rows */}
-      <ul className="relative divide-y divide-[hsl(var(--rule))]">
-        {failures.map((f, i) => {
-          const Icon = f.Icon;
-          const toneVar = f.tone === "critical" ? "0 72% 56%" : "36 84% 56%";
-          const isActive = i === active;
-          return (
-            <li
-              key={f.num}
-              className="group/row relative px-5 py-4 transition-colors duration-300 hover:bg-[hsl(var(--accent)/0.04)]"
-              style={{
-                background: isActive ? "hsl(var(--accent)/0.05)" : undefined,
-              }}
-            >
-              {/* Left severity edge */}
-              <span
-                aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 left-0 w-px"
-                style={{ background: `hsl(${toneVar} / 0.45)` }}
-              />
-              <div className="flex items-start gap-3">
-                <span
-                  aria-hidden="true"
-                  className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[hsl(var(--rule))] bg-[hsl(var(--bg)/0.6)] text-ink-mute transition-colors duration-300 group-hover/row:text-[hsl(var(--accent))] group-hover/row:border-[hsl(var(--accent)/0.4)]"
-                >
-                  <Icon
-                    className="h-3.5 w-3.5 transition-transform duration-300 ease-out group-hover/row:scale-110 group-hover/row:rotate-[8deg] motion-reduce:transform-none motion-reduce:transition-none"
-                    strokeWidth={1.6}
-                  />
-                </span>
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 font-mono text-[11px] tracking-[0.1em] uppercase">
-                    <span className="text-[hsl(var(--accent)/0.85)]">
-                      {f.num}
-                    </span>
-                    <span
-                      aria-hidden="true"
-                      className="inline-block h-1.5 w-1.5 rounded-full"
-                      style={{
-                        background: `hsl(${toneVar})`,
-                        boxShadow: isActive
-                          ? `0 0 7px hsl(${toneVar})`
-                          : "none",
-                        transform: isActive ? "scale(1.35)" : "scale(1)",
-                        transition:
-                          "transform 220ms ease-out, box-shadow 220ms ease-out",
-                      }}
+        {/* Accessible copy — the three failure modes as plain rows. */}
+        <ul className="relative space-y-px">
+          {failures.map((f) => {
+            const Icon = f.Icon;
+            return (
+              <li
+                key={f.num}
+                className="group/row relative rounded-lg border border-[hsl(var(--rule)/0.7)] bg-[hsl(var(--bg)/0.55)] backdrop-blur-[2px] px-5 py-4 transition-colors duration-300 hover:border-[hsl(var(--accent)/0.4)]"
+              >
+                <div className="flex items-start gap-3">
+                  <span
+                    aria-hidden="true"
+                    className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[hsl(var(--rule))] bg-[hsl(var(--bg)/0.6)] text-ink-mute transition-colors duration-300 group-hover/row:text-[hsl(var(--accent))] group-hover/row:border-[hsl(var(--accent)/0.4)]"
+                  >
+                    <Icon
+                      className="h-3.5 w-3.5 transition-transform duration-300 ease-out group-hover/row:scale-110 motion-reduce:transform-none motion-reduce:transition-none"
+                      strokeWidth={1.6}
                     />
+                  </span>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 font-mono text-[11px] tracking-[0.1em] uppercase">
+                      <span className="text-[hsl(var(--accent)/0.85)]">
+                        {f.num}
+                      </span>
+                      <span
+                        aria-hidden="true"
+                        className="inline-block h-1.5 w-1.5 rounded-full"
+                        style={{ background: toneColor(f.tone) }}
+                      />
+                    </div>
+
+                    <h3 className="mt-1.5 font-mono text-[15px] sm:text-base leading-snug text-ink">
+                      <span>{f.cause}</span>{" "}
+                      <span aria-hidden="true" style={{ color: toneColor(f.tone) }}>
+                        {"→"}
+                      </span>{" "}
+                      <span className="text-ink-mute">{f.effect}.</span>
+                    </h3>
+                    <p className="mt-1.5 text-[13.5px] text-ink-mute leading-relaxed">
+                      {f.body}
+                    </p>
                   </div>
-
-                  <h3 className="mt-1.5 font-mono text-[15px] sm:text-base leading-snug text-ink">
-                    <span>{f.cause}</span>{" "}
-                    <span aria-hidden="true" style={{ color: `hsl(${toneVar})` }}>
-                      {"→"}
-                    </span>{" "}
-                    <span className="text-ink-mute">{f.effect}.</span>
-                  </h3>
-                  <p className="mt-1.5 text-[13.5px] text-ink-mute leading-relaxed">
-                    {f.body}
-                  </p>
                 </div>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-
-      <style>{`
-        .incident-radar {
-          background: conic-gradient(
-            from 0deg at 70% 30%,
-            transparent 0deg,
-            hsl(var(--accent) / 0.12) 24deg,
-            transparent 70deg,
-            transparent 360deg
-          );
-          opacity: 0.5;
-          animation: incident-radar-spin 7s linear infinite;
-          mix-blend-mode: screen;
-        }
-        @keyframes incident-radar-spin {
-          to { transform: rotate(360deg); }
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .incident-radar { display: none; }
-        }
-      `}</style>
-    </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </div>
   );
 }
@@ -300,9 +246,9 @@ export default function ProblemSection() {
             className="max-w-xl"
           />
 
-          {/* Right — incident console */}
+          {/* Right — the three failures as a severed neural lattice */}
           <Reveal delay={120}>
-            <IncidentConsole failures={failures} isEn={isEn} />
+            <FailureLattice failures={failures} isEn={isEn} />
           </Reveal>
         </div>
       </div>

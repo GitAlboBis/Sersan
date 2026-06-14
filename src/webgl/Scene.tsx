@@ -30,6 +30,7 @@ import { DriftParticles } from "./DriftParticles";
 import { RailPlanes } from "./RailPlanes";
 import { ResourcePreviewPlane } from "./ResourcePreviewPlane";
 import { CompliancePipeline3D } from "./CompliancePipeline3D";
+import { NeuralLattice } from "./NeuralLattice";
 import { PostFX } from "./PostFX";
 import { PostFXNodes } from "./PostFXNodes";
 import { useSectionAnchors } from "./hooks/useSectionAnchors";
@@ -249,6 +250,23 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           authority having written camera.position.y earlier in the same
           priority-0 frame pass. */}
       {pathname === "/" && tier === "full" && webgpu && <RailPlanes />}
+      {/* FIX 3 neural-lattice islands (home only). Two camera-locked lattices:
+          the Problem section ("broken" — pathways go dark / packets die) and the
+          ProductionGrade section ("healthy" — clusters pulse in sequence). Same
+          decorative-island gates as RailPlanes (route + full tier + the WebGPU
+          flag; TSL-only, no GLSL twin — on the classic flag-OFF path or
+          lite/off/reduced-motion the DOM SVG fallback in the two sections is the
+          whole visual). MUST stay mounted AFTER SignatureLine: the camera-locked
+          placement relies on the single camera authority having written
+          camera.position/quaternion earlier in the same priority-0 frame pass.
+          Each lattice reads useNeuralLatticeStore (globalThis-pinned) for its
+          per-cluster ignition, bumped by the DOM sections on their in-view edge. */}
+      {pathname === "/" && tier === "full" && webgpu && (
+        <>
+          <NeuralLattice mode="broken" anchorId="problem" />
+          <NeuralLattice mode="healthy" anchorId="production" />
+        </>
+      )}
       {/* /resources article-hover signal plane (BEAT 3). Same gates as
           RailPlanes — route + full tier + the WebGPU flag (TSL-only, no GLSL
           twin; on the classic flag-OFF path the DOM gradient card in
