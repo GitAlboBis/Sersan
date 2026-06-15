@@ -68,10 +68,11 @@ import {
   SIGNAL_HEAD_SPEED,
   SIGNAL_PULSE_SPEED,
   SIGNAL_PULSE_GAIN,
-  HOVER_FLARE,
-  HOVER_DIM,
   HOVER_RADIUS_PULSE,
   HOVER_ARC_BOOST,
+  HOVER_BURST_AMP,
+  HOVER_BURST_EMISSIVE,
+  HOVER_BURST_ARC,
   SEED_SCATTER_XY,
   SEED_SCATTER_Z,
 } from "./neuralLatticeConfig";
@@ -101,6 +102,10 @@ export interface NeuralFieldUniforms {
   uHovered: { value: number };
   /** Per-hub damped glow 0..~HOVER_FLARE (write to `.array`). */
   uHubGlow: { array: number[] };
+  /** Per-hub one-shot burst envelope 0..1 (write to `.array`). The hovered hub
+   * surges outward + spikes emissive on the rising edge of a hover, then decays.
+   * v5 particle effect on open. */
+  uHubBurst: { array: number[] };
   uPixelRatio: { value: number };
   uViewport: { value: { set: (x: number, y: number) => unknown } };
 }
@@ -269,6 +274,7 @@ export function createNeuralFieldBuild(
   const uHub2 = uniform(new Vector3(...(arrXY(2))));
   const uHovered = uniform(-1);
   const uHubGlow = uniformArray([1, 1, 1]);
+  const uHubBurst = uniformArray([0, 0, 0]);
   const uPixelRatio = uniform(1);
   const uViewport = uniform(new Vector2(1, 1));
   const uColCyan = uniform(new Color(COL_CYAN));
@@ -312,6 +318,10 @@ export function createNeuralFieldBuild(
     const ci = int(clamp(idx, float(0), float(2)));
     return uHubGlow.element(ci) as Any;
   }
+  function hubBurst(idx: Any): Any {
+    const ci = int(clamp(idx, float(0), float(2)));
+    return uHubBurst.element(ci) as Any;
+  }
 
   function quadBezier(a: Any, c: Any, b: Any, t: Any): Any {
     const omt = float(1).sub(t);
@@ -350,8 +360,13 @@ export function createNeuralFieldBuild(
     const dead = metaN.w;
 
     // -------- NODE branch --------
+    // v5 burst: on the rising edge of a hover the hovered hub's node particles
+    // SURGE outward along their sphere offset (a real expansion), then re-settle
+    // as the burst envelope decays. Steady radius pulse (glow) stays additive.
     const hubC = hubPos(hubA).toVar();
-    const nodeAnchor = hubC.add(spinOffset(offN, hubA)).toVar();
+    const burst = hubBurst(hubA);
+    const surge = float(1).add(burst.mul(float(HOVER_BURST_AMP)));
+    const nodeAnchor = hubC.add(spinOffset(offN, hubA).mul(surge)).toVar();
 
     // -------- FLOW branch --------
     const aHub = hubPos(hubA).toVar();
@@ -361,13 +376,16 @@ export function createNeuralFieldBuild(
     const ctrl = mid.add(vec3(0, 0, float(NEURAL_ARC_BOW))).toVar();
 
     // Per-arc flow speed: base × the larger of the two hub glows (incident arcs
-    // of the hovered hub race) × the cluster pulse boost on the FROM hub.
+    // of the hovered hub race) × the cluster pulse boost on the FROM hub × the
+    // burst surge (v5: signal accelerates toward the opening card).
     const ci = int(clamp(hubA, float(0), float(2)));
     const pulse = (uPulse.element(ci) as Any).mul(1.0);
     const glowBoost = max(hubGlow(hubA), hubGlow(hubB));
+    const arcBurst = max(hubBurst(hubA), hubBurst(hubB));
     const clusterSpeed = float(0.7)
       .add(pulse.mul(0.9))
-      .mul(float(1).add(glowBoost.sub(1.0).mul(float(HOVER_ARC_BOOST - 1.0))));
+      .mul(float(1).add(glowBoost.sub(1.0).mul(float(HOVER_ARC_BOOST - 1.0))))
+      .mul(float(1).add(arcBurst.mul(float(HOVER_BURST_ARC))));
 
     const basePhase = offN.x;
     const tFlow = fract(
@@ -398,9 +416,11 @@ export function createNeuralFieldBuild(
     const ci = int(clamp(hubA, float(0), float(2)));
     const pulse = (uPulse.element(ci) as Any).mul(1.0);
     const glowBoost = max(hubGlow(hubA), hubGlow(hubB));
+    const arcBurst = max(hubBurst(hubA), hubBurst(hubB));
     const clusterSpeed = float(0.7)
       .add(pulse.mul(0.9))
-      .mul(float(1).add(glowBoost.sub(1.0).mul(float(HOVER_ARC_BOOST - 1.0))));
+      .mul(float(1).add(glowBoost.sub(1.0).mul(float(HOVER_ARC_BOOST - 1.0))))
+      .mul(float(1).add(arcBurst.mul(float(HOVER_BURST_ARC))));
     return fract(basePhase.add(uTime.mul(uFlowSpeed).mul(clusterSpeed)));
   }
 
@@ -409,16 +429,19 @@ export function createNeuralFieldBuild(
     const ci = int(clamp(hubA, float(0), float(2)));
     const pulse = (uPulse.element(ci) as Any).mul(1.0);
     const glowBoost = max(hubGlow(hubA), hubGlow(hubB));
+    const arcBurst = max(hubBurst(hubA), hubBurst(hubB));
     const headSpeed = float(SIGNAL_HEAD_SPEED)
       .mul(float(1).add(pulse.mul(float(SIGNAL_PULSE_SPEED))))
-      .mul(float(1).add(glowBoost.sub(1.0).mul(float(HOVER_ARC_BOOST - 1.0))));
+      .mul(float(1).add(glowBoost.sub(1.0).mul(float(HOVER_ARC_BOOST - 1.0))))
+      .mul(float(1).add(arcBurst.mul(float(HOVER_BURST_ARC))));
     const headT = fract(uTime.mul(headSpeed));
     const d = fract(tFlow.sub(headT).add(1.0));
     const dWrap = min(d, float(1).sub(d));
     const peak = exp(float(SIGNAL_K).mul(dWrap.mul(dWrap)).negate());
     const amp = float(1)
       .add(pulse.mul(float(SIGNAL_PULSE_GAIN)))
-      .add(glowBoost.sub(1.0).mul(0.8));
+      .add(glowBoost.sub(1.0).mul(0.8))
+      .add(arcBurst.mul(0.9));
     return float(SIGNAL_FLOOR).add(peak.mul(amp));
   }
 
@@ -438,6 +461,7 @@ export function createNeuralFieldBuild(
     const vRole = float(0).toVar();
     const vDead = float(0).toVar();
     const vGlow = float(1).toVar();
+    const vBurst = float(0).toVar();
     const vSignal = float(1).toVar();
 
     material.vertexNode = Fn(() => {
@@ -462,6 +486,11 @@ export function createNeuralFieldBuild(
         aMeta.x,
       );
       vGlow.assign(glowN);
+      // v5 burst envelope for this particle (node → its hub; flow → max of arc
+      // endpoints) → emissive spike in the fragment shade.
+      vBurst.assign(
+        mix(hubBurst(aMeta.y), max(hubBurst(aMeta.y), hubBurst(aMeta.z)), aMeta.x),
+      );
       vDepth.assign(depthT(center.z));
       vRole.assign(aMeta.x);
       vDead.assign(aMeta.w);
@@ -490,6 +519,7 @@ export function createNeuralFieldBuild(
     const vRoleF = varying(vRole);
     const vDeadF = varying(vDead);
     const vGlowF = varying(vGlow);
+    const vBurstF = varying(vBurst);
     const vSignalF = varying(vSignal);
 
     const shade = Fn(() => {
@@ -503,6 +533,7 @@ export function createNeuralFieldBuild(
         vRoleF,
       )
         .mul(vGlowF)
+        .mul(float(1).add(vBurstF.mul(float(HOVER_BURST_EMISSIVE))))
         .mul(float(1).sub(deadMix.mul(0.5)))
         .mul(vSignalF);
       const col = tone.toVec3().mul(emis);
@@ -608,6 +639,7 @@ export function createNeuralFieldBuild(
   const vRole = float(0).toVar();
   const vDead = float(0).toVar();
   const vGlow = float(1).toVar();
+  const vBurst = float(0).toVar();
   const vAlive = float(1).toVar();
   const vSignal = float(1).toVar();
 
@@ -623,6 +655,8 @@ export function createNeuralFieldBuild(
 
     const glowN = mix(hubGlow(hubA), max(hubGlow(hubA), hubGlow(hubB)), role);
     vGlow.assign(glowN);
+    // v5 burst envelope (node → its hub; flow → max of arc endpoints).
+    vBurst.assign(mix(hubBurst(hubA), max(hubBurst(hubA), hubBurst(hubB)), role));
     vDepth.assign(depthT(p.z));
     vRole.assign(role);
     vDead.assign(dead);
@@ -660,6 +694,7 @@ export function createNeuralFieldBuild(
   const vRoleF = varying(vRole);
   const vDeadF = varying(vDead);
   const vGlowF = varying(vGlow);
+  const vBurstF = varying(vBurst);
   const vAliveF = varying(vAlive);
   const vSignalF = varying(vSignal);
 
@@ -675,6 +710,7 @@ export function createNeuralFieldBuild(
       vRoleF,
     )
       .mul(vGlowF)
+      .mul(float(1).add(vBurstF.mul(float(HOVER_BURST_EMISSIVE))))
       .mul(float(1).sub(deadMix.mul(0.5)))
       .mul(vSignalF);
     const col = tone.toVec3().mul(emis);
@@ -727,6 +763,7 @@ export function createNeuralFieldBuild(
       uHub2: uHub2 as Any,
       uHovered: uHovered as Any,
       uHubGlow: uHubGlow as unknown as { array: number[] },
+      uHubBurst: uHubBurst as unknown as { array: number[] },
       uPixelRatio,
       uViewport: uViewport as Any,
     };

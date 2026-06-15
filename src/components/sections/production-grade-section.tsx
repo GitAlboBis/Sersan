@@ -7,21 +7,24 @@ import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
 import { useProductionPulseStore } from "@/webgl/store/productionPulseStore";
 import { useNeuralLatticeStore } from "@/webgl/store/neuralLatticeStore";
-import { NeuralGraphFallback } from "@/components/fx/neural-graph-fallback";
 import { useNeuralLatticeFallback } from "@/components/fx/use-neural-lattice-fallback";
 import { NeuralCard } from "@/components/fx/neural-card";
+import { NeuralCenterpiece } from "@/components/fx/neural-centerpiece";
 
 /**
  * ProductionGradeSection — the SIGNATURE section.
  *
  * Three production-grade guarantees, rendered as a "network that is HEALTHY"
- * (FIX 3 v4): three card-anchored hubs through the site's neural-network visual
- * language, pulsing in sequence — eval baseline → trace propagation → guardrail
- * clamp. The cards use the shared NeuralCard chrome (compact → expand on
- * hover/focus, cyan→violet glass) identical to the Problem section; only the
- * copy + healthy accent differ. The copy from getArtifacts() stays as
- * accessible, selectable DOM at all times. Hovering a card flares its WebGL hub
- * via useNeuralLatticeStore.setHovered (done inside NeuralCard).
+ * (FIX 3 v5): the neural NETWORK is the clearly-visible CENTERPIECE — dense
+ * particle orbs + arcs + travelling signal, the 3 nodes pulsing in sequence
+ * (eval baseline → trace propagation → guardrail clamp) — with the 3 cards
+ * OFFSET to its side (never overlapping it). Heading on top; below = [network
+ * centerpiece] beside [cards column]. The 3 focusable NODE MARKERS in the
+ * centerpiece are the primary trigger: hovering/focusing node i flares + BURSTS
+ * its hub (particle effect) and OPENS the matching side card; others dim. The
+ * cards use the shared NeuralCard chrome (compact → expand, cyan→violet glass)
+ * identical to the Problem section; only the copy + healthy accent differ. The
+ * copy from getArtifacts() stays as accessible, selectable DOM at all times.
  *
  * The three claims:
  *   - Every system ships with a regression set.   (eval baseline)
@@ -129,12 +132,18 @@ function clusterLabel(index: number, isEn: boolean): string {
   return isEn ? "guardrail clamp" : "clamp guardrail";
 }
 
+// Stable body id per index so the centerpiece node marker's aria-controls
+// resolves to the matching side card (SSR-stable, no useId).
+function bodyId(i: number) {
+  return `neural-production-card-${i}`;
+}
+
 function ArtifactCard({ a, index }: { a: Artifact; index: number }) {
   const { language } = useLanguage();
   const isEn = language === "en";
   // Keep the in-view bridge: an outer wrapper carries the IntersectionObserver
   // ref so the section's signature-line pulse + the healthy cluster sequence
-  // still ignite on first appearance (additive to the NeuralCard hover flare).
+  // still ignite on first appearance (additive to the hover flare/burst).
   const { ref, inView } = useInView<HTMLDivElement>();
   useProductionPulseOnEnter(inView);
   useHealthyClusterOnEnter(inView, index);
@@ -142,10 +151,10 @@ function ArtifactCard({ a, index }: { a: Artifact; index: number }) {
   return (
     <div ref={ref}>
       <NeuralCard
-        anchorId="production"
         index={index}
         surface="healthy"
         tone="healthy"
+        bodyId={bodyId(index)}
         eyebrow={clusterLabel(index, isEn)}
         title={a.claim}
         body={a.why}
@@ -196,26 +205,31 @@ export default function ProductionGradeSection() {
           className="mb-12 sm:mb-16"
         />
 
-        {/* The healthy lattice: a decorative backdrop spanning the three cards.
-            The WebGL NeuralLattice (anchored to [data-lattice-anchor="production"])
-            paints behind the grid via the persistent canvas; when WebGL is absent
-            the SVG fallback shows the same three healthy pathways. Both
-            aria-hidden. The anchor wraps the grid so its measured rect matches the
-            card row the lattice should register to. */}
-        <div data-lattice-anchor="production" className="relative">
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 flex items-center justify-center"
-          >
-            {showFallback && (
-              <NeuralGraphFallback
-                variant="healthy"
-                className="w-full max-w-2xl opacity-80"
-              />
-            )}
-          </div>
+        {/* FIX 3 v5 — RECOMPOSE: the healthy network is the clearly-visible
+            CENTERPIECE beside the cards column (network one side, cards the
+            other). The WebGL NeuralLattice (anchored to the centerpiece's
+            [data-lattice-anchor="production"]) paints the dense particle orbs +
+            arcs + travelling signal; the 3 focusable NODE MARKERS in the
+            centerpiece are the primary trigger (flare + BURST the hub + open the
+            matching side card). When WebGL is absent the SVG fallback shows the
+            three healthy pathways. Both aria-hidden. Stacks on narrow widths
+            (network on top, cards below). */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-8 lg:gap-12 items-center">
+          <NeuralCenterpiece
+            anchorId="production"
+            surface="healthy"
+            tone="healthy"
+            showFallback={showFallback}
+            className="min-h-[300px] sm:min-h-[360px]"
+            nodes={[
+              { label: clusterLabel(0, isEn), controls: bodyId(0) },
+              { label: clusterLabel(1, isEn), controls: bodyId(1) },
+              { label: clusterLabel(2, isEn), controls: bodyId(2) },
+            ]}
+          />
 
-          <div className="relative grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-7">
+          {/* Cards column — OFFSET from the network (never overlapping it). */}
+          <div className="relative flex flex-col gap-5 sm:gap-6">
             {artifacts.map((a, i) => (
               <Reveal key={i} delay={i * 90}>
                 <ArtifactCard a={a} index={i} />

@@ -1,47 +1,52 @@
 "use client";
 
 /**
- * NeuralCard — the ONE shared card presentation for the FIX 3 v4 neural-network
+ * NeuralCard — the ONE shared card presentation for the FIX 3 neural-network
  * sections (Problem = "broken", ProductionGrade = "healthy"). BOTH sections use
  * this single component so the cards are visually identical in chrome / spacing
  * / typography / animation; only the copy and the broken-vs-healthy accent
  * treatment differ.
  *
- * Look (matches the 3D particle network behind it): dark translucent navy glass
+ * Look (matches the 3D particle network beside it): dark translucent navy glass
  * (subtle backdrop-blur), thin cyan→violet gradient HAIRLINE border + soft outer
- * glow that intensifies on hover/focus, JetBrains-Mono eyebrow (`0N · …`),
+ * glow that intensifies on hover/focus/open, JetBrains-Mono eyebrow (`0N · …`),
  * editorial/Switzer title. No terminal chrome (no macOS dots / file-name labels
  * / radar / scan).
  *
- * Behaviour (the v4 contract):
- *   - COMPACT by default (eyebrow + title only); EXPAND the body on hover OR
- *     focus-within. Touch (no hover) = tap toggles. Copy stays in the DOM at all
- *     times (collapsed via grid-rows / opacity, never unmounted) so SEO/AT read
- *     it. `prefers-reduced-motion` → no transition, still toggles.
- *   - Each card root carries `data-lattice-node="<anchorId>:<index>"` inside the
- *     section's `[data-lattice-anchor]` so the WebGL island can measure its
- *     center and pin its hub there. Focusable (tabIndex=0), `aria-expanded`.
- *   - On hover/focus → useNeuralLatticeStore.setHovered(surface, index); on
- *     leave/blur → setHovered(surface, null). This flares the card's hub.
+ * RECOMPOSE (v5): the cards moved OFF the network into a SIDE column; the NODE
+ * MARKER (neural-node-marker.tsx, in the centerpiece) is now the PRIMARY trigger.
+ *   - This card OPENS when its node marker is hovered/focused — it reads the
+ *     store's hovered index (useNeuralLatticeStore.hovered[surface] === index)
+ *     for that surface, so node-hover expands the matching side card with a
+ *     slide+fade + cyan→violet border shimmer.
+ *   - The card ALSO opens on its OWN hover/focus (accessible redundancy) and
+ *     writes setHovered itself, so the node still flares + bursts. The node
+ *     marker is the primary trigger; the card is the secondary one.
+ *   - COMPACT by default (eyebrow + title); EXPAND the body when open. Copy stays
+ *     in the DOM at all times (collapsed via grid-rows / opacity, never
+ *     unmounted) so SEO/AT read it. `prefers-reduced-motion` → no transition.
+ *   - The card NO LONGER carries `data-lattice-node` (that hook moved to the node
+ *     marker). It exposes a stable body id via `bodyId` (aria-controls target of
+ *     the marker) — passed down from the section.
  */
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNeuralLatticeStore } from "@/webgl/store/neuralLatticeStore";
 import { cn } from "@/lib/utils";
 
 export type NeuralSurface = "broken" | "healthy";
 
 interface NeuralCardProps {
-  /** The section anchor id ("problem" | "production") for the node hook. */
-  anchorId: string;
-  /** This card's hub index (0..2). */
+  /** This card's hub index (0..2) — used to read the store hover state. */
   index: number;
   /** Which store surface this card drives. */
   surface: NeuralSurface;
+  /** Stable id for the body (the node marker's aria-controls target). */
+  bodyId: string;
   /** JetBrains-mono eyebrow text (the `· label` after the `0N`). */
   eyebrow: string;
   /** The card title (compact-visible). */
   title: React.ReactNode;
-  /** The expand-on-hover/focus body. Always in the DOM. */
+  /** The expand-when-open body. Always in the DOM. */
   body: React.ReactNode;
   /** broken cards get a faint desaturated fracture cue at rest. */
   tone?: NeuralSurface;
@@ -68,27 +73,33 @@ function useHoverCapable() {
 }
 
 export function NeuralCard({
-  anchorId,
   index,
   surface,
+  bodyId,
   eyebrow,
   title,
   body,
   tone = surface,
 }: NeuralCardProps) {
-  const [expanded, setExpanded] = useState(false);
   const canHover = useHoverCapable();
-  const bodyId = useId();
-  // Track focus + hover separately so blur after a hover doesn't collapse while
-  // the pointer is still over, and vice-versa.
+  // Local hover/focus on the card itself (accessible redundancy: the card can
+  // also be the trigger). Tracked separately so blur-after-hover doesn't collapse
+  // while the pointer is still over, and vice-versa.
+  const [selfActive, setSelfActive] = useState(false);
   const stateRef = useRef({ hover: false, focus: false });
 
   const setHovered = useNeuralLatticeStore((s) => s.setHovered);
+  // PRIMARY open source: the node marker writes hovered[surface]. The card opens
+  // when this index is the hovered one. Subscribe so a node-marker hover (which
+  // doesn't touch this card's DOM) still expands it.
+  const hoveredIdx = useNeuralLatticeStore((s) => s.hovered[surface]);
+  const open = selfActive || hoveredIdx === index;
 
   const sync = () => {
-    const open = stateRef.current.hover || stateRef.current.focus;
-    setExpanded(open);
-    setHovered(surface, open ? index : null);
+    const active = stateRef.current.hover || stateRef.current.focus;
+    setSelfActive(active);
+    // The card is the secondary trigger: drive the hub too so it flares + bursts.
+    setHovered(surface, active ? index : null);
   };
 
   const onEnter = () => {
@@ -112,15 +123,15 @@ export function NeuralCard({
   // Touch / no-hover devices: tap toggles.
   const onClick = () => {
     if (canHover) return;
-    const next = !expanded;
-    setExpanded(next);
+    const next = !open;
+    setSelfActive(next);
     setHovered(surface, next ? index : null);
   };
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      const next = !expanded;
-      setExpanded(next);
+      const next = !open;
+      setSelfActive(next);
       setHovered(surface, next ? index : null);
     }
   };
@@ -135,10 +146,9 @@ export function NeuralCard({
 
   return (
     <article
-      data-lattice-node={`${anchorId}:${index}`}
       tabIndex={0}
       role="button"
-      aria-expanded={expanded}
+      aria-expanded={open}
       aria-controls={bodyId}
       onPointerEnter={onEnter}
       onPointerLeave={onLeave}
@@ -152,12 +162,12 @@ export function NeuralCard({
         "outline-none cursor-default select-text",
         "transition-[box-shadow,transform] duration-300 ease-out",
         "motion-reduce:transition-none",
-        expanded && "neural-card--open",
+        open && "neural-card--open",
       )}
-      data-open={expanded ? "true" : "false"}
+      data-open={open ? "true" : "false"}
     >
       {/* Cyan→violet gradient hairline border + outer glow (intensifies on
-          hover/focus). Pure decoration. */}
+          hover/focus/open). Pure decoration. */}
       <span
         aria-hidden="true"
         className="neural-card__border pointer-events-none absolute inset-0 rounded-xl"
@@ -188,7 +198,7 @@ export function NeuralCard({
         className={cn(
           "neural-card__body relative grid",
           !reduce && "transition-[grid-template-rows,opacity] duration-300 ease-out",
-          expanded
+          open
             ? "grid-rows-[1fr] opacity-100 mt-3"
             : "grid-rows-[0fr] opacity-0 mt-0",
         )}

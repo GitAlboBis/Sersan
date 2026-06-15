@@ -135,6 +135,35 @@ Both sections' cards (Problem failures + ProductionGrade artifacts) must share a
 ### Keep the SVG fallback working
 - `neural-graph-fallback.tsx` + `buildLatticeLayout` untouched. The fallback already carries the reduced-motion/no-WebGPU visual. (Optional later: make the fallback also reflect 3 nodes — NOT required now.)
 
+## v5 — RECOMPOSE: network is the visible centerpiece, cards to the side, NODE-hover opens the card + particle burst (user decision 2026-06-15)
+
+User: "le card non sovrapposte alla rete neurale, ma di lato o spostate, così si vede bene la rete; animate, responsive; passi il mouse sul NODO e si apre, con effetto particelle." So v4's "hubs hidden behind the cards" is wrong. Recompose:
+
+### Composition (both sections)
+- The 3D particle network becomes a **clearly-visible CENTERPIECE** in its own area — nothing overlapping it. The 3 nodes (hubs + arcs + travelling signal) are the hero.
+- The **3 cards move to a side column/area, OFFSET from the network** (never covering it). Cards are COMPACT by default (eyebrow + title). On NODE hover/focus the matching card OPENS (expands its detail) with an animation + particle effect; other cards stay compact and their nodes dim.
+- Layout (desktop):
+  - **Problem:** keep heading+intro on the LEFT. RIGHT area = a row of [network centerpiece] + [cards column], the network clearly visible, cards to its outer side. (Tune split ~ network 55% / cards 45% of the right region.)
+  - **ProductionGrade:** heading on top; below = [network centerpiece] beside [cards column] (network one side, cards the other). 
+  - Network nodes arranged to read as a 3D graph (e.g. a triangle/sweep), NOT collinear with the card list.
+- **Responsive:** on narrow widths stack (network on top, cards below); cards remain tappable (touch = tap opens). WebGL island is desktop/full-tier only; the DOM cards + SVG fallback carry lite/mobile. Ensure measureVersion re-measures node markers + cards on resize.
+
+### NODE = the hover target (the interactive trigger moves from the card to the node)
+- The canvas is `pointer-events-none`, so put a small **focusable DOM hit-zone/marker per node** in the network centerpiece area (`data-lattice-node="<anchorId>:<i>"` now lives on these MARKERS, not the cards), each a `<button>`-like element with the node number/label (01/02/03), `aria-controls` its card, `aria-expanded`. The island anchors hub i to marker i (same measure→uniform pipeline, just pointing at the markers).
+- Hover/focus marker i → `setHovered(surface, i)` → (a) hub i flares + **particle burst**, others dim; (b) card i opens (the card lives in the side column). Leave/blur → close. Keyboard focus + touch tap behave the same.
+- The card itself may ALSO open on its own hover/focus (redundant, accessible), but the PRIMARY trigger is the node marker.
+
+### Particle effect on open ("con effetto particelle o qualcosa di simile")
+- On node hover: the hovered hub does a brief **burst** — particles surge/expand outward then re-settle (amplify the existing `HOVER_RADIUS_PULSE` into a real expansion with a quick ease), emissive spikes, and the incident arcs' signal accelerates/brightens toward the card side. Optionally a thin particle stream flows from the node toward its opening card.
+- The card open animation: GSAP/CSS slide+fade in from the network side + a cyan→violet shimmer along its border (reuse the NeuralCard glow). Reduced-motion: instant, no burst.
+- Reference techniques (PIANO_FIX_VISUAL §FIX 3 / §7): erikjs "Neural Network Visualizer R3F" (instanced nodes + signal packet) and three.js `webgpu_tsl_compute_attractors_particles` (attractor burst) — consult Context7 for current TSL API if extending the compute. Keep it on-brand/sober (no rainbow, cyan→violet only).
+
+### Reuse from v4 (do not rebuild)
+NeuralCard, neuralLatticeStore (`hovered`/`setHovered`), neuralFieldCompute hubs/arcs/signal, the uniform-driven hub placement + camera-lock, bloom, fallbacks. Changes are: (1) move `data-lattice-node` markers off the cards into the network centerpiece; (2) lay out cards to the side; (3) make the node marker the trigger that opens the side card; (4) add the hover burst; (5) ensure the network area is unobstructed.
+
+### Keep intact
+All contract points (camera-lock, single camera authority, store pin, aria-hidden WebGL, emissive>1 additive bloom, `.toAttribute().xyz`, backend guard, lazy import, delta clamp, `uPulse.array`, SVG fallback + buildLatticeLayout). Frozen copy. Named constants for all look values.
+
 ## Verification (the implementer runs)
 
 - `npx tsc --noEmit` clean (no new errors touching neural*/NeuralLattice).

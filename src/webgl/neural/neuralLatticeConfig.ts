@@ -201,13 +201,15 @@ export const HUB_Z = [-0.18, 0.12, -0.06] as const;
 export const HUB_Z_SPAN = 0.3; // (0.12 − (−0.18))
 /** Min hub z (the cyan/back end of the depth gradient). */
 export const HUB_Z_MIN = -0.18;
-/** Fallback LOCAL xy for each hub when a [data-lattice-node] anchor is missing
- * (evenly spread across the rect; z from HUB_Z). For a 3-card row this is a
- * left/center/right spread in local [-0.5,0.5] space. */
+/** Fallback LOCAL xy for each hub when a [data-lattice-node] marker anchor is
+ * missing. v5: the markers now live INSIDE the network centerpiece (not on the
+ * cards), so the defaults read as a 3D GRAPH (a triangle/sweep, NOT collinear
+ * with a card list): node 0 upper-left (back), node 1 lower-center (front),
+ * node 2 upper-right (mid). z from HUB_Z. In local [-0.5,0.5] space. */
 export const HUB_DEFAULT_XY: readonly [number, number][] = [
-  [-0.34, 0.0],
-  [0.0, 0.0],
-  [0.34, 0.0],
+  [-0.32, 0.22],
+  [0.04, -0.26],
+  [0.34, 0.16],
 ];
 
 /** Brand depth-gradient endpoints retained for in-shader mix (alias of the
@@ -290,6 +292,29 @@ export const HOVER_RADIUS_PULSE = 0.35;
 export const HOVER_ARC_BOOST = 1.6;
 /** Damp rate of the per-hub glow toward its hover target (smooth transition). */
 export const HOVER_GLOW_DAMP = 7.0;
+
+// --- v5 hover BURST (particle effect on open) -------------------------------
+// On node-marker hover the hovered hub does a brief BURST: its node-sphere
+// particles SURGE outward then re-settle (amplifies HOVER_RADIUS_PULSE into a
+// real quick expansion), with an emissive spike. The burst is a one-shot
+// envelope per hub (NOT the steady glow): NeuralLattice triggers it on the
+// rising edge of a hover and lets it decay to 0 on its own. The shader reads it
+// per-hub via uHubBurst.element(i) and pushes node particles along their sphere
+// offset by (1 + uHubBurst·HOVER_BURST_AMP), plus an emissive add.
+/** Peak outward expansion of node particles during the burst (fractional growth
+ * of the sphere-offset radius). A real surge, well past the steady radius pulse. */
+export const HOVER_BURST_AMP = 1.15;
+/** Emissive spike added at the burst peak (on top of the steady hub glow). */
+export const HOVER_BURST_EMISSIVE = 1.4;
+/** Burst attack damp rate (how fast it ramps to 1 on the rising edge). High =
+ * a near-instant surge. */
+export const HOVER_BURST_ATTACK = 16.0;
+/** Burst decay damp rate (how fast it re-settles toward 0 after the surge).
+ * Lower than attack → quick out, gentle resettle. */
+export const HOVER_BURST_DECAY = 3.2;
+/** Extra incident-arc signal speed/brightness boost toward the hovered hub's
+ * card during the burst (on top of HOVER_ARC_BOOST). */
+export const HOVER_BURST_ARC = 0.8;
 
 // --- v4 parallax / life (hubs are layout-pinned → subtle motion only) -------
 /** Whole-group damped pointer-parallax amplitude (radians yaw/pitch). STRONG-3D

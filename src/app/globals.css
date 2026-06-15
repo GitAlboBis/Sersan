@@ -985,10 +985,50 @@ img { height: auto; max-width: 100%; }
 .neural-card:focus-visible {
   outline: none;
 }
+
+/*
+ * .neural-node-marker — the FIX 3 v5 interactive NODE trigger that lives in the
+ * network centerpiece (the canvas is pointer-events:none, so this small focusable
+ * DOM hit-zone is what hover/focus/tap actually targets). It sits where the WebGL
+ * hub orb renders; the orb's dense particle glow reads behind it. The marker
+ * chrome stays minimal so the WebGL centerpiece is the hero — just a glowing core
+ * dot + the number/label, with a soft halo that intensifies on hover/focus.
+ */
+.neural-node-marker {
+  background: hsl(var(--bg) / 0.42);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 0 0 1px hsl(var(--rule) / 0.5);
+}
+.neural-node-marker:hover,
+.neural-node-marker:focus-visible,
+.neural-node-marker[data-open="true"] {
+  background: hsl(var(--bg) / 0.6);
+  box-shadow:
+    0 0 0 1px hsl(var(--accent) / 0.35),
+    0 0 24px -4px hsl(var(--accent) / 0.5);
+}
+.neural-node-marker:focus-visible {
+  outline: none;
+}
+/* The glowing core dot — soft cyan halo, surges on hover/focus/open. */
+.neural-node-marker__dot {
+  box-shadow: 0 0 10px 1px hsl(var(--accent) / 0.6);
+  transition: box-shadow 300ms var(--ease-entrance);
+}
+.neural-node-marker:hover .neural-node-marker__dot,
+.neural-node-marker:focus-visible .neural-node-marker__dot,
+.neural-node-marker[data-open="true"] .neural-node-marker__dot {
+  box-shadow:
+    0 0 18px 3px hsl(var(--accent) / 0.85),
+    0 0 36px 8px hsl(var(--accent-2) / 0.4);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .neural-card,
   .neural-card__border,
-  .neural-card__body {
+  .neural-card__body,
+  .neural-node-marker,
+  .neural-node-marker__dot {
     transition: none !important;
   }
 }

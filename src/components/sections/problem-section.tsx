@@ -7,23 +7,26 @@ import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
 import { useScrollParallax } from "@/components/ui/use-scroll-parallax";
 import { useNeuralLatticeStore } from "@/webgl/store/neuralLatticeStore";
-import { NeuralGraphFallback } from "@/components/fx/neural-graph-fallback";
 import { useNeuralLatticeFallback } from "@/components/fx/use-neural-lattice-fallback";
 import { NeuralCard } from "@/components/fx/neural-card";
+import { NeuralCenterpiece } from "@/components/fx/neural-centerpiece";
 
 /**
  * ProblemSection — names the pain (demo-to-production gap).
  *
  * Split layout, conforming to the shared section grammar:
  *   - Left: eyebrow + editorial headline + paragraph (SectionHeading).
- *   - Right: the three failure modes as 3 card-anchored hubs of the site's
- *     neural NETWORK (FIX 3 v4) — the "broken" surface. The cards use the shared
- *     NeuralCard chrome (compact → expand on hover/focus, cyan→violet glass)
- *     identical to the ProductionGrade section; only the copy + the broken
- *     fracture cue differ. The copy from getFailures() stays as accessible,
- *     selectable DOM at all times; a decorative network (WebGL when available,
- *     SVG fallback otherwise) anchors a glowing hub behind each card. Hovering a
- *     card flares its hub via useNeuralLatticeStore.setHovered (inside NeuralCard).
+ *   - Right: a row of [neural NETWORK centerpiece] + [cards column] (FIX 3 v5 —
+ *     the "broken" surface). The network is the clearly-visible CENTERPIECE
+ *     (dense particle orbs + arcs + travelling signal, the 3 nodes laid out as a
+ *     3D graph) with the 3 cards OFFSET to its outer side (never overlapping it).
+ *     The 3 focusable NODE MARKERS in the centerpiece are the primary trigger:
+ *     hovering/focusing node i flares + BURSTS its hub (particle effect) and
+ *     OPENS the matching side card; other nodes dim. The cards use the shared
+ *     NeuralCard chrome (compact → expand, cyan→violet glass) identical to the
+ *     ProductionGrade section; only the copy + the broken fracture cue differ.
+ *     The copy from getFailures() stays as accessible, selectable DOM at all
+ *     times; the SVG fallback carries the metaphor when WebGL is absent.
  *
  * Three failure modes, deliberately framed as engineering problems rather than
  * business problems — because the buyer is technical and "we can't tell why our
@@ -103,19 +106,24 @@ function useInView<T extends HTMLElement>(margin = "0px 0px -12% 0px") {
   return { ref, inView };
 }
 
+// Stable body id per (anchor, index) so the centerpiece node marker's
+// aria-controls resolves to the matching side card body (SSR-stable, no useId).
+function bodyId(anchorId: string, i: number) {
+  return `neural-${anchorId}-card-${i}`;
+}
+
 // === Failure network =======================================================
-// The three failures rendered as 3 card-anchored hubs (FIX 3 v4) using the
-// shared NeuralCard chrome. The WebGL NeuralLattice (anchored to
-// [data-lattice-anchor="problem"]) pins a glowing hub behind each card; when the
-// WebGL island is absent the SVG fallback carries the same severed-pathway
-// metaphor. The copy is byte-identical to the previous version — cards expand
-// the body on hover/focus and the body stays in the DOM at all times.
+// FIX 3 v5 — RECOMPOSE: the network is the clearly-visible CENTERPIECE; the 3
+// cards sit OFFSET to its outer side. The WebGL NeuralLattice (anchored to
+// [data-lattice-anchor="problem"]) paints the dense particle orbs + arcs +
+// travelling signal; the 3 focusable NODE MARKERS in the centerpiece are the
+// primary trigger — hovering/focusing node i flares + BURSTS its hub and opens
+// side card i (others dim). When the WebGL island is absent the SVG fallback
+// carries the same severed-pathway metaphor. The copy is byte-identical.
 function FailureLattice({
   failures,
-  isEn,
 }: {
   failures: Failure[];
-  isEn: boolean;
 }) {
   const { ref, inView } = useInView<HTMLDivElement>();
   useBrokenLatticeOnEnter(inView);
@@ -123,49 +131,52 @@ function FailureLattice({
   // A tiny scroll-linked Y drift, kept off the lattice anchor's measured rect
   // so the WebGL placement stays stable (parallax lives on an outer wrapper).
   const parallaxRef = useScrollParallax<HTMLDivElement>(5);
-  void isEn; // copy is built per-card below; kept for signature parity.
 
   return (
     <div ref={parallaxRef}>
-      <div ref={ref} data-lattice-anchor="problem" className="relative">
-        {/* Decorative network fallback layer. The WebGL NeuralLattice paints
-            behind the cards via the persistent canvas (camera-locked to this
-            anchor rect); when WebGL is absent the SVG fallback shows the same
-            severed-pathway metaphor. Both are aria-hidden. */}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 flex items-center justify-center"
-        >
-          {showFallback && (
-            <NeuralGraphFallback
-              variant="broken"
-              className="w-full max-w-md opacity-90"
-            />
-          )}
-        </div>
+      {/* The in-view observer rides this outer wrapper so the rect that the
+          island measures (inside NeuralCenterpiece) is NOT affected by parallax. */}
+      <div ref={ref}>
+        {/* Network CENTERPIECE (~55%) beside the cards column (~45%); stacks on
+            narrow widths (network on top, cards below). The network area is
+            unobstructed — nothing overlaps it. */}
+        <div className="grid grid-cols-1 sm:grid-cols-[1.1fr_0.9fr] gap-6 lg:gap-8 items-center">
+          <NeuralCenterpiece
+            anchorId="problem"
+            surface="broken"
+            tone="broken"
+            showFallback={showFallback}
+            className="min-h-[260px] sm:min-h-[320px]"
+            nodes={[
+              { label: failures[0].cause, controls: bodyId("problem", 0) },
+              { label: failures[1].cause, controls: bodyId("problem", 1) },
+              { label: failures[2].cause, controls: bodyId("problem", 2) },
+            ]}
+          />
 
-        {/* The three failure hubs as shared NeuralCards (compact → expand). */}
-        <div className="relative flex flex-col gap-4">
-          {failures.map((f, i) => (
-            <NeuralCard
-              key={f.num}
-              anchorId="problem"
-              index={i}
-              surface="broken"
-              tone="broken"
-              eyebrow={f.cause}
-              title={
-                <>
-                  <span>{f.cause}</span>{" "}
-                  <span aria-hidden="true" className="text-[hsl(var(--accent-2)/0.9)]">
-                    {"→"}
-                  </span>{" "}
-                  <span className="text-ink-mute">{f.effect}.</span>
-                </>
-              }
-              body={f.body}
-            />
-          ))}
+          {/* Cards column — OFFSET from the network (never overlapping it). */}
+          <div className="relative flex flex-col gap-4">
+            {failures.map((f, i) => (
+              <NeuralCard
+                key={f.num}
+                index={i}
+                surface="broken"
+                tone="broken"
+                bodyId={bodyId("problem", i)}
+                eyebrow={f.cause}
+                title={
+                  <>
+                    <span>{f.cause}</span>{" "}
+                    <span aria-hidden="true" className="text-[hsl(var(--accent-2)/0.9)]">
+                      {"→"}
+                    </span>{" "}
+                    <span className="text-ink-mute">{f.effect}.</span>
+                  </>
+                }
+                body={f.body}
+              />
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -210,9 +221,9 @@ export default function ProblemSection() {
             className="max-w-xl"
           />
 
-          {/* Right — the three failures as a severed neural lattice */}
+          {/* Right — the network centerpiece + the three failure cards */}
           <Reveal delay={120}>
-            <FailureLattice failures={failures} isEn={isEn} />
+            <FailureLattice failures={failures} />
           </Reveal>
         </div>
       </div>

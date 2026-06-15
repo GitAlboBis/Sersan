@@ -63,6 +63,8 @@ import {
   HOVER_FLARE,
   HOVER_DIM,
   HOVER_GLOW_DAMP,
+  HOVER_BURST_ATTACK,
+  HOVER_BURST_DECAY,
   cardCenterToLocal,
   type LatticeMode,
 } from "./neural/neuralLatticeConfig";
@@ -202,6 +204,12 @@ export function NeuralLattice({
   const parallaxRef = useRef({ x: 0, y: 0 });
   // Per-hub damped glow toward its hover target (1 = neutral).
   const hubGlow = useRef<number[]>(new Array(HUB_COUNT).fill(1));
+  // Per-hub one-shot BURST envelope (0..1). Triggered to 1 on the rising edge of
+  // a hover (attack), then decays back to 0 (resettle) — the v5 particle effect.
+  const hubBurst = useRef<number[]>(new Array(HUB_COUNT).fill(0));
+  // Per-hub burst "target": 1 while this hub is freshly hovered, decaying to 0.
+  const burstTarget = useRef<number[]>(new Array(HUB_COUNT).fill(0));
+  const prevHovered = useRef<number | null>(null);
   const surfaceKey = broken ? "broken" : "healthy";
 
   useFrame((_, rawDelta) => {
@@ -300,6 +308,36 @@ export function NeuralLattice({
       );
     }
 
+    // --- Hover BURST (the v5 "particle effect on open"): on the RISING edge of a
+    // hover (a NEW hub becomes hovered), fire that hub's one-shot burst — its
+    // burstTarget snaps to 1, then immediately decays toward 0; hubBurst attacks
+    // fast toward the (decaying) target then resettles. Net = a quick surge that
+    // expands+resettles the orb + spikes its emissive + accelerates its arcs. ---
+    if (hoveredIdx !== prevHovered.current) {
+      if (hoveredIdx !== null && hoveredIdx >= 0 && hoveredIdx < HUB_COUNT) {
+        burstTarget.current[hoveredIdx] = 1;
+      }
+      prevHovered.current = hoveredIdx;
+    }
+    for (let i = 0; i < HUB_COUNT; i++) {
+      // target decays first (so the surge is a transient, not a sustained hold).
+      burstTarget.current[i] = THREE.MathUtils.damp(
+        burstTarget.current[i],
+        0,
+        HOVER_BURST_DECAY,
+        delta,
+      );
+      if (burstTarget.current[i] < 0.001) burstTarget.current[i] = 0;
+      // envelope attacks fast toward the (decaying) target → expand then resettle.
+      hubBurst.current[i] = THREE.MathUtils.damp(
+        hubBurst.current[i],
+        burstTarget.current[i],
+        HOVER_BURST_ATTACK,
+        delta,
+      );
+      if (hubBurst.current[i] < 0.001) hubBurst.current[i] = 0;
+    }
+
     // --- Dispersal ramp (broken only) ---------------------------------------
     const disperseTarget = broken ? Math.max(0.2, maxPulse) : 0;
     disperseRef.current = THREE.MathUtils.damp(
@@ -341,6 +379,7 @@ export function NeuralLattice({
     u.uReveal.value = reveal;
     for (let i = 0; i < CLUSTER_COUNT; i++) u.uPulse.array[i] = pulseEased.current[i];
     for (let i = 0; i < HUB_COUNT; i++) u.uHubGlow.array[i] = hubGlow.current[i];
+    for (let i = 0; i < HUB_COUNT; i++) u.uHubBurst.array[i] = hubBurst.current[i];
     u.uHovered.value = hoveredIdx === null ? -1 : hoveredIdx;
     u.uFlowSpeed.value = FLOW_SPEED;
     u.uDisperse.value = disperseRef.current;
@@ -368,6 +407,9 @@ export function NeuralLattice({
       },
       get hubGlow() {
         return hubGlow.current.slice();
+      },
+      get hubBurst() {
+        return hubBurst.current.slice();
       },
       get hubs() {
         return rect?.hubs ?? null;
