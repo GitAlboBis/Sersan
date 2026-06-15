@@ -73,7 +73,7 @@ export type LatticeNodeUniforms = {
   /** 0 = healthy (production), 1 = broken (problem). Set once per island. */
   uBroken: { value: number };
   /** Per-cluster ignition 0..1 (length CLUSTER_COUNT) — the eased pulse. */
-  uPulse: { value: number[] };
+  uPulse: { array: number[] };
 };
 
 /**
@@ -164,9 +164,13 @@ export function createLatticeNodeMaterial(size: number): {
       uTime,
       uReveal,
       uBroken,
-      // The UniformArrayNode's `.value` is `unknown[]` at the type level; the
-      // per-frame writes only set numeric elements, so the cast is sound.
-      uPulse: uPulse as unknown as { value: number[] },
+      // UniformArrayNode keeps the writable source in `.array` (always present,
+      // set in its constructor). `.value` is the vec4-PADDED GPU buffer: it is
+      // null until the node graph's setup() runs on first compile, and is
+      // re-synced from `.array` on every render (UniformArrayNode.update(),
+      // updateType=RENDER). Per-frame writes must therefore target `.array`;
+      // writing `.value` crashes pre-compile and is clobbered after it.
+      uPulse: uPulse as unknown as { array: number[] },
     },
   };
 }

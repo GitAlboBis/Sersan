@@ -379,7 +379,7 @@ export function NeuralLattice({
     const nu = node.uniforms;
     nu.uTime.value = t;
     nu.uReveal.value = reveal;
-    for (let i = 0; i < CLUSTER_COUNT; i++) nu.uPulse.value[i] = pulseEased.current[i];
+    for (let i = 0; i < CLUSTER_COUNT; i++) nu.uPulse.array[i] = pulseEased.current[i];
 
     const eu = edge.uniforms;
     eu.uTime.value = t;
