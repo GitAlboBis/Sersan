@@ -217,7 +217,7 @@ const QUAD_INDEX = [0, 1, 2, 0, 2, 3];
 // parked at 1e9 — the resting crust and every morph rest state are unchanged
 // by construction.
 
-interface UnifiedAttractorOpts {
+export interface UnifiedAttractorOpts {
   /** Attractor position (model space). Park at ~1e9 to disable. */
   position: AnyNode;
   /** Radial strength — POSITIVE pushes AWAY (our cursor repulsion). */
@@ -232,7 +232,7 @@ interface UnifiedAttractorOpts {
   axis: AnyNode;
 }
 
-interface UnifiedForceStepOpts {
+export interface UnifiedForceStepOpts {
   /** Current position (storage element handle; advanced by the CALLER after
    * the step so system-specific state machines stay in control). */
   pos: AnyNode;
@@ -260,7 +260,7 @@ interface UnifiedForceStepOpts {
  * PRE-CLAMP speed (the spores' DDD kill curve keys off it, exactly as the
  * previous inline integration did) and the anchor delta.
  */
-function unifiedForceStep(
+export function unifiedForceStep(
   tsl: TslSymbolsGpgpu,
   opts: UnifiedForceStepOpts,
 ): { speed: AnyNode; toAnchor: AnyNode } {

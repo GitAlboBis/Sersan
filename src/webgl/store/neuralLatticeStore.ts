@@ -34,11 +34,29 @@ import { CLUSTER_COUNT } from "../neural/neuralLatticeConfig";
 /** Per-surface pulse state (three cluster targets). */
 type SurfacePulse = number[]; // length CLUSTER_COUNT
 
+/**
+ * Per-surface HOVER state (v4 — card-anchored hubs). Which of the 3 cards/hubs
+ * is currently hovered/focused (or null = none). Unlike the pulse targets this
+ * is NON-DECAYING: it is set by the DOM card on pointerenter/focusin and cleared
+ * on pointerleave/focusout. The island reads `hovered[surface]` each frame to
+ * drive `uHovered` (hub flare / dim ignition) — it never writes it back.
+ */
+interface HoverState {
+  broken: number | null;
+  healthy: number | null;
+}
+
 interface NeuralLatticeState {
   /** Problem surface: 3 cluster pulse TARGETS (0..1). */
   broken: SurfacePulse;
   /** Production surface: 3 cluster pulse TARGETS (0..1). */
   healthy: SurfacePulse;
+  /**
+   * Which card/hub (0..2) is currently hovered/focused per surface, or null.
+   * Non-decaying; the island reads it but never writes it (DOM is the sole
+   * writer via setHovered). Default {broken:null, healthy:null}.
+   */
+  hovered: HoverState;
   /**
    * Bump all clusters of a surface to 1 (writer: the DOM section on in-view).
    * The lattice fires its packets from these; idempotent re-bump is fine.
@@ -48,6 +66,11 @@ interface NeuralLatticeState {
   bumpCluster: (surface: "broken" | "healthy", index: number) => void;
   /** Decay write-back of a surface's whole pulse array (reader: NeuralLattice). */
   setPulse: (surface: "broken" | "healthy", pulse: SurfacePulse) => void;
+  /**
+   * Set (or clear with null) the hovered card index for a surface. Writer: the
+   * DOM card on hover/focus; reader: the island in useFrame. Idempotent.
+   */
+  setHovered: (surface: "broken" | "healthy", index: number | null) => void;
 }
 
 const fresh = (): SurfacePulse => new Array(CLUSTER_COUNT).fill(0);
@@ -56,6 +79,7 @@ const createNeuralLatticeStore = () =>
   create<NeuralLatticeState>((set, get) => ({
     broken: fresh(),
     healthy: fresh(),
+    hovered: { broken: null, healthy: null },
     bump: (surface) => set({ [surface]: new Array(CLUSTER_COUNT).fill(1) }),
     bumpCluster: (surface, index) => {
       if (index < 0 || index >= CLUSTER_COUNT) return;
@@ -64,6 +88,11 @@ const createNeuralLatticeStore = () =>
       set({ [surface]: next });
     },
     setPulse: (surface, pulse) => set({ [surface]: pulse }),
+    setHovered: (surface, index) => {
+      const cur = get().hovered;
+      if (cur[surface] === index) return; // idempotent: skip churn
+      set({ hovered: { ...cur, [surface]: index } });
+    },
   }));
 
 declare global {

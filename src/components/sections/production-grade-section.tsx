@@ -9,39 +9,25 @@ import { useProductionPulseStore } from "@/webgl/store/productionPulseStore";
 import { useNeuralLatticeStore } from "@/webgl/store/neuralLatticeStore";
 import { NeuralGraphFallback } from "@/components/fx/neural-graph-fallback";
 import { useNeuralLatticeFallback } from "@/components/fx/use-neural-lattice-fallback";
+import { NeuralCard } from "@/components/fx/neural-card";
 
 /**
  * ProductionGradeSection — the SIGNATURE section.
  *
  * Three production-grade guarantees, rendered as a "network that is HEALTHY"
- * (FIX 3): three intact pathways through the site's neural-lattice visual
+ * (FIX 3 v4): three card-anchored hubs through the site's neural-network visual
  * language, pulsing in sequence — eval baseline → trace propagation → guardrail
- * clamp. The terminal/file-viewer chrome (evals.json / trace / permissions.yaml
- * panels) is GONE; the copy from getArtifacts() stays as accessible, selectable
- * DOM (claim + "why it matters"), and a decorative lattice (WebGL when
- * available, SVG fallback otherwise) shows the three healthy signal paths.
+ * clamp. The cards use the shared NeuralCard chrome (compact → expand on
+ * hover/focus, cyan→violet glass) identical to the Problem section; only the
+ * copy + healthy accent differ. The copy from getArtifacts() stays as
+ * accessible, selectable DOM at all times. Hovering a card flares its WebGL hub
+ * via useNeuralLatticeStore.setHovered (done inside NeuralCard).
  *
  * The three claims:
  *   - Every system ships with a regression set.   (eval baseline)
  *   - Traceable from input to action.              (trace propagation)
  *   - Boundaries before features.                  (guardrail clamp)
  */
-
-// === Shared: detect hover-capable pointers ================================
-// On touch devices there is no hover, so the "why it matters" line is shown
-// inline beneath the claim instead of as a hover overlay.
-function useHoverCapable() {
-  const [canHover, setCanHover] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(hover: hover) and (pointer: fine)");
-    setCanHover(mq.matches);
-    const on = () => setCanHover(mq.matches);
-    mq.addEventListener?.("change", on);
-    return () => mq.removeEventListener?.("change", on);
-  }, []);
-  return canHover;
-}
 
 // === Shared: run a quiet status pulse only while in view ==================
 function useInView<T extends HTMLElement>(margin = "0px 0px -10% 0px") {
@@ -144,56 +130,27 @@ function clusterLabel(index: number, isEn: boolean): string {
 }
 
 function ArtifactCard({ a, index }: { a: Artifact; index: number }) {
-  const canHover = useHoverCapable();
   const { language } = useLanguage();
   const isEn = language === "en";
+  // Keep the in-view bridge: an outer wrapper carries the IntersectionObserver
+  // ref so the section's signature-line pulse + the healthy cluster sequence
+  // still ignite on first appearance (additive to the NeuralCard hover flare).
   const { ref, inView } = useInView<HTMLDivElement>();
   useProductionPulseOnEnter(inView);
   useHealthyClusterOnEnter(inView, index);
 
   return (
-    <article
-      ref={ref}
-      className="group relative flex flex-col gap-4 rounded-lg border border-[hsl(var(--rule)/0.7)] bg-[hsl(var(--bg)/0.5)] backdrop-blur-[2px] px-5 py-5"
-    >
-      {/* Cluster caption — labels which healthy pathway this card describes. */}
-      <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-[hsl(var(--accent)/0.85)]">
-        <span className="tabular-nums">{`0${index + 1}`}</span>{" · "}
-        {clusterLabel(index, isEn)}
-      </span>
-
-      {canHover ? (
-        // Hover-capable: claim and why occupy the SAME reserved box and
-        // crossfade in place on hover. The box is tall enough for the longest
-        // why text (EN/IT) at the narrowest card width, so nothing clips,
-        // overflows, or shifts layout.
-        <div className="relative min-h-[7.5rem] sm:min-h-[8rem]">
-          <h3
-            className="absolute inset-0 text-base sm:text-lg font-medium text-ink leading-snug opacity-100 transition-opacity duration-300 group-hover:opacity-0"
-            style={{ transitionTimingFunction: "var(--ease-entrance)" }}
-          >
-            {a.claim}
-          </h3>
-          <p
-            aria-hidden="true"
-            className="absolute inset-0 text-[13px] text-ink-mute leading-relaxed opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-            style={{ transitionTimingFunction: "var(--ease-entrance)" }}
-          >
-            {a.why}
-          </p>
-        </div>
-      ) : (
-        // Touch devices: show claim + "why it matters" stacked inline.
-        <div>
-          <h3 className="text-base sm:text-lg font-medium text-ink leading-snug">
-            {a.claim}
-          </h3>
-          <p className="mt-3 text-[13px] text-ink-mute leading-relaxed">
-            {a.why}
-          </p>
-        </div>
-      )}
-    </article>
+    <div ref={ref}>
+      <NeuralCard
+        anchorId="production"
+        index={index}
+        surface="healthy"
+        tone="healthy"
+        eyebrow={clusterLabel(index, isEn)}
+        title={a.claim}
+        body={a.why}
+      />
+    </div>
   );
 }
 
