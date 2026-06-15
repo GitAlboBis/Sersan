@@ -7,14 +7,11 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { caseStudies, type CaseStudy } from "@/data/case-studies";
-import {
-  ITEMS_EN as WIP_ITEMS_EN,
-  ITEMS_IT as WIP_ITEMS_IT,
-} from "@/components/sections/work-in-progress";
 import { useLanguage } from "@/components/language-provider";
 import { useRailStore } from "@/webgl/store/railStore";
 import { getLenis } from "@/lib/lenis-singleton";
 import { CardImageDistort } from "@/components/fx/card-image-distort";
+import { SeeMorePortal } from "@/components/fx/see-more-portal";
 import { useFlipSource } from "@/lib/use-flip-source";
 
 if (typeof window !== "undefined") {
@@ -74,6 +71,9 @@ const INDUSTRY_COLOR: Record<CaseStudy["industry"], string> = {
 /** Shared card chrome: translucent over the WebGL plane (see header note). */
 const CARD_CLASS =
   "group relative flex h-[clamp(19rem,52vh,26rem)] flex-col rounded-lg border border-[hsl(var(--rule))] bg-[hsl(216_28%_10%/0.45)] p-6 sm:p-7 transition-colors duration-300 hover:border-[hsl(var(--accent)/0.45)] focus-visible:outline-none focus-visible:border-[hsl(var(--accent)/0.7)]";
+
+/** Home rail shows only the marquee studies (SphereNode → Apple UK). */
+const RAIL_LIMIT = 6;
 
 function StudyCard({
   study,
@@ -159,66 +159,6 @@ function StudyCard({
             {engagement}
           </p>
         </div>
-      </div>
-    </Link>
-  );
-}
-
-function WipCard({
-  index,
-  total,
-  isEn,
-  onHover,
-}: {
-  index: number;
-  total: number;
-  isEn: boolean;
-  onHover: (index: number, target: number) => void;
-}) {
-  const item = (isEn ? WIP_ITEMS_EN : WIP_ITEMS_IT)[0];
-  return (
-    <Link
-      href="/case-studies"
-      className={CARD_CLASS}
-      onPointerEnter={() => onHover(index, 1)}
-      onPointerLeave={() => onHover(index, 0)}
-      onFocus={() => onHover(index, 1)}
-      onBlur={() => onHover(index, 0)}
-    >
-      <div className="flex items-center justify-between gap-2 pb-4 border-b border-[hsl(var(--rule)/0.7)]">
-        <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-dim tabular-nums">
-          {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
-        </span>
-        <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-[hsl(var(--accent))]">
-          {isEn ? "Sersan · Internal build" : "Sersan · Build interna"}
-        </span>
-      </div>
-
-      <div className="flex flex-1 flex-col justify-center gap-3 py-6">
-        <span className="inline-flex items-center gap-3 font-mono text-[1.3rem] sm:text-[1.5rem] leading-none tracking-tight text-ink">
-          <span className="status-dot" aria-hidden="true" />
-          {item.status}
-        </span>
-        <p className="text-[12.5px] text-ink-mute leading-relaxed line-clamp-3">
-          {item.description}
-        </p>
-      </div>
-
-      <div className="mt-auto flex flex-col gap-2.5 pt-4 border-t border-[hsl(var(--rule)/0.7)]">
-        <h3 className="flex items-start justify-between gap-2 font-display text-[1.3rem] text-ink leading-tight">
-          {item.title}
-          <ArrowUpRight className="mt-1 h-4 w-4 shrink-0 text-ink-mute opacity-0 transition-all group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-        </h3>
-        <ul className="flex flex-wrap gap-1.5">
-          {item.tags.map((tag) => (
-            <li
-              key={tag}
-              className="font-mono text-[9px] tracking-[0.06em] px-1.5 py-0.5 rounded border border-[hsl(var(--rule))] text-ink-mute"
-            >
-              {tag}
-            </li>
-          ))}
-        </ul>
       </div>
     </Link>
   );
@@ -336,7 +276,9 @@ export default function CaseStudiesRail() {
   const onHover = (index: number, target: number) =>
     useRailStore.getState().setHover(index, target);
 
-  const total = caseStudies.length + 1;
+  // Counter now reads "01/13"…"06/13" — the six shown studies against the full
+  // archive count, teasing the rest via the SeeMorePortal closing slot.
+  const total = caseStudies.length;
 
   const heading = (
     <div className="container-px flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
@@ -373,7 +315,7 @@ export default function CaseStudiesRail() {
 
   const cards = (liClass: string) => (
     <>
-      {caseStudies.map((study, i) => (
+      {caseStudies.slice(0, RAIL_LIMIT).map((study, i) => (
         <li
           key={study.id}
           data-rail-card={study.id}
@@ -389,17 +331,20 @@ export default function CaseStudiesRail() {
           />
         </li>
       ))}
+      {/* Closing slot: the particle "see more" portal to the full archive. */}
       <li
-        key="work-in-progress"
-        data-rail-card="work-in-progress"
-        data-rail-index={caseStudies.length}
+        key="see-more"
+        data-rail-card="see-more"
+        data-rail-index={RAIL_LIMIT}
         className={liClass}
       >
-        <WipCard
-          index={caseStudies.length}
-          total={total}
+        <SeeMorePortal
+          total={caseStudies.length}
+          shown={RAIL_LIMIT}
+          index={RAIL_LIMIT}
           isEn={isEn}
           onHover={onHover}
+          className={CARD_CLASS}
         />
       </li>
     </>

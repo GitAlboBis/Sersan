@@ -19,7 +19,7 @@ const sizes: Record<NonNullable<SersanLogoProps["size"]>, string> = {
   lg: "h-16 w-16",
 };
 
-const LEFT_S_PATH = `
+export const LEFT_S_PATH = `
   M 12 0 L 120 0 L 120 200 L 12 200 L 0 188 L 0 12 Z
   M 24 24 L 120 24 L 120 88 L 24 88 Z
   M 0 112 L 96 112 L 96 176 L 0 176 Z

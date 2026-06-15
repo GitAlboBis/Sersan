@@ -1,4 +1,4 @@
-# PROMPT PER CLAUDE CODE — Ricostruzione sito SERSAN (React Three Fiber / Three.js)
+  # PROMPT PER CLAUDE CODE — Ricostruzione sito SERSAN (React Three Fiber / Three.js)
 
 > Incolla **tutto** questo file come primo messaggio in Claude Code, dalla cartella vuota del nuovo progetto.
 > È scritto in italiano per te; il codice, i commenti e i contenuti del sito restano in inglese (il sito è bilingue EN/IT).
