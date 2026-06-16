@@ -35,8 +35,35 @@ import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { WORLD_VIEW_HEIGHT } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
+import { usePointerStore, installPointerTracking } from "./store/pointerStore";
 import type { SectionAnchors } from "./hooks/useSectionAnchors";
 import type { SceneTier } from "./store/tierStore";
+
+// === Logo look/hover constants (logo ritual only) ==========================
+/** Resting tint — a soft CELESTE, lightly lit. */
+const LOGO_BASE_COLOR = "#7FD8FF";
+/** On hover the light SHIFTS to this color (brand violet). One-line tunable. */
+const LOGO_HOVER_COLOR = "#7C5CFF";
+/** Resting emissive intensity — BRIGHT, matching the signature LINE's glow (its
+ * uEmissive ≈ 2.6) so the mark is genuinely LUMINOUS and blooms, not a dull lit
+ * surface. toneMapped:false + this >1 rides the SAME selective bloom as the line. */
+const LOGO_BASE_EMIS = 2.4;
+/** Hover emissive — much HIGHER than the base on purpose. Violet's luminance is
+ * far lower than celeste, AND the celeste→violet blend mid-transition is
+ * brighter than pure violet — so if the endpoint isn't high enough the glow
+ * PEAKS mid-turn then DROPS as it settles (reads as "turning off"). Set high
+ * enough (≈5.5) that pure violet at full hover is the BRIGHTEST point, so the
+ * glow rises monotonically into the hover and STAYS a luminous violet at rest. */
+const LOGO_HOVER_EMIS = 5.5;
+/** Cursor→object proximity (in NDC-ish [0,1] screen space) that counts as hover.
+ * The canvas is pointer-events:none, so hover is computed by projecting the
+ * object's center to screen and comparing to the smoothed pointer — works on
+ * every route regardless of the canvas event mode. */
+const LOGO_HOVER_RADIUS = 0.15;
+/** Damp rate of the hover envelope (smooth color / glow transition). */
+const LOGO_HOVER_DAMP = 8;
+/** Tiny scale bump at full hover so the color change reads as "alive". */
+const LOGO_HOVER_SCALE = 0.05;
 
 /** Which procedural motif to build when no GLB is supplied (or as fallback). */
 export type ProceduralShape = "ring" | "lattice";
@@ -57,6 +84,16 @@ export type RouteHeroKind =
   | {
       type: "procedural";
       shape: ProceduralShape;
+    }
+  | {
+      /**
+       * The SERSAN MARK as the ritual object (replaces the per-route rings/GLBs).
+       * Renders the sersan-mark.glb geometry as a single GLOWING emissive mesh
+       * with the SAME presence/wobble/emissive-pulse choreography as the rings,
+       * a slow Y-spin (a dignified turn that flatters a non-radial emblem rather
+       * than a Z-tumble), and a pointer-proximity HOVER that lights it neon-blue.
+       */
+      type: "logo";
     };
 
 export interface RimLightConfig {
@@ -114,6 +151,7 @@ function RouteHeroBody({
   anchorId,
   outerGeo,
   innerGeo,
+  logoGeo,
   scale,
   z,
   outerColor,
@@ -138,6 +176,9 @@ function RouteHeroBody({
   anchorId: string;
   outerGeo: THREE.BufferGeometry | undefined;
   innerGeo: THREE.BufferGeometry | undefined;
+  /** When set, render THIS geometry as a single glowing emissive logo (logo
+   * ritual mode) instead of the outer/inner ring pair. */
+  logoGeo?: THREE.BufferGeometry;
   scale: number;
   z: number;
   outerColor: string;
@@ -181,13 +222,75 @@ function RouteHeroBody({
       }),
     [emissiveA, emissiveIntensity],
   );
+  // A small procedural gradient "studio" environment so the metallic mark has
+  // something to REFLECT — gives the otherwise-flat plate a moving sheen + edge
+  // definition (form), instead of reading as flat plastic. Cheap equirect
+  // CanvasTexture; no HDRI asset / CDN. (Null on the server.)
+  const logoEnv = useMemo(() => {
+    if (typeof document === "undefined") return null;
+    const c = document.createElement("canvas");
+    c.width = 16;
+    c.height = 256;
+    const ctx = c.getContext("2d");
+    if (!ctx) return null;
+    const g = ctx.createLinearGradient(0, 0, 0, 256);
+    g.addColorStop(0.0, "#0a1426"); // top: deep navy void
+    g.addColorStop(0.4, "#2bd6ff"); // upper highlight band (celeste key)
+    g.addColorStop(0.52, "#16243f"); // horizon navy
+    g.addColorStop(0.66, "#7c5cff"); // lower violet bounce
+    g.addColorStop(1.0, "#060b16"); // bottom: deep void
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 16, 256);
+    const tex = new THREE.CanvasTexture(c);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }, []);
+
+  // Logo ritual: a BRIGHT EMISSIVE mark — the glow IS the look, like the
+  // signature line (dark base so the emissive dominates; emissive >1 +
+  // toneMapped:false rides the SAME selective bloom as the line → genuinely
+  // luminous). A little metalness + the env give subtle highlight variation
+  // (form) on top so it doesn't read as flat plastic. Colour/intensity driven.
+  const logoMaterial = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: "#0B1422",
+        metalness: 0.35,
+        roughness: 0.3,
+        envMap: logoEnv ?? undefined,
+        envMapIntensity: 0.7,
+        emissive: emissiveA,
+        emissiveIntensity,
+        toneMapped: false,
+      }),
+    [emissiveA, emissiveIntensity, logoEnv],
+  );
   useEffect(
     () => () => {
       outerMaterial.dispose();
       innerMaterial.dispose();
+      logoMaterial.dispose();
+      logoEnv?.dispose();
     },
-    [outerMaterial, innerMaterial],
+    [outerMaterial, innerMaterial, logoMaterial, logoEnv],
   );
+
+  // Logo-only: the soft celeste base tint + the hover-shift target color + a
+  // damped hover envelope (0..1) driven by cursor→object screen proximity.
+  // Reused scratch Vector3 for the projection (no per-frame allocation).
+  const baseColor = useMemo(() => new THREE.Color(LOGO_BASE_COLOR), []);
+  const hoverColor = useMemo(() => new THREE.Color(LOGO_HOVER_COLOR), []);
+  const hoverRef = useRef(0);
+  const projV = useMemo(() => new THREE.Vector3(), []);
+
+  // Ensure the global pointer is tracked wherever a logo ritual mounts (refcounted
+  // window listener; no-op on coarse pointers / reduced-motion). Only needed for
+  // the logo hover, but harmless for the ring paths.
+  useEffect(() => {
+    if (!logoGeo) return;
+    return installPointerTracking();
+  }, [logoGeo]);
 
   const k = WORLD_VIEW_HEIGHT / size.height;
 
@@ -235,34 +338,107 @@ function RouteHeroBody({
         WORLD_VIEW_HEIGHT * PRESENCE_NEAR,
         WORLD_VIEW_HEIGHT * PRESENCE_FAR,
       );
-    group.scale.setScalar(scale * (0.82 + 0.18 * presence));
+
+    // --- Logo hover (logo ritual only): light up neon-blue when the cursor is
+    // near the object on screen. The canvas is pointer-events:none, so derive
+    // hover by projecting the object center to screen [0,1] and comparing to the
+    // smoothed pointer — robust on every route. ------------------------------
+    let hoverTarget = 0;
+    if (logoGeo) {
+      const ptr = usePointerStore.getState();
+      // Only honor hover once a REAL pointermove has landed: installPointerTracking
+      // is a no-op on coarse-pointer / reduced-motion, leaving `smooth` frozen at
+      // {0.5,0.5}; a centered logo (x:0) projects to ~screen-center and would
+      // otherwise latch a permanent fake neon-blue hover there.
+      if (ptr.active) {
+        projV.copy(group.position).project(camera);
+        if (projV.z < 1) {
+          const sx = (projV.x + 1) / 2;
+          const sy = (1 - projV.y) / 2;
+          if (
+            Math.hypot(sx - ptr.smooth.x, sy - ptr.smooth.y) < LOGO_HOVER_RADIUS
+          )
+            hoverTarget = 1;
+        }
+      }
+    }
+    hoverRef.current = THREE.MathUtils.damp(
+      hoverRef.current,
+      hoverTarget,
+      LOGO_HOVER_DAMP,
+      delta,
+    );
+    const hover = hoverRef.current;
+
+    group.scale.setScalar(
+      scale * (0.82 + 0.18 * presence) * (1 + hover * LOGO_HOVER_SCALE),
+    );
 
     const t = state.clock.elapsedTime;
-    if (outerRef.current) outerRef.current.rotation.z += delta * outerSpin;
-    if (innerRef.current) innerRef.current.rotation.z -= delta * innerSpin;
-    // Gentle presentation wobble, never flat-on.
-    group.rotation.x = Math.sin(t * 0.16) * 0.1;
-    group.rotation.y = Math.cos(t * 0.12) * 0.14;
+    if (logoGeo) {
+      // Logo turns slowly about Y at rest; on HOVER it STOPS and eases to face
+      // straight front (rotation→nearest full turn) and the wobble straightens.
+      if (outerRef.current) {
+        outerRef.current.rotation.y += delta * outerSpin * (1 - hover);
+        if (hover > 0.001) {
+          const TWO_PI = Math.PI * 2;
+          const cur = outerRef.current.rotation.y;
+          const front = Math.round(cur / TWO_PI) * TWO_PI; // nearest face-front
+          outerRef.current.rotation.y = THREE.MathUtils.damp(
+            cur,
+            front,
+            6 * hover,
+            delta,
+          );
+        }
+      }
+      const w = 1 - hover; // wobble fades out as it squares up to the cursor
+      group.rotation.x = Math.sin(t * 0.16) * 0.1 * w;
+      group.rotation.y = Math.cos(t * 0.12) * 0.14 * w;
+    } else {
+      if (outerRef.current) outerRef.current.rotation.z += delta * outerSpin;
+      if (innerRef.current) innerRef.current.rotation.z -= delta * innerSpin;
+      // Gentle presentation wobble, never flat-on.
+      group.rotation.x = Math.sin(t * 0.16) * 0.1;
+      group.rotation.y = Math.cos(t * 0.12) * 0.14;
+    }
 
-    // Inner element breathes between the brand hues; a scroll flick feeds a
-    // little extra energy into the glow, same trick as the line.
-    const mix = 0.5 + 0.5 * Math.sin(t * 0.5);
-    emissiveColor.copy(colorA).lerp(colorB, mix);
-    innerMaterial.emissive = emissiveColor;
-    const boost = Math.min(
-      Math.abs(useScrollStore.getState().velocity) * 0.003,
-      0.5,
-    );
-    innerMaterial.emissiveIntensity =
-      (1.9 + 0.5 * Math.sin(t * 0.9) + boost) * presence;
+    if (logoGeo) {
+      // Logo: a soft CELESTE base, lightly lit; on hover the light SHIFTS color
+      // (toward violet) and lifts the glow only MODESTLY — the change reads as a
+      // colour shift, not a glow blast. Glow is deliberately low (no scroll boost).
+      emissiveColor.copy(baseColor).lerp(hoverColor, hover);
+      logoMaterial.emissive = emissiveColor;
+      const breath = 0.85 + 0.15 * Math.sin(t * 0.6); // subtle resting breath
+      logoMaterial.emissiveIntensity =
+        THREE.MathUtils.lerp(LOGO_BASE_EMIS * breath, LOGO_HOVER_EMIS, hover) *
+        presence;
+    } else {
+      // Ring path (no longer used by config; kept correct): the inner element
+      // breathes between the brand hues; a scroll flick feeds extra glow energy.
+      const mix = 0.5 + 0.5 * Math.sin(t * 0.5);
+      emissiveColor.copy(colorA).lerp(colorB, mix);
+      const boost = Math.min(
+        Math.abs(useScrollStore.getState().velocity) * 0.003,
+        0.5,
+      );
+      innerMaterial.emissive = emissiveColor;
+      innerMaterial.emissiveIntensity =
+        (1.9 + 0.5 * Math.sin(t * 0.9) + boost) * presence;
+    }
   });
 
-  if (!outerGeo) return null;
+  if (!outerGeo && !logoGeo) return null;
 
   // GLB tori lie in Blender's ground plane — rotate the assembly upright so the
-  // ring faces the camera and the line can thread it. Procedural geometry is
-  // authored already facing the camera, so it needs no extra rotation.
-  const assembly = (
+  // ring faces the camera and the line can thread it. Procedural geometry (and
+  // the mark) is authored already facing the camera, so it needs no rotation.
+  const assembly = logoGeo ? (
+    // Logo ritual: one glowing emissive mark; the slow Y-spin lives on outerRef.
+    <group ref={outerRef}>
+      <mesh geometry={logoGeo} material={logoMaterial} />
+    </group>
+  ) : (
     <group rotation={uprightFromGround ? [Math.PI / 2, 0, 0] : [0, 0, 0]}>
       <group ref={outerRef}>
         <mesh geometry={outerGeo} material={outerMaterial} />
@@ -456,6 +632,12 @@ const LazyGlb = lazy(() =>
   import("./RouteHeroGlb").then((m) => ({ default: m.RouteHeroGlb })),
 );
 
+/** The SERSAN-mark logo ritual, split into its own lazy chunk (it pulls the
+ * GLTF loader for sersan-mark.glb). */
+const LazyLogo = lazy(() =>
+  import("./RouteHeroLogo").then((m) => ({ default: m.RouteHeroLogo })),
+);
+
 export type { GlbInnerProps };
 
 /**
@@ -509,6 +691,16 @@ export function RouteHero({
 }: RouteHeroProps & { debugKey?: string }) {
   if (kind.type === "procedural") {
     return <ProceduralRouteHero {...rest} shape={kind.shape} />;
+  }
+  if (kind.type === "logo") {
+    // The SERSAN mark as the ritual object — lazy loads + normalizes the mark
+    // GLB, then drives it through the SAME body (logo mode). Suspense-wrapped
+    // like the GLB path so the loader chunk only lands when a logo route mounts.
+    return (
+      <Suspense fallback={null}>
+        <LazyLogo {...rest} debugKey={debugKey} />
+      </Suspense>
+    );
   }
   // GLB path. While the GLB streams in, render NOTHING (fallback={null}) — the
   // ritual object is anchored deep in the page and the GLB is preloaded, so it

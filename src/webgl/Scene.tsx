@@ -29,7 +29,6 @@ import { RouteHero, type RouteHeroKind } from "./RouteHero";
 import { DriftParticles } from "./DriftParticles";
 import { RailPlanes } from "./RailPlanes";
 import { ResourcePreviewPlane } from "./ResourcePreviewPlane";
-import { CompliancePipeline3D } from "./CompliancePipeline3D";
 import { NeuralLattice } from "./NeuralLattice";
 import { PostFX } from "./PostFX";
 import { PostFXNodes } from "./PostFXNodes";
@@ -83,37 +82,26 @@ interface RouteHeroConfig {
   emissiveB?: string;
 }
 
+// The per-route ritual object is now the SERSAN MARK on EVERY route (the rings /
+// GLBs are retired): the logo glows + slow-spins with the same RouteHero
+// choreography and lights up neon-blue on hover. Per-route emissive tints (the
+// warmer /consulting tail, cooler /trust) are preserved so each route keeps its
+// accent; the base pulse stays cyan↔violet.
 const ROUTE_HERO: Record<string, RouteHeroConfig> = {
-  // Bespoke Blender geometry-only GLBs (lazy + Suspense via RouteHero).
-  "/audit": {
-    kind: {
-      type: "glb",
-      path: "/models/audit-lattice.glb",
-      nodeNames: { outer: "AuditFrame", inner: "AuditCore" },
-      fallbackShape: "lattice",
-    },
-  },
+  "/audit": { kind: { type: "logo" } },
   "/consulting": {
-    kind: {
-      type: "glb",
-      path: "/models/consulting-ring.glb",
-      nodeNames: { outer: "ConsultingRing", inner: "ConsultingCore" },
-      fallbackShape: "ring",
-    },
+    kind: { type: "logo" },
     // Warmer tail, matching routeFx('/consulting').
     emissiveB: "#8A6BFF",
   },
-  // Procedural closing ring — the universal resolution motif.
-  "/case-studies": { kind: { type: "procedural", shape: "ring" } },
-  "/resources": { kind: { type: "procedural", shape: "ring" } },
-  "/about": { kind: { type: "procedural", shape: "ring" } },
-  "/contact": { kind: { type: "procedural", shape: "ring" } },
-  // Trust: a cooler closing ring here (the ritual anchor). Its dedicated WebGL
-  // CompliancePipeline3D centerpiece (at the SEPARATE "pipeline" anchor) now
-  // ships — mounted below, gated full+webgpu, BEHIND the SVG card. This ring is
-  // a distinct object at the ritual anchor and is unaffected.
+  "/case-studies": { kind: { type: "logo" } },
+  "/resources": { kind: { type: "logo" } },
+  "/about": { kind: { type: "logo" } },
+  "/contact": { kind: { type: "logo" } },
+  // Trust: a cooler tint at the ritual anchor. (The old CompliancePipeline3D
+  // centerpiece is retired — see the note where it used to mount below.)
   "/trust": {
-    kind: { type: "procedural", shape: "ring" },
+    kind: { type: "logo" },
     emissiveB: "#6E7BFF",
   },
 };
@@ -277,20 +265,13 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
       {pathname === "/resources" && tier === "full" && webgpu && (
         <ResourcePreviewPlane />
       )}
-      {/* /trust compliance-pipeline centerpiece (step 7). Same gates as
-          RailPlanes/ResourcePreviewPlane — route + full tier + the WebGPU flag
-          (TSL-only, no GLSL twin; on the classic flag-OFF path the SVG diagram
-          in compliance-pipeline.tsx is the whole pipeline). Inside, the COMPUTE
-          particle sim additionally requires the TRUE WebGPU sub-backend and
-          renders nothing on WebGL2-fallback. The camera-locked group draws
-          BEHIND the SVG card (renderOrder -1); the SVG stays the legible,
-          accessible diagram (AUGMENT). MUST stay mounted AFTER SignatureLine:
-          the camera-locked placement relies on the single camera authority
-          having written camera.position/quaternion earlier in the same
-          priority-0 frame pass. */}
-      {pathname === "/trust" && tier === "full" && webgpu && (
-        <CompliancePipeline3D tier={tier} />
-      )}
+      {/* The old /trust CompliancePipeline3D centerpiece is RETIRED (the 3D
+          "models" were replaced by the SERSAN logo). It lived BEHIND the SVG
+          compliance diagram, so a logo at the "pipeline" anchor would be occluded
+          dead pixels — instead /trust shows the logo at its VISIBLE "ritual"
+          anchor (via RouteRitual above). The SVG diagram in compliance-pipeline.tsx
+          stays the accessible pipeline layer. CompliancePipeline3D.tsx + its
+          store/sim are now unmounted dead code (safe to delete in a cleanup). */}
       {/* Postprocessing — desktop ("full") only, exactly as before. Which rig
           mounts is a BUILD-TIME split on `webgpuEnabled()`, not a runtime backend
           check:
