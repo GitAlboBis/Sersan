@@ -338,10 +338,12 @@ export function CardImageDistort({ src, alt }: CardImageDistortProps) {
       const ih = img?.naturalHeight || ch;
       const cardAspect = cw / ch;
       const imgAspect = iw / ih;
-      // uv is divided by uCover, so a value < 1 crops that axis.
+      // The shader DIVIDES uv by uCover, so a value > 1 narrows (crops) that axis
+      // — true object-fit:cover. Wider-than-card image → crop its sides
+      // (uCover.x > 1); taller-than-card image → crop top/bottom (uCover.y > 1).
       return imgAspect > cardAspect
-        ? [cardAspect / imgAspect, 1]
-        : [1, imgAspect / cardAspect];
+        ? [imgAspect / cardAspect, 1]
+        : [1, cardAspect / imgAspect];
     };
 
     const render = () => {
