@@ -140,7 +140,8 @@ function FailureLattice({
         {/* Network CENTERPIECE (~55%) beside the cards column (~45%); stacks on
             narrow widths (network on top, cards below). The network area is
             unobstructed — nothing overlaps it. */}
-        <div className="grid grid-cols-1 sm:grid-cols-[1.1fr_0.9fr] gap-6 lg:gap-8 items-center">
+        {/* items-start (NOT center): a card expanding must not re-center this row, or the %-anchored node markers would shift out from under a still cursor and the hover would oscillate. */}
+        <div className="grid grid-cols-1 sm:grid-cols-[1.1fr_0.9fr] gap-6 lg:gap-8 items-start">
           <NeuralCenterpiece
             anchorId="problem"
             surface="broken"
@@ -196,7 +197,8 @@ export default function ProblemSection() {
       <SectionGlow position="top-right" intensity={1.2} />
       <SectionGlow position="bottom-left" intensity={0.8} size="50rem" />
       <div className="container-px relative">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+        {/* items-start here too: when a card expands, the FailureLattice column grows; with items-center the outer row re-centered it, nudging the %-anchored node markers ~9px out from under a still cursor (residual hover oscillation). Pinning the row top removes that residual. */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-start">
           {/* Left — headline + paragraph */}
           <SectionHeading
             eyebrow={isEn ? "The demo-to-production gap" : "Il divario tra demo e produzione"}
