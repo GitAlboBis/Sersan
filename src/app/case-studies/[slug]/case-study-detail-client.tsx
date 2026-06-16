@@ -110,20 +110,23 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
         </nav>
 
         {/* Hero product image. Rendered only for studies with a previewImage
-            (SphereNode, Quantex, Terra Noa). data-flip-id / data-flip-hero are
-            inert hooks for a future cross-route Flip transition. Height-capped
-            so the eyebrow + h1 stay near the top of the viewport. */}
+            (SphereNode, Quantex, Terra Noa). When the study has a live URL the
+            shot becomes a link to the site with a "View site" hover cue (opens
+            in a new tab). data-flip-id / data-flip-hero are inert hooks for a
+            future cross-route Flip transition. Height-capped so the eyebrow +
+            h1 stay near the top of the viewport. */}
         {study.previewImage && (
           <figure
             ref={heroRef}
             data-flip-id={study.id}
             data-flip-hero
-            aria-hidden="true"
-            className="relative mb-12 overflow-hidden rounded-xl border border-rule/70 h-[min(44vh,24rem)] bg-[hsl(216_28%_10%)]"
+            className="group relative mb-12 overflow-hidden rounded-xl border border-rule/70 h-[min(44vh,24rem)] bg-[hsl(216_28%_10%)]"
           >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={study.previewImage}
               alt=""
+              aria-hidden="true"
               className="absolute inset-0 h-full w-full object-cover"
               draggable={false}
             />
@@ -133,6 +136,25 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
               className="absolute inset-0"
               style={{ background: "linear-gradient(180deg, transparent 40%, hsl(216 30% 6% / 0.55) 100%)" }}
             />
+            {study.liveUrl && (
+              <a
+                href={study.liveUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-cursor="view"
+                aria-label={`${isEn ? "View" : "Visita"} ${study.client} — ${isEn ? "live site" : "sito live"}`}
+                className="absolute inset-0 z-10 flex items-center justify-center"
+              >
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-0 bg-[hsl(216_30%_6%/0)] transition-colors duration-300 group-hover:bg-[hsl(216_30%_6%/0.5)]"
+                />
+                <span className="relative inline-flex translate-y-1 items-center gap-2 rounded-full border border-[hsl(var(--accent)/0.5)] bg-[hsl(216_30%_8%/0.72)] px-5 py-2.5 font-mono text-[11px] uppercase tracking-[0.16em] text-ink opacity-0 backdrop-blur-sm transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
+                  {isEn ? "View site" : "Visita il sito"}
+                  <ArrowUpRight className="h-3.5 w-3.5" />
+                </span>
+              </a>
+            )}
           </figure>
         )}
 
@@ -146,22 +168,37 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
           {study.industry} · {engagement}
         </p>
 
-        {/* Headline. key={language}: SplitText owns this subtree once split;
-            a language swap must remount it or React reconciles against
-            orphaned nodes (same contract as SectionHeading's h2). */}
-        <h1 key={language} data-split-reveal className="font-display text-[clamp(2.25rem,7vw,4.75rem)] leading-[1.12] tracking-[-0.025em] text-ink text-balance mb-6">
-          {firstWord}
-          {rest.length > 0 ? (
-            <>
-              {" "}
-              <span className="italic" style={{ color: `hsl(${accent})` }}>
-                {rest.join(" ")}.
-              </span>
-            </>
-          ) : (
-            <span style={{ color: `hsl(${accent})` }}>.</span>
-          )}
-        </h1>
+        {/* Headline. Studies with a brand logo show the LOGO in place of the
+            wordmark title (real full-colour SVG, left-aligned); the rest keep
+            the split-reveal text title. The <h1> stays for document structure —
+            the logo's alt carries the client name. key={language}: SplitText
+            owns the TEXT subtree once split, so a language swap must remount it
+            (same contract as SectionHeading's h2). */}
+        {study.logoImage ? (
+          <h1 key={language} className="mb-6">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={study.logoImage}
+              alt={study.client}
+              draggable={false}
+              className="block h-auto w-auto max-h-[clamp(2.75rem,8vw,5rem)] max-w-full sm:max-w-md object-contain object-left"
+            />
+          </h1>
+        ) : (
+          <h1 key={language} data-split-reveal className="font-display text-[clamp(2.25rem,7vw,4.75rem)] leading-[1.12] tracking-[-0.025em] text-ink text-balance mb-6">
+            {firstWord}
+            {rest.length > 0 ? (
+              <>
+                {" "}
+                <span className="italic" style={{ color: `hsl(${accent})` }}>
+                  {rest.join(" ")}.
+                </span>
+              </>
+            ) : (
+              <span style={{ color: `hsl(${accent})` }}>.</span>
+            )}
+          </h1>
+        )}
 
         {/* Role + domain */}
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-10 text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
