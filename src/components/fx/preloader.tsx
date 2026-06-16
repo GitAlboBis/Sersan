@@ -52,10 +52,14 @@ import { useTierStore } from "@/webgl/store/tierStore";
 import { useIntroStore } from "@/webgl/store/introStore";
 import { getLenis } from "@/lib/lenis-singleton";
 
-// Timing envelope (ms). MIN keeps the loader from flashing on a warm cache;
-// MAX is the safety cap so a stuck signal never traps the visitor.
+// Timing envelope (ms). MIN keeps the loader from flashing on a warm cache.
 const MIN_VISIBLE_MS = 700;
-const MAX_VISIBLE_MS = 3500;
+// LAST-RESORT safety only: if the scene never reports `warm` (a truly stuck GPU),
+// reveal anyway so the visitor is never trapped. This is NOT the normal reveal
+// path — the truthful `warm` signal completes the counter well before this. It is
+// deliberately long so the loader stays HONEST (waits for real shader readiness)
+// rather than revealing on a fixed timer (the old fake-100% behaviour).
+const WATCHDOG_MS = 30000;
 // Counter easing toward its target each frame (fraction per ~16ms frame). Low
 // enough to read as a smooth tick-up, high enough to feel responsive.
 const COUNTER_EASE = 0.12;
@@ -191,19 +195,27 @@ export function Preloader() {
     // Three independent signals; each contributes a weighted slice. The counter
     // never EXCEEDS the resolved fraction (capped at 90% until all resolve), so
     // it can't show 100 before the page is genuinely ready — then it eases home.
-    const signals = { fonts: false, load: false, tier: false };
+    const signals = { fonts: false, load: false, tier: false, warm: false };
     const targetFraction = () => {
+      // `warm` = the WebGL scene is actually rendering smoothly (WebGPU pipelines
+      // compiled) — read live from introStore (set by PipelineWarmup). This is
+      // what makes 100% TRUTHFUL: the counter rises to the high-80s on
+      // fonts/load/tier, then HOLDS there while the shaders compile, and only
+      // completes to 100 once they are genuinely warm.
+      signals.warm = useIntroStore.getState().warmReady;
       const resolved =
-        (signals.fonts ? 0.34 : 0) +
-        (signals.load ? 0.33 : 0) +
-        (signals.tier ? 0.33 : 0);
-      const allReady = signals.fonts && signals.load && signals.tier;
+        (signals.fonts ? 0.3 : 0) +
+        (signals.load ? 0.29 : 0) +
+        (signals.tier ? 0.29 : 0) +
+        (signals.warm ? 0.12 : 0);
+      const allReady =
+        signals.fonts && signals.load && signals.tier && signals.warm;
       const elapsed = performance.now() - startedAt;
       const minElapsed = Math.min(elapsed / MIN_VISIBLE_MS, 1);
       if (allReady && minElapsed >= 1) return 1;
-      // Hold below 100 until everything (incl. min time) is satisfied so the
-      // "100" only ever appears at genuine readiness.
-      return Math.min(resolved * 0.9 + minElapsed * 0.1, 0.95);
+      // Never exceed ~90% until the shaders are genuinely warm — the counter
+      // holds at the fonts/load/tier ceiling (~0.88) during compilation.
+      return Math.min(resolved, 0.9);
     };
 
     // fonts.ready resolves when brand type is swapped (avoids the loader handing
@@ -245,9 +257,9 @@ export function Preloader() {
       // Keep parking Lenis until the provider has created it (effect-order
       // safety, see the lock note above) — no-op once stopped.
       lenisStop();
-      const elapsed = performance.now() - startedAt;
-      const forced = elapsed >= MAX_VISIBLE_MS; // safety cap
-      const target = forced ? 1 : targetFraction();
+      // Truthful target: driven ONLY by real readiness signals (incl. `warm`),
+      // never a fixed timer — the counter genuinely waits for shader compilation.
+      const target = targetFraction();
       current += (target - current) * COUNTER_EASE;
       // Snap the last sliver so we land cleanly on 100 (otherwise the ease
       // asymptotes at 99 forever). Relaxed from 0.999 → 0.99 so the readout
@@ -261,7 +273,7 @@ export function Preloader() {
       }
 
       // Reveal as soon as the readout reads 100 AND the target is genuinely 1
-      // (forced by the MAX cap, OR all readiness signals + min time satisfied).
+      // (all readiness signals — fonts/load/tier/warm — plus min time satisfied).
       // We do NOT wait for the asymptotic `current >= 1` tail: under rAF
       // throttling (backgrounded tab, slow device, automation), rAF drops toward
       // ~1fps and the ease (`current += (target - current) * 0.12`) crawls across
@@ -282,25 +294,20 @@ export function Preloader() {
     };
     rafId = requestAnimationFrame(frame);
 
-    // ----- Watchdog: rAF-independent hard reveal -----
-    // On a GPU-starved device (e.g. WebGPU on a weak / Windows-ARM Adreno GPU)
-    // the compositor can stop servicing requestAnimationFrame while the shader
-    // pipelines compile — so the counter freezes mid-ease and the curtain never
-    // lifts ("stuck at ~99%", the page never opens). setTimeout fires off the
-    // macrotask queue independent of the rAF cadence, so this GUARANTEES the page
-    // is revealed shortly after the MAX cap no matter how starved rAF is. It HARD-
-    // reveals (no GSAP curtain wipe — that also rides rAF and would be janky/stuck)
-    // so the overlay unmounts and scroll is restored even when the ticker crawls.
-    // No-ops on a healthy device: the rAF path sets `revealed` long before this.
+    // ----- Last-resort watchdog (insurance, NOT the normal path) -----
+    // The truthful `warm` signal completes the counter once the scene is
+    // rendering smoothly. But if a device NEVER gets there (a GPU that genuinely
+    // can't compile/render the scene), setTimeout fires off the macrotask queue —
+    // independent of the (possibly starved) rAF — and hard-reveals so the visitor
+    // is never trapped behind the curtain forever. It does NOT fake the counter to
+    // 100 (honest): it just lifts the curtain at whatever the readout reached.
     const revealTimer = window.setTimeout(() => {
       if (cancelled || revealed) return;
       revealed = true;
-      if (barFillRef.current) barFillRef.current.style.transform = "scaleX(1)";
-      setDisplay(100);
       useIntroStore.getState().complete();
       restoreScroll();
       setActive(false); // unmount the overlay immediately (no wipe)
-    }, MAX_VISIBLE_MS + 1500);
+    }, WATCHDOG_MS);
 
     // ----- Hand-off: curtain wipe up + line draw-in -----
     function reveal() {

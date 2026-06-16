@@ -30,13 +30,15 @@ import { DriftParticles } from "./DriftParticles";
 import { RailPlanes } from "./RailPlanes";
 import { ResourcePreviewPlane } from "./ResourcePreviewPlane";
 import { NeuralLattice } from "./NeuralLattice";
+import { AdaptiveResolution } from "./AdaptiveResolution";
+import { PipelineWarmup } from "./PipelineWarmup";
 import { PostFX } from "./PostFX";
 import { PostFXNodes } from "./PostFXNodes";
 import { useSectionAnchors } from "./hooks/useSectionAnchors";
 import { CAMERA_FOV, CAMERA_Z } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
 import type { SectionAnchors } from "./hooks/useSectionAnchors";
-import type { SceneTier } from "./store/tierStore";
+import { useTierStore, type SceneTier } from "./store/tierStore";
 
 // NOTE: the leva tuning panel (debug/LineDebug) and drei's
 // PerformanceMonitor are intentionally NOT mounted for now — while
@@ -174,6 +176,15 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
   // owned by the layout-level SectionBus (single writer, all tiers).
   const anchors = useSectionAnchors();
 
+  // GPU-aware render DPR (resolved in tierStore before this mounts). The Canvas
+  // STARTS at dprInitial (low on weak/ARM GPUs, device-dpr on strong desktops);
+  // AdaptiveResolution then adapts within [dprMin, dprMax]. Effects are identical
+  // at any DPR — only the render resolution changes — so the full WebGPU scene
+  // runs on weak machines too (see AdaptiveResolution + tierStore).
+  const dprInitial = useTierStore((s) => s.dprInitial);
+  const dprMin = useTierStore((s) => s.dprMin);
+  const dprMax = useTierStore((s) => s.dprMax);
+
   // F0.5 renderer seam: the flag is read once at module/build time. When OFF
   // (default) `gl` stays EXACTLY today's object literal — R3F builds its
   // implicit default WebGLRenderer and nothing here touches `three/webgpu`.
@@ -206,7 +217,7 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
               powerPreference: "high-performance",
             }
       }
-      dpr={tier === "full" ? [1, 2] : [1, 1.5]}
+      dpr={dprInitial}
       camera={{ fov: CAMERA_FOV, position: [0, 0, CAMERA_Z], near: 0.1, far: 200 }}
       onCreated={({ gl }) => {
         gl.setClearColor(0x000000, 0);
@@ -215,6 +226,15 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
       style={{ position: "absolute", inset: 0 }}
     >
       <FrameDriver />
+      {/* Adaptive render resolution: keeps every effect identical and only
+          lowers/raises the device-pixel-ratio (within the GPU-aware [min,max]
+          range) to hold framerate — the #1 lever for running the full WebGPU
+          scene on weak/ARM GPUs without changing the look. */}
+      <AdaptiveResolution initial={dprInitial} min={dprMin} max={dprMax} />
+      {/* Truthful-loading signal: flips introStore.warmReady once the scene is
+          rendering smoothly (WebGPU pipelines compiled), so the preloader's
+          counter only reaches 100% when the shaders are genuinely warm. */}
+      <PipelineWarmup />
       {/* The faint curl-noise tube-field haze (CurlTubeField) was removed here
           — the user disliked the thin background curl arcs (confirmed live with
           curlTubeIntensity: 0). The component file remains; to restore, re-add

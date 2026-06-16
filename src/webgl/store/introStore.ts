@@ -28,9 +28,21 @@ interface IntroState {
   /** False until the first-load preloader hands off; true forever after. */
   introComplete: boolean;
   complete: () => void;
+  /**
+   * True once the WebGL scene is actually RENDERING SMOOTHLY — i.e. the WebGPU
+   * pipelines/compute kernels have finished compiling (the heavy one-time cost
+   * that otherwise stalls the first frames). Set by PipelineWarmup (in-Canvas)
+   * once it has seen a run of smooth frames; READ by the preloader as its 4th
+   * readiness signal so the counter only reaches 100% when the shaders are
+   * genuinely warm (truthful loading), not on a fixed timer.
+   */
+  warmReady: boolean;
+  setWarmReady: () => void;
 }
 
 export const useIntroStore = create<IntroState>((set) => ({
   introComplete: false,
   complete: () => set({ introComplete: true }),
+  warmReady: false,
+  setWarmReady: () => set({ warmReady: true }),
 }));
