@@ -1,28 +1,21 @@
 "use client";
 
 /**
- * CustomCursor — dot + lagging ring + trail (award sprint, Phase D; AGENTS.md §3c).
+ * CustomCursor — "Signal" particle cursor.
  *
- * The dot snaps to the pointer, the ring chases it with a soft lag
- * (gsap.quickTo); over interactive elements the ring swells and brightens. A
- * faint decaying trail of ghost rings follows behind for a liquid feel. The
- * native cursor stays VISIBLE — the ring is an accent, not a replacement, so
- * usability never regresses (form fields, text selection untouched).
+ * A single 2D canvas paints a bright core that trails cyan→violet "signal"
+ * sparks as the pointer moves (velocity-reactive: faster = hotter/violet),
+ * breathes with slow motes at rest, swells into an orbiting halo + label over
+ * interactive elements (data-cursor="view"|"drag"|"link", with a legacy-selector
+ * fallback), and bursts on click. The OS cursor is hidden on fine pointers while
+ * mounted (text fields keep a caret, via globals.css `html.cursor-none`). Never
+ * mounts under prefers-reduced-motion or coarse pointers, so touch / RM keep the
+ * native cursor.
  *
- * HOVER STATES (data-cursor)
- *   Any element (or ancestor) carrying `data-cursor="link" | "drag" | "view"`
- *   sets a named state; the ring changes scale + shows a tiny label ("VIEW",
- *   "DRAG"). Falls back to the legacy INTERACTIVE selector (a/button/…/.card-steel/
- *   .cursor-grab) so existing markup keeps the simple swell with no attribute.
- *
- * SHARED POSITION
- *   Position comes from the shared pointerStore (one window listener, installed
- *   by the WebGL FrameDriver), so the cursor and the WebGPU fluid breathe off
- *   the exact same pointer. When the WebGL layer is absent (e.g. canvas not
- *   mounted), this component installs its own tracking — refcounted, so they
- *   coexist without duplicating listeners.
- *
- * Desktop fine pointers only; never mounts under prefers-reduced-motion.
+ * Driven off gsap.ticker (the page's single shared ticker — no extra rAF) and
+ * the shared pointerStore raw pointer (the same pointer the WebGL layer breathes
+ * off). Particles draw pre-rendered radial-glow sprites with additive blending
+ * for GPU-cheap bloom; the pool is capped.
  */
 import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
@@ -32,28 +25,66 @@ import {
 } from "@/webgl/store/pointerStore";
 
 const INTERACTIVE = "a, button, [role='button'], .card-steel, .cursor-grab";
-const TRAIL_COUNT = 6;
+const CYAN: [number, number, number] = [59, 225, 255]; // #3BE1FF
+const VIOLET: [number, number, number] = [124, 92, 255]; // #7C5CFF
+const SPRITE_STOPS = 6;
+const SPRITE_SIZE = 64;
+const MAX_PARTICLES = 220;
 
-/** Maps a data-cursor state (or null) to ring presentation. */
+interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  max: number;
+  size: number;
+  t: number;
+  spin: number;
+}
+
 function presetFor(state: string | null, legacyHit: boolean) {
   switch (state) {
     case "view":
-      return { scale: 2.6, label: "VIEW", strong: true };
+      return { scale: 2.6, label: "VIEW" };
     case "drag":
-      return { scale: 2.2, label: "DRAG", strong: true };
+      return { scale: 2.3, label: "DRAG" };
     case "link":
-      return { scale: 1.8, label: "", strong: true };
+      return { scale: 1.9, label: "" };
     default:
-      return { scale: legacyHit ? 1.8 : 1, label: "", strong: legacyHit };
+      return { scale: legacyHit ? 1.8 : 1, label: "" };
   }
+}
+
+function buildSprites(): HTMLCanvasElement[] {
+  const out: HTMLCanvasElement[] = [];
+  for (let i = 0; i < SPRITE_STOPS; i++) {
+    const t = i / (SPRITE_STOPS - 1);
+    const r = Math.round(CYAN[0] + (VIOLET[0] - CYAN[0]) * t);
+    const g = Math.round(CYAN[1] + (VIOLET[1] - CYAN[1]) * t);
+    const b = Math.round(CYAN[2] + (VIOLET[2] - CYAN[2]) * t);
+    const cv = document.createElement("canvas");
+    cv.width = SPRITE_SIZE;
+    cv.height = SPRITE_SIZE;
+    const c = cv.getContext("2d");
+    if (c) {
+      const m = SPRITE_SIZE / 2;
+      const grd = c.createRadialGradient(m, m, 0, m, m, m);
+      grd.addColorStop(0, `rgba(${r},${g},${b},1)`);
+      grd.addColorStop(0.35, `rgba(${r},${g},${b},0.5)`);
+      grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      c.fillStyle = grd;
+      c.fillRect(0, 0, SPRITE_SIZE, SPRITE_SIZE);
+    }
+    out.push(cv);
+  }
+  return out;
 }
 
 export function CustomCursor() {
   const [enabled, setEnabled] = useState(false);
-  const dotRef = useRef<HTMLDivElement>(null);
-  const ringRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const labelRef = useRef<HTMLSpanElement>(null);
-  const trailRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   useEffect(() => {
     if (
@@ -67,75 +98,181 @@ export function CustomCursor() {
 
   useEffect(() => {
     if (!enabled) return;
-    const dot = dotRef.current;
-    const ring = ringRef.current;
+    const canvas = canvasRef.current;
     const label = labelRef.current;
-    if (!dot || !ring) return;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-    // Ensure the shared pointer listener exists even if the WebGL canvas never
-    // mounts (lite tier still has a canvas; "off" never reaches here because we
-    // bail under reduced-motion above). Refcounted — coexists with FrameDriver.
     const releaseTracking = installPointerTracking();
+    document.documentElement.classList.add("cursor-none");
+    const sprites = buildSprites();
 
-    const trail = trailRefs.current.filter(Boolean) as HTMLDivElement[];
-    gsap.set([dot, ring, ...trail], { xPercent: -50, yPercent: -50, opacity: 0 });
-    if (label) gsap.set(label, { xPercent: -50, yPercent: -50, opacity: 0 });
-    // Prime the ring's REAL scale components so the swell tween animates
-    // scaleX/scaleY rather than the `scale` shorthand (the shorthand trips
-    // "scale not eligible for reset" when pointerover overwrites the tween).
-    gsap.set(ring, { scaleX: 1, scaleY: 1 });
+    let w = window.innerWidth;
+    let h = window.innerHeight;
+    const resize = () => {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      w = window.innerWidth;
+      h = window.innerHeight;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+    resize();
+    window.addEventListener("resize", resize, { passive: true });
 
-    const dotX = gsap.quickTo(dot, "x", { duration: 0.08, ease: "power2.out" });
-    const dotY = gsap.quickTo(dot, "y", { duration: 0.08, ease: "power2.out" });
-    const ringX = gsap.quickTo(ring, "x", { duration: 0.45, ease: "power3.out" });
-    const ringY = gsap.quickTo(ring, "y", { duration: 0.45, ease: "power3.out" });
-    // The label tracks the ring's position but lives OUTSIDE the scaled ring, so
-    // text never inherits the ring's swell (stays crisp at any ring scale).
-    const labelX = label
-      ? gsap.quickTo(label, "x", { duration: 0.45, ease: "power3.out" })
-      : null;
-    const labelY = label
-      ? gsap.quickTo(label, "y", { duration: 0.45, ease: "power3.out" })
-      : null;
-    // Each trail dot lags progressively more for a decaying comet feel.
-    const trailTweens = trail.map((el, i) => ({
-      x: gsap.quickTo(el, "x", {
-        duration: 0.5 + i * 0.12,
-        ease: "power3.out",
-      }),
-      y: gsap.quickTo(el, "y", {
-        duration: 0.5 + i * 0.12,
-        ease: "power3.out",
-      }),
-    }));
+    const particles: Particle[] = [];
+    let px = w / 2;
+    let py = h / 2;
+    let prevX = px;
+    let prevY = py;
+    let coreX = px;
+    let coreY = py;
+    let hoverTarget = 1;
+    let hoverScale = 1;
+    let hovering = false;
+    let labelText = "";
+    let visible = false;
+    let primed = false;
+    let ambient = 0;
 
-    let shown = false;
-    // Drive everything off gsap's SHARED ticker reading the shared smoothed
-    // pointer — NOT a new requestAnimationFrame. gsap.ticker is the same single
-    // ticker quickTo already runs on, so this adds no extra rAF to the page
-    // (honouring the "one render loop" rule; the WebGL FrameDriver/Lenis loop is
-    // untouched, and gsap.ticker is GSAP's own pre-existing ticker).
-    const onTick = () => {
-      // Read RAW pointer (not the store's smoothed value): quickTo below provides
-      // the cursor's own lag, so the cursor stays self-sufficient even if the
-      // WebGL FrameDriver (which advances the store's `smooth`) isn't mounted.
+    const spawn = (
+      x: number,
+      y: number,
+      vx: number,
+      vy: number,
+      life: number,
+      size: number,
+      t: number,
+      spin = 0,
+    ) => {
+      if (particles.length >= MAX_PARTICLES) particles.shift();
+      particles.push({ x, y, vx, vy, life, max: life, size, t, spin });
+    };
+
+    const onTick = (_time: number, deltaTime: number) => {
+      // gsap deltaTime is ms; stay robust if a build ever reports seconds.
+      const dms = deltaTime > 1 ? deltaTime : deltaTime * 1000;
+      const dt = Math.min(dms, 50) / 16.6667;
+
       const { raw } = usePointerStore.getState();
-      const px = raw.x * window.innerWidth;
-      const py = raw.y * window.innerHeight;
-      if (!shown) {
-        shown = true;
-        gsap.to([dot, ring], { opacity: 1, duration: 0.3 });
-        gsap.to(trail, { opacity: 0.18, duration: 0.4, stagger: 0.02 });
+      px = raw.x * w;
+      py = raw.y * h;
+      if (!primed) {
+        primed = true;
+        coreX = px;
+        coreY = py;
+        prevX = px;
+        prevY = py;
+        visible = true;
       }
-      dotX(px);
-      dotY(py);
-      ringX(px);
-      ringY(py);
-      labelX?.(px);
-      labelY?.(py);
-      for (const tw of trailTweens) {
-        tw.x(px);
-        tw.y(py);
+      const mvx = px - prevX;
+      const mvy = py - prevY;
+      const speed = Math.hypot(mvx, mvy);
+      prevX = px;
+      prevY = py;
+
+      coreX += (px - coreX) * Math.min(1, 0.35 * dt);
+      coreY += (py - coreY) * Math.min(1, 0.35 * dt);
+      hoverScale += (hoverTarget - hoverScale) * Math.min(1, 0.18 * dt);
+
+      if (!visible) {
+        ctx.clearRect(0, 0, w, h);
+        return;
+      }
+
+      // Trail sparks scale with pointer speed; colour heats cyan→violet w/ speed.
+      const n = Math.min(6, Math.floor(speed * 0.35));
+      for (let i = 0; i < n; i++) {
+        const f = n > 1 ? i / n : 0;
+        spawn(
+          px - mvx * f + (Math.random() - 0.5) * 4,
+          py - mvy * f + (Math.random() - 0.5) * 4,
+          -mvx * 0.06 + (Math.random() - 0.5) * 0.6,
+          -mvy * 0.06 + (Math.random() - 0.5) * 0.6,
+          28 + Math.random() * 22,
+          6 + Math.random() * 6,
+          Math.min(1, speed / 60) * (0.5 + Math.random() * 0.5),
+        );
+      }
+      // Ambient breathing motes when nearly still.
+      ambient += dt;
+      if (speed < 1.2 && ambient > 6) {
+        ambient = 0;
+        const a = Math.random() * Math.PI * 2;
+        const rad = 10 + Math.random() * 14;
+        spawn(
+          px + Math.cos(a) * rad,
+          py + Math.sin(a) * rad,
+          Math.cos(a) * 0.2,
+          Math.sin(a) * 0.2,
+          40 + Math.random() * 30,
+          4 + Math.random() * 4,
+          Math.random(),
+          (Math.random() - 0.5) * 0.06,
+        );
+      }
+      // Hover: a swirl of orbiting motes around the cursor.
+      if (hovering && Math.random() < 0.6) {
+        const a = Math.random() * Math.PI * 2;
+        const rad = 16 * hoverScale;
+        spawn(
+          px + Math.cos(a) * rad,
+          py + Math.sin(a) * rad,
+          -Math.sin(a) * 1.2,
+          Math.cos(a) * 1.2,
+          26 + Math.random() * 16,
+          5 + Math.random() * 5,
+          0.2 + Math.random() * 0.5,
+          (Math.random() - 0.5) * 0.1,
+        );
+      }
+
+      ctx.clearRect(0, 0, w, h);
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.life -= dt;
+        if (p.life <= 0) {
+          particles.splice(i, 1);
+          continue;
+        }
+        if (p.spin) {
+          const c = Math.cos(p.spin * dt);
+          const s = Math.sin(p.spin * dt);
+          const nvx = p.vx * c - p.vy * s;
+          p.vy = p.vx * s + p.vy * c;
+          p.vx = nvx;
+        }
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vx *= 0.92;
+        p.vy *= 0.92;
+        const lf = p.life / p.max;
+        const idx = Math.min(
+          SPRITE_STOPS - 1,
+          Math.max(0, Math.round(p.t * (SPRITE_STOPS - 1))),
+        );
+        const sz = p.size * (0.55 + 0.45 * lf);
+        ctx.globalAlpha = lf * lf * 0.85;
+        ctx.drawImage(sprites[idx], p.x - sz / 2, p.y - sz / 2, sz, sz);
+      }
+
+      // Core glow + crisp center.
+      const cg = 22 + hoverScale * 6;
+      ctx.globalAlpha = 0.9;
+      ctx.drawImage(sprites[1], coreX - cg / 2, coreY - cg / 2, cg, cg);
+      ctx.globalCompositeOperation = "source-over";
+      ctx.globalAlpha = 1;
+      ctx.beginPath();
+      ctx.arc(coreX, coreY, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(232,250,255,1)";
+      ctx.fill();
+
+      if (label) {
+        label.style.transform = `translate(${coreX}px, ${coreY + 24}px) translate(-50%, -50%)`;
       }
     };
     gsap.ticker.add(onTick);
@@ -145,37 +282,48 @@ export function CustomCursor() {
       const stateEl = target?.closest<HTMLElement>("[data-cursor]");
       const state = stateEl?.dataset.cursor ?? null;
       const legacyHit = !state && !!target?.closest(INTERACTIVE);
-      const { scale, label: text, strong } = presetFor(state, legacyHit);
-
-      // Uniform ring swell via the real scaleX/scaleY props (not the `scale`
-      // shorthand) so repeated pointerover overwrites never trip the reset warn.
-      gsap.to(ring, {
-        scaleX: scale,
-        scaleY: scale,
-        opacity: shown ? 1 : 0,
-        borderColor: strong
-          ? "hsl(189 100% 62% / 0.9)"
-          : "hsl(189 100% 62% / 0.45)",
-        duration: 0.35,
-        ease: "power3.out",
-      });
-      if (label) {
+      const { scale, label: text } = presetFor(state, legacyHit);
+      hoverTarget = scale;
+      hovering = scale > 1.05;
+      visible = true;
+      if (label && text !== labelText) {
+        labelText = text;
         label.textContent = text;
-        gsap.to(label, { opacity: text ? 1 : 0, duration: 0.25 });
+        gsap.to(label, { opacity: text ? 1 : 0, duration: 0.22 });
       }
     };
-    const onLeave = () => {
-      shown = false;
-      gsap.to([dot, ring, ...trail], { opacity: 0, duration: 0.25 });
+    const onDown = () => {
+      for (let i = 0; i < 14; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 2 + Math.random() * 3.5;
+        spawn(
+          px,
+          py,
+          Math.cos(a) * sp,
+          Math.sin(a) * sp,
+          24 + Math.random() * 14,
+          5 + Math.random() * 5,
+          Math.random(),
+        );
+      }
+    };
+    const onLeaveDoc = () => {
+      visible = false;
+      particles.length = 0;
       if (label) gsap.to(label, { opacity: 0, duration: 0.2 });
     };
 
     document.addEventListener("pointerover", onOver, { passive: true });
-    document.documentElement.addEventListener("pointerleave", onLeave);
+    document.addEventListener("pointerdown", onDown, { passive: true });
+    document.documentElement.addEventListener("pointerleave", onLeaveDoc);
+
     return () => {
       gsap.ticker.remove(onTick);
+      window.removeEventListener("resize", resize);
       document.removeEventListener("pointerover", onOver);
-      document.documentElement.removeEventListener("pointerleave", onLeave);
+      document.removeEventListener("pointerdown", onDown);
+      document.documentElement.removeEventListener("pointerleave", onLeaveDoc);
+      document.documentElement.classList.remove("cursor-none");
       releaseTracking();
     };
   }, [enabled]);
@@ -183,36 +331,18 @@ export function CustomCursor() {
   if (!enabled) return null;
 
   return (
-    <div aria-hidden className="pointer-events-none fixed inset-0 z-[90]">
-      {Array.from({ length: TRAIL_COUNT }).map((_, i) => (
-        <div
-          key={i}
-          ref={(el) => {
-            trailRefs.current[i] = el;
-          }}
-          className="absolute rounded-full"
-          style={{
-            // Trail dots shrink down the tail.
-            height: `${6 - i * 0.6}px`,
-            width: `${6 - i * 0.6}px`,
-            background: "hsl(189 100% 62% / 0.5)",
-          }}
-        />
-      ))}
-      <div
-        ref={dotRef}
-        className="absolute h-1.5 w-1.5 rounded-full"
-        style={{ background: "hsl(var(--accent))" }}
-      />
-      <div
-        ref={ringRef}
-        className="absolute h-8 w-8 rounded-full border"
-        style={{ borderColor: "hsl(189 100% 62% / 0.45)" }}
+    <>
+      <canvas
+        ref={canvasRef}
+        aria-hidden
+        className="pointer-events-none fixed inset-0 z-[90]"
       />
       <span
         ref={labelRef}
-        className="absolute select-none font-mono text-[8px] tracking-[0.25em] text-[hsl(189_100%_82%)]"
+        aria-hidden
+        className="pointer-events-none fixed left-0 top-0 z-[91] select-none font-mono text-[8px] tracking-[0.25em] text-[hsl(189_100%_82%)] opacity-0"
+        style={{ willChange: "transform, opacity" }}
       />
-    </div>
+    </>
   );
 }

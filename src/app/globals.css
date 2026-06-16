@@ -1215,3 +1215,17 @@ img { height: auto; max-width: 100%; }
     opacity: 0 !important;
   }
 }
+
+/* "Signal" particle cursor (CustomCursor) hides the OS cursor on fine pointers
+   while it is mounted. The `cursor-none` class is toggled by the component, so
+   SSR / no-JS / reduced-motion / touch all keep the native cursor. Text inputs
+   keep a caret so typing and selection never regress. */
+html.cursor-none,
+html.cursor-none * {
+  cursor: none !important;
+}
+html.cursor-none input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]),
+html.cursor-none textarea,
+html.cursor-none [contenteditable="true"] {
+  cursor: text !important;
+}
