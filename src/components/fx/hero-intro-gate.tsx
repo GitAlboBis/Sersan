@@ -75,7 +75,7 @@ export function HeroIntroGate() {
     };
 
     const consume = (deltaPx: number, e: Event) => {
-      const { gateProgress, gateKick, assembleDone, morph3Done } =
+      const { gateProgress, gateKick, assembleDone, morph2Done } =
         useTextMorphStore.getState();
       if (engaged) {
         // preventDefault blocks native scrolling; stopImmediatePropagation
@@ -93,10 +93,10 @@ export function HeroIntroGate() {
         if (!assembleDone) return;
         let next = gateProgress + deltaPx / GATE_DISTANCE;
         // The morph chain plays on its own clock once triggered: cap the
-        // intent just under 1 until the FINAL "scroll" cue is fully composed,
-        // so a fast flick can never release the page over a half-formed text.
-        // The next scroll past the cap then dissolves "scroll" and releases.
-        if (!morph3Done) next = Math.min(next, 0.97);
+        // intent just under 1 until the final "see what we build" cue is
+        // composed, so a fast flick can never release the page over a
+        // half-formed text. The next scroll past the cap then releases.
+        if (!morph2Done) next = Math.min(next, 0.97);
         setProgress(next);
         if (next >= 1) release(); // hand the page back at the end of the intro
         return;

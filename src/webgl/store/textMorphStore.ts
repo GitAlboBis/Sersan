@@ -68,20 +68,14 @@ interface TextMorphState {
    */
   morphDone: boolean;
   /**
-   * True once the SECOND morph leg — headline "We build…" → cue
-   * "see what we build" — has fully composed. Time-driven like the first
-   * morph; scroll past MORPH2_TRIGGER flips it forward, scrolling back flips
-   * it reverse. The gate refuses to release the page until this is true, so
-   * the visitor always sees the full three-stage chain.
+   * True once the SECOND (and FINAL) morph leg — headline "We build…" → cue
+   * "see what we build" (which travels to the BOTTOM) — has fully composed.
+   * Time-driven like the first morph; scroll past MORPH2_TRIGGER flips it
+   * forward, scrolling back flips it reverse. The gate refuses to release the
+   * page until this is true, so the visitor always sees the full three-stage
+   * chain ("Sersan AI" → headline → "see what we build").
    */
   morph2Done: boolean;
-  /**
-   * True once the THIRD morph leg — cue "see what we build" → "scroll" (which
-   * travels to the bottom) — has fully composed. The gate holds the page until
-   * this is true; the next scroll past it releases (the "scroll" dissolves and
-   * the page finally moves).
-   */
-  morph3Done: boolean;
   /**
    * Camera-tilt phase progress 0..1 — the FINAL hijacked beat: one more
    * scroll after the headline has composed triggers a 3D "head looks down"
@@ -133,7 +127,6 @@ const createTextMorphStore = () =>
     assembleDone: false,
     morphDone: false,
     morph2Done: false,
-    morph3Done: false,
     camTilt: 0,
     tiltAnchorY: 0,
     camDescend: 0,

@@ -239,6 +239,15 @@ export function CardImageDistort({ src, alt }: CardImageDistortProps) {
   // canvas is never created and only the CSS <img> fade runs.
   const [canDistort, setCanDistort] = useState(false);
 
+  // True once the WebGL context is created AND its render loop is live. Drives
+  // `data-canvas-active` on the root → CSS hides the base <img> so only the
+  // shader image shows (no more double-image / mismatched crop). When the canvas
+  // is never used (RM / coarse pointer / no WebGL2) this stays false and the
+  // <img> remains the hover fallback. Set true on first real enter, false only
+  // on teardown/unmount — never per-frame, so no re-render loop and no <img>
+  // flash mid fade-out.
+  const [canvasActive, setCanvasActive] = useState(false);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -391,6 +400,9 @@ export function CardImageDistort({ src, alt }: CardImageDistortProps) {
     };
 
     const teardown = () => {
+      // Canvas is no longer rendering — let the base <img> become the fallback
+      // again (and avoid leaving a blank card if it ever unmounts mid-hover).
+      setCanvasActive(false);
       if (!ctx) return;
       disposeGL(ctx);
       ctx = null;
@@ -411,6 +423,9 @@ export function CardImageDistort({ src, alt }: CardImageDistortProps) {
       resize();
       const cv = canvasRef.current;
       if (cv) cv.style.opacity = "1";
+      // The shader image is now live & rendering — hide the base <img> so only
+      // ONE image layer shows (kills the double-image / mismatched-crop bug).
+      setCanvasActive(true);
       if (!raf) raf = requestAnimationFrame(render);
     };
 
@@ -460,6 +475,7 @@ export function CardImageDistort({ src, alt }: CardImageDistortProps) {
     <div
       ref={rootRef}
       aria-hidden="true"
+      data-canvas-active={canvasActive ? "true" : undefined}
       className="card-image-distort pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]"
     >
       {/* Base image — accessible, lazy, the SSR/RM/no-WebGL fallback. Hidden at

@@ -661,6 +661,15 @@ img { height: auto; max-width: 100%; }
 .card-steel:hover .card-image-distort__canvas {
   transform: scale(1);
 }
+/* When the WebGL canvas is live & rendering (set imperatively via
+   data-canvas-active on the root), hide the base <img> so only ONE image layer
+   shows — the shader re-samples the photo with its own object-fit:cover math,
+   and showing the <img> underneath produced two overlapping, mismatched crops.
+   Without a canvas (RM / coarse pointer / no WebGL2) the attribute is absent and
+   the `.card-steel:hover .card-image-distort__img` reveal above still runs. */
+.card-image-distort[data-canvas-active="true"] .card-image-distort__img {
+  opacity: 0 !important;
+}
 /* Navy readability scrim. Stronger at the top/left where the eyebrow + heading
    sit, lighter toward the lower-right so the product shot still reads. Fades in
    with the imagery so the resting card keeps its flat gradient background. */
@@ -677,7 +686,25 @@ img { height: auto; max-width: 100%; }
   transition: opacity 500ms cubic-bezier(0.215, 0.61, 0.355, 1);
 }
 .card-steel:hover .card-image-distort__scrim {
-  opacity: 1;
+  /* The card text now fades out on hover (see .card-text-layer below), so the
+     scrim no longer has white text to protect — drop it from a full navy wash
+     to a faint edge/vignette darken so the product shot reads clean. */
+  opacity: 0.25;
+}
+
+/* Hover toggle: at rest the card shows ONLY its text; on hover it shows ONLY
+   the image. The text wrapper carries `.card-text-layer` (always present, so
+   the transition is symmetric in/out), and the fade-out only fires for cards
+   that actually have the distort effect (`.card-has-distort` on the root). Plain
+   text cards never match `.card-has-distort` so their text never hides.
+   Accessibility: opacity + pointer-events only (NOT display:none / visibility),
+   so screen readers still read the text. */
+.card-text-layer {
+  transition: opacity 450ms cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+.card-has-distort:hover .card-text-layer {
+  opacity: 0;
+  pointer-events: none;
 }
 @media (prefers-reduced-motion: reduce) {
   /* Touch/RM: no distortion canvas mounts. Keep a calm static fade only — drop

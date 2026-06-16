@@ -43,14 +43,18 @@ const PROGRESS_DAMP = 6;
 // so the camera dips with the gesture and swings back — the scene keeps the
 // alive "scroll shake" while the document genuinely never moves. The kick is
 // only ever written by the gate, so normal scrolling is untouched.
-/** World-units/s of spring velocity per px of consumed gesture. */
-const GATE_KICK_SCALE = 0.01;
+/** World-units/s of spring velocity per px of consumed gesture.
+ * Amplitude reduced to ~40% per design (2026-06-16): the camera should read as
+ * near-locked during the gated intro, with only a faint hint of motion. Was
+ * 0.01. Keep the spring/damping feel below; only the magnitude shrank. */
+const GATE_KICK_SCALE = 0.004;
 /** Spring stiffness (ω² ≈ 90 → ~1.5 Hz wobble). */
 const GATE_SPRING = 90;
 /** Spring damping — under-damped (ζ ≈ 0.47): a couple of micro-overshoots. */
 const GATE_DAMP = 9;
-/** Hard clamp on the bob amplitude (world units, ~3% of viewport height). */
-const GATE_SHAKE_MAX = 0.35;
+/** Hard clamp on the bob amplitude (world units). Halved per the same
+ * near-locked design pass (2026-06-16) so peaks stay small. Was 0.35. */
+const GATE_SHAKE_MAX = 0.175;
 /** px-ish energy per px of gesture, fed into the velocity glow/breath. */
 const GATE_ENERGY_SCALE = 0.5;
 const GATE_ENERGY_MAX = 150;

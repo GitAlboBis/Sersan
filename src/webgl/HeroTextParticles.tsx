@@ -65,22 +65,21 @@ const ENTRY_DURATION = 3.6;
  * ("Sersan AI" → headline). Pulled in from 0.45 to make room for a third
  * stage on the same gate. */
 const MORPH_TRIGGER = 0.22;
-/** Scroll-intent threshold that triggers the SECOND morph B→C (headline →
- * "see what we build"). Only fires once the first morph has composed. */
+/** Scroll-intent threshold that triggers the SECOND (and FINAL) morph B→C
+ * (headline → "see what we build" at the BOTTOM). Only fires once the first
+ * morph has composed. */
 const MORPH2_TRIGGER = 0.44;
-/** Scroll-intent threshold that triggers the THIRD morph C→D ("see what we
- * build" → "scroll", travelling to the bottom). Fires after the second. */
-const MORPH3_TRIGGER = 0.66;
 /** Seconds for the one-shot morph animation (entry-style wave). Shared by
  * all morph legs. */
 const MORPH_DURATION = 2.6;
-/** Stage-3 cue: the headline dissolves into this, centered. */
+/** FINAL cue: the headline dissolves into this, recomposed near the BOTTOM
+ * (replacing the old standalone "scroll" hint). Sampled smaller than the
+ * headline; its home block is pushed DOWN by CUE_OFFSET_Y view-heights so the
+ * particles travel downward to form it where the old scroll hint lived. */
 const CUE_TEXT = "see what we build";
-/** Stage-4 cue: "scroll", recomposed near the BOTTOM (replacing the old DOM
- * scroll hint). Sampled smaller; its home block is pushed DOWN by
- * CUE2_OFFSET_Y view-heights so the particles travel downward to form it. */
-const CUE2_TEXT = "scroll";
-const CUE2_OFFSET_Y = -0.38;
+/** View-heights below center where "see what we build" homes. The old "scroll"
+ * cue used -0.38; "see what we build" is longer so it sits a touch higher. */
+const CUE_OFFSET_Y = -0.34;
 /** White-panel cascade window (paragraph → chips → CTAs stagger in over the
  * last gate stretch, gated on the morph having actually composed). The 3D
  * camera-descent beat now lives at the END of the cinematic spine
@@ -128,12 +127,10 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
   // direction (forward past MORPH_TRIGGER, reverse below); it advances on
   // its own time like the entry. Persists across rebuilds like entryRef.
   const morphTRef = useRef(0);
-  // Second morph clock 0..1 (headline → "see what we build"). Same one-shot,
-  // time-driven, reversible behaviour as morphTRef; persists across rebuilds.
+  // Second (and FINAL) morph clock 0..1 (headline → "see what we build" at the
+  // bottom). Same one-shot, time-driven, reversible behaviour as morphTRef;
+  // persists across rebuilds.
   const morph2TRef = useRef(0);
-  // Third morph clock 0..1 (cue → "scroll" at the bottom). Same one-shot,
-  // reversible, persists across rebuilds.
-  const morph3TRef = useRef(0);
   // Per-leg completion LATCHES (FIX 2). A leg's target is normally a pure
   // function of the smoothed gate progress `g`, so it reverses whenever `g`
   // dips back below the trigger. At unlock the gate hands the page back
@@ -147,7 +144,6 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
   // replay (assembleDone observed false at build time).
   const morph1LatchedRef = useRef(false);
   const morph2LatchedRef = useRef(false);
-  const morph3LatchedRef = useRef(false);
   const [build, setBuild] = useState<MorphBuild | null>(null);
   // Bumped by the MutationObserver on language switch → resample + rebuild.
   const [textEpoch, setTextEpoch] = useState(0);
@@ -220,28 +216,18 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       const a = sampleTextPoints(brandSpec, count);
       const b = sampleTextPoints(headlineSpec, count);
 
-      // --- CUE sample ("see what we build") — the THIRD morph target. -------
+      // --- CUE sample ("see what we build") — the FINAL morph target. -------
       // Derived from the headline's own typography at a reduced size so the
-      // closing cue reads smaller than the headline. Single line, centered
-      // like brand + headline (offset 0,0) → it recomposes IN PLACE.
+      // closing cue reads smaller than the headline. Single line; its world
+      // home is offset DOWN (below) so the B→C leg carries the particles toward
+      // the bottom, recomposing where the old standalone "scroll" hint lived.
       const cueSpec: TextSpec = {
         ...headlineSpecBase,
-        fontSizePx: headlineSpecBase.fontSizePx * 0.62,
-        lineHeightPx: headlineSpecBase.fontSizePx * 0.62,
+        fontSizePx: headlineSpecBase.fontSizePx * 0.5,
+        lineHeightPx: headlineSpecBase.fontSizePx * 0.5,
         lines: [CUE_TEXT],
       };
       const c = sampleTextPoints(cueSpec, count);
-
-      // --- "scroll" sample — the FOURTH morph target. Smaller still; its
-      // world home is offset DOWN (below) so the C→D leg carries the particles
-      // toward the bottom, recomposing where the old scroll hint lived. -------
-      const cue2Spec: TextSpec = {
-        ...headlineSpecBase,
-        fontSizePx: headlineSpecBase.fontSizePx * 0.4,
-        lineHeightPx: headlineSpecBase.fontSizePx * 0.4,
-        lines: [CUE2_TEXT],
-      };
-      const d = sampleTextPoints(cue2Spec, count);
 
       // The instanced group anchors to the BRAND rect per frame. The headline
       // homes used to carry an offset to the H1 block; the user (2026-06-10)
@@ -263,8 +249,9 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       };
 
       const homeAWorld = toWorld(a.xy, 0, 0);
-      const homeCWorld = toWorld(c.xy, 0, 0);
-      const homeDWorld = toWorld(d.xy, 0, WORLD_VIEW_HEIGHT * CUE2_OFFSET_Y);
+      // "see what we build" homes near the BOTTOM (CUE_OFFSET_Y view-heights
+      // below center) so the headline→cue leg carries the particles downward.
+      const homeCWorld = toWorld(c.xy, 0, WORLD_VIEW_HEIGHT * CUE_OFFSET_Y);
       // Entry seed (ICS-media style): each particle starts at a noisy offset
       // from its glyph home, spread WIDER toward the left of the block
       // (ICS: `spread = (1 - nx) * 100 + 100`) so the left edge billows out
@@ -307,7 +294,9 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
         homeAWorld,
         toWorld(b.xy, offBx, offBy),
         homeCWorld,
-        homeDWorld,
+        // gpgpu stays a 4-target compute; feed C into the 4th (homeD) slot so
+        // the inert 4th target is identical to C. uMorph3 is never advanced.
+        homeCWorld,
         count,
         // ICS-media-reference look (user 2026-06-10): bright glowing sprites,
         // dense enough to read as solid strokes — bigger discs, hotter
@@ -337,19 +326,18 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
         entryRef.current = 1;
         morphTRef.current = 1;
         morph2TRef.current = 1;
-        morph3TRef.current = 1;
         morph1LatchedRef.current = true;
         morph2LatchedRef.current = true;
-        morph3LatchedRef.current = true;
       } else {
         morph1LatchedRef.current = false;
         morph2LatchedRef.current = false;
-        morph3LatchedRef.current = false;
       }
       built.uAssemble.value = entryRef.current;
       built.uMorph.value = morphTRef.current;
       built.uMorph2.value = morph2TRef.current;
-      built.uMorph3.value = morph3TRef.current;
+      // The 4th compute target equals C (inert) — uMorph3 is set to 0 at build
+      // time and never advanced, so the leg never plays.
+      built.uMorph3.value = 0;
       // Ink-density compensation (uSizeComp): the same particle count covers
       // the headline's larger ink area, so points grow by ~sqrt(areaB/areaA)
       // (slight extra for the thinner strokes) as the morph settles — the
@@ -358,8 +346,7 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
         Math.min(2.4, Math.sqrt(b.inkPx / Math.max(a.inkPx, 1))) * 1.1;
       built.uSizeComp2.value =
         Math.min(2.4, Math.sqrt(c.inkPx / Math.max(a.inkPx, 1))) * 1.1;
-      built.uSizeComp3.value =
-        Math.min(2.4, Math.sqrt(d.inkPx / Math.max(a.inkPx, 1))) * 1.1;
+      // uSizeComp3 stays at its default — the inert 4th target never composes.
       setBuild(built);
       useTextMorphStore.setState({ active: true, domReveal: 0 });
 
@@ -416,19 +403,18 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
     // to its end state ONCE. The clocks live in refs (persist across
     // rebuilds), so this also covers fresh builds on later home visits when
     // the provider pinned the store at its end state. After the jump the
-    // normal derivations below keep morphDone/morph2Done/morph3Done true and
-    // domReveal at 1 — the timeline stays deterministic (g is pinned at 1,
-    // nothing can flip a direction back).
-    if (useTextMorphStore.getState().introSkipped && morph3TRef.current < 1) {
+    // normal derivations below keep morphDone/morph2Done true and domReveal at
+    // 1 — the timeline stays deterministic (g is pinned at 1, nothing can flip
+    // a direction back). The FINAL stage is now morph2 ("see what we build" at
+    // the bottom); uMorph3 stays 0 (inert 4th target).
+    if (useTextMorphStore.getState().introSkipped && morph2TRef.current < 1) {
       entryRef.current = 1;
       morphTRef.current = 1;
       morph2TRef.current = 1;
-      morph3TRef.current = 1;
       gSmoothRef.current = 1;
       build.uAssemble.value = 1;
       build.uMorph.value = 1;
       build.uMorph2.value = 1;
-      build.uMorph3.value = 1;
     }
 
     // --- ENTRY clock: the automatic assemble, time-driven ----------------
@@ -496,28 +482,9 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       useTextMorphStore.setState({ morph2Done });
     }
 
-    // --- Third morph clock: C ("see what we build") → D ("scroll" @ bottom).
-    // Fires only after the second leg composes AND scroll passes MORPH3_TRIGGER.
-    const morph3Target = morph3LatchedRef.current
-      ? 1
-      : g >= MORPH3_TRIGGER && morph2TRef.current >= 0.95
-        ? 1
-        : 0;
-    if (morph3TRef.current !== morph3Target) {
-      const dir = morph3Target > morph3TRef.current ? 1 : -1;
-      morph3TRef.current = THREE.MathUtils.clamp(
-        morph3TRef.current + (dir * delta) / MORPH_DURATION,
-        0,
-        1,
-      );
-      build.uMorph3.value = morph3TRef.current;
-    }
-    const morph3Done = morph3TRef.current >= 0.95;
-    if (morph3Done && useTextMorphStore.getState().gateProgress >= 1)
-      morph3LatchedRef.current = true;
-    if (morph3Done !== useTextMorphStore.getState().morph3Done) {
-      useTextMorphStore.setState({ morph3Done });
-    }
+    // (The former THIRD morph leg — "see what we build" → "scroll" — was
+    // removed: "see what we build" is now the FINAL stage and homes at the
+    // bottom. The compute's 4th target equals C, uMorph3 stays 0 / inert.)
 
     // DOM cascade: the hero panel's white texts ([data-hero-stagger]:
     // paragraph → chips → CTAs) stagger in over the last gate stretch,

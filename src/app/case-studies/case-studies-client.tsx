@@ -29,7 +29,11 @@ function GridCard({ study, isEn }: { study: CaseStudy; isEn: boolean }) {
     <Link
       href={`/case-studies/${study.id}`}
       data-cursor="view"
-      className="card-steel group flex flex-col h-full p-7"
+      className={
+        study.previewImage
+          ? "card-steel group flex flex-col h-full p-7 card-has-distort"
+          : "card-steel group flex flex-col h-full p-7"
+      }
       aria-label={`${study.client}, ${engagement}`}
       {...(study.previewImage
         ? { onClick: onFlip, "data-flip-source": study.id }
@@ -41,7 +45,7 @@ function GridCard({ study, isEn }: { study: CaseStudy; isEn: boolean }) {
           alt={`${study.client} product preview`}
         />
       )}
-      <div className="relative z-10 flex flex-col h-full">
+      <div className="relative z-10 flex flex-col h-full card-text-layer">
         <p
           className="text-[10px] font-mono uppercase tracking-[0.18em] mb-3"
           style={{ color: "hsl(var(--accent))" }}

@@ -108,7 +108,9 @@ function StudyCard({
     <Link
       href={`/case-studies/${study.id}`}
       className={
-        hasPreview ? `${CARD_CLASS} card-steel rail-card-distort` : CARD_CLASS
+        hasPreview
+          ? `${CARD_CLASS} card-steel rail-card-distort card-has-distort`
+          : CARD_CLASS
       }
       {...(hasPreview
         ? { "data-no-tilt": "", onClick: onFlip, "data-flip-source": study.id }
@@ -125,8 +127,10 @@ function StudyCard({
         />
       )}
       {/* Text content sits ABOVE the media layer (mirrors the grid's
-          `relative z-10` wrapper); at rest the metric/text card reads as today. */}
-      <div className="relative z-10 flex h-full flex-col">
+          `relative z-10` wrapper); at rest the metric/text card reads as today.
+          `card-text-layer` fades the text out on hover (image shows clean) for
+          the distort cards only — gated by `card-has-distort` on the root. */}
+      <div className="relative z-10 flex h-full flex-col card-text-layer">
         <div className="flex items-center justify-between gap-2 pb-4 border-b border-[hsl(var(--rule)/0.7)]">
           <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-dim tabular-nums">
             {String(index + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}
