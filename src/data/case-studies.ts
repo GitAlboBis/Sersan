@@ -22,6 +22,8 @@ export interface CaseStudy {
   liveUrl?: string;
   /** Optional screenshot of the live product, used as a card preview. */
   previewImage?: string;
+  /** Optional brand logo (monochrome hover-reveal) for cards without a screenshot. */
+  logoImage?: string;
 }
 
 
@@ -51,7 +53,7 @@ export const caseStudies: CaseStudy[] = [
     ],
     liveUrl: "https://www.spherenode.com",
     previewImage: "/case-studies/spherenode-preview.webp",
-
+    logoImage: "/case-studies/logos/logo-white.svg",
   },
   {
     id: "quantex",
@@ -75,7 +77,7 @@ export const caseStudies: CaseStudy[] = [
     ],
     liveUrl: "https://www.quantex.live",
     previewImage: "/case-studies/quantex-preview.webp",
-
+    logoImage: "/case-studies/logos/logo.svg",
   },
   {
     id: "terra-noa",
@@ -123,6 +125,7 @@ export const caseStudies: CaseStudy[] = [
       { value: "~€18M/year", label: "estimated fraud losses prevented (cards + SEPA combined)", labelIt: "perdite da frode prevenute (carte + SEPA combinate)" },
       { value: "p99 220ms → 38ms", label: "inference latency reduction", labelIt: "riduzione latenza di inferenza" },
     ],
+    logoImage: "/case-studies/logos/revolut.svg",
   },
   {
     id: "jp-morgan",
@@ -146,6 +149,7 @@ export const caseStudies: CaseStudy[] = [
       { value: "78%", label: "of eventual downgrades flagged ≥90 days in advance", labelIt: "dei downgrade effettivi segnalati con ≥90 giorni di anticipo" },
       { value: "−18%", label: "satellite fuel per year vs. baseline MPC controller (aerospace research collab)", labelIt: "carburante satellitare all'anno vs. controller MPC baseline (collaborazione di ricerca aerospaziale)" },
     ],
+    logoImage: "/case-studies/logos/jp-morgan.svg",
   },
   {
     id: "apple-uk",
@@ -167,6 +171,7 @@ export const caseStudies: CaseStudy[] = [
       { value: "−23%", label: "stock-outs on top-50 revenue SKUs", labelIt: "rotture di stock sui top-50 SKU per fatturato" },
       { value: "−€4.1M/year", label: "in unplanned air-freight expediting costs", labelIt: "in costi di air-freight non pianificati" },
     ],
+    logoImage: "/case-studies/logos/apple-uk.svg",
   },
   {
     id: "pharma-deloitte",
@@ -210,6 +215,7 @@ export const caseStudies: CaseStudy[] = [
       { value: "0.82 AUC", label: "readmission-risk model on COPD; pilot wards saw −17% readmissions", labelIt: "modello rischio riammissione su COPD; reparti pilota −17% riammissioni" },
       { value: "F1 = 0.91", label: "document auto-classification across 24 specialty classes (~40k hours/year removed)", labelIt: "auto-classificazione documenti su 24 classi di specialità (~40k ore/anno rimosse)" },
     ],
+    logoImage: "/case-studies/logos/accenture.svg",
   },
   {
     id: "salvatori",
@@ -232,6 +238,7 @@ export const caseStudies: CaseStudy[] = [
       { value: "On-prem", label: "Kubernetes-based MLOps stack, fully behind plant firewall", labelIt: "Stack MLOps su Kubernetes, dietro firewall di stabilimento" },
       { value: "Edge", label: "Jetson devices running ONNX-exported models on the line", labelIt: "Jetson sul campo che eseguono modelli esportati ONNX" },
     ],
+    logoImage: "/case-studies/logos/salvatori.svg",
   },
   {
     id: "leonardo",
@@ -254,6 +261,7 @@ export const caseStudies: CaseStudy[] = [
       { value: "0 critical CVEs", label: "in production images for 11 consecutive months post-migration", labelIt: "in immagini di produzione per 11 mesi consecutivi post-migrazione" },
       { value: "4 months → 3 weeks", label: "new defence-customer onboarding (ISO 27001 + NIS2 readiness passed)", labelIt: "onboarding nuovi clienti difesa (ISO 27001 + NIS2 readiness superati)" },
     ],
+    logoImage: "/case-studies/logos/leonardo.svg",
   },
   {
     id: "who",
@@ -276,6 +284,7 @@ export const caseStudies: CaseStudy[] = [
       { value: "−28%", label: "false positives at matched sensitivity vs. previous best open benchmark (Mirai-class)", labelIt: "falsi positivi a sensibilità equivalente vs. miglior benchmark open precedente (classe Mirai)" },
       { value: "WHO guidance", label: "informed peer-reviewed publication on AI-assisted screening in LMIC contexts", labelIt: "pubblicazione peer-reviewed che ha informato le linee guida WHO su screening AI-assistito in contesti LMIC" },
     ],
+    logoImage: "/case-studies/logos/who.svg",
   },
   {
     id: "rsa-italy",

@@ -11,6 +11,7 @@ import { useLanguage } from "@/components/language-provider";
 import { useRailStore } from "@/webgl/store/railStore";
 import { getLenis } from "@/lib/lenis-singleton";
 import { CardImageDistort } from "@/components/fx/card-image-distort";
+import { CardLogoReveal } from "@/components/fx/card-logo-reveal";
 import { SeeMorePortal } from "@/components/fx/see-more-portal";
 import { useFlipSource } from "@/lib/use-flip-source";
 
@@ -100,7 +101,11 @@ function StudyCard({
   // translucent chrome so the planes still paint through. The card box (fixed
   // w/h from CARD_CLASS / the <li>) is unchanged; the media is an absolute
   // inset-0 overlay clipped to the card radius.
-  const hasPreview = Boolean(study.previewImage);
+  // A brand logo (when present) takes priority over a product screenshot for
+  // the card's hover-reveal; preview-only cards keep the screenshot + Flip.
+  const showLogo = Boolean(study.logoImage);
+  const showPreview = !showLogo && Boolean(study.previewImage);
+  const hasMedia = showLogo || showPreview;
   // Hook called unconditionally (rules of hooks); the handler/attr are only
   // attached for cards WITH a preview so the other studies navigate as today.
   const onFlip = useFlipSource(study.id, study.previewImage);
@@ -108,24 +113,27 @@ function StudyCard({
     <Link
       href={`/case-studies/${study.id}`}
       className={
-        hasPreview
+        hasMedia
           ? `${CARD_CLASS} card-steel rail-card-distort card-has-distort`
           : CARD_CLASS
       }
-      {...(hasPreview
+      {...(showPreview
         ? { "data-no-tilt": "", onClick: onFlip, "data-flip-source": study.id }
-        : {})}
+        : showLogo
+          ? { "data-no-tilt": "" }
+          : {})}
       onPointerEnter={() => onHover(index, 1)}
       onPointerLeave={() => onHover(index, 0)}
       onFocus={() => onHover(index, 1)}
       onBlur={() => onHover(index, 0)}
     >
-      {study.previewImage && (
+      {showPreview && study.previewImage && (
         <CardImageDistort
           src={study.previewImage}
           alt={`${study.client} product preview`}
         />
       )}
+      {showLogo && study.logoImage && <CardLogoReveal src={study.logoImage} />}
       {/* Text content sits ABOVE the media layer (mirrors the grid's
           `relative z-10` wrapper); at rest the metric/text card reads as today.
           `card-text-layer` fades the text out on hover (image shows clean) for

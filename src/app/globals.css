@@ -754,6 +754,85 @@ img { height: auto; max-width: 100%; }
   content: none;
 }
 
+/* CardLogoReveal — hover-reveal BRAND MARK for case-study cards with no product
+   screenshot. The real, FULL-COLOUR logo (<img>, keeps brand colours: Accenture
+   purple chevron, Leonardo red, Quantex green, WHO blue, …) sits on top; behind
+   it two offset mask-tinted silhouettes (cyan + violet, screen-blended) add a
+   visible chromatic-aberration glitch fringe without recolouring the logo. The
+   colour layers are SIBLINGS of the <img> (not nested under a mask) so their
+   offset isn't clipped. isolation:isolate keeps the screen blend local.
+   pointer-events:none throughout. */
+.card-logo-reveal {
+  z-index: 0;
+  isolation: isolate;
+}
+.card-logo-reveal__img {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 66%;
+  height: 50%;
+  object-fit: contain;
+  object-position: center;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(1.04);
+  transition:
+    opacity 520ms cubic-bezier(0.215, 0.61, 0.355, 1),
+    transform 720ms cubic-bezier(0.215, 0.61, 0.355, 1);
+  will-change: opacity, transform;
+}
+.card-logo-reveal__layer {
+  position: absolute;
+  inset: 25% 17%;
+  -webkit-mask: var(--card-logo) center / contain no-repeat;
+          mask: var(--card-logo) center / contain no-repeat;
+  -webkit-mask-mode: alpha;
+          mask-mode: alpha;
+  opacity: 0;
+  transition: opacity 520ms cubic-bezier(0.215, 0.61, 0.355, 1);
+  will-change: opacity, transform;
+}
+.card-logo-reveal__cyan   { background-color: hsl(var(--accent)); mix-blend-mode: screen; }
+.card-logo-reveal__violet { background-color: hsl(var(--accent-2)); mix-blend-mode: screen; }
+.card-has-distort:hover .card-logo-reveal__img {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+.card-has-distort:hover .card-logo-reveal__cyan {
+  opacity: 0.7;
+  animation: card-logo-glitch-cyan 3.4s ease-in-out infinite;
+}
+.card-has-distort:hover .card-logo-reveal__violet {
+  opacity: 0.7;
+  animation: card-logo-glitch-violet 3.4s ease-in-out infinite;
+}
+@keyframes card-logo-glitch-cyan {
+  0%, 100% { transform: translate3d(-3px, 0, 0); }
+  43%      { transform: translate3d(-4px, 1px, 0); }
+  47%      { transform: translate3d(-7px, -1.5px, 0); }
+  51%      { transform: translate3d(-2.5px, 0, 0); }
+  80%      { transform: translate3d(-5px, 1px, 0); }
+  84%      { transform: translate3d(-2px, -1px, 0); }
+}
+@keyframes card-logo-glitch-violet {
+  0%, 100% { transform: translate3d(3px, 0, 0); }
+  43%      { transform: translate3d(4px, -1px, 0); }
+  47%      { transform: translate3d(7px, 1.5px, 0); }
+  51%      { transform: translate3d(2.5px, 0, 0); }
+  80%      { transform: translate3d(5px, -1px, 0); }
+  84%      { transform: translate3d(2px, 1px, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-logo-reveal__img {
+    transition: opacity 300ms ease;
+    transform: translate(-50%, -50%);
+  }
+  .card-logo-reveal__cyan,
+  .card-logo-reveal__violet {
+    display: none;
+  }
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;

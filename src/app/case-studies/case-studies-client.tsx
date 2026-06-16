@@ -9,6 +9,7 @@ import { Reveal } from "@/components/ui/reveal";
 import { SectionHeading } from "@/components/ui/section-heading";
 import WorkInProgress from "@/components/sections/work-in-progress";
 import { CardImageDistort } from "@/components/fx/card-image-distort";
+import { CardLogoReveal } from "@/components/fx/card-logo-reveal";
 import { useFlipSource } from "@/lib/use-flip-source";
 
 /**
@@ -25,26 +26,31 @@ function GridCard({ study, isEn }: { study: CaseStudy; isEn: boolean }) {
   const summary = isEn ? study.summary : study.summaryIt;
   // Hook called unconditionally; passing undefined src is a no-op arm.
   const onFlip = useFlipSource(study.id, study.previewImage);
+  // A brand logo (when present) takes priority over a product screenshot.
+  const showLogo = Boolean(study.logoImage);
+  const showPreview = !showLogo && Boolean(study.previewImage);
+  const hasMedia = showLogo || showPreview;
   return (
     <Link
       href={`/case-studies/${study.id}`}
       data-cursor="view"
       className={
-        study.previewImage
+        hasMedia
           ? "card-steel group flex flex-col h-full p-7 card-has-distort"
           : "card-steel group flex flex-col h-full p-7"
       }
       aria-label={`${study.client}, ${engagement}`}
-      {...(study.previewImage
+      {...(showPreview
         ? { onClick: onFlip, "data-flip-source": study.id }
         : {})}
     >
-      {study.previewImage && (
+      {showPreview && study.previewImage && (
         <CardImageDistort
           src={study.previewImage}
           alt={`${study.client} product preview`}
         />
       )}
+      {showLogo && study.logoImage && <CardLogoReveal src={study.logoImage} />}
       <div className="relative z-10 flex flex-col h-full card-text-layer">
         <p
           className="text-[10px] font-mono uppercase tracking-[0.18em] mb-3"
