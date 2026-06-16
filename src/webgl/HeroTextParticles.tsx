@@ -259,7 +259,14 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       // sim's left→right stagger this reads as the reference's travelling
       // assemble wave. If a previous mount already played the entrance,
       // seed at home instead (no replay on route round-trips).
-      const replayDone = useTextMorphStore.getState().assembleDone;
+      // FIX 3a: decide replay vs preserve from THIS instance's lifecycle, not the
+      // cross-bundle store flag (which raced the provider's nav-into-home reset and
+      // left the intro frozen on a route return). A fresh MOUNT (first load /
+      // route-return) still has entryRef at its initial 0 → replay the whole intro;
+      // an in-place REBUILD (resize / language switch) kept entryRef at 1 → preserve
+      // the finished state. A session skip also preserves (jumps to the end).
+      const isRebuild = entryRef.current >= 1;
+      const replayDone = isRebuild || useTextMorphStore.getState().introSkipped;
       let minX = Infinity;
       let maxX = -Infinity;
       for (let i = 0; i < count; i++) {
@@ -331,6 +338,16 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       } else {
         morph1LatchedRef.current = false;
         morph2LatchedRef.current = false;
+        // FIX 3a: a fresh replay must start from a clean store, regardless of any
+        // stale journey flags that survived on the globalThis-pinned store across a
+        // soft route round-trip. (The provider also resets these, but this makes the
+        // replay self-contained and race-proof.)
+        useTextMorphStore.setState({
+          assembleDone: false,
+          gateProgress: 0,
+          morphDone: false,
+          morph2Done: false,
+        });
       }
       built.uAssemble.value = entryRef.current;
       built.uMorph.value = morphTRef.current;
@@ -434,14 +451,18 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
     const g = THREE.MathUtils.damp(gSmoothRef.current, gTarget, 7, delta);
     gSmoothRef.current = g;
 
+    // FIX 3b: the latch only pins the leg while the page is released/forward
+    // (raw gateProgress >= 1). Once the gate re-engages in reverse (gateProgress
+    // < 1, scrolling back up to the very top) the target follows `g` again, so the
+    // morph plays in reverse — the user-requested reverse replay.
+    const rawGate = useTextMorphStore.getState().gateProgress;
+
     // --- Morph clock: scroll TRIGGERS it, time PLAYS it -------------------
     // Past the trigger the morph runs to 1 on its own (entry-style wave);
     // back below the trigger it runs to 0. Constant-speed, never scrubbed.
-    const morphTarget = morph1LatchedRef.current
+    const morphTarget = (morph1LatchedRef.current && rawGate >= 1)
       ? 1
-      : g >= MORPH_TRIGGER
-        ? 1
-        : 0;
+      : g >= MORPH_TRIGGER ? 1 : 0;
     if (morphTRef.current !== morphTarget) {
       const dir = morphTarget > morphTRef.current ? 1 : -1;
       morphTRef.current = THREE.MathUtils.clamp(
@@ -461,11 +482,9 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
     // --- Second morph clock: B (headline) → C ("see what we build") -------
     // Triggers only once the first morph has fully composed AND scroll intent
     // passes MORPH2_TRIGGER; plays / reverses on its own clock like the first.
-    const morph2Target = morph2LatchedRef.current
+    const morph2Target = (morph2LatchedRef.current && rawGate >= 1)
       ? 1
-      : g >= MORPH2_TRIGGER && morphTRef.current >= 0.95
-        ? 1
-        : 0;
+      : g >= MORPH2_TRIGGER && morphTRef.current >= 0.95 ? 1 : 0;
     if (morph2TRef.current !== morph2Target) {
       const dir = morph2Target > morph2TRef.current ? 1 : -1;
       morph2TRef.current = THREE.MathUtils.clamp(
