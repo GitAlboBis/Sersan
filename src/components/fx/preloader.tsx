@@ -282,6 +282,26 @@ export function Preloader() {
     };
     rafId = requestAnimationFrame(frame);
 
+    // ----- Watchdog: rAF-independent hard reveal -----
+    // On a GPU-starved device (e.g. WebGPU on a weak / Windows-ARM Adreno GPU)
+    // the compositor can stop servicing requestAnimationFrame while the shader
+    // pipelines compile — so the counter freezes mid-ease and the curtain never
+    // lifts ("stuck at ~99%", the page never opens). setTimeout fires off the
+    // macrotask queue independent of the rAF cadence, so this GUARANTEES the page
+    // is revealed shortly after the MAX cap no matter how starved rAF is. It HARD-
+    // reveals (no GSAP curtain wipe — that also rides rAF and would be janky/stuck)
+    // so the overlay unmounts and scroll is restored even when the ticker crawls.
+    // No-ops on a healthy device: the rAF path sets `revealed` long before this.
+    const revealTimer = window.setTimeout(() => {
+      if (cancelled || revealed) return;
+      revealed = true;
+      if (barFillRef.current) barFillRef.current.style.transform = "scaleX(1)";
+      setDisplay(100);
+      useIntroStore.getState().complete();
+      restoreScroll();
+      setActive(false); // unmount the overlay immediately (no wipe)
+    }, MAX_VISIBLE_MS + 1500);
+
     // ----- Hand-off: curtain wipe up + line draw-in -----
     function reveal() {
       // Flip the shared flag FIRST so SignatureLine re-kicks its uReveal 0→1 on
@@ -356,6 +376,7 @@ export function Preloader() {
     return () => {
       cancelled = true;
       cancelAnimationFrame(rafId);
+      clearTimeout(revealTimer);
       unsubTier();
       introTweens.forEach((t) => t.kill());
       // If we tear down before revealing (e.g. fast HMR in dev), restore scroll

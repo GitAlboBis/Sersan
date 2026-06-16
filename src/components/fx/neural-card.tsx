@@ -159,7 +159,7 @@ export function NeuralCard({
       className={cn(
         "neural-card group relative flex flex-col overflow-hidden rounded-xl px-5 py-5",
         "bg-[hsl(var(--bg)/0.5)] backdrop-blur-[6px]",
-        "outline-none cursor-default select-text will-change-transform",
+        "outline-none cursor-default select-text",
         "transition-[box-shadow,transform] duration-300 ease-out",
         "motion-reduce:transition-none",
         open && "neural-card--open",

@@ -940,19 +940,6 @@ img { height: auto; max-width: 100%; }
   box-shadow:
     inset 0 1px 0 hsl(216 18% 30% / 0.35),
     0 10px 30px -18px hsl(216 50% 0% / 0.6);
-  /* v6: rest slightly offset toward the network side; slides home on open — the
-     card visibly arrives FROM the network (the node→card "scia"). */
-  transform: translate3d(-14px, 4px, 0);
-}
-@media (min-width: 640px) {
-  .neural-card {
-    transform: translate3d(-18px, 4px, 0);
-  }
-}
-.neural-card--open,
-.neural-card:hover,
-.neural-card:focus-visible {
-  transform: translate3d(0, 0, 0);
 }
 .neural-card:hover,
 .neural-card:focus-visible,
@@ -1117,11 +1104,7 @@ img { height: auto; max-width: 100%; }
     transition: none !important;
     animation: none !important;
   }
-  /* No card slide-in and no border sweep under reduced motion (instant). */
-  .neural-card,
-  .neural-card--open {
-    transform: none !important;
-  }
+  /* No border sweep under reduced motion. */
   .neural-card__sweep {
     opacity: 0 !important;
   }
