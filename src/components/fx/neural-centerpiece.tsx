@@ -41,9 +41,9 @@ export interface CenterpieceNode {
  *   node0 upper-left · node1 lower-center · node2 upper-right.
  */
 const MARKER_LAYOUT: { left: string; top: string }[] = [
-  { left: "20%", top: "30%" },
-  { left: "52%", top: "74%" },
-  { left: "82%", top: "36%" },
+  { left: "24%", top: "32%" }, // node0 upper-left  (label fans up-left)
+  { left: "50%", top: "70%" }, // node1 lower-center (lifted so the below-label has room)
+  { left: "78%", top: "34%" }, // node2 upper-right (label fans up-right)
 ];
 
 interface NeuralCenterpieceProps {

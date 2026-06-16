@@ -159,7 +159,7 @@ export function NeuralCard({
       className={cn(
         "neural-card group relative flex flex-col overflow-hidden rounded-xl px-5 py-5",
         "bg-[hsl(var(--bg)/0.5)] backdrop-blur-[6px]",
-        "outline-none cursor-default select-text",
+        "outline-none cursor-default select-text will-change-transform",
         "transition-[box-shadow,transform] duration-300 ease-out",
         "motion-reduce:transition-none",
         open && "neural-card--open",
@@ -171,6 +171,14 @@ export function NeuralCard({
       <span
         aria-hidden="true"
         className="neural-card__border pointer-events-none absolute inset-0 rounded-xl"
+      />
+
+      {/* v6: a cyan→violet shimmer that sweeps once along the border when the
+          card opens — the DOM half of the node→card "scia". Decorative; the
+          animation only runs while the card has [data-open="true"]. */}
+      <span
+        aria-hidden="true"
+        className="neural-card__sweep pointer-events-none absolute inset-0 rounded-xl"
       />
 
       {/* Eyebrow — JetBrains mono `0N · label`. The broken surface tints the

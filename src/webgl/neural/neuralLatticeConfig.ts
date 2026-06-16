@@ -258,10 +258,25 @@ export const NEURAL_DAMPING = 8.0;
 export const NEURAL_MAX_SPEED = 8;
 
 // --- broken-mode dispersal --------------------------------------------------
-/** Outward dispersal distance scale for dead flow particles (broken mode). */
-export const DISPERSE_SPREAD = 1.4;
-/** Bézier parametric point past which a DEAD flow particle detaches. */
-export const BREAK_T = 0.5;
+/** Outward dispersal distance scale for dead flow particles (broken mode).
+ * v6: 1.4 → 1.8 — wider scatter so the severed span carves a visible gap. */
+export const DISPERSE_SPREAD = 1.8;
+/** Bézier parametric point past which a DEAD flow particle detaches.
+ * v6: 0.5 → 0.46 — the dark/severed half occupies more of the arc → reads severed. */
+export const BREAK_T = 0.46;
+/** Width of the detach smoothstep window past BREAK_T (crisper severance edge).
+ * v6: replaces the inline 0.12 at ALL THREE call sites (anchorNode flow dispersal,
+ * compute simulate spring-weaken, compute/static render vAlive). */
+export const DISPERSE_WINDOW = 0.08;
+/** Resting dispersal floor (broken only) so the dead span reads SEVERED even with
+ * NO in-view pulse. v6: replaces the inline 0.2 in NeuralLattice's disperseTarget.
+ * Kept modest (0.38) so the dead arc reads severed-but-present, not blank. */
+export const DISPERSE_BASELINE = 0.38;
+/** How hard a fully-dispersed dead particle fades out (alpha *= 1 − disp·FADE).
+ * v6: 0.9 leaves a ~10% ghost at the fracture so the severed line still hints
+ * rather than hard-cutting. Replaces the inline 0.85 (compute) + brings the
+ * static branch — which had NO fade at all — to parity. */
+export const DISPERSE_FADE = 0.9;
 
 // --- v3 travelling signal (a bright packet visibly runs hub→hub) ------------
 /** Gaussian sharpness of the moving brightness peak along each arc. Higher K →
@@ -281,13 +296,16 @@ export const SIGNAL_PULSE_SPEED = 1.1;
 export const SIGNAL_PULSE_GAIN = 1.4;
 
 // --- v4 hover ignition ------------------------------------------------------
-/** Emissive multiplier applied to the HOVERED hub (it flares). */
-export const HOVER_FLARE = 1.8;
+/** Emissive multiplier applied to the HOVERED hub (it flares).
+ * v6: 1.8 → 2.0 — the hovered hub holds slightly brighter so the link to the
+ * opening card persists after the burst transient decays. */
+export const HOVER_FLARE = 2.0;
 /** Emissive multiplier applied to the NON-hovered hubs while one is hovered
  * (they recede). */
 export const HOVER_DIM = 0.5;
-/** Hub radius pulse (fractional growth) of the hovered hub. */
-export const HOVER_RADIUS_PULSE = 0.35;
+/** Hub radius pulse (fractional growth) of the hovered hub.
+ * v6: 0.35 → 0.45 — the hovered orb holds a touch bigger under the burst. */
+export const HOVER_RADIUS_PULSE = 0.45;
 /** Extra signal-speed/brightness multiplier on the hovered hub's incident arcs.*/
 export const HOVER_ARC_BOOST = 1.6;
 /** Damp rate of the per-hub glow toward its hover target (smooth transition). */
@@ -302,19 +320,32 @@ export const HOVER_GLOW_DAMP = 7.0;
 // per-hub via uHubBurst.element(i) and pushes node particles along their sphere
 // offset by (1 + uHubBurst·HOVER_BURST_AMP), plus an emissive add.
 /** Peak outward expansion of node particles during the burst (fractional growth
- * of the sphere-offset radius). A real surge, well past the steady radius pulse. */
-export const HOVER_BURST_AMP = 1.15;
-/** Emissive spike added at the burst peak (on top of the steady hub glow). */
-export const HOVER_BURST_EMISSIVE = 1.4;
+ * of the sphere-offset radius). A real surge, well past the steady radius pulse.
+ * v6: 1.15 → 1.7 — a real ~2× momentary orb expansion (a shockwave, not a nudge). */
+export const HOVER_BURST_AMP = 1.7;
+/** Emissive spike added at the burst peak (on top of the steady hub glow).
+ * v6: 1.4 → 1.9 — brighter pop, kept under 2.2 so the bloom halo doesn't ring
+ * the DOM card copy (tune UP under live QA only if it reads weak). */
+export const HOVER_BURST_EMISSIVE = 1.9;
 /** Burst attack damp rate (how fast it ramps to 1 on the rising edge). High =
- * a near-instant surge. */
-export const HOVER_BURST_ATTACK = 16.0;
+ * a near-instant surge. v6: 16 → 22 — snappier pop on the rising edge. */
+export const HOVER_BURST_ATTACK = 22.0;
 /** Burst decay damp rate (how fast it re-settles toward 0 after the surge).
- * Lower than attack → quick out, gentle resettle. */
-export const HOVER_BURST_DECAY = 3.2;
+ * Lower than attack → quick out, gentle resettle. v6: 3.2 → 2.6 — the orb
+ * breathes back over ~0.4s so the eye tracks expand→resettle as one gesture. */
+export const HOVER_BURST_DECAY = 2.6;
 /** Extra incident-arc signal speed/brightness boost toward the hovered hub's
- * card during the burst (on top of HOVER_ARC_BOOST). */
-export const HOVER_BURST_ARC = 0.8;
+ * card during the burst (on top of HOVER_ARC_BOOST). v6: 0.8 → 1.3 — the signal
+ * visibly races toward the opening card (the WebGL half of the node→card scia). */
+export const HOVER_BURST_ARC = 1.3;
+/** v6 burst SHOCKWAVE: a brief extra emissive flash layered on top of
+ * HOVER_BURST_EMISSIVE, gated by vBurst² so it spikes ONLY at the transient peak
+ * (reads as a shockwave pop, not a soft hold). Reuses the existing vBurst varying
+ * — NO new uniform/buffer. NOTE: this MULTIPLIES on top of HOVER_BURST_EMISSIVE,
+ * so it's the PRODUCT that blooms — kept at 0.6 so the compounded burst peak
+ * (~node 4.4 × flare × (1+vBurst·1.9) × (1+vBurst²·0.6)) stays near the v5 level
+ * and the halo doesn't ring the offset marker label. Tune on the x86 desktop. */
+export const HOVER_BURST_SHOCK = 0.6;
 
 // --- v4 parallax / life (hubs are layout-pinned → subtle motion only) -------
 /** Whole-group damped pointer-parallax amplitude (radians yaw/pitch). STRONG-3D

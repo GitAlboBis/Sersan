@@ -51,6 +51,8 @@ import {
   NEURAL_ARC_BOW,
   DISPERSE_SPREAD,
   BREAK_T,
+  DISPERSE_WINDOW,
+  DISPERSE_FADE,
   FIELD_NODE_EMISSIVE,
   FIELD_FLOW_EMISSIVE,
   FIELD_ALPHA_FLOOR,
@@ -73,6 +75,7 @@ import {
   HOVER_BURST_AMP,
   HOVER_BURST_EMISSIVE,
   HOVER_BURST_ARC,
+  HOVER_BURST_SHOCK,
   SEED_SCATTER_XY,
   SEED_SCATTER_Z,
 } from "./neuralLatticeConfig";
@@ -397,7 +400,7 @@ export function createNeuralFieldBuild(
     const flowOnArc = bez.add(jit).toVar();
 
     // Broken dispersal: dead flow particles past BREAK_T detach outward.
-    const past = smoothstep(float(BREAK_T), float(BREAK_T).add(0.12), tFlow);
+    const past = smoothstep(float(BREAK_T), float(BREAK_T).add(DISPERSE_WINDOW), tFlow);
     const outDir = bHub.add(vec3(1e-5, 1e-5, 1e-5)).normalize();
     const dispersed = bHub.add(
       outDir.mul(uDisperse.mul(past).mul(dead).mul(uBroken).mul(DISPERSE_SPREAD)),
@@ -462,6 +465,9 @@ export function createNeuralFieldBuild(
     const vDead = float(0).toVar();
     const vGlow = float(1).toVar();
     const vBurst = float(0).toVar();
+    // v6: static branch gains a dead-arc FADE envelope (it previously had none),
+    // mirroring the compute branch so both backends carve the same severed gap.
+    const vAlive = float(1).toVar();
     const vSignal = float(1).toVar();
 
     material.vertexNode = Fn(() => {
@@ -494,6 +500,20 @@ export function createNeuralFieldBuild(
       vDepth.assign(depthT(center.z));
       vRole.assign(aMeta.x);
       vDead.assign(aMeta.w);
+      // Dead-arc dispersal FADE (broken·dead·flow only): past BREAK_T the dead
+      // span's flow particles fade toward a ghost so the severed segment vanishes
+      // into the void (carving the gap). uBroken-gated → healthy is untouched.
+      const pastS = smoothstep(
+        float(BREAK_T),
+        float(BREAK_T).add(DISPERSE_WINDOW),
+        tFlowS,
+      );
+      const dispS = clamp(
+        uDisperse.mul(pastS).mul(aMeta.w).mul(aMeta.x).mul(uBroken),
+        float(0),
+        float(1),
+      );
+      vAlive.assign(float(1).sub(dispS.mul(float(DISPERSE_FADE))));
 
       const mv = modelViewMatrix.mul(vec4(center, 1.0)).toVar();
       const dist = mv.z.negate();
@@ -520,13 +540,18 @@ export function createNeuralFieldBuild(
     const vDeadF = varying(vDead);
     const vGlowF = varying(vGlow);
     const vBurstF = varying(vBurst);
+    const vAliveF = varying(vAlive);
     const vSignalF = varying(vSignal);
 
     const shade = Fn(() => {
       const disc = smoothstep(0.5, 0.12, length(vQuadUv)).toVar();
       const grad = mix(uColCyan, uColViolet, clamp(vDepthF, float(0), float(1)));
       const deadMix = uBroken.mul(vDeadF);
-      const tone = mix(grad, uColDead, deadMix.mul(0.6)).toVar();
+      const tone = mix(
+      grad,
+      uColDead,
+      clamp(deadMix.mul(0.6).add(float(1).sub(vAliveF).mul(0.4)), float(0), float(1)),
+    ).toVar();
       const emis = mix(
         float(FIELD_NODE_EMISSIVE).mul(float(FIELD_NODE_EMIS_FLOOR)),
         float(FIELD_FLOW_EMISSIVE).mul(float(FIELD_FLOW_EMIS_FLOOR)),
@@ -534,10 +559,16 @@ export function createNeuralFieldBuild(
       )
         .mul(vGlowF)
         .mul(float(1).add(vBurstF.mul(float(HOVER_BURST_EMISSIVE))))
+        // v6 shockwave: brief extra flash gated by vBurst² (transient peak only).
+        .mul(float(1).add(vBurstF.mul(vBurstF).mul(float(HOVER_BURST_SHOCK))))
         .mul(float(1).sub(deadMix.mul(0.5)))
         .mul(vSignalF);
       const col = tone.toVec3().mul(emis);
-      const alpha = disc.mul(float(FIELD_ALPHA_FLOOR)).mul(uReveal).toVar();
+      const alpha = disc
+        .mul(float(FIELD_ALPHA_FLOOR))
+        .mul(vAliveF)
+        .mul(uReveal)
+        .toVar();
       Discard(alpha.lessThan(0.004));
       return vec4(col, alpha);
     })();
@@ -601,7 +632,7 @@ export function createNeuralFieldBuild(
 
     // Weaken the spring for dispersing dead flow particles (broken span arc).
     const tFlowSim = flowParam(offN.x, metaN.y, metaN.z);
-    const past = smoothstep(float(BREAK_T), float(BREAK_T).add(0.12), tFlowSim);
+    const past = smoothstep(float(BREAK_T), float(BREAK_T).add(DISPERSE_WINDOW), tFlowSim);
     const dispersing = clamp(
       uDisperse.mul(past).mul(dead).mul(role).mul(uBroken),
       float(0),
@@ -662,13 +693,13 @@ export function createNeuralFieldBuild(
     vDead.assign(dead);
 
     const tF = flowParam(off.x, hubA, hubB);
-    const past = smoothstep(float(BREAK_T), float(BREAK_T).add(0.12), tF);
+    const past = smoothstep(float(BREAK_T), float(BREAK_T).add(DISPERSE_WINDOW), tF);
     const disp = clamp(
       uDisperse.mul(past).mul(dead).mul(role).mul(uBroken),
       float(0),
       float(1),
     );
-    vAlive.assign(float(1).sub(disp.mul(0.85)));
+    vAlive.assign(float(1).sub(disp.mul(float(DISPERSE_FADE))));
     vSignal.assign(mix(float(1), signalBrightness(tF, hubA, hubB), role));
 
     const mv = modelViewMatrix.mul(vec4(p, 1.0)).toVar();
@@ -703,7 +734,11 @@ export function createNeuralFieldBuild(
     const grad = mix(uColCyan, uColViolet, clamp(vDepthF, float(0), float(1)));
     // broken: the dead span arc desaturates toward COL_DEAD + dims.
     const deadMix = uBroken.mul(vDeadF);
-    const tone = mix(grad, uColDead, deadMix.mul(0.6)).toVar();
+    const tone = mix(
+      grad,
+      uColDead,
+      clamp(deadMix.mul(0.6).add(float(1).sub(vAliveF).mul(0.4)), float(0), float(1)),
+    ).toVar();
     const emis = mix(
       float(FIELD_NODE_EMISSIVE).mul(float(FIELD_NODE_EMIS_FLOOR)),
       float(FIELD_FLOW_EMISSIVE).mul(float(FIELD_FLOW_EMIS_FLOOR)),
@@ -711,6 +746,9 @@ export function createNeuralFieldBuild(
     )
       .mul(vGlowF)
       .mul(float(1).add(vBurstF.mul(float(HOVER_BURST_EMISSIVE))))
+      // v6 shockwave: a brief extra flash gated by vBurst² so it spikes only at
+      // the transient burst peak (reads as a pop, not a soft hold).
+      .mul(float(1).add(vBurstF.mul(vBurstF).mul(float(HOVER_BURST_SHOCK))))
       .mul(float(1).sub(deadMix.mul(0.5)))
       .mul(vSignalF);
     const col = tone.toVec3().mul(emis);

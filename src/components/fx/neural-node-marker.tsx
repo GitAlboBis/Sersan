@@ -60,6 +60,23 @@ function useHoverCapable() {
   return canHover;
 }
 
+// Per-marker label placement. The DOT stays ON the orb center (it carries
+// data-lattice-node); the number/label is offset VERTICALLY away from the dot —
+// the two UPPER hubs (0, 2) caption ABOVE, the LOWER hub (1) captions BELOW. The
+// label is horizontally CENTERED on its dot (not fanned sideways) so a
+// whitespace-nowrap label can never overflow the centerpiece box on the narrow
+// single-column stack (avoids clipping under the section's overflow-hidden). The
+// 34px gap clears the dense WebGL hub orb (~30px screen radius); on mobile (no
+// orb — the small SVG fallback hub) it simply reads as a tidy caption. NOTE: the
+// orb's screen size scales with the centerpiece height — fine-tune the 34px on
+// the x86 desktop (live WebGPU) if a label still grazes the glow.
+const LABEL_DIR: Record<number, string> = {
+  0: "left-1/2 -translate-x-1/2 bottom-full -translate-y-[34px] text-center",
+  1: "left-1/2 -translate-x-1/2 top-full translate-y-[34px] text-center",
+  2: "left-1/2 -translate-x-1/2 bottom-full -translate-y-[34px] text-center",
+};
+const labelDir = (i: number) => LABEL_DIR[i] ?? LABEL_DIR[1];
+
 export function NeuralNodeMarker({
   anchorId,
   index,
@@ -112,7 +129,6 @@ export function NeuralNodeMarker({
   return (
     <button
       type="button"
-      data-lattice-node={`${anchorId}:${index}`}
       aria-controls={controls}
       aria-expanded={open}
       onPointerEnter={onEnter}
@@ -123,24 +139,34 @@ export function NeuralNodeMarker({
       style={style}
       data-open={open ? "true" : "false"}
       className={cn(
-        "neural-node-marker group absolute z-10 flex -translate-x-1/2 -translate-y-1/2 items-center gap-2",
-        "rounded-full px-2.5 py-1.5 outline-none",
-        "transition-[transform,box-shadow] duration-300 ease-out motion-reduce:transition-none",
-        "hover:scale-105 focus-visible:scale-105",
+        // Zero-footprint anchor placed at the MARKER_LAYOUT % point (style=left/top).
+        // The DOT (absolute, CSS-centered) sits ON that point and IS the measured
+        // node; the LABEL is offset radially OUT. An enlarged transparent ::before
+        // (globals.css) keeps the focus/tap target comfortable despite the 0×0 box.
+        "neural-node-marker group absolute z-10 block h-0 w-0 outline-none",
       )}
     >
-      {/* The glowing core dot — sits where the WebGL hub orb renders. */}
+      {/* The glowing core dot — IS the measured node (carries data-lattice-node);
+          its box center == the dot center == the WebGL hub orb center. Centered on
+          the button origin via CSS transform (.neural-node-marker__dot) so a hover
+          scale can compose with the centering translate. */}
       <span
+        data-lattice-node={`${anchorId}:${index}`}
         aria-hidden="true"
         className={cn(
-          "neural-node-marker__dot relative inline-block h-3 w-3 shrink-0 rounded-full",
-          broken
-            ? "bg-[hsl(var(--ink-mute)/0.9)]"
-            : "bg-[hsl(var(--accent))]",
+          "neural-node-marker__dot absolute left-0 top-0 inline-block h-3 w-3 rounded-full",
+          broken ? "bg-[hsl(var(--ink-mute)/0.9)]" : "bg-[hsl(var(--accent))]",
         )}
       />
-      {/* Number + short label. */}
-      <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink leading-none">
+      {/* Number + short label — offset radially OUTWARD from the dot so it never
+          overlaps the hub orb. Carries the small glass chrome (.__label). */}
+      <span
+        className={cn(
+          "neural-node-marker__label absolute whitespace-nowrap rounded-full px-2 py-1",
+          "font-mono text-[10px] tracking-[0.16em] uppercase leading-none text-ink",
+          labelDir(index),
+        )}
+      >
         <span className="tabular-nums text-[hsl(var(--accent)/0.95)]">
           {`0${index + 1}`}
         </span>

@@ -65,6 +65,7 @@ import {
   HOVER_GLOW_DAMP,
   HOVER_BURST_ATTACK,
   HOVER_BURST_DECAY,
+  DISPERSE_BASELINE,
   cardCenterToLocal,
   type LatticeMode,
 } from "./neural/neuralLatticeConfig";
@@ -339,7 +340,9 @@ export function NeuralLattice({
     }
 
     // --- Dispersal ramp (broken only) ---------------------------------------
-    const disperseTarget = broken ? Math.max(0.2, maxPulse) : 0;
+    // v6: a resting BASELINE floor so the dead span reads SEVERED even with no
+    // in-view pulse; a pulse drives it toward 1.0 for a stronger scatter.
+    const disperseTarget = broken ? Math.max(DISPERSE_BASELINE, maxPulse) : 0;
     disperseRef.current = THREE.MathUtils.damp(
       disperseRef.current,
       disperseTarget,

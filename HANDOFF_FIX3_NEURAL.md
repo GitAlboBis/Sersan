@@ -1,6 +1,6 @@
 # HANDOFF — FIX 3: rete neurale 3D di particelle (Problem + ProductionGrade)
 
-> Documento per **continuare da un altro PC / da una nuova sessione**. Aggiornato: 2026-06-15.
+> Documento per **continuare da un altro PC / da una nuova sessione**. Aggiornato: 2026-06-16.
 > Le sessioni Claude Code e la memoria NON si sincronizzano tra PC: viaggia solo il **repo git**. Questo file è committato, quindi lo ritrovi facendo `git pull` del branch.
 
 ## Come riprendere su un altro PC
@@ -50,12 +50,25 @@ Verificato dal vivo su WebGPU (Chrome): entrambe le sezioni renderizzano, hover-
 - `const delta = Math.min(rawDelta, 1/30)`.
 - Camera-lock: l'island NON scrive mai la camera (single authority = `SignatureLine`); posizione+quaternion dal rect, scale dal rect; ruota solo il group interno.
 
-## Aperti / prossime rifiniture (proposte all'utente)
-1. Etichette 01/02/03 a volte si sovrappongono alle particelle dell'hub → ripulire posizionamento marker.
-2. Intensificare burst + animazione apertura card (scia nodo→card più marcata).
-3. Modalità **broken**: rendere più leggibile frattura/dispersione del percorso morto.
-4. **Mobile/no-WebGPU**: il fallback SVG è ancora la vecchia grafica → allinearlo alla nuova rete a 3 nodi.
+## v6 — rifiniture implementate (2026-06-16, NON ancora committate)
+Tutte e 4 le rifiniture aperte sono fatte. `npx tsc --noEmit` pulito; review avversariale (4 reviewer + sintesi) → **zero must-fix**, contratto rispettato (parità static↔compute verificata, `.toAttribute().xyz`, `uPulse.array`, camera mai scritta, ecc.).
+1. **Marker/etichette** — `data-lattice-node` spostato dal `<button>` al **DOT** (così l'orb WebGL si ancora esattamente al pallino); il button è un'ancora 0×0 (niente pill centrata), dot centrato via CSS transform (lo scale hover compone), **etichetta spostata verticalmente** (hub alti 0/2 → caption sopra; hub basso 1 → sotto), centrata sul dot così una label `nowrap` non sborda mai il box nello stack a colonna singola. Chrome (vetro) spostato button→`.neural-node-marker__label` + hit-zone `::before` 40px. `MARKER_LAYOUT` ritoccato a `[24,32] [50,70] [78,34]`.
+2. **Burst + scia card** — costanti `HOVER_BURST_*` ritarate (AMP 1.7, EMISSIVE 1.9, ATTACK 22, DECAY 2.6, ARC 1.3, **SHOCK 0.6**) + nuovo termine emissive `vBurst²·SHOCK` (shockwave) in **entrambi** i rami shader; card che **scivola dal lato rete** + **sweep cyan→violet** lungo il bordo all'apertura (`.neural-card__sweep`), reduced-motion safe.
+3. **Broken/dispersione** — fade reale delle particelle morte (`vAlive`) ora in **entrambi** i rami (lo static non l'aveva), `DISPERSE_BASELINE` a riposo (lo span legge "spezzato" anche senza pulse), tono che desatura verso `COL_DEAD` mentre si disperde. Costanti: `DISPERSE_SPREAD 1.8`, `BREAK_T 0.46`, `DISPERSE_WINDOW 0.08`, `DISPERSE_BASELINE 0.38`, `DISPERSE_FADE 0.9`.
+4. **Fallback SVG** (`neural-graph-fallback.tsx`) — riscritto: 3 hub a **triangolo** (mirror di `MARKER_LAYOUT`/`HUB_DEFAULT_XY`) + 3 archi Bézier curvi (0→1, 1→2, span 0→2) + pacchetto-segnale; broken = lo span 0→2 muore a `BREAK_T` e si disperde (scatter dots), hub far spento; reduced-motion = frame statico con scatter visibile. `buildLatticeLayout` lasciato esportato (intatto).
+
+### Da rifinire/QA SUL DESKTOP x86 (questo portatile non regge WebGPU — vedi sotto)
+- **S1 (burst emissive)**: il picco emissive del burst è ~2× la v5 → su WebGPU+Bloom potrebbe "alonare" l'etichetta del nodo. Ho già abbassato `HOVER_BURST_SHOCK`→0.6; verificare dal vivo e, se troppo forte, scendere ancora `HOVER_BURST_EMISSIVE`/`SHOCK`; se debole, salire. (Tutto in `neuralLatticeConfig.ts`, una riga.)
+- **S2/Task1 offset etichetta**: il gap verticale 34px clear-a l'orb stimato ~30px di raggio schermo; l'orb scala con l'altezza del centerpiece → tarare il `34px` in `LABEL_DIR` (`neural-node-marker.tsx`) se una label sfiora il bagliore.
+- QA visiva (Problem + ProductionGrade + fallback) + console pulita: da fare sul desktop.
+
+## ⚠️ Hardware: il WebGPU NON gira su questo portatile (Snapdragon X / ARM)
+Questo portatile è un **Snapdragon X Elite X1E80100 (ARM64) con GPU Adreno X1-85**. Il supporto WebGPU su Adreno/Windows-ARM in Chrome è debole/instabile: con `NEXT_PUBLIC_WEBGPU=1` la compilazione delle pipeline TSL satura la GPU e **affama il rAF del preloader → si blocca al ~99%** (il cap di sicurezza 3.5s non scatta perché il rAF è fermo). NON è un bug del sito né "troppo pesante in assoluto" — è la GPU ARM.
+- **`.env.local` è per-macchina e gitignored** (non viaggia col repo). Su questo portatile: `NEXT_PUBLIC_WEBGPU=0` → renderer WebGL classico + fallback SVG (gira fluido). Sul **desktop x86**: `NEXT_PUBLIC_WEBGPU=1` per sviluppare/QA gli island WebGPU (rete neurale, gpgpu, postprocessing TSL).
+- Attualmente il file è a `=1` (richiesto). Per vederlo fluido sul portatile, mettere `=0` e riavviare `npm run dev`.
+- **La QA visiva del look WebGPU (Problem/ProductionGrade) va fatta sul desktop.** Su questo portatile si può QA solo il fallback SVG (flag a 0 / mobile / reduced-motion).
 
 ## Note
 - Push: **non ancora fatto** (policy: push solo su richiesta). Per usarlo sull'altro PC va pushato `feat/webgl-refactor`.
+- Le rifiniture v6 sopra sono nel working tree, **non committate** (commit su richiesta).
 - Restano modifiche pre-esistenti NON di questo lavoro (non committate): `AGENTS.md`, `case-studies-rail.tsx`, `sersan-logo.tsx`, `see-more-portal.tsx`, alcune research `flip-*.md`. Lasciate intatte di proposito.
