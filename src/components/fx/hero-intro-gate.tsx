@@ -36,10 +36,13 @@ import { useTextMorphStore } from "@/webgl/store/textMorphStore";
 
 /** Total wheel distance (px) that maps the gate 0 → 1. Generous on purpose —
  * the intro should feel like a deliberate BLOCK the visitor scrolls through
- * (designer-site style), not a flick: ~4 full wheel swipes. Sized so the
- * timeline's hold plateaus (HeroTextParticles: solid brand ~24%, settled
- * headline ~15%) each absorb a meaningful chunk of real scrolling. */
-const GATE_DISTANCE = 8500;
+ * (designer-site style), not a flick. Sized so the timeline's hold plateaus
+ * each absorb a meaningful chunk of real scrolling, while keeping the FINAL
+ * "see what we build" cue's tail short so the page unlocks soon after it forms
+ * (user decision 2026-06-17): brand "Sersan AI" holds ~0→0.30 (~1890px), the
+ * headline holds ~0.30→0.59 (~1830px), and the cue owns the remaining
+ * ~0.59→1.0 (~2580px) before the gate releases. */
+const GATE_DISTANCE = 6300;
 /** Touch drag maps a bit faster (smaller screens, shorter gestures). */
 const TOUCH_FACTOR = 2.2;
 

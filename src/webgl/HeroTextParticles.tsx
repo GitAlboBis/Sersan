@@ -57,18 +57,21 @@ const ENTRY_DURATION = 3.6;
 // clock. The gate refuses to release the page until the headline is fully
 // composed (store.morphDone), so the visitor can never out-scroll it.
 //
-// The two payoffs HOLD against scroll (user decision 2026-06-10): the brand
-// owns 0→0.45 (~2070px of wheel at GATE_DISTANCE 4600), the revealed
-// headline owns 0.7→1.0 (~1380px). No solid white DOM text anywhere:
-// [data-hero-brand] stays opacity:0 forever (anchor/typography source only).
+// The payoffs HOLD against scroll, but the FINAL cue's tail is kept short so
+// the page unlocks soon after "see what we build" forms (user decision
+// 2026-06-17). At GATE_DISTANCE 6300px (hero-intro-gate.tsx): the brand
+// "Sersan AI" holds 0→~0.30 (~1890px), the headline holds ~0.30→~0.59
+// (~1830px), and the "see what we build" cue holds ~0.59→1.0 (~2580px) before
+// the gate releases. No solid white DOM text anywhere: [data-hero-brand] stays
+// opacity:0 forever (anchor/typography source only).
 /** Scroll-intent threshold that triggers the (automatic) A→B morph
- * ("Sersan AI" → headline). Pulled in from 0.45 to make room for a third
- * stage on the same gate. */
-const MORPH_TRIGGER = 0.22;
+ * ("Sersan AI" → headline). */
+const MORPH_TRIGGER = 0.3;
 /** Scroll-intent threshold that triggers the SECOND (and FINAL) morph B→C
  * (headline → "see what we build" at the BOTTOM). Only fires once the first
- * morph has composed. */
-const MORPH2_TRIGGER = 0.44;
+ * morph has composed. Pushed later (0.44→0.59) to shorten the post-cue tail
+ * so the page unlocks sooner once the cue is formed. */
+const MORPH2_TRIGGER = 0.59;
 /** Seconds for the one-shot morph animation (entry-style wave). Shared by
  * all morph legs. */
 const MORPH_DURATION = 2.6;
