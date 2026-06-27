@@ -11,11 +11,13 @@
  * DEFAULT_SPORE_PRESET_ID in sporePresets.ts.
  *
  * WHEN IT SHOWS: only on the home route (where HeroLogo mounts) AND only when
- * enabled — in dev automatically, or in any build by adding `?logolab` to the
- * URL (so it works on a Vercel preview the boss opens). `?logolab` persists the
- * choice per-browser; `?logolab=0` (or `=off`) is the kill switch that disables
- * it and clears the saved flag. It is purely a tuning tool: never visible to
- * ordinary visitors, no SSR output (mounts after hydration), and
+ * enabled. Enabled automatically on INTERNAL hosts the team reviews on —
+ * localhost and the *.vercel.app preview/staging domain (e.g.
+ * sersan.vercel.app) — and on any host by adding `?logolab` to the URL. It is
+ * NEVER auto-shown on the public custom domain (www.sersan.io), so real
+ * visitors never see it. `?logolab` persists the choice per-browser;
+ * `?logolab=0` (or `=off`) is the kill switch that disables it and clears the
+ * saved flag. Purely a tuning tool: no SSR output (mounts after hydration), and
  * tree-shake-friendly (no heavy 3D imports — sporePresets is pure data).
  *
  * CONTROLS: click a variant, or ◀ / ▶ (and ← / → arrow keys) to cycle, or H to
@@ -59,9 +61,19 @@ export function LogoLab() {
     if (off) window.localStorage.removeItem("sersan:logolab");
     else if (params.has("logolab"))
       window.localStorage.setItem("sersan:logolab", "1");
+    // Auto-show on the INTERNAL hosts the team uses to review (the *.vercel.app
+    // preview/staging domain + localhost) so the boss doesn't have to remember
+    // ?logolab — but NEVER on the public custom domain (www.sersan.io), where
+    // the gate stays ?logolab-only so real visitors never see the tuning panel.
+    const host = window.location.hostname;
+    const isInternalHost =
+      host.endsWith(".vercel.app") ||
+      host === "localhost" ||
+      host === "127.0.0.1";
     const on =
       !off &&
       (process.env.NODE_ENV !== "production" ||
+        isInternalHost ||
         params.has("logolab") ||
         window.localStorage.getItem("sersan:logolab") === "1");
     setEnabled(on);
