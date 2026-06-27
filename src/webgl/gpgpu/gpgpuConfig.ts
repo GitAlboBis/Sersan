@@ -113,7 +113,10 @@ export const DEFAULT_GPGPU_CONFIG: GpgpuConfig = {
   // ×(1+vSpeed*0.35). Live-tunable via fxStore.gpgpuEmissive (LineDebug
   // "GPGPU emissive / glow").
   EMISSIVE: 2.6,
-  COL_COLD: [0.42, 0.3, 0.86],
+  // Blue (was violet [0.42,0.3,0.86]) — the brand palette is blue/cyan, no
+  // purple. Only the NON-WebGPU static fallback mark reads these; the shipping
+  // spores path takes its colours from the active variant (sporePresets.ts).
+  COL_COLD: [0.16, 0.42, 0.95],
   COL_HOT: [0.28, 0.95, 0.95],
 };
 
@@ -258,67 +261,13 @@ export const SPORE_LAYER: {
   },
 };
 
-/** CORE spore shell — the layer REVEALED when the violet crust erodes.
- * f_007 ground truth: it is the SAME spore material (bumpy shaded balls, you
- * can see the granularity), but CYAN and GLOWING, and it barely moves — DDD's
- * `dist<0.5` population that never detaches. So: same icosphere render,
- * azure-cyan albedo + always-on HDR emission (carries its own light → bloom),
- * stiff calm spring (high SPRING/DAMPING, low PUSH = "lo strato sopra si
- * sposta più facilmente"), and LIFE_DECAY 0 → immortal (never erodes). Sampled
- * INSET along −normal so it sits a full spore-radius beneath the crust. */
-export const SPORE_CORE_LAYER: {
-  config: GpgpuConfig;
-  sampling: { frontBias: number; normalOffset: number; volumeJitter: number };
-  spore: SporeRenderConfig;
-} = {
-  config: {
-    ...DEFAULT_GPGPU_CONFIG,
-    // PINNED: the core must hold the letterform even with the cursor parked on
-    // it (user report: PUSH 16 let the core spray too, exposing the dark
-    // occluder in the hole). Whisper of push for life, over-damped stiff
-    // spring + tiny speed clamp → it shivers, never leaves.
-    SPRING: 70,
-    DAMPING: 11,
-    PUSH: 4,
-    RADIUS: 0.35,
-    MAX_SPEED: 1.2,
-    TURB_BASE: 0.02,
-    TURB_MOVE: 0.2,
-    TURB_DISP_K: 6,
-  },
-  // Centers slightly OUT of the mark surface (+0.008 ≈ 0.4 radius) so most of
-  // each cyan ball bulges out of the dark occluder → a FULLY-PACKED cyan crust
-  // (live DDD zoom: the revealed layer has no dark gaps), while still sitting
-  // under the violet shell at +0.022. A NEGATIVE inset buries the core inside
-  // the occluder volume → depth-tested away (first attempt's bug).
-  sampling: { frontBias: 0.3, normalOffset: 0.002, volumeJitter: 0.006 },
-  spore: {
-    DIAMETER_RATIO: 1 / 47,
-    // TIGHT variance, capped near 1: bigger core balls poke through the crust
-    // gap (crust sits only ~0.014 further out) and speckle the resting violet
-    // with white — the live DDD rest state is clean violet.
-    VAR_MIN: 0.8,
-    VAR_MAX: 1.05,
-    // BRIGHT luminous azure (user: the dimmed pastel pass killed the light —
-    // "la luce era meglio prima"): saturated blue-leaning emission well over
-    // the bloom threshold so the revealed core GLOWS electric, while the
-    // capped VAR above keeps it from speckling the resting crust. Albedo stays
-    // moderate so the per-ball shading still reads inside the glow.
-    ALBEDO: [0.55, 0.95, 1.0],
-    ALBEDO_MUL: 0.8,
-    EMISSION: [0.2, 0.95, 1.3],
-    EMISSIVE: 2.2,
-    RIM: 0.7,
-    SPEED_COLOR_K: 0.55,
-    BASE_EMISSION: 1.0,
-    // Immortal vs the CURSOR (decay 0 → the kill curve never fires); the
-    // scroll-out burst still dissolves it via the direct burst kill term.
-    LIFE_DECAY: 0,
-    LIFE_HEAL: 0.3,
-    LIFE_DIE: 1.15,
-    LIFE_REGROW: 0.8,
-  },
-};
+// NOTE — the CORE-shell spec (the glowing layer revealed when the crust erodes:
+// bright azure albedo, always-on HDR emission, stiff calm spring, LIFE_DECAY 0
+// → immortal, sampled just beneath the crust) is no longer a standalone export.
+// The hero is now VARIANT-driven: every selectable look (and its core shell)
+// lives in `sporePresets.ts` as a `SporePreset.layers[]` entry (see CORE_BASE
+// there). SPORE_LAYER above is kept only because fxStore reads its EMISSIVE for
+// the live `sporeEmissive` default.
 
 /** Spore-mode grid edge per tier → SIZE² instances. DDD ships ~51k desktop /
  * ~29k mobile (mobile fewer but BIGGER — we scale radius up on lite). The
@@ -332,10 +281,7 @@ export const SPORE_SIZE_BY_TIER: Record<"full" | "lite", number> = {
  * exactly this: 0.015 → 0.0185). */
 export const SPORE_LITE_RADIUS_SCALE = 1.22;
 
-/** Inner occluder mesh — now BEHIND the cyan core shell (the glowing surface
- * revealed on erosion is the SPORE_CORE_LAYER spheres, same material as the
- * crust, per f_007). The occluder only plugs the deepest gaps so they read as
- * shadowed cyan mass, not page background: dark navy-cyan, well below bloom. */
-export const SPORE_OCCLUDER_COLOR: [number, number, number] = [
-  0.015, 0.1, 0.14,
-];
+// NOTE — the inner-occluder colour (the solid mark behind the shells, what
+// shows through eroded gaps: a dark navy-cyan well below bloom) is now per
+// VARIANT: `SporePreset.occluder` in sporePresets.ts, written to the occluder
+// material per-frame in HeroLogo. No standalone export here anymore.

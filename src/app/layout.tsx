@@ -13,6 +13,7 @@ import { CardTiltController } from "@/components/fx/card-tilt-controller";
 import { HeadingChoreographer } from "@/components/fx/heading-choreographer";
 import { LabelScrambler } from "@/components/fx/label-scrambler";
 import { CustomCursor } from "@/components/fx/custom-cursor";
+import { LogoLab } from "@/components/fx/logo-lab";
 import { FlipHandoffOverlay } from "@/components/fx/flip-handoff-overlay";
 import { AudioTriggers } from "@/components/fx/audio-triggers";
 import { Analytics } from "@vercel/analytics/next";
@@ -205,6 +206,10 @@ export default function RootLayout({
             {/* Mono eyebrow/label decode-scramble — one delegated observer. */}
             <LabelScrambler />
             <CustomCursor />
+            {/* Logo Lab — live hero-variant picker (home route only; enabled in
+                dev or with ?logolab). Lets the boss choose the spore-logo look;
+                renders null for ordinary visitors. */}
+            <LogoLab />
             {/* Persistent card→detail Flip "flying image" handoff overlay.
                 Renders null normally; on arrival at a /case-studies/<slug> with
                 a fresh armed snapshot it flies a fixed image clone (z-70, above

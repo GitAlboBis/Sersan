@@ -7,6 +7,7 @@
  */
 import { create } from "zustand";
 import { DEFAULT_GPGPU_CONFIG, SPORE_LAYER } from "../gpgpu/gpgpuConfig";
+import { DEFAULT_SPORE_PRESET_ID } from "../gpgpu/sporePresets";
 
 interface FxState {
   // Line material
@@ -88,6 +89,14 @@ interface FxState {
    */
   heroRenderMode: "particles-static" | "spores";
   /**
+   * Active spore VARIANT id (gpgpu/sporePresets.ts). Selects the whole look —
+   * colours, particle physics, hover/erode feel, regrow speed, single vs
+   * double shell. Switched live from the Logo Lab overlay
+   * (components/fx/logo-lab.tsx); HeroLogo REBUILDS the spore rig when it
+   * changes (the layer specs are baked into the compute build, not uniforms).
+   */
+  heroPreset: string;
+  /**
    * Spore-mode live knobs: base sphere radius multiplier (1 = DDD's
    * markHeight/47 diameter) and HDR emission strength on fast spores.
    */
@@ -109,7 +118,7 @@ interface FxState {
   // GPGPU hero STATIC fallback (HeroLogo "particles-static") — the few
   // live-tunable render/dispersion knobs. Full param set + defaults live in
   // gpgpu/gpgpuConfig.ts; these override it. (The spore-mode forces are baked
-  // per layer in SPORE_LAYER / SPORE_CORE_LAYER; the retired sim knobs
+  // per layer in the ACTIVE variant — sporePresets.ts; the retired sim knobs
   // gpgpuSpring/gpgpuDamping/gpgpuTurbBase were removed in C3.)
   /** Analytic-dispersion push strength near the cursor. */
   gpgpuPush: number;
@@ -191,6 +200,9 @@ export const useFxStore = create<FxState>((set) => ({
   // WebGPU compute, HeroLogo degrades it to the robust static-particle mark
   // automatically. Other modes remain debug toggles via window.__sersanFx.
   heroRenderMode: "spores",
+  // Default variant: blue/cyan, NO violet (the boss's brief). Swap live from
+  // the Logo Lab; bake the winner by changing DEFAULT_SPORE_PRESET_ID.
+  heroPreset: DEFAULT_SPORE_PRESET_ID,
   sporeSize: 1.0,
   sporeEmissive: SPORE_LAYER.spore.EMISSIVE,
   // Attractor orbit defaults from gpgpuConfig (single source of truth) —

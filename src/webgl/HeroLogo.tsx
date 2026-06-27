@@ -74,15 +74,13 @@ import {
 import {
   DEFAULT_GPGPU_CONFIG,
   SIZE_BY_TIER,
-  SPORE_LAYER,
-  SPORE_CORE_LAYER,
   SPORE_SIZE_BY_TIER,
   SPORE_LITE_RADIUS_SCALE,
-  SPORE_OCCLUDER_COLOR,
   type GpgpuConfig,
   type GpgpuSimRig,
   type GpgpuTickParams,
 } from "./gpgpu/gpgpuConfig";
+import { getSporePreset } from "./gpgpu/sporePresets";
 import { webgpuEnabled } from "./renderer/createRenderer";
 import { useScrollStore } from "./store/scrollStore";
 import { useTierStore, type SceneTier } from "./store/tierStore";
@@ -172,6 +170,11 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // SPORES: the DDD-correct shipping render — instanced SHADED icospheres on
   // the compute sim + a solid occluder mark (bundle teardown, see gpgpuConfig).
   const showSpores = heroRenderMode === "spores";
+  // Active VARIANT (Logo Lab): the whole spore look — colours, physics, hover
+  // feel, regrow speed, single/double shell. Subscribed REACTIVELY so the
+  // picker re-renders the component and the build effect rebuilds the rig.
+  const heroPreset = useFxStore((s) => s.heroPreset);
+  const preset = useMemo(() => getSporePreset(heroPreset), [heroPreset]);
   // Spore mode needs TRUE WebGPU compute. Flag-OFF (plain WebGL2 renderer) is
   // known synchronously; the WebGPURenderer's WebGL2 sub-backend is detected in
   // the spore build effect (async) and flips this state. Either way the mode
@@ -246,32 +249,31 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // (f_007: the revealed layer is the same spore material, lit). Gated on the
   // mode so the sampling cost isn't paid by the fallback path.
   const sporeGridSize = SPORE_SIZE_BY_TIER[tier] ?? SPORE_SIZE_BY_TIER.lite;
+  // One home field per ACTIVE-PRESET layer (1 or 2). Variant switch → `preset`
+  // changes → new array reference → the build effect below rebuilds the rig.
   const sporeHomes = useMemo(
     () =>
       showSpores && !sporeStaticFallback
-        ? [
-            sampleMarkHomePositions(bodyGeometry, sporeGridSize, SPORE_LAYER.sampling),
-            sampleMarkHomePositions(
-              bodyGeometry,
-              sporeGridSize,
-              SPORE_CORE_LAYER.sampling,
-            ),
-          ]
+        ? preset.layers.map((l) =>
+            sampleMarkHomePositions(bodyGeometry, sporeGridSize, l.sampling),
+          )
         : null,
-    [bodyGeometry, sporeGridSize, showSpores, sporeStaticFallback],
+    [bodyGeometry, sporeGridSize, showSpores, sporeStaticFallback, preset],
   );
 
   // Base spore radius in MODEL space: DDD's diameter ≈ markHeight/47, scaled up
   // on lite (fewer but bigger, like DDD mobile). fx.sporeSize multiplies live.
+  // Taken from the OUTER layer so the per-preset diameter applies to both.
   const sporeBaseRadius =
-    ((TARGET_HEIGHT * SPORE_LAYER.spore.DIAMETER_RATIO) / 2) *
+    ((TARGET_HEIGHT * preset.layers[0].spore.DIAMETER_RATIO) / 2) *
     (tier === "lite" ? SPORE_LITE_RADIUS_SCALE : 1);
 
-  // Solid GLOWING azure occluder under the spore crust (the DDD "SOLID.buf"
-  // trick): the interior revealed when spores disperse is the electric-azure
-  // core. toneMapped:false so the HDR SPORE_OCCLUDER_COLOR keeps its >1 values
-  // into the bloom pass (same discipline as the particle materials). Color is
-  // written per frame (base × fade) so the opaque mesh follows the scroll fade.
+  // Solid GLOWING occluder under the spore crust (the DDD "SOLID.buf" trick):
+  // the interior revealed when spores disperse. toneMapped:false so any HDR
+  // values survive into the bloom pass (same discipline as the particle
+  // materials). Color is written per frame from the ACTIVE variant's
+  // `preset.occluder` (base × fade) so the opaque mesh follows the scroll fade
+  // and recolours instantly on a Logo Lab switch.
   const sporeOccluderMaterial = useMemo(() => {
     const m = new THREE.MeshBasicMaterial({ color: 0x000000 });
     m.toneMapped = false;
@@ -427,7 +429,8 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         setSporeBackendFallback(true);
         return;
       }
-      const defs = [SPORE_LAYER, SPORE_CORE_LAYER];
+      // The ACTIVE variant's layers (1 = no outer crust, 2 = crust + core).
+      const defs = preset.layers;
       built = defs.map((layer, i) => {
         const cfg: GpgpuConfig = { ...layer.config, SIZE: sporeGridSize };
         const b = mod.createSporeComputeNodeBuild(
@@ -462,7 +465,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       setTslSpore(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sporeGridSize, sporeHomes, showSpores]);
+  }, [sporeGridSize, sporeHomes, showSpores, preset]);
 
   // Active static build. OFF → GLSL; ON → TSL once resolved.
   const staticGeometry = glslStatic?.geometry ?? tslStatic?.geometry;
@@ -718,12 +721,15 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       const burst = THREE.MathUtils.smoothstep(hp, 0.02, 1.5);
 
       // The opaque occluder follows the scroll fade AND the burst (a solid
-      // dark slab can't hang around while its spore shells scatter).
+      // dark slab can't hang around while its spore shells scatter). Colour is
+      // the ACTIVE variant's occluder (what shows through eroded gaps) — read
+      // from the live store so a Logo Lab switch recolours it immediately.
       const occDim = fade * (1 - burst) * (1 - burst);
+      const occCol = getSporePreset(fx.heroPreset).occluder;
       sporeOccluderMaterial.color.setRGB(
-        SPORE_OCCLUDER_COLOR[0] * occDim,
-        SPORE_OCCLUDER_COLOR[1] * occDim,
-        SPORE_OCCLUDER_COLOR[2] * occDim,
+        occCol[0] * occDim,
+        occCol[1] * occDim,
+        occCol[2] * occDim,
       );
       sporeOccluderMaterial.opacity = 1 - burst;
       sporeOccluderMaterial.visible = burst < 0.97;
