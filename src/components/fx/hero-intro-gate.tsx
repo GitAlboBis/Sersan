@@ -34,15 +34,17 @@ import { getLenis } from "@/lib/lenis-singleton";
 import { useIntroStore } from "@/webgl/store/introStore";
 import { useTextMorphStore } from "@/webgl/store/textMorphStore";
 
-/** Total wheel distance (px) that maps the gate 0 → 1. Generous on purpose —
- * the intro should feel like a deliberate BLOCK the visitor scrolls through
- * (designer-site style), not a flick. Sized so the timeline's hold plateaus
- * each absorb a meaningful chunk of real scrolling, while keeping the FINAL
- * "see what we build" cue's tail short so the page unlocks soon after it forms
- * (user decision 2026-06-17): brand "Sersan AI" holds ~0→0.30 (~1890px), the
- * headline holds ~0.30→0.59 (~1830px), and the cue owns the remaining
- * ~0.59→1.0 (~2580px) before the gate releases. */
-const GATE_DISTANCE = 6300;
+/** Total wheel distance (px) that maps the gate 0 → 1. The intro should feel
+ * like a deliberate BLOCK the visitor scrolls through (designer-site style),
+ * not a flick, but the client found 6300px STILL too long — tightened to
+ * 4200px (~⅓ shorter, ~2.7 deliberate swipes) on 2026-06-29. The morph
+ * triggers in HeroTextParticles are FRACTIONS of this distance so they rescale
+ * automatically and the proportions hold: brand "Sersan AI" ~0→0.30 (~1260px),
+ * headline ~0.30→0.59 (~1218px), the cue owns the remaining ~0.59→1.0
+ * (~1722px) before the gate releases. Do NOT drop below ~3600px: the cue leg
+ * then gets shorter than the 2.6s morph wave and the page can release over
+ * half-formed text. */
+const GATE_DISTANCE = 4200;
 /** Touch drag maps a bit faster (smaller screens, shorter gestures). */
 const TOUCH_FACTOR = 2.2;
 

@@ -66,6 +66,7 @@ import { useGLTF } from "@react-three/drei";
 import { SPINE_TRAVEL_VH } from "@/lib/spine";
 import { WORLD_VIEW_HEIGHT } from "./constants";
 import { useTextMorphStore } from "./store/textMorphStore";
+import { useIntroStore } from "./store/introStore";
 import { sampleMarkHomePositions } from "./geometry/sersanMark";
 import {
   createGpgpuStaticBuild,
@@ -116,6 +117,67 @@ const TILT = THREE.MathUtils.degToRad(4);
  */
 const TILT_DAMP = 3.5; // damp lambda — soft ease toward the pointer target
 
+/**
+ * ONE-SHOT intro REFORM-from-nothing, on HARD site entry (the REVERSE of a
+ * decompose — client 2026-06-29).
+ *
+ * While the preloader curtain is up the whole mark is held DEAD (burst pinned
+ * at PEAK) so there is NOTHING behind it; when the curtain lifts the spores
+ * respawn AT HOME and regrow from nothing into the solid logo. The EXPLODE is
+ * the OTHER half of the arc — the scroll dissolve as you reach the end of the
+ * hero (the `burst` window in the frame loop). All three beats (intro reform,
+ * scroll explode, scroll-back regrow) ride the SAME `uBurst` mechanism
+ * (gpgpuNodeSim "disappear and regrow on top"), so they stay one coherent
+ * system. Driven by a wall-clock (delta), NOT scroll, and composed with the
+ * scroll burst via max(). Plays on HARD load only; a soft route re-entry just
+ * shows the logo already present (no replay). The visible reform is the sim's
+ * regrow bloom (~1s, paced by crust/core LIFE_REGROW in sporePresets — lower it
+ * for a slower materialise). The core's stiffer spring + slower regrow
+ * reassembles a beat behind the crust — a natural inside-out reform.
+ */
+const INTRO_REFORM_PEAK = 0.92; // burst that holds the mark as NOTHING (1 = gone)
+const INTRO_REFORM_HOLD = 0.35; // s held as nothing after the curtain lifts
+const INTRO_REFORM_RAMP = 0.4; // s to drop burst→0, releasing the regrow bloom
+const INTRO_REFORM_BLOOM = 5.5; // s the SLOW materialise bloom is given to finish
+/** Regrow-rate multiplier during the materialise — small ⇒ a MUCH slower bloom
+ * than the preset's hover/scroll-back regrow (client 2026-06-29: "molto più
+ * lento"). Lower this for an even slower first reveal. */
+const INTRO_REFORM_REGROW_SLOW = 0.3;
+/** Clock value past which the intro is fully over (burst 0 + regrow restored). */
+const INTRO_REFORM_RELEASE =
+  INTRO_REFORM_HOLD + INTRO_REFORM_RAMP + INTRO_REFORM_BLOOM;
+/** Seconds (at the END of the intro) over which the dark occluder body fades
+ * back in. Kept LATE so it never shows as a dim "spento" logo under the slowly-
+ * blooming particles — the reform reads as forming from nothing/particles (core
+ * already lit), with the dark body filling in behind only at the very end. */
+const INTRO_REFORM_BODY_REVEAL = 2.2;
+
+// EXPLODE (scroll-out) — STAGGERED so the OUTER crust expands BEFORE the inner
+// core (client: "lo strato di sopra inizia ad espandersi prima di quello di
+// sotto"). The crust scatters on a tight hp window; the core only STARTS later
+// and completes by the end of the hero. The dark occluder body follows the
+// (trailing) core so it stays solid behind the crust as that leads off.
+const EXPLODE_CRUST_END = 0.78; // hp by which the outer crust is fully scattered
+const EXPLODE_CORE_LAG = 0.33; // hp at which the inner core only STARTS to go
+const EXPLODE_CORE_END = 1.0; // hp by which the core is fully scattered
+
+/** Reform envelope vs seconds since the curtain lifted: PEAK before reveal
+ * (te<0, held dead behind the curtain) → PEAK through HOLD → ramps to 0 over
+ * RAMP, dropping below the respawn threshold and releasing the regrow bloom
+ * (the visible "materialise from nothing"). */
+function introReformEnvelope(te: number): number {
+  if (te < 0) return INTRO_REFORM_PEAK;
+  return (
+    INTRO_REFORM_PEAK *
+    (1 -
+      THREE.MathUtils.smoothstep(
+        te,
+        INTRO_REFORM_HOLD,
+        INTRO_REFORM_HOLD + INTRO_REFORM_RAMP,
+      ))
+  );
+}
+
 /** The Blender-built SERSAN mark. Geometry-only (no materials). */
 const MARK_GLB = "/models/sersan-mark.glb";
 /** Normalize the GLB to ~2 world units tall (same envelope as the old
@@ -156,6 +218,13 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   const fadeRef = useRef(1);
   const simTimeRef = useRef(0);
   const announcedReady = useRef(false);
+  // One-shot intro REFORM clock (seconds). -1 = pre-reveal (mark held dead);
+  // set to 0 on the preloader hand-off at the hero top, counts to
+  // INTRO_REFORM_RELEASE then holds (plays once per mount, hard load only).
+  const introReformClock = useRef(-1);
+  // Entry type, snapshotted on the first frame: true ⇒ soft route re-entry
+  // (introComplete already true → no intro replay); false ⇒ hard load.
+  const softEntryRef = useRef(false);
   // Eased global hover intensity for the analytic-dispersion static render:
   // target 1 while hovering, 0 otherwise; damped so the lift fades in/out and
   // the particles settle back softly when the cursor leaves.
@@ -400,6 +469,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     uOrbit: { value: number };
     uOrbitFalloff: { value: number };
     uBurst: { value: number };
+    uRegrowScale: { value: number };
     dispose: () => void;
   }
   const [tslSpore, setTslSpore] = useState<TslSpore[] | null>(null);
@@ -454,6 +524,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
           uOrbit: b.uOrbit,
           uOrbitFalloff: b.uOrbitFalloff,
           uBurst: b.uBurst,
+          uRegrowScale: b.uRegrowScale,
           dispose: b.dispose,
         };
       });
@@ -560,6 +631,9 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     if (!announcedReady.current) {
       announcedReady.current = true;
       useTierStore.getState().setHeroReady(true);
+      // Snapshot entry type ONCE: introComplete already true here ⇒ a soft
+      // route re-entry (skip the intro reform); false ⇒ a hard load (play it).
+      softEntryRef.current = useIntroStore.getState().introComplete;
     }
 
     const fx = useFxStore.getState();
@@ -710,29 +784,74 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
 
     // --- SPORES (instanced shaded spheres on the unified compute sim) -------
     if (showSpores && !sporeStaticFallback) {
-      // Scroll-out dissolve: as soon as scrolling STARTS the spores begin to
-      // BURST from the logo center and die (staggered) — but the FULL
-      // dissolution completes late, where the recede/fade lives. Window
-      // (0.02 → 0.88): first spores fly with the first scroll ticks (user:
-      // "deve dissolversi da quando inizi a scrollare"), the mass erodes
-      // progressively across the whole pin, fully scattered just before the
-      // mark leaves the screen (user: "la dissolvenza totale andava bene
-      // prima"). Regrows in place when scrolled back.
-      const burst = THREE.MathUtils.smoothstep(hp, 0.02, 1.5);
+      // Scroll-out dissolve — the EXPLODE half of the arc, STAGGERED per layer:
+      // the OUTER crust expands FIRST on a tight window, the inner core LAGS and
+      // only completes by the END of the hero (client 2026-06-29: "lo strato di
+      // sopra inizia ad espandersi prima di quello di sotto"). Still starts with
+      // the first scroll ticks; both reach ~full by hp≈1 ⇒ a complete explosion
+      // to nothing. Regrow in place on scroll-back.
+      const burstCrust = THREE.MathUtils.smoothstep(hp, 0.02, EXPLODE_CRUST_END);
+      const burstCore = THREE.MathUtils.smoothstep(
+        hp,
+        EXPLODE_CORE_LAG,
+        EXPLODE_CORE_END,
+      );
 
-      // The opaque occluder follows the scroll fade AND the burst (a solid
-      // dark slab can't hang around while its spore shells scatter). Colour is
+      // ONE-SHOT intro REFORM-from-nothing (HARD load only): the mark is held
+      // DEAD behind the preloader curtain (clock < 0 ⇒ envelope PEAK) and
+      // respawns + regrows from nothing once it lifts — the reverse of the
+      // scroll explode above. A soft route re-entry shows the logo already
+      // present (softEntryRef ⇒ introBurst 0, no replay).
+      if (!softEntryRef.current) {
+        if (introReformClock.current < 0) {
+          if (tslSpore && useIntroStore.getState().introComplete && hp < 0.05) {
+            introReformClock.current = 0;
+          }
+        } else if (introReformClock.current < INTRO_REFORM_RELEASE) {
+          introReformClock.current += delta;
+        }
+      }
+      const introBurst = softEntryRef.current
+        ? 0
+        : introReformEnvelope(introReformClock.current);
+      // Crawl the regrow rate ONLY during the intro window so the first reveal
+      // blooms in very slowly (client: "molto più lento"); 1 everywhere else
+      // keeps the preset's faster hover / scroll-back regrow.
+      const introRegrowScale =
+        !softEntryRef.current &&
+        introReformClock.current >= 0 &&
+        introReformClock.current < INTRO_REFORM_RELEASE
+          ? INTRO_REFORM_REGROW_SLOW
+          : 1;
+      // Occluder body: on scroll it follows the TRAILING core (stays solid
+      // behind the crust as that leads off). During the intro reform it must NOT
+      // show as a dim "spento" logo under the slowly-blooming particles (client
+      // 2026-06-29) — keep it HIDDEN through the materialise and fade it in only
+      // over the LAST INTRO_REFORM_BODY_REVEAL seconds, so the reform reads as
+      // forming from nothing/particles with the body filling in behind at the end.
+      const introBodyReveal = softEntryRef.current
+        ? 1
+        : THREE.MathUtils.smoothstep(
+            introReformClock.current,
+            INTRO_REFORM_RELEASE - INTRO_REFORM_BODY_REVEAL,
+            INTRO_REFORM_RELEASE,
+          );
+      const occBurst = Math.max(burstCore, 1 - introBodyReveal);
+
+      // The opaque occluder follows the scroll fade AND that burst — a solid
+      // dark slab can't hang around while the shells scatter, and it must vanish
+      // ENTIRELY during the intro for a true "from nothing" reform. Colour is
       // the ACTIVE variant's occluder (what shows through eroded gaps) — read
-      // from the live store so a Logo Lab switch recolours it immediately.
-      const occDim = fade * (1 - burst) * (1 - burst);
+      // from the live store so a Logo Lab switch recolours it now.
+      const occDim = fade * (1 - occBurst) * (1 - occBurst);
       const occCol = getSporePreset(fx.heroPreset).occluder;
       sporeOccluderMaterial.color.setRGB(
         occCol[0] * occDim,
         occCol[1] * occDim,
         occCol[2] * occDim,
       );
-      sporeOccluderMaterial.opacity = 1 - burst;
-      sporeOccluderMaterial.visible = burst < 0.97;
+      sporeOccluderMaterial.opacity = 1 - occBurst;
+      sporeOccluderMaterial.visible = occBurst < 0.97;
       if (!tslSpore) return; // occluder-only until the lazy build resolves
 
       // Model-space cursor via the raycast helper: the repulsion center is the
@@ -743,7 +862,9 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       tickParams.dt = delta;
       tickParams.time = simTimeRef.current;
       tickParams.mouse.copy(modelMouse);
-      for (const layer of tslSpore) {
+
+      for (let i = 0; i < tslSpore.length; i++) {
+        const layer = tslSpore[i];
         layer.rig.tick(tickParams);
         layer.uFade.value = fade;
         layer.uSporeRadius.value = sporeBaseRadius * fx.sporeSize;
@@ -753,7 +874,13 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         // → the resting crust is untouched at any knob value.
         layer.uOrbit.value = fx.sporeAttractor;
         layer.uOrbitFalloff.value = fx.sporeOrbitFalloff;
-        layer.uBurst.value = burst;
+        // STAGGERED explode: the OUTER crust (i=0) leads, inner layers (the
+        // core) lag, so the upper layer expands before the lower. The intro
+        // reform (when active) hits every layer together via max().
+        const scrollBurst = i === 0 ? burstCrust : burstCore;
+        layer.uBurst.value = Math.max(scrollBurst, introBurst);
+        // Slow ONLY the intro materialise bloom; 1 the rest of the time.
+        layer.uRegrowScale.value = introRegrowScale;
       }
       return;
     }

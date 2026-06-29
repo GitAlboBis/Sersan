@@ -494,8 +494,11 @@ export const SPORE_PRESETS: SporePreset[] = [
   },
 ];
 
-/** The look the page ships with (blue/cyan, no violet). */
-export const DEFAULT_SPORE_PRESET_ID = "azure";
+/** The look the page ships with — the client's Logo Lab pick (2026-06-29):
+ * Azure palette + the "Explosive" hover/erode behaviour (the `explosive` preset
+ * already uses the Azure Signal crust/core colours, so it IS "Azure Signal +
+ * Explosive"). Its higher MAX_SPEED/PUSH also makes the scroll explode flingier. */
+export const DEFAULT_SPORE_PRESET_ID = "explosive";
 
 const PRESET_BY_ID = new Map(SPORE_PRESETS.map((p) => [p.id, p]));
 

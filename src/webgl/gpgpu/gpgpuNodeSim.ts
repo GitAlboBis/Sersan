@@ -343,6 +343,10 @@ export interface SporeNodeBuild {
    * when scrolled back.
    */
   uBurst: UniformNode<number>;
+  /** Live regrow-rate multiplier (1 = preset rate). HeroLogo crawls it during
+   * the intro materialise for a much slower first-reveal bloom, then restores
+   * it to 1 so the hover / scroll-back regrow keep the preset's own rate. */
+  uRegrowScale: UniformNode<number>;
   dispose: () => void;
 }
 
@@ -457,7 +461,13 @@ export function createSporeComputeNodeBuild(
   const LIFE_DECAY = float(spore.LIFE_DECAY);
   const LIFE_HEAL = float(spore.LIFE_HEAL);
   const LIFE_DIE = float(spore.LIFE_DIE);
-  const LIFE_REGROW = float(spore.LIFE_REGROW);
+  // Live regrow-rate multiplier (default 1 = preset rate): HeroLogo crawls it
+  // during the intro materialise (slow first-reveal bloom) and restores it to 1
+  // after, so hover / scroll-back regrow keep the preset's faster rate.
+  const uRegrowScale = uniform(1) as UniformNode<number>;
+  const LIFE_REGROW = float(spore.LIFE_REGROW).mul(
+    uRegrowScale as unknown as AnyNode,
+  );
 
   // Scroll-out dissolve (0..1, fed per frame from the hero scroll progress).
   const uBurst = uniform(0) as UniformNode<number>;
@@ -719,6 +729,7 @@ export function createSporeComputeNodeBuild(
     uOrbit,
     uOrbitFalloff,
     uBurst,
+    uRegrowScale,
     dispose() {
       rig.dispose();
     },
