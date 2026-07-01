@@ -66,12 +66,25 @@ import { getLenis } from "@/lib/lenis-singleton";
 
 // Timing envelope (ms). MIN keeps the loader from flashing on a warm cache.
 const MIN_VISIBLE_MS = 700;
+// Bounded fallbacks for the two NETWORK-DEPENDENT polish signals. `fonts`
+// (document.fonts.ready) and `load` (window "load") each depend on sub-resources
+// that can stay PENDING forever on a single stuck request — a font woff2 the dev
+// server is slow to compile, an image/iframe that never settles. When that
+// happens the counter is trapped in the ~70s (only 3 of 4 signals resolve) until
+// the watchdog. These signals are NICE-TO-HAVE (avoid a font-swap flash / confirm
+// the static paint landed), NOT correctness gates — so each ALSO self-resolves
+// after a short wait. `warm` (real GPU readiness) remains the only truthful gate
+// on reaching 100%, so this does not reintroduce a fake 100%.
+const FONTS_MAX_MS = 3000;
+const LOAD_MAX_MS = 3500;
 // LAST-RESORT safety only: if the scene never reports `warm` (a truly stuck GPU),
 // reveal anyway so the visitor is never trapped. This is NOT the normal reveal
-// path — the truthful `warm` signal completes the counter well before this. It is
-// deliberately long so the loader stays HONEST (waits for real shader readiness)
-// rather than revealing on a fixed timer (the old fake-100% behaviour).
-const WATCHDOG_MS = 30000;
+// path — the truthful `warm` signal completes the counter well before this. Now
+// that fonts/load can no longer hang the counter (bounded above), the loader is
+// only ever waiting on `warm` here, so this no longer needs the old 30s honesty
+// budget — a still-cold GPU is uncovered at 90% well before a full minute of
+// staring. Kept comfortably above MIN_WARM_MS + a few seconds of compile.
+const WATCHDOG_MS = 14000;
 // Counter easing toward its target each frame (fraction per ~16ms frame). Low
 // enough to read as a smooth tick-up, high enough to feel responsive.
 const COUNTER_EASE = 0.12;
@@ -409,17 +422,30 @@ export function Preloader() {
       return Math.min(resolved, 0.9);
     };
 
+    // Bounded fallbacks so a single stuck sub-resource (a font request the dev
+    // server is slow to serve, an image/iframe that never settles) can never
+    // trap the counter below 90% forever. Cleared in teardown.
+    const fallbackTimers: number[] = [];
+
     // fonts.ready resolves when brand type is swapped (avoids the loader handing
-    // off into a font-swap flash). Falls back gracefully if unsupported.
+    // off into a font-swap flash). Falls back gracefully if unsupported, and
+    // self-resolves after FONTS_MAX_MS if the promise never settles.
     if (document.fonts && document.fonts.ready) {
       document.fonts.ready.then(() => {
         if (!cancelled) signals.fonts = true;
       });
+      fallbackTimers.push(
+        window.setTimeout(() => {
+          signals.fonts = true;
+        }, FONTS_MAX_MS),
+      );
     } else {
       signals.fonts = true;
     }
 
-    // window "load": the static page + LCP poster have painted.
+    // window "load": the static SSR'd page has painted. Self-resolves after
+    // LOAD_MAX_MS so a pending sub-resource can't hold the "load" event — and
+    // with it the counter — hostage indefinitely.
     if (document.readyState === "complete") {
       signals.load = true;
     } else {
@@ -427,6 +453,11 @@ export function Preloader() {
         signals.load = true;
       };
       window.addEventListener("load", onLoad, { once: true });
+      fallbackTimers.push(
+        window.setTimeout(() => {
+          signals.load = true;
+        }, LOAD_MAX_MS),
+      );
     }
 
     // WebGL tier resolved (CanvasHost's effect runs detectTier). On "off" there
@@ -661,6 +692,7 @@ export function Preloader() {
       cancelled = true;
       cancelAnimationFrame(rafId);
       clearTimeout(revealTimer);
+      fallbackTimers.forEach((t) => clearTimeout(t));
       window.removeEventListener("resize", onResize);
       unsubTier();
       introTweens.forEach((t) => t.kill());
