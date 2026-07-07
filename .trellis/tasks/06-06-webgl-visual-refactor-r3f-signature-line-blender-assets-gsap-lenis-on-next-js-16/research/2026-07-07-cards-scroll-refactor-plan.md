@@ -225,6 +225,67 @@ C edits it.
 8. /about, /trust, /resources spot checks; route transitions clean; console clean.
 9. prefers-reduced-motion: everything static-visible, no pin, no Lenis errors.
 
+## V2 ADDENDUM (2026-07-07, user feedback round)
+
+User feedback: founders panels rejected ("scritte al lato, immagine piccola") — the
+portrait must COVER the whole card, text overlaid. Also: apply templates to MORE cards —
+the fit section ("We are honest about who we work with") and the services section
+("Four services, one discipline").
+
+### B2 — Founders full-bleed redesign (founders-rail.tsx only)
+Keep the rail mechanics (sticky frame, trigger, sweep, reveal, hover, fallback,
+cleanup) — redesign ONLY the panel internals:
+- Portrait = absolute inset-0, object-cover, covering the ENTIRE panel (keep the 112%
+  bleed wrapper for the counter-parallax; keep the SVG displacement entry reveal now
+  masking the full card; keep duotone→color hover with cyan ring).
+- Panel size: taller/portrait-dominant, e.g. h-[min(78vh,46rem)] w-[min(88vw,34rem)]
+  (fixed rem widths for measurement stability).
+- Overlay stack (in a bottom scrim, gradient #0B1422 90%→transparent ~55% up): counter
+  "01 / 02" top-left mono; huge display-serif NAME at the bottom (counter-sweep stays);
+  role mono; shortBio + credential chips + previouslyAt pills + LinkedIn in the scrim
+  (compact, over the image — NOTHING beside the image, no side column). Copy identical.
+- Intro panel P0 unchanged.
+
+### D — Fit section refactor (fit-section.tsx only) — template 6 (OnScrollFilter)
+Keep copy + two-list semantics (GOOD FIT / NOT A FIT). New presentation:
+- Per-row scrub-windowed reveal (ScrollTrigger scrub:true, start "clamp(top
+  bottom-=10%)", end "+=35%", no pin): the row's ✓/✗ medallion is a white SVG circle
+  inside a mask passed through feTurbulence(fractalNoise, baseFrequency ~0.06, 2
+  octaves) → feDisplacementMap(scale ~40) — radius scrubbed 0→final (GSAP attr tween,
+  integer-quantized); NOT-A-FIT rows additionally keep a redaction bar that tears away
+  (same filter + feMorphology dilate radius 2 for the chunky edge) as the mask opens.
+  Row text follows with transform-only clip/y/opacity in the same scrubbed window.
+- Title pose transition (the template's Flip move WITHOUT re-parenting): measure an
+  invisible proxy of the italic span at a centered/1.4× pose; scrub a fromTo
+  (x/y/scale deltas, ease:none) into the real layout slot.
+- useId-sanitized filter/mask ids; filter region x/y −15% w/h 130%; stagger the row
+  windows so ≤3 filters animate simultaneously; SSR + reduced-motion + coarse pointer
+  render final state (no filters animating). Do NOT edit fx/redacted-reveal.tsx
+  (shared) — build the torn-redaction locally in this file.
+
+### E — Services POV pan (services-section.tsx only) — template 2 (motionPath POV)
+Replace the 2×2 grid with a pinned "camera pan" stage:
+- Structure: heading in normal flow; then a tall runway (px height = 100vh + 4×~85vh
+  set by measure()) with sticky h-screen overflow-hidden frame; inside, an oversized
+  stage (~150vw × 140vh absolute) with the 4 service cards at organic diagonal
+  positions (fixed rem card sizes; positions in % of stage).
+- Scrub → focal path: progress 0..1 maps to a chain of 4 segments; segment i eases
+  (smoothstep per segment) the FOCAL POINT from card i−1's center to card i's center
+  (centers measured once in measure(), untransformed offsets — zero rects per frame).
+- POV smoothing (the template's signature): the stage transform is NOT written from the
+  scrub directly — feed targets into gsap.quickTo pair (x,y, duration ~1.0,
+  ease:"expo") + a scale quickTo: overview scale ~0.75 between cards, ~1.0 when
+  locked on a card, subtle alternating rotation ±2.5° per segment (sine.inOut feel).
+  transform-only on the stage wrapper.
+- Focus states: active card full opacity + accent border; others dim (opacity ~0.5,
+  slight scale-down) — quickTo, no React state per frame.
+- Cards keep ALL existing content/fields verbatim (num, icon, title, positioning,
+  includes, solves, CTA link) restyled editorial (bigger num, mono eyebrow).
+- Keyboard focusin → lenis.scrollTo(segment position); native fallback
+  (≤768px/coarse/reduced-motion) = the current unpinned stacked grid; SSR renders the
+  pinned markup. Full cleanup contract. NO ScrollTrigger pin:. The
+  data-line-anchor="services" wrapper in page.tsx stays untouched.
+
 ## RISKS
 - Remap changes felt speed of the head along serpentine bends (by design — it now
   matches the reader): verify beats (audit ticks, production pulse) still land.

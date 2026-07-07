@@ -27,6 +27,15 @@ if (typeof window !== "undefined") {
  * verbatim from that file / src/data/founders.ts — this is a presentation
  * change only).
  *
+ * V2 (full-bleed): the portrait COVERS the entire panel (absolute inset-0,
+ * object-cover) and every piece of copy is OVERLAID on it — counter top-left,
+ * huge display name + role + shortBio + credential chips + previouslyAt pills
+ * + LinkedIn stacked on a bottom scrim (#0B1422 90% → transparent ~55% up).
+ * Nothing sits beside the image; the 112%-bleed parallax, the SVG
+ * displacement entry reveal and the duotone→color hover now act on the FULL
+ * card. Rail mechanics, the P0 intro panel and the native fallback are
+ * unchanged.
+ *
  * MECHANICS (cloned from case-studies-rail.tsx — binding pattern):
  *   - CSS `position: sticky` pins the viewport frame; ScrollTrigger only
  *     scrubs `translateX`. NO `pin:` (a pin-spacer would re-parent the section
@@ -100,6 +109,9 @@ const REVEAL_END = 0.55;
  * one transition. `--fr-mx/--fr-my` are set once per pointerenter (JS writes
  * a CSS var — the animation itself is pure CSS). Without @property support
  * the reveal snaps instead of easing, which is an acceptable degradation.
+ * `.founder-portrait` is the article ROOT (full-bleed card), so border-color
+ * joins the transition here — the shorthand would otherwise reset Tailwind's
+ * transition-colors longhands.
  */
 const PORTRAIT_CSS = `
 @property --fr-hr {
@@ -109,7 +121,7 @@ const PORTRAIT_CSS = `
 }
 .founder-portrait {
   --fr-hr: 0px;
-  transition: --fr-hr 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: --fr-hr 0.65s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.3s ease;
 }
 .founder-portrait__base {
   filter: grayscale(1) brightness(0.85);
@@ -167,8 +179,9 @@ function FounderPanel({
   const role = isEn ? f.roleEn : f.roleIt;
 
   // One rect read per pointer ENTRY (event-driven — never in a frame loop):
-  // anchors the CSS clip-path circle at the point the cursor came in.
-  const onPortraitEnter = (e: ReactPointerEvent<HTMLDivElement>) => {
+  // anchors the CSS clip-path circle at the point the cursor came in. The
+  // portrait IS the whole card now, so the handler lives on the article root.
+  const onPortraitEnter = (e: ReactPointerEvent<HTMLElement>) => {
     if (e.pointerType && e.pointerType !== "mouse") return;
     const el = e.currentTarget;
     const r = el.getBoundingClientRect();
@@ -183,178 +196,179 @@ function FounderPanel({
     );
   };
 
+  // Shared chip treatment: translucent bg + backdrop-blur so chips hold AA
+  // contrast even where they overhang the scrim's fade zone.
+  const chipClass =
+    "inline-flex items-center rounded-full border border-[hsl(var(--ink)/0.18)] bg-[hsl(var(--bg)/0.55)] px-2.5 py-1 backdrop-blur-sm";
+
   return (
     <article
       id={`founder-${f.anchor}`}
-      className="group relative h-auto w-full overflow-hidden rounded-lg border border-[hsl(var(--rule))] bg-[hsl(216_28%_10%/0.45)] transition-colors duration-300 hover:border-[hsl(var(--accent)/0.45)] sm:h-[clamp(26rem,72vh,42rem)]"
+      onPointerEnter={onPortraitEnter}
+      className="founder-portrait group relative h-[min(78vh,46rem)] w-full overflow-hidden rounded-lg border border-[hsl(var(--rule))] bg-[hsl(216_28%_10%/0.45)] hover:border-[hsl(var(--accent)/0.45)]"
     >
-      <div className="grid h-full grid-cols-1 sm:grid-cols-[minmax(0,5fr)_minmax(0,6fr)]">
-        {/* Portrait viewport — overflow-hidden clips the 112% bleed layer. */}
-        <div
-          className="founder-portrait relative h-64 overflow-hidden sm:h-full"
-          onPointerEnter={onPortraitEnter}
+      {/* Full-bleed media — covers the ENTIRE panel; the article's
+          overflow-hidden clips the 112% bleed. Counter-parallax target:
+          everything (masked base, ring, color layer) slides together so
+          hover + reveal stay registered. */}
+      <div
+        data-founder-media
+        className="absolute inset-y-0 left-[-6%] w-[112%] will-change-transform"
+      >
+        <svg
+          className="h-full w-full"
+          viewBox={`0 0 ${MASK_W} ${MASK_H}`}
+          preserveAspectRatio="xMidYMid slice"
+          role="img"
+          aria-label={`${f.name}, ${role}`}
         >
-          {/* Counter-parallax target: everything (masked base, ring, color
-              layer) slides together so hover + reveal stay registered. */}
-          <div
-            data-founder-media
-            className="absolute inset-y-0 left-[-6%] w-[112%] will-change-transform"
-          >
-            <svg
-              className="h-full w-full"
-              viewBox={`0 0 ${MASK_W} ${MASK_H}`}
+          <defs>
+            {/* Static noise field; only the circle animates through it.
+                Region constrained (perf: CPU rasterization). */}
+            <filter id={filterId} x="-15%" y="-15%" width="130%" height="130%">
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="0.035"
+                numOctaves="2"
+                result="noise"
+              />
+              <feDisplacementMap
+                in="SourceGraphic"
+                in2="noise"
+                scale="70"
+                xChannelSelector="R"
+                yChannelSelector="G"
+              />
+            </filter>
+            <mask id={maskId}>
+              {/* SSR-final radius: the portrait is visible without JS;
+                  the pinned scrub re-seeds it from rail progress. */}
+              <circle
+                data-founder-maskcircle
+                cx={MASK_W / 2}
+                cy={MASK_H / 2}
+                r={MASK_FINAL_R}
+                fill="#fff"
+                style={{ filter: `url(#${filterId})` }}
+              />
+            </mask>
+          </defs>
+          <g mask={`url(#${maskId})`}>
+            {/* Duotone base: grayscale image under a navy scrim. */}
+            <image
+              href={f.image}
+              x="0"
+              y="0"
+              width={MASK_W}
+              height={MASK_H}
               preserveAspectRatio="xMidYMid slice"
-              role="img"
-              aria-label={`${f.name}, ${role}`}
-            >
-              <defs>
-                {/* Static noise field; only the circle animates through it.
-                    Region constrained (perf: CPU rasterization). */}
-                <filter id={filterId} x="-15%" y="-15%" width="130%" height="130%">
-                  <feTurbulence
-                    type="fractalNoise"
-                    baseFrequency="0.035"
-                    numOctaves="2"
-                    result="noise"
-                  />
-                  <feDisplacementMap
-                    in="SourceGraphic"
-                    in2="noise"
-                    scale="70"
-                    xChannelSelector="R"
-                    yChannelSelector="G"
-                  />
-                </filter>
-                <mask id={maskId}>
-                  {/* SSR-final radius: the portrait is visible without JS;
-                      the pinned scrub re-seeds it from rail progress. */}
-                  <circle
-                    data-founder-maskcircle
-                    cx={MASK_W / 2}
-                    cy={MASK_H / 2}
-                    r={MASK_FINAL_R}
-                    fill="#fff"
-                    style={{ filter: `url(#${filterId})` }}
-                  />
-                </mask>
-              </defs>
-              <g mask={`url(#${maskId})`}>
-                {/* Duotone base: grayscale image under a navy scrim. */}
-                <image
-                  href={f.image}
-                  x="0"
-                  y="0"
-                  width={MASK_W}
-                  height={MASK_H}
-                  preserveAspectRatio="xMidYMid slice"
-                  className="founder-portrait__base"
-                />
-                <rect
-                  x="0"
-                  y="0"
-                  width={MASK_W}
-                  height={MASK_H}
-                  fill="#0B1422"
-                  opacity="0.35"
-                />
-              </g>
-            </svg>
-            {/* Cyan annulus riding 1.5px outside the color layer's clip edge. */}
-            <div aria-hidden="true" className="founder-portrait__ring absolute inset-0" />
-            {/* Full-color layer, revealed by the expanding clip circle. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={f.image}
-              alt=""
-              aria-hidden="true"
-              draggable={false}
-              loading="lazy"
-              className="founder-portrait__color absolute inset-0 h-full w-full object-cover"
+              className="founder-portrait__base"
             />
-          </div>
-          {/* Bottom gradient so the name band sits on a dark base. */}
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-40"
-            style={{
-              background:
-                "linear-gradient(to top, hsl(var(--bg) / 0.9) 0%, transparent 100%)",
-            }}
-          />
-        </div>
-
-        {/* Body — bio, credentials, previously-at. Bottom padding clears the
-            absolute name band. */}
-        <div className="relative flex min-w-0 flex-col gap-4 p-6 pb-36 sm:p-7 sm:pb-36">
-          <div className="flex items-center justify-between gap-2 border-b border-[hsl(var(--rule)/0.7)] pb-4">
-            <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-ink-dim tabular-nums">
-              {String(index + 1).padStart(2, "0")} /{" "}
-              {String(total).padStart(2, "0")}
-            </span>
-          </div>
-
-          <p className="text-[14px] sm:text-[15px] text-ink-mute leading-relaxed">
-            {isEn ? f.shortBioEn : f.shortBioIt}
-          </p>
-
-          <ul className="flex flex-col gap-1.5 list-none">
-            {(isEn ? f.credentialsEn : f.credentialsIt).map((c) => (
-              <li
-                key={c}
-                className="flex items-start gap-2 text-[13px] text-ink leading-relaxed"
-              >
-                <span
-                  aria-hidden="true"
-                  className="mt-[7px] block w-1 h-1 rounded-full bg-[hsl(var(--accent)/0.8)] shrink-0"
-                />
-                <span>{c}</span>
-              </li>
-            ))}
-          </ul>
-
-          {f.previouslyAt && f.previouslyAt.length > 0 ? (
-            <div className="pt-3 border-t border-[hsl(var(--rule)/0.7)]">
-              <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute/70 mb-2">
-                {isEn ? "Previously" : "In precedenza"}
-              </p>
-              <ul className="flex flex-wrap gap-1.5 list-none">
-                {f.previouslyAt.map((co) => (
-                  <li
-                    key={co}
-                    className="inline-flex items-center px-2.5 py-1 rounded-full border border-[hsl(var(--rule))] bg-[hsl(var(--bg))] font-mono text-[10px] tracking-[0.1em] uppercase text-ink-mute"
-                  >
-                    {co}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </div>
+            <rect
+              x="0"
+              y="0"
+              width={MASK_W}
+              height={MASK_H}
+              fill="#0B1422"
+              opacity="0.35"
+            />
+          </g>
+        </svg>
+        {/* Cyan annulus riding 1.5px outside the color layer's clip edge. */}
+        <div aria-hidden="true" className="founder-portrait__ring absolute inset-0" />
+        {/* Full-color layer, revealed by the expanding clip circle. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={f.image}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          loading="lazy"
+          className="founder-portrait__color absolute inset-0 h-full w-full object-cover"
+        />
       </div>
 
-      {/* Name band — spans the whole panel; the huge display name carries the
-          windowed counter-sweep (transform on the inner span, clipped by the
-          panel's overflow-hidden). LinkedIn stays interactive. */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-4 p-6 sm:p-7">
-        <div className="min-w-0">
-          <h3 className="font-display text-[clamp(2.2rem,4.5vw,3.4rem)] leading-[0.95] text-ink">
-            <span data-founder-name className="inline-block will-change-transform">
-              {f.name}
-            </span>
-          </h3>
-          <p className="mt-2 font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute">
-            {role}
-          </p>
+      {/* Bottom scrim — paints ABOVE the media (including the hover color
+          layer) so the overlaid copy keeps AA contrast in every state:
+          #0B1422 at 90%+ under the text block, transparent ~55% up. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(to top, rgba(11,20,34,0.92) 0%, rgba(11,20,34,0.82) 26%, rgba(11,20,34,0.4) 42%, rgba(11,20,34,0) 58%)",
+        }}
+      />
+
+      {/* Counter — top-left, over the raw image (shadow for legibility). */}
+      <span className="absolute left-6 top-6 z-10 font-mono text-[10px] tracking-[0.16em] uppercase text-ink-dim tabular-nums [text-shadow:0_1px_10px_rgba(11,20,34,0.9)] sm:left-7 sm:top-7">
+        {String(index + 1).padStart(2, "0")} /{" "}
+        {String(total).padStart(2, "0")}
+      </span>
+
+      {/* Overlay stack — ALL copy rides the scrim, nothing beside the image.
+          The huge display name carries the windowed counter-sweep (transform
+          on the inner span, clipped by the article's overflow-hidden).
+          pointer-events-none except LinkedIn, so the article owns hover. */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col gap-3 p-6 sm:p-7">
+        <div className="flex items-end justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="font-display text-[clamp(2.2rem,4.5vw,3.4rem)] leading-[0.95] text-ink">
+              <span data-founder-name className="inline-block will-change-transform">
+                {f.name}
+              </span>
+            </h3>
+            <p className="mt-2 font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute">
+              {role}
+            </p>
+          </div>
+          <Link
+            href={f.linkedIn}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`${f.name} on LinkedIn`}
+            className="pointer-events-auto inline-flex items-center justify-center w-9 h-9 shrink-0 rounded-full border border-[hsl(var(--ink)/0.25)] bg-[hsl(var(--bg)/0.6)] text-ink-mute hover:text-ink hover:border-[hsl(var(--accent)/0.6)] transition-colors backdrop-blur"
+          >
+            <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
+          </Link>
         </div>
-        <Link
-          href={f.linkedIn}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label={`${f.name} on LinkedIn`}
-          className="pointer-events-auto inline-flex items-center justify-center w-9 h-9 shrink-0 rounded-full border border-[hsl(var(--ink)/0.25)] bg-[hsl(var(--bg)/0.6)] text-ink-mute hover:text-ink hover:border-[hsl(var(--accent)/0.6)] transition-colors backdrop-blur"
-        >
-          <ArrowUpRight className="w-4 h-4" aria-hidden="true" />
-        </Link>
+
+        <p className="max-w-[52ch] text-[13px] sm:text-[14px] text-ink-mute leading-relaxed">
+          {isEn ? f.shortBioEn : f.shortBioIt}
+        </p>
+
+        <ul className="flex flex-wrap gap-1.5 list-none">
+          {(isEn ? f.credentialsEn : f.credentialsIt).map((c) => (
+            <li
+              key={c}
+              className={`${chipClass} gap-2 text-[11px] text-ink leading-snug`}
+            >
+              <span
+                aria-hidden="true"
+                className="block w-1 h-1 rounded-full bg-[hsl(var(--accent)/0.8)] shrink-0"
+              />
+              <span>{c}</span>
+            </li>
+          ))}
+        </ul>
+
+        {f.previouslyAt && f.previouslyAt.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="mr-1 font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute/70">
+              {isEn ? "Previously" : "In precedenza"}
+            </span>
+            <ul className="contents list-none">
+              {f.previouslyAt.map((co) => (
+                <li
+                  key={co}
+                  className={`${chipClass} font-mono text-[10px] tracking-[0.1em] uppercase text-ink-mute`}
+                >
+                  {co}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
     </article>
   );
@@ -673,7 +687,7 @@ export default function FoundersRail() {
             <li className="flex w-[min(88vw,34rem)] shrink-0 items-center">
               {heading()}
             </li>
-            {panels("w-[min(92vw,46rem)] shrink-0")}
+            {panels("w-[min(88vw,34rem)] shrink-0")}
           </ul>
         </div>
       </div>

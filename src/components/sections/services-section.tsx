@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -9,25 +10,62 @@ import {
   ScanSearch,
   type LucideIcon,
 } from "lucide-react";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Reveal } from "@/components/ui/reveal";
 import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
+import { getLenis } from "@/lib/lenis-singleton";
+
+if (typeof window !== "undefined") {
+  gsap.registerPlugin(ScrollTrigger);
+}
 
 /**
- * ServicesSection — "What SerSan builds".
+ * ServicesSection — "Four services, one discipline" as a POV camera pan
+ * (cards/scroll refactor, work package E — template 2: GSAP motionPath POV).
  *
- * Four services, two-by-two grid. Each card is engineered to feel
- * purchasable, not consultative — meaning every card has:
- *   - a number + title
- *   - a one-line positioning claim
- *   - "typical build includes" bullets (concrete deliverables)
- *   - the buyer pain it solves
- *   - a CTA link out
+ * MECHANICS (same binding contract as case-studies-rail.tsx):
+ *   - CSS `position: sticky` pins the viewport frame; the runway height is a
+ *     px value set by measure() (100vh + SEGMENTS×~85vh — pure vh, so a font
+ *     swap can never change document height). NO ScrollTrigger `pin:` (a
+ *     pin-spacer would re-parent the section and break every
+ *     [data-line-anchor] measurement). ONE ScrollTrigger, start "top top",
+ *     end "bottom bottom", invalidateOnRefresh, onRefreshInit: measure.
+ *   - Inside the sticky frame an oversized stage (150vw × 140vh) holds the
+ *     four service cards at organic diagonal positions (% of stage, fixed
+ *     rem card widths). The stage's CSS left/top center it in the frame, so
+ *     gsap x/y are pure deltas from the overview pose (SSR paints the
+ *     overview, no hydration jump).
  *
- * The CTA hrefs point at the work section + future service detail pages
- * (which are out of scope this pass — they resolve cleanly to the homepage
- * anchor until those pages exist).
+ * MOTION (the template's signature — scrub a TARGET, chase it with a
+ * smoother; the stage transform is NEVER written from the scrub directly):
+ *   - progress 0..1 → 4 chained segments. Segment 0 eases the FOCAL POINT
+ *     from the stage center (overview) to card 0's center; segment i eases
+ *     card i−1 → card i. smoothstep per segment (zero slope at both ends —
+ *     C1 across beat boundaries).
+ *   - The focal target feeds gsap.quickTo pair x/y (duration ~1.0, expo) on
+ *     the stage; scale rides a separate full-frame wrapper with
+ *     transform-origin at the viewport center (focal invariance: the focused
+ *     point stays centered under any scale/rotation): overview ~0.75 between
+ *     cards → 1.0 locked on a card, plus a subtle alternating ±2.5° rotation
+ *     per segment (sine.inOut chase). scaleX/scaleY quickTo pair, never the
+ *     `scale` shorthand (repo-wide "not eligible for reset" gotcha).
+ *   - Focus states: the segment's target card brightens to full opacity +
+ *     accent ring, the card being left dims back (opacity 0.5, scale 0.96) —
+ *     per-card quickTo writers on an INNER wrapper, no React state per frame.
+ *   - ALL per-frame math is analytic from measure()-cached untransformed
+ *     offsetLeft/offsetTop centers — zero getBoundingClientRect in the loop.
+ *
+ * MODES: pinned (SSR default — desktop, fine pointer, no reduced-motion) /
+ * native (≤768px, coarse pointer, prefers-reduced-motion): the unpinned
+ * stacked grid, same cards, no transforms. Heading + closing line live in
+ * normal flow OUTSIDE the runway in both modes.
+ *
+ * KEYBOARD: focusin on a card converts to the equivalent vertical scroll
+ * (segment lock position) through Lenis — same convention as the work rail.
+ * The data-line-anchor="services" wrapper lives in page.tsx and is untouched.
  */
 
 type Service = {
@@ -166,9 +204,44 @@ function getServices(isEn: boolean): Service[] {
   ];
 }
 
+/* ------------------------------------------------------------------------ */
+/* POV-pan constants (all analytic; the runway height is pure vh so fonts    */
+/* can never change document height → no downstream anchor drift).           */
+/* ------------------------------------------------------------------------ */
+
+/** 4 segments: overview→card0, then card0→1→2→3. */
+const SEGMENTS = 4;
+/** Scroll runway per segment, in viewport heights. Runway = (1 + 4×0.85)vh. */
+const SEGMENT_VH = 0.85;
+/** Stage zoom between cards (establishing shot) vs locked on a card. */
+const OVERVIEW_SCALE = 0.75;
+const LOCKED_SCALE = 1;
+/** Subtle alternating stage roll while traveling between cards. */
+const ROT_MAX_DEG = 2.5;
+/** Unfocused-card dim pose (opacity / scale on the inner wrapper). */
+const DIM_OPACITY = 0.5;
+const DIM_SCALE = 0.96;
+
+/** Organic diagonal card placements, % of the 150vw × 140vh stage. */
+const STAGE_POS: { left: string; top: string }[] = [
+  { left: "7%", top: "9%" },
+  { left: "56%", top: "20%" },
+  { left: "13%", top: "48%" },
+  { left: "58%", top: "58%" },
+];
+
+const smoothstep = (t: number) => t * t * (3 - 2 * t);
+
 function ServiceCard({ service, isEn }: { service: Service; isEn: boolean }) {
   return (
-    <article className="card-steel group flex flex-col h-full p-6 sm:p-8 overflow-hidden">
+    <article className="group relative flex h-full flex-col overflow-hidden rounded-lg border border-[hsl(var(--rule))] bg-[hsl(216_30%_8%/0.92)] p-6 sm:p-8 backdrop-blur-sm transition-colors duration-300 hover:border-[hsl(var(--accent)/0.45)]">
+      {/* POV focus ring — opacity is driven to the card's focus value by a
+          quickTo writer in pinned mode; inert (opacity 0) in the native grid. */}
+      <span
+        data-pov-focus
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 rounded-[inherit] border border-[hsl(var(--accent)/0.6)] opacity-0 shadow-[inset_0_1px_0_hsl(var(--accent)/0.4),0_0_48px_-12px_hsl(var(--accent)/0.55)]"
+      />
       {/* Top-edge accent line — fades in on hover */}
       <span
         aria-hidden="true"
@@ -192,11 +265,16 @@ function ServiceCard({ service, isEn }: { service: Service; isEn: boolean }) {
             "radial-gradient(ellipse 60% 50% at 0% 0%, hsl(var(--accent) / 0.08) 0%, transparent 60%)",
         }}
       />
-      {/* Header — number + technical icon */}
-      <div className="flex items-center justify-between gap-4 mb-6">
-        <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute">
-          {service.num} {isEn ? "Service" : "Servizio"}
-        </span>
+      {/* Header — editorial num + mono eyebrow + technical icon */}
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div className="flex items-baseline gap-3">
+          <span className="font-display text-[3.25rem] sm:text-[4rem] leading-[0.9] tracking-[-0.03em] text-[hsl(var(--accent)/0.9)]">
+            {service.num}
+          </span>
+          <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute">
+            {isEn ? "Service" : "Servizio"}
+          </span>
+        </div>
         <span
           aria-hidden="true"
           className="grid place-items-center h-9 w-9 rounded-md border border-[hsl(var(--rule))] bg-[hsl(var(--accent)/0.05)] text-ink-mute group-hover:text-[hsl(var(--accent))] group-hover:border-[hsl(var(--accent)/0.4)] transition-colors duration-300"
@@ -234,9 +312,7 @@ function ServiceCard({ service, isEn }: { service: Service; isEn: boolean }) {
         ))}
       </ul>
 
-      {/* Solves — highlighted bottom strip. On hover the footer bar gains an
-          inset accent glow (sub-element only — the card root transform stays
-          owned by CardTiltController). */}
+      {/* Solves — highlighted bottom strip. */}
       <div className="mt-auto -mx-6 sm:-mx-8 -mb-6 sm:-mb-8 px-6 sm:px-8 py-4 border-t border-[hsl(var(--rule))] bg-[hsl(var(--accent)/0.04)] transition-shadow duration-300 group-hover:shadow-[inset_0_1px_0_hsl(var(--accent)/0.45),0_-8px_24px_-16px_hsl(var(--accent)/0.4)] motion-reduce:transition-none">
         <div className="flex items-baseline justify-between gap-4">
           <div className="min-w-0">
@@ -275,55 +351,386 @@ export default function ServicesSection() {
   const isEn = language === "en";
   const services = getServices(isEn);
 
+  // SSR default = pinned markup so the card links are in the initial HTML —
+  // same convention as the work rail / cinematic spine.
+  const [mode, setMode] = useState<"pinned" | "native">("pinned");
+  const [detected, setDetected] = useState(false);
+
+  const runwayRef = useRef<HTMLDivElement | null>(null);
+  const stickyRef = useRef<HTMLDivElement | null>(null);
+  const scaleRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mobile = window.matchMedia("(max-width: 768px)").matches;
+    const coarse = window.matchMedia("(pointer: coarse)").matches;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setMode(mobile || coarse || reduced ? "native" : "pinned");
+    setDetected(true);
+  }, []);
+
+  // POV-pan scrub — pinned mode only, after viewport detection settles.
+  // isEn is a dep on purpose: an EN↔IT toggle changes card heights → the
+  // cached centers/secTop go stale; a full rebuild re-measures (cheap, rare).
+  useEffect(() => {
+    if (!detected || mode !== "pinned") return;
+    const runway = runwayRef.current;
+    const sticky = stickyRef.current;
+    const scaleWrap = scaleRef.current;
+    const stage = stageRef.current;
+    if (!runway || !sticky || !scaleWrap || !stage) return;
+
+    const cardEls = Array.from(
+      stage.querySelectorAll<HTMLElement>("[data-pov-card]"),
+    );
+    if (cardEls.length === 0) return;
+
+    // Prime the FULL transform of every quickTo target once (repo convention
+    // from CardTiltController: unrecorded components trip "not eligible for
+    // reset" when a quickTo later touches them). scaleWrap's origin is the
+    // viewport center — the focal point stays centered under scale/rotation.
+    gsap.set(stage, { x: 0, y: 0 });
+    gsap.set(scaleWrap, {
+      scaleX: OVERVIEW_SCALE,
+      scaleY: OVERVIEW_SCALE,
+      rotation: 0,
+      transformOrigin: "50% 50%",
+    });
+
+    // ---- POV smoothers (template 2's signature): the scrub only re-targets
+    // these chasers; discontinuities in the target are absorbed here.
+    const xTo = gsap.quickTo(stage, "x", { duration: 1.0, ease: "expo" });
+    const yTo = gsap.quickTo(stage, "y", { duration: 1.0, ease: "expo" });
+    const sxTo = gsap.quickTo(scaleWrap, "scaleX", { duration: 0.9, ease: "expo" });
+    const syTo = gsap.quickTo(scaleWrap, "scaleY", { duration: 0.9, ease: "expo" });
+    const rTo = gsap.quickTo(scaleWrap, "rotation", {
+      duration: 1.0,
+      ease: "sine.inOut",
+    });
+
+    // ---- Per-card focus writers (quickTo, no React state per frame).
+    const fxCards = cardEls.map((el) => {
+      const inner = el.querySelector<HTMLElement>("[data-pov-inner]");
+      const ring = el.querySelector<HTMLElement>("[data-pov-focus]");
+      if (inner) {
+        gsap.set(inner, {
+          opacity: DIM_OPACITY,
+          scaleX: DIM_SCALE,
+          scaleY: DIM_SCALE,
+          transformOrigin: "50% 50%",
+        });
+      }
+      if (ring) gsap.set(ring, { opacity: 0 });
+      return {
+        inner,
+        ring,
+        opacityTo: inner
+          ? gsap.quickTo(inner, "opacity", { duration: 0.6, ease: "power2.out" })
+          : null,
+        sxTo: inner
+          ? gsap.quickTo(inner, "scaleX", { duration: 0.6, ease: "power2.out" })
+          : null,
+        syTo: inner
+          ? gsap.quickTo(inner, "scaleY", { duration: 0.6, ease: "power2.out" })
+          : null,
+        ringTo: ring
+          ? gsap.quickTo(ring, "opacity", { duration: 0.6, ease: "power2.out" })
+          : null,
+        last: -1,
+      };
+    });
+
+    // ---- Measurement (measure-time only; the frame loop reads these caches
+    // — zero getBoundingClientRect per frame). offsetLeft/offsetTop are
+    // layout offsets relative to the stage: untransformed by definition (the
+    // focus transforms live on the inner wrapper, never the measured box).
+    let vw = 0;
+    let vh = 0;
+    let travel = 0;
+    let secTop = 0;
+    let overview = { x: 0, y: 0 };
+    let centers: { x: number; y: number }[] = [];
+
+    const measure = () => {
+      vw = window.innerWidth;
+      vh = window.innerHeight;
+      travel = Math.round(vh * SEGMENTS * SEGMENT_VH);
+      runway.style.height = `${vh + travel}px`;
+      secTop = runway.getBoundingClientRect().top + window.scrollY;
+      overview = { x: stage.offsetWidth / 2, y: stage.offsetHeight / 2 };
+      centers = cardEls.map((el) => ({
+        x: el.offsetLeft + el.offsetWidth / 2,
+        y: el.offsetTop + el.offsetHeight / 2,
+      }));
+    };
+    measure();
+
+    // ---- Analytic focal path. The stage's CSS left/top already center it in
+    // the frame, so the delta that puts stage-point f at the viewport center
+    // is simply (overview − f) — and the overview pose is x = y = 0 (the SSR
+    // paint). Scratch object reused every frame (no allocation in the loop).
+    const target = { x: 0, y: 0, zoom: OVERVIEW_SCALE, rot: 0, seg: 0, ease: 0 };
+
+    const computeTarget = (progress: number) => {
+      const p = Math.min(Math.max(progress, 0), 1) * SEGMENTS;
+      const seg = Math.min(SEGMENTS - 1, Math.floor(p));
+      const segF = Math.min(1, p - seg);
+      const e = smoothstep(segF);
+      const from = seg === 0 ? overview : centers[seg - 1];
+      const to = centers[seg] ?? overview;
+      target.x = overview.x - (from.x + (to.x - from.x) * e);
+      target.y = overview.y - (from.y + (to.y - from.y) * e);
+      // Zoom: locked (1.0) on each card, dipping to the overview scale while
+      // traveling; segment 0 rises out of the establishing shot instead.
+      const dip = Math.sin(Math.PI * segF); // 0 → 1 → 0, C1 at both ends
+      target.zoom =
+        seg === 0
+          ? OVERVIEW_SCALE + (LOCKED_SCALE - OVERVIEW_SCALE) * e
+          : LOCKED_SCALE - (LOCKED_SCALE - OVERVIEW_SCALE) * dip;
+      // Subtle alternating roll, zero at every lock point.
+      target.rot =
+        (seg % 2 === 0 ? 1 : -1) * ROT_MAX_DEG * dip * (seg === 0 ? e : 1);
+      target.seg = seg;
+      target.ease = e;
+    };
+
+    const applyPose = (immediate: boolean) => {
+      if (immediate) {
+        gsap.set(stage, { x: target.x, y: target.y });
+        gsap.set(scaleWrap, {
+          scaleX: target.zoom,
+          scaleY: target.zoom,
+          rotation: target.rot,
+        });
+      } else {
+        xTo(target.x);
+        yTo(target.y);
+        sxTo(target.zoom);
+        syTo(target.zoom);
+        rTo(target.rot);
+      }
+    };
+
+    const applyFocus = (seg: number, e: number, immediate: boolean) => {
+      for (let i = 0; i < fxCards.length; i++) {
+        const g = i === seg ? e : i === seg - 1 ? 1 - e : 0;
+        const fx = fxCards[i];
+        if (!immediate && Math.abs(g - fx.last) < 0.001) continue; // parked
+        fx.last = g;
+        const op = DIM_OPACITY + (1 - DIM_OPACITY) * g;
+        const sc = DIM_SCALE + (1 - DIM_SCALE) * g;
+        if (immediate) {
+          if (fx.inner) gsap.set(fx.inner, { opacity: op, scaleX: sc, scaleY: sc });
+          if (fx.ring) gsap.set(fx.ring, { opacity: g });
+        } else {
+          fx.opacityTo?.(op);
+          fx.sxTo?.(sc);
+          fx.syTo?.(sc);
+          fx.ringTo?.(g);
+        }
+      }
+    };
+
+    const snapToProgress = (progress: number) => {
+      computeTarget(progress);
+      applyPose(true);
+      applyFocus(target.seg, target.ease, true);
+    };
+
+    const st = ScrollTrigger.create({
+      trigger: runway,
+      start: "top top",
+      end: "bottom bottom", // progress hits 1 exactly when sticky releases
+      invalidateOnRefresh: true,
+      onRefreshInit: measure,
+      // Post-refresh (resize, spine bursts): snap — a smoothed glide across a
+      // re-measured layout reads as drift, not intent.
+      onRefresh: (self) => snapToProgress(self.progress),
+      onUpdate: (self) => {
+        computeTarget(self.progress);
+        applyPose(false);
+        applyFocus(target.seg, target.ease, false);
+      },
+    });
+    // Init snap (the template's gsap.set-at-load): covers a reload that
+    // restores a scroll position inside the runway — no fly-in from origin.
+    snapToProgress(st.progress);
+
+    // One-shot late refresh once webfonts land: the heading above the runway
+    // reflows on font swap → secTop shifts (the provider deliberately never
+    // refreshes on "/" — same caveat as the work rail).
+    let fontsCancelled = false;
+    document.fonts?.ready
+      .then(() => {
+        if (!fontsCancelled) ScrollTrigger.refresh();
+      })
+      .catch(() => {});
+
+    // Keyboard: focusing a card (its CTA link) converts to the segment's lock
+    // position through Lenis — the same code path as wheel input.
+    const onFocusIn = (e: FocusEvent) => {
+      const card = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+        "[data-pov-card]",
+      );
+      if (!card) return;
+      // Undo the browser's auto-scroll of the overflow:hidden sticky frame
+      // BEFORE anything reads layout (the stage overflows on both axes).
+      sticky.scrollLeft = 0;
+      sticky.scrollTop = 0;
+      const idx = Number(card.dataset.povIndex ?? 0);
+      const targetY = secTop + (travel * (idx + 1)) / SEGMENTS;
+      if (Math.abs(window.scrollY - targetY) < 2) return;
+      const lenis = getLenis();
+      if (lenis) lenis.scrollTo(targetY, { duration: 0.6 });
+      else window.scrollTo({ top: targetY });
+    };
+    sticky.addEventListener("focusin", onFocusIn);
+
+    return () => {
+      fontsCancelled = true;
+      sticky.removeEventListener("focusin", onFocusIn);
+      st.kill();
+      gsap.killTweensOf([stage, scaleWrap]);
+      gsap.set(stage, { clearProps: "transform" });
+      gsap.set(scaleWrap, { clearProps: "transform" });
+      fxCards.forEach((fx) => {
+        if (fx.inner) {
+          gsap.killTweensOf(fx.inner);
+          gsap.set(fx.inner, { clearProps: "transform,opacity" });
+        }
+        if (fx.ring) {
+          gsap.killTweensOf(fx.ring);
+          gsap.set(fx.ring, { clearProps: "opacity" });
+        }
+      });
+      runway.style.height = "";
+    };
+  }, [detected, mode, isEn]);
+
+  const heading = (
+    <SectionHeading
+      eyebrow={isEn ? "What SerSan builds" : "Cosa costruisce SerSan"}
+      title={
+        isEn ? (
+          <>
+            Four services.{" "}
+            <span className="font-display italic text-ink">One discipline.</span>
+          </>
+        ) : (
+          <>
+            Quattro servizi.{" "}
+            <span className="font-display italic text-ink">Una sola disciplina.</span>
+          </>
+        )
+      }
+      description={
+        isEn
+          ? "Every engagement is delivered by senior engineers from scoping to handover. No account layer, no junior bench, no roadmap that quietly becomes a multi-year retainer."
+          : "Ogni ingaggio è seguito da ingegneri senior, dallo scoping al passaggio di consegne. Nessun livello di account management, nessuna panchina di junior, nessuna roadmap che si trasforma silenziosamente in un retainer pluriennale."
+      }
+      className="mb-12 sm:mb-16 max-w-3xl"
+    />
+  );
+
+  // Section closer — plain text only. The /start CTA that lived here was
+  // removed in the restyle-step-2 CTA dedupe (home keeps exactly three
+  // /start moments: spine handover, post-case-studies, FinalCTA).
+  const closing = (
+    <p className="max-w-xl text-[14px] text-ink-mute leading-relaxed">
+      {isEn
+        ? "Not sure which one fits? The scoping call diagnoses the problem first, then names the engagement."
+        : "Non sai quale sia quello giusto? La call di scoping prima diagnostica il problema, poi definisce l'ingaggio."}
+    </p>
+  );
+
+  // Native fallback (≤768px / coarse / reduced-motion): the unpinned stacked
+  // grid — no runway, no transforms, browser-owned scroll.
+  if (detected && mode === "native") {
+    return (
+      <section
+        id="services"
+        className="section-accent-tint section-accent-tint--strong relative section-lg scroll-mt-24 overflow-hidden"
+      >
+        <SectionGlow position="top-left" intensity={1.1} size="55rem" />
+        <SectionGlow position="bottom-right" intensity={1} size="55rem" />
+        <div className="container-px relative">
+          {heading}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
+            {services.map((s, i) => (
+              <Reveal key={s.num} delay={i * 80}>
+                <ServiceCard service={s} isEn={isEn} />
+              </Reveal>
+            ))}
+          </div>
+          <div className="mt-12 sm:mt-14">{closing}</div>
+        </div>
+      </section>
+    );
+  }
+
+  // Pinned POV-pan layout (SSR default). NO overflow-hidden on the section —
+  // an ancestor overflow-hidden would defeat position: sticky; clipping lives
+  // on the sticky frame itself.
   return (
     <section
       id="services"
-      className="section-accent-tint section-accent-tint--strong relative section-lg scroll-mt-24 overflow-hidden"
+      className="section-accent-tint section-accent-tint--strong relative scroll-mt-24"
     >
-      <SectionGlow position="top-left" intensity={1.1} size="55rem" />
-      <SectionGlow position="bottom-right" intensity={1} size="55rem" />
-      <div className="container-px relative">
-        <SectionHeading
-          eyebrow={isEn ? "What SerSan builds" : "Cosa costruisce SerSan"}
-          title={
-            isEn ? (
-              <>
-                Four services.{" "}
-                <span className="font-display italic text-ink">One discipline.</span>
-              </>
-            ) : (
-              <>
-                Quattro servizi.{" "}
-                <span className="font-display italic text-ink">Una sola disciplina.</span>
-              </>
-            )
-          }
-          description={
-            isEn
-              ? "Every engagement is delivered by senior engineers from scoping to handover. No account layer, no junior bench, no roadmap that quietly becomes a multi-year retainer."
-              : "Ogni ingaggio è seguito da ingegneri senior, dallo scoping al passaggio di consegne. Nessun livello di account management, nessuna panchina di junior, nessuna roadmap che si trasforma silenziosamente in un retainer pluriennale."
-          }
-          className="mb-12 sm:mb-16 max-w-3xl"
-        />
+      {/* Heading — normal flow, above the runway. */}
+      <div className="container-px relative pt-20 sm:pt-[6.5rem] lg:pt-32">
+        {heading}
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
-          {services.map((s, i) => (
-            <Reveal key={s.num} delay={i * 80}>
-              <ServiceCard service={s} isEn={isEn} />
-            </Reveal>
-          ))}
+      {/* The tall scroll runway: height = 100vh + SEGMENTS×85vh, set in px by
+          measure(). minHeight is the SSR placeholder before JS measures. */}
+      <div ref={runwayRef} className="relative" style={{ minHeight: "100vh" }}>
+        {/* Sticky viewport — this IS the pin (no pin-spacer, anchors stay
+            valid). Clips the oversized stage on both axes. */}
+        <div
+          ref={stickyRef}
+          className="sticky top-0 h-screen overflow-hidden"
+        >
+          <SectionGlow position="top-left" intensity={1.1} size="55rem" />
+          <SectionGlow position="bottom-right" intensity={1} size="55rem" />
+          {/* Zoom/roll wrapper — full-frame, transform-origin at the viewport
+              center so the focused point stays centered under scale/rotation.
+              SSR paints the overview scale (inline transform GSAP then owns). */}
+          <div
+            ref={scaleRef}
+            className="absolute inset-0 will-change-transform"
+            style={{ transform: `scale(${OVERVIEW_SCALE})` }}
+          >
+            {/* The oversized stage. CSS left/top center it in the frame so
+                gsap x/y are pure deltas from the overview pose (x = y = 0). */}
+            <div
+              ref={stageRef}
+              className="absolute h-[140vh] w-[150vw] will-change-transform"
+              style={{ left: "calc(50% - 75vw)", top: "calc(50% - 70vh)" }}
+            >
+              {services.map((s, i) => (
+                <div
+                  key={s.num}
+                  data-pov-card
+                  data-pov-index={i}
+                  className="absolute w-[min(84vw,30rem)]"
+                  style={STAGE_POS[i]}
+                >
+                  {/* Inner wrapper carries the focus dim/brighten transforms so
+                      the card box above stays untransformed for measure(). */}
+                  <div data-pov-inner className="will-change-transform">
+                    <ServiceCard service={s} isEn={isEn} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
+      </div>
 
-        {/* Section closer — plain text only. The /start CTA that lived here
-            was removed in the restyle-step-2 CTA dedupe (home keeps exactly
-            three /start moments: spine handover, post-case-studies, FinalCTA). */}
-        <div className="mt-12 sm:mt-14">
-          <p className="max-w-xl text-[14px] text-ink-mute leading-relaxed">
-            {isEn
-              ? "Not sure which one fits? The scoping call diagnoses the problem first, then names the engagement."
-              : "Non sai quale sia quello giusto? La call di scoping prima diagnostica il problema, poi definisce l'ingaggio."}
-          </p>
-        </div>
+      {/* Closing line — normal flow, below the runway. */}
+      <div className="container-px relative pt-12 sm:pt-14 pb-20 sm:pb-[6.5rem] lg:pb-32">
+        {closing}
       </div>
     </section>
   );
