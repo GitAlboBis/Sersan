@@ -328,6 +328,63 @@ GOOD_FIT[i] with NOT_A_FIT[i]). Selective-on-purpose made cinematic.
   runway; closing line stays below. The `id="fit"` + data-line-anchor wrapper
   semantics unchanged.
 
+## V4 ADDENDUM (2026-07-08) — three more template moves, three new surfaces
+
+### Z — Zoom-to-fullscreen card→detail transition (template 7's flagship)
+Files: src/components/fx/flip-handoff-overlay.tsx · src/lib/flip-handoff-store.ts ·
+src/lib/use-flip-source.ts · click-arming touchpoints in case-studies-rail.tsx and
+case-studies-client.tsx (arming only — no layout changes there).
+- Clicking ANY work card (rail or /case-studies grid, all 13 — not just the 3 with
+  preview images) inflates a fixed clone of the card face from its rect to cover the
+  viewport (scale+borderRadius+clip-path inset ease, ~0.75s expo.inOut, slight
+  overshoot "liquid" feel per the template's cos-gated ripple; navy #0B1422 backdrop
+  fading in beneath), THEN the route change happens under it and the clone dissolves
+  into the detail hero (image cards hand off to the existing Flip hero target; no-image
+  cards cross-fade out over the hero block).
+- Build ON the existing flip-handoff machinery (globalThis-pinned store, passive
+  capture, 1200ms freshness, modified/middle-click + reduced-motion + coarse → plain
+  nav). The curtain in template.tsx must not double-cover: suppress the curtain wipe
+  for zoom-armed navigations (store flag) — the inflating card IS the curtain.
+  Back/forward, direct nav, prev/next stay untouched. Clone is aria-hidden,
+  pointer-events-none, z above curtain; always self-cleans (timeout guard) even if the
+  route stalls.
+
+### R — /resources article cards: hover lens + click radial wipe (template 4 demo 1+2)
+Files: the /resources listing client component (+ its card component if separate) ONLY.
+Compose with the existing WebGL hover preview plane (read the file first — the DOM
+must stay the complete experience on non-WebGPU tiers).
+- HOVER LENS (demo2): an aspect-corrected circular influence (~0.5 normalized radius,
+  smoothstep falloff) follows the pointer via CSS vars (--mx/--my set on pointermove,
+  one rect read per pointerenter, position derived from client coords) revealing a
+  "hot" treatment inside the circle: accent-cyan eyebrow/title tint, dot-grid/gradient
+  band lighting up — implemented as a masked overlay layer (radial-gradient mask at
+  var(--mx) var(--my)), lens radius eases in on enter (CSS transition on a registered
+  @property), collapses on leave. Fine-pointer only.
+- CLICK WIPE (demo1): on plain left-click, a clip-path circle() expanding FROM the
+  click point with corner-max-normalized radius (guarantees full coverage from any
+  origin) floods the card with the accent treatment (inverted card: navy text on cyan
+  wash at ~0.12 alpha + border flare) in ~0.45s before navigation proceeds (do NOT
+  preventDefault — arm the visual passively like use-flip-source does; the wipe is a
+  confirmation flourish, nav happens natively).
+- Reduced motion / coarse: static cards, no lens, no wipe. Copy byte-identical.
+
+### M — Credibility strip: velocity-reactive infinite marquee (rail-energy polish)
+File: src/components/sections/credibility-strip.tsx ONLY.
+- The trained-at wordmarks row becomes an infinite marquee: content duplicated
+  (aria-hidden on clones), translateX advanced by a gsap.ticker at base speed
+  ~28px/s, modulated by scrollStore velocity (|v| boost up to ~4×, damped λ≈3) with a
+  subtle skewX (clamp ±3°, damped to 0 at rest — same idiom as the work rail). Wrap
+  via modulo on the measured half-width (re-measured on resize + fonts.ready; widths
+  content-derived is OK here — measure, don't hardcode).
+- Pause (ease to 0) while hovered or when document.hidden; ticker early-returns when
+  parked AND velocity ≈ 0. Reduced motion: static row exactly as today. Eyebrow label
+  and wordmarks byte-identical; keep the existing dividers/opacity treatment.
+
+Shared: all three packages obey the house invariants (no pin:, no rects in frame
+loops, quickTo/ticker with identical-value skip and park early-return, getLenis()
+null-guarded, cyan/blue only, transform/opacity/filter/clip-path animation only, full
+cleanup, copy frozen).
+
 ## RISKS
 - Remap changes felt speed of the head along serpentine bends (by design — it now
   matches the reader): verify beats (audit ticks, production pulse) still land.

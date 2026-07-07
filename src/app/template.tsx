@@ -36,6 +36,7 @@ import { useRef } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { playTransition } from "@/lib/audio/uiSounds";
+import { consumeCurtainSuppression } from "@/lib/flip-handoff-store";
 
 // Wipe duration. Kept close to the Scene.tsx 420ms `setReveal` window so the
 // DOM curtain, the line fade-out/re-curve/fade-in, and the content fade-up all
@@ -52,6 +53,14 @@ let hasMountedOnce = false;
 export default function Template({ children }: { children: React.ReactNode }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const curtainRef = useRef<HTMLDivElement>(null);
+  // Latches the once-consumed curtain-suppression flag per template instance.
+  // React StrictMode (dev) runs the effect mount→cleanup→mount; the store flag
+  // is consumed exactly once, so without the latch the SECOND run would read
+  // `false` and play the full wipe over the zoom clone — the double-cover the
+  // flag exists to prevent. Refs persist across the StrictMode double
+  // invocation but reset on the real per-navigation remount, so prod behavior
+  // is byte-identical (one consume per navigation).
+  const suppressRef = useRef<boolean | null>(null);
 
   useGSAP(
     () => {
@@ -103,6 +112,23 @@ export default function Template({ children }: { children: React.ReactNode }) {
       // Subtle airy whoosh, once per navigation (skipped on first mount above).
       // The engine no-ops when audio is off or the AudioContext is still locked.
       playTransition();
+
+      // Zoom-armed navigation (work card → detail): the inflating card clone
+      // (fx/flip-handoff-overlay, z-70) IS the curtain for this navigation —
+      // leave ours open so two navy sheets never double-cover. The flag is
+      // consumed exactly once and freshness-gated in the store, so a click
+      // that never navigated cannot eat a later navigation's wipe. The
+      // content fade-up above still runs (it resolves beneath the clone).
+      suppressRef.current ??= consumeCurtainSuppression();
+      if (suppressRef.current) {
+        if (curtainRef.current) {
+          gsap.set(curtainRef.current, {
+            clipPath: "inset(0% 0 100% 0)",
+            pointerEvents: "none",
+          });
+        }
+        return;
+      }
 
       // Curtain wipe — a navy sheet that starts fully covering the viewport
       // and lifts UPWARD, uncovering the page from the bottom up. `clip-path`

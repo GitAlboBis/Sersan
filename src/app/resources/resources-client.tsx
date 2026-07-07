@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRef } from "react";
 import { ArrowRight, Clock } from "lucide-react";
-import { resources } from "@/data/resources";
+import { resources, type Resource } from "@/data/resources";
 import { useLanguage } from "@/components/language-provider";
 import { Reveal } from "@/components/ui/reveal";
 import { SectionHeading } from "@/components/ui/section-heading";
@@ -10,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import {
   useResourcePreview,
   ResourcePreviewCard,
+  type ResourceItemHandlers,
 } from "@/components/resources/resource-preview";
 
 export function ResourcesClient() {
@@ -94,42 +96,20 @@ export function ResourcesClient() {
             className="max-w-4xl mx-auto space-y-5"
             onPointerLeave={onListPointerLeave}
           >
+            {/* ResourceCard COMPOSES the preview-store handlers (WebGL hover
+                plane / DOM fallback card wiring) with the card-surface hover
+                lens + click radial wipe — it wraps getItemHandlers(i), never
+                replaces it. */}
             {resources.map((r, i) => (
               <Reveal key={r.slug} delay={Math.min(i, 4) * 70}>
-              <Link
-                href={`/resources/${r.slug}`}
-                data-resource-index={i}
-                className="card-steel group block p-7"
-                {...getItemHandlers(i)}
-              >
-                <div className="flex items-center gap-3 mb-3 text-[10px] font-mono uppercase tracking-[0.16em] text-ink-mute">
-                  <span style={{ color: "hsl(var(--accent))" }}>{categoryLabel[r.category]}</span>
-                  <span aria-hidden="true">·</span>
-                  <span>
-                    {new Date(r.publishedAt).toLocaleDateString(dateLocale, {
-                      year: "numeric",
-                      month: "short",
-                      day: "numeric",
-                    })}
-                  </span>
-                  <span aria-hidden="true">·</span>
-                  <span className="inline-flex items-center gap-1">
-                    <Clock className="w-3 h-3" /> {r.readMinutes} min
-                  </span>
-                </div>
-                <h2 className="font-display text-2xl sm:text-[1.75rem] text-ink mb-3 leading-tight group-hover:text-[hsl(var(--accent))] transition-colors">
-                  {isEn ? r.title : r.titleIt}
-                </h2>
-                <p className="text-sm sm:text-base text-ink-mute leading-[1.55] mb-4">
-                  {isEn ? r.excerpt : r.excerptIt}
-                </p>
-                <div className="flex items-center justify-between">
-                  <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
-                    {r.authorName} &middot; {isEn ? r.authorRole : r.authorRoleIt}
-                  </p>
-                  <ArrowRight className="w-4 h-4 text-ink-mute group-hover:text-[hsl(var(--accent))] group-hover:translate-x-0.5 transition-all" />
-                </div>
-              </Link>
+                <ResourceCard
+                  r={r}
+                  index={i}
+                  isEn={isEn}
+                  categoryLabel={categoryLabel}
+                  dateLocale={dateLocale}
+                  preview={getItemHandlers(i)}
+                />
               </Reveal>
             ))}
           </div>
@@ -203,6 +183,339 @@ export function ResourcesClient() {
           desktop WebGPU full path where ResourcePreviewPlane is the preview,
           and on coarse/reduced-motion. */}
       <ResourcePreviewCard />
+
+      {/* Card lens/wipe styles — see CARD_FX_CSS docs below. Static string,
+          so SSR and client markup are identical. */}
+      <style>{CARD_FX_CSS}</style>
     </div>
   );
 }
+
+/* ------------------------------------------------------------------------- */
+/* Article card — hover lens + click radial wipe (template 4, demos 2 + 1)   */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * True only where the lens/wipe may run: a fine pointer with real hover and no
+ * reduced-motion preference. The CSS media block hides the layers on the other
+ * paths anyway — this JS gate just skips the per-event work (rect caching, CSS
+ * var writes, wipe arming) on coarse / reduced-motion devices.
+ */
+function cardFxOn() {
+  if (typeof window === "undefined") return false;
+  return (
+    window.matchMedia("(hover: hover) and (pointer: fine)").matches &&
+    !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+interface ResourceCardProps {
+  r: Resource;
+  index: number;
+  isEn: boolean;
+  categoryLabel: Record<string, string>;
+  dateLocale: string;
+  /** resourcePreviewStore handlers from useResourcePreview — the WebGL hover
+   *  preview plane (and its DOM fallback card) are driven by these. The lens
+   *  and wipe live on the card surface itself and COMPOSE with this wiring;
+   *  the DOM stays the complete experience when the plane doesn't mount. */
+  preview: ResourceItemHandlers;
+}
+
+/**
+ * One /resources article card.
+ *
+ * HOVER LENS (demo 2) — a circular influence follows the pointer, revealing an
+ * aria-hidden "hot" duplicate of the card copy (accent-cyan tint + dot grid
+ * lighting up) through a radial-gradient mask centered at --mx/--my.
+ * pointermove writes the vars in card-local px against a rect cached ONCE per
+ * pointerenter (no rect reads in any frame loop; the pointer stays inside the
+ * card, so scroll recompute is unnecessary). Only the radius eases — via the
+ * registered `--lens-r` @property transition (opens on enter, collapses on
+ * leave).
+ *
+ * CLICK WIPE (demo 1) — on a plain left click, a clip-path circle() floods the
+ * card from the click point with a corner-max-normalized radius, so coverage
+ * always completes regardless of origin. Passive: NO preventDefault — the wipe
+ * is a confirmation flourish and <Link> navigation proceeds natively (same
+ * arming contract as use-flip-source).
+ */
+function ResourceCard({
+  r,
+  index,
+  isEn,
+  categoryLabel,
+  dateLocale,
+  preview,
+}: ResourceCardProps) {
+  const rectRef = useRef<DOMRect | null>(null);
+  const lastRef = useRef({ x: -1, y: -1 });
+  const wipeRef = useRef<HTMLDivElement | null>(null);
+
+  const writeLensVars = (el: HTMLElement, clientX: number, clientY: number) => {
+    const rect = rectRef.current;
+    if (!rect) return;
+    const x = Math.round(clientX - rect.left);
+    const y = Math.round(clientY - rect.top);
+    const last = lastRef.current;
+    if (x === last.x && y === last.y) return; // identical-value skip
+    last.x = x;
+    last.y = y;
+    el.style.setProperty("--mx", `${x}px`);
+    el.style.setProperty("--my", `${y}px`);
+  };
+
+  const onPointerEnter = (e: React.PointerEvent<HTMLAnchorElement>) => {
+    preview.onPointerEnter(e);
+    if (e.pointerType === "touch" || !cardFxOn()) return;
+    // ONE rect read per pointerenter — cached for every move/click after it.
+    rectRef.current = e.currentTarget.getBoundingClientRect();
+    lastRef.current.x = -1;
+    lastRef.current.y = -1;
+    writeLensVars(e.currentTarget, e.clientX, e.clientY);
+    // A fresh hover clears any flood left by a completed flourish (e.g.
+    // back/forward restore) — reset without transitioning.
+    const wipe = wipeRef.current;
+    if (wipe) {
+      wipe.style.transition = "none";
+      wipe.style.opacity = "0";
+      wipe.style.clipPath = "circle(0px at 50% 50%)";
+    }
+  };
+
+  const onPointerMove = (e: React.PointerEvent<HTMLAnchorElement>) => {
+    preview.onPointerMove(e);
+    writeLensVars(e.currentTarget, e.clientX, e.clientY);
+  };
+
+  const onPointerLeave = (e: React.PointerEvent<HTMLAnchorElement>) => {
+    preview.onPointerLeave(e);
+    rectRef.current = null; // lens collapse is pure CSS (:hover ends)
+  };
+
+  const onClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    // Same contract as use-flip-source: plain same-tab left clicks only;
+    // modified clicks and keyboard activation navigate with no flourish.
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+      return;
+    if (e.detail === 0) return; // keyboard "click"
+    if (!cardFxOn()) return;
+    const wipe = wipeRef.current;
+    if (!wipe) return;
+    const rect = rectRef.current ?? e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    // Corner-max-normalized radius (template 4 demo 1): the largest distance
+    // from the click point to any card corner — the flood always completes.
+    const maxR = Math.ceil(
+      Math.max(
+        Math.hypot(x, y),
+        Math.hypot(rect.width - x, y),
+        Math.hypot(x, rect.height - y),
+        Math.hypot(rect.width - x, rect.height - y),
+      ),
+    );
+    wipe.style.setProperty("--wx", `${Math.round(x)}px`);
+    wipe.style.setProperty("--wy", `${Math.round(y)}px`);
+    wipe.style.transition = "none";
+    wipe.style.opacity = "1";
+    wipe.style.clipPath = `circle(0px at ${x}px ${y}px)`;
+    // One-off style flush (a click handler, NOT a frame loop) so the
+    // expansion transitions from radius 0 instead of jumping.
+    void wipe.offsetWidth;
+    wipe.style.transition = "clip-path 0.45s cubic-bezier(0.19, 1, 0.22, 1)";
+    wipe.style.clipPath = `circle(${maxR}px at ${x}px ${y}px)`;
+    // NO preventDefault — navigation proceeds natively.
+  };
+
+  return (
+    <Link
+      href={`/resources/${r.slug}`}
+      data-resource-index={index}
+      className="resource-card card-steel group block p-7"
+      onPointerEnter={onPointerEnter}
+      onPointerMove={onPointerMove}
+      onPointerLeave={onPointerLeave}
+      onClick={onClick}
+    >
+      <CardBody
+        r={r}
+        isEn={isEn}
+        categoryLabel={categoryLabel}
+        dateLocale={dateLocale}
+      />
+      {/* Hot duplicate revealed through the lens mask. aria-hidden +
+          pointer-events-none: purely decorative, same strings from the same
+          data (copy byte-identical), identical layout classes so it overlays
+          the base copy pixel-exact (p-7 mirrors the Link's padding). */}
+      <div aria-hidden="true" className="resource-lens p-7">
+        <CardBody
+          r={r}
+          isEn={isEn}
+          categoryLabel={categoryLabel}
+          dateLocale={dateLocale}
+          hot
+        />
+      </div>
+      {/* Click-wipe flood layer (clip-path circle written inline on click). */}
+      <div ref={wipeRef} aria-hidden="true" className="resource-wipe" />
+    </Link>
+  );
+}
+
+/**
+ * Card copy, rendered twice per card: once as the real (semantic) content and
+ * once as the aria-hidden "hot" duplicate inside the lens mask. Layout classes
+ * are IDENTICAL in both variants — `hot` only swaps colors (the inline style
+ * wins over the utility color) so the duplicate sits pixel-exact over the
+ * base. The hot arrow keeps the same group-hover translate so both copies
+ * shift together while hovered.
+ */
+function CardBody({
+  r,
+  isEn,
+  categoryLabel,
+  dateLocale,
+  hot = false,
+}: {
+  r: Resource;
+  isEn: boolean;
+  categoryLabel: Record<string, string>;
+  dateLocale: string;
+  hot?: boolean;
+}) {
+  // The real card keeps the semantic <h2>; the decorative duplicate must not
+  // add a second heading to the outline, so it renders a <div> with the same
+  // classes (preflight zeroes heading margins/font, so layout is identical).
+  const Title = hot ? "div" : "h2";
+  return (
+    <>
+      <div
+        className="flex items-center gap-3 mb-3 text-[10px] font-mono uppercase tracking-[0.16em] text-ink-mute"
+        style={hot ? { color: "hsl(var(--accent) / 0.85)" } : undefined}
+      >
+        <span style={{ color: "hsl(var(--accent))" }}>{categoryLabel[r.category]}</span>
+        <span aria-hidden="true">·</span>
+        <span>
+          {new Date(r.publishedAt).toLocaleDateString(dateLocale, {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          })}
+        </span>
+        <span aria-hidden="true">·</span>
+        <span className="inline-flex items-center gap-1">
+          <Clock className="w-3 h-3" /> {r.readMinutes} min
+        </span>
+      </div>
+      <Title
+        className="font-display text-2xl sm:text-[1.75rem] text-ink mb-3 leading-tight"
+        style={hot ? { color: "hsl(var(--accent))" } : undefined}
+      >
+        {isEn ? r.title : r.titleIt}
+      </Title>
+      <p
+        className="text-sm sm:text-base text-ink-mute leading-[1.55] mb-4"
+        style={hot ? { color: "hsl(var(--ink))" } : undefined}
+      >
+        {isEn ? r.excerpt : r.excerptIt}
+      </p>
+      <div className="flex items-center justify-between">
+        <p
+          className="text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute"
+          style={hot ? { color: "hsl(var(--accent) / 0.8)" } : undefined}
+        >
+          {r.authorName} &middot; {isEn ? r.authorRole : r.authorRoleIt}
+        </p>
+        <ArrowRight
+          className="w-4 h-4 text-ink-mute group-hover:text-[hsl(var(--accent))] group-hover:translate-x-0.5 transition-all"
+          style={hot ? { color: "hsl(var(--accent))" } : undefined}
+        />
+      </div>
+    </>
+  );
+}
+
+/**
+ * Lens + wipe CSS — CSS-first per the R spec:
+ *
+ *   - LENS: a masked overlay (radial-gradient mask at --mx/--my in card-local
+ *     px). The 55%→98% stop ramp is the smoothstep falloff of the influence
+ *     circle; the radius eases through the registered `--lens-r` @property
+ *     (discrete open/close where @property is unsupported — the mask still
+ *     works). Pure gradients, no filter/blur.
+ *   - WIPE: clip-path circle() transition, radius/origin written inline by
+ *     the click handler.
+ *
+ * Both layers are display:none outside the fine-pointer + motion-OK media
+ * block (and the lens additionally behind a mask-image @supports gate), so
+ * coarse pointers and reduced-motion users keep today's fully static cards
+ * while SSR markup stays identical everywhere. Accent is the signal cyan
+ * (#3BE1FF via --accent) — no violet.
+ */
+const CARD_FX_CSS = `
+@property --lens-r {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+.resource-lens,
+.resource-wipe {
+  display: none;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  @supports ((mask-image: radial-gradient(#000, #0000)) or (-webkit-mask-image: radial-gradient(#000, #0000))) {
+    .resource-lens { display: block; }
+  }
+  .resource-wipe { display: block; }
+}
+.resource-lens {
+  --lens-r: 0px;
+  transition: --lens-r 0.55s cubic-bezier(0.23, 1, 0.32, 1);
+  -webkit-mask-image: radial-gradient(
+    circle var(--lens-r) at var(--mx, 50%) var(--my, 50%),
+    #000 55%,
+    transparent 98%
+  );
+  mask-image: radial-gradient(
+    circle var(--lens-r) at var(--mx, 50%) var(--my, 50%),
+    #000 55%,
+    transparent 98%
+  );
+}
+.resource-card:hover .resource-lens {
+  --lens-r: 260px;
+}
+.resource-lens::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background:
+    radial-gradient(
+      circle 260px at var(--mx, 50%) var(--my, 50%),
+      hsl(var(--accent) / 0.14),
+      transparent 72%
+    ),
+    radial-gradient(hsl(var(--accent) / 0.2) 1px, transparent 1.5px);
+  background-size: auto, 18px 18px;
+}
+.resource-wipe {
+  opacity: 0;
+  clip-path: circle(0px at 50% 50%);
+  background:
+    radial-gradient(
+      circle 340px at var(--wx, 50%) var(--wy, 50%),
+      hsl(var(--accent) / 0.22),
+      transparent 75%
+    ),
+    hsl(var(--accent) / 0.12);
+  box-shadow:
+    inset 0 0 0 1px hsl(var(--accent) / 0.6),
+    inset 0 0 44px -14px hsl(var(--accent) / 0.45);
+}
+`;

@@ -33,17 +33,22 @@ const INDUSTRY_COLOR: Record<CaseStudy["industry"], string> = {
  * GridCard — one archive grid card, extracted so useFlipSource (a hook) is
  * called once per card at component top level (rules of hooks). The card markup
  * is unchanged from the inline version; the only additions are onClick +
- * data-flip-source on the <Link>, applied ONLY for studies WITH a previewImage
- * (the three SerSan builds). Cards without a preview get no handler/attr and
- * navigate exactly as before. Typography + the static STACK chips are aligned
- * to the redesigned home rail cards (visual language only — the grid keeps its
- * layout, media priority and Reveal entrances untouched).
+ * data-flip-source on the <Link>: EVERY card arms the zoom-to-fullscreen
+ * handoff (fx/flip-handoff-overlay) on a plain left click — arming is passive
+ * (never preventDefault), the <Link> navigates natively while the clone
+ * inflates above. Studies with a previewImage inflate the shot (even when the
+ * grid shows their logo first — the zoom reveals the product and lands on the
+ * detail hero); the rest inflate as a navy panel that cross-fades out.
+ * Typography + the static STACK chips are aligned to the redesigned home rail
+ * cards (visual language only — the grid keeps its layout, media priority and
+ * Reveal entrances untouched).
  */
 function GridCard({ study, isEn }: { study: CaseStudy; isEn: boolean }) {
   const engagement = isEn ? study.engagement : study.engagementIt;
   const role = isEn ? study.role : study.roleIt;
   const summary = isEn ? study.summary : study.summaryIt;
-  // Hook called unconditionally; passing undefined src is a no-op arm.
+  // Hook called unconditionally; undefined src arms the image-less (navy
+  // panel) variant of the zoom flight.
   const onFlip = useFlipSource(study.id, study.previewImage);
   // A brand logo (when present) takes priority over a product screenshot.
   const showLogo = Boolean(study.logoImage);
@@ -59,9 +64,8 @@ function GridCard({ study, isEn }: { study: CaseStudy; isEn: boolean }) {
           : "card-steel group flex flex-col h-full p-7"
       }
       aria-label={`${study.client}, ${engagement}`}
-      {...(showPreview
-        ? { onClick: onFlip, "data-flip-source": study.id }
-        : {})}
+      onClick={onFlip}
+      data-flip-source={study.id}
     >
       {showPreview && study.previewImage && (
         <CardImageDistort

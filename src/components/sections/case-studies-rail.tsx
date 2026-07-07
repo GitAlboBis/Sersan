@@ -137,7 +137,7 @@ function StudyCard({
   // text under a navy scrim. IN THE RAIL the screenshot leads over the brand
   // logo (redesign: the 112%-bleed media counter-parallax needs real cover
   // imagery; the /case-studies grid keeps its logo-first priority), so all
-  // three preview studies carry the parallax layer + the Flip handoff.
+  // three preview studies carry the parallax layer.
   // CardImageDistort and its reveal CSS key off the `.card-steel` ancestor, so
   // the media cards carry `card-steel` for the hook only — `data-no-tilt`
   // keeps the global CardTiltController from transforming the box (RailPlanes
@@ -148,8 +148,13 @@ function StudyCard({
   const showPreview = Boolean(study.previewImage);
   const showLogo = !showPreview && Boolean(study.logoImage);
   const hasMedia = showLogo || showPreview;
-  // Hook called unconditionally (rules of hooks); the handler/attr are only
-  // attached for cards WITH a preview so the other studies navigate as today.
+  // Hook called unconditionally (rules of hooks); EVERY card arms the
+  // zoom-to-fullscreen handoff on a plain left click (fx/flip-handoff-overlay
+  // inflates a clone of the card face while the <Link> navigates natively —
+  // arming is passive, never preventDefault). Preview cards inflate their
+  // shot and land on the detail hero; the rest inflate as a navy panel and
+  // cross-fade out. The rail's drag click-suppression (capture handler below)
+  // stops the event before it reaches this Link, so a real drag never arms.
   const onFlip = useFlipSource(study.id, study.previewImage);
   return (
     <Link
@@ -159,11 +164,9 @@ function StudyCard({
           ? `${CARD_CLASS} card-steel rail-card-distort card-has-distort`
           : CARD_CLASS
       }
-      {...(showPreview
-        ? { "data-no-tilt": "", onClick: onFlip, "data-flip-source": study.id }
-        : showLogo
-          ? { "data-no-tilt": "" }
-          : {})}
+      onClick={onFlip}
+      data-flip-source={study.id}
+      {...(hasMedia ? { "data-no-tilt": "" } : {})}
       onPointerEnter={() => onHover(index, 1)}
       onPointerLeave={() => onHover(index, 0)}
       onFocus={() => onHover(index, 1)}
