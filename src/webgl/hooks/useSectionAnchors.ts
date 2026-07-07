@@ -25,6 +25,13 @@ export interface SectionAnchors {
   fractions: Record<string, number>;
   spans: Record<string, AnchorSpan>;
   scrollHeight: number;
+  /**
+   * Pathname the spans were measured FOR ("" pre-measure). Curve consumers
+   * compare this against their own pathname to detect the route-change race
+   * (geometry keyed on pathname rebuilds before SectionBus re-measures) and
+   * hold their last good geometry until the fresh measure lands.
+   */
+  measuredPath: string;
   version: number;
 }
 
@@ -33,14 +40,17 @@ export function useSectionAnchors(): SectionAnchors {
   const version = useSectionStore((s) => s.measureVersion);
 
   return useMemo(() => {
-    const { spans, scrollHeight } = useSectionStore.getState();
+    const { spans, scrollHeight, measuredPath } = useSectionStore.getState();
     // Center fraction = (start + end) / 2 — exactly the centerDocY /
     // scrollHeight the old in-hook measure computed.
+    // measuredPath only ever changes together with a version bump (a path
+    // change is never short-circuited by setMeasured), so keying the memo on
+    // `version` alone stays sound.
     const fractions: Record<string, number> = {};
     for (const id of Object.keys(spans)) {
       const span = spans[id];
       fractions[id] = (span.start + span.end) / 2;
     }
-    return { fractions, spans, scrollHeight, version };
+    return { fractions, spans, scrollHeight, measuredPath, version };
   }, [version]);
 }

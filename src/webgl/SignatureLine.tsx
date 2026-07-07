@@ -61,6 +61,150 @@ const GATE_ENERGY_MAX = 150;
 /** damp() lambda for the energy decay back to rest. */
 const GATE_ENERGY_DECAY = 4;
 
+// === Shared curve/geometry builder (FIX B) ==================================
+// ONE implementation used by BOTH the render-path useMemo and the
+// commit-independent imperative rebuild in useFrame: the island's React
+// commits can stall behind a pending Suspense elsewhere in the bridged tree
+// (R3F v9 wedge — see RouteHeroLogo.tsx), so the line must be able to rebuild
+// its geometry + doc→arc LUT + curve without a commit. Pure: no ref writes —
+// callers own all side effects.
+
+interface LineBuildInputs {
+  /** Route whose curve config to build (getRouteCurve key). */
+  pathname: string;
+  /** Anchor id → center document fraction (span midpoint). */
+  fractions: Record<string, number>;
+  /** document.documentElement.scrollHeight at measure time (1 = sentinel). */
+  scrollHeight: number;
+  /** Pathname the fractions were measured FOR ("" pre-measure). */
+  measuredPath: string;
+  /** World units per document/CSS pixel. */
+  k: number;
+  worldViewWidth: number;
+  tier: Exclude<SceneTier, "off">;
+}
+
+type LineBuildResult =
+  | {
+      status: "built";
+      geometry: THREE.TubeGeometry;
+      curve: THREE.CatmullRomCurve3;
+      lut: { docF: number[]; arcF: number[] };
+    }
+  /** Anchored config but the measurement belongs to another route (route-change
+   *  race, FIX A2) — hold the previous geometry. */
+  | { status: "hold" }
+  /** Pre-measure sentinel — no layout data to build from yet. */
+  | { status: "no-data" };
+
+function buildLineGeometry(inp: LineBuildInputs): LineBuildResult {
+  // Before the first anchor measurement (scrollHeight still at its initial
+  // sentinel) every anchored waypoint would collapse to fraction 0 — a
+  // degenerate curve. Skip building until real layout data exists.
+  if (inp.scrollHeight <= 1) return { status: "no-data" };
+
+  const config = getRouteCurve(inp.pathname);
+
+  // FIX A2 (route-change race): when this route's curve glues waypoints to
+  // [data-line-anchor] nodes but the measurement still belongs to another
+  // path, any anchor missing from the stale span set would collapse to
+  // fraction 0 (document top) — a garbage tube doubling back up the page
+  // could flash before the new measure. Callers hold the last good geometry
+  // instead (uReveal is 0 during the ~420ms route beat, so nothing stale is
+  // visible) and rebuild on the first version bump where measuredPath ===
+  // pathname. at-only configs (detail/default) never consult the span set,
+  // so they build immediately as before.
+  const usesAnchors = config.waypoints.some((wp) => wp.anchor !== undefined);
+  if (usesAnchors && inp.measuredPath !== inp.pathname) {
+    return { status: "hold" };
+  }
+
+  const radiusFactor = useFxStore.getState().radiusFactor;
+  const { tessellationScale } = routeFx(inp.pathname);
+
+  // Waypoint document fractions — resolved once, shared by the point
+  // positions below and the doc→arc LUT (FIX A1).
+  const fractions = config.waypoints.map(
+    (wp) => (wp.anchor ? inp.fractions[wp.anchor] : undefined) ?? wp.at ?? 0,
+  );
+  const points = config.waypoints.map((wp, i) => {
+    return new THREE.Vector3(
+      wp.x * inp.worldViewWidth * 0.45,
+      -fractions[i] * inp.scrollHeight * inp.k,
+      wp.z ?? 0,
+    );
+  });
+
+  const curve = new THREE.CatmullRomCurve3(points, false, "centripetal");
+
+  // FIX A1 — build the doc-fraction → arc-fraction LUT alongside the curve.
+  // docF: the waypoint doc fractions, clamped to [0,1] and floored to be
+  // STRICTLY increasing (+1e-4) so the per-frame segment search never
+  // divides by zero on coincident anchors. Geometry keeps the RAW fractions
+  // above — the sanitize only stabilizes the lookup. arcF: the cumulative
+  // arc-length fraction at each waypoint's CatmullRom parameter i/(n−1),
+  // read off the curve's length table (getPointAt/uv.x live in this space).
+  const docF = fractions.map((f) => THREE.MathUtils.clamp(f, 0, 1));
+  for (let i = 1; i < docF.length; i++) {
+    docF[i] = Math.max(docF[i - 1] + 1e-4, docF[i]);
+  }
+  const arcDivisions = 512;
+  const lens = curve.getLengths(arcDivisions);
+  const totalLen = lens[arcDivisions];
+  const lastIdx = points.length - 1;
+  const arcF = points.map((_, i) => {
+    const u = lastIdx > 0 ? i / lastIdx : 0;
+    return totalLen > 0 ? lens[Math.round(u * arcDivisions)] / totalLen : u;
+  });
+
+  // Density matters at the serpentine turn-arounds: too few tubular
+  // segments between adjacent waypoints renders the bends as polygonal
+  // elbows (and the tube can self-intersect). ~40 segments per waypoint
+  // keeps every visible sweep perfectly smooth.
+  // tessellationScale (1 on home → unchanged) biases segment density per
+  // route before the same min/max clamp; rounded so the count stays integral.
+  const tubularSegments = THREE.MathUtils.clamp(
+    Math.round(config.waypoints.length * 40 * tessellationScale),
+    256,
+    inp.tier === "full" ? 640 : 320,
+  );
+  const radius = WORLD_VIEW_HEIGHT * radiusFactor;
+  const radialSegments = inp.tier === "full" ? 8 : 6;
+
+  const geo = new THREE.TubeGeometry(
+    curve,
+    tubularSegments,
+    radius,
+    radialSegments,
+    false,
+  );
+
+  // Per-vertex centerline tangent for the breath normal-correction (WI-2).
+  // TubeGeometry exposes its Frenet tangents (one unit vector per tubular
+  // ring i ∈ [0..tubularSegments]); its vertex layout is, in order, for each
+  // ring i, (radialSegments + 1) vertices. So aTangent is the ring tangent
+  // repeated across that ring — matching position/normal/uv ordering exactly.
+  const ringTangents = geo.tangents; // Vector3[], length tubularSegments + 1
+  const ringVerts = radialSegments + 1;
+  const tangentArr = new Float32Array((tubularSegments + 1) * ringVerts * 3);
+  for (let i = 0; i <= tubularSegments; i++) {
+    const t = ringTangents[i];
+    for (let j = 0; j < ringVerts; j++) {
+      const o = (i * ringVerts + j) * 3;
+      tangentArr[o] = t.x;
+      tangentArr[o + 1] = t.y;
+      tangentArr[o + 2] = t.z;
+    }
+  }
+  geo.setAttribute("aTangent", new THREE.BufferAttribute(tangentArr, 3));
+
+  if (process.env.NODE_ENV !== "production") {
+    geo.computeBoundingBox();
+  }
+
+  return { status: "built", geometry: geo, curve, lut: { docF, arcF } };
+}
+
 export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   const { camera, size } = useThree();
   const meshRef = useRef<THREE.Mesh>(null);
@@ -72,6 +216,47 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   // geometry, so the camera motion adapts per route for free. `null` while a
   // rebuild is mid-flight (guarded in useFrame).
   const curveRef = useRef<THREE.CatmullRomCurve3 | null>(null);
+  // FIX A1 — doc-fraction → arc-fraction lookup table, rebuilt WITH the curve
+  // in the geometry memo (same deps, same lifecycle). uProgress is compared
+  // against uv.x, which TubeGeometry generates via getPointAt — an ARC-LENGTH
+  // fraction — while the reader's head position is a DOCUMENT fraction. Arc
+  // length accumulates roughly per waypoint, not per document px, so a direct
+  // write desyncs the lit head wherever waypoint density per doc-px deviates
+  // (home's 390vh hero spine is ONE segment; /audit's 580vh timeline likewise).
+  // docF[i] = waypoint i's sanitized (strictly increasing) document fraction;
+  // arcF[i] = the arc-length fraction of the SAME point on the tube.
+  const progressLut = useRef<{ docF: number[]; arcF: number[] } | null>(null);
+  // FIX A2 — last successfully-built geometry, HELD across the route-change
+  // race: the geometry memo re-runs the instant `pathname` flips, but
+  // sectionStore still describes the PREVIOUS route until SectionBus's
+  // post-paint effect re-measures. Holding returns the SAME object, so the
+  // dispose effect below (keyed on the geometry identity) never fires
+  // mid-hold — no leak, no double-dispose.
+  const lastGoodGeometry = useRef<THREE.TubeGeometry | null>(null);
+  // FIX B — commit-independence (defense in depth). The island's React commits
+  // can stall behind a pending Suspense in the bridged tree (R3F v9 wedge, see
+  // RouteHeroLogo.tsx); everything the line NEEDS per frame must therefore be
+  // reachable without a commit:
+  //  - tslRef: the lazily-built TSL material+uniforms pair, attached to the
+  //    mesh imperatively (setTsl stays for React hygiene only);
+  //  - lastBuildKey: the {measureVersion, measuredPath} the LIVE tube was
+  //    built from — compared against sectionStore per frame to trigger
+  //    imperative geometry rebuilds when a re-measure never lands as a prop;
+  //  - pendingBuildKey: staging slot written by the memo during render and
+  //    PROMOTED to lastBuildKey only at commit time (aborted renders can
+  //    never claim a build that was never committed);
+  //  - frameOwned: the geometry created by the imperative path (React knows
+  //    nothing about it) — disposed by the imperative path when it replaces
+  //    its own build, by the commit effect when a memo build supersedes it,
+  //    or by the unmount safety net. React-owned (memo-committed) geometries
+  //    are NEVER disposed here — no leak, no double-dispose.
+  const tslRef = useRef<{
+    material: THREE.Material;
+    uniforms: LineUniforms;
+  } | null>(null);
+  const lastBuildKey = useRef<{ version: number; path: string } | null>(null);
+  const pendingBuildKey = useRef<{ version: number; path: string } | null>(null);
+  const frameOwned = useRef<THREE.TubeGeometry | null>(null);
   // Persistent look target damped toward the ahead-point each frame (no
   // per-frame allocation; smooths out jitter at curve bends).
   const lookTarget = useRef(new THREE.Vector3());
@@ -126,21 +311,41 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
           material: m.material as unknown as THREE.Material,
           uniforms: m.uniforms as unknown as LineUniforms,
         };
+        // FIX B (commit-independence): park the built pair in the ref and
+        // attach the material imperatively RIGHT HERE — a pending Suspense
+        // elsewhere in the island can stall React commits indefinitely (the
+        // /consulting wedge), so correctness must not depend on setTsl's
+        // commit landing. useFrame ALSO attaches from the ref (below) for the
+        // reverse ordering, where the mesh mounts after this promise resolved.
+        tslRef.current = built;
+        const mesh = meshRef.current;
+        if (mesh && mesh.material !== built.material) {
+          const prev = mesh.material as THREE.Material;
+          mesh.material = built.material;
+          // Only three's default placeholder is ever replaced here — the mesh
+          // mounts material-less on the ON path (never the GLSL material,
+          // which exists only on the OFF path where this effect early-returns).
+          if (prev && prev !== built.material) prev.dispose();
+        }
+        // React hygiene: keep state in sync so the JSX material prop matches
+        // what's attached (a no-op re-assign whenever it commits).
         setTsl(built);
       },
     );
     return () => {
       cancelled = true;
+      tslRef.current = null;
       // Dispose whichever TSL material this effect instance created (route/anchor
       // churn does not re-run this effect — deps are empty — but unmount must).
       built?.material.dispose();
     };
   }, []);
 
-  // The active material + its shared uniform reference. OFF: GLSL (synchronous,
-  // byte-identical to today). ON: the TSL material once its lazy chunk resolves.
+  // The active material for the JSX prop. OFF: GLSL (synchronous,
+  // byte-identical to today). ON: the TSL material once its lazy chunk
+  // resolves AND the setTsl commit lands — the per-frame path does not wait
+  // for it (it attaches from tslRef; see useFrame).
   const material = (glsl ?? tsl?.material) as THREE.Material | undefined;
-  const uniforms = (glsl?.uniforms ?? tsl?.uniforms) as LineUniforms | undefined;
 
   // Dispose the GLSL material on unmount (OFF path). The TSL material is disposed
   // by its own effect cleanup above.
@@ -167,81 +372,81 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   const worldViewWidth = WORLD_VIEW_HEIGHT * (size.width / size.height);
 
   const geometry = useMemo(() => {
-    // Before the first anchor measurement (scrollHeight still at its initial
-    // sentinel) every anchored waypoint would collapse to fraction 0 — a
-    // degenerate curve. Skip building until real layout data exists.
-    if (anchors.scrollHeight <= 1) return null;
-
-    const config = getRouteCurve(pathname);
-    const radiusFactor = useFxStore.getState().radiusFactor;
-    const { tessellationScale } = routeFx(pathname);
-
-    const points = config.waypoints.map((wp) => {
-      const fraction =
-        (wp.anchor ? anchors.fractions[wp.anchor] : undefined) ?? wp.at ?? 0;
-      return new THREE.Vector3(
-        wp.x * worldViewWidth * 0.45,
-        -fraction * anchors.scrollHeight * k,
-        wp.z ?? 0,
-      );
+    // Shared implementation with the imperative useFrame rebuild (FIX B) —
+    // see buildLineGeometry above for the full build/A1/A2 rationale.
+    const res = buildLineGeometry({
+      pathname,
+      fractions: anchors.fractions,
+      scrollHeight: anchors.scrollHeight,
+      measuredPath: anchors.measuredPath,
+      k,
+      worldViewWidth,
+      tier,
     });
-
-    const curve = new THREE.CatmullRomCurve3(points, false, "centripetal");
-    // Keep the live curve for the camera lookAt-ahead (see useFrame). Captured
-    // here (not discarded) so the single camera authority can sample it.
-    curveRef.current = curve;
-    // Density matters at the serpentine turn-arounds: too few tubular
-    // segments between adjacent waypoints renders the bends as polygonal
-    // elbows (and the tube can self-intersect). ~40 segments per waypoint
-    // keeps every visible sweep perfectly smooth.
-    // tessellationScale (1 on home → unchanged) biases segment density per
-    // route before the same min/max clamp; rounded so the count stays integral.
-    const tubularSegments = THREE.MathUtils.clamp(
-      Math.round(config.waypoints.length * 40 * tessellationScale),
-      256,
-      tier === "full" ? 640 : 320,
-    );
-    const radius = WORLD_VIEW_HEIGHT * radiusFactor;
-    const radialSegments = tier === "full" ? 8 : 6;
-
-    const geo = new THREE.TubeGeometry(
-      curve,
-      tubularSegments,
-      radius,
-      radialSegments,
-      false,
-    );
-
-    // Per-vertex centerline tangent for the breath normal-correction (WI-2).
-    // TubeGeometry exposes its Frenet tangents (one unit vector per tubular
-    // ring i ∈ [0..tubularSegments]); its vertex layout is, in order, for each
-    // ring i, (radialSegments + 1) vertices. So aTangent is the ring tangent
-    // repeated across that ring — matching position/normal/uv ordering exactly.
-    const ringTangents = geo.tangents; // Vector3[], length tubularSegments + 1
-    const ringVerts = radialSegments + 1;
-    const tangentArr = new Float32Array((tubularSegments + 1) * ringVerts * 3);
-    for (let i = 0; i <= tubularSegments; i++) {
-      const t = ringTangents[i];
-      for (let j = 0; j < ringVerts; j++) {
-        const o = (i * ringVerts + j) * 3;
-        tangentArr[o] = t.x;
-        tangentArr[o + 1] = t.y;
-        tangentArr[o + 2] = t.z;
-      }
-    }
-    geo.setAttribute("aTangent", new THREE.BufferAttribute(tangentArr, 3));
-
-    if (process.env.NODE_ENV !== "production") {
-      geo.computeBoundingBox();
-    }
-    return geo;
-    // anchors.version covers fraction/scrollHeight changes.
+    if (res.status === "no-data") return null;
+    // FIX A2 route-change race: HOLD the last good geometry (uReveal is 0
+    // during the ~420ms route beat, so nothing stale is visible); rebuild on
+    // the first version bump where measuredPath === pathname.
+    if (res.status === "hold") return lastGoodGeometry.current;
+    // Keep the live curve for the camera lookAt-ahead and the doc→arc LUT for
+    // the per-frame progress remap (FIX A1) — same lifecycle as the geometry.
+    curveRef.current = res.curve;
+    progressLut.current = res.lut;
+    lastGoodGeometry.current = res.geometry;
+    // FIX B: stage the freshness key; it is PROMOTED to lastBuildKey only at
+    // commit time (effect below), so an aborted render can never claim a
+    // build that was never committed — which would silently disable the
+    // imperative rebuild path.
+    pendingBuildKey.current = {
+      version: anchors.version,
+      path: anchors.measuredPath,
+    };
+    return res.geometry;
+    // anchors.version covers fraction/scrollHeight/measuredPath changes (a
+    // path change always bumps the version — sectionStore.setMeasured never
+    // short-circuits it).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname, anchors.version, size.width, size.height, k, worldViewWidth, tier]);
 
-  // Dispose replaced geometries (rebuilds on resize/route would leak GPU
-  // buffers otherwise).
-  useEffect(() => () => geometry?.dispose(), [geometry]);
+  // Commit-time bookkeeping + disposal for memo-built geometries. Effects run
+  // only for COMMITTED renders, so:
+  //  - the pending freshness key is promoted here (see the memo above);
+  //  - ownership is reconciled with any imperative (useFrame) build: when the
+  //    memo (hold path) returned the imperative geometry itself, React takes
+  //    ownership (the cleanup below will dispose it); when a fresh memo build
+  //    was committed over an imperative one, the superseded imperative
+  //    geometry — detached by this very commit — is disposed exactly once
+  //    here. The useFrame path never disposes React-owned geometries, so no
+  //    geometry can leak or be double-disposed.
+  useEffect(() => {
+    if (geometry) {
+      if (pendingBuildKey.current) {
+        lastBuildKey.current = pendingBuildKey.current;
+        pendingBuildKey.current = null;
+      }
+      const mine = frameOwned.current;
+      if (mine) {
+        if (mine === geometry) {
+          frameOwned.current = null; // ownership transferred to React
+        } else {
+          mine.dispose(); // superseded by the committed memo build
+          frameOwned.current = null;
+        }
+      }
+    }
+    // Dispose replaced geometries (rebuilds on resize/route would leak GPU
+    // buffers otherwise).
+    return () => geometry?.dispose();
+  }, [geometry]);
+
+  // Unmount safety net for an imperative build React never took ownership of.
+  useEffect(
+    () => () => {
+      frameOwned.current?.dispose();
+      frameOwned.current = null;
+    },
+    [],
+  );
 
   // First-load hand-off (preloader → line). The preloader holds the viewport
   // while readiness counts to 100, then flips introStore.introComplete. On that
@@ -278,6 +483,99 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   }, []);
 
   useFrame((_, delta) => {
+    const mesh = meshRef.current;
+    // Live measurement state, read transiently per the repo store discipline.
+    // The `anchors` PROP can go stale when React commits stall (the R3F
+    // bridge freezes island props — see the FIX B ref block above), so every
+    // per-frame consumer below reads the STORE, never the prop.
+    const section = useSectionStore.getState();
+
+    // === FIX B — commit-independent material + geometry =====================
+    // (1) TSL material attach (ON path). The lazy TSL chunk resolves into
+    // tslRef (effect above); attach it imperatively the moment both the mesh
+    // and the built material exist — correctness never waits for the setTsl
+    // commit. Covers the ordering where the mesh mounts AFTER the chunk
+    // resolved (the effect's own attach covers the reverse). On the OFF path
+    // `glsl` was attached synchronously via JSX.
+    if (mesh && !glsl) {
+      const built = tslRef.current;
+      if (built && mesh.material !== built.material) {
+        const prev = mesh.material as THREE.Material;
+        mesh.material = built.material;
+        // Only three's default placeholder is ever replaced here.
+        if (prev && prev !== built.material) prev.dispose();
+      }
+    }
+
+    // (2) Measurement-freshness rebuild. When the section bus re-measured
+    // (accordion toggles, EN↔IT copy-length changes, late layout shifts) but
+    // the version bump never reached this island as a committed prop, rebuild
+    // the tube + doc→arc LUT + curve imperatively from the store — the SAME
+    // buildLineGeometry implementation the memo uses. Guards: skip while the
+    // scrollHeight sentinel is unmeasured; at most one rebuild per frame
+    // (this block runs once per frame and performs at most one build). The
+    // route is read from the STORE's measuredPath (SectionBus measures the
+    // live DOM), never the possibly-stale `pathname` prop — the prop remains
+    // the source only for routeFx colors and the initial memo.
+    if (mesh && section.scrollHeight > 1 && section.measuredPath !== "") {
+      const lk = lastBuildKey.current;
+      if (
+        !lk ||
+        lk.version !== section.measureVersion ||
+        lk.path !== section.measuredPath
+      ) {
+        const fractions: Record<string, number> = {};
+        for (const id of Object.keys(section.spans)) {
+          const span = section.spans[id];
+          fractions[id] = (span.start + span.end) / 2;
+        }
+        const res = buildLineGeometry({
+          pathname: section.measuredPath,
+          fractions,
+          scrollHeight: section.scrollHeight,
+          measuredPath: section.measuredPath,
+          k,
+          worldViewWidth,
+          tier,
+        });
+        // "hold" is impossible here (pathname === measuredPath by
+        // construction) and "no-data" is excluded by the sentinel guard.
+        if (res.status === "built") {
+          const old = mesh.geometry as THREE.BufferGeometry | undefined;
+          mesh.geometry = res.geometry;
+          // Dispose ONLY geometries this imperative path created; React-owned
+          // (memo-committed) geometries are disposed by the commit effect /
+          // its cleanup — never here (no leak, no double-dispose).
+          if (old && old === frameOwned.current) old.dispose();
+          frameOwned.current = res.geometry;
+          curveRef.current = res.curve;
+          progressLut.current = res.lut;
+          lastGoodGeometry.current = res.geometry;
+          lastBuildKey.current = {
+            version: section.measureVersion,
+            path: section.measuredPath,
+          };
+        }
+      }
+    }
+
+    // (3) Visibility. The mesh is ALWAYS mounted (see the JSX below) so the
+    // imperative paths above have something to attach to; show the tube only
+    // when a REAL build is attached and a REAL line material is live (never
+    // three's default placeholder / empty default geometry). Written per
+    // frame, so no stalled commit can strand it in either state.
+    const liveMaterial: THREE.Material | undefined =
+      glsl ?? tslRef.current?.material;
+    if (mesh) {
+      const geomLive =
+        (lastGoodGeometry.current !== null &&
+          mesh.geometry === lastGoodGeometry.current) ||
+        (geometry !== null && mesh.geometry === geometry);
+      mesh.visible =
+        !!liveMaterial && mesh.material === liveMaterial && geomLive;
+    }
+    // ========================================================================
+
     const scroll = useScrollStore.getState();
     const { progress, velocity, reveal } = scroll;
     const fx = useFxStore.getState();
@@ -287,7 +585,6 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // here (~400ms feel, frame-rate independent) and write the damped value
     // back so the bus stays the single source of truth — never incremented
     // per frame.
-    const section = useSectionStore.getState();
     const anchorPulse = section.pulse;
     const decayedPulse = THREE.MathUtils.damp(anchorPulse, 0, 7, delta);
     // Write the damped value back only while there's actually a pulse to
@@ -325,13 +622,42 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       delta,
     );
 
-    const sh = anchors.scrollHeight;
+    // Live scrollHeight from the store (FIX B): the geometry rebuild above
+    // consumed the same per-frame snapshot, so camera glide, head fraction
+    // and tube stay mutually consistent even when the anchors prop is stale.
+    const sh = section.scrollHeight;
     const ih = size.height;
     const scrollYWorld = dampedProgress.current * Math.max(sh - ih, 0);
 
     // Camera glides down the world strip; the viewport center tracks the
     // document position exactly (see file header for the k mapping).
     camera.position.y = -(scrollYWorld + ih / 2) * k;
+
+    // Camera-descent beat STATE (textMorphStore.camTilt 0..1) — read EARLY so
+    // the gate-shake below can fade by the applied-descent factor (FIX A3).
+    // The offset itself is applied further down (camera.position.y -= desc).
+    // scrollRamp eases the descent OUT by scroll distance from the anchor for
+    // the post-release re-sync. During the lock the page sits at the anchor so
+    // distance ≈ 0 → ramp ≈ 1; while the beat is mid-flight (0 < camTilt < 1)
+    // we FORCE ramp = 1 so a frozen/teleported scrollPxNow can never corrupt the
+    // descent — the camTilt clock is the sole driver of the locked move (FIX 1b).
+    // FIX A3 — the ramp is a SMOOTHSTEP over ONE viewport, replacing the old
+    // linear ramp hard-clamped at 1.5·ih: linear made the camera track at 1/3
+    // scroll speed while unwinding, then snap to full speed at the clamp — an
+    // instant 3× velocity jump the lit head shared (headFraction adds the same
+    // descPx). Smoothstep is C1 at BOTH ends (no kink at the far edge, no cusp
+    // at dist = 0 on the reverse approach), and its span now equals the
+    // landing glide's distance (1·ih), so desc reaches 0 exactly as the
+    // landing lenis.scrollTo completes — zero residual left to unwind.
+    const { camTilt, tiltAnchorY } = useTextMorphStore.getState();
+    const tiltEase = camTilt * camTilt * (3 - 2 * camTilt);
+    const scrollPxNow = dampedProgress.current * Math.max(sh - ih, 0);
+    const distT = Math.min(Math.abs(scrollPxNow - tiltAnchorY) / ih, 1);
+    const distRamp = 1 - distT * distT * (3 - 2 * distT);
+    const beatInFlight = camTilt > 0.0001 && camTilt < 0.9999;
+    const scrollRamp = beatInFlight ? 1 : distRamp;
+    // Normalized applied descent, 0..1 — desc = WORLD_VIEW_HEIGHT · descRamp.
+    const descRamp = tiltEase * scrollRamp;
 
     // Intro-gate shake: consume the gesture impulse the gate accumulated and
     // integrate the under-damped spring (semi-implicit Euler at a clamped dt
@@ -364,7 +690,11 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
         shakeY.current = 0;
         shakeVel.current = 0;
       }
-      camera.position.y += shakeY.current;
+      // FIX A3: fade the shake OUTPUT by the applied-descent factor — kicks
+      // consumed during the descent beat keep integrating the spring, but the
+      // under-damped wobble can't ride over the dive/landing hand-off; it
+      // returns naturally as the descent fully unwinds (descRamp → 0).
+      camera.position.y += shakeY.current * (1 - descRamp);
     }
     gateEnergy.current =
       gateEnergy.current < 0.01
@@ -382,7 +712,9 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // clock, and the lit head TRACKS the descent so the move reads as a genuine
     // dive instead of the head sliding through a parked frame.
     //
-    // Computed HERE (before headFraction + the lookAt-ahead) so:
+    // The beat STATE (camTilt/tiltEase/scrollRamp → descRamp) was read above
+    // the gate-shake block so the shake output could fade by it (FIX A3).
+    // Applied HERE (before headFraction + the lookAt-ahead) so:
     //  (1) the world→px descent can be folded into headFraction below — the lit
     //      head follows the camera through the locked beat (kills the "scatto");
     //  (2) camera.position.y already carries the descent when the full-tier
@@ -391,19 +723,7 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     //      the double-rotation wobble). Lite/no-curve keeps a single rotateX.
     // The applied offset is still published to camDescend (parity: HeroLogo +
     // HeroTextParticles SUBTRACT-by-adding it to hold their pre-descent station).
-    const { camTilt, tiltAnchorY } = useTextMorphStore.getState();
-    const tiltEase = camTilt * camTilt * (3 - 2 * camTilt);
-    // scrollRamp eases the descent OUT by scroll distance from the anchor for
-    // the post-release re-sync. During the lock the page sits at the anchor so
-    // distance ≈ 0 → ramp ≈ 1; while the beat is mid-flight (0 < camTilt < 1)
-    // we FORCE ramp = 1 so a frozen/teleported scrollPxNow can never corrupt the
-    // descent — the camTilt clock is the sole driver of the locked move (FIX 1b).
-    const scrollPxNow = dampedProgress.current * Math.max(sh - ih, 0);
-    const distRamp =
-      1 - Math.min(Math.abs(scrollPxNow - tiltAnchorY) / (ih * 1.5), 1);
-    const beatInFlight = camTilt > 0.0001 && camTilt < 0.9999;
-    const scrollRamp = beatInFlight ? 1 : distRamp;
-    const desc = WORLD_VIEW_HEIGHT * 1.0 * tiltEase * scrollRamp;
+    const desc = WORLD_VIEW_HEIGHT * 1.0 * descRamp;
     // descPx: world-units descent → document px (inverse of the k mapping), so
     // it can be added to the head's scroll position below.
     const descPx = k > 0 ? desc / k : 0;
@@ -430,11 +750,44 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     }
 
     // The lit head sits where the reader is: document fraction of the
-    // viewport center. Curve param ≈ doc fraction (waypoints are spread by
-    // doc fraction, so the approximation holds visually). + descPx so during the
-    // locked camera-descent beat the head TRACKS the diving camera (FIX 1b) —
-    // descPx is 0 in every other state, so this is byte-identical otherwise.
+    // viewport center. + descPx so during the locked camera-descent beat the
+    // head TRACKS the diving camera (FIX 1b) — descPx is 0 in every other
+    // state. This stays in DOC/PX space (the emissive beats + camDescend
+    // below consume it there); the shader-facing progress is remapped next.
     const headFraction = sh > 0 ? (scrollYWorld + ih * 0.5 + descPx) / sh : 0;
+
+    // FIX A1 — remap the reader's DOCUMENT fraction into the tube's
+    // ARC-LENGTH space before it meets uv.x (TubeGeometry samples via
+    // getPointAt, so uv.x is an arc-length fraction — the old direct write
+    // made the head race/stall wherever waypoint density per doc-px deviated).
+    // headFraction spans [ih/2sh, 1−ih/2sh] (the viewport-center range):
+    // normalize that onto the curve's own doc span (also fixing the
+    // never-lit last segment / pre-lit first segment on short routes), find
+    // the waypoint segment in docF, and lerp the matching arcF pair. Only
+    // uProgress + the lookAt-ahead parameter live in arc space — the
+    // audit/production emissive beats and camDescend/descPx stay doc/px.
+    const lut = progressLut.current;
+    let arcProgress: number;
+    if (sh <= ih) {
+      // Unscrollable page: nothing to draw progressively — fully lit.
+      arcProgress = 1;
+    } else if (lut && lut.docF.length >= 2) {
+      const hMin = ih / (2 * sh);
+      const hSpan = 1 - 2 * hMin; // = hMax − hMin, > 0 since sh > ih
+      const hn = THREE.MathUtils.clamp((headFraction - hMin) / hSpan, 0, 1);
+      const { docF, arcF } = lut;
+      const last = docF.length - 1;
+      const hDoc = docF[0] + hn * (docF[last] - docF[0]);
+      // Linear segment search — waypoint counts are ~4..12, trivially cheap.
+      let j = 0;
+      while (j < last - 1 && docF[j + 1] < hDoc) j++;
+      const den = docF[j + 1] - docF[j]; // > 0: docF is strictly increasing
+      const seg = den > 0 ? THREE.MathUtils.clamp((hDoc - docF[j]) / den, 0, 1) : 0;
+      arcProgress = arcF[j] + seg * (arcF[j + 1] - arcF[j]);
+    } else {
+      // No LUT yet (geometry held/not built) — degrade to the old behavior.
+      arcProgress = THREE.MathUtils.clamp(headFraction, 0, 1);
+    }
 
     // Cinematic lookAt-ahead (ANALISI_LUSION §3.7) — FULL tier only.
     // The camera aims slightly ahead along the SAME signature curve, producing
@@ -448,9 +801,11 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // (its default orientation), exactly as before this change.
     const curve = curveRef.current;
     if (tier === "full" && curve) {
-      const t = THREE.MathUtils.clamp(dampedProgress.current, 0, 1);
-      const ahead = THREE.MathUtils.clamp(t + fx.lookAhead, 0, 1);
-      // getPointAt → arc-length-parameterized point on the curve.
+      // FIX A1: the ahead parameter is the SAME arc-length fraction the lit
+      // head uses (getPointAt is arc-length-parameterized), so the camera
+      // leans toward the bend the reader is actually approaching — the old
+      // raw scroll-range fraction was a third, inconsistent parameter space.
+      const ahead = THREE.MathUtils.clamp(arcProgress + fx.lookAhead, 0, 1);
       curve.getPointAt(ahead, aheadPoint.current);
       // Build the desired look target relative to the camera's current position:
       // dampen the lateral (x) and depth (z) curve offset so the tilt is subtle,
@@ -497,12 +852,16 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     }
 
     // On the ON path the TSL material loads lazily; until its chunk resolves
-    // `uniforms` is undefined. The camera glide above still runs every frame
-    // (so the view is in place when the material lands); the uniform writes are
-    // skipped until then. On the OFF path `uniforms` is always set synchronously.
-    const u = uniforms;
+    // the uniforms are undefined. The camera glide above still runs every
+    // frame (so the view is in place when the material lands); the uniform
+    // writes are skipped until then. Read via tslRef — NOT the React state —
+    // so a stalled setTsl commit can never keep the line dark (FIX B). On the
+    // OFF path the GLSL uniforms are always set synchronously.
+    const u = glsl?.uniforms ?? tslRef.current?.uniforms;
     if (!u) return;
-    u.uProgress.value = headFraction;
+    // Arc-length space — matches uv.x (FIX A1). Both lineShader.ts (GLSL)
+    // and lineNodeMaterial.ts (TSL) compare uProgress vs uv.x unchanged.
+    u.uProgress.value = arcProgress;
     u.uTime.value += delta;
     u.uReveal.value = dampedReveal.current;
     // Velocity feeds a subtle energy boost into the glow; the section-arrival
@@ -582,28 +941,52 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     u.uColorHot.value.set(fx.colorHot).lerp(routeColors.hot, colorBlend);
 
     if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
+      const liveGeo = lastGoodGeometry.current;
       (window as unknown as Record<string, unknown>).__sersanLineDebug = {
         camY: camera.position.y,
         uProgress: u.uProgress.value,
+        headDocFraction: headFraction,
+        measuredPath: anchors.measuredPath,
         storeProgress: progress,
-        anchorsScrollHeight: sh,
+        anchorsScrollHeight: anchors.scrollHeight,
         anchorsVersion: anchors.version,
+        // FIX B observability: the live store values + the build key the
+        // attached tube was actually built from, plus the imperative-path
+        // state (a lastBuildKey ahead of anchorsVersion = the island's
+        // commits are stalled and the frame path is covering for them).
+        storeScrollHeight: sh,
+        storeMeasureVersion: section.measureVersion,
+        storeMeasuredPath: section.measuredPath,
+        lastBuildKey: lastBuildKey.current,
+        tslReady: !!tslRef.current,
+        meshVisible: mesh?.visible ?? null,
         k,
         viewportH: WORLD_VIEW_HEIGHT,
         sizeH: ih,
-        bboxY: geometry?.boundingBox
-          ? [geometry.boundingBox.max.y, geometry.boundingBox.min.y]
+        bboxY: liveGeo?.boundingBox
+          ? [liveGeo.boundingBox.max.y, liveGeo.boundingBox.min.y]
           : null,
-        bboxX: geometry?.boundingBox
-          ? [geometry.boundingBox.min.x, geometry.boundingBox.max.x]
+        bboxX: liveGeo?.boundingBox
+          ? [liveGeo.boundingBox.min.x, liveGeo.boundingBox.max.x]
           : null,
       };
     }
   });
 
-  // No geometry until the first anchor measurement; no material until the lazy
-  // TSL chunk resolves on the ON path (OFF path has it synchronously).
-  if (!geometry || !material) return null;
-
-  return <mesh ref={meshRef} geometry={geometry} material={material} frustumCulled={false} />;
+  // The mesh is ALWAYS mounted (FIX B): geometry and the TSL material can be
+  // attached imperatively in useFrame even when the island's React commits
+  // stall, so the mesh must exist from the first commit onward. Until a real
+  // build + material are live it stays invisible (per-frame visibility gate in
+  // useFrame): three's default empty geometry / placeholder material render
+  // nothing. `visible={false}` only seeds the pre-first-frame state — useFrame
+  // owns it from then on (constant prop, never re-applied by React).
+  return (
+    <mesh
+      ref={meshRef}
+      frustumCulled={false}
+      visible={false}
+      {...(geometry ? { geometry } : {})}
+      {...(material ? { material } : {})}
+    />
+  );
 }

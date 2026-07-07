@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -72,6 +73,23 @@ export function LanguageProvider({ children }: LanguageProviderProps) {
     if (typeof document !== "undefined") {
       document.documentElement.lang = language;
     }
+  }, [language]);
+
+  // Every EN↔IT switch swaps the copy of the whole page — different text
+  // lengths move every [data-line-anchor] and change the document height
+  // with no resize event. Tell SectionBus to re-measure (belt-and-braces
+  // with its body ResizeObserver) so the signature line's anchors stay
+  // fresh. Effects run post-commit, so the new-language DOM is already in
+  // place when this fires. Skipped on mount: the initial measure passes
+  // (and the storage sync setting a non-"en" language re-runs this effect
+  // with a REAL change) already cover first paint.
+  const langDispatched = useRef(false);
+  useEffect(() => {
+    if (!langDispatched.current) {
+      langDispatched.current = true;
+      return;
+    }
+    window.dispatchEvent(new CustomEvent("sersan:remeasure"));
   }, [language]);
 
   const setLanguage = useCallback((lang: Language) => {

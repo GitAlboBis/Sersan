@@ -13,12 +13,31 @@ import { CardLogoReveal } from "@/components/fx/card-logo-reveal";
 import { useFlipSource } from "@/lib/use-flip-source";
 
 /**
+ * Per-industry eyebrow tint — mirrors the home rail's INDUSTRY_COLOR map
+ * (components/sections/case-studies-rail.tsx) so the archive grid speaks the
+ * same card language. Kept as a local copy on purpose: importing it from the
+ * rail module would pull gsap/ScrollTrigger/Draggable into this route's
+ * bundle for one lookup table.
+ */
+const INDUSTRY_COLOR: Record<CaseStudy["industry"], string> = {
+  FinTech: "text-[hsl(var(--accent))]",
+  Healthcare: "text-[hsl(160_60%_60%)]",
+  Aerospace: "text-[hsl(260_60%_70%)]",
+  "Public Sector": "text-[hsl(200_30%_70%)]",
+  Industrial: "text-[hsl(30_70%_65%)]",
+  Energy: "text-[hsl(140_50%_60%)]",
+  Agritech: "text-[hsl(100_45%_60%)]",
+};
+
+/**
  * GridCard — one archive grid card, extracted so useFlipSource (a hook) is
  * called once per card at component top level (rules of hooks). The card markup
  * is unchanged from the inline version; the only additions are onClick +
  * data-flip-source on the <Link>, applied ONLY for studies WITH a previewImage
  * (the three SerSan builds). Cards without a preview get no handler/attr and
- * navigate exactly as before.
+ * navigate exactly as before. Typography + the static STACK chips are aligned
+ * to the redesigned home rail cards (visual language only — the grid keeps its
+ * layout, media priority and Reveal entrances untouched).
  */
 function GridCard({ study, isEn }: { study: CaseStudy; isEn: boolean }) {
   const engagement = isEn ? study.engagement : study.engagementIt;
@@ -53,16 +72,32 @@ function GridCard({ study, isEn }: { study: CaseStudy; isEn: boolean }) {
       {showLogo && study.logoImage && <CardLogoReveal src={study.logoImage} />}
       <div className="relative z-10 flex flex-col h-full card-text-layer">
         <p
-          className="text-[10px] font-mono uppercase tracking-[0.18em] mb-3"
-          style={{ color: "hsl(var(--accent))" }}
+          className={`text-[10px] font-mono uppercase tracking-[0.16em] mb-3 ${INDUSTRY_COLOR[study.industry]}`}
         >
           {study.industry}
         </p>
         <h3 className="font-display text-2xl text-ink leading-tight mb-2 transition-colors duration-300 group-hover:text-[hsl(var(--accent))]">
           {study.client}
         </h3>
-        <p className="text-sm text-ink-mute mb-4">{engagement}</p>
-        <p className="text-sm text-ink/85 leading-[1.55] line-clamp-4 mb-6">{summary}</p>
+        <p className="font-mono text-[11.5px] text-ink-mute leading-relaxed mb-4">
+          {engagement}
+        </p>
+        <p className="text-sm text-ink/85 leading-[1.55] line-clamp-4 mb-4">{summary}</p>
+        {/* Static STACK chips — same pill language as the rail cards (data
+            only: study.techStack). Inside the text layer, so on the distort
+            cards they fade with the rest of the text when the shot reveals. */}
+        {study.techStack.length > 0 && (
+          <ul className="mb-6 flex flex-wrap gap-1.5">
+            {study.techStack.slice(0, 4).map((tech) => (
+              <li
+                key={tech}
+                className="rounded-full border border-[hsl(var(--rule)/0.8)] bg-[hsl(216_28%_12%/0.72)] px-2.5 py-0.5 font-mono text-[10px] tracking-[0.08em] text-ink-mute"
+              >
+                {tech}
+              </li>
+            ))}
+          </ul>
+        )}
         <div className="mt-auto flex items-center justify-between text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
           <span className="transition-colors duration-300 group-hover:text-ink">
             {role}

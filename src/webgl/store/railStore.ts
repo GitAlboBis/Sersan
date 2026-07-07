@@ -13,6 +13,13 @@
  * holds per-card hover TARGETS (0|1) keyed by the card's data-rail-index;
  * consumers damp them per-frame (the store never holds eased values).
  *
+ * trackX is the shared input of the analytic per-card center-focus model
+ * (webgl/store/railMotion.ts): the DOM rail derives it in its ScrollTrigger
+ * onUpdate, RailPlanes re-derives it per frame from getState() — one formula,
+ * two consumers, zero rect reads. The rail's Draggable drag bridge never
+ * writes here directly: drag → lenis.scrollTo(immediate) → scroll event →
+ * ScrollTrigger onUpdate → setTrack, so wheel and drag share one code path.
+ *
  * The rail component MUST call reset() in its effect cleanup so the WebGL
  * layer never reads a stale rail after navigation (the store outlives routes).
  */

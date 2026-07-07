@@ -1132,6 +1132,11 @@ function SpineExitGate({
     const release = () => {
       if (!engaged) return;
       engaged = false;
+      // FIX A3: drop any queued shake kicks with the lock — the user is
+      // usually still turning the wheel when the beat completes, and a
+      // pending gateKick would keep SignatureLine's under-damped camera
+      // spring oscillating right over the landing hand-off.
+      useTextMorphStore.setState({ gateKick: 0 });
       getLenis()?.start();
     };
     const engage = (dir: 0 | 1) => {
@@ -1215,10 +1220,27 @@ function SpineExitGate({
               // section arrives exactly as the camera move completes — the
               // beat genuinely CARRIES the visitor into the rest of the
               // site instead of dropping them on an empty frame.
+              // FIX A3 — the glide must be C1 at BOTH ends of the hand-off:
+              // the camera just eased to ZERO velocity (smoothstep'(1) = 0),
+              // but the singleton's default out-expo easing starts at max
+              // slope — a standstill→max-velocity kick in one frame. An
+              // easeInOutCubic starts AND ends at zero slope, matching the
+              // dive on entry and SignatureLine's one-viewport smoothstep
+              // unwind on exit (desc hits 0 exactly as the glide lands).
+              // lock: true keeps a mid-flight wheel notch from interrupting
+              // or re-targeting the landing (the rubber-band).
               const lenis = getLenis();
               const dest = window.scrollY + ih;
-              if (lenis) lenis.scrollTo(dest, { duration: 1.1 });
-              else window.scrollTo({ top: dest, behavior: "smooth" });
+              if (lenis) {
+                lenis.scrollTo(dest, {
+                  duration: 1.05,
+                  lock: true,
+                  easing: (t: number) =>
+                    t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+                });
+              } else {
+                window.scrollTo({ top: dest, behavior: "smooth" });
+              }
             } else if (next <= 0) {
               useTextMorphStore.setState({ tiltDone: false });
               release();

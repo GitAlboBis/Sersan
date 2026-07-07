@@ -20,6 +20,7 @@ This directory contains guidelines for frontend development. Fill in each file w
 | [State Management](./state-management.md) | Local state, global state, server state | To fill |
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |
 | [Type Safety](./type-safety.md) | Type patterns, validation | To fill |
+| [WebGL Island Guidelines](./webgl-island-guidelines.md) | R3F Canvas contracts: commit-independence, doc→arc parametrization, C1 scrub beats, pinned rails, measurement freshness | Filled (2026-07-07) |
 
 ---
 

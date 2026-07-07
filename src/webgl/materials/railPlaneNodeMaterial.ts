@@ -11,20 +11,33 @@
  * dual-backend contract lineNodeMaterial documents), so a twin would only ever
  * serve the legacy flag-OFF build — not worth the parity-maintenance cost.
  *
- * Look (research/webgl-card-planes.md §4):
+ * Look (research/webgl-card-planes.md §4 + the work-rail redesign):
  *   (a) procedural navy backdrop: vertical gradient over #0B1422 with a ≤10%
- *       cyan→violet tint (per-card seeded, sine-mixed so there is no fract()
- *       seam) + hash grain (±0.015) — every channel stays far below the 1.0
- *       bloom threshold;
+ *       cyan→deep-blue tint (per-card seeded, sine-mixed so there is no
+ *       fract() seam) + hash grain (±0.015) — every channel stays far below
+ *       the 1.0 bloom threshold;
  *   (b) velocity bend: the plane bows toward rail motion, max at the card's
  *       vertical middle (sin(uv.y·π)), driven by a CPU-smoothed normalized
  *       velocity uniform;
- *   (c) hover scan sweep: a thin cyan→violet band crossing a noise-warped
+ *   (c) hover scan sweep: a thin cyan→blue band crossing a noise-warped
  *       diagonal field, emissive ×2.4 (>1.0, toneMapped:false) so the existing
  *       selective bloom catches ONLY the sweep, with a sub-threshold trail;
  *   (d) edge feather: uv-space smoothstep inset, so the camera's lookAt tilt
  *       (a few px of DOM↔world de-registration) never exposes a hard plane
- *       edge outside the DOM card (prd caveat 7).
+ *       edge outside the DOM card (prd caveat 7);
+ *   (e) uParallax — horizontal shift of the whole procedural field (tint
+ *       phase, grain, scan field), fed with t·RAIL_PLANE_PARALLAX from
+ *       RailPlanes' analytic per-card center: the card interior counter-slides
+ *       against travel, the "window-look" the DOM media layer does at 112%
+ *       bleed. Procedural domain — no headroom/clamp concerns;
+ *   (f) uFocus — center-focus defocus (0 centered → 1 at the viewport edge):
+ *       grain frequency + amplitude down, tint contrast down, scan sweep and
+ *       trail faded out, and the plane's own opacity dimmed by the SAME
+ *       RAIL_FOCUS_FADE factor the DOM card fades by (railMotion.ts), so card
+ *       and plane read as ONE surface losing focus together.
+ *
+ * Accent pair is cyan #3BE1FF → deep blue #2A7FFF (standing directive:
+ * cyan/blue only — the former violet #7C5CFF stop is retired).
  *
  * Per-card materials share an identical node-graph structure → three's
  * program cache compiles ONE program; each instance only carries its own
@@ -67,6 +80,10 @@ export type RailPlaneUniforms = {
   uReveal: { value: number };
   /** Stable per-card seed 0..1 — varies backdrop tint phase + scan warp. */
   uSeed: { value: number };
+  /** Horizontal shift of the procedural field: t·RAIL_PLANE_PARALLAX. */
+  uParallax: { value: number };
+  /** Center-focus falloff f (0 centered → 1 edge) — procedural defocus. */
+  uFocus: { value: number };
 };
 
 export function createRailPlaneMaterial(seed: number): {
@@ -77,8 +94,10 @@ export function createRailPlaneMaterial(seed: number): {
   const uVelocity = uniform(0);
   const uReveal = uniform(0);
   const uSeed = uniform(seed);
+  const uParallax = uniform(0);
+  const uFocus = uniform(0);
   const uColorA = uniform(new Color("#3BE1FF"));
-  const uColorB = uniform(new Color("#7C5CFF"));
+  const uColorB = uniform(new Color("#2A7FFF"));
   const uBase = uniform(new Color("#0B1422"));
   // HDR scan emissive: must clear the 1.0 bloom threshold decisively but stay
   // well under ~3 or the halo rings around the DOM text above the canvas.
@@ -99,33 +118,51 @@ export function createRailPlaneMaterial(seed: number): {
 
   // --- Fragment ----------------------------------------------------------------
   const u = uv();
+  // Parallax-shifted field space: everything PROCEDURAL samples through `pu`
+  // so the whole interior counter-slides against travel; the FEATHER and the
+  // hover sweep position stay in raw card space (they belong to the card box,
+  // not to the "content" behind it).
+  const pu = vec2(u.x.add(uParallax), u.y);
+  // Focus attenuators (all 1 at center, reduced toward the edges — restrained).
+  const focusScan = uFocus.oneMinus(); // sweep/trail fade fully at the edge
+  const focusTint = uFocus.mul(0.5).oneMinus(); // tint contrast −50% at edge
+  const focusGrain = uFocus.mul(0.6).oneMinus(); // grain amplitude −60% at edge
 
   // (a) Backdrop: navy vertical gradient + faint seeded accent tint. The tint
   // mix runs on a sine (seamless — no fract() wrap line inside the card) and
   // is capped at 10%, keeping the whole backdrop far below bloom threshold.
-  const tintMix = sin(u.x.mul(2.4).add(uSeed.mul(7.0))).mul(0.5).add(0.5);
+  // uFocus flattens the tint (contrast down = procedural defocus).
+  const tintMix = sin(pu.x.mul(2.4).add(uSeed.mul(7.0))).mul(0.5).add(0.5);
   const tint = mix(uColorA, uColorB, tintMix);
-  const grad = mix(uBase, tint, float(0.1).mul(smoothstep(0.0, 1.0, u.y)));
+  const grad = mix(
+    uBase,
+    tint,
+    float(0.1).mul(focusTint).mul(smoothstep(0.0, 1.0, u.y)),
+  );
   // Cheap hash grain (same recipe as PostFXNodes), ±0.015 — sub-threshold.
-  const seedUv = u.mul(120.0).add(uSeed.mul(31.7));
+  // Defocus lowers BOTH its frequency (coarser pattern) and its amplitude.
+  const grainFreq = mix(float(120.0), float(64.0), uFocus);
+  const seedUv = pu.mul(grainFreq).add(uSeed.mul(31.7));
   const grain = fract(sin(dot(seedUv, vec2(12.9898, 78.233))).mul(43758.5453));
-  const backdrop = grad.add(grain.sub(0.5).mul(0.03));
+  const backdrop = grad.add(grain.sub(0.5).mul(float(0.03).mul(focusGrain)));
 
   // (b/c) Scan sweep: the "depth" of the depth-map scan reference is just an
   // ordering field — with no imagery we use a noise-warped diagonal so the
   // band reads as a scan, not a wipe. uHover sweeps the band across the field
   // with overshoot on both ends so it fully exits at rest and at hover=1.
-  const warp = sin(u.y.mul(9.0).add(uSeed.mul(40.0))).mul(0.04);
-  const field = u.x.mul(0.8).add(u.y.mul(0.2)).add(warp);
+  // The warp samples the parallax-shifted field; the whole sweep fades out
+  // with defocus (an out-of-focus card doesn't flash).
+  const warp = sin(pu.y.mul(9.0).add(uSeed.mul(40.0))).mul(0.04);
+  const field = pu.x.mul(0.8).add(u.y.mul(0.2)).add(warp);
   const scanPos = mix(float(-0.25), float(1.25), uHover);
   const dist = scanPos.sub(field);
   const band = smoothstep(0.0, 0.03, abs(dist)).oneMinus();
   const lineGrad = mix(uColorA, uColorB, u.y);
-  const scanCol = lineGrad.mul(uScanEmissive).mul(band);
+  const scanCol = lineGrad.mul(uScanEmissive).mul(band).mul(focusScan);
   // Trailing glow behind the line — subtle, sub-threshold.
   const trail = smoothstep(0.0, 0.35, dist)
     .mul(smoothstep(0.0, 0.5, dist).oneMinus())
-    .mul(0.12);
+    .mul(float(0.12).mul(focusScan));
 
   const col = backdrop.add(lineGrad.mul(trail)).add(scanCol);
 
@@ -137,7 +174,12 @@ export function createRailPlaneMaterial(seed: number): {
     .mul(smoothstep(0.93, 1.0, u.y).oneMinus());
 
   material.colorNode = vec3(col);
-  material.opacityNode = uReveal.mul(0.9).mul(feather);
+  // Opacity mirrors the DOM card's center-focus fade (railMotion.ts
+  // RAIL_FOCUS_FADE = 0.4) so plane + card dim together as one surface.
+  material.opacityNode = uReveal
+    .mul(0.9)
+    .mul(feather)
+    .mul(uFocus.mul(0.4).oneMinus());
 
   material.transparent = true;
   material.depthWrite = false; // never occludes the line/dust
@@ -145,5 +187,8 @@ export function createRailPlaneMaterial(seed: number): {
   material.blending = NormalBlending; // a surface, not a glow
   material.toneMapped = false; // keep the >1.0 scan intact for bloom
 
-  return { material, uniforms: { uHover, uVelocity, uReveal, uSeed } };
+  return {
+    material,
+    uniforms: { uHover, uVelocity, uReveal, uSeed, uParallax, uFocus },
+  };
 }

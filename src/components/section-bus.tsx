@@ -8,11 +8,13 @@
  *
  * 1. MEASUREMENT — measures every [data-line-anchor] element into document-
  *    fraction spans (the logic formerly inside useSectionAnchors, which is
- *    now a thin adapter over this store). Cadence parity with the old hook:
- *    on mount/route change, two late passes (700/1600ms — the cinematic
- *    section's refresh-burst window), after fonts load, and on debounced
- *    resize (150ms, matching the ScrollTrigger.refresh debounce in
- *    smooth-scroll-provider).
+ *    now a thin adapter over this store). Cadence: on mount/route change,
+ *    two late passes (700/1600ms — the cinematic section's refresh-burst
+ *    window), after fonts load, on debounced resize (150ms, matching the
+ *    ScrollTrigger.refresh debounce in smooth-scroll-provider), on any
+ *    document.body reflow (debounced ResizeObserver, 120ms — accordions,
+ *    pinned-section height asserts, copy swaps) and on the
+ *    "sersan:remeasure" CustomEvent (language toggle).
  *
  * 2. IDENTITY — ONE IntersectionObserver over the non-decorative anchors
  *    (threshold 0.35) publishing the centered section (`active`) + arrival
@@ -74,8 +76,12 @@ export function SectionBus() {
           }
         });
       // setMeasured skips the version bump (and the curve rebuild it would
-      // trigger) when nothing actually moved — e.g. width-only resizes.
-      useSectionStore.getState().setMeasured(sections, spans, scrollHeight);
+      // trigger) when nothing actually moved — e.g. width-only resizes. The
+      // pathname rides along so curve consumers can tell WHICH route the
+      // spans describe (route-change race, FIX A2).
+      useSectionStore
+        .getState()
+        .setMeasured(sections, spans, scrollHeight, pathname);
     };
 
     measure();
@@ -94,11 +100,36 @@ export function SectionBus() {
     };
     window.addEventListener("resize", onResize);
 
+    // FIX A2 — measurement freshness. Layout changes AFTER the late passes
+    // (Radix accordions expanding, EN↔IT copy-length swaps, pinned sections
+    // asserting their px heights post-mount) change the document height with
+    // NO window resize — Lenis tracks the LIVE height while our spans went
+    // stale, desyncing the line/camera page-wide. A debounced ResizeObserver
+    // on document.body catches every such reflow; the setMeasured `same`
+    // short-circuit above keeps no-op fires (including the observer's
+    // mandatory initial callback) from bumping the version. The
+    // "sersan:remeasure" CustomEvent (dispatched by language-provider on
+    // language change) is belt-and-braces through the same debounce.
+    let remeasureId = 0;
+    const requestMeasure = () => {
+      window.clearTimeout(remeasureId);
+      remeasureId = window.setTimeout(measure, 120);
+    };
+    let bodyObserver: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      bodyObserver = new ResizeObserver(requestMeasure);
+      bodyObserver.observe(document.body);
+    }
+    window.addEventListener("sersan:remeasure", requestMeasure);
+
     return () => {
       cancelled = true;
       window.clearTimeout(resizeId);
+      window.clearTimeout(remeasureId);
       timeouts.forEach((t) => window.clearTimeout(t));
       window.removeEventListener("resize", onResize);
+      window.removeEventListener("sersan:remeasure", requestMeasure);
+      bodyObserver?.disconnect();
     };
   }, [pathname]);
 

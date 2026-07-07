@@ -33,6 +33,10 @@
 import { Suspense, lazy, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
+// Static on purpose (wedge fix): the logo ritual must NOT suspend — no lazy
+// chunk. Safe cycle: RouteHeroLogo only touches this module's hoisted function
+// exports at render time (same shape RouteHeroGlb has, just non-lazy).
+import { RouteHeroLogo } from "./RouteHeroLogo";
 import { WORLD_VIEW_HEIGHT } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
 import { usePointerStore, installPointerTracking } from "./store/pointerStore";
@@ -632,12 +636,6 @@ const LazyGlb = lazy(() =>
   import("./RouteHeroGlb").then((m) => ({ default: m.RouteHeroGlb })),
 );
 
-/** The SERSAN-mark logo ritual, split into its own lazy chunk (it pulls the
- * GLTF loader for sersan-mark.glb). */
-const LazyLogo = lazy(() =>
-  import("./RouteHeroLogo").then((m) => ({ default: m.RouteHeroLogo })),
-);
-
 export type { GlbInnerProps };
 
 /**
@@ -693,14 +691,15 @@ export function RouteHero({
     return <ProceduralRouteHero {...rest} shape={kind.shape} />;
   }
   if (kind.type === "logo") {
-    // The SERSAN mark as the ritual object — lazy loads + normalizes the mark
-    // GLB, then drives it through the SAME body (logo mode). Suspense-wrapped
-    // like the GLB path so the loader chunk only lands when a logo route mounts.
-    return (
-      <Suspense fallback={null}>
-        <LazyLogo {...rest} debugKey={debugKey} />
-      </Suspense>
-    );
+    // The SERSAN mark as the ritual object. NON-SUSPENDING on purpose (wedge
+    // fix, 2026-07-07): RouteHeroLogo loads + normalizes the mark GLB via a
+    // module-cached promise resolved in an effect — no React.lazy chunk, no
+    // useGLTF, no thrown promises. A Suspense left pending inside the
+    // R3F-bridged tree wedged ALL island commits on interior routes (state
+    // updates + bridged props never landed; see RouteHeroLogo's header), so
+    // the logo path must never suspend. The GLTFLoader code still stays out
+    // of the island bundle via the dynamic import inside the cached loader.
+    return <RouteHeroLogo {...rest} debugKey={debugKey} />;
   }
   // GLB path. While the GLB streams in, render NOTHING (fallback={null}) — the
   // ritual object is anchored deep in the page and the GLB is preloaded, so it

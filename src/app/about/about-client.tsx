@@ -1,7 +1,14 @@
 "use client";
 
+import {
+  useEffect,
+  useRef,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { LinkedinIcon } from "@/components/icons/brand";
 import { Button } from "@/components/ui/button";
 import { CountUp } from "@/components/ui/count-up";
@@ -12,9 +19,73 @@ import { founders } from "@/data/founders";
 import { useLanguage } from "@/components/language-provider";
 import { START_HREF } from "@/lib/site";
 
+if (typeof window !== "undefined") {
+  gsap.registerPlugin(ScrollTrigger);
+}
+
 export function AboutClient() {
   const { language } = useLanguage();
   const isEn = language === "en";
+
+  // Founder portraits: 112%-bleed vertical counter-parallax (±5%), scrubbed
+  // by one plain ScrollTrigger over the founders grid — no pin, no height
+  // change, quickSetter writes only (no scrub tween: Lenis already smooths
+  // the scroll the progress derives from). Rects are never read in the
+  // update path; the drift is pure progress math.
+  const foundersGridRef = useRef<HTMLDivElement | null>(null);
+  const portraitDriftRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const grid = foundersGridRef.current;
+    const targets = portraitDriftRefs.current.filter(
+      (el): el is HTMLDivElement => Boolean(el),
+    );
+    if (!grid || targets.length === 0) return;
+
+    const setters = targets.map(
+      (el) => gsap.quickSetter(el, "yPercent") as (v: number) => void,
+    );
+    let last = Infinity;
+    const st = ScrollTrigger.create({
+      trigger: grid,
+      start: "top bottom",
+      end: "bottom top",
+      onUpdate: (self) => {
+        // −1 entering at the bottom … +1 leaving at the top; counter-drift
+        // is % of the 112% media layer (max 5% ≈ 5.6% of the frame ≤ the
+        // 6% bleed). Early-return when the write would be a no-op.
+        const t = self.progress * 2 - 1;
+        const y = -t * 5;
+        if (Math.abs(y - last) < 0.01) return;
+        last = y;
+        for (const s of setters) s(y);
+      },
+    });
+
+    return () => {
+      st.kill();
+      targets.forEach((el) => gsap.set(el, { yPercent: 0 }));
+    };
+  }, []);
+
+  // One rect read per pointer ENTRY (event-driven — never per frame):
+  // anchors the duotone→color clip-path circle at the cursor's entry point.
+  // Same treatment as the home founders rail (founders-rail.tsx).
+  const onPortraitEnter = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.pointerType && e.pointerType !== "mouse") return;
+    const el = e.currentTarget;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) return;
+    el.style.setProperty(
+      "--fr-mx",
+      `${(((e.clientX - r.left) / r.width) * 100).toFixed(1)}%`,
+    );
+    el.style.setProperty(
+      "--fr-my",
+      `${(((e.clientY - r.top) / r.height) * 100).toFixed(1)}%`,
+    );
+  };
 
   const pillars = [
     {
@@ -129,7 +200,10 @@ export function AboutClient() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+          <div
+            ref={foundersGridRef}
+            className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto"
+          >
             {founders.map((f, i) => (
               <Reveal key={f.name} delay={i * 100} className="h-full">
               <div
@@ -137,14 +211,44 @@ export function AboutClient() {
                 className="card-steel rounded-2xl p-8 h-full scroll-mt-32"
               >
                 <div className="flex items-start gap-6 mb-6">
-                  <div className="w-20 h-20 rounded-full overflow-hidden shrink-0 ring-2 ring-primary/30">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={f.image}
-                      alt={f.name}
-                      className="w-full h-full object-cover object-[50%_20%]"
-                      loading="lazy"
-                    />
+                  <div
+                    className="founder-portrait relative w-20 h-20 rounded-full overflow-hidden shrink-0 ring-2 ring-primary/30"
+                    onPointerEnter={onPortraitEnter}
+                  >
+                    {/* 112%-bleed drift target — the whole media stack
+                        (duotone base, tint, ring, color layer) counter-slides
+                        together so hover stays registered. */}
+                    <div
+                      ref={(el) => {
+                        portraitDriftRefs.current[i] = el;
+                      }}
+                      className="absolute inset-x-0 top-[-6%] h-[112%] will-change-transform"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={f.image}
+                        alt={f.name}
+                        className="founder-portrait__base absolute inset-0 w-full h-full object-cover object-[50%_20%]"
+                        loading="lazy"
+                      />
+                      <div
+                        aria-hidden="true"
+                        className="absolute inset-0 bg-[#0B1422]/35"
+                      />
+                      <div
+                        aria-hidden="true"
+                        className="founder-portrait__ring absolute inset-0"
+                      />
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={f.image}
+                        alt=""
+                        aria-hidden="true"
+                        draggable={false}
+                        className="founder-portrait__color absolute inset-0 w-full h-full object-cover object-[50%_20%]"
+                        loading="lazy"
+                      />
+                    </div>
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between">
@@ -337,6 +441,44 @@ export function AboutClient() {
           </div>
         </section>
       </div>
+
+      {/* Duotone→color hover for the founder portraits — same visual
+          contract as the home founders rail (founders-rail.tsx carries the
+          identical block; keep them in sync). `--fr-hr` is a registered
+          custom property so the color layer's clip circle and its +1.5px
+          cyan annulus interpolate from one CSS transition; without
+          @property support the reveal snaps, which is acceptable. */}
+      <style>{`
+        @property --fr-hr {
+          syntax: "<length-percentage>";
+          inherits: true;
+          initial-value: 0px;
+        }
+        .founder-portrait {
+          --fr-hr: 0px;
+          transition: --fr-hr 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .founder-portrait__base {
+          filter: grayscale(1) brightness(0.85);
+        }
+        .founder-portrait__color {
+          clip-path: circle(var(--fr-hr) at var(--fr-mx, 50%) var(--fr-my, 50%));
+        }
+        .founder-portrait__ring {
+          background: #3BE1FF;
+          opacity: 0;
+          transition: opacity 0.25s ease;
+          clip-path: circle(calc(var(--fr-hr) + 1.5px) at var(--fr-mx, 50%) var(--fr-my, 50%));
+        }
+        @media (hover: hover) and (pointer: fine) {
+          .founder-portrait:hover { --fr-hr: 150%; }
+          .founder-portrait:hover .founder-portrait__ring { opacity: 0.9; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .founder-portrait,
+          .founder-portrait__ring { transition: none; }
+        }
+      `}</style>
     </div>
   );
 }

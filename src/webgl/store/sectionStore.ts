@@ -51,6 +51,15 @@ interface SectionState {
   spans: Record<string, SectionSpan>;
   /** document.documentElement.scrollHeight at measure time. 1 = pre-measure sentinel. */
   scrollHeight: number;
+  /**
+   * Pathname the current spans were measured FOR ("" = pre-measure
+   * sentinel). Written with every measure so curve consumers can detect the
+   * route-change race: SignatureLine's geometry memo re-runs the instant
+   * `pathname` flips, but the spans here still describe the PREVIOUS route
+   * until SectionBus's post-paint effect re-measures — anchored waypoints
+   * missing from the stale set would collapse to document top otherwise.
+   */
+  measuredPath: string;
   /** Bumped on every real re-measure (mount/resize/fonts/route) — consumers re-derive. */
   measureVersion: number;
   /**
@@ -74,12 +83,16 @@ interface SectionState {
   /**
    * Publishes a fresh measurement. Skips the update entirely (no
    * measureVersion bump, no curve rebuild) when nothing actually moved —
-   * e.g. width-only resizes from the mobile URL bar.
+   * e.g. width-only resizes from the mobile URL bar. A `path` change always
+   * counts as a real re-measure (never short-circuited), so the first
+   * measure of every route bumps the version even when the new route's
+   * layout happens to match the previous one.
    */
   setMeasured: (
     sections: string[],
     spans: Record<string, SectionSpan>,
     scrollHeight: number,
+    path: string,
   ) => void;
   /**
    * Sets the active section and, when it actually changed, bumps `pulse`
@@ -98,15 +111,17 @@ const createSectionStore = () =>
     sections: [],
     spans: {},
     scrollHeight: 1,
+    measuredPath: "",
     measureVersion: 0,
     active: null,
     index: -1,
     direction: 0,
     pulse: 0,
-    setMeasured: (sections, spans, scrollHeight) => {
+    setMeasured: (sections, spans, scrollHeight, path) => {
       const prev = get();
       const nextKeys = Object.keys(spans);
       const same =
+        prev.measuredPath === path &&
         prev.scrollHeight === scrollHeight &&
         nextKeys.length === Object.keys(prev.spans).length &&
         nextKeys.every((k) => {
@@ -123,6 +138,7 @@ const createSectionStore = () =>
         sections,
         spans,
         scrollHeight,
+        measuredPath: path,
         measureVersion: prev.measureVersion + 1,
       });
     },

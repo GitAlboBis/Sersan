@@ -150,12 +150,17 @@ function RouteRitual({
   const config = ROUTE_HERO[pathname];
   if (!config) return null;
 
-  // Each interior RouteHero is lazy + Suspense-wrapped like the gateway: GLB
-  // paths lazy-load their loader chunk internally; procedural mounts on the
-  // first frame. The closing object world-anchors to the transparent "ritual"
-  // gap (clean negative space the camera reaches — NOT behind the semi-opaque
-  // CTA card), where the curve resolves to center (x:0), so the beam threads
-  // it before continuing into the CTA.
+  // The interior ritual (logo kind) is NON-SUSPENDING by design (wedge fix,
+  // 2026-07-07): RouteHeroLogo loads the mark GLB via a module-cached promise
+  // resolved in an effect — no React.lazy, no useGLTF, no thrown promises. A
+  // Suspense left pending inside this bridged tree wedged ALL island commits
+  // on interior routes (SignatureLine's TSL material state + re-measured
+  // anchors props never landed → the line never appeared on /consulting).
+  // The Suspense below is kept as an inert safety net for any future
+  // suspending kind (e.g. a GLB ritual). The closing object world-anchors to
+  // the transparent "ritual" gap (clean negative space the camera reaches —
+  // NOT behind the semi-opaque CTA card), where the curve resolves to center
+  // (x:0), so the beam threads it before continuing into the CTA.
   return (
     <Suspense fallback={null}>
       <RouteHero

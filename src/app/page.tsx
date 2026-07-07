@@ -4,7 +4,7 @@ import ProblemSection from "@/components/sections/problem-section";
 import CaseStudiesRail from "@/components/sections/case-studies-rail";
 import ServicesSection from "@/components/sections/services-section";
 import ProductionGradeSection from "@/components/sections/production-grade-section";
-import FoundersSection from "@/components/sections/founders-section";
+import FoundersRail from "@/components/sections/founders-rail";
 import FixedScopeStrip from "@/components/sections/fixed-scope-strip";
 import FitSection from "@/components/sections/fit-section";
 import FinalCTA from "@/components/sections/final-cta";
@@ -69,7 +69,7 @@ export default function Home() {
         <ProductionGradeSection />
       </div>
       <div data-line-anchor="founders">
-        <FoundersSection />
+        <FoundersRail />
       </div>
       <div data-line-anchor="process">
         <FixedScopeStrip />

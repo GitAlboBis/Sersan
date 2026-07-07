@@ -41,6 +41,18 @@
  * material edge feather keep the plane inside the DOM card's rounded border
  * (prd caveat 7).
  *
+ * CENTER-FOCUS MOTION MIRROR: the DOM rail applies an analytic center-focus
+ * model to every card's inner wrapper (scale 1−0.06f, pyramidal y-arc 12·f²
+ * px — see webgl/store/railMotion.ts, the single shared formula). Because
+ * those transforms live on an INNER wrapper, the measured [data-rail-card]
+ * rects stay untransformed; this component applies the SAME railCardMotion()
+ * to its scale + cy so the planes track the DOM cards through the falloff
+ * pixel-exactly. t/f also feed the material's uParallax/uFocus (procedural
+ * interior parallax + defocus). The rail's velocity SKEW (a damped, transient
+ * shear on the track wrapper) is deliberately NOT mirrored: it is only ever
+ * non-zero during fast scrub, ≤4°, and vanishes at rest — invisible behind
+ * the 0.96 inset + edge feather.
+ *
  * Rects are measured ONLY on railStore.measureVersion bumps (the rail's
  * measure() runs on mount + every ScrollTrigger.refresh via onRefreshInit +
  * its one-shot fonts.ready refresh), at z = 0 where the k mapping is exact
@@ -58,6 +70,7 @@ import { webgpuEnabled } from "./renderer/createRenderer";
 import { CAMERA_Z, WORLD_VIEW_HEIGHT } from "./constants";
 import { useRailStore } from "./store/railStore";
 import { useScrollStore } from "./store/scrollStore";
+import { railCardMotion, RAIL_PLANE_PARALLAX } from "./store/railMotion";
 import type { RailPlaneUniforms } from "./materials/railPlaneNodeMaterial";
 
 interface CardRect {
@@ -231,7 +244,11 @@ export function RailPlanes() {
       mesh.visible = true;
 
       const cx = vpX + r.w / 2;
-      const cy = vpY + r.h / 2;
+      // Shared center-focus model (railMotion.ts) — the DOM applies the same
+      // scale/arc to the card's inner wrapper, so mirroring it here keeps the
+      // plane glued to the card through the falloff (see header).
+      const motion = railCardMotion(cx, vw);
+      const cy = vpY + r.h / 2 + motion.y;
       // Camera-locked placement (see header): camera-space offset at view
       // distance CAMERA_Z, rotated into world by the camera's live pose.
       scratch.current
@@ -240,7 +257,11 @@ export function RailPlanes() {
         .add(camera.position);
       mesh.position.copy(scratch.current);
       mesh.quaternion.copy(camera.quaternion);
-      mesh.scale.set(r.w * k * PLANE_INSET, r.h * k * PLANE_INSET, 1);
+      mesh.scale.set(
+        r.w * k * PLANE_INSET * motion.scale,
+        r.h * k * PLANE_INSET * motion.scale,
+        1,
+      );
 
       const target = hover[r.index] ?? 0;
       hoverEased.current[i] = THREE.MathUtils.damp(
@@ -253,6 +274,12 @@ export function RailPlanes() {
       u.uHover.value = hoverEased.current[i];
       u.uVelocity.value = velSmooth.current;
       u.uReveal.value = revealDamped.current;
+      // Analytic center-focus feed: interior counter-parallax + procedural
+      // defocus. Both are pure functions of the (Lenis-smoothed) card center,
+      // so no extra damping — damping here would lag the plane's interior
+      // behind the DOM media parallax driven by the same signal.
+      u.uParallax.value = motion.t * RAIL_PLANE_PARALLAX;
+      u.uFocus.value = motion.f;
     }
   });
 
