@@ -286,6 +286,48 @@ Replace the 2×2 grid with a pinned "camera pan" stage:
   pinned markup. Full cleanup contract. NO ScrollTrigger pin:. The
   data-line-anchor="services" wrapper in page.tsx stays untouched.
 
+## V3 ADDENDUM (2026-07-08) — Fit section "Verdict beats" (v1 displacement-lists REJECTED)
+
+User verdict on D/v1: still reads as the same two-column list with filter garnish — "non
+ne hai implementato neanche uno [dei template] in quella parte". Replace the fit section
+presentation wholesale with a PINNED SCRUB SET PIECE. File: fit-section.tsx only. All 12
+statements + headings + closing line byte-identical.
+
+### Concept — "Verdict beats"
+A triage sequence: 6 scrubbed beats, one per GOOD-FIT/NOT-A-FIT pair (index i pairs
+GOOD_FIT[i] with NOT_A_FIT[i]). Selective-on-purpose made cinematic.
+
+- **Runway/stage:** px height = 100vh + 6×70vh set by measure(); sticky h-screen
+  overflow-hidden frame; NO ScrollTrigger pin:. One trigger (top top → bottom bottom,
+  invalidateOnRefresh, onRefreshInit: measure), fonts.ready one-shot refresh, full
+  cleanup contract, focusin → lenis.scrollTo(beat), native fallback (≤768px / coarse /
+  reduced-motion) = the static two-column lists (v1 SSR markup), SSR renders pinned
+  markup with beat 0 pose painted inline.
+- **Per beat i (window = smoothstep over its 1/6 of progress):**
+  - LEFT (good): the statement in LARGE display type (clamp ≈ 1.9–2.6rem serif),
+    revealed with clip/y via the window; its ✓ medallion opens as a displacement-mask
+    circle (feTurbulence/feDisplacementMap, cyan #3BE1FF glow ring).
+  - RIGHT (bad): the counterpart in mono, appears mid-window already readable, then a
+    torn redaction bar (displacement + feMorphology dilate) SWEEPS ACROSS it late in
+    the window + the row tilts ~−2° and dims — struck, with a small mono "✗" medallion.
+  - POV smoothing: both statement blocks chase their windowed targets via gsap.quickTo
+    (y/opacity/rotation, duration ~0.8 expo) — scrub drives targets, never transforms
+    directly (template-2 discipline).
+- **Accumulation ledgers:** when beat i completes, its pair collapses into two compact
+  ledger rows (small mono, ✓ cyan / ✗ struck-through) stacked under "BUON FIT"/"NON È
+  UN FIT" labels at the top of each half. Ledger rows are the SAME 12 strings. By beat
+  6 both ledgers are complete on screen — the section's final state IS the summary.
+  Ledger row entrances: short quickTo y/opacity, no filters.
+- **Chrome:** big mono counter "01 / 06" + thin scrub progress line; subtle velocity
+  skew (clamp ±3°, damped to 0) on the center stage; grain/glow per house style. All
+  filters: useId ids, region −15%/130%, ≤2 animating concurrently (only the ACTIVE
+  beat's medallion + bar animate; completed beats' ledger rows are filter-free).
+- **Analytic discipline:** all per-frame values derived from the single trigger
+  progress; zero getBoundingClientRect in the loop; identical-value write skipping.
+- Heading (SectionHeading eyebrow/title/description) stays in normal flow above the
+  runway; closing line stays below. The `id="fit"` + data-line-anchor wrapper
+  semantics unchanged.
+
 ## RISKS
 - Remap changes felt speed of the head along serpentine bends (by design — it now
   matches the reader): verify beats (audit ticks, production pulse) still land.
