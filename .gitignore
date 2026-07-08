@@ -45,3 +45,6 @@ lighthouse-*.json
 
 # Transient browser-capture screenshots (Claude-in-Chrome)
 f_*.png
+
+# Cloned reference repos (codrops demos etc.) — analysis only, not shipped
+/.refs/

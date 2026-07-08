@@ -794,6 +794,10 @@ export interface TextMorphNodeBuild {
   uPointSize: UniformNode<number>;
   uPixelRatio: UniformNode<number>;
   uViewport: UniformNode<unknown>;
+  /** Colour multiplier — PORTRAIT PATH ONLY (live-tunable emissive). Absent on
+   * the hero text path (which bakes params.EMISSIVE), so the hero graph is
+   * byte-identical. */
+  uEmissive?: UniformNode<number>;
   tick: (p: { dt: number; time: number }) => void;
   dispose: () => void;
 }
@@ -811,6 +815,35 @@ export interface TextMorphParams {
   COL_HOT: [number, number, number];
 }
 
+/**
+ * OPTIONAL portrait-morph extension (P1R particle-portrait morph). When passed,
+ * each particle carries a per-particle LINEAR colour for target A and target B;
+ * the render blends A→B with the SAME per-particle stagger the compute kernel
+ * uses for the anchor, so colour and position morph in lockstep. When ABSENT the
+ * build is BYTE-IDENTICAL to the hero text intro (no colour buffers, additive
+ * unlit sprite look) — the shared-engine contract for the hero regression.
+ *
+ * The photographic look uses depth-tested NORMAL blending by default (front
+ * discs occlude back → real luminance relief); only mid-flight travel + any
+ * >1.0 travelTint feed the selective bloom, so faces stay photographic at rest.
+ */
+export interface PortraitMorphOpts {
+  /** count×3 LINEAR rgb for target A (index-matched to homeA). */
+  colorsA: Float32Array;
+  /** count×3 LINEAR rgb for target B (index-matched to homeB). */
+  colorsB: Float32Array;
+  /** Render blending — "normal" (default, real occlusion) or "additive". */
+  blending?: "normal" | "additive";
+  /** Depth test (default true so front discs occlude back = relief). */
+  depthTest?: boolean;
+  /** Depth write (default true). */
+  depthWrite?: boolean;
+  /** Colour multiplier (default 1 — faces photographic, no bloom at rest). */
+  emissive?: number;
+  /** HDR cyan the discs surge toward mid-flight (>1 → selective bloom). */
+  travelTint?: [number, number, number];
+}
+
 export function createTextMorphComputeBuild(
   gl: RendererLike,
   webgpu: WebGPUSymbolsGpgpu,
@@ -824,6 +857,9 @@ export function createTextMorphComputeBuild(
   /** Optional initial particle positions (e.g. a scattered cloud for the
    * entry "particles assemble into the text" beat). Defaults to homeA. */
   seedPositions?: Float32Array,
+  /** Optional per-particle colour morph (see PortraitMorphOpts). Absent = the
+   * byte-identical hero text look. */
+  portrait?: PortraitMorphOpts,
 ): TextMorphNodeBuild {
   const {
     InstancedBufferGeometry,
@@ -832,6 +868,7 @@ export function createTextMorphComputeBuild(
     Color,
     Vector2,
     AdditiveBlending,
+    NormalBlending,
     DoubleSide,
   } = webgpu;
   const {
@@ -865,6 +902,15 @@ export function createTextMorphComputeBuild(
   const homeBBuffer = instancedArray(homeB.slice(), "vec3");
   const homeCBuffer = instancedArray(homeC.slice(), "vec3");
   const homeDBuffer = instancedArray(homeD.slice(), "vec3");
+  // Portrait extension: per-particle LINEAR colour for A/B (render-only; the
+  // kernel never reads these). Absent → no buffers, hero look byte-identical.
+  const hasPortrait = !!portrait;
+  const colorABuffer = portrait
+    ? instancedArray(portrait.colorsA.slice(), "vec3")
+    : null;
+  const colorBBuffer = portrait
+    ? instancedArray(portrait.colorsB.slice(), "vec3")
+    : null;
   // Entry-assemble fields: the scattered start each particle flies in FROM,
   // and its stagger delay = normalized home-A x (ICS-media: "the normalized X
   // position directly becomes the delay value" → a left→right forming wave).
@@ -1026,6 +1072,10 @@ export function createTextMorphComputeBuild(
   // Per-particle entry visibility: alpha rises as the particle's own journey
   // starts (ICS: each particle tweens `alpha: 0 → visible` with its delay).
   const vAssemble = float(1).toVar();
+  // Portrait: the per-particle A→B colour-blend scalar, computed in the vertex
+  // stage from the SAME stagger the kernel uses for the anchor. Only created on
+  // the portrait path (the hero vertex graph is untouched).
+  const vMorphColorSrc = hasPortrait ? float(0).toVar() : null;
 
   const material = new MeshBasicNodeMaterial();
   material.vertexNode = Fn(() => {
@@ -1083,6 +1133,15 @@ export function createTextMorphComputeBuild(
     clip.xy.addAssign(
       corner.mul(sizeNode).div(uViewport as unknown as AnyNode).mul(2.0).mul(clip.w),
     );
+    // Portrait colour-morph scalar — the same staggered A→B wave the kernel
+    // applies to the anchor (delay = hash(instanceIndex)·0.55, window 0.45), so
+    // a particle's colour crosses from A to B exactly as it flies A→B.
+    if (hasPortrait) {
+      const rC = hash(instanceIndex);
+      vMorphColorSrc!.assign(
+        smoothstep(0.0, 1.0, clamp(morphN.sub(rC.mul(0.55)).div(0.45), 0.0, 1.0)),
+      );
+    }
     return clip;
   })();
 
@@ -1090,16 +1149,51 @@ export function createTextMorphComputeBuild(
   const vSpeedF = varying(vSpeed);
   const vRandF = varying(vRandSrc);
   const vAssembleF = varying(vAssemble);
+  const vMorphColorF = hasPortrait ? varying(vMorphColorSrc!) : null;
+
+  // Portrait travel tint (HDR cyan) + emissive — created only on the portrait
+  // path so the hero fragment graph is unchanged.
+  const uTravelTint = portrait
+    ? (uniform(new Color().fromArray(portrait.travelTint ?? [0.16, 2.4, 3.0])) as UniformNode<ColorLike>)
+    : null;
+  // Live-tunable emissive on the portrait path (uniform, not a baked constant)
+  // so the human can dial face brightness without a rebuild. Hero path: null →
+  // the fragment keeps its `params.EMISSIVE` constant, byte-identical.
+  const uPortraitEmissive = portrait
+    ? (uniform(portrait.emissive ?? 1) as UniformNode<number>)
+    : null;
+  /** Speed→travel-tint gain: fast (mid-flight) discs surge to the HDR cyan. */
+  const PORTRAIT_TRAVEL_K = 0.16;
 
   const shade = Fn(() => {
     const rr = length(vQuadUv);
     const a = smoothstep(0.5, 0.12, rr).toVar();
-    const t = clamp(vSpeedF.mul(0.5), 0.0, 1.0);
-    const col = mix(uColCold as unknown as AnyNode, uColHot as unknown as AnyNode, t)
-      .toVec3()
-      .mul(float(1.0).add(vSpeedF.mul(0.25)))
-      .mul(float(0.75).add(float(0.4).mul(vRandF)))
-      .mul(float(params.EMISSIVE));
+    let col: AnyNode;
+    if (hasPortrait) {
+      // Per-particle photographic colour, morphed A→B by the vertex-computed
+      // stagger. `.xyz` MANDATORY: a "vec3" storage buffer pads to 4 comps.
+      const cA = colorABuffer!.toAttribute().xyz;
+      const cB = colorBBuffer!.toAttribute().xyz;
+      const base = mix(cA, cB, vMorphColorF!).toVar();
+      // Travel glow: fast (mid-flight) discs surge toward HDR cyan → the >1.0
+      // values feed the selective bloom; at rest speed≈0 so faces stay photo.
+      base.assign(
+        mix(
+          base,
+          (uTravelTint as unknown as AnyNode).toVec3(),
+          clamp(vSpeedF.mul(PORTRAIT_TRAVEL_K), 0.0, 1.0),
+        ),
+      );
+      base.assign(base.mul(uPortraitEmissive as unknown as AnyNode));
+      col = base;
+    } else {
+      const t = clamp(vSpeedF.mul(0.5), 0.0, 1.0);
+      col = mix(uColCold as unknown as AnyNode, uColHot as unknown as AnyNode, t)
+        .toVec3()
+        .mul(float(1.0).add(vSpeedF.mul(0.25)))
+        .mul(float(0.75).add(float(0.4).mul(vRandF)))
+        .mul(float(params.EMISSIVE));
+    }
     const alpha = a
       .mul(float(params.POINT_ALPHA))
       .mul(uFade as unknown as AnyNode)
@@ -1111,9 +1205,15 @@ export function createTextMorphComputeBuild(
   material.colorNode = (shade as AnyNode).xyz;
   material.opacityNode = (shade as AnyNode).w;
   material.transparent = true;
-  material.depthWrite = false;
-  material.depthTest = false;
-  material.blending = AdditiveBlending;
+  // Portrait: depth-tested normal blending (front discs occlude back = relief);
+  // hero: additive, depth off (byte-identical to before).
+  material.depthWrite = hasPortrait ? (portrait!.depthWrite ?? true) : false;
+  material.depthTest = hasPortrait ? (portrait!.depthTest ?? true) : false;
+  material.blending = hasPortrait
+    ? portrait!.blending === "additive"
+      ? AdditiveBlending
+      : NormalBlending
+    : AdditiveBlending;
   material.toneMapped = false;
   material.side = DoubleSide;
 
@@ -1138,6 +1238,7 @@ export function createTextMorphComputeBuild(
     uPointSize,
     uPixelRatio,
     uViewport,
+    uEmissive: uPortraitEmissive ?? undefined,
     tick,
     dispose() {
       geometry.dispose();

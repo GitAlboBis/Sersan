@@ -28,6 +28,7 @@ import { GatewayPortal } from "./GatewayPortal";
 import { RouteHero, type RouteHeroKind } from "./RouteHero";
 import { DriftParticles } from "./DriftParticles";
 import { RailPlanes } from "./RailPlanes";
+import { FounderPortraitMorph } from "./FounderPortraitMorph";
 import { ResourcePreviewPlane } from "./ResourcePreviewPlane";
 import { NeuralLattice } from "./NeuralLattice";
 import { AdaptiveResolution } from "./AdaptiveResolution";
@@ -62,6 +63,10 @@ if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
   });
   import("./store/railStore").then((m) => {
     (window as unknown as Record<string, unknown>).__sersanRail = m.useRailStore;
+  });
+  import("./store/foundersMorphStore").then((m) => {
+    (window as unknown as Record<string, unknown>).__sersanFoundersMorph =
+      m.useFoundersMorphStore;
   });
 }
 
@@ -263,6 +268,19 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           authority having written camera.position.y earlier in the same
           priority-0 frame pass. */}
       {pathname === "/" && tier === "full" && webgpu && <RailPlanes />}
+      {/* Home founders particle-portrait morph (P1R, WEBGL_UPGRADE_PLAN §4R).
+          Same gates as RailPlanes (home route + full tier + the WebGPU flag —
+          TSL/compute-only, no GLSL twin; on the classic flag-OFF path or
+          lite/off/reduced-motion/coarse the accessible DOM founders section in
+          founders-rail.tsx is the whole visual). Inside the component a
+          foundersMorphStore.pinned gate keeps it off while the DOM section runs
+          its horizontal-rail / native fallback, and it self-disables unless a
+          TRUE-WebGPU compute backend is present. MUST stay mounted AFTER
+          SignatureLine (same reason as RailPlanes): the per-frame group
+          placement is camera-relative and relies on the single camera authority
+          having written camera.position/quaternion earlier in the same
+          priority-0 frame pass. */}
+      {pathname === "/" && tier === "full" && webgpu && <FounderPortraitMorph />}
       {/* FIX 3 neural-lattice islands (home only). Two camera-locked lattices:
           the Problem section ("broken" — pathways go dark / packets die) and the
           ProductionGrade section ("healthy" — clusters pulse in sequence). Same
