@@ -228,11 +228,14 @@ export const useFxStore = create<FxState>((set) => ({
   fluidStrength: 0.006,
   dissipation: 0.96,
   splatRadius: 0.07,
-  // Cinematic scroll camera (full tier only). Raised from 0.05/0.2 → a real but
-  // restrained bank: the camera now leans a few degrees toward the bend the
-  // reader is approaching instead of the old near-imperceptible tilt.
-  lookAhead: 0.08,
-  lookTiltScale: 0.45,
+  // Cinematic scroll camera (full tier only). lookAhead/lookTiltScale are back at
+  // the SHIPPED values (0.05/0.2): raising lookTiltScale to 0.45 over-pitched the
+  // camera at the hero and pushed the "Sersan AI" wordmark + right-hand logo out
+  // of frame (regression). The added cinematic bank now comes ENTIRELY from
+  // camRoll (view-axis roll), which leans into curve bends WITHOUT changing the
+  // lookAt framing — so the hero stays framed.
+  lookAhead: 0.05,
+  lookTiltScale: 0.2,
   camRoll: 0.12, // × tangent.x, then clamped to CAM_ROLL_MAX (~2.6°) in SignatureLine
   set: (partial) => set(partial),
 }));
