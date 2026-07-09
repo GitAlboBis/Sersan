@@ -40,12 +40,20 @@ interface RailState {
   velocity: number;
   /** Per-card hover targets (0|1) keyed by data-rail-index. */
   hover: Record<number, number>;
+  /**
+   * Per-card noisy-reveal targets (0|1) keyed by data-rail-index. Set once
+   * (fire-once in-view) by the DOM rail; RailPlanes damps toward it and feeds
+   * the material's per-card uReveal mask (P2 #3 "signal resolves from noise").
+   */
+  reveal: Record<number, number>;
   /** Bumped after every layout measure; RailPlanes re-reads card rects on it. */
   measureVersion: number;
   setPinned: (pinned: boolean) => void;
   setLayout: (travel: number, secTop: number) => void;
   setTrack: (trackX: number, progress: number, velocity: number) => void;
   setHover: (index: number, target: number) => void;
+  /** Idempotent fire-once reveal target for a card index. */
+  setReveal: (index: number, target: number) => void;
   bumpMeasure: () => void;
   reset: () => void;
 }
@@ -63,6 +71,7 @@ const INITIAL = {
 export const useRailStore = create<RailState>((set) => ({
   ...INITIAL,
   hover: {},
+  reveal: {},
   setPinned: (pinned) => set({ pinned }),
   setLayout: (travel, secTop) => set({ travel, secTop }),
   setTrack: (trackX, progress, velocity) => set({ trackX, progress, velocity }),
@@ -70,6 +79,12 @@ export const useRailStore = create<RailState>((set) => ({
     set((s) =>
       s.hover[index] === target ? s : { hover: { ...s.hover, [index]: target } },
     ),
+  setReveal: (index, target) =>
+    set((s) =>
+      s.reveal[index] === target
+        ? s
+        : { reveal: { ...s.reveal, [index]: target } },
+    ),
   bumpMeasure: () => set((s) => ({ measureVersion: s.measureVersion + 1 })),
-  reset: () => set({ ...INITIAL, hover: {} }),
+  reset: () => set({ ...INITIAL, hover: {}, reveal: {} }),
 }));

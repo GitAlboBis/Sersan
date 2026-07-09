@@ -183,6 +183,8 @@ export function RailPlanes() {
   const hoverEased = useRef<number[]>([]);
   const velSmooth = useRef(0);
   const revealDamped = useRef(0);
+  // Per-card noisy-reveal progress, damped toward railStore.reveal[index].
+  const cardRevealEased = useRef<number[]>([]);
   // Scratch vector for the camera-space → world transform (no per-frame alloc).
   const scratch = useRef(new THREE.Vector3());
 
@@ -190,7 +192,7 @@ export function RailPlanes() {
     if (!mats || rects.length === 0) return;
     const rail = useRailStore.getState();
     if (!rail.pinned) return;
-    const { trackX, travel, secTop, progress, velocity, hover } = rail;
+    const { trackX, travel, secTop, progress, velocity, hover, reveal } = rail;
 
     const ih = size.height;
     const vw = size.width;
@@ -270,10 +272,22 @@ export function RailPlanes() {
         5,
         delta,
       );
+      // Per-card noisy reveal: fire-once target from railStore, damped so the
+      // card resolves out of the navy over ~0.5s (island rule: getState, no
+      // React commit). Distinct from uRouteFade (the global route transition).
+      const revealTarget = reveal[r.index] ?? 0;
+      cardRevealEased.current[i] = THREE.MathUtils.damp(
+        cardRevealEased.current[i] ?? 0,
+        revealTarget,
+        4,
+        delta,
+      );
+
       const u = mat.uniforms;
       u.uHover.value = hoverEased.current[i];
       u.uVelocity.value = velSmooth.current;
-      u.uReveal.value = revealDamped.current;
+      u.uRouteFade.value = revealDamped.current;
+      u.uReveal.value = cardRevealEased.current[i];
       // Analytic center-focus feed: interior counter-parallax + procedural
       // defocus. Both are pure functions of the (Lenis-smoothed) card center,
       // so no extra damping — damping here would lag the plane's interior

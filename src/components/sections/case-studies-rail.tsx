@@ -529,8 +529,29 @@ export default function CaseStudiesRail() {
     };
     rail.addEventListener("focusin", onFocusIn);
 
+    // ---- Per-card noisy-reveal trigger (P2 #3, consumed by webgl/RailPlanes).
+    // Fire-once, in-view via IntersectionObserver: robust when the section is
+    // already scrolled into view on mount, and naturally staggered when each
+    // card slides in horizontally during the pin. Harmless on the non-WebGPU
+    // path — RailPlanes isn't mounted there, so nobody reads `reveal`.
+    const revealIO = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const idx = Number((entry.target as HTMLElement).dataset.railIndex);
+          if (!Number.isNaN(idx)) useRailStore.getState().setReveal(idx, 1);
+          revealIO.unobserve(entry.target);
+        }
+      },
+      { threshold: 0.15 },
+    );
+    rail
+      .querySelectorAll<HTMLElement>("[data-rail-card]")
+      .forEach((el) => revealIO.observe(el));
+
     return () => {
       fontsCancelled = true;
+      revealIO.disconnect();
       rail.removeEventListener("focusin", onFocusIn);
       rail.removeEventListener("click", onRailClickCapture, true);
       gsap.ticker.remove(skewTick);

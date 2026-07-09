@@ -65,6 +65,8 @@ import {
   vec3,
   fract,
   dot,
+  length,
+  clamp,
 } from "three/tsl";
 
 /**
@@ -76,7 +78,13 @@ export type RailPlaneUniforms = {
   uHover: { value: number };
   /** Smoothed, normalized rail velocity (−1..1) — drives the bend. */
   uVelocity: { value: number };
-  /** Route-transition fade (damped scrollStore.reveal). */
+  /** Route-transition fade (damped scrollStore.reveal) — global opacity gate. */
+  uRouteFade: { value: number };
+  /**
+   * Per-card noisy-reveal progress 0..1 (damped railStore.reveal[index]).
+   * Drives the #3 "signal resolves from noise" mask: the card materialises
+   * from the navy through a domain-warped radial front with a cyan→blue rim.
+   */
   uReveal: { value: number };
   /** Stable per-card seed 0..1 — varies backdrop tint phase + scan warp. */
   uSeed: { value: number };
@@ -92,6 +100,7 @@ export function createRailPlaneMaterial(seed: number): {
 } {
   const uHover = uniform(0);
   const uVelocity = uniform(0);
+  const uRouteFade = uniform(0);
   const uReveal = uniform(0);
   const uSeed = uniform(seed);
   const uParallax = uniform(0);
@@ -164,7 +173,40 @@ export function createRailPlaneMaterial(seed: number): {
     .mul(smoothstep(0.0, 0.5, dist).oneMinus())
     .mul(float(0.12).mul(focusScan));
 
-  const col = backdrop.add(lineGrad.mul(trail)).add(scanCol);
+  // (g) Per-card noisy reveal (#3 "signal resolves from noise"). A domain-
+  // warped radial front expands from the card center as uReveal 0→1; a bright
+  // cyan→blue rim rides the boundary (emissive >1.0 → selective bloom) and
+  // auto-vanishes both at rest (mask 0 everywhere) and once fully revealed
+  // (mask 1 everywhere). reduced-motion / non-webgpu never mount this island.
+  const cen = u.sub(vec2(0.5, 0.5));
+  const revDist = length(cen); // 0 at center → ~0.707 at a corner
+  // Organic boundary: a low-freq sine field + hash grain warp the radius so the
+  // front tears open rather than sweeping a clean circle.
+  const revHash = fract(
+    sin(dot(u.mul(4.0).add(uSeed.mul(17.0)), vec2(12.9898, 78.233))).mul(
+      43758.5453,
+    ),
+  );
+  const revWave = sin(u.x.mul(11.0).add(u.y.mul(7.0)).add(uSeed.mul(30.0)))
+    .mul(0.5)
+    .add(0.5);
+  const revNoise = revWave.mul(0.6).add(revHash.mul(0.4)); // 0..1
+  // front > 0 where revealed. 1.35 expand guarantees full coverage at uReveal=1
+  // (worst case: dist 0.707 + noise·0.28 ≈ 0.99 < 1.35).
+  const front = uReveal.mul(1.35).sub(revDist).sub(revNoise.mul(0.28));
+  const revealMask = smoothstep(0.0, 0.14, front); // 0 hidden → 1 revealed
+  // Rim band peaks at the transition (mask≈0.5) and is 0 at both ends, faded
+  // with defocus like the scan sweep.
+  const revealRim = revealMask.mul(revealMask.oneMinus()).mul(4.0);
+  const revealRimCol = mix(uColorA, uColorB, u.y)
+    .mul(2.6)
+    .mul(revealRim)
+    .mul(focusScan);
+
+  const col = backdrop
+    .add(lineGrad.mul(trail))
+    .add(scanCol)
+    .add(revealRimCol);
 
   // (d) Edge feather: soft uv inset (reversed-edge smoothsteps are written as
   // forward + oneMinus — reversed edges are undefined in WGSL's smoothstep).
@@ -174,12 +216,15 @@ export function createRailPlaneMaterial(seed: number): {
     .mul(smoothstep(0.93, 1.0, u.y).oneMinus());
 
   material.colorNode = vec3(col);
-  // Opacity mirrors the DOM card's center-focus fade (railMotion.ts
-  // RAIL_FOCUS_FADE = 0.4) so plane + card dim together as one surface.
-  material.opacityNode = uReveal
+  // Opacity: route fade × edge feather × center-focus fade (railMotion.ts
+  // RAIL_FOCUS_FADE = 0.4, so plane + card dim together) × the noisy reveal
+  // mask (the card materialises from the navy). The rim front is kept opaque
+  // slightly AHEAD of the fill so the glowing boundary reads crisp.
+  material.opacityNode = uRouteFade
     .mul(0.9)
     .mul(feather)
-    .mul(uFocus.mul(0.4).oneMinus());
+    .mul(uFocus.mul(0.4).oneMinus())
+    .mul(clamp(revealMask.add(revealRim.mul(0.8)), 0.0, 1.0));
 
   material.transparent = true;
   material.depthWrite = false; // never occludes the line/dust
@@ -189,6 +234,14 @@ export function createRailPlaneMaterial(seed: number): {
 
   return {
     material,
-    uniforms: { uHover, uVelocity, uReveal, uSeed, uParallax, uFocus },
+    uniforms: {
+      uHover,
+      uVelocity,
+      uRouteFade,
+      uReveal,
+      uSeed,
+      uParallax,
+      uFocus,
+    },
   };
 }
