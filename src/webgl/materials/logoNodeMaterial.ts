@@ -134,7 +134,7 @@ export function createDissolveBodyNodeMaterial(): {
   const uDeep = uniform(new Color("#0a1526"));
   const uBand = uniform(new Color("#1d3a63"));
   const uCyan = uniform(new Color("#3BE1FF"));
-  const uViolet = uniform(new Color("#7C5CFF"));
+  const uViolet = uniform(new Color("#2A7FFF")); // name kept; value now blue
   const uLightDir = uniform(new Vector3(-0.55, 0.42, 0.72).normalize());
 
   const material = new MeshBasicNodeMaterial();
@@ -215,7 +215,7 @@ export function createDissolveParticleNodeMaterial(): {
   const uPixelRatio = uniform(1);
   const uViewport = uniform(new Vector2(1, 1));
   const uCyan = uniform(new Color("#3BE1FF"));
-  const uViolet = uniform(new Color("#7C5CFF"));
+  const uViolet = uniform(new Color("#2A7FFF")); // name kept; value now blue
 
   const material = new MeshBasicNodeMaterial();
 
@@ -278,7 +278,7 @@ export function createDissolveParticleNodeMaterial(): {
     const circle = smoothstep(0.5, 0.12, length(vQuadUv));
     Discard(circle.lessThan(0.02));
 
-    // HDR cyan→violet so selective bloom catches the dust. Fade IN as the mote
+    // HDR cyan→blue so selective bloom catches the dust. Fade IN as the mote
     // is born; HOLD full brightness while dispersed so the cloud persists —
     // MUST match the GLSL twin (logoShader.ts). The earlier
     // life*(1 - smoothstep(0.7,1.0,vDisp)) faded fully-dispersed motes to zero

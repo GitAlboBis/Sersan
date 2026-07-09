@@ -648,7 +648,7 @@ export function createSporeComputeNodeBuild(
 
     // Excitement = speed (storage read auto-varied into the fragment) OR the
     // regrow flash (DDD: brightness = max(0, life−1) — re-forming spores flash
-    // cyan). Quadratic ramp so the resting crust stays dark violet and only
+    // cyan). Quadratic ramp so the resting crust stays dark blue and only
     // excited spores lerp toward cyan AND cross the selective-bloom threshold.
     // `.xyz` MANDATORY: `velocityBuffer` is a padded `"vec3"` storage buffer,
     // so `.toAttribute()` is 4-component — `length()` must see the true vec3.
@@ -1275,9 +1275,9 @@ export interface GpgpuStaticNodeBuild {
 /**
  * Build the FALLBACK hero render on the WebGPURenderer — each instance is
  * placed at its HOME position read from a per-instance `aHome` vec3 attribute
- * (a CRISP dense violet "52", no storage/texture reads) and then ANALYTICALLY
+ * (a CRISP dense blue "52", no storage/texture reads) and then ANALYTICALLY
  * displaced near the cursor: particles within `uRadius` of the model-space
- * mouse lift outward + toward the camera, shifting violet→CYAN (glowing)
+ * mouse lift outward + toward the camera, shifting blue→CYAN (glowing)
  * gated by the eased `uHover`, and settle back smoothly when the cursor
  * leaves. Stateless (no sim, no compute) so it is robust on EVERY backend —
  * this is where the `spores` mode degrades when true-WebGPU compute is
@@ -1379,7 +1379,7 @@ export function createStaticParticleNodeBuild(
   ).toVar();
 
   // Carry the per-particle lift (displacement amount) to the fragment so the
-  // color shifts violet→cyan exactly where the surface is disturbed.
+  // color shifts blue→cyan exactly where the surface is disturbed.
   const vLift = float(0).toVar();
 
   const material = new MeshBasicNodeMaterial();
@@ -1435,8 +1435,8 @@ export function createStaticParticleNodeBuild(
   const shade = Fn(() => {
     const r = length(vQuadUv);
     const a = smoothstep(0.5, 0.18, r).toVar();
-    // Color: violet→cyan by lift (like the GPGPU render did by speed). At rest
-    // lift≈0 → pure violet skin; lifted/hovered particles glow toward cyan.
+    // Color: blue→cyan by lift (like the GPGPU render did by speed). At rest
+    // lift≈0 → pure blue skin; lifted/hovered particles glow toward cyan.
     //   t = clamp(lift*1.2, 0, 1); col = mix(cold, hot, t);
     //   col *= (1 + lift*0.8); col *= (0.7 + 0.5*rand); col *= uEmissive;
     const t = clamp(vLiftF.mul(1.2), 0.0, 1.0);

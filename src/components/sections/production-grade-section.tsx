@@ -22,7 +22,7 @@ import { NeuralCenterpiece } from "@/components/fx/neural-centerpiece";
  * centerpiece] beside [cards column]. The 3 focusable NODE MARKERS in the
  * centerpiece are the primary trigger: hovering/focusing node i flares + BURSTS
  * its hub (particle effect) and OPENS the matching side card; others dim. The
- * cards use the shared NeuralCard chrome (compact → expand, cyan→violet glass)
+ * cards use the shared NeuralCard chrome (compact → expand, cyan→blue glass)
  * identical to the Problem section; only the copy + healthy accent differ. The
  * copy from getArtifacts() stays as accessible, selectable DOM at all times.
  *

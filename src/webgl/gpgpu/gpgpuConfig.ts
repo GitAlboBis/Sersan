@@ -7,7 +7,7 @@
  * onto a copy of DEFAULT_GPGPU_CONFIG each frame.
  *
  * Colors are [r,g,b] in 0..1 (passed straight to a THREE.Color in the render
- * material): COL_COLD = violet (slow particles), COL_HOT = cyan (fast particles).
+ * material): COL_COLD = blue (slow particles), COL_HOT = cyan (fast particles).
  */
 import type { Vector3 } from "three";
 
@@ -65,12 +65,12 @@ export interface GpgpuConfig {
   /**
    * HDR emissive multiplier on the render color — the single source of truth
    * for the at-rest glow. Folded into the reference color relationship
-   * (col *= … * EMISSIVE) so the resting violet mark crosses the cinematic
+   * (col *= … * EMISSIVE) so the resting blue mark crosses the cinematic
    * Bloom threshold (~1.0) and reads as a softly-glowing centerpiece, while
    * fast cyan motes go well above and bloom hard. Both backends identical.
    */
   EMISSIVE: number;
-  /** Violet — color of slow / at-rest particles. */
+  /** Blue — color of slow / at-rest particles. */
   COL_COLD: [number, number, number];
   /** Cyan — color of fast / dispersing particles. */
   COL_HOT: [number, number, number];
@@ -108,7 +108,7 @@ export const DEFAULT_GPGPU_CONFIG: GpgpuConfig = {
   // via fxStore.gpgpuPointSize (LineDebug "point size").
   POINT_SIZE: 9,
   POINT_ALPHA: 0.88,
-  // ~2.6 so the resting violet skin clears the Bloom threshold and glows softly
+  // ~2.6 so the resting blue skin clears the Bloom threshold and glows softly
   // at the smaller/denser scale; fast cyan motes still bloom hard via
   // ×(1+vSpeed*0.35). Live-tunable via fxStore.gpgpuEmissive (LineDebug
   // "GPGPU emissive / glow").
@@ -181,7 +181,7 @@ export interface SporeRenderConfig {
   /** Per-instance radius variance multipliers [min, max]. */
   VAR_MIN: number;
   VAR_MAX: number;
-  /** Resting albedo (violet) — DDD's vec3(0.44,0.322,0.816). */
+  /** Resting albedo (blue; was DDD's violet vec3(0.44,0.322,0.816)). */
   ALBEDO: [number, number, number];
   /** Resting albedo multiplier — DDD darkens the resting crust to ×0.25. */
   ALBEDO_MUL: number;
@@ -244,7 +244,10 @@ export const SPORE_LAYER: {
     DIAMETER_RATIO: 1 / 47,
     VAR_MIN: 0.7,
     VAR_MAX: 1.45,
-    ALBEDO: [0.44, 0.322, 0.816],
+    // Blue (was violet [0.44,0.322,0.816]) — hue shifted to blue, magnitude
+    // preserved (matches DEFAULT_GPGPU_CONFIG.COL_COLD migration) so the
+    // ALBEDO_MUL 0.25 near-black-crust brightness intent is unchanged.
+    ALBEDO: [0.16, 0.42, 0.95],
     ALBEDO_MUL: 0.25,
     EMISSION: [0.0, 1.0, 1.0],
     EMISSIVE: 2.2,

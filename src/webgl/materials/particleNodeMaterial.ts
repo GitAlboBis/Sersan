@@ -101,7 +101,7 @@ export function createParticleNodeMaterial(): {
   const uPixelRatio = uniform(1);
   const uViewport = uniform(new Vector2(1, 1));
   const uColorA = uniform(new Color("#3BE1FF"));
-  const uColorB = uniform(new Color("#7C5CFF"));
+  const uColorB = uniform(new Color("#2A7FFF")); // name kept; value now blue (was violet #7C5CFF)
   const uOpacity = uniform(0.35);
 
   const material = new MeshBasicNodeMaterial();

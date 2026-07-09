@@ -7,7 +7,7 @@
  * ring, the procedural closing rings, and the /trust compliance centerpiece)
  * with the SERSAN logo, in the SAME slot, driven by the SAME RouteHeroBody
  * choreography (world-anchor, culling, presence scale-in, wobble, emissive
- * cyan↔violet pulse, rim lights). The logo gets a slow Y-spin (RouteHeroBody's
+ * cyan↔blue pulse, rim lights). The logo gets a slow Y-spin (RouteHeroBody's
  * logo mode) and lights up neon-blue on cursor hover.
  *
  * The mark geometry is the SAME Blender GLB the home HeroLogo uses

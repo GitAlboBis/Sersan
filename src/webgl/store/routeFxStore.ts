@@ -60,7 +60,7 @@ export const HOME_FX: RouteFx = {
   particleOpacity: 0.35,
   particleCountScale: 1,
   lineColorA: "#3BE1FF",
-  lineColorB: "#7C5CFF",
+  lineColorB: "#2A7FFF", // was violet #7C5CFF; value now blue
   lineColorHot: "#EAF6FF",
   lineEmissiveScale: 1,
   tessellationScale: 1,
@@ -68,7 +68,7 @@ export const HOME_FX: RouteFx = {
 
 /**
  * Per-route tone overrides. Deltas are deliberately SMALL — the brand is
- * monochrome navy + the cyan→violet signal; routes differ in temperature and
+ * monochrome navy + the cyan→blue signal; routes differ in temperature and
  * density, never in identity. Only the fields a route wants to bias are
  * listed; the rest fall back to HOME_FX.
  */
@@ -80,7 +80,7 @@ const ROUTE_FX: Record<string, Partial<RouteFx>> = {
     bloomThreshold: 0.92,
     bloomIntensity: 1.2,
     bloomRadius: 0.6,
-    lineColorB: "#6E7BFF",
+    lineColorB: "#2A7FFF", // was violet-ish #6E7BFF; value now blue
   },
   // Consulting: warmer + denser. A faintly warmer tail and more dust suggest
   // an active, busy production floor.
@@ -88,7 +88,7 @@ const ROUTE_FX: Record<string, Partial<RouteFx>> = {
     bloomIntensity: 1.18,
     particleCountScale: 1.15,
     particleOpacity: 0.4,
-    lineColorB: "#8A6BFF",
+    lineColorB: "#2A7FFF", // was violet-ish #8A6BFF; value now blue
   },
   // Audit: keep full tessellation even on lite (the six-surface curve has
   // tight beats that must stay smooth); otherwise home-like.
@@ -121,7 +121,7 @@ const ROUTE_FX: Record<string, Partial<RouteFx>> = {
     particleCountScale: 0.8,
     particleOpacity: 0.3,
     bloomIntensity: 1.05,
-    lineColorB: "#8A6BFF",
+    lineColorB: "#2A7FFF", // was violet-ish #8A6BFF; value now blue
   },
 };
 

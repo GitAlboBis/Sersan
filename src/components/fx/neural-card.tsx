@@ -8,7 +8,7 @@
  * treatment differ.
  *
  * Look (matches the 3D particle network beside it): dark translucent navy glass
- * (subtle backdrop-blur), thin cyan→violet gradient HAIRLINE border + soft outer
+ * (subtle backdrop-blur), thin cyan→blue gradient HAIRLINE border + soft outer
  * glow that intensifies on hover/focus/open, JetBrains-Mono eyebrow (`0N · …`),
  * editorial/Switzer title. No terminal chrome (no macOS dots / file-name labels
  * / radar / scan).
@@ -18,7 +18,7 @@
  *   - This card OPENS when its node marker is hovered/focused — it reads the
  *     store's hovered index (useNeuralLatticeStore.hovered[surface] === index)
  *     for that surface, so node-hover expands the matching side card with a
- *     slide+fade + cyan→violet border shimmer.
+ *     slide+fade + cyan→blue border shimmer.
  *   - The card ALSO opens on its OWN hover/focus (accessible redundancy) and
  *     writes setHovered itself, so the node still flares + bursts. The node
  *     marker is the primary trigger; the card is the secondary one.
@@ -166,14 +166,14 @@ export function NeuralCard({
       )}
       data-open={open ? "true" : "false"}
     >
-      {/* Cyan→violet gradient hairline border + outer glow (intensifies on
+      {/* Cyan→blue gradient hairline border + outer glow (intensifies on
           hover/focus/open). Pure decoration. */}
       <span
         aria-hidden="true"
         className="neural-card__border pointer-events-none absolute inset-0 rounded-xl"
       />
 
-      {/* v6: a cyan→violet shimmer that sweeps once along the border when the
+      {/* v6: a cyan→blue shimmer that sweeps once along the border when the
           card opens — the DOM half of the node→card "scia". Decorative; the
           animation only runs while the card has [data-open="true"]. */}
       <span

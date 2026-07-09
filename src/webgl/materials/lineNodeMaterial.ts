@@ -19,7 +19,7 @@
  *     breathField = 0.6*sin(x*7 + t*0.55) + 0.4*sin(x*3 - t*0.37); normal is
  *     passed through UNPERTURBED (the <0.2° facing tilt is dropped on purpose).
  *   - fragment: head-draw mask on uv.x with fwidth AA, bright head band,
- *     animated cyan→violet gradient, view-facing core glow (abs(viewNormal.z)
+ *     animated cyan→blue gradient, view-facing core glow (abs(viewNormal.z)
  *     ^ uGlowFalloff), the "gel tube" fresnel rim + fake-scatter
  *     (fres = pow(1 - abs(viewNormal.z), uFresnelPower); col += grad*fres*uScatter
  *     added into HDR color BEFORE × uEmissive), color × uEmissive (HDR >1.0 for
@@ -81,7 +81,7 @@ export function createLineNodeMaterial(): {
   const uProgress = uniform(0);
   const uTime = uniform(0);
   const uColorA = uniform(new Color("#3BE1FF"));
-  const uColorB = uniform(new Color("#7C5CFF"));
+  const uColorB = uniform(new Color("#2A7FFF")); // was violet #7C5CFF; value now blue
   const uColorHot = uniform(new Color("#EAF6FF"));
   const uGlowFalloff = uniform(2.0);
   const uHeadSharp = uniform(0.045);
@@ -130,7 +130,7 @@ export function createLineNodeMaterial(): {
     drawn,
   );
 
-  // Animated cyan -> violet gradient flowing along the tube. Sine keeps the
+  // Animated cyan -> blue gradient flowing along the tube. Sine keeps the
   // wrap seamless: t = 0.5 + 0.5*sin(6.28318*(along*1.5 - uTime*uFlowSpeed)).
   const t = float(0.5).add(
     sin(float(6.28318).mul(along.mul(1.5).sub(uTime.mul(uFlowSpeed)))).mul(0.5),

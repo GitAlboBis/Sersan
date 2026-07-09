@@ -87,7 +87,7 @@ const fragmentShader = /* glsl */ `
     // Bright "signal head" band right behind the leading edge.
     float head = smoothstep(uProgress - uHeadSharp, uProgress, along) * drawn;
 
-    // Animated cyan -> violet gradient flowing along the tube. Sine keeps
+    // Animated cyan -> blue gradient flowing along the tube. Sine keeps
     // the wrap seamless (no fract() seam).
     float t = 0.5 + 0.5 * sin(6.28318 * (along * 1.5 - uTime * uFlowSpeed));
     vec3 grad = mix(uColorA, uColorB, t);
@@ -141,7 +141,7 @@ export function createLineMaterial(): THREE.ShaderMaterial & {
       uProgress: { value: 0 },
       uTime: { value: 0 },
       uColorA: { value: new THREE.Color("#3BE1FF") },
-      uColorB: { value: new THREE.Color("#7C5CFF") },
+      uColorB: { value: new THREE.Color("#2A7FFF") }, // was violet #7C5CFF; value now blue
       uColorHot: { value: new THREE.Color("#EAF6FF") },
       uGlowFalloff: { value: 2.0 },
       uHeadSharp: { value: 0.045 },

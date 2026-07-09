@@ -12,7 +12,7 @@
  *     per-item pointer handlers + a list-leave handler for resources-client.
  *
  *   - `<ResourcePreviewCard />` is the DOM/CSS fallback visual: a position:fixed,
- *     pointer-events:none card with the cyan→violet signal gradient + the
+ *     pointer-events:none card with the cyan→blue signal gradient + the
  *     article's category label and read-time. It is shown ONLY when the WebGL
  *     signal plane is NOT mounted (lite tier or the flag-OFF WebGLRenderer
  *     build); on the desktop WebGPU full path the plane is the preview and the
@@ -195,7 +195,7 @@ export function ResourcePreviewCard() {
           border: 1px solid hsl(var(--accent) / 0.35);
           background:
             radial-gradient(circle at 30% 30%, hsl(var(--accent) / 0.28), transparent 60%),
-            conic-gradient(from 200deg at 70% 70%, #7C5CFF44, #3BE1FF33, transparent 70%),
+            conic-gradient(from 200deg at 70% 70%, #2A7FFF44, #3BE1FF33, transparent 70%),
             hsl(var(--bg) / 0.85);
           backdrop-filter: blur(6px);
           box-shadow: 0 20px 60px -20px hsl(var(--accent) / 0.5);

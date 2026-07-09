@@ -167,7 +167,7 @@ interface FxState {
 
 export const useFxStore = create<FxState>((set) => ({
   colorA: "#3BE1FF",
-  colorB: "#7C5CFF",
+  colorB: "#2A7FFF", // was violet #7C5CFF; value now blue (site-wide de-violet)
   colorHot: "#EAF6FF",
   emissive: 2.8,
   glowFalloff: 1.6,
@@ -194,8 +194,8 @@ export const useFxStore = create<FxState>((set) => ({
   heroOffsetX: 0.2,
   heroOffsetY: 0.0,
   heroPosZ: -0.3,
-  // SHIPPING hero: the DDD spore mode (instanced shaded spheres — violet
-  // erodible crust + glowing azure core — on the compute momentum sim). Loads
+  // SHIPPING hero: the DDD spore mode (instanced shaded spheres — blue
+  // erodible crust + glowing cyan core — on the compute momentum sim). Loads
   // with the page like the rest of the WebGL scene; on browsers without true
   // WebGPU compute, HeroLogo degrades it to the robust static-particle mark
   // automatically. Other modes remain debug toggles via window.__sersanFx.

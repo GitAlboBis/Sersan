@@ -51,8 +51,8 @@ const VB_H = 300;
  * y% = 50 − localY·100). Same percents → the SVG hub sits exactly where the DOM
  * marker / WebGL orb render. If you change MARKER_LAYOUT, update these.
  *   node0 upper-left (z=-0.18 → depthT 0.0 → cyan)
- *   node1 lower-center (z=+0.12 → depthT 1.0 → violet)
- *   node2 upper-right (z=-0.06 → depthT 0.4 → cyan→violet mid)
+ *   node1 lower-center (z=+0.12 → depthT 1.0 → blue)
+ *   node2 upper-right (z=-0.06 → depthT 0.4 → cyan→blue mid)
  */
 const HUB_PCT: readonly [number, number][] = [
   [24, 32],
@@ -65,11 +65,11 @@ const HUBS = HUB_PCT.map(([px, py]) => ({
 }));
 const HUB_R = 9;
 
-/** Per-hub fill = cyan→violet sampled at each hub's WebGL depthT (t = [0, 1, 0.4]). */
+/** Per-hub fill = cyan→blue sampled at each hub's WebGL depthT (t = [0, 1, 0.4]). */
 const HUB_FILL = [
   "hsl(var(--accent))", // t0  cyan
-  "hsl(var(--accent-2))", // t1  violet
-  "hsl(222 95% 67%)", // t0.4 cyan→violet mid
+  "hsl(var(--accent-2))", // t1  blue (var kept; --accent-2 now holds blue)
+  "hsl(204 95% 67%)", // t0.4 cyan→blue mid (hue moved 222→204; S/L tuning kept)
 ] as const;
 
 /** The 3 arcs (mirror HUB_ARCS): chain 0→1, 1→2 + the span 0→2 (the fragile one). */

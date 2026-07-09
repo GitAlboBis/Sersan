@@ -5,7 +5,7 @@
  *
  * The rail shows only the six marquee studies (SphereNode → Apple UK); this
  * card is the doorway to the rest. Its centre is a LIVING PARTICLE SERSAN
- * MARK: accent-gradient particles (cyan left S → violet right S) are always
+ * MARK: accent-gradient particles (cyan left S → blue right S) are always
  * assembled into the logo, faint and gently breathing at rest, and they
  * IGNITE — brighter, larger, livelier — on hover / keyboard focus. Click →
  * /case-studies.
@@ -41,7 +41,7 @@ interface SeeMorePortalProps {
 
 type RGB = [number, number, number];
 const CYAN: RGB = [59, 225, 255]; // --accent  #3BE1FF
-const VIOLET: RGB = [124, 92, 255]; // --accent-2 #7C5CFF
+const VIOLET: RGB = [42, 127, 255]; // name kept; value now blue #2A7FFF (--accent-2)
 const mix = (a: RGB, b: RGB, t: number): RGB => [
   a[0] + (b[0] - a[0]) * t,
   a[1] + (b[1] - a[1]) * t,
@@ -103,7 +103,7 @@ export function SeeMorePortal({
     const dpr = Math.min(window.devicePixelRatio || 1, coarse ? 1.5 : 2);
     const baseEnergy = coarse ? COARSE_BASE_ENERGY : 0;
 
-    // Three quantised glow sprites (cyan → blend → violet): tight bright core
+    // Three quantised glow sprites (cyan → blend → blue): tight bright core
     // for crisp dots, soft falloff for the additive glow.
     const makeSprite = (rgb: RGB): HTMLCanvasElement | null => {
       const s = 32;
@@ -182,7 +182,7 @@ export function SeeMorePortal({
           : [W / 2, H * LOGO_CY];
         const tx = g[0] + (Math.random() - 0.5) * SAMPLE_STRIDE;
         const ty = g[1] + (Math.random() - 0.5) * SAMPLE_STRIDE;
-        // Tint by horizontal position: left S cyan, right S violet, divider blend.
+        // Tint by horizontal position: left S cyan, right S blue, divider blend.
         const sprite = tx < W * 0.46 ? 0 : tx > W * 0.54 ? 2 : 1;
         next[i] = {
           tx,

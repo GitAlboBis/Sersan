@@ -9,7 +9,7 @@
  * The mark is the real, FULL-COLOUR logo SVG (so Accenture keeps its purple
  * chevron, Leonardo its red, Quantex its green, WHO its blue, …) rendered as an
  * <img> on top. Behind it sit two offset, mask-tinted silhouettes of the same
- * logo — cyan + violet, screen-blended — giving a visible chromatic-aberration
+ * logo — cyan + blue, screen-blended — giving a visible chromatic-aberration
  * glitch fringe without touching the logo's own colours. (Dark/black monochrome
  * marks are shipped as light SVGs so they read on the navy card.) The colour
  * layers are SIBLINGS of the <img>, not nested under a mask, so their offset
@@ -27,7 +27,8 @@ export function CardLogoReveal({ src }: CardLogoRevealProps) {
       className="card-logo-reveal pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit]"
       style={{ ["--card-logo"]: `url("${src}")` } as React.CSSProperties}
     >
-      {/* Cyan + violet offset silhouettes behind → chromatic glitch fringe. */}
+      {/* Cyan + blue offset silhouettes behind → chromatic glitch fringe.
+          (class name `__violet` kept; the layer is tinted blue now.) */}
       <span className="card-logo-reveal__layer card-logo-reveal__cyan" />
       <span className="card-logo-reveal__layer card-logo-reveal__violet" />
       {/* The real, full-colour logo on top. */}

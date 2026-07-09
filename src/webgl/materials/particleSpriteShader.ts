@@ -131,7 +131,7 @@ export function createParticleMaterial(): THREE.ShaderMaterial & {
       uPixelRatio: { value: 1 },
       uViewport: { value: new THREE.Vector2(1, 1) },
       uColorA: { value: new THREE.Color("#3BE1FF") },
-      uColorB: { value: new THREE.Color("#7C5CFF") },
+      uColorB: { value: new THREE.Color("#2A7FFF") }, // name kept; value now blue (was violet #7C5CFF)
       uOpacity: { value: 0.35 },
     },
     transparent: true,

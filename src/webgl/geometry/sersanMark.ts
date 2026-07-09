@@ -165,7 +165,7 @@ const FRONT_BIAS_MIN = 0.12;
  *   default 0.12 keeps the front-face bias for a face-on skin.
  * - `normalOffset` — push each home point OUT (+) / IN (−) along the surface
  *   normal. The SKIN sits a hair outside the body (`+0.02–0.04`) so the cyan
- *   glow floats over the violet solid (matches the DDD footer skin-over-body).
+ *   glow floats over the blue solid (matches the DDD footer skin-over-body).
  * - `volumeJitter` — push each point INWARD along −normal by a random
  *   `[0, volumeJitter]`, faking a filled volume from a surface sampler so the
  *   BODY reads dense/solid rather than a hollow shell.

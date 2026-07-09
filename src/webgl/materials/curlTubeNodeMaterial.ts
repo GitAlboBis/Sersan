@@ -17,7 +17,7 @@
  * Parity contract with curlTubeShader.ts (must match exactly):
  *   - per-vertex `aPhase` attribute (gradient offset per streamline) +
  *     view-space normal core glow.
- *   - fragment: animated cyan→violet gradient
+ *   - fragment: animated cyan→blue gradient
  *       t = 0.5 + 0.5*sin(6.28318*(along*1.5 + phase - uTime*uFlowSpeed));
  *       grad = mix(uColorA, uColorB, t);
  *     view-facing core = pow(abs(viewNormal.z), uGlowFalloff);
@@ -66,7 +66,7 @@ export function createCurlTubeNodeMaterial(): {
   // Uniform nodes mirror curlTubeShader.ts defaults 1:1.
   const uTime = uniform(0);
   const uColorA = uniform(new Color("#3BE1FF"));
-  const uColorB = uniform(new Color("#7C5CFF"));
+  const uColorB = uniform(new Color("#2A7FFF")); // was violet #7C5CFF; value now blue
   const uGlowFalloff = uniform(2.2);
   const uEmissive = uniform(0.55);
   const uFlowSpeed = uniform(0.03);

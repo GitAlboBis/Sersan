@@ -7,7 +7,7 @@
  *
  * It now renders the SERSAN LOGO (the `kind:"logo"` config of the generalized
  * `RouteHero`), replacing the former machined double-ring GLB — the logo glows
- * cyan↔violet, slow-spins, and lights up neon-blue on hover. All the
+ * cyan↔blue, slow-spins, and lights up neon-blue on hover. All the
  * choreography (world-anchor math, presence scale-in, culling, emissive pulse,
  * rim lights) lives in RouteHero; this file is just the home slot's config.
  *
@@ -35,7 +35,7 @@ export function GatewayPortal({ tier, anchors }: GatewayPortalProps) {
       scale={2.1}
       z={0.6}
       emissiveA="#3BE1FF"
-      emissiveB="#7C5CFF"
+      emissiveB="#2A7FFF"
       emissiveIntensity={2.2}
       outerSpin={0.16}
       rim={{
@@ -44,7 +44,7 @@ export function GatewayPortal({ tier, anchors }: GatewayPortalProps) {
         keyColor: "#3BE1FF",
         fillPosition: [-2.4, -1.8, 1.8],
         fillIntensity: 1.6,
-        fillColor: "#7C5CFF",
+        fillColor: "#2A7FFF",
       }}
     />
   );

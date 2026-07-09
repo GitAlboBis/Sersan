@@ -27,7 +27,7 @@ import type { GpgpuConfig } from "./gpgpuConfig";
 // `aHome` vec3 attribute (no texture reads, no sim — robust on both backends),
 // then ANALYTICALLY displaces the center near the cursor: particles within
 // uRadius of the model-space mouse lift outward + toward the camera and shift
-// violet→CYAN (glowing), gated by the eased uHover; they settle back smoothly
+// blue→CYAN (glowing), gated by the eased uHover; they settle back smoothly
 // when the cursor leaves. Perspective-scaled device-pixel billboard math, per-
 // particle size variance from a hash of aRef (the reference's ref.z).
 
@@ -87,7 +87,7 @@ const staticVertexShader = /* glsl */ `
 `;
 
 const staticFragmentShader = /* glsl */ `
-  uniform vec3 uColCold;           // violet (at rest)
+  uniform vec3 uColCold;           // blue (at rest)
   uniform vec3 uColHot;            // cyan (lifted / hovered)
   uniform float uFade;
   uniform float uEmissive;
@@ -102,8 +102,8 @@ const staticFragmentShader = /* glsl */ `
     if (r > 0.5) discard;
     float a = smoothstep(0.5, 0.12, r);
 
-    // Color: violet→cyan by lift (like the GPGPU render did by speed). At rest
-    // lift≈0 → pure violet skin; lifted/hovered particles glow toward cyan.
+    // Color: blue→cyan by lift (like the GPGPU render did by speed). At rest
+    // lift≈0 → pure blue skin; lifted/hovered particles glow toward cyan.
     //   t = clamp(lift*1.2, 0, 1); col = mix(cold, hot, t);
     //   col *= (1 + lift*0.8); col *= (0.7 + 0.5*rand); col *= uEmissive;
     float t = clamp(vLift * 1.2, 0.0, 1.0);

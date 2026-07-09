@@ -13,7 +13,7 @@
  *    resize-stable; `useThree().viewport` is FORBIDDEN — camera-distance-derived.)
  *  - culling: only rendered when the camera is within ~2.2 view-heights.
  *  - presence: `smoothstep` scale-in by camera distance as the reader arrives.
- *  - inner emissive cyan↔violet pulse (>1, toneMapped:false) so it rides the
+ *  - inner emissive cyan↔blue pulse (>1, toneMapped:false) so it rides the
  *    SAME threshold Bloom as the line; a scroll flick feeds extra glow energy.
  *  - outer ring turns slowly, inner ring counter-rotates; gentle presentation
  *    wobble so the object is never flat-on.
@@ -46,18 +46,19 @@ import type { SceneTier } from "./store/tierStore";
 // === Logo look/hover constants (logo ritual only) ==========================
 /** Resting tint — a soft CELESTE, lightly lit. */
 const LOGO_BASE_COLOR = "#7FD8FF";
-/** On hover the light SHIFTS to this color (brand violet). One-line tunable. */
-const LOGO_HOVER_COLOR = "#7C5CFF";
+/** On hover the light SHIFTS to this color (brand blue). One-line tunable. */
+const LOGO_HOVER_COLOR = "#2A7FFF";
 /** Resting emissive intensity — BRIGHT, matching the signature LINE's glow (its
  * uEmissive ≈ 2.6) so the mark is genuinely LUMINOUS and blooms, not a dull lit
  * surface. toneMapped:false + this >1 rides the SAME selective bloom as the line. */
 const LOGO_BASE_EMIS = 2.4;
-/** Hover emissive — much HIGHER than the base on purpose. Violet's luminance is
- * far lower than celeste, AND the celeste→violet blend mid-transition is
- * brighter than pure violet — so if the endpoint isn't high enough the glow
- * PEAKS mid-turn then DROPS as it settles (reads as "turning off"). Set high
- * enough (≈5.5) that pure violet at full hover is the BRIGHTEST point, so the
- * glow rises monotonically into the hover and STAYS a luminous violet at rest. */
+/** Hover emissive — much HIGHER than the base on purpose, so the glow rises
+ * monotonically into the hover and STAYS luminous at rest (no PEAK-then-DROP
+ * mid-turn that would read as "turning off").
+ * NOTE: ≈5.5 was tuned for the OLD violet hover, whose luminance is far LOWER
+ * than celeste; the hover color is now blue (#2A7FFF), whose luminance is
+ * HIGHER — the scalar is kept per the de-violet migration (rule: don't retune
+ * magnitudes), so re-check this value on the WebGPU desktop QA. */
 const LOGO_HOVER_EMIS = 5.5;
 /** Cursor→object proximity (in NDC-ish [0,1] screen space) that counts as hover.
  * The canvas is pointer-events:none, so hover is computed by projecting the
@@ -241,7 +242,7 @@ function RouteHeroBody({
     g.addColorStop(0.0, "#0a1426"); // top: deep navy void
     g.addColorStop(0.4, "#2bd6ff"); // upper highlight band (celeste key)
     g.addColorStop(0.52, "#16243f"); // horizon navy
-    g.addColorStop(0.66, "#7c5cff"); // lower violet bounce
+    g.addColorStop(0.66, "#2a7fff"); // lower blue bounce (was violet)
     g.addColorStop(1.0, "#060b16"); // bottom: deep void
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, 16, 256);
@@ -659,7 +660,7 @@ function resolveBodyProps(
     outerMetalness: p.outerMetalness ?? 0.85,
     outerRoughness: p.outerRoughness ?? 0.28,
     emissiveA: p.emissiveA ?? "#3BE1FF",
-    emissiveB: p.emissiveB ?? "#7C5CFF",
+    emissiveB: p.emissiveB ?? "#2A7FFF",
     emissiveIntensity: p.emissiveIntensity ?? 2.2,
     outerSpin: p.outerSpin ?? 0.16,
     innerSpin: p.innerSpin ?? 0.34,
@@ -669,7 +670,7 @@ function resolveBodyProps(
       keyColor: rim.keyColor ?? "#3BE1FF",
       fillPosition: rim.fillPosition ?? [-2.4, -1.8, 1.8],
       fillIntensity: rim.fillIntensity ?? 1.6,
-      fillColor: rim.fillColor ?? "#7C5CFF",
+      fillColor: rim.fillColor ?? "#2A7FFF",
     },
   };
 }

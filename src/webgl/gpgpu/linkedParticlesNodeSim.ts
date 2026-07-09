@@ -7,8 +7,8 @@
  *
  * Adapted from the three.js `webgpu_tsl_vfx_linkedparticles` example (MIT), with
  * the reconciled decisions applied:
- *   - FIXED cyan→violet ramp keyed to flow position s (NO hue() cycling — brand
- *     rule). cyan #3BE1FF at Input, violet tail #6E7BFF at Output.
+ *   - FIXED cyan→blue ramp keyed to flow position s (NO hue() cycling — brand
+ *     rule). cyan #3BE1FF at Input, blue tail #2A7FFF at Output.
  *   - FIXED sequential links: each particle links to its lane-successor at a
  *     fixed flow-phase offset (LANE_STEP), an O(1) ANALYTIC neighbour — the
  *     example's O(n²) Loop(nbParticles) neighbour search is REJECTED.
@@ -272,7 +272,7 @@ export function createLinkedParticlesBuild(
   const HALF = float(CONDUIT_HALF);
   const NEG_HALF = float(-CONDUIT_HALF);
 
-  /** FIXED cyan→violet ramp at flow position s (NO hue cycling). */
+  /** FIXED cyan→blue ramp at flow position s (NO hue cycling). */
   const brandRamp = (s: AnyNode): AnyNode => mix(cyanN, violetN, clamp(s, 0, 1));
 
   // Per-stage ignition channels (0..1), one per stage, read from the two packed

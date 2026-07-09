@@ -5,7 +5,7 @@
    for color, type, spacing. Tailwind v4 CSS-first via `@theme inline`. */
 
 :root {
-  /* === SerSan brand identity — brand navy + cyan→violet signal ===
+  /* === SerSan brand identity — brand navy + cyan→blue signal ===
      The structural lessons from 8bit (fluid root, tight letter-spacing,
      responsive margins, easing curves) live below. */
 
@@ -25,16 +25,17 @@
 
   /* Rules — cool navy hairlines */
   --rule:         216 24% 18%;
-  --rule-warm:    252 30% 32%;    /* violet-tinted hairline (was brass) */
+  --rule-warm:    216 30% 32%;    /* blue-tinted hairline (was brass, then violet) — hue 252→216, S/L kept */
 
   /* Accent — the "signal" gradient (AGENTS.md §2): electric cyan →
-     violet, used sparingly. Monochrome navy everywhere; the gradient
+     blue, used sparingly. Monochrome navy everywhere; the gradient
      only where impact is needed (signature line, CTAs, key glows).
-     Tunable live via leva during the WebGL build. */
+     Standing directive: cyan/blue only — the former violet #7C5CFF tail
+     is retired. Tunable live via leva during the WebGL build. */
   --accent:       189 100% 62%;   /* #3BE1FF — electric cyan (signal gradient head) */
-  --accent-2:     252 100% 68%;   /* #7C5CFF — violet (signal gradient tail) */
+  --accent-2:     216 100% 58%;   /* #2A7FFF — blue (signal gradient tail); name kept, value now blue */
   --accent-dark:  189 90% 42%;    /* deeper cyan rim variant */
-  --accent-warm:  252 100% 68%;   /* legacy alias → violet (brass retired) */
+  --accent-warm:  216 100% 58%;   /* legacy alias → blue (brass & violet retired); name kept, value now blue */
   --refusal:       12 65% 58%;
 
   /* shadcn-compat semantics — primary is the BRAND accent. We keep the
@@ -585,7 +586,7 @@ img { height: auto; max-width: 100%; }
 }
 
 /* Pointer-tracking signal sheen — driven by CardTiltController via --sheen-*
-   vars. A soft cyan→violet radial follows the cursor across the card surface
+   vars. A soft cyan→blue radial follows the cursor across the card surface
    while the card tilts in 3D, like light catching an engineered surface. Zero
    cost at rest (opacity 0). */
 .card-steel::after {
@@ -757,7 +758,7 @@ img { height: auto; max-width: 100%; }
 /* CardLogoReveal — hover-reveal BRAND MARK for case-study cards with no product
    screenshot. The real, FULL-COLOUR logo (<img>, keeps brand colours: Accenture
    purple chevron, Leonardo red, Quantex green, WHO blue, …) sits on top; behind
-   it two offset mask-tinted silhouettes (cyan + violet, screen-blended) add a
+   it two offset mask-tinted silhouettes (cyan + blue, screen-blended) add a
    visible chromatic-aberration glitch fringe without recolouring the logo. The
    colour layers are SIBLINGS of the <img> (not nested under a mask) so their
    offset isn't clipped. isolation:isolate keeps the screen blend local.
@@ -793,6 +794,7 @@ img { height: auto; max-width: 100%; }
   will-change: opacity, transform;
 }
 .card-logo-reveal__cyan   { background-color: hsl(var(--accent)); mix-blend-mode: screen; }
+/* class name kept; --accent-2 value is now blue */
 .card-logo-reveal__violet { background-color: hsl(var(--accent-2)); mix-blend-mode: screen; }
 .card-has-distort:hover .card-logo-reveal__img {
   opacity: 1;
@@ -1005,7 +1007,7 @@ img { height: auto; max-width: 100%; }
   clip-path: inset(0% 0 100% 0);
 }
 
-/* Luminous edge — a thin cyan→violet line pinned to the bottom of the curtain
+/* Luminous edge — a thin cyan→blue line pinned to the bottom of the curtain
    so the covering sheet reads as a signal panel, not a flat navy block. As the
    clip-path collapses upward (bottom inset → 100%) the lower band is clipped
    away first; the glow shows during the covering phase then resolves out. */
@@ -1036,7 +1038,7 @@ img { height: auto; max-width: 100%; }
 /*
  * .neural-card — the ONE shared card chrome for the FIX 3 v4 neural-network
  * sections (Problem = broken, ProductionGrade = healthy). Dark translucent navy
- * glass with a thin cyan→violet gradient HAIRLINE border + soft outer glow that
+ * glass with a thin cyan→blue gradient HAIRLINE border + soft outer glow that
  * intensifies on hover/focus, so the card reads as one element with its WebGL
  * hub orb behind it. Compact→expand state lives in JS (NeuralCard); the chrome's
  * hover/focus glow is driven here off :hover / :focus-visible / [data-open].
@@ -1056,7 +1058,7 @@ img { height: auto; max-width: 100%; }
     0 24px 70px -30px hsl(var(--accent-2) / 0.4),
     0 10px 30px -16px hsl(216 50% 0% / 0.65);
 }
-/* The cyan→violet hairline border: a gradient painted into the 1px ring via a
+/* The cyan→blue hairline border: a gradient painted into the 1px ring via a
    mask so only the border shows. Brightens on hover/focus. */
 .neural-card__border {
   padding: 1px;
@@ -1092,7 +1094,7 @@ img { height: auto; max-width: 100%; }
   outline: none;
 }
 
-/* v6: the border "scia" sweep — a single cyan→violet highlight band travels
+/* v6: the border "scia" sweep — a single cyan→blue highlight band travels
    along the 1px gradient ring once when the card opens, masked exactly like
    .neural-card__border so only the border lights. Parked (opacity 0) at rest;
    the animation fires only on the [data-open="true"] edge and rests via `both`. */

@@ -19,7 +19,7 @@ export default function LineDebug() {
   const values = useControls("Signature line", {
     Colors: folder({
       colorA: { value: defaults.colorA, label: "cyan (head)" },
-      colorB: { value: defaults.colorB, label: "violet (tail)" },
+      colorB: { value: defaults.colorB, label: "blue (tail)" },
       colorHot: { value: defaults.colorHot, label: "hot (signal head)" },
     }),
     Line: folder({

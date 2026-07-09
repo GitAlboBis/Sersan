@@ -20,7 +20,7 @@
  * bare 'three' → the forbidden dual-namespace. So the schematic is built from
  * CORE three geometry (TubeGeometry / merged struts) + this TSL material.
  *
- * Look: a cyan→violet ramp along the conduit's UV (TubeGeometry uv.x = along the
+ * Look: a cyan→blue ramp along the conduit's UV (TubeGeometry uv.x = along the
  * tube, head→tail; merged stage frames carry a synthesized along-arc in uv too)
  * with a fract()-based crawling dash, output color × uEmissive (>1.0,
  * toneMapped:false) + AdditiveBlending so the EXISTING PostFXNodes selective
@@ -52,7 +52,7 @@ export type PipelineWireUniforms = {
   uReveal: { value: number };
   /** Gradient head color (cyan, Input end). */
   uColorA: { value: Color };
-  /** Gradient tail color (violet, Output end). */
+  /** Gradient tail color (blue, Output end). */
   uColorB: { value: Color };
 };
 
@@ -69,11 +69,11 @@ export function createPipelineWireMaterial(): {
 
   const material = new MeshBasicNodeMaterial();
 
-  // --- Fragment: cyan→violet ramp along the tube + crawling dash -------------
+  // --- Fragment: cyan→blue ramp along the tube + crawling dash -------------
   // TubeGeometry uv: uv.x = along the tube [0..1] (head→tail), uv.y = around it.
   const along = uv().x;
 
-  // Spatial cyan→violet ramp keyed to the conduit position (Input→Output), the
+  // Spatial cyan→blue ramp keyed to the conduit position (Input→Output), the
   // brand signal direction. NO time-driven hue rotation.
   const grad = mix(uColorA, uColorB, along);
 

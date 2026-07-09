@@ -14,7 +14,7 @@
  * parity-maintenance cost.
  *
  * Look — the abstract "signal condenses under your cursor" motif:
- *   (a) navy base (#0B1422) under a cyan→violet vertical gradient field, with a
+ *   (a) navy base (#0B1422) under a cyan→blue vertical gradient field, with a
  *       per-article seeded phase so each article reads slightly different. Every
  *       channel of the base/gradient stays well under the 1.0 bloom threshold.
  *   (b) reveal disk: a soft iris growing from center as uHover rises (radius
@@ -25,7 +25,7 @@
  *       pointer flowmap), max at the vertical middle (sin(uv.y·π)), driven by a
  *       CPU-smoothed normalized velocity uniform — the same smoothed
  *       pointerStore.vel that feeds the global PointerFlowmap.
- *   (d) scan band: a thin cyan→violet ring at the reveal-disk edge, emissive
+ *   (d) scan band: a thin cyan→blue ring at the reveal-disk edge, emissive
  *       >1.0 (toneMapped:false) so the existing selective bloom catches ONLY
  *       the edge — same uScanEmissive contract as railPlaneNodeMaterial.
  *   (e) edge feather + radial vignette: uv-space + radial smoothsteps so the
@@ -77,7 +77,7 @@ export function createResourcePreviewMaterial(): {
   const uVel = uniform(0);
   const uSeed = uniform(0);
   const uColorA = uniform(new Color("#3BE1FF"));
-  const uColorB = uniform(new Color("#7C5CFF"));
+  const uColorB = uniform(new Color("#2A7FFF")); // name kept; value now blue (violet retired)
   const uBase = uniform(new Color("#0B1422"));
   // HDR scan emissive: clears the 1.0 bloom threshold decisively but stays well
   // under ~3 so it never halos the DOM list above the canvas.
@@ -101,7 +101,7 @@ export function createResourcePreviewMaterial(): {
   const centered = u.sub(vec2(0.5, 0.5));
   const r = length(centered).mul(2.0); // 0 at center, ~1 at the edge midpoints
 
-  // (a) Navy base + seeded cyan→violet vertical gradient field. The phase mix
+  // (a) Navy base + seeded cyan→blue vertical gradient field. The phase mix
   // runs on a sine (seamless — no fract() wrap line) and is capped low, so the
   // backdrop stays far below bloom threshold.
   const phase = sin(u.y.mul(2.6).add(uSeed.mul(7.0))).mul(0.5).add(0.5);

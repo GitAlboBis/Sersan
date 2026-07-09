@@ -8,10 +8,10 @@
  *
  *   createDissolveBodyMaterial()    — the extruded mark surface. Matte navy
  *     body (palette from planetShader: deep #0a1526, band #1d3a63, cyan #3BE1FF,
- *     violet #7C5CFF), view-space key lighting (no Light objects, exactly like
+ *     blue #2A7FFF), view-space key lighting (no Light objects, exactly like
  *     planetShader), a subtle cyan fresnel rim. Dissolve: erode where the
  *     object-space noise < uDissolve (`discard`), and emit a bright HDR cyan→
- *     violet EDGE band within ~uEdge of the front so selective bloom catches it.
+ *     blue EDGE band within ~uEdge of the front so selective bloom catches it.
  *
  *   createDissolveParticleMaterial() — instanced-billboard sprites (mirrors
  *     DriftParticles' particleSpriteShader: unit-quad corners expanded to a
@@ -128,7 +128,7 @@ const bodyFragment = /* glsl */ `
     float fres = pow(1.0 - abs(dot(nrm, normalize(vView))), 3.0);
     col += uCyan * fres * 0.35;
 
-    // Glowing erosion edge: bright cyan→violet band hugging the front, HDR
+    // Glowing erosion edge: bright cyan→blue band hugging the front, HDR
     // (>1.0) so the threshold Bloom isolates it. Fades along the band width.
     float edge = 1.0 - smoothstep(0.0, uEdge, n - uDissolve);
     vec3 edgeCol = mix(uCyan, uViolet, smoothstep(0.0, 1.0, n));
@@ -162,7 +162,7 @@ export function createDissolveBodyMaterial(): THREE.ShaderMaterial & {
       uDeep: { value: new THREE.Color("#0a1526") },
       uBand: { value: new THREE.Color("#1d3a63") },
       uCyan: { value: new THREE.Color("#3BE1FF") },
-      uViolet: { value: new THREE.Color("#7C5CFF") },
+      uViolet: { value: new THREE.Color("#2A7FFF") }, // name kept; value now blue
       uLightDir: { value: new THREE.Vector3(-0.55, 0.42, 0.72).normalize() },
     },
   });
@@ -251,7 +251,7 @@ const particleFragment = /* glsl */ `
     float circle = smoothstep(0.5, 0.12, length(vQuadUv));
     if (circle < 0.02) discard;
 
-    // HDR cyan→violet so selective bloom catches the dust. Fade IN as the mote
+    // HDR cyan→blue so selective bloom catches the dust. Fade IN as the mote
     // is born; HOLD full brightness while dispersed so the cloud persists.
     vec3 col = mix(uCyan, uViolet, clamp(vSeed * 0.6 + vDisp * 0.4, 0.0, 1.0));
     float life = smoothstep(0.0, 0.16, vDisp);
@@ -292,7 +292,7 @@ export function createDissolveParticleMaterial(): THREE.ShaderMaterial & {
       uPixelRatio: { value: 1 },
       uViewport: { value: new THREE.Vector2(1, 1) },
       uCyan: { value: new THREE.Color("#3BE1FF") },
-      uViolet: { value: new THREE.Color("#7C5CFF") },
+      uViolet: { value: new THREE.Color("#2A7FFF") }, // name kept; value now blue
     },
     transparent: true,
     depthWrite: false,

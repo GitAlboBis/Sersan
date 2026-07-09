@@ -2,7 +2,7 @@
  * Curl-tube-field shader material (GLSL / classic WebGLRenderer / flag-OFF).
  *
  * This is the FAINT background "curly tubes" haze (ANALISI_LUSION §3.2 option
- * C). It deliberately mirrors the signature-line look — animated cyan→violet
+ * C). It deliberately mirrors the signature-line look — animated cyan→blue
  * gradient + a view-dependent core glow + the "gel tube" fresnel rim — but
  * WITHOUT the head/draw mask (the field is ambient, not scroll-drawn) and at a
  * much LOWER emissive so the single existing Bloom treats it as soft haze, not
@@ -53,7 +53,7 @@ const fragmentShader = /* glsl */ `
   void main() {
     float along = vAlong;
 
-    // Animated cyan -> violet gradient flowing along the tube; vPhase
+    // Animated cyan -> blue gradient flowing along the tube; vPhase
     // decorrelates the streamlines so they don't pulse in lockstep. Sine keeps
     // the wrap seamless (no fract() seam).
     float t = 0.5 + 0.5 * sin(6.28318 * (along * 1.5 + vPhase - uTime * uFlowSpeed));
@@ -104,7 +104,7 @@ export function createCurlTubeMaterial(): THREE.ShaderMaterial & {
     uniforms: {
       uTime: { value: 0 },
       uColorA: { value: new THREE.Color("#3BE1FF") },
-      uColorB: { value: new THREE.Color("#7C5CFF") },
+      uColorB: { value: new THREE.Color("#2A7FFF") }, // was violet #7C5CFF; value now blue
       // DELIBERATELY below the line's emissive (~2.6): the field is faint haze,
       // not a hero. Driven per-frame from fxStore.curlTubeIntensity.
       uGlowFalloff: { value: 2.2 },

@@ -3,8 +3,8 @@
 /**
  * CustomCursor — "Signal" particle cursor.
  *
- * A single 2D canvas paints a bright core that trails cyan→violet "signal"
- * sparks as the pointer moves (velocity-reactive: faster = hotter/violet),
+ * A single 2D canvas paints a bright core that trails cyan→blue "signal"
+ * sparks as the pointer moves (velocity-reactive: faster = hotter/blue),
  * breathes with slow motes at rest, swells into an orbiting halo + label over
  * interactive elements (data-cursor="view"|"drag"|"link", with a legacy-selector
  * fallback), and bursts on click. The OS cursor is hidden on fine pointers while
@@ -26,7 +26,7 @@ import {
 
 const INTERACTIVE = "a, button, [role='button'], .card-steel, .cursor-grab";
 const CYAN: [number, number, number] = [59, 225, 255]; // #3BE1FF
-const VIOLET: [number, number, number] = [124, 92, 255]; // #7C5CFF
+const VIOLET: [number, number, number] = [42, 127, 255]; // name kept; value now blue #2A7FFF
 const SPRITE_STOPS = 6;
 const SPRITE_SIZE = 64;
 const MAX_PARTICLES = 220;
@@ -183,7 +183,7 @@ export function CustomCursor() {
         return;
       }
 
-      // Trail sparks scale with pointer speed; colour heats cyan→violet w/ speed.
+      // Trail sparks scale with pointer speed; colour heats cyan→blue w/ speed.
       const n = Math.min(6, Math.floor(speed * 0.35));
       for (let i = 0; i < n; i++) {
         const f = n > 1 ? i / n : 0;

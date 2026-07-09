@@ -29,9 +29,9 @@ export const LAYER_COUNT = 3;
 /** Per-mode "pathways"/clusters — both surfaces argue three things. */
 export const CLUSTER_COUNT = 3;
 
-/** Brand signal ramp endpoints (FIXED cyan→violet — NO hue cycling). */
+/** Brand signal ramp endpoints (FIXED cyan→blue — NO hue cycling). */
 export const COL_CYAN = "#3BE1FF"; // --accent, input side.
-export const COL_VIOLET = "#7C5CFF"; // --accent-2, output side.
+export const COL_VIOLET = "#2A7FFF"; // name kept; value now blue — --accent-2, output side.
 /** Desaturated "dead" tone a broken pathway decays toward. */
 export const COL_DEAD = "#2A3142";
 
@@ -197,7 +197,7 @@ export const NODE_FRACTION = 0.55;
  * perspective + parallax make the network read as 3D, not flat). Indexed by hub.
  * Hub0 back, hub1 front, hub2 mid — derived from card order. */
 export const HUB_Z = [-0.18, 0.12, -0.06] as const;
-/** Total z span of the network (max − min hub z) for the cyan→violet depthT. */
+/** Total z span of the network (max − min hub z) for the cyan→blue depthT. */
 export const HUB_Z_SPAN = 0.3; // (0.12 − (−0.18))
 /** Min hub z (the cyan/back end of the depth gradient). */
 export const HUB_Z_MIN = -0.18;

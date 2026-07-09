@@ -297,7 +297,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // (never drawn — visible:false; the raycaster ignores visibility). Basic so
   // the WebGPU renderer auto-converts it without scene-lighting dependencies.
   const raycastMaterial = useMemo(
-    () => new THREE.MeshBasicMaterial({ color: 0x7c5cff }),
+    () => new THREE.MeshBasicMaterial({ color: 0x2a7fff }), // value now blue (was violet 0x7c5cff)
     [],
   );
   useEffect(() => () => raycastMaterial.dispose(), [raycastMaterial]);

@@ -80,7 +80,7 @@ if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
  * config), gated separately below so HeroLogo never mounts on any interior
  * route.
  *
- * Tone (emissive endpoints) stays inside SerSan's monochrome cyan→violet
+ * Tone (emissive endpoints) stays inside SerSan's monochrome cyan→blue
  * signal; the small per-route bias mirrors routeFxStore (e.g. trust cooler).
  */
 interface RouteHeroConfig {
@@ -93,13 +93,13 @@ interface RouteHeroConfig {
 // GLBs are retired): the logo glows + slow-spins with the same RouteHero
 // choreography and lights up neon-blue on hover. Per-route emissive tints (the
 // warmer /consulting tail, cooler /trust) are preserved so each route keeps its
-// accent; the base pulse stays cyan↔violet.
+// accent; the base pulse stays cyan↔blue.
 const ROUTE_HERO: Record<string, RouteHeroConfig> = {
   "/audit": { kind: { type: "logo" } },
   "/consulting": {
     kind: { type: "logo" },
     // Warmer tail, matching routeFx('/consulting').
-    emissiveB: "#8A6BFF",
+    emissiveB: "#2A7FFF", // was violet-ish #8A6BFF; value now blue
   },
   "/case-studies": { kind: { type: "logo" } },
   "/resources": { kind: { type: "logo" } },
@@ -109,7 +109,7 @@ const ROUTE_HERO: Record<string, RouteHeroConfig> = {
   // centerpiece is retired — see the note where it used to mount below.)
   "/trust": {
     kind: { type: "logo" },
-    emissiveB: "#6E7BFF",
+    emissiveB: "#2A7FFF", // was violet-ish #6E7BFF; value now blue
   },
 };
 

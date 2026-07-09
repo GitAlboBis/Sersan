@@ -63,10 +63,10 @@ export const COUNT_BY_TIER: Record<string, number> = {
   off: 0,
 };
 
-/** Brand signal ramp endpoints (FIXED cyan→violet — NO hue cycling). */
+/** Brand signal ramp endpoints (FIXED cyan→blue — NO hue cycling). */
 export const COL_CYAN = "#3BE1FF"; // matches lineColorA / HOME_FX, Input.
-/** Violet tail biased to routeFx['/trust'].lineColorB (cooler trust tone). */
-export const COL_VIOLET = "#6E7BFF"; // Output.
+/** Blue tail biased to routeFx['/trust'].lineColorB (cooler trust tone). */
+export const COL_VIOLET = "#2A7FFF"; // name kept; value now blue — Output.
 
 /**
  * HDR emissive multiplier (>1.0) so PostFXNodes selective bloom catches it.

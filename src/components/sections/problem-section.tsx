@@ -23,7 +23,7 @@ import { NeuralCenterpiece } from "@/components/fx/neural-centerpiece";
  *     The 3 focusable NODE MARKERS in the centerpiece are the primary trigger:
  *     hovering/focusing node i flares + BURSTS its hub (particle effect) and
  *     OPENS the matching side card; other nodes dim. The cards use the shared
- *     NeuralCard chrome (compact → expand, cyan→violet glass) identical to the
+ *     NeuralCard chrome (compact → expand, cyan→blue glass) identical to the
  *     ProductionGrade section; only the copy + the broken fracture cue differ.
  *     The copy from getFailures() stays as accessible, selectable DOM at all
  *     times; the SVG fallback carries the metaphor when WebGL is absent.

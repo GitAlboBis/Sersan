@@ -8,17 +8,17 @@
  * the template.tsx curtain and never see this again). It is a deep-space load-in
  * for a regulated AI brand: a self-contained animated STARFIELD background
  * (drifting + twinkling stars over a near-black navy→black radial, with faint
- * cyan/violet nebula glows from the brand tokens) sits behind the SERSAN MARK.
+ * cyan/blue nebula glows from the brand tokens) sits behind the SERSAN MARK.
  *
  * THE MARK IS THE PROGRESS BAR. During load the two stencil S's are shown in an
  * OPEN, ~90°-rotated horizontal pose (laid wide and flat, side by side — the
  * "loading bar"). Two stacked layers of that rotated mark are drawn:
  *   (a) a GHOST layer — the rotated letter paths at low opacity (the unfilled
  *       portion of the bar);
- *   (b) a LIT layer — the same rotated paths filled with a cyan→violet linear
+ *   (b) a LIT layer — the same rotated paths filled with a cyan→blue linear
  *       gradient + accent glow, CLIPPED by a horizontal reveal <rect> whose
  *       width is driven L→R every frame by the eased `current` progress (0..1).
- * As the % climbs the cyan→violet fill sweeps left→right across the whole wide
+ * As the % climbs the cyan→blue fill sweeps left→right across the whole wide
  * rotated mark, "filling the letters". There is no separate thin progress bar.
  *
  * The mark's SVG is INLINED here (same path data + token colors as
@@ -105,7 +105,7 @@ const LEFT_S_PATH = `
 
 // ---- Mark geometry: OPEN (horizontal bar) → CLOSED (upright SERSAN mark) ----
 // A wide viewBox holds both states. CLOSED is the normal mark — two S's flanking
-// the violet divider, the RIGHT S MIRRORED — centred. OPEN lays both S's FLAT &
+// the centre divider, the RIGHT S MIRRORED — centred. OPEN lays both S's FLAT &
 // LEVEL on one row (each rotated 90°), the loading bar. Each glyph is drawn
 // CENTRED at its own local origin, so ONE `translate(cx CY) rotate(angle)`
 // transform both rotates it about its centre AND positions it. The close beat
@@ -145,7 +145,7 @@ interface Star {
   tws: number; // twinkle speed
   dx: number; // drift per second (css px), x
   dy: number; // drift per second (css px), y
-  c: 0 | 1 | 2; // 0 white, 1 cyan-ish, 2 violet-ish
+  c: 0 | 1 | 2; // 0 white, 1 cyan-ish, 2 blue-ish
 }
 
 export function Preloader() {
@@ -271,7 +271,7 @@ export function Preloader() {
       ctx.fillStyle = base;
       ctx.fillRect(0, 0, starW, starH);
 
-      // Faint cyan + violet nebula glows (brand tokens), low alpha, additive.
+      // Faint cyan + blue nebula glows (brand tokens), low alpha, additive.
       ctx.globalCompositeOperation = "lighter";
       const neb = (
         cx: number,
@@ -286,7 +286,7 @@ export function Preloader() {
         ctx.fillStyle = g;
         ctx.fillRect(0, 0, starW, starH);
       };
-      // #3BE1FF cyan, #7C5CFF violet — slow breathe via tSec.
+      // #3BE1FF cyan, #2A7FFF blue — slow breathe via tSec.
       const breathe = reducedMotion ? 0 : Math.sin(tSec * 0.25) * 0.5 + 0.5;
       neb(
         starW * 0.32,
@@ -299,7 +299,7 @@ export function Preloader() {
         starW * 0.72,
         starH * 0.66,
         Math.max(starW, starH) * 0.46,
-        "124, 92, 255",
+        "42, 127, 255", // was violet "124, 92, 255"; blue #2A7FFF
         0.05 + (1 - breathe) * 0.03,
       );
 
@@ -320,7 +320,7 @@ export function Preloader() {
           : 0.55 + 0.45 * Math.sin(tSec * s.tws + s.tw);
         const alpha = s.a * twinkle;
         const rgb =
-          s.c === 0 ? "230, 240, 255" : s.c === 1 ? "59, 225, 255" : "124, 92, 255";
+          s.c === 0 ? "230, 240, 255" : s.c === 1 ? "59, 225, 255" : "42, 127, 255"; // was violet "124, 92, 255"; blue #2A7FFF
         ctx.fillStyle = `rgba(${rgb}, ${alpha})`;
         ctx.beginPath();
         ctx.arc(px, py, s.r, 0, Math.PI * 2);
@@ -495,7 +495,7 @@ export function Preloader() {
       const pct = Math.round(current * 100);
       setDisplay(pct);
       // Drive the LIT-layer reveal: the clipPath rect grows L→R across the wide
-      // rotated mark, so the cyan→violet fill sweeps over the letters with %.
+      // rotated mark, so the cyan→blue fill sweeps over the letters with %.
       if (fillRectRef.current) {
         fillRectRef.current.setAttribute("width", String(VB_W * current));
       }
@@ -737,7 +737,7 @@ export function Preloader() {
 
       {/* HERO: the SERSAN mark in its OPEN (horizontal) pose — the loading bar.
           Two stacked layers of the rotated mark: a dim GHOST (unfilled) and a
-          cyan→violet LIT layer clipped by a L→R reveal rect driven by %.
+          cyan→blue LIT layer clipped by a L→R reveal rect driven by %.
           On hand-off the lit mark folds CLOSED back to upright, then zooms. */}
       <div ref={logoRef} className="flex flex-col items-center will-change-transform">
         <svg
@@ -803,7 +803,7 @@ export function Preloader() {
             </g>
           </g>
 
-          {/* LIT layer — same letters, cyan→violet gradient + glow, clipped by
+          {/* LIT layer — same letters, cyan→blue gradient + glow, clipped by
               the L→R reveal so the fill sweeps with progress. Wrapped (litWrapRef)
               so it fades on the zoom while the divider streak — a SIBLING below —
               stays visible into the curtain wipe. */}

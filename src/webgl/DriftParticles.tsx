@@ -189,7 +189,7 @@ export function DriftParticles({ tier, anchors, pathname }: DriftParticlesProps)
   useEffect(() => {
     if (!uniforms) return;
     uniforms.uColorA.value.set("#3BE1FF").lerp(routeColors.a, colorBlend);
-    uniforms.uColorB.value.set("#7C5CFF").lerp(routeColors.b, colorBlend);
+    uniforms.uColorB.value.set("#2A7FFF").lerp(routeColors.b, colorBlend); // was violet #7C5CFF; value now blue
   }, [uniforms, routeColors, colorBlend]);
 
   useFrame((_, delta) => {
