@@ -162,6 +162,14 @@ interface FxState {
    * only a few degrees. Keeps hero/section text stable (1 = full curve offset).
    */
   lookTiltScale: number;
+  /**
+   * Base view-space ROLL scale: the camera banks into serpentine bends by
+   * rolling ∝ the curve tangent.x at the look-ahead point. Damped + clamped to
+   * a few degrees (see CAM_ROLL_MAX in SignatureLine). Full tier only; every
+   * billboard inherits camera.quaternion so the roll needs no re-registration.
+   * Per-route biased by routeFx.cameraRollScale (0 = flat). 0 disables roll.
+   */
+  camRoll: number;
   set: (partial: Partial<Omit<FxState, "set">>) => void;
 }
 
@@ -220,7 +228,11 @@ export const useFxStore = create<FxState>((set) => ({
   fluidStrength: 0.006,
   dissipation: 0.96,
   splatRadius: 0.07,
-  lookAhead: 0.05,
-  lookTiltScale: 0.2,
+  // Cinematic scroll camera (full tier only). Raised from 0.05/0.2 → a real but
+  // restrained bank: the camera now leans a few degrees toward the bend the
+  // reader is approaching instead of the old near-imperceptible tilt.
+  lookAhead: 0.08,
+  lookTiltScale: 0.45,
+  camRoll: 0.12, // × tangent.x, then clamped to CAM_ROLL_MAX (~2.6°) in SignatureLine
   set: (partial) => set(partial),
 }));

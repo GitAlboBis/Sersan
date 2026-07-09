@@ -43,6 +43,12 @@ export interface RouteFx {
   lineEmissiveScale: number;
   /** Multiplier on tube tubularSegments. 1 = unchanged. */
   tessellationScale: number;
+  /**
+   * Per-route multiplier on the cinematic camera ROLL (fxStore.camRoll).
+   * 1 = home feel; <1 flatter/steadier (e.g. /trust), >1 more expressive
+   * (e.g. /consulting); 0 = no roll on that route. Full tier only.
+   */
+  cameraRollScale: number;
 }
 
 /**
@@ -64,6 +70,7 @@ export const HOME_FX: RouteFx = {
   lineColorHot: "#EAF6FF",
   lineEmissiveScale: 1,
   tessellationScale: 1,
+  cameraRollScale: 1,
 };
 
 /**
@@ -81,6 +88,8 @@ const ROUTE_FX: Record<string, Partial<RouteFx>> = {
     bloomIntensity: 1.2,
     bloomRadius: 0.6,
     lineColorB: "#2A7FFF", // was violet-ish #6E7BFF; value now blue
+    // Governed/precise tone → steadier camera (half the bank of home).
+    cameraRollScale: 0.5,
   },
   // Consulting: warmer + denser. A faintly warmer tail and more dust suggest
   // an active, busy production floor.
@@ -89,6 +98,8 @@ const ROUTE_FX: Record<string, Partial<RouteFx>> = {
     particleCountScale: 1.15,
     particleOpacity: 0.4,
     lineColorB: "#2A7FFF", // was violet-ish #8A6BFF; value now blue
+    // Busy production floor → a touch more expressive camera bank.
+    cameraRollScale: 1.25,
   },
   // Audit: keep full tessellation even on lite (the six-surface curve has
   // tight beats that must stay smooth); otherwise home-like.

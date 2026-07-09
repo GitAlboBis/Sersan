@@ -205,6 +205,15 @@ function buildLineGeometry(inp: LineBuildInputs): LineBuildResult {
   return { status: "built", geometry: geo, curve, lut: { docF, arcF } };
 }
 
+/**
+ * Hard clamp on the cinematic camera ROLL, in radians (~2.6°). The bank leans
+ * into serpentine bends but must stay small so hero/section DOM text (which
+ * sits on camera-locked billboards inheriting camera.quaternion) never reads as
+ * tilted. fxStore.camRoll × routeFx.cameraRollScale × tangent.x is clamped to
+ * ±this.
+ */
+const CAM_ROLL_MAX = 0.046;
+
 export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   const { camera, size } = useThree();
   const meshRef = useRef<THREE.Mesh>(null);
@@ -262,6 +271,11 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   const lookTarget = useRef(new THREE.Vector3());
   const lookInitialized = useRef(false);
   const aheadPoint = useRef(new THREE.Vector3());
+  // Camera bank/roll (full tier): curve tangent at the look-ahead point, and the
+  // damped roll angle applied after lookAt. Persistent so the roll eases (never
+  // snaps) and holds C1 across route/curve rebuilds.
+  const aheadTangent = useRef(new THREE.Vector3());
+  const rollCurrent = useRef(0);
   // Intro-gate shake spring state (world units / world units per second) and
   // the decaying px-ish energy that feeds the velocity glow/breath channels.
   const shakeY = useRef(0);
@@ -835,6 +849,27 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
         lookTarget.current.z = THREE.MathUtils.damp(lookTarget.current.z, targetZ, 3.5, delta);
       }
       camera.lookAt(lookTarget.current);
+
+      // View-space ROLL — bank INTO the bend the reader is approaching. The
+      // curve tangent's x at the look-ahead point is the path's lateral lean;
+      // roll ∝ -tangent.x (lean into the turn), scaled by fx.camRoll ×
+      // routeFx.cameraRollScale, damped, and HARD-clamped to ±CAM_ROLL_MAX so
+      // it reads as cinematic banking, never as tilted text. rotateZ is applied
+      // in the camera's LOCAL frame AFTER lookAt → a pure roll about the view
+      // axis; every camera-locked billboard inherits camera.quaternion, so the
+      // roll needs no re-registration. Rotation only — it does NOT touch
+      // camera.position, so the camDescend station-subtract in HeroLogo /
+      // HeroTextParticles / RouteHero / GatewayPortal is unaffected.
+      curve.getTangentAt(ahead, aheadTangent.current);
+      const rollTarget = THREE.MathUtils.clamp(
+        -aheadTangent.current.x * fx.camRoll * route.cameraRollScale,
+        -CAM_ROLL_MAX,
+        CAM_ROLL_MAX,
+      );
+      // Damp toward the target every frame (C1 across route/curve rebuilds; eases
+      // in from 0 on first frame — no snap, no pop).
+      rollCurrent.current = THREE.MathUtils.damp(rollCurrent.current, rollTarget, 3, delta);
+      if (Math.abs(rollCurrent.current) > 1e-5) camera.rotateZ(rollCurrent.current);
     }
 
     // Camera-descent PITCH application (FIX 1b). The vertical descent
