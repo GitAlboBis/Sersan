@@ -29,6 +29,7 @@ import { SplitText } from "gsap/SplitText";
 import { useGSAP } from "@gsap/react";
 import { useLanguage } from "@/components/language-provider";
 import { useScrollStore } from "@/webgl/store/scrollStore";
+import type { HeadingReveal } from "@/components/ui/section-heading";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger, SplitText);
@@ -53,7 +54,38 @@ function velocityFactor(velocity: number): number {
   return gsap.utils.clamp(0, 1, Math.abs(velocity) / VELOCITY_FULL);
 }
 
-export function HeadingChoreographer() {
+/**
+ * 'chars' splits every glyph — too heavy on long copy — so it is perf-scoped to
+ * short headings; anything longer silently degrades to the 'lines' rise.
+ */
+const CHARS_MAX_LEN = 40;
+
+/** Resolve a heading's variant: its own `data-reveal`, else the mount default. */
+function resolveReveal(el: HTMLElement, fallback: HeadingReveal): HeadingReveal {
+  const attr = el.dataset.reveal;
+  if (
+    attr === "lines" ||
+    attr === "chars" ||
+    attr === "words" ||
+    attr === "skew" ||
+    attr === "blur"
+  ) {
+    return attr;
+  }
+  return fallback;
+}
+
+export function HeadingChoreographer({
+  reveal = "lines",
+}: {
+  /**
+   * Default reveal for every `[data-split-reveal]` that does NOT carry its own
+   * `data-reveal="…"` attribute. Individual headings override per-instance via
+   * `data-reveal`. Default 'lines' keeps the historical line-mask rise for the
+   * whole site. See SectionHeading's `reveal` prop for the vocabulary.
+   */
+  reveal?: HeadingReveal;
+} = {}) {
   const { language } = useLanguage();
   const pathname = usePathname();
   const scopeRef = useRef<HTMLDivElement>(null);
@@ -81,13 +113,53 @@ export function HeadingChoreographer() {
       document.fonts?.ready.then(() => {
         if (cancelled) return;
         targets.forEach((el) => {
-          const split = new SplitText(el, {
-            type: "lines",
-            mask: "lines",
-            linesClass: "split-line",
-          });
+          // Per-heading variant (data-reveal) over the mount default. 'chars'
+          // degrades to 'lines' on long copy so we never split hundreds of
+          // glyphs on a paragraph-length heading.
+          let variant = resolveReveal(el, reveal);
+          if (
+            variant === "chars" &&
+            (el.textContent?.length ?? 0) > CHARS_MAX_LEN
+          ) {
+            variant = "lines";
+          }
+
+          // Split granularity + mask follow the variant. 'blur' is deliberately
+          // UNmasked: the CSS blur must bleed past each line box, so a clip
+          // would eat the focus-in halo.
+          let split: SplitText;
+          let parts: Element[];
+          if (variant === "chars") {
+            split = new SplitText(el, {
+              type: "chars",
+              mask: "chars",
+              charsClass: "split-char",
+            });
+            parts = split.chars;
+          } else if (variant === "words") {
+            split = new SplitText(el, {
+              type: "words",
+              mask: "words",
+              wordsClass: "split-word",
+            });
+            parts = split.words;
+          } else if (variant === "blur") {
+            split = new SplitText(el, {
+              type: "lines",
+              linesClass: "split-line",
+            });
+            parts = split.lines;
+          } else {
+            // 'lines' and 'skew' both rise out of a per-line clip.
+            split = new SplitText(el, {
+              type: "lines",
+              mask: "lines",
+              linesClass: "split-line",
+            });
+            parts = split.lines;
+          }
           splits.push(split);
-          // Hide the lines deterministically below their mask. The reveal tween
+          // Hide the parts deterministically before reveal. The reveal tween
           // itself is built lazily inside fire(): the velocity sample is taken
           // the instant the heading reveals (onEnter) — not at split-build time.
           // Faster scroll → a snappier, slightly larger stagger + offset + a
@@ -97,10 +169,27 @@ export function HeadingChoreographer() {
           //
           // NOTE: a paused gsap.from + invalidate().restart() is a trap here —
           // invalidate() makes the from-tween re-capture the CURRENT value as
-          // its destination, and by fire-time the lines already sit at 115, so
-          // the tween becomes 115→115 and the heading stays masked forever.
+          // its destination, and by fire-time the parts already sit hidden, so
+          // the tween becomes a no-op and the heading stays masked forever.
           // gsap.fromTo with explicit endpoints is immune to that capture.
-          gsap.set(split.lines, { yPercent: BASE_Y_PERCENT });
+          if (variant === "blur") {
+            gsap.set(parts, {
+              autoAlpha: 0,
+              filter: "blur(12px)",
+              scale: 1.03,
+              transformOrigin: "left center",
+            });
+          } else if (variant === "skew") {
+            gsap.set(parts, {
+              yPercent: BASE_Y_PERCENT,
+              rotationX: -38,
+              skewY: 4,
+              transformOrigin: "left top",
+              transformPerspective: 700,
+            });
+          } else {
+            gsap.set(parts, { yPercent: BASE_Y_PERCENT });
+          }
           // Velocity-modulated reveal body, shared by the scroll trigger AND the
           // creation-time in-view check below. fired-guard: the creation-time
           // in-view check and a later onEnter can BOTH call fire().
@@ -109,16 +198,71 @@ export function HeadingChoreographer() {
             if (fired) return;
             fired = true;
             const f = velocityFactor(useScrollStore.getState().velocity);
-            const tween = gsap.fromTo(
-              split.lines,
-              { yPercent: BASE_Y_PERCENT * (1 + 0.18 * f) }, // 115 → ~136
-              {
-                yPercent: 0,
-                duration: BASE_DURATION * (1 - 0.12 * f), // 0.85 → ~0.75
-                stagger: BASE_STAGGER * (1 + 0.55 * f), // 0.09 → ~0.14
-                ease: "expo.out",
-              },
-            );
+            let tween: gsap.core.Tween;
+            if (variant === "blur") {
+              // Pure CSS filter focus-in (GPU-composited, no WebGL). Staggered
+              // so at most a line or two blurs concurrently.
+              tween = gsap.fromTo(
+                parts,
+                { autoAlpha: 0, filter: "blur(12px)", scale: 1.03 },
+                {
+                  autoAlpha: 1,
+                  filter: "blur(0px)",
+                  scale: 1,
+                  duration: BASE_DURATION * (1 - 0.1 * f),
+                  stagger: 0.12 * (1 + 0.4 * f),
+                  ease: "expo.out",
+                },
+              );
+            } else if (variant === "skew") {
+              // Line-mask rise + a 3D tilt-in easing to flat.
+              tween = gsap.fromTo(
+                parts,
+                { yPercent: BASE_Y_PERCENT * (1 + 0.18 * f), rotationX: -38, skewY: 4 },
+                {
+                  yPercent: 0,
+                  rotationX: 0,
+                  skewY: 0,
+                  duration: BASE_DURATION * (1 - 0.12 * f),
+                  stagger: BASE_STAGGER * (1 + 0.55 * f),
+                  ease: "expo.out",
+                },
+              );
+            } else if (variant === "words") {
+              tween = gsap.fromTo(
+                parts,
+                { yPercent: BASE_Y_PERCENT * (1 + 0.18 * f) },
+                {
+                  yPercent: 0,
+                  duration: BASE_DURATION * (1 - 0.12 * f),
+                  stagger: 0.05 * (1 + 0.5 * f), // tighter than lines
+                  ease: "expo.out",
+                },
+              );
+            } else if (variant === "chars") {
+              tween = gsap.fromTo(
+                parts,
+                { yPercent: BASE_Y_PERCENT * (1 + 0.18 * f) },
+                {
+                  yPercent: 0,
+                  duration: BASE_DURATION * 0.82 * (1 - 0.12 * f),
+                  stagger: 0.02 * (1 + 0.5 * f), // tightest stagger
+                  ease: "expo.out",
+                },
+              );
+            } else {
+              // 'lines' — byte-identical to the historical reveal.
+              tween = gsap.fromTo(
+                parts,
+                { yPercent: BASE_Y_PERCENT * (1 + 0.18 * f) }, // 115 → ~136
+                {
+                  yPercent: 0,
+                  duration: BASE_DURATION * (1 - 0.12 * f), // 0.85 → ~0.75
+                  stagger: BASE_STAGGER * (1 + 0.55 * f), // 0.09 → ~0.14
+                  ease: "expo.out",
+                },
+              );
+            }
             tweens.push(tween);
           };
           const st = ScrollTrigger.create({
@@ -145,7 +289,7 @@ export function HeadingChoreographer() {
         splits.forEach((s) => s.revert());
       };
     },
-    { scope: scopeRef, dependencies: [language, pathname] },
+    { scope: scopeRef, dependencies: [language, pathname, reveal] },
   );
 
   return <div ref={scopeRef} className="hidden" aria-hidden />;

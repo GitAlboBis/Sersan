@@ -11,6 +11,19 @@ if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger, SplitText);
 }
 
+/**
+ * Reveal vocabulary for the heading TITLE. See `reveal` prop below. The default
+ * 'lines' is byte-identical to the historical yPercent line-mask rise.
+ */
+export type HeadingReveal = "lines" | "chars" | "words" | "skew" | "blur";
+
+/**
+ * 'chars' splits every glyph — heavy on long copy — so it is perf-scoped to
+ * short titles. Anything longer than this (measured on textContent) silently
+ * degrades to the 'lines' rise.
+ */
+const CHARS_MAX_LEN = 40;
+
 interface SectionHeadingProps {
   eyebrow?: string;
   title: React.ReactNode;
@@ -24,6 +37,17 @@ interface SectionHeadingProps {
    * exactly as before. (P2 — shared by P3/P5, so this MUST stay optional.)
    */
   cta?: React.ReactNode;
+  /**
+   * Reveal treatment for the TITLE only (eyebrow/description/cta are untouched).
+   * DEFAULT 'lines' = the exact yPercent line-mask rise shipped everywhere today.
+   *   - 'chars' / 'words': SplitText type 'chars'/'words' + matching mask and a
+   *     tighter stagger ('chars' auto-degrades to 'lines' on long titles).
+   *   - 'skew': the line-mask rise PLUS a rotationX/skewY 3D tilt-in.
+   *   - 'blur': a pure CSS `filter: blur()` focus-in (+opacity/scale), no WebGL.
+   * All variants keep the same contract: fonts-gated, IO fire-once, split
+   * reverted on complete/cleanup, reduced-motion => instantly final.
+   */
+  reveal?: HeadingReveal;
 }
 
 export function SectionHeading({
@@ -34,6 +58,7 @@ export function SectionHeading({
   className,
   titleClassName,
   cta,
+  reveal = "lines",
 }: SectionHeadingProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   const { language } = useLanguage();
@@ -99,25 +124,92 @@ export function SectionHeading({
         );
       }
       if (titleEl) {
-        // Editorial line-mask reveal: each line of the title rises out of its
-        // own clip. The split is held in `split` and reverted in cleanup
-        // (and once the intro completes) so the DOM always ends on the plain,
-        // React-owned title text — the EN/IT swap then reconciles cleanly.
-        split = new SplitText(titleEl, { type: "lines", mask: "lines" });
-        tl.from(
-          split.lines,
-          {
-            yPercent: 115,
-            duration: 0.85,
-            stagger: 0.09,
-            ease: "expo.out",
-            onComplete: () => {
-              split?.revert();
-              split = null;
+        // Editorial reveal: the split is held in `split` and reverted in
+        // cleanup (and once the intro completes) so the DOM always ends on the
+        // plain, React-owned title text — the EN/IT swap then reconciles
+        // cleanly. `revertOnDone` is the shared onComplete for every variant.
+        const revertOnDone = () => {
+          split?.revert();
+          split = null;
+        };
+
+        // 'chars' is perf-scoped to short titles; longer copy falls back to the
+        // line rise so we never split hundreds of glyphs.
+        const titleLen = titleEl.textContent?.length ?? 0;
+        const mode: HeadingReveal =
+          reveal === "chars" && titleLen > CHARS_MAX_LEN ? "lines" : reveal;
+
+        if (mode === "chars" || mode === "words") {
+          // Finer split with a matching mask + a tighter stagger. Each glyph/
+          // word rises out of its own clip.
+          split = new SplitText(titleEl, { type: mode, mask: mode });
+          const parts = mode === "chars" ? split.chars : split.words;
+          tl.from(
+            parts,
+            {
+              yPercent: 115,
+              duration: mode === "chars" ? 0.7 : 0.8,
+              stagger: mode === "chars" ? 0.02 : 0.05,
+              ease: "expo.out",
+              onComplete: revertOnDone,
             },
-          },
-          ">-0.25",
-        );
+            ">-0.25",
+          );
+        } else if (mode === "skew") {
+          // The line-mask rise PLUS a 3D tilt-in: each line eases its rotationX
+          // and skewY to 0 as it rises out of the clip.
+          split = new SplitText(titleEl, { type: "lines", mask: "lines" });
+          tl.from(
+            split.lines,
+            {
+              yPercent: 115,
+              rotationX: -38,
+              skewY: 4,
+              transformOrigin: "left top",
+              transformPerspective: 700,
+              duration: 0.95,
+              stagger: 0.09,
+              ease: "expo.out",
+              onComplete: revertOnDone,
+            },
+            ">-0.25",
+          );
+        } else if (mode === "blur") {
+          // Kawase-inspired focus-in: a pure CSS filter blur + opacity + a hair
+          // of scale, GPU-composited (NO WebGL). No line mask — the blur must
+          // bleed past the line box, so lines are split without a clip.
+          split = new SplitText(titleEl, { type: "lines", linesClass: "split-line" });
+          tl.fromTo(
+            split.lines,
+            { autoAlpha: 0, filter: "blur(12px)", scale: 1.03 },
+            {
+              autoAlpha: 1,
+              filter: "blur(0px)",
+              scale: 1,
+              transformOrigin: "left center",
+              duration: 0.9,
+              stagger: 0.12,
+              ease: "expo.out",
+              onComplete: revertOnDone,
+            },
+            ">-0.25",
+          );
+        } else {
+          // Default 'lines': byte-identical to the historical reveal — each line
+          // of the title rises out of its own clip.
+          split = new SplitText(titleEl, { type: "lines", mask: "lines" });
+          tl.from(
+            split.lines,
+            {
+              yPercent: 115,
+              duration: 0.85,
+              stagger: 0.09,
+              ease: "expo.out",
+              onComplete: revertOnDone,
+            },
+            ">-0.25",
+          );
+        }
       }
       if (descEl) {
         tl.to(
@@ -162,7 +254,7 @@ export function SectionHeading({
       split = null;
       tl?.kill();
     };
-  }, [language]);
+  }, [language, reveal]);
 
   return (
     <div

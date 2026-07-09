@@ -1064,6 +1064,9 @@ export default function FoundersRail() {
           ? "Every engagement is owned by the people who scope, architect, and ship it. No account layer, no junior bench, no second team you didn't sign for."
           : "Ogni ingaggio è seguito dalle persone che ne definiscono lo scope, lo progettano e lo portano in produzione. Nessun livello di account, nessuna panchina di junior, nessun secondo team che non hai ingaggiato."
       }
+      /* reveal='blur': soft CSS focus-in on the studio-intro heading, echoing
+         the About page's manifesto beat (no WebGL, pure GPU-composited filter). */
+      reveal="blur"
       className={className}
     />
   );

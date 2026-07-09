@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { CalEmbed } from "@/components/cal-embed";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Reveal } from "@/components/ui/reveal";
+import { DisplacementWipeReveal } from "@/components/fx/displacement-wipe";
 import { useLanguage } from "@/components/language-provider";
 import AuditWeekTimeline from "@/components/sections/audit-week-timeline";
 
@@ -242,7 +243,9 @@ export function AuditClient() {
           <div className="max-w-5xl mx-auto">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
               {lookAt.map((item, i) => (
-                <Reveal key={i} delay={i * 70}>
+                // Each surface declassifies one-by-one on enter (stagger keeps
+                // ≤2 displacement filters rasterizing at once).
+                <DisplacementWipeReveal key={i} delay={i * 0.12}>
                   <div className="card-steel h-full p-6 backdrop-blur-[1px]">
                     <div className="flex items-start gap-4">
                       <div
@@ -257,7 +260,7 @@ export function AuditClient() {
                       </div>
                     </div>
                   </div>
-                </Reveal>
+                </DisplacementWipeReveal>
               ))}
             </div>
           </div>

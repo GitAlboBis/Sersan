@@ -56,9 +56,12 @@ export default function OurWhy() {
           {/* key={language}: SplitText owns this subtree once split; a
               language swap must remount it or React reconciles against
               orphaned nodes (same contract as SectionHeading's h2). */}
+          {/* reveal='blur': a Kawase-inspired CSS focus-in (pure filter blur,
+              GPU-composited, no WebGL) suits the reflective thesis beat. */}
           <h2
             key={language}
             data-split-reveal
+            data-reveal="blur"
             id="our-why-heading"
             className="heading-2 mb-10 sm:mb-12 text-balance"
           >

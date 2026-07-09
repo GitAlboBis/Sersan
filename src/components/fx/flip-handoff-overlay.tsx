@@ -24,8 +24,10 @@ if (typeof window !== "undefined") gsap.registerPlugin(Flip);
  * whose clip-path inset matches the card rect (round = the card radius), a
  * navy fill fading in, and (preview cards) a cover-fit image box glued to the
  * rect — and inflates it to cover the viewport in ~0.75s expo.inOut with a
- * small scale pulse on the image that dies exactly at completion (the demo's
- * cos-gated "liquid" ripple, one property, no shader). Opening the CLIP
+ * "liquid ripple" on the image that dies exactly at completion: a directional
+ * scale + a mid-peak blur/brightness bump + a faint cyan bloom, all returning
+ * to identity at INFLATE_S (the demo's cos-gated ripple #6, DOM, no shader;
+ * gated off under reduced motion). Opening the CLIP
  * instead of scaling means the cover-fit image continuously re-crops rather
  * than stretching — the DOM analog of the demo's animated-uRes CoverUV. A
  * navy #0B1422 backdrop fades in beneath. The <Link> navigation proceeds
@@ -330,14 +332,113 @@ function startFlight(ref: FlightRef, snap: FlipSnapshot) {
       duration: INFLATE_S,
       ease: "expo.inOut",
     });
-    // The "liquid" pulse: a scale swell that returns to exactly 1 at the
-    // moment the inflate completes (the demo's cos-gated ripple amplitude).
-    gsap.to(img, {
-      keyframes: [
-        { scale: 1.045, duration: INFLATE_S / 2, ease: "sine.in" },
-        { scale: 1, duration: INFLATE_S / 2, ease: "sine.out" },
-      ],
+  }
+
+  // LIQUID RIPPLE (progressive enhancement) — the demo's cos-gated zoom+ripple
+  // (#6), DOM-approximated without a shader. Enriches the mid-inflate so it
+  // reads like matter deforming: (a) a DIRECTIONAL scale (scaleX>scaleY, the
+  // frame stretches wider as it opens toward the landscape viewport) that eases
+  // back to exactly 1; (b) a blur+brightness bump that PEAKS at the inflate
+  // midpoint and returns to blur(0)/brightness(1) at completion; (c) a faint
+  // cyan→blue accent bloom expanding from the card centre that fades fully out.
+  // Every animated property lands on its identity value at INFLATE_S — aligned
+  // with the cos-gated scale return — so the fullscreen frame (and the
+  // subsequent landOnHero carve) is byte-identical to the plain inflate.
+  // Gated OFF under prefers-reduced-motion (no ripple, static enlargement).
+  const reduce =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!reduce) {
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+
+    // (c) accent bloom — brand cyan #3BE1FF → deep-blue #2A7FFF, low alpha,
+    // screen-blended so it only adds light. Child of the shell (clipped by the
+    // opening window, removed with the shell), topmost so it glows over the
+    // image on image cards and over the navy fill on no-image cards.
+    const accent = document.createElement("div");
+    accent.setAttribute("aria-hidden", "true");
+    Object.assign(accent.style, {
+      position: "absolute",
+      inset: "0",
+      opacity: "0",
+      mixBlendMode: "screen",
+      background: `radial-gradient(circle at ${cx}px ${cy}px, rgba(59,225,255,0.22), rgba(42,127,255,0.10) 32%, rgba(42,127,255,0) 62%)`,
+      transformOrigin: `${cx}px ${cy}px`,
+      willChange: "transform,opacity",
     });
+    shell.appendChild(accent);
+
+    const tl = gsap.timeline({
+      onComplete: () => {
+        // Drop the enrichment props so the resting clone is exactly the plain
+        // inflate's end state before landOnHero takes over.
+        if (img) gsap.set(img, { clearProps: "filter" });
+        accent.remove();
+      },
+    });
+
+    if (img) {
+      // (a) directional scale — asymmetric swell, eases back to exactly 1.
+      tl.to(
+        img,
+        {
+          keyframes: [
+            {
+              scaleX: 1.055,
+              scaleY: 1.028,
+              duration: INFLATE_S / 2,
+              ease: "sine.in",
+            },
+            { scaleX: 1, scaleY: 1, duration: INFLATE_S / 2, ease: "sine.out" },
+          ],
+        },
+        0,
+      );
+      // (b) blur + brightness bump — peaks at the midpoint, back to identity.
+      gsap.set(img, { filter: "blur(0px) brightness(1)" });
+      tl.to(
+        img,
+        {
+          keyframes: [
+            {
+              filter: "blur(5px) brightness(1.1)",
+              duration: INFLATE_S / 2,
+              ease: "sine.inOut",
+            },
+            {
+              filter: "blur(0px) brightness(1)",
+              duration: INFLATE_S / 2,
+              ease: "sine.inOut",
+            },
+          ],
+        },
+        0,
+      );
+    }
+
+    // (c) accent expands from the card centre and fades fully out by INFLATE_S.
+    tl.fromTo(
+      accent,
+      { scale: 0.4 },
+      {
+        scale: 1.5,
+        transformOrigin: `${cx}px ${cy}px`,
+        duration: INFLATE_S,
+        ease: "expo.out",
+      },
+      0,
+    );
+    tl.to(
+      accent,
+      {
+        keyframes: [
+          { opacity: 0.85, duration: INFLATE_S * 0.42, ease: "sine.out" },
+          { opacity: 0, duration: INFLATE_S * 0.58, ease: "sine.in" },
+        ],
+      },
+      0,
+    );
   }
 }
 
