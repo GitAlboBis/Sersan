@@ -37,6 +37,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import gsap from "gsap";
 import { useFrame, useThree } from "@react-three/fiber";
 import { webgpuEnabled } from "./renderer/createRenderer";
 import { CAMERA_Z, WORLD_VIEW_HEIGHT } from "./constants";
@@ -94,6 +95,12 @@ export function ResourcePreviewPlane() {
   const meshRef = useRef<THREE.Mesh | null>(null);
   const hoverEased = useRef(0);
   const velSmooth = useRef(0);
+  // Click-wipe: last consumed nonce + the live timeline driving uWipe.value.
+  const lastWipeNonce = useRef(0);
+  const wipeTl = useRef<gsap.core.Timeline | null>(null);
+  useEffect(() => () => {
+    wipeTl.current?.kill();
+  }, []);
   // Eased screen-space follower (px) — smooths any residual step at the store
   // level and lets the plane settle to rest center while hidden.
   const cxEased = useRef(size.width / 2);
@@ -104,7 +111,8 @@ export function ResourcePreviewPlane() {
     const mesh = meshRef.current;
     if (!mat || !mesh) return;
 
-    const { activeIndex, targetX, targetY, seed } = useResourcePreviewStore.getState();
+    const { activeIndex, targetX, targetY, seed, wipeNonce, wipeOriginX, wipeOriginY } =
+      useResourcePreviewStore.getState();
     const hoverTarget = activeIndex >= 0 ? 1 : 0;
     hoverEased.current = THREE.MathUtils.damp(
       hoverEased.current,
@@ -113,8 +121,13 @@ export function ResourcePreviewPlane() {
       delta,
     );
 
-    // Fully hidden + idle → skip the placement work entirely.
-    if (hoverEased.current < 0.002 && hoverTarget === 0) {
+    // Fully hidden + idle → skip the placement work entirely. Stay visible while
+    // a click-wipe is playing even if the hover has already eased out.
+    if (
+      hoverEased.current < 0.002 &&
+      hoverTarget === 0 &&
+      mat.uniforms.uWipe.value < 0.002
+    ) {
       mesh.visible = false;
       return;
     }
@@ -123,6 +136,26 @@ export function ResourcePreviewPlane() {
     const ih = size.height;
     const vw = size.width;
     const k = WORLD_VIEW_HEIGHT / ih;
+
+    // Fire a fresh click-wipe when the store's nonce bumps. Origin is the click
+    // point expressed in PLANE-LOCAL uv (the plane is centered on the eased
+    // follower; clip-y grows downward, uv-y upward → flip). Mutate .value only
+    // (island rule); gsap drives it off React on its own ticker.
+    if (wipeNonce !== lastWipeNonce.current) {
+      lastWipeNonce.current = wipeNonce;
+      const lx = 0.5 + ((wipeOriginX - targetX) * vw) / PREVIEW_W;
+      const ly = 0.5 - ((wipeOriginY - targetY) * ih) / PREVIEW_H;
+      mat.uniforms.uWipeOrigin.value.set(
+        THREE.MathUtils.clamp(lx, 0, 1),
+        THREE.MathUtils.clamp(ly, 0, 1),
+      );
+      wipeTl.current?.kill();
+      mat.uniforms.uWipe.value = 0;
+      wipeTl.current = gsap
+        .timeline()
+        .to(mat.uniforms.uWipe, { value: 1, duration: 0.5, ease: "power2.out" })
+        .to(mat.uniforms.uWipe, { value: 0, duration: 0.32, ease: "power1.in" });
+    }
 
     // Follow the published cursor target (clip [0..1] top-left → px).
     cxEased.current = THREE.MathUtils.damp(

@@ -336,6 +336,7 @@ function ResourceCard({
       onPointerEnter={onPointerEnter}
       onPointerMove={onPointerMove}
       onPointerLeave={onPointerLeave}
+      onPointerDown={preview.onPointerDown}
       onClick={onClick}
     >
       <CardBody

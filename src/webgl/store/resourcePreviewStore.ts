@@ -34,10 +34,18 @@ interface ResourcePreviewState {
   targetY: number;
   /** Stable per-article seed 0..1 — varies the plane's gradient phase. */
   seed: number;
+  /** Click-wipe origin, clip [0..1] top-left (where the pointer went down). */
+  wipeOriginX: number;
+  wipeOriginY: number;
+  /** Monotonic click counter — the plane fires a fresh wipe when this bumps.
+   *  (A nonce, not a boolean, so rapid re-clicks each re-trigger cleanly.) */
+  wipeNonce: number;
   /** Sets the active article (and its seed) or clears it (-1). */
   setActive: (index: number, seed?: number) => void;
   /** Publishes the eased follower target (called each gsap tick). */
   setTarget: (x: number, y: number) => void;
+  /** Fires a click-wipe from (x,y) clip [0..1] — bumps wipeNonce. */
+  triggerWipe: (x: number, y: number) => void;
 }
 
 const createResourcePreviewStore = () =>
@@ -46,8 +54,13 @@ const createResourcePreviewStore = () =>
     targetX: 0.5,
     targetY: 0.5,
     seed: 0,
+    wipeOriginX: 0.5,
+    wipeOriginY: 0.5,
+    wipeNonce: 0,
     setActive: (index, seed = 0) => set({ activeIndex: index, seed }),
     setTarget: (x, y) => set({ targetX: x, targetY: y }),
+    triggerWipe: (x, y) =>
+      set((s) => ({ wipeOriginX: x, wipeOriginY: y, wipeNonce: s.wipeNonce + 1 })),
   }));
 
 declare global {

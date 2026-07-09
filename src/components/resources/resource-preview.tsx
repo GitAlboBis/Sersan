@@ -24,7 +24,7 @@
  *   desktop, flag OFF → full tier, no plane → DOM card is the preview.
  *   desktop, flag ON  → full tier + WebGPU plane → card suppressed.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { resources } from "@/data/resources";
@@ -49,6 +49,9 @@ export interface ResourceItemHandlers {
   onPointerEnter: (e: React.PointerEvent) => void;
   onPointerMove: (e: React.PointerEvent) => void;
   onPointerLeave: (e: React.PointerEvent) => void;
+  /** Fires the click-wipe (WebGL plane + DOM fallback card). Wire onto the
+   *  article link's onPointerDown; a no-op when the gate is off. */
+  onPointerDown: (e: React.PointerEvent) => void;
 }
 
 /**
@@ -104,6 +107,14 @@ export function useResourcePreview() {
       // Leaving one item: the list-level leave handler clears; an immediate
       // enter on the next item overrides. No per-item clear (avoids flicker).
     },
+    onPointerDown: (e) => {
+      if (gateOffRef.current) return;
+      // Publish the click origin (clip [0..1] top-left) — the WebGL plane
+      // (WebGPU path) and the DOM fallback card both consume the nonce bump.
+      useResourcePreviewStore
+        .getState()
+        .triggerWipe(e.clientX / window.innerWidth, e.clientY / window.innerHeight);
+    },
   });
 
   const onListPointerLeave = () => {
@@ -126,7 +137,14 @@ export function ResourcePreviewCard() {
   const tier = useTierStore((s) => s.tier);
 
   const cardRef = useRef<HTMLDivElement | null>(null);
+  const wipeRef = useRef<HTMLDivElement | null>(null);
+  const prevNonce = useRef(0);
   const [activeIndex, setActiveIndex] = useState(-1);
+  // Per-instance SVG filter id (sanitized) — feTurbulence→feDisplacementMap that
+  // gives the click-wipe edge an organic (torn) boundary. useId avoids the
+  // global-id collision landmine when multiple instances mount.
+  const rawId = useId();
+  const dwId = `rpw-${rawId.replace(/[^a-zA-Z0-9_-]/g, "")}`;
 
   // The plane owns the preview on the desktop WebGPU full path; suppress the
   // card there. On every other (non-coarse/non-RM) path the card IS the
@@ -144,13 +162,30 @@ export function ResourcePreviewCard() {
     }
     let raf = 0;
     const tick = () => {
-      const { activeIndex: idx, targetX, targetY } = useResourcePreviewStore.getState();
+      const { activeIndex: idx, targetX, targetY, wipeNonce } =
+        useResourcePreviewStore.getState();
       setActiveIndex((prev) => (prev === idx ? prev : idx));
       const el = cardRef.current;
       if (el && idx >= 0) {
         el.style.transform = `translate3d(${targetX * window.innerWidth}px, ${
           targetY * window.innerHeight
         }px, 0) translate(-50%, -50%)`;
+      }
+      // Click-wipe: a displaced clip-path circle floods from card center on a
+      // nonce bump (the filter:url() gives its edge the torn feTurbulence rim).
+      if (wipeNonce !== prevNonce.current) {
+        prevNonce.current = wipeNonce;
+        const wipe = wipeRef.current;
+        if (wipe) {
+          wipe.style.transition = "none";
+          wipe.style.opacity = "1";
+          wipe.style.clipPath = "circle(0% at 50% 50%)";
+          void wipe.offsetWidth; // reflow so the 0% start is committed
+          wipe.style.transition =
+            "clip-path 0.5s cubic-bezier(0.19, 1, 0.22, 1), opacity 0.4s ease 0.28s";
+          wipe.style.clipPath = "circle(150% at 50% 50%)";
+          wipe.style.opacity = "0";
+        }
       }
       raf = requestAnimationFrame(tick);
     };
@@ -174,6 +209,13 @@ export function ResourcePreviewCard() {
         data-visible={r ? "true" : "false"}
       >
         <div className="resource-preview-card__glow" />
+        {/* Click-wipe flood — displaced by the feTurbulence filter below so its
+            clip-path edge reads torn/liquid rather than a clean circle. */}
+        <div
+          ref={wipeRef}
+          className="resource-preview-card__wipe"
+          style={{ filter: `url(#${dwId})` }}
+        />
         {r && (
           <div className="resource-preview-card__meta">
             <span className="resource-preview-card__cat">{categoryLabel[r.category]}</span>
@@ -181,6 +223,31 @@ export function ResourcePreviewCard() {
           </div>
         )}
       </div>
+      {/* Hidden filter def — feTurbulence→feDisplacementMap warps the wipe edge.
+          No feMorphology (cheaper; skips the Safari-dilate cost). */}
+      <svg
+        width="0"
+        height="0"
+        aria-hidden="true"
+        style={{ position: "absolute", width: 0, height: 0 }}
+      >
+        <filter id={dwId} x="-25%" y="-25%" width="150%" height="150%">
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.012 0.02"
+            numOctaves={2}
+            seed={7}
+            result="dwNoise"
+          />
+          <feDisplacementMap
+            in="SourceGraphic"
+            in2="dwNoise"
+            scale={26}
+            xChannelSelector="R"
+            yChannelSelector="G"
+          />
+        </filter>
+      </svg>
       <style>{`
         .resource-preview-card {
           position: fixed;
@@ -216,6 +283,23 @@ export function ResourcePreviewCard() {
           position: absolute;
           inset: 0;
           background: radial-gradient(circle at 50% 40%, #3BE1FF22, transparent 65%);
+          mix-blend-mode: screen;
+        }
+        .resource-preview-card__wipe {
+          position: absolute;
+          inset: -12%;
+          pointer-events: none;
+          opacity: 0;
+          clip-path: circle(0% at 50% 50%);
+          /* cyan → deep-blue signal flood with a bright leading rim (brand,
+             no violet). The filter:url() (inline) displaces this edge. */
+          background: radial-gradient(
+            circle at 50% 50%,
+            #3BE1FF66 0%,
+            #2A7FFF3a 48%,
+            #3BE1FFaa 62%,
+            transparent 70%
+          );
           mix-blend-mode: screen;
         }
         .resource-preview-card__meta {

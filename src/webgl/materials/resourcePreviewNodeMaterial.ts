@@ -40,7 +40,7 @@
  * smoothstep, float, vec2, vec3, length, sub — all present in the existing
  * line/rail materials).
  */
-import { Color, MeshBasicNodeMaterial, NormalBlending } from "three/webgpu";
+import { Color, MeshBasicNodeMaterial, NormalBlending, Vector2 } from "three/webgpu";
 import {
   Fn,
   uniform,
@@ -54,6 +54,7 @@ import {
   vec2,
   vec3,
   length,
+  clamp,
 } from "three/tsl";
 
 /**
@@ -67,6 +68,10 @@ export type ResourcePreviewUniforms = {
   uVel: { value: number };
   /** Stable per-article seed 0..1 — varies the gradient phase. */
   uSeed: { value: number };
+  /** Click-wipe progress 0..1 — GSAP-tweened by the island on a click nonce. */
+  uWipe: { value: number };
+  /** Click-wipe origin in PLANE-LOCAL uv (0..1). */
+  uWipeOrigin: { value: Vector2 };
 };
 
 export function createResourcePreviewMaterial(): {
@@ -76,6 +81,8 @@ export function createResourcePreviewMaterial(): {
   const uHover = uniform(0);
   const uVel = uniform(0);
   const uSeed = uniform(0);
+  const uWipe = uniform(0);
+  const uWipeOrigin = uniform(new Vector2(0.5, 0.5));
   const uColorA = uniform(new Color("#3BE1FF"));
   const uColorB = uniform(new Color("#2A7FFF")); // name kept; value now blue (violet retired)
   const uBase = uniform(new Color("#0B1422"));
@@ -127,6 +134,32 @@ export function createResourcePreviewMaterial(): {
 
   const col = fill.add(ringCol);
 
+  // (f) Click-wipe (ref r3f-image-reveal #3 + OnScrollFilter #4): on a click the
+  // island tweens uWipe 0→1, flooding a "signal resolving from noise" front out
+  // from uWipeOrigin. The boundary is domain-warped so it reads liquid/torn, not
+  // a geometric circle. At rest (uWipe=0) every term below is 0, so the plane is
+  // byte-identical to the hover-only look.
+  const dOrigin = length(u.sub(uWipeOrigin));
+  // Static organic warp of the boundary — a smooth sin field (no fract/floor),
+  // seeded per-article so no two wipes share an edge. Only proven nodes.
+  const warpX = sin(u.y.mul(11.0).add(uSeed.mul(6.283)));
+  const warpY = sin(u.x.mul(13.0).sub(uSeed.mul(6.283)));
+  const dWarp = dOrigin.add(warpX.mul(warpY).mul(0.06));
+  const BAND = 0.13;
+  const front = uWipe.mul(1.55); // reaches the far corner (~1.4) by uWipe≈0.9
+  // Flood: 1 behind the front (passed), feathered to 0 ahead of it.
+  const flood = smoothstep(front, front.sub(BAND), dWarp);
+  // Rim glow riding the moving front; bells in/out via sin(π·uWipe) so it is
+  // absent at both ends. Emissive >1 (uScanEmissive) → selective bloom.
+  const rimEnv = sin(uWipe.mul(Math.PI));
+  const rimGlow = smoothstep(BAND, 0.0, abs(dWarp.sub(front))).mul(rimEnv);
+  const floodTint = mix(uColorA, uColorB, u.y).mul(0.5).mul(flood); // fill: sub-1.0
+  const rimCol = mix(uColorA, uColorB, dWarp).mul(uScanEmissive).mul(rimGlow); // >1.0
+  const wipeCol = col.add(floodTint).add(rimCol);
+  // Wipe presence lifts opacity so the flood/rim show even as hover eases out on
+  // the click→navigate frame.
+  const wipeOpacity = clamp(flood.mul(0.9).add(rimGlow), 0.0, 1.0);
+
   // (e) Edge feather (rectangular) + radial vignette so no hard border shows.
   const feather = smoothstep(0.0, 0.06, u.x)
     .mul(smoothstep(0.94, 1.0, u.x).oneMinus())
@@ -134,9 +167,11 @@ export function createResourcePreviewMaterial(): {
     .mul(smoothstep(0.94, 1.0, u.y).oneMinus());
   const vignette = smoothstep(1.0, 0.55, r);
 
-  material.colorNode = vec3(col);
-  // Whole plane fades in with hover; feather + vignette keep the edge soft.
-  material.opacityNode = uHover.mul(0.92).mul(feather).mul(vignette);
+  material.colorNode = vec3(wipeCol);
+  // Hover fade OR wipe presence, whichever is higher; feather + vignette keep
+  // the edge soft in both.
+  const presence = clamp(uHover.mul(0.92).add(wipeOpacity), 0.0, 1.0);
+  material.opacityNode = presence.mul(feather).mul(vignette);
 
   material.transparent = true;
   material.depthWrite = false; // never occludes the line/dust
@@ -144,5 +179,5 @@ export function createResourcePreviewMaterial(): {
   material.blending = NormalBlending; // a surface, not a glow
   material.toneMapped = false; // keep the >1.0 scan ring intact for bloom
 
-  return { material, uniforms: { uHover, uVel, uSeed } };
+  return { material, uniforms: { uHover, uVel, uSeed, uWipe, uWipeOrigin } };
 }
