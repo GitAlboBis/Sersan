@@ -139,6 +139,10 @@ function srgbToLinear(c: number): number {
 
 /** Number of angular sectors used to pair A↔B (radial sort). */
 const PAIR_SECTORS = 48;
+/** Fixed seed for the post-pairing DRAW-ORDER shuffle. MUST be constant (not
+ * per-image) so portraits A and B permute identically and their index pairing
+ * survives — see the shuffle note in the pairing branch. */
+const DRAW_SHUFFLE_SEED = 0x5eed5a;
 
 const EMPTY = (count: number): ImagePoints => ({
   xy: new Float32Array(count * 2),
@@ -343,17 +347,37 @@ export function sampleImagePoints(
   const idx = Array.from(order);
   idx.sort((p, q) => keys[p] - keys[q]);
 
+  // Decorrelate DRAW ORDER from angle. `idx` above orders particles by angular
+  // sector, so instance index (= GPU draw order) follows the angle. With
+  // depth-tested, near-equal-depth discs the GPU resolves overlaps by draw
+  // order, so that angular ordering paints a visible PINWHEEL of sectors across
+  // the face (worst on flat regions where z ties). Apply a FIXED-seed shuffle on
+  // top of the radial order: the shuffle is identical for portrait A and B
+  // (same seed, same count), so index i still maps to the same radial rank in
+  // both — the A↔B pairing (short morph travel) is preserved — while the draw
+  // order becomes spatially random, so overlaps break as fine noise, not
+  // sectors. `perm` maps output slot → radial-sorted slot.
+  const perm = new Int32Array(count);
+  for (let i = 0; i < count; i++) perm[i] = i;
+  const srng = mulberry32(DRAW_SHUFFLE_SEED);
+  for (let i = count - 1; i > 0; i--) {
+    const k = Math.floor(srng() * (i + 1));
+    const t = perm[i];
+    perm[i] = perm[k];
+    perm[k] = t;
+  }
+
   const sxy = new Float32Array(count * 2);
   const srgb = new Float32Array(count * 3);
   const sz = new Float32Array(count);
-  for (let i = 0; i < count; i++) {
-    const j = idx[i];
-    sxy[i * 2] = xy[j * 2];
-    sxy[i * 2 + 1] = xy[j * 2 + 1];
-    srgb[i * 3] = rgb[j * 3];
-    srgb[i * 3 + 1] = rgb[j * 3 + 1];
-    srgb[i * 3 + 2] = rgb[j * 3 + 2];
-    sz[i] = z[j];
+  for (let out = 0; out < count; out++) {
+    const j = idx[perm[out]];
+    sxy[out * 2] = xy[j * 2];
+    sxy[out * 2 + 1] = xy[j * 2 + 1];
+    srgb[out * 3] = rgb[j * 3];
+    srgb[out * 3 + 1] = rgb[j * 3 + 1];
+    srgb[out * 3 + 2] = rgb[j * 3 + 2];
+    sz[out] = z[j];
   }
 
   return {
