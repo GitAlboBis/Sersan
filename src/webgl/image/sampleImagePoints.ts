@@ -55,22 +55,9 @@ export interface ImageSampleSpec {
    * Saturation (chroma = max−min RGB) floor for BACKGROUND ISOLATION. Cells
    * with chroma below this are treated as neutral background and dropped, so a
    * headshot's dark/neutral surround never seeds particles. Skin tones clear a
-   * small floor easily; 0 (default) disables the test. NOTE: this also culls
-   * DARK neutral pixels (hair, beard) — prefer `bgLumCeil` for a white-wall
-   * headshot so those are kept. Live-tunable.
+   * small floor easily; 0 (default) disables the test. Live-tunable.
    */
   satFloor?: number;
-  /**
-   * Bright-neutral BACKGROUND drop: cells BRIGHTER than this AND with chroma
-   * below `bgChromaCeil` are dropped as backdrop. A near-white studio wall (and
-   * a white shirt) is bright+neutral; dark hair/beard is dark+neutral — so this
-   * removes the wall while KEEPING the hair/beard (which satFloor/lumFloor would
-   * wrongly cull). This is what lets the face sample DENSE and complete instead
-   * of a thin, holey cloud. Undefined disables. Live-tunable.
-   */
-  bgLumCeil?: number;
-  /** Chroma ceiling for the bright-neutral drop (default 0.06). */
-  bgChromaCeil?: number;
   /**
    * Optional NORMALIZED focus crop (0..1 of the source), applied BEFORE the
    * cover-crop-to-grid. Lets a non-headshot / environmental source be cropped to
@@ -139,10 +126,6 @@ function srgbToLinear(c: number): number {
 
 /** Number of angular sectors used to pair A↔B (radial sort). */
 const PAIR_SECTORS = 48;
-/** Fixed seed for the post-pairing DRAW-ORDER shuffle. MUST be constant (not
- * per-image) so portraits A and B permute identically and their index pairing
- * survives — see the shuffle note in the pairing branch. */
-const DRAW_SHUFFLE_SEED = 0x5eed5a;
 
 const EMPTY = (count: number): ImagePoints => ({
   xy: new Float32Array(count * 2),
@@ -238,21 +221,13 @@ export function sampleImagePoints(
       const bn = data[idx + 2] / 255;
       const lum = 0.299 * rn + 0.587 * gn + 0.114 * bn;
       if (lum < spec.lumFloor) continue;
-      const chroma = Math.max(rn, gn, bn) - Math.min(rn, gn, bn);
-      // Background isolation — two complementary neutral-drop tests:
-      //  - satFloor drops ALL near-neutral pixels (also culls dark hair/beard,
-      //    so the founders morph leaves it at 0).
-      //  - bgLumCeil drops only BRIGHT near-neutral pixels: a near-white studio
-      //    wall / white shirt is bright+neutral, dark hair/beard is dark+neutral
-      //    — so this strips the backdrop while KEEPING the hair and beard, and
-      //    the face samples dense + complete instead of thin and holey.
-      if (spec.satFloor && spec.satFloor > 0 && chroma < spec.satFloor) continue;
-      if (
-        spec.bgLumCeil != null &&
-        lum > spec.bgLumCeil &&
-        chroma < (spec.bgChromaCeil ?? 0.06)
-      )
-        continue;
+      // Background isolation: drop neutral (low-chroma) pixels — a headshot's
+      // dark/neutral surround, or a bright studio bg, never seeds the cloud.
+      if (spec.satFloor && spec.satFloor > 0) {
+        const mx = Math.max(rn, gn, bn);
+        const mn = Math.min(rn, gn, bn);
+        if (mx - mn < spec.satFloor) continue;
+      }
 
       const nx = (x / gridW - faceCx) * ax;
       const ny = y / gridH - faceCy;
@@ -347,37 +322,17 @@ export function sampleImagePoints(
   const idx = Array.from(order);
   idx.sort((p, q) => keys[p] - keys[q]);
 
-  // Decorrelate DRAW ORDER from angle. `idx` above orders particles by angular
-  // sector, so instance index (= GPU draw order) follows the angle. With
-  // depth-tested, near-equal-depth discs the GPU resolves overlaps by draw
-  // order, so that angular ordering paints a visible PINWHEEL of sectors across
-  // the face (worst on flat regions where z ties). Apply a FIXED-seed shuffle on
-  // top of the radial order: the shuffle is identical for portrait A and B
-  // (same seed, same count), so index i still maps to the same radial rank in
-  // both — the A↔B pairing (short morph travel) is preserved — while the draw
-  // order becomes spatially random, so overlaps break as fine noise, not
-  // sectors. `perm` maps output slot → radial-sorted slot.
-  const perm = new Int32Array(count);
-  for (let i = 0; i < count; i++) perm[i] = i;
-  const srng = mulberry32(DRAW_SHUFFLE_SEED);
-  for (let i = count - 1; i > 0; i--) {
-    const k = Math.floor(srng() * (i + 1));
-    const t = perm[i];
-    perm[i] = perm[k];
-    perm[k] = t;
-  }
-
   const sxy = new Float32Array(count * 2);
   const srgb = new Float32Array(count * 3);
   const sz = new Float32Array(count);
-  for (let out = 0; out < count; out++) {
-    const j = idx[perm[out]];
-    sxy[out * 2] = xy[j * 2];
-    sxy[out * 2 + 1] = xy[j * 2 + 1];
-    srgb[out * 3] = rgb[j * 3];
-    srgb[out * 3 + 1] = rgb[j * 3 + 1];
-    srgb[out * 3 + 2] = rgb[j * 3 + 2];
-    sz[out] = z[j];
+  for (let i = 0; i < count; i++) {
+    const j = idx[i];
+    sxy[i * 2] = xy[j * 2];
+    sxy[i * 2 + 1] = xy[j * 2 + 1];
+    srgb[i * 3] = rgb[j * 3];
+    srgb[i * 3 + 1] = rgb[j * 3 + 1];
+    srgb[i * 3 + 2] = rgb[j * 3 + 2];
+    sz[i] = z[j];
   }
 
   return {

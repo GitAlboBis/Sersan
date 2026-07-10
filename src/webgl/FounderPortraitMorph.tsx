@@ -62,16 +62,13 @@ import { founders } from "@/data/founders";
 import type { ImagePoints, ImageSampleSpec } from "./image/sampleImagePoints";
 
 const COUNT_BY_TIER: Record<"full" | "lite", number> = {
-  full: 60000,
-  lite: 24000,
+  full: 26000,
+  lite: 12000,
 };
 
 // --- Sampler grid + look constants -----------------------------------------
-// Higher grid resolution = finer sampled detail; paired with the higher COUNT
-// above and the bright-neutral bg drop, the face reads dense + defined rather
-// than a loose dusty cloud.
-const GRID_W = 420;
-const GRID_H = 588;
+const GRID_W = 300;
+const GRID_H = 420;
 const STRIDE = 2;
 /** Portrait fill fraction of the stage rect (leaves a small margin). */
 const STAGE_FILL = 0.92;
@@ -82,43 +79,17 @@ const Z_RELIEF_MAX_FRAC = 0.15;
 const SEED_A = 0x51e7a1;
 const SEED_B = 0x9c3f22;
 
-/** Default background-isolation thresholds (live-tunable). The real headshots
- * (public/founders/<slug>-headshot.webp) are tight face crops on a near-WHITE
- * studio wall. satFloor (drop ALL low-chroma) was wrong here: it culled the dark
- * hair/beard too, leaving a thin holey face. So satFloor is now 0 and the wall
- * is removed by BG_LUM_CEIL instead — drop only BRIGHT + near-neutral cells
- * (white wall / white shirt), which KEEPS the dark neutral hair/beard so the
- * face samples dense + complete. lumFloor still drops any truly dark surround.
- * All live-tunable via __sersanFounderMorph.setSat / setBg. */
-const DEFAULT_LUM_THRESHOLD = 0.05;
+/** Default background-isolation thresholds (live-tunable). Dark bg → dropped by
+ * luminance; a neutral bg can additionally be dropped by raising sat. */
+const DEFAULT_LUM_THRESHOLD = 0.1;
 const DEFAULT_SAT_FLOOR = 0;
-/** Luminance pick-weight exponent. >1 concentrates particles on the BRIGHT
- * pixels (starves dark hair/beard → they sample sparse); <1 evens the density
- * out so dark features fill in. 0.7 keeps some brightness bias (facial form)
- * while giving Michele's beard / Alessandro's hair enough particles to read as
- * solid. Live-tunable via __sersanFounderMorph.setGamma. */
-const DEFAULT_LUM_GAMMA = 0.55;
-/** Bright-neutral wall drop: cells brighter than BG_LUM_CEIL with chroma below
- * BG_CHROMA_CEIL are backdrop (white wall / shirt). Skin highlights carry chroma
- * so they survive; dark hair/beard is below the lum ceil so it survives too. */
-const DEFAULT_BG_LUM_CEIL = 0.62;
-const DEFAULT_BG_CHROMA_CEIL = 0.06;
 /** Modest emissive so faces stay photographic at rest (task: ~1.0–1.3). */
 const DEFAULT_EMISSIVE = 1.1;
-/** Shadow lift: near-black particles (Alessandro's hair, Michele's beard) match
- * the dark navy site bg and vanish; this raises them toward a faint WARM-NEUTRAL
- * tone (kept subtle — a cool tint made Michele's stubble read as cyan stripes) so
- * the silhouette reads while staying natural. Knee = luminance below which the
- * lift applies. Live-tunable via __sersanFounderMorph.setShadowLift/Knee. */
-const DEFAULT_SHADOW_LIFT = 0.12;
-const DEFAULT_SHADOW_KNEE = 0.28;
-/** LEGACY fallback (environmental) sources: PER-FOUNDER centred upper crop to
- * isolate each face — Alessandro and Michele sit differently in their
- * environmental photos, so a single shared crop cut Michele. Indexed by
- * founder; only used when a tight headshot file is absent. As of the real
- * studio headshots landing (<slug>-headshot.webp, sampled full-frame), this is
- * dead unless a headshot file goes missing; live-tunable via resample({crop}) /
- * resample({cropA,cropB}). */
+/** Fallback (environmental) sources: PER-FOUNDER centred upper crop to isolate
+ * each face — Alessandro and Michele sit differently in their environmental
+ * photos, so a single shared crop cut Michele. Indexed by founder; only used
+ * when a tight headshot file is absent. Interim defaults (real headshots are
+ * coming); live-tunable via resample({crop}) / resample({cropA,cropB}). */
 const DEFAULT_FALLBACK_CROPS = [
   { x: 0.3, y: 0.02, w: 0.42, h: 0.58 }, // Alessandro
   { x: 0.34, y: 0.06, w: 0.4, h: 0.56 }, // Michele
@@ -127,25 +98,17 @@ const DEFAULT_FALLBACK_CROPS = [
 /** Shape of the sampler spec minus the per-call/tunable fields. */
 const SAMPLE_SPEC_BASE: Omit<
   ImageSampleSpec,
-  | "seed"
-  | "lumFloor"
-  | "satFloor"
-  | "bgLumCeil"
-  | "bgChromaCeil"
-  | "lumGamma"
-  | "crop"
+  "seed" | "lumFloor" | "satFloor" | "crop"
 > = {
   gridW: GRID_W,
   gridH: GRID_H,
   stride: STRIDE,
   depth: 90, // grid-px of luminance relief front-to-back (capped in toWorld)
   centerZBias: 40, // extra forward bulge at the face centre
-  // Gentler + wider radial falloff so the WHOLE head (hair, jaw, ears) is
-  // covered evenly, not just the centre — the bright-neutral bg drop now handles
-  // the wall, so the falloff no longer has to double as a corner-culler.
-  radialFalloff: 1.1,
-  radius: 0.92,
+  radialFalloff: 1.7, // tighter to the centred face
+  radius: 0.72,
   faceBias: 0.44, // faces sit a touch above centre
+  lumGamma: 1.15,
   pair: true,
 };
 
@@ -185,8 +148,6 @@ interface MorphBuild {
   uPixelRatio: { value: number };
   uViewport: { value: THREE.Vector2 };
   uEmissive?: { value: number };
-  uShadowLift?: { value: number };
-  uShadowKnee?: { value: number };
   tick: (p: { dt: number; time: number }) => void;
   dispose: () => void;
 }
@@ -277,13 +238,8 @@ export function FounderPortraitMorph() {
   const spreadMaxRef = useRef(SPREAD_MAX);
   const pointSizeRef = useRef<number | null>(null);
   const emissiveRef = useRef(DEFAULT_EMISSIVE);
-  const shadowLiftRef = useRef(DEFAULT_SHADOW_LIFT);
-  const shadowKneeRef = useRef(DEFAULT_SHADOW_KNEE);
   const lumThresholdRef = useRef(DEFAULT_LUM_THRESHOLD);
-  const lumGammaRef = useRef(DEFAULT_LUM_GAMMA);
   const satFloorRef = useRef(DEFAULT_SAT_FLOOR);
-  const bgLumCeilRef = useRef(DEFAULT_BG_LUM_CEIL);
-  const bgChromaCeilRef = useRef(DEFAULT_BG_CHROMA_CEIL);
   const cropARef = useRef<Crop>(undefined);
   const cropBRef = useRef<Crop>(undefined);
   /** Dev override for uMorph (null = gate/scroll control). */
@@ -300,10 +256,7 @@ export function FounderPortraitMorph() {
     ...SAMPLE_SPEC_BASE,
     seed,
     lumFloor: lumThresholdRef.current,
-    lumGamma: lumGammaRef.current,
     satFloor: satFloorRef.current,
-    bgLumCeil: bgLumCeilRef.current,
-    bgChromaCeil: bgChromaCeilRef.current,
     crop,
   });
 
@@ -452,9 +405,8 @@ export function FounderPortraitMorph() {
     }
 
     // --- DENSITY: default disc size so ~count soft discs OVERLAP into tone -----
-    // spacing ≈ sqrt(stageArea_devpx / count); disc diameter ≈ 2.4× spacing so
-    // neighbours OVERLAP and the face reads as continuous shaded tone, not dusty
-    // dots (2.4 tuned live on the WebGPU desktop — 1.9 left visible gaps).
+    // spacing ≈ sqrt(stageArea_devpx / count); disc diameter ≈ 1.9× spacing so
+    // neighbours touch and the face reads as continuous shaded tone, not dots.
     const dprNow = Math.min(
       typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1,
       2,
@@ -462,7 +414,7 @@ export function FounderPortraitMorph() {
     const areaDev =
       sr.width * dprNow * sr.height * dprNow * STAGE_FILL * STAGE_FILL;
     const spacingDev = Math.sqrt(Math.max(areaDev / count, 1));
-    const discDev = spacingDev * 2.4;
+    const discDev = spacingDev * 1.9;
     const defPointSize = THREE.MathUtils.clamp(
       (discDev * CAMERA_Z) / (dprNow * 1.05),
       10,
@@ -502,8 +454,6 @@ export function FounderPortraitMorph() {
         depthWrite: true,
         emissive: emissiveRef.current, // faces photographic at rest
         travelTint: [0.16, 2.4, 3.0], // HDR cyan mid-flight → bloom
-        shadowLift: shadowLiftRef.current, // dark hair/beard read on the navy bg
-        shadowKnee: shadowKneeRef.current,
       },
     ) as unknown as MorphBuild;
 
@@ -516,15 +466,10 @@ export function FounderPortraitMorph() {
     built.uPointSize.value = pointSize;
 
     if (preserveState) {
-      // Live rebuild (resize / tier / measure bump): keep the morph AND the
-      // CURRENT entry progress where they are. Do NOT force the entry to "done"
-      // — a measure bump (webfonts landing, intro-gate collapse) commonly fires
-      // before the user has scrolled to the section, and forcing entryRef=1 here
-      // would skip the whole compose beat so the face is already assembled on
-      // arrival. A rebuild AFTER the entry has actually played still carries
-      // entryRef≈1, so it correctly stays assembled (no replay on resize).
-      built.uAssemble.value = entryRef.current;
+      // Live rebuild: keep the morph where the user left it, skip the entry.
+      built.uAssemble.value = 1;
       built.uMorph.value = morphRef.current;
+      entryRef.current = 1;
     } else {
       // Fresh build → replay the entry + reset the smoothers.
       built.uAssemble.value = 0;
@@ -557,10 +502,7 @@ export function FounderPortraitMorph() {
       cropA?: Crop;
       cropB?: Crop;
       lumThreshold?: number;
-      gamma?: number;
       sat?: number;
-      bgLumCeil?: number;
-      bgChromaCeil?: number;
     }) => void
   >(() => {});
   resampleNowRef.current = (opts) => {
@@ -569,10 +511,7 @@ export function FounderPortraitMorph() {
     const ib = imgBRef.current;
     if (!mod || !ia || !ib) return;
     if (opts.lumThreshold != null) lumThresholdRef.current = opts.lumThreshold;
-    if (opts.gamma != null) lumGammaRef.current = opts.gamma;
     if (opts.sat != null) satFloorRef.current = opts.sat;
-    if (opts.bgLumCeil != null) bgLumCeilRef.current = opts.bgLumCeil;
-    if (opts.bgChromaCeil != null) bgChromaCeilRef.current = opts.bgChromaCeil;
     // `crop` sets both; `cropA`/`cropB` override per-founder.
     if (opts.crop !== undefined) {
       cropARef.current = opts.crop;
@@ -776,8 +715,6 @@ export function FounderPortraitMorph() {
           uFade: bb?.uFade.value ?? 0,
           uSpread: bb?.uSpread.value ?? 0,
           emissive: bb?.uEmissive?.value ?? emissiveRef.current,
-          shadowLift: bb?.uShadowLift?.value ?? shadowLiftRef.current,
-          shadowKnee: bb?.uShadowKnee?.value ?? shadowKneeRef.current,
           pointSize: bb?.uPointSize.value ?? 0,
         };
       },
@@ -804,32 +741,11 @@ export function FounderPortraitMorph() {
         if (buildRef.current?.uEmissive) buildRef.current.uEmissive.value = v;
         else buildNowRef.current(true);
       },
-      setShadowLift(v: number) {
-        shadowLiftRef.current = v;
-        if (buildRef.current?.uShadowLift) buildRef.current.uShadowLift.value = v;
-        else buildNowRef.current(true);
-      },
-      setShadowKnee(v: number) {
-        shadowKneeRef.current = v;
-        if (buildRef.current?.uShadowKnee) buildRef.current.uShadowKnee.value = v;
-        else buildNowRef.current(true);
-      },
       setLumThreshold(v: number) {
         resampleNowRef.current({ lumThreshold: v });
       },
-      /** Luminance pick-weight exponent (<1 fills dark hair/beard, >1 favours
-       * bright skin). Resamples both portraits. */
-      setGamma(v: number) {
-        resampleNowRef.current({ gamma: v });
-      },
       setSat(v: number) {
         resampleNowRef.current({ sat: v });
-      },
-      /** Bright-neutral wall drop. `setBg(lumCeil, chromaCeil?)` — lower lumCeil
-       * strips more of the (bright) wall; keep it above skin-highlight luminance
-       * so the face isn't eaten. */
-      setBg(lumCeil: number, chromaCeil?: number) {
-        resampleNowRef.current({ bgLumCeil: lumCeil, bgChromaCeil: chromaCeil });
       },
       setDepth(v: number) {
         depthScaleRef.current = v;
@@ -853,10 +769,7 @@ export function FounderPortraitMorph() {
         cropA?: Crop;
         cropB?: Crop;
         lumThreshold?: number;
-        gamma?: number;
         sat?: number;
-        bgLumCeil?: number;
-        bgChromaCeil?: number;
       }) {
         resampleNowRef.current(opts ?? {});
       },

@@ -798,12 +798,6 @@ export interface TextMorphNodeBuild {
    * the hero text path (which bakes params.EMISSIVE), so the hero graph is
    * byte-identical. */
   uEmissive?: UniformNode<number>;
-  /** Shadow lift — PORTRAIT PATH ONLY. Raises near-black particles (dark hair /
-   * beard) toward a faint cool tone so they read against the dark navy bg
-   * instead of vanishing. uShadowLift = intensity, uShadowKnee = luminance below
-   * which the lift applies (fades to 0 above it). Absent on the hero path. */
-  uShadowLift?: UniformNode<number>;
-  uShadowKnee?: UniformNode<number>;
   tick: (p: { dt: number; time: number }) => void;
   dispose: () => void;
 }
@@ -848,13 +842,6 @@ export interface PortraitMorphOpts {
   emissive?: number;
   /** HDR cyan the discs surge toward mid-flight (>1 → selective bloom). */
   travelTint?: [number, number, number];
-  /** Shadow-lift intensity added to near-black particles so dark hair/beard
-   * read against the dark navy bg (default 0 = off; the founders morph passes
-   * ~0.16). Applied only below `shadowKnee` luminance, tinted faintly cool. */
-  shadowLift?: number;
-  /** Luminance knee below which the shadow lift applies, fading to 0 at/above it
-   * (default 0.28). */
-  shadowKnee?: number;
 }
 
 export function createTextMorphComputeBuild(
@@ -1175,14 +1162,6 @@ export function createTextMorphComputeBuild(
   const uPortraitEmissive = portrait
     ? (uniform(portrait.emissive ?? 1) as UniformNode<number>)
     : null;
-  // Shadow lift (portrait only): raise near-black particles toward a faint cool
-  // tone so dark hair/beard read against the dark navy bg. Live-tunable.
-  const uShadowLift = portrait
-    ? (uniform(portrait.shadowLift ?? 0) as UniformNode<number>)
-    : null;
-  const uShadowKnee = portrait
-    ? (uniform(portrait.shadowKnee ?? 0.28) as UniformNode<number>)
-    : null;
   /** Speed→travel-tint gain: fast (mid-flight) discs surge to the HDR cyan. */
   const PORTRAIT_TRAVEL_K = 0.16;
 
@@ -1206,26 +1185,6 @@ export function createTextMorphComputeBuild(
         ),
       );
       base.assign(base.mul(uPortraitEmissive as unknown as AnyNode));
-      // Shadow lift: raise near-black particles (dark hair/beard) just enough to
-      // read against the dark navy site bg. darkMask = 1 at black → 0 at the knee
-      // luminance. The lift is WARM-NEUTRAL (not cool) so hair/beard stay their
-      // natural brown-dark — a cool tint turned Michele's shaved-head stubble
-      // into unnatural cyan stripes. Mid-flight (high speed → bright travel tint)
-      // lum is high, so the lift self-disables and faces stay photographic.
-      const lum = base.x
-        .mul(0.2126)
-        .add(base.y.mul(0.7152))
-        .add(base.z.mul(0.0722));
-      const darkMask = clamp(
-        float(1.0).sub(lum.div(max(uShadowKnee as unknown as AnyNode, float(1e-3)))),
-        0.0,
-        1.0,
-      );
-      base.addAssign(
-        vec3(1.0, 0.92, 0.82)
-          .mul(uShadowLift as unknown as AnyNode)
-          .mul(darkMask),
-      );
       col = base;
     } else {
       const t = clamp(vSpeedF.mul(0.5), 0.0, 1.0);
@@ -1280,8 +1239,6 @@ export function createTextMorphComputeBuild(
     uPixelRatio,
     uViewport,
     uEmissive: uPortraitEmissive ?? undefined,
-    uShadowLift: uShadowLift ?? undefined,
-    uShadowKnee: uShadowKnee ?? undefined,
     tick,
     dispose() {
       geometry.dispose();
