@@ -97,7 +97,7 @@ const DEFAULT_SAT_FLOOR = 0;
  * out so dark features fill in. 0.7 keeps some brightness bias (facial form)
  * while giving Michele's beard / Alessandro's hair enough particles to read as
  * solid. Live-tunable via __sersanFounderMorph.setGamma. */
-const DEFAULT_LUM_GAMMA = 0.7;
+const DEFAULT_LUM_GAMMA = 0.55;
 /** Bright-neutral wall drop: cells brighter than BG_LUM_CEIL with chroma below
  * BG_CHROMA_CEIL are backdrop (white wall / shirt). Skin highlights carry chroma
  * so they survive; dark hair/beard is below the lum ceil so it survives too. */
@@ -106,10 +106,11 @@ const DEFAULT_BG_CHROMA_CEIL = 0.06;
 /** Modest emissive so faces stay photographic at rest (task: ~1.0–1.3). */
 const DEFAULT_EMISSIVE = 1.1;
 /** Shadow lift: near-black particles (Alessandro's hair, Michele's beard) match
- * the dark navy site bg and vanish; this raises them toward a faint cool tone so
- * the silhouette reads. Knee = luminance below which the lift applies. Picked on
- * the WebGPU desktop; live-tunable via __sersanFounderMorph.setShadowLift/Knee. */
-const DEFAULT_SHADOW_LIFT = 0.16;
+ * the dark navy site bg and vanish; this raises them toward a faint WARM-NEUTRAL
+ * tone (kept subtle — a cool tint made Michele's stubble read as cyan stripes) so
+ * the silhouette reads while staying natural. Knee = luminance below which the
+ * lift applies. Live-tunable via __sersanFounderMorph.setShadowLift/Knee. */
+const DEFAULT_SHADOW_LIFT = 0.12;
 const DEFAULT_SHADOW_KNEE = 0.28;
 /** LEGACY fallback (environmental) sources: PER-FOUNDER centred upper crop to
  * isolate each face — Alessandro and Michele sit differently in their
@@ -451,8 +452,9 @@ export function FounderPortraitMorph() {
     }
 
     // --- DENSITY: default disc size so ~count soft discs OVERLAP into tone -----
-    // spacing ≈ sqrt(stageArea_devpx / count); disc diameter ≈ 1.9× spacing so
-    // neighbours touch and the face reads as continuous shaded tone, not dots.
+    // spacing ≈ sqrt(stageArea_devpx / count); disc diameter ≈ 2.4× spacing so
+    // neighbours OVERLAP and the face reads as continuous shaded tone, not dusty
+    // dots (2.4 tuned live on the WebGPU desktop — 1.9 left visible gaps).
     const dprNow = Math.min(
       typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1,
       2,
@@ -460,7 +462,7 @@ export function FounderPortraitMorph() {
     const areaDev =
       sr.width * dprNow * sr.height * dprNow * STAGE_FILL * STAGE_FILL;
     const spacingDev = Math.sqrt(Math.max(areaDev / count, 1));
-    const discDev = spacingDev * 1.9;
+    const discDev = spacingDev * 2.4;
     const defPointSize = THREE.MathUtils.clamp(
       (discDev * CAMERA_Z) / (dprNow * 1.05),
       10,

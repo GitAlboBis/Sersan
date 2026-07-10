@@ -1206,10 +1206,12 @@ export function createTextMorphComputeBuild(
         ),
       );
       base.assign(base.mul(uPortraitEmissive as unknown as AnyNode));
-      // Shadow lift: raise near-black particles (dark hair/beard) so they read
-      // against the dark navy site bg. darkMask = 1 at black → 0 at the knee
-      // luminance; the lift is tinted faintly cool to stay on-brand. Mid-flight
-      // (high speed → travel-tint bright) lum is high, so the lift self-disables.
+      // Shadow lift: raise near-black particles (dark hair/beard) just enough to
+      // read against the dark navy site bg. darkMask = 1 at black → 0 at the knee
+      // luminance. The lift is WARM-NEUTRAL (not cool) so hair/beard stay their
+      // natural brown-dark — a cool tint turned Michele's shaved-head stubble
+      // into unnatural cyan stripes. Mid-flight (high speed → bright travel tint)
+      // lum is high, so the lift self-disables and faces stay photographic.
       const lum = base.x
         .mul(0.2126)
         .add(base.y.mul(0.7152))
@@ -1220,7 +1222,7 @@ export function createTextMorphComputeBuild(
         1.0,
       );
       base.addAssign(
-        vec3(0.72, 0.9, 1.2)
+        vec3(1.0, 0.92, 0.82)
           .mul(uShadowLift as unknown as AnyNode)
           .mul(darkMask),
       );
