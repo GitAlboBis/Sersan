@@ -80,16 +80,26 @@ const SEED_A = 0x51e7a1;
 const SEED_B = 0x9c3f22;
 
 /** Default background-isolation thresholds (live-tunable). Dark bg → dropped by
- * luminance; a neutral bg can additionally be dropped by raising sat. */
+ * luminance; a neutral bg is dropped by satFloor (chroma = max−min RGB).
+ * The real headshots (public/founders/<slug>-headshot.webp) are tight face
+ * crops on a near-WHITE studio wall — luminance can't drop a bright bg, so
+ * white-bg isolation lives on satFloor: flat white wall + white shirt ≈ 0 chroma
+ * → dropped; skin/hair/beard clear it. 0.06 was picked live on the WebGPU
+ * desktop (setSat sweep 0→0.10): it removes the rectangular bg halo while
+ * preserving Michele's dark beard and Alessandro's features; higher floors don't
+ * improve the face and the few tinted-white collar highlights survive any usable
+ * floor (they read as shoulders dissolving under the copy scrim). */
 const DEFAULT_LUM_THRESHOLD = 0.1;
-const DEFAULT_SAT_FLOOR = 0;
+const DEFAULT_SAT_FLOOR = 0.06;
 /** Modest emissive so faces stay photographic at rest (task: ~1.0–1.3). */
 const DEFAULT_EMISSIVE = 1.1;
-/** Fallback (environmental) sources: PER-FOUNDER centred upper crop to isolate
- * each face — Alessandro and Michele sit differently in their environmental
- * photos, so a single shared crop cut Michele. Indexed by founder; only used
- * when a tight headshot file is absent. Interim defaults (real headshots are
- * coming); live-tunable via resample({crop}) / resample({cropA,cropB}). */
+/** LEGACY fallback (environmental) sources: PER-FOUNDER centred upper crop to
+ * isolate each face — Alessandro and Michele sit differently in their
+ * environmental photos, so a single shared crop cut Michele. Indexed by
+ * founder; only used when a tight headshot file is absent. As of the real
+ * studio headshots landing (<slug>-headshot.webp, sampled full-frame), this is
+ * dead unless a headshot file goes missing; live-tunable via resample({crop}) /
+ * resample({cropA,cropB}). */
 const DEFAULT_FALLBACK_CROPS = [
   { x: 0.3, y: 0.02, w: 0.42, h: 0.58 }, // Alessandro
   { x: 0.34, y: 0.06, w: 0.4, h: 0.56 }, // Michele
