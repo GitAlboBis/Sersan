@@ -93,6 +93,12 @@ const DEFAULT_LUM_THRESHOLD = 0.1;
 const DEFAULT_SAT_FLOOR = 0.06;
 /** Modest emissive so faces stay photographic at rest (task: ~1.0–1.3). */
 const DEFAULT_EMISSIVE = 1.1;
+/** Shadow lift: near-black particles (Alessandro's hair, Michele's beard) match
+ * the dark navy site bg and vanish; this raises them toward a faint cool tone so
+ * the silhouette reads. Knee = luminance below which the lift applies. Picked on
+ * the WebGPU desktop; live-tunable via __sersanFounderMorph.setShadowLift/Knee. */
+const DEFAULT_SHADOW_LIFT = 0.16;
+const DEFAULT_SHADOW_KNEE = 0.28;
 /** LEGACY fallback (environmental) sources: PER-FOUNDER centred upper crop to
  * isolate each face — Alessandro and Michele sit differently in their
  * environmental photos, so a single shared crop cut Michele. Indexed by
@@ -158,6 +164,8 @@ interface MorphBuild {
   uPixelRatio: { value: number };
   uViewport: { value: THREE.Vector2 };
   uEmissive?: { value: number };
+  uShadowLift?: { value: number };
+  uShadowKnee?: { value: number };
   tick: (p: { dt: number; time: number }) => void;
   dispose: () => void;
 }
@@ -248,6 +256,8 @@ export function FounderPortraitMorph() {
   const spreadMaxRef = useRef(SPREAD_MAX);
   const pointSizeRef = useRef<number | null>(null);
   const emissiveRef = useRef(DEFAULT_EMISSIVE);
+  const shadowLiftRef = useRef(DEFAULT_SHADOW_LIFT);
+  const shadowKneeRef = useRef(DEFAULT_SHADOW_KNEE);
   const lumThresholdRef = useRef(DEFAULT_LUM_THRESHOLD);
   const satFloorRef = useRef(DEFAULT_SAT_FLOOR);
   const cropARef = useRef<Crop>(undefined);
@@ -464,6 +474,8 @@ export function FounderPortraitMorph() {
         depthWrite: true,
         emissive: emissiveRef.current, // faces photographic at rest
         travelTint: [0.16, 2.4, 3.0], // HDR cyan mid-flight → bloom
+        shadowLift: shadowLiftRef.current, // dark hair/beard read on the navy bg
+        shadowKnee: shadowKneeRef.current,
       },
     ) as unknown as MorphBuild;
 
@@ -476,10 +488,15 @@ export function FounderPortraitMorph() {
     built.uPointSize.value = pointSize;
 
     if (preserveState) {
-      // Live rebuild: keep the morph where the user left it, skip the entry.
-      built.uAssemble.value = 1;
+      // Live rebuild (resize / tier / measure bump): keep the morph AND the
+      // CURRENT entry progress where they are. Do NOT force the entry to "done"
+      // — a measure bump (webfonts landing, intro-gate collapse) commonly fires
+      // before the user has scrolled to the section, and forcing entryRef=1 here
+      // would skip the whole compose beat so the face is already assembled on
+      // arrival. A rebuild AFTER the entry has actually played still carries
+      // entryRef≈1, so it correctly stays assembled (no replay on resize).
+      built.uAssemble.value = entryRef.current;
       built.uMorph.value = morphRef.current;
-      entryRef.current = 1;
     } else {
       // Fresh build → replay the entry + reset the smoothers.
       built.uAssemble.value = 0;
@@ -725,6 +742,8 @@ export function FounderPortraitMorph() {
           uFade: bb?.uFade.value ?? 0,
           uSpread: bb?.uSpread.value ?? 0,
           emissive: bb?.uEmissive?.value ?? emissiveRef.current,
+          shadowLift: bb?.uShadowLift?.value ?? shadowLiftRef.current,
+          shadowKnee: bb?.uShadowKnee?.value ?? shadowKneeRef.current,
           pointSize: bb?.uPointSize.value ?? 0,
         };
       },
@@ -749,6 +768,16 @@ export function FounderPortraitMorph() {
       setEmissive(v: number) {
         emissiveRef.current = v;
         if (buildRef.current?.uEmissive) buildRef.current.uEmissive.value = v;
+        else buildNowRef.current(true);
+      },
+      setShadowLift(v: number) {
+        shadowLiftRef.current = v;
+        if (buildRef.current?.uShadowLift) buildRef.current.uShadowLift.value = v;
+        else buildNowRef.current(true);
+      },
+      setShadowKnee(v: number) {
+        shadowKneeRef.current = v;
+        if (buildRef.current?.uShadowKnee) buildRef.current.uShadowKnee.value = v;
         else buildNowRef.current(true);
       },
       setLumThreshold(v: number) {

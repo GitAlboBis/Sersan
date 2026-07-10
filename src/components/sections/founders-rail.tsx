@@ -519,12 +519,21 @@ export default function FoundersRail() {
       : null;
 
     // Copy + poster cross-fade FOLLOWS the island's live uMorph (store.morph),
-    // NOT raw scroll. Posters go transparent once the WebGL cloud is live.
+    // NOT raw scroll.
+    //
+    // POSTER HAND-OFF (reveal timing): the static portrait poster stays up until
+    // the section is centered and the gate ENGAGES (`revealed` → true). Only then
+    // do the posters fade out (the 0.45s CSS opacity transition on
+    // [data-founder-media]) as the particle cloud plays its assemble in their
+    // place — so the compose beat is watched head-on instead of finishing
+    // off-screen during the approach. While the cloud is not yet live (WebGL2
+    // fallback / still building) the poster is the whole experience regardless.
+    let revealed = false;
     const applyStage = (m: number) => {
       const bF = smoothstep(0.35, 0.65, m);
       setOpA?.(1 - bF);
       setOpB?.(bF);
-      if (useFoundersMorphStore.getState().active) {
+      if (useFoundersMorphStore.getState().active && revealed) {
         setImgA?.(0);
         setImgB?.(0);
       } else {
@@ -578,6 +587,11 @@ export default function FoundersRail() {
       const s = useFoundersMorphStore.getState();
       s.setGateEngaged(true);
       s.setReveal(1);
+      // Reveal the assemble NOW that the section is centered/pinned (the peek
+      // trigger was removed so it no longer completes off-screen during the
+      // approach); fade the static poster out so the cloud composes in its place.
+      revealed = true;
+      applyStage(s.morph);
       // Entry LOCKS at the entry side FIRST (A from above, B from below) — the
       // entry scroll is NOT the morph gesture. DISARM and zero the accumulator;
       // the entry flick's momentum (inertial wheel/Lenis fling) keeps resetting
@@ -776,8 +790,9 @@ export default function FoundersRail() {
         }
         if (now - engageTime > G_MAX_ENGAGE_MS) release(lastDir);
       } else {
-        // Start forming Alessandro as soon as the section peeks in.
-        if (top < ihNow && rect.bottom > 0) live.setReveal(1);
+        // NOTE: reveal (the entry assemble) is intentionally NOT fired on peek
+        // anymore — engage() fires it so the compose beat plays while the
+        // section is centered/pinned, not off-screen during the approach.
         if (
           reBlocked &&
           now > cooldownUntil &&
