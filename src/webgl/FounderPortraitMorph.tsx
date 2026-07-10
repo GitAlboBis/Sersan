@@ -79,10 +79,15 @@ const Z_RELIEF_MAX_FRAC = 0.15;
 const SEED_A = 0x51e7a1;
 const SEED_B = 0x9c3f22;
 
-/** Default background-isolation thresholds (live-tunable). Dark bg → dropped by
- * luminance; a neutral bg can additionally be dropped by raising sat. */
+/** Default background-isolation thresholds (live-tunable). The real headshots
+ * are on a near-WHITE studio wall; luminance can't drop a bright bg and satFloor
+ * would also cull dark hair/beard, so the wall is removed by BG_LUM_CEIL —
+ * drop only BRIGHT + near-neutral cells (wall / white shirt), keeping the dark
+ * neutral hair/beard, so the face reads clean with no rectangular halo. */
 const DEFAULT_LUM_THRESHOLD = 0.1;
 const DEFAULT_SAT_FLOOR = 0;
+const DEFAULT_BG_LUM_CEIL = 0.62;
+const DEFAULT_BG_CHROMA_CEIL = 0.06;
 /** Modest emissive so faces stay photographic at rest (task: ~1.0–1.3). */
 const DEFAULT_EMISSIVE = 1.1;
 /** Fallback (environmental) sources: PER-FOUNDER centred upper crop to isolate
@@ -98,7 +103,7 @@ const DEFAULT_FALLBACK_CROPS = [
 /** Shape of the sampler spec minus the per-call/tunable fields. */
 const SAMPLE_SPEC_BASE: Omit<
   ImageSampleSpec,
-  "seed" | "lumFloor" | "satFloor" | "crop"
+  "seed" | "lumFloor" | "satFloor" | "bgLumCeil" | "bgChromaCeil" | "crop"
 > = {
   gridW: GRID_W,
   gridH: GRID_H,
@@ -240,6 +245,8 @@ export function FounderPortraitMorph() {
   const emissiveRef = useRef(DEFAULT_EMISSIVE);
   const lumThresholdRef = useRef(DEFAULT_LUM_THRESHOLD);
   const satFloorRef = useRef(DEFAULT_SAT_FLOOR);
+  const bgLumCeilRef = useRef(DEFAULT_BG_LUM_CEIL);
+  const bgChromaCeilRef = useRef(DEFAULT_BG_CHROMA_CEIL);
   const cropARef = useRef<Crop>(undefined);
   const cropBRef = useRef<Crop>(undefined);
   /** Dev override for uMorph (null = gate/scroll control). */
@@ -257,6 +264,8 @@ export function FounderPortraitMorph() {
     seed,
     lumFloor: lumThresholdRef.current,
     satFloor: satFloorRef.current,
+    bgLumCeil: bgLumCeilRef.current,
+    bgChromaCeil: bgChromaCeilRef.current,
     crop,
   });
 
@@ -503,6 +512,8 @@ export function FounderPortraitMorph() {
       cropB?: Crop;
       lumThreshold?: number;
       sat?: number;
+      bgLumCeil?: number;
+      bgChromaCeil?: number;
     }) => void
   >(() => {});
   resampleNowRef.current = (opts) => {
@@ -512,6 +523,8 @@ export function FounderPortraitMorph() {
     if (!mod || !ia || !ib) return;
     if (opts.lumThreshold != null) lumThresholdRef.current = opts.lumThreshold;
     if (opts.sat != null) satFloorRef.current = opts.sat;
+    if (opts.bgLumCeil != null) bgLumCeilRef.current = opts.bgLumCeil;
+    if (opts.bgChromaCeil != null) bgChromaCeilRef.current = opts.bgChromaCeil;
     // `crop` sets both; `cropA`/`cropB` override per-founder.
     if (opts.crop !== undefined) {
       cropARef.current = opts.crop;
@@ -747,6 +760,11 @@ export function FounderPortraitMorph() {
       setSat(v: number) {
         resampleNowRef.current({ sat: v });
       },
+      /** Bright-neutral wall drop. setBg(lumCeil, chromaCeil?) — lower lumCeil
+       * strips more of the (bright) wall; keep it above skin-highlight luminance. */
+      setBg(lumCeil: number, chromaCeil?: number) {
+        resampleNowRef.current({ bgLumCeil: lumCeil, bgChromaCeil: chromaCeil });
+      },
       setDepth(v: number) {
         depthScaleRef.current = v;
         buildNowRef.current(true);
@@ -770,6 +788,8 @@ export function FounderPortraitMorph() {
         cropB?: Crop;
         lumThreshold?: number;
         sat?: number;
+        bgLumCeil?: number;
+        bgChromaCeil?: number;
       }) {
         resampleNowRef.current(opts ?? {});
       },

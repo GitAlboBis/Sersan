@@ -567,7 +567,7 @@ export default function FoundersRail() {
         posterShown = true;
         applyStage(useFoundersMorphStore.getState().morph);
       }
-    }, 1400);
+    }, 4000);
 
     // --- GATE state machine --------------------------------------------------
     // Deterministic + momentum-proof: gestures are gated on STAGE + a signed
