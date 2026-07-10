@@ -518,13 +518,19 @@ export default function FoundersRail() {
       ? (gsap.quickSetter(stageImgBRef.current, "opacity") as (v: number) => void)
       : null;
 
-    // Copy + poster cross-fade FOLLOWS the island's live uMorph (store.morph),
-    // NOT raw scroll. Posters go transparent once the WebGL cloud is live.
+    // Copy cross-fade FOLLOWS the island's live uMorph (store.morph), NOT scroll.
+    //
+    // Posters: the static portrait is ONLY a fallback (WebGL2 session / very slow
+    // build). On a real WebGPU backend we want to go STRAIGHT to the particles
+    // with no photo→particles flash, so the poster stays hidden unless the cloud
+    // has NOT gone live by the grace deadline below (`posterShown`). Once it's a
+    // confirmed fallback, the poster cross-fades on morph like before.
+    let posterShown = false;
     const applyStage = (m: number) => {
       const bF = smoothstep(0.35, 0.65, m);
       setOpA?.(1 - bF);
       setOpB?.(bF);
-      if (useFoundersMorphStore.getState().active) {
+      if (useFoundersMorphStore.getState().active || !posterShown) {
         setImgA?.(0);
         setImgB?.(0);
       } else {
@@ -550,6 +556,18 @@ export default function FoundersRail() {
     const unsub = useFoundersMorphStore.subscribe((s, prev) => {
       if (s.morph !== prev.morph || s.active !== prev.active) applyStage(s.morph);
     });
+
+    // Poster fallback grace: reveal the static poster ONLY if the WebGPU cloud
+    // has not gone live shortly after mount (a WebGL2-fallback session, where
+    // the island returns null and `active` never flips true). On a real WebGPU
+    // backend `active` becomes true first, so the poster never shows and there is
+    // no photo→particles flash — the section goes straight to the particles.
+    const posterGrace = setTimeout(() => {
+      if (!useFoundersMorphStore.getState().active) {
+        posterShown = true;
+        applyStage(useFoundersMorphStore.getState().morph);
+      }
+    }, 1400);
 
     // --- GATE state machine --------------------------------------------------
     // Deterministic + momentum-proof: gestures are gated on STAGE + a signed
@@ -863,6 +881,7 @@ export default function FoundersRail() {
       fontsCancelled = true;
       cancelAnimationFrame(raf);
       clearTimeout(idleT);
+      clearTimeout(posterGrace);
       window.removeEventListener("wheel", onWheel, { capture: true });
       window.removeEventListener("touchstart", onTouchStart);
       window.removeEventListener("touchmove", onTouchMove, { capture: true });
@@ -1177,6 +1196,7 @@ export default function FoundersRail() {
                     }`}
                     data-founder-media
                     draggable={false}
+                    style={{ opacity: 0 }}
                     className="absolute inset-0 h-full w-full rounded-lg object-cover"
                   />
                   {/* eslint-disable-next-line @next/next/no-img-element */}
