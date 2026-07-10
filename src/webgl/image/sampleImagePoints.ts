@@ -55,9 +55,22 @@ export interface ImageSampleSpec {
    * Saturation (chroma = max−min RGB) floor for BACKGROUND ISOLATION. Cells
    * with chroma below this are treated as neutral background and dropped, so a
    * headshot's dark/neutral surround never seeds particles. Skin tones clear a
-   * small floor easily; 0 (default) disables the test. Live-tunable.
+   * small floor easily; 0 (default) disables the test. NOTE: this also culls
+   * DARK neutral pixels (hair, beard) — prefer `bgLumCeil` for a white-wall
+   * headshot so those are kept. Live-tunable.
    */
   satFloor?: number;
+  /**
+   * Bright-neutral BACKGROUND drop: cells BRIGHTER than this AND with chroma
+   * below `bgChromaCeil` are dropped as backdrop. A near-white studio wall (and
+   * a white shirt) is bright+neutral; dark hair/beard is dark+neutral — so this
+   * removes the wall while KEEPING the hair/beard (which satFloor/lumFloor would
+   * wrongly cull). This is what lets the face sample DENSE and complete instead
+   * of a thin, holey cloud. Undefined disables. Live-tunable.
+   */
+  bgLumCeil?: number;
+  /** Chroma ceiling for the bright-neutral drop (default 0.06). */
+  bgChromaCeil?: number;
   /**
    * Optional NORMALIZED focus crop (0..1 of the source), applied BEFORE the
    * cover-crop-to-grid. Lets a non-headshot / environmental source be cropped to
@@ -221,13 +234,21 @@ export function sampleImagePoints(
       const bn = data[idx + 2] / 255;
       const lum = 0.299 * rn + 0.587 * gn + 0.114 * bn;
       if (lum < spec.lumFloor) continue;
-      // Background isolation: drop neutral (low-chroma) pixels — a headshot's
-      // dark/neutral surround, or a bright studio bg, never seeds the cloud.
-      if (spec.satFloor && spec.satFloor > 0) {
-        const mx = Math.max(rn, gn, bn);
-        const mn = Math.min(rn, gn, bn);
-        if (mx - mn < spec.satFloor) continue;
-      }
+      const chroma = Math.max(rn, gn, bn) - Math.min(rn, gn, bn);
+      // Background isolation — two complementary neutral-drop tests:
+      //  - satFloor drops ALL near-neutral pixels (also culls dark hair/beard,
+      //    so the founders morph leaves it at 0).
+      //  - bgLumCeil drops only BRIGHT near-neutral pixels: a near-white studio
+      //    wall / white shirt is bright+neutral, dark hair/beard is dark+neutral
+      //    — so this strips the backdrop while KEEPING the hair and beard, and
+      //    the face samples dense + complete instead of thin and holey.
+      if (spec.satFloor && spec.satFloor > 0 && chroma < spec.satFloor) continue;
+      if (
+        spec.bgLumCeil != null &&
+        lum > spec.bgLumCeil &&
+        chroma < (spec.bgChromaCeil ?? 0.06)
+      )
+        continue;
 
       const nx = (x / gridW - faceCx) * ax;
       const ny = y / gridH - faceCy;

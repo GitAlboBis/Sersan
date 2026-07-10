@@ -62,13 +62,16 @@ import { founders } from "@/data/founders";
 import type { ImagePoints, ImageSampleSpec } from "./image/sampleImagePoints";
 
 const COUNT_BY_TIER: Record<"full" | "lite", number> = {
-  full: 26000,
-  lite: 12000,
+  full: 60000,
+  lite: 24000,
 };
 
 // --- Sampler grid + look constants -----------------------------------------
-const GRID_W = 300;
-const GRID_H = 420;
+// Higher grid resolution = finer sampled detail; paired with the higher COUNT
+// above and the bright-neutral bg drop, the face reads dense + defined rather
+// than a loose dusty cloud.
+const GRID_W = 420;
+const GRID_H = 588;
 const STRIDE = 2;
 /** Portrait fill fraction of the stage rect (leaves a small margin). */
 const STAGE_FILL = 0.92;
@@ -79,18 +82,27 @@ const Z_RELIEF_MAX_FRAC = 0.15;
 const SEED_A = 0x51e7a1;
 const SEED_B = 0x9c3f22;
 
-/** Default background-isolation thresholds (live-tunable). Dark bg → dropped by
- * luminance; a neutral bg is dropped by satFloor (chroma = max−min RGB).
- * The real headshots (public/founders/<slug>-headshot.webp) are tight face
- * crops on a near-WHITE studio wall — luminance can't drop a bright bg, so
- * white-bg isolation lives on satFloor: flat white wall + white shirt ≈ 0 chroma
- * → dropped; skin/hair/beard clear it. 0.06 was picked live on the WebGPU
- * desktop (setSat sweep 0→0.10): it removes the rectangular bg halo while
- * preserving Michele's dark beard and Alessandro's features; higher floors don't
- * improve the face and the few tinted-white collar highlights survive any usable
- * floor (they read as shoulders dissolving under the copy scrim). */
-const DEFAULT_LUM_THRESHOLD = 0.1;
-const DEFAULT_SAT_FLOOR = 0.06;
+/** Default background-isolation thresholds (live-tunable). The real headshots
+ * (public/founders/<slug>-headshot.webp) are tight face crops on a near-WHITE
+ * studio wall. satFloor (drop ALL low-chroma) was wrong here: it culled the dark
+ * hair/beard too, leaving a thin holey face. So satFloor is now 0 and the wall
+ * is removed by BG_LUM_CEIL instead — drop only BRIGHT + near-neutral cells
+ * (white wall / white shirt), which KEEPS the dark neutral hair/beard so the
+ * face samples dense + complete. lumFloor still drops any truly dark surround.
+ * All live-tunable via __sersanFounderMorph.setSat / setBg. */
+const DEFAULT_LUM_THRESHOLD = 0.05;
+const DEFAULT_SAT_FLOOR = 0;
+/** Luminance pick-weight exponent. >1 concentrates particles on the BRIGHT
+ * pixels (starves dark hair/beard → they sample sparse); <1 evens the density
+ * out so dark features fill in. 0.7 keeps some brightness bias (facial form)
+ * while giving Michele's beard / Alessandro's hair enough particles to read as
+ * solid. Live-tunable via __sersanFounderMorph.setGamma. */
+const DEFAULT_LUM_GAMMA = 0.7;
+/** Bright-neutral wall drop: cells brighter than BG_LUM_CEIL with chroma below
+ * BG_CHROMA_CEIL are backdrop (white wall / shirt). Skin highlights carry chroma
+ * so they survive; dark hair/beard is below the lum ceil so it survives too. */
+const DEFAULT_BG_LUM_CEIL = 0.62;
+const DEFAULT_BG_CHROMA_CEIL = 0.06;
 /** Modest emissive so faces stay photographic at rest (task: ~1.0–1.3). */
 const DEFAULT_EMISSIVE = 1.1;
 /** Shadow lift: near-black particles (Alessandro's hair, Michele's beard) match
@@ -114,17 +126,25 @@ const DEFAULT_FALLBACK_CROPS = [
 /** Shape of the sampler spec minus the per-call/tunable fields. */
 const SAMPLE_SPEC_BASE: Omit<
   ImageSampleSpec,
-  "seed" | "lumFloor" | "satFloor" | "crop"
+  | "seed"
+  | "lumFloor"
+  | "satFloor"
+  | "bgLumCeil"
+  | "bgChromaCeil"
+  | "lumGamma"
+  | "crop"
 > = {
   gridW: GRID_W,
   gridH: GRID_H,
   stride: STRIDE,
   depth: 90, // grid-px of luminance relief front-to-back (capped in toWorld)
   centerZBias: 40, // extra forward bulge at the face centre
-  radialFalloff: 1.7, // tighter to the centred face
-  radius: 0.72,
+  // Gentler + wider radial falloff so the WHOLE head (hair, jaw, ears) is
+  // covered evenly, not just the centre — the bright-neutral bg drop now handles
+  // the wall, so the falloff no longer has to double as a corner-culler.
+  radialFalloff: 1.1,
+  radius: 0.92,
   faceBias: 0.44, // faces sit a touch above centre
-  lumGamma: 1.15,
   pair: true,
 };
 
@@ -259,7 +279,10 @@ export function FounderPortraitMorph() {
   const shadowLiftRef = useRef(DEFAULT_SHADOW_LIFT);
   const shadowKneeRef = useRef(DEFAULT_SHADOW_KNEE);
   const lumThresholdRef = useRef(DEFAULT_LUM_THRESHOLD);
+  const lumGammaRef = useRef(DEFAULT_LUM_GAMMA);
   const satFloorRef = useRef(DEFAULT_SAT_FLOOR);
+  const bgLumCeilRef = useRef(DEFAULT_BG_LUM_CEIL);
+  const bgChromaCeilRef = useRef(DEFAULT_BG_CHROMA_CEIL);
   const cropARef = useRef<Crop>(undefined);
   const cropBRef = useRef<Crop>(undefined);
   /** Dev override for uMorph (null = gate/scroll control). */
@@ -276,7 +299,10 @@ export function FounderPortraitMorph() {
     ...SAMPLE_SPEC_BASE,
     seed,
     lumFloor: lumThresholdRef.current,
+    lumGamma: lumGammaRef.current,
     satFloor: satFloorRef.current,
+    bgLumCeil: bgLumCeilRef.current,
+    bgChromaCeil: bgChromaCeilRef.current,
     crop,
   });
 
@@ -529,7 +555,10 @@ export function FounderPortraitMorph() {
       cropA?: Crop;
       cropB?: Crop;
       lumThreshold?: number;
+      gamma?: number;
       sat?: number;
+      bgLumCeil?: number;
+      bgChromaCeil?: number;
     }) => void
   >(() => {});
   resampleNowRef.current = (opts) => {
@@ -538,7 +567,10 @@ export function FounderPortraitMorph() {
     const ib = imgBRef.current;
     if (!mod || !ia || !ib) return;
     if (opts.lumThreshold != null) lumThresholdRef.current = opts.lumThreshold;
+    if (opts.gamma != null) lumGammaRef.current = opts.gamma;
     if (opts.sat != null) satFloorRef.current = opts.sat;
+    if (opts.bgLumCeil != null) bgLumCeilRef.current = opts.bgLumCeil;
+    if (opts.bgChromaCeil != null) bgChromaCeilRef.current = opts.bgChromaCeil;
     // `crop` sets both; `cropA`/`cropB` override per-founder.
     if (opts.crop !== undefined) {
       cropARef.current = opts.crop;
@@ -783,8 +815,19 @@ export function FounderPortraitMorph() {
       setLumThreshold(v: number) {
         resampleNowRef.current({ lumThreshold: v });
       },
+      /** Luminance pick-weight exponent (<1 fills dark hair/beard, >1 favours
+       * bright skin). Resamples both portraits. */
+      setGamma(v: number) {
+        resampleNowRef.current({ gamma: v });
+      },
       setSat(v: number) {
         resampleNowRef.current({ sat: v });
+      },
+      /** Bright-neutral wall drop. `setBg(lumCeil, chromaCeil?)` — lower lumCeil
+       * strips more of the (bright) wall; keep it above skin-highlight luminance
+       * so the face isn't eaten. */
+      setBg(lumCeil: number, chromaCeil?: number) {
+        resampleNowRef.current({ bgLumCeil: lumCeil, bgChromaCeil: chromaCeil });
       },
       setDepth(v: number) {
         depthScaleRef.current = v;
@@ -808,7 +851,10 @@ export function FounderPortraitMorph() {
         cropA?: Crop;
         cropB?: Crop;
         lumThreshold?: number;
+        gamma?: number;
         sat?: number;
+        bgLumCeil?: number;
+        bgChromaCeil?: number;
       }) {
         resampleNowRef.current(opts ?? {});
       },
