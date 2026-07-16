@@ -163,15 +163,38 @@ export default function RootLayout({
     ],
   };
 
+  // Pre-hydration language stamp — the dark-mode-toggle trick, applied to
+  // EN/IT. Reading cookies() here would flip every statically prerendered
+  // route to dynamic rendering, so the shell stays static English and this
+  // blocking inline script (SSR'd into <head>, runs before first paint)
+  // resolves the visitor's persisted language and stamps <html lang> +
+  // data-lang. It cannot retranslate the static English text — that swap is
+  // LanguageProvider's pre-paint fade-through at hydration — but it makes the
+  // document's declared language correct from the very first frame for
+  // returning Italian visitors, and hands the provider a pre-paint source of
+  // truth (detectInitial reads data-lang first). Storage priority mirrors
+  // detectInitial: localStorage, then cookie. Everything is try-wrapped:
+  // storage access can throw under hardened privacy modes, and a 404 page in
+  // the wrong language beats a scripting error before paint.
+  const langStamp = `(function(){try{var l=null;try{var s=localStorage.getItem("sersan_language");if(s==="en"||s==="it")l=s}catch(e){}if(!l){var m=document.cookie.match(/(?:^|;\\s*)sersan_language=(en|it)/);if(m)l=m[1]}if(l&&l!=="en"){var d=document.documentElement;d.lang=l;d.setAttribute("data-lang",l)}}catch(e){}})();`;
+
   return (
     /* Static lang="en" keeps this a non-dynamic Server Component (so the page
-       stays statically prerendered). LanguageProvider updates document.lang
-       client-side when the user switches to Italian. */
+       stays statically prerendered). The inline stamp above corrects lang +
+       data-lang pre-paint for returning Italian visitors, and LanguageProvider
+       keeps document.lang in sync on every later switch.
+       suppressHydrationWarning is scoped to THIS element only (one level
+       deep): the stamp legitimately mutates <html> attributes before React
+       hydrates, and the mismatch is by design, not a bug to surface. */
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${fraunces.variable} ${switzer.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <head>
+        {/* Must run BEFORE first paint — a plain blocking inline script, the
+            only reliable pre-paint hook a static shell has. */}
+        <script dangerouslySetInnerHTML={{ __html: langStamp }} />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }}
@@ -215,8 +238,18 @@ export default function RootLayout({
             <AudioTriggers />
             <Navbar />
             {/* Content wrapper above the canvas (z-1). The canvas adds
-                light behind this layer; text stays DOM-crisp. */}
-            <div className="relative z-[1] flex flex-1 flex-col">
+                light behind this layer; text stays DOM-crisp.
+                data-lang-fade: LanguageProvider's swap beat dims THIS wrapper
+                (opacity only — no transform, so fixed descendants keep the
+                viewport as their containing block) while the EN↔IT copy
+                swaps, then fades it back up. The navbar sits outside on
+                purpose: its one translated label isn't worth dimming the
+                persistent chrome, and the toggle itself must stay crisp
+                mid-beat. */}
+            <div
+              data-lang-fade
+              className="relative z-[1] flex flex-1 flex-col"
+            >
               <main id="main" className="flex-1">
                 {children}
               </main>

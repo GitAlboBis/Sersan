@@ -50,9 +50,10 @@
  *  - delta clamp for tab-refocus stalls;
  *  - ANCHORED orientation: NO drag-to-rotate and NO idle spin — the mark sits
  *    still at its front-facing rest and only eases a few degrees toward the
- *    cursor (a soft mouse-parallax tilt, damped toward rest). The hero-drag
- *    layer still feeds heroDragStore.hovering (the repulsion gate); its drag
- *    velocity is ignored, so click-and-hold never moves the mark.
+ *    cursor (a soft mouse-parallax tilt, damped toward rest). The hero-hover
+ *    layer feeds heroHoverStore.hovering (the repulsion gate); the old drag
+ *    velocity channel was retired outright, so click-and-hold never moves
+ *    the mark.
  *
  * FALLBACKS: tier `off` / reduced-motion never mounts this (Scene gates home →
  * HeroLogo to full/lite). Every degradation lands on the static build or, at
@@ -86,7 +87,7 @@ import { webgpuEnabled } from "./renderer/createRenderer";
 import { useScrollStore } from "./store/scrollStore";
 import { useTierStore, type SceneTier } from "./store/tierStore";
 import { useFxStore } from "./store/fxStore";
-import { useHeroDragStore } from "./store/heroDragStore";
+import { useHeroHoverStore } from "./store/heroHoverStore";
 import { usePointerStore } from "./store/pointerStore";
 import type { SectionAnchors } from "./hooks/useSectionAnchors";
 
@@ -587,9 +588,9 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
    * the ray misses the silhouette. MOUSE_OFF when not hovering.
    */
   function projectCursorToModel(spin: THREE.Group) {
-    const drag = useHeroDragStore.getState();
+    const hover = useHeroHoverStore.getState();
     const ptr = usePointerStore.getState();
-    if (!(drag.hovering && ptr.active)) {
+    if (!(hover.hovering && ptr.active)) {
       modelMouse.copy(MOUSE_OFF);
       return;
     }
@@ -638,7 +639,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
 
     const fx = useFxStore.getState();
     const { progress } = useScrollStore.getState();
-    const drag = useHeroDragStore.getState();
+    const hover = useHeroHoverStore.getState();
     const sh = anchors.scrollHeight;
     const ih = size.height;
     const scrollPx = progress * Math.max(sh - ih, 0);
@@ -735,7 +736,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
 
       // Eased hover: target 1 while the hero is hovered (and a pointer is
       // active), else 0. Damping it gives the soft settle on cursor-leave.
-      const hoverTarget = drag.hovering && ptr.active ? 1 : 0;
+      const hoverTarget = hover.hovering && ptr.active ? 1 : 0;
       hoverRef.current = THREE.MathUtils.damp(
         hoverRef.current,
         hoverTarget,

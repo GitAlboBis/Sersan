@@ -1,13 +1,37 @@
 "use client";
 
 /**
- * CompliancePipeline — the compliance conduit, rebuilt as a single beam of
- * light (M4). Input → PII redaction → router → guardrail → audit log →
- * output, each stage labelled with the regulation it satisfies (copy
- * unchanged, EN/IT). A glowing streak runs the gradient conduit on one
- * deterministic GSAP timeline; each station ignites with a pulse as the
- * light crosses it. ScrollTrigger plays/pauses the loop with visibility.
- * Reduced-motion: solid conduit, stations softly lit, no movement.
+ * CompliancePipeline — the compliance conduit as a choreographed moment that
+ * stands on its own on EVERY tier (M4 → M5). Input → PII redaction → router
+ * → guardrail → audit log → output, each stage labelled with the regulation
+ * it satisfies (copy unchanged, EN/IT).
+ *
+ * Three beats, one GSAP master timeline per breakpoint variant:
+ *
+ *   1. ASSEMBLY (once, on scroll-enter): the conduit DRAWS itself start→end
+ *      while stations rise 12px into place in pipeline order (top-to-bottom
+ *      on mobile), each regulation tag trailing its station by a beat and a
+ *      power-on blink as each lands — the pipeline is built in front of you
+ *      instead of arriving mid-loop.
+ *   2. THE LIGHT (idle loop, ~8s/pass): a glowing streak runs the conduit in
+ *      per-segment tweens — easing out of one station, into the next, with a
+ *      short hold + ignition pulse at each checkpoint. The light "checks in"
+ *      at every control instead of sliding past at constant velocity: the
+ *      narrative is controls, not a screensaver.
+ *   3. HOVER/FOCUS IGNITE (every tier): each stage hotspot now lights the
+ *      SVG itself — halo bloom on the station, regulation tag lifted to full
+ *      ink — so the interaction reads alive even where the WebGPU echo never
+ *      mounts. When the travelling light next crosses a hovered stage the
+ *      streak swells briefly: the light acknowledges the checkpoint being
+ *      inspected. Keyboard focus gets the identical treatment.
+ *
+ * ScrollTrigger plays/pauses the master with visibility (single-RAF: the
+ * site's scroll spine, no bespoke rAF or observers); while paused off-screen
+ * the streak also dims so a frozen full-bright light at the viewport edge
+ * never reads as a hang. Reduced-motion: assembled immediately, no
+ * travelling light (the static gradient conduit brightens to stand in for
+ * it, stations softly lit) — hover ignite stays, it is state feedback, not
+ * motion.
  */
 
 import { useRef } from "react";
@@ -68,19 +92,64 @@ const M_STAGE_Y = STAGE_KEYS.map((_, i) => {
   return margin + (span * i) / (STAGE_KEYS.length - 1);
 });
 
-/** Seconds for one full pass of the light. */
-const TOTAL_DURATION = 8;
 const STAGE_FRACTIONS = STAGE_KEYS.map((_, i) => i / (STAGE_KEYS.length - 1));
+
+/**
+ * Loop rhythm. Composed period: HOLD + 5×(SEG + HOLD) + EXIT ≈ 7.1s, plus
+ * the repeat delay ≈ 7.9s per pass — inside the slow-idle 6–8s band the old
+ * single 8s linear tween occupied, but now the light eases across each
+ * segment and holds at every station while its pulse fires.
+ */
+const SEG_DURATION = 1.1;
+const STATION_HOLD = 0.16;
+const EXIT_DURATION = 0.6;
+const LOOP_REPEAT_DELAY = 0.8;
+
+/**
+ * Assembly rhythm: the conduit draw rate equals the station stagger, so the
+ * drawn tip reaches each station exactly as it rises — the segment between
+ * two stations draws in the gap between their ignitions. ASSEMBLY_END sits
+ * just past the last blink's decay (5×0.12 + 0.22 + 0.5 = 1.32).
+ */
+const STAGE_STAGGER = 0.12;
+const ASSEMBLY_END = 1.35;
+
+/**
+ * Regulation tags rest slightly muted and lift to FULL ink on hover/focus.
+ * The lift has to be an opacity move, not a fill move: the fills are
+ * var()-based hsl() strings GSAP cannot interpolate — so the tag is authored
+ * at fill ink with a rest opacity that reads as the old ink-mute tone.
+ */
+const TAG_REST_OPACITY = 0.72;
+
+/**
+ * DOM-side hover/focus bridge between a hotspot overlay and its matching
+ * SVG diagram (one link per breakpoint variant — overlay and diagram are
+ * mounted in visibility-matched pairs, so each pair gets a private channel).
+ * A plain mutable object, deliberately NOT React state and NOT the zustand
+ * store: hover must never re-render the SVG, and the loop's trail callbacks
+ * read `hovered` per pass without any subscriber churn. The diagram
+ * registers `ignite` from inside its GSAP setup; the overlay calls it.
+ */
+interface StageLink {
+  hovered: number;
+  ignite: ((idx: number, hot: boolean) => void) | null;
+}
 
 interface DiagramProps {
   mobile: boolean;
   stageLabel: (k: StageKey) => string;
+  link: StageLink;
 }
 
-function PipelineDiagram({ mobile, stageLabel }: DiagramProps) {
+function PipelineDiagram({ mobile, stageLabel, link }: DiagramProps) {
   const rootRef = useRef<SVGSVGElement>(null);
+  const conduitRef = useRef<SVGLineElement>(null);
   const streakRef = useRef<SVGLineElement>(null);
+  const stageRefs = useRef<(SVGGElement | null)[]>([]);
   const pulseRefs = useRef<(SVGRectElement | null)[]>([]);
+  const haloRefs = useRef<(SVGRectElement | null)[]>([]);
+  const tagRefs = useRef<(SVGTextElement | null)[]>([]);
 
   const idSuffix = mobile ? "m" : "d";
   const conduitStart = mobile ? M_STAGE_Y[0] : D_STAGE_X[0];
@@ -93,53 +162,277 @@ function PipelineDiagram({ mobile, stageLabel }: DiagramProps) {
   useGSAP(
     () => {
       const streak = streakRef.current;
-      if (!streak) return;
+      const conduit = conduitRef.current;
+      if (!streak || !conduit) return;
+
+      const stages = stageRefs.current.filter(Boolean);
+      const tags = tagRefs.current.filter(Boolean);
+      const halos = haloRefs.current.filter(Boolean);
 
       const reduce = window.matchMedia(
         "(prefers-reduced-motion: reduce)",
       ).matches;
+
+      // Gate for the hover restyle: a hover tween on a tag mid-assembly
+      // would overwrite (kill) its entrance tween and strand the tag at its
+      // pre-rise y — so ignite touches nothing until assembly has settled.
+      // Reduced-motion is "assembled" from the first frame.
+      let assembled = reduce;
+
+      // HOVER/FOCUS IGNITE — registered on BOTH paths (reduced-motion
+      // included: brightening is state feedback, not motion). The halo rect
+      // blooms via opacity; the regulation tag lifts from rest to full ink.
+      // These tweens own halo opacity and tag opacity exclusively — the
+      // timelines never touch either — so state feedback and choreography
+      // can never fight over a property.
+      link.ignite = (idx, hot) => {
+        if (!assembled) return;
+        const halo = haloRefs.current[idx];
+        const tag = tagRefs.current[idx];
+        if (halo) {
+          gsap.to(halo, {
+            opacity: hot ? 0.55 : 0,
+            duration: 0.2,
+            ease: hot ? "power2.out" : "power2.in",
+            overwrite: "auto",
+          });
+        }
+        if (tag) {
+          gsap.to(tag, {
+            opacity: hot ? 1 : TAG_REST_OPACITY,
+            duration: 0.2,
+            ease: "power2.out",
+            overwrite: "auto",
+          });
+        }
+      };
+
       if (reduce) {
-        // Static, calm: no streak, every station softly acknowledged.
+        // Static, calm, already assembled: no draw-in, no travelling light.
+        // The gradient conduit brightens to stand in for the light, and
+        // every station is softly acknowledged. Hover ignite (above) stays.
         gsap.set(streak, { opacity: 0 });
+        gsap.set(conduit, { opacity: 0.5 });
         pulseRefs.current.forEach((p) => p && gsap.set(p, { opacity: 0.3 }));
-        return;
+        return () => {
+          link.ignite = null;
+        };
       }
 
-      // The streak is a short dash sliding along the conduit. Offset starts
-      // with the dash entirely before the line and exits past the far end.
-      gsap.set(streak, {
-        strokeDasharray: `${streakLen} ${pathLen + streakLen * 2}`,
-        strokeDashoffset: streakLen,
+      // One diagram variant is always display:none (desktop/mobile pair).
+      // Building its timeline would spend tweens on a zero-rect
+      // ScrollTrigger, and a breakpoint flip would strand half-played inline
+      // styles on the variant taking over. gsap.matchMedia scopes each build
+      // to its own range and auto-reverts on flip, so the incoming variant
+      // assembles fresh from its authored state. 639.98px avoids a 1px
+      // both-match band against Tailwind's 640px `sm`.
+      const mm = gsap.matchMedia();
+      mm.add(mobile ? "(max-width: 639.98px)" : "(min-width: 640px)", () => {
+        // Re-arm the hover gate per build: after a breakpoint flip the new
+        // variant must re-assemble before hover may restyle its tags.
+        assembled = false;
+        // The onToggle dim below must not touch the streak before the loop
+        // exists — during assembly the streak is intentionally invisible.
+        let loopStarted = false;
+
+        // -- Initial states. The authored JSX is the fully-assembled no-JS /
+        // pre-hydration poster; motion states are applied only here, at
+        // build time, on the tier that will actually animate. Transforms,
+        // opacity, and stroke only — nothing here can shift layout.
+        gsap.set(stages, { opacity: 0, y: 12 });
+        gsap.set(tags, { opacity: 0, y: 6 });
+        gsap.set(halos, { opacity: 0 });
+        // Conduit draws via the dash trick — brighter while it is the
+        // subject of the build, settling to its quiet rest opacity once the
+        // travelling light takes over the contrast budget.
+        gsap.set(conduit, {
+          strokeDasharray: `${pathLen}`,
+          strokeDashoffset: pathLen,
+          opacity: 0.55,
+        });
+        // The streak is a short dash sliding along the conduit. At offset
+        // = streakLen the dash sits entirely before the line with its
+        // leading edge exactly ON station 0; at -(pathLen + streakLen) it
+        // has fully exited past the far end.
+        gsap.set(streak, {
+          strokeDasharray: `${streakLen} ${pathLen + streakLen * 2}`,
+          strokeDashoffset: streakLen,
+          attr: { "stroke-width": 2.6 },
+          opacity: 0,
+        });
+
+        const master = gsap.timeline({
+          scrollTrigger: {
+            trigger: rootRef.current,
+            start: "top 90%",
+            // Play/pause with visibility — never restart or reverse, so the
+            // assembly runs exactly once (including immediately, when the
+            // section is already past the start line at load or SPA nav)
+            // and the loop freezes off-screen instead of burning frames.
+            toggleActions: "play pause resume pause",
+            onToggle: (self) => {
+              if (!loopStarted) return;
+              // Dim the frozen light while paused off-screen: a full-bright
+              // streak stopped mid-conduit at the viewport edge reads as a
+              // hang; a dimmed one reads as idle. Restored on re-entry.
+              gsap.to(streak, {
+                opacity: self.isActive ? 1 : 0.4,
+                duration: 0.3,
+                ease: "power2.out",
+                overwrite: "auto",
+              });
+            },
+          },
+        });
+
+        // -- Beat 1: ASSEMBLY. The conduit draws end-to-end at constant
+        // rate tuned so its tip arrives at station i on that station's rise
+        // (draw duration = stagger × segment count) — the classic "signal
+        // builds the pipe" read, connective tissue under the eased pops.
+        master.to(
+          conduit,
+          {
+            strokeDashoffset: 0,
+            duration: STAGE_STAGGER * (STAGE_KEYS.length - 1),
+            ease: "none",
+          },
+          0,
+        );
+        STAGE_KEYS.forEach((_, i) => {
+          const at = i * STAGE_STAGGER;
+          const stage = stageRefs.current[i];
+          const tag = tagRefs.current[i];
+          const pulse = pulseRefs.current[i];
+          if (stage) {
+            master.to(
+              stage,
+              { opacity: 1, y: 0, duration: 0.5, ease: "expo.out" },
+              at,
+            );
+          }
+          // The regulation tag trails its station by a beat — the
+          // credential follows the thing it certifies.
+          if (tag) {
+            master.to(
+              tag,
+              { opacity: TAG_REST_OPACITY, y: 0, duration: 0.5, ease: "expo.out" },
+              at + 0.08,
+            );
+          }
+          // A power-on blink as each station lands (same glow rect the loop
+          // reuses) — the stage IGNITES rather than merely appearing.
+          if (pulse) {
+            master
+              .fromTo(
+                pulse,
+                { opacity: 0 },
+                { opacity: 0.7, duration: 0.12, ease: "power2.out" },
+                at + 0.1,
+              )
+              .to(pulse, { opacity: 0, duration: 0.5, ease: "power2.in" }, at + 0.22);
+          }
+        });
+        // Build done: the conduit recedes to its rest opacity so the light
+        // owns the contrast from here on. Overlaps the loop start slightly —
+        // the settle hands off to the departing light in one motion.
+        master.to(
+          conduit,
+          { opacity: 0.28, duration: 0.6, ease: "power2.out" },
+          ASSEMBLY_END - 0.5,
+        );
+        master.call(
+          () => {
+            assembled = true;
+            loopStarted = true;
+          },
+          undefined,
+          ASSEMBLY_END,
+        );
+        master.set(streak, { opacity: 1 }, ASSEMBLY_END);
+
+        // -- Beat 2: THE LIGHT. Per-segment traversal with a hold at every
+        // station: power1.inOut leaves slow and arrives slow — a check-in
+        // at each checkpoint, not a drive-by.
+        const loop = gsap.timeline({
+          repeat: -1,
+          repeatDelay: LOOP_REPEAT_DELAY,
+        });
+        const checkIn = (i: number, at: number) => {
+          const pulse = pulseRefs.current[i];
+          if (pulse) {
+            loop
+              .fromTo(
+                pulse,
+                { opacity: 0 },
+                { opacity: 0.95, duration: 0.16, ease: "power2.out" },
+                Math.max(at - 0.08, 0),
+              )
+              .to(pulse, { opacity: 0, duration: 0.7, ease: "power2.in" }, at + 0.18);
+          }
+          // Hover trail: if this stage is under the pointer/focus when the
+          // light arrives, the streak swells briefly — the light
+          // acknowledges the checkpoint being inspected. stroke-width is
+          // owned by nothing else, so this callback tween can never fight
+          // the timeline. Re-evaluated live on every pass (loop callbacks
+          // re-fire each repeat).
+          loop.call(
+            () => {
+              if (link.hovered !== i) return;
+              gsap.fromTo(
+                streak,
+                { attr: { "stroke-width": 4.4 } },
+                {
+                  attr: { "stroke-width": 2.6 },
+                  duration: 0.9,
+                  ease: "power2.out",
+                  overwrite: "auto",
+                },
+              );
+            },
+            undefined,
+            at,
+          );
+        };
+
+        // The pass opens with the leading edge already on station 0 (see
+        // the streak's initial dashoffset): first check-in at t = 0.
+        checkIn(0, 0);
+        let t = STATION_HOLD;
+        for (let i = 1; i < STAGE_KEYS.length; i++) {
+          loop.to(
+            streak,
+            {
+              strokeDashoffset: streakLen - STAGE_FRACTIONS[i] * pathLen,
+              duration: SEG_DURATION,
+              ease: "power1.inOut",
+            },
+            t,
+          );
+          t += SEG_DURATION;
+          checkIn(i, t);
+          t += STATION_HOLD;
+        }
+        // Past Output the light shoots off the end of the conduit, then the
+        // repeat delay is the breath before the next request enters.
+        loop.to(
+          streak,
+          {
+            strokeDashoffset: -(pathLen + streakLen),
+            duration: EXIT_DURATION,
+            ease: "power1.in",
+          },
+          t,
+        );
+
+        // Nested in the master so ONE ScrollTrigger governs assembly and
+        // loop alike — pausing off-screen pauses everything.
+        master.add(loop, ASSEMBLY_END);
       });
 
-      const tl = gsap.timeline({
-        repeat: -1,
-        repeatDelay: 0.8,
-        defaults: { ease: "none" },
-        scrollTrigger: {
-          trigger: rootRef.current,
-          start: "top 90%",
-          toggleActions: "play pause resume pause",
-        },
-      });
-
-      tl.to(streak, {
-        strokeDashoffset: -(pathLen + streakLen),
-        duration: TOTAL_DURATION,
-      });
-
-      // Stations ignite as the light's head crosses them.
-      STAGE_FRACTIONS.forEach((f, i) => {
-        const pulse = pulseRefs.current[i];
-        if (!pulse) return;
-        const t = f * TOTAL_DURATION;
-        tl.fromTo(
-          pulse,
-          { opacity: 0 },
-          { opacity: 0.95, duration: 0.16, ease: "power2.out" },
-          Math.max(t - 0.08, 0),
-        ).to(pulse, { opacity: 0, duration: 0.7, ease: "power2.in" }, t + 0.18);
-      });
+      return () => {
+        link.ignite = null;
+        mm.revert();
+      };
     },
     { scope: rootRef, dependencies: [mobile, pathLen, streakLen] },
   );
@@ -151,7 +444,14 @@ function PipelineDiagram({ mobile, stageLabel }: DiagramProps) {
     const boxH = mobile ? M_BOX_H : D_BOX_H;
 
     return (
-      <g key={key}>
+      // The whole stage (box, glow rects, label, tag) rises as one unit on
+      // assembly — the tag additionally trails within the rising group.
+      <g
+        key={key}
+        ref={(el) => {
+          stageRefs.current[idx] = el;
+        }}
+      >
         {/* Base station */}
         <rect
           x={cx - boxW / 2}
@@ -163,7 +463,27 @@ function PipelineDiagram({ mobile, stageLabel }: DiagramProps) {
           stroke="hsl(var(--rule))"
           strokeWidth={1}
         />
-        {/* Ignition pulse — lit by the timeline as the light crosses. */}
+        {/* Hover/focus halo — bloomed by link.ignite the moment the stage's
+            hotspot is entered, on every tier. A separate rect from the
+            ignition pulse below so state feedback (hover-owned opacity)
+            never fights the timeline (loop-owned opacity). */}
+        <rect
+          ref={(el) => {
+            haloRefs.current[idx] = el;
+          }}
+          x={cx - boxW / 2}
+          y={cy - boxH / 2}
+          width={boxW}
+          height={boxH}
+          rx={10}
+          fill="none"
+          stroke={`url(#pipeGrad-${idSuffix})`}
+          strokeWidth={1.6}
+          opacity={0}
+          filter={`url(#pipeGlow-${idSuffix})`}
+        />
+        {/* Ignition pulse — timeline-owned: blinks once as the stage lands
+            during assembly, then every time the light checks in. */}
         <rect
           ref={(el) => {
             pulseRefs.current[idx] = el;
@@ -193,12 +513,20 @@ function PipelineDiagram({ mobile, stageLabel }: DiagramProps) {
         >
           {stageLabel(key)}
         </text>
+        {/* Regulation tag: authored at full-ink fill with a muted rest
+            OPACITY (not ink-mute fill) so hover/focus can lift it to full
+            ink with a pure opacity tween — var()-based fills don't
+            interpolate. Rest tone matches the old ink-mute read. */}
         <text
+          ref={(el) => {
+            tagRefs.current[idx] = el;
+          }}
           x={mobile ? cx + boxW / 2 + 12 : cx}
           y={mobile ? cy : cy + boxH / 2 + D_PILL_Y_OFFSET + 4}
           textAnchor={mobile ? "start" : "middle"}
           dominantBaseline={mobile ? "middle" : undefined}
-          fill="hsl(var(--ink-mute))"
+          fill="hsl(var(--ink))"
+          opacity={TAG_REST_OPACITY}
           style={{
             fontSize: 10,
             fontFamily: "var(--font-mono), ui-monospace, monospace",
@@ -249,8 +577,11 @@ function PipelineDiagram({ mobile, stageLabel }: DiagramProps) {
         </filter>
       </defs>
 
-      {/* Conduit: quiet gradient base the light travels on. */}
+      {/* Conduit: quiet gradient base the light travels on. Draws itself in
+          on assembly (dash trick), so its authored state is the finished
+          line for no-JS / reduced-motion. */}
       <line
+        ref={conduitRef}
         x1={x1}
         y1={y1}
         x2={x2}
@@ -260,7 +591,9 @@ function PipelineDiagram({ mobile, stageLabel }: DiagramProps) {
         opacity={0.28}
       />
 
-      {/* The light: a glowing streak sliding the conduit (GSAP dashoffset). */}
+      {/* The light: a glowing streak sliding the conduit (GSAP dashoffset).
+          Authored invisible — without JS there is no travelling light, just
+          the assembled diagram; the loop reveals it after assembly. */}
       <line
         ref={streakRef}
         x1={x1}
@@ -270,6 +603,7 @@ function PipelineDiagram({ mobile, stageLabel }: DiagramProps) {
         stroke={`url(#pipeGrad-${idSuffix})`}
         strokeWidth={2.6}
         strokeLinecap="round"
+        opacity={0}
         filter={`url(#pipeGlow-${idSuffix})`}
       />
 
@@ -286,12 +620,16 @@ function PipelineDiagram({ mobile, stageLabel }: DiagramProps) {
  * over the SVG's stage boxes (using the SVG viewBox geometry as percentages, so
  * they track the responsive SVG scale) — they do NOT replace the SVG role=img
  * label or any copy, and they render NO visible duplicate row (transparent by
- * default; only a focus/hover ring shows). The overlay must stay a DOM SIBLING
- * of the role="img" div (never a child — interactive elements inside role=img
- * are hidden from assistive tech). On focus/hover a hotspot bumps
- * compliancePipelineStore so the (full+webgpu only) CompliancePipeline3D ignites
- * that stage; on every other tier the reader is unmounted and the set is a
- * harmless no-op.
+ * default; only a focus ring shows). The overlay must stay a DOM SIBLING of the
+ * role="img" div (never a child — interactive elements inside role=img are
+ * hidden from assistive tech).
+ *
+ * On focus/hover a hotspot ignites its stage in the SVG ITSELF via link.ignite
+ * (halo bloom + regulation tag to full ink — visible on EVERY tier) and writes
+ * link.hovered so the travelling light swells when it next crosses the stage.
+ * It also bumps compliancePipelineStore — the contract the (currently retired)
+ * WebGPU CompliancePipeline3D echo reads; on every tier without that reader the
+ * set is a harmless no-op, kept so a revived echo re-syncs for free.
  *
  * `mobile` selects the vertical (M_*) vs horizontal (D_*) viewBox mapping so the
  * overlay matches whichever PipelineDiagram its sibling card is rendering.
@@ -300,19 +638,29 @@ function PipelineHotspots({
   isEn,
   stageLabel,
   mobile,
+  link,
 }: {
   isEn: boolean;
   stageLabel: (k: StageKey) => string;
   mobile: boolean;
+  link: StageLink;
 }) {
   const setHovered = useCompliancePipelineStore((s) => s.setHovered);
   const bump = useCompliancePipelineStore((s) => s.bump);
 
   const ignite = (idx: number) => {
+    link.hovered = idx;
+    link.ignite?.(idx, true);
     setHovered(idx);
     bump(idx);
   };
-  const clear = () => setHovered(-1);
+  const clear = (idx: number) => {
+    // Guard the reset: a fast mouse can enter stage B before stage A's
+    // leave fires — never clobber the newer hover.
+    if (link.hovered === idx) link.hovered = -1;
+    link.ignite?.(idx, false);
+    setHovered(-1);
+  };
 
   const ariaFor = (k: StageKey, idx: number) => {
     const label = stageLabel(k);
@@ -347,15 +695,18 @@ function PipelineHotspots({
             type="button"
             aria-label={ariaFor(k, idx)}
             onFocus={() => ignite(idx)}
-            onBlur={clear}
+            onBlur={() => clear(idx)}
             onMouseEnter={() => ignite(idx)}
-            onMouseLeave={clear}
+            onMouseLeave={() => clear(idx)}
             style={{
               left: `${leftPct}%`,
               top: `${topPct}%`,
               transform: "translate(-50%, -50%)",
             }}
-            className="pointer-events-auto absolute h-10 w-24 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 hover:ring-2 hover:ring-accent/40"
+            // No hover ring anymore: hover feedback now lives in the SVG
+            // itself (halo + tag lift). The focus-visible ring stays — the
+            // keyboard needs a hard focus indicator on top of the ignite.
+            className="pointer-events-auto absolute h-10 w-24 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
           />
         );
       })}
@@ -366,6 +717,12 @@ function PipelineHotspots({
 export default function CompliancePipeline() {
   const { language } = useLanguage();
   const isEn = language === "en";
+
+  // One hover/focus link per breakpoint variant (see StageLink): plain
+  // mutable objects held for the component's life — `.current` unwrapped
+  // once so children share the same identity across renders.
+  const desktopLink = useRef<StageLink>({ hovered: -1, ignite: null }).current;
+  const mobileLink = useRef<StageLink>({ hovered: -1, ignite: null }).current;
 
   const stageLabel = (k: StageKey) =>
     isEn ? STAGE_LABELS[k].en : STAGE_LABELS[k].it;
@@ -433,12 +790,16 @@ export default function CompliancePipeline() {
           >
             {/* Desktop horizontal */}
             <div className="hidden sm:block w-full overflow-x-auto">
-              <PipelineDiagram mobile={false} stageLabel={stageLabel} />
+              <PipelineDiagram
+                mobile={false}
+                stageLabel={stageLabel}
+                link={desktopLink}
+              />
             </div>
 
             {/* Mobile vertical */}
             <div className="sm:hidden w-full">
-              <PipelineDiagram mobile stageLabel={stageLabel} />
+              <PipelineDiagram mobile stageLabel={stageLabel} link={mobileLink} />
             </div>
           </div>
 
@@ -449,15 +810,27 @@ export default function CompliancePipeline() {
               real interactive buttons. Rendered as a TRANSPARENT overlay over
               the SVG stage boxes — no visible duplicate row. The padding insets
               align the overlay's inset-0 with the SVG content box. Separate
-              desktop/mobile instances so each maps the matching viewBox.
+              desktop/mobile instances so each maps the matching viewBox AND
+              carries the matching StageLink to its visibility-paired diagram.
               Tab Input→Output; bilingual aria-labels reuse the frozen
-              STAGE_LABELS/REGULATIONS. On focus/hover they ignite the full+webgpu
-              CompliancePipeline3D via compliancePipelineStore. */}
+              STAGE_LABELS/REGULATIONS. Focus/hover ignites the stage in the
+              SVG on every tier (plus the store bump for the retired WebGPU
+              echo's contract). */}
           <div className="pointer-events-none absolute inset-0 hidden p-6 sm:block sm:p-8">
-            <PipelineHotspots isEn={isEn} stageLabel={stageLabel} mobile={false} />
+            <PipelineHotspots
+              isEn={isEn}
+              stageLabel={stageLabel}
+              mobile={false}
+              link={desktopLink}
+            />
           </div>
           <div className="pointer-events-none absolute inset-0 p-6 sm:hidden">
-            <PipelineHotspots isEn={isEn} stageLabel={stageLabel} mobile />
+            <PipelineHotspots
+              isEn={isEn}
+              stageLabel={stageLabel}
+              mobile
+              link={mobileLink}
+            />
           </div>
         </div>
 

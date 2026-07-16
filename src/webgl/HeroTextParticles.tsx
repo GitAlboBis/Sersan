@@ -73,8 +73,11 @@ const MORPH_TRIGGER = 0.3;
  * so the page unlocks sooner once the cue is formed. */
 const MORPH2_TRIGGER = 0.59;
 /** Seconds for the one-shot morph animation (entry-style wave). Shared by
- * all morph legs. */
-const MORPH_DURATION = 2.6;
+ * all morph legs. Deliberately much snappier than ENTRY_DURATION (user
+ * decision 2026-07-16): the slow, ceremonial assemble belongs to the
+ * "Sersan AI" entry only — once the visitor is scrolling, the dissolve →
+ * reform between texts must answer at reading pace, not replay the intro. */
+const MORPH_DURATION = 1.2;
 /** FINAL cue: the headline dissolves into this, recomposed near the BOTTOM
  * (replacing the old standalone "scroll" hint). Sampled smaller than the
  * headline; its home block is pushed DOWN by CUE_OFFSET_Y view-heights so the
@@ -524,8 +527,15 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
     // first ~70% of a screen of scroll.
     const scrollPx = typeof window !== "undefined" ? window.scrollY : 0;
     const fade = 1 - Math.min(scrollPx / (size.height * 0.7), 1);
-    group.visible = fade > 0.004;
-    build.uFade.value = fade;
+    // The cue YIELDS to the DOM payoff: "see what we build" homes exactly
+    // where the hero cluster (eyebrow/sub/CTAs) cascades in, so as `reveal`
+    // rises the particles hand the stage over instead of smearing across the
+    // arriving buttons. Pure function of `reveal` (itself pure in g), so the
+    // reverse replay brings the cue back symmetrically; the skip path pins
+    // g=1 ⇒ the skipped rest frame is the clean DOM cluster, no ghost text.
+    const effFade = fade * (1 - reveal);
+    group.visible = effFade > 0.004;
+    build.uFade.value = effFade;
     const dpr = Math.min(gl.getPixelRatio(), 2);
     build.uPixelRatio.value = dpr;
     build.uViewport.value.set(size.width * dpr, size.height * dpr);
