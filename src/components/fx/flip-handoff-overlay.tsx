@@ -23,11 +23,15 @@ if (typeof window !== "undefined") gsap.registerPlugin(Flip);
  * The overlay builds a fixed clone of the card face — a full-viewport shell
  * whose clip-path inset matches the card rect (round = the card radius), a
  * navy fill fading in, and (preview cards) a cover-fit image box glued to the
- * rect — and inflates it to cover the viewport in ~0.75s expo.inOut with a
+ * VISIBLE media rect (snap.mediaRect: the rail's 112%-bleed, parallax-shifted
+ * layer — so the crop is pixel-identical to what the eye is on at click time)
+ * — and inflates it to cover the viewport in ~0.75s expo.inOut with a
  * "liquid ripple" on the image that dies exactly at completion: a directional
- * scale + a mid-peak blur/brightness bump + a faint cyan bloom, all returning
- * to identity at INFLATE_S (the demo's cos-gated ripple #6, DOM, no shader;
- * gated off under reduced motion). Opening the CLIP
+ * scale that OPENS at the shader's live hover zoom (snap.mediaZoom, so the 6%
+ * hover zoom settles inside the swell instead of popping) + a mid-peak
+ * blur/brightness bump + a faint cyan bloom, all returning to identity at
+ * INFLATE_S (the demo's cos-gated ripple #6, DOM, no shader; gated off under
+ * reduced motion). Opening the CLIP
  * instead of scaling means the cover-fit image continuously re-crops rather
  * than stretching — the DOM analog of the demo's animated-uRes CoverUV. A
  * navy #0B1422 backdrop fades in beneath. The <Link> navigation proceeds
@@ -36,6 +40,20 @@ if (typeof window !== "undefined") gsap.registerPlugin(Flip);
  *   - image cards: the shell carves back down onto the detail hero
  *     ([data-flip-hero][data-flip-id]) and the image box lands on its rect;
  *   - no-image cards: the covering panel cross-fades out over the header.
+ *
+ * RETURN FLIGHT (direction:"return"): the detail page's explicit back-link
+ * (use-flip-source's useReturnFlipSource — never popstate) arms a snapshot of
+ * the HERO rect instead. The overlay builds the same shell clipped to the
+ * hero, showing a pixel-identical clone (same src, same box, same seating
+ * scrim) while the navy backdrop rises — the shell IS this navigation's
+ * curtain too (the back-link carries [data-no-curtain] so the generic route
+ * cover skips it, and the arm suppresses template.tsx's wipe). Once the
+ * destination route commits, the overlay polls for the matching
+ * [data-flip-source] card, waits for its rect to SETTLE (route fade-up +
+ * Reveal entrances move rects for the first ~0.5s), then deflates the shell
+ * down onto it and fades the chrome out over the real card. Off-screen /
+ * never-found cards get a graceful centre-screen dissolve instead — the poll
+ * never waits forever (frame budget + a ~1.5s hard timeout from arm).
  *
  * LEGACY FLIGHT (fallback): if a fresh snapshot arrives at a detail route
  * with no active zoom flight (listener not yet registered), the original
@@ -62,11 +80,29 @@ const FADE_S = 0.45; // no-image cross-fade out
 const HARD_TIMEOUT_MS = 2500; // absolute self-clean ceiling from arm time
 const MAX_HERO_FRAMES = 50; // ~0.8s to find a laid-out hero
 
+// ---- Return-flight tuning. The reverse journey has no inflate phase, so its
+// budgets are tighter: the shell must resolve (deflate or dissolve) fast
+// enough that a covered page can never linger.
+const RETURN_TIMEOUT_MS = 1500; // hard self-clean ceiling from the back-click
+const MAX_CARD_FRAMES = 55; // ~0.9s to find a SETTLED, on-screen card
+const RETURN_FADE_S = 0.4; // graceful dissolve when the card isn't on-screen
+const CHROME_FADE_S = 0.25; // landed shell fades off, revealing the real card
+
 interface ZoomFlight {
   slug: string;
+  /** "forward" = card→detail zoom (inflate → land on hero). "return" = the
+   *  detail back-link deflate (hero-clipped shell → land on the card). */
+  direction: "forward" | "return";
+  /** Return flights only: the arrival pathname the arming back-link points
+   *  at — any other route change mid-flight is stale. */
+  returnPath?: string;
   backdrop: HTMLDivElement;
   shell: HTMLDivElement;
   fill: HTMLDivElement;
+  /** Return flights: ONE tweened box carrying the clone media (img + the
+   *  hero's seating scrim) so both ride the identical interpolation. Forward
+   *  flights animate the bare img and keep this null. */
+  media: HTMLDivElement | null;
   img: HTMLImageElement | null;
   inflated: boolean;
   arrived: boolean;
@@ -99,6 +135,7 @@ function disposeFlight(ref: FlightRef, flight: ZoomFlight, fadeS = 0) {
   if (flight.raf) cancelAnimationFrame(flight.raf);
   window.clearTimeout(flight.timeout);
   const nodes: Element[] = [flight.backdrop, flight.shell, flight.fill];
+  if (flight.media) nodes.push(flight.media);
   if (flight.img) nodes.push(flight.img);
   gsap.killTweensOf(nodes);
   const remove = () => {
@@ -118,7 +155,11 @@ function disposeFlight(ref: FlightRef, flight: ZoomFlight, fadeS = 0) {
   if (ref.current === flight) ref.current = null;
 }
 
-/** Hard-timeout path: whatever state the flight is in, uncover the page. */
+/** Hard-timeout path: whatever state the flight is in, uncover the page.
+ *  Forward flights re-reveal the (possibly still hidden) detail hero; return
+ *  flights hide nothing — findHero then matches either the real hero still
+ *  under the shell (never-navigated back-click; the reveal is a no-op on a
+ *  visible element) or nothing at all on the list page. */
 function failSafe(ref: FlightRef, flight: ZoomFlight) {
   if (flight.disposed) return;
   const hero = findHero(flight.slug);
@@ -260,6 +301,13 @@ function startFlight(ref: FlightRef, snap: FlipSnapshot) {
   shell.appendChild(fill);
 
   let img: HTMLImageElement | null = null;
+  // The clone's <img> box seeds from the card's VISIBLE media layer (the
+  // rail's 112%-bleed [data-rail-media] rect, live parallax shift included)
+  // so the cover-crop is byte-identical to what the eye is on at frame 0;
+  // cards without the layer fall back to the card rect, where the media box
+  // IS the card box anyway. The clip window (card rect) always sits inside
+  // this box — the bleed guarantees it — so no page ever peeks through.
+  const mediaBox = snap.mediaRect ?? rect;
   if (snap.src) {
     img = document.createElement("img");
     img.src = snap.src;
@@ -268,10 +316,10 @@ function startFlight(ref: FlightRef, snap: FlipSnapshot) {
     img.draggable = false;
     Object.assign(img.style, {
       position: "absolute",
-      left: `${rect.left}px`,
-      top: `${rect.top}px`,
-      width: `${rect.width}px`,
-      height: `${rect.height}px`,
+      left: `${mediaBox.left}px`,
+      top: `${mediaBox.top}px`,
+      width: `${mediaBox.width}px`,
+      height: `${mediaBox.height}px`,
       maxWidth: "none",
       objectFit: "cover",
       margin: "0",
@@ -286,9 +334,11 @@ function startFlight(ref: FlightRef, snap: FlipSnapshot) {
 
   const flight: ZoomFlight = {
     slug: snap.slug,
+    direction: "forward",
     backdrop,
     shell,
     fill,
+    media: null,
     img,
     inflated: false,
     arrived: false,
@@ -309,6 +359,10 @@ function startFlight(ref: FlightRef, snap: FlipSnapshot) {
   gsap.to(fill, {
     opacity: 1,
     duration: INFLATE_S * 0.7,
+    // A short hold before the navy rises: the card face beneath the (still
+    // transparent) shell — text, scrim, STACK pills — dies UNDER navy rising
+    // mid-flight instead of being cut off on the click frame.
+    delay: 0.12,
     ease: "power1.inOut",
   });
   gsap.to(shell, {
@@ -321,9 +375,12 @@ function startFlight(ref: FlightRef, snap: FlipSnapshot) {
     },
   });
   if (img) {
-    // Quick fade-in softens the (small) crop difference vs the card's own
-    // 112%-bleed media layer; the box tween re-crops the cover fit live.
-    gsap.to(img, { opacity: 1, duration: 0.2, ease: "power1.out" });
+    // The crossfade retires the live hover chrome — the RGB-shift render,
+    // the readability scrim, the STACK pills — over the flight's first beat
+    // instead of hard-cutting it: the clone's crop + zoom already match the
+    // eye (mediaRect/mediaZoom above), so the only visible change during the
+    // fade is that chrome dissolving while the frame starts to move.
+    gsap.to(img, { opacity: 1, duration: 0.3, ease: "power1.out" });
     gsap.to(img, {
       left: 0,
       top: 0,
@@ -380,6 +437,13 @@ function startFlight(ref: FlightRef, snap: FlipSnapshot) {
 
     if (img) {
       // (a) directional scale — asymmetric swell, eases back to exactly 1.
+      // The START pose is the shader's live hover zoom (snap.mediaZoom ≈ 1.06
+      // when the distortion canvas was rendering, 1 otherwise): the settle
+      // from hover-zoom to identity is FOLDED into the swell keyframes, so
+      // there is no zoom pop at click — the hover state becomes the ripple's
+      // opening energy and drains out through the same midpoint.
+      const zoom = snap.mediaZoom ?? 1;
+      gsap.set(img, { scaleX: zoom, scaleY: zoom });
       tl.to(
         img,
         {
@@ -442,6 +506,230 @@ function startFlight(ref: FlightRef, snap: FlipSnapshot) {
   }
 }
 
+/** Build the REVERSE clone + cover. Runs synchronously inside the detail
+ *  back-link's click handler, BEFORE Next.js processes the <Link> navigation.
+ *  The shell starts clipped to the DETAIL HERO rect showing a pixel-identical
+ *  clone (same src, same box, same seating scrim as the figure beneath), then
+ *  the navy backdrop rises to cover the route swap — the shell IS this
+ *  navigation's curtain (the arming hook set [data-no-curtain] so the generic
+ *  cover skips it, and armFlip suppressed template.tsx's wipe). The landing
+ *  itself waits for the pathname effect (startReturnLanding). */
+function startReturnFlight(ref: FlightRef, snap: FlipSnapshot) {
+  const prev = ref.current;
+  if (prev) disposeFlight(ref, prev, 0); // one flight at a time
+
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const { rect } = snap;
+  const rad = parseRadiusPx(snap.radius);
+  // Same ≥0 clamp as the forward inflate: a hero partially scrolled out of
+  // view would yield negative insets, which some engines drop as invalid.
+  const iT = Math.max(0, rect.top);
+  const iR = Math.max(0, vw - (rect.left + rect.width));
+  const iB = Math.max(0, vh - (rect.top + rect.height));
+  const iL = Math.max(0, rect.left);
+
+  const backdrop = document.createElement("div");
+  backdrop.setAttribute("aria-hidden", "true");
+  Object.assign(backdrop.style, {
+    position: "fixed",
+    inset: "0",
+    zIndex: Z_BACKDROP,
+    background: NAVY,
+    opacity: "0",
+    pointerEvents: "none",
+  });
+
+  // Full-viewport shell, clipped to the hero from frame 0. It starts
+  // transparent (the REAL hero shows through the window — no swap pop), and
+  // ONLY its clip-path animates during the deflate.
+  const shell = document.createElement("div");
+  shell.setAttribute("aria-hidden", "true");
+  Object.assign(shell.style, {
+    position: "fixed",
+    inset: "0",
+    zIndex: Z_SHELL,
+    pointerEvents: "none",
+    overflow: "hidden",
+    clipPath: `inset(${iT}px ${iR}px ${iB}px ${iL}px round ${rad}px)`,
+    willChange: "clip-path",
+  });
+
+  // Belt + braces under the media box: any sub-pixel rounding gap between the
+  // clip edge and the media box shows navy, never the page beneath.
+  const fill = document.createElement("div");
+  fill.setAttribute("aria-hidden", "true");
+  Object.assign(fill.style, {
+    position: "absolute",
+    inset: "0",
+    background: NAVY,
+    opacity: "0",
+  });
+  shell.appendChild(fill);
+
+  // ONE tweened media box (img + scrim ride it together) — the deflate then
+  // animates a single element's rect and the children can never desync.
+  const media = document.createElement("div");
+  media.setAttribute("aria-hidden", "true");
+  Object.assign(media.style, {
+    position: "absolute",
+    left: `${rect.left}px`,
+    top: `${rect.top}px`,
+    width: `${rect.width}px`,
+    height: `${rect.height}px`,
+    opacity: "0",
+  });
+  const img = document.createElement("img");
+  img.src = snap.src ?? "";
+  img.alt = "";
+  img.setAttribute("aria-hidden", "true");
+  img.draggable = false;
+  Object.assign(img.style, {
+    position: "absolute",
+    inset: "0",
+    width: "100%",
+    height: "100%",
+    maxWidth: "none",
+    objectFit: "cover",
+    margin: "0",
+  });
+  media.appendChild(img);
+  // The detail hero's own bottom-up seating scrim (case-study-detail-client's
+  // figure overlay, copied verbatim) so the clone's frame 0 is byte-identical
+  // to the figure it covers.
+  const scrim = document.createElement("div");
+  scrim.setAttribute("aria-hidden", "true");
+  Object.assign(scrim.style, {
+    position: "absolute",
+    inset: "0",
+    background:
+      "linear-gradient(180deg, transparent 40%, hsl(216 30% 6% / 0.55) 100%)",
+  });
+  media.appendChild(scrim);
+  shell.appendChild(media);
+
+  document.body.appendChild(backdrop);
+  document.body.appendChild(shell);
+
+  const flight: ZoomFlight = {
+    slug: snap.slug,
+    direction: "return",
+    returnPath: snap.returnPath,
+    backdrop,
+    shell,
+    fill,
+    media,
+    img,
+    inflated: true, // no inflate phase — the shell never leaves the hero rect
+    arrived: false,
+    settling: false,
+    disposed: false,
+    raf: 0,
+    frames: 0,
+    timeout: window.setTimeout(() => failSafe(ref, flight), RETURN_TIMEOUT_MS),
+  };
+  ref.current = flight;
+
+  // COVER — the clone fades in first carrying identical pixels (invisible by
+  // construction: the real hero is directly beneath at the same rect), THEN
+  // the backdrop rises so the route swap underneath is covered by the time it
+  // commits. The stagger keeps the brief blend window (clone not yet opaque,
+  // navy rising behind it) imperceptible.
+  gsap.to(media, { opacity: 1, duration: 0.15, ease: "power1.out" });
+  gsap.to(fill, { opacity: 1, duration: 0.2, delay: 0.05, ease: "power1.out" });
+  gsap.to(backdrop, {
+    opacity: 1,
+    duration: 0.3,
+    delay: 0.1,
+    ease: "power2.out",
+  });
+}
+
+/** Poll for the destination page's matching card ([data-flip-source=slug] —
+ *  the attribute every rail AND archive-grid card already carries), wait for
+ *  its rect to SETTLE (the route's content fade-up and the card's own Reveal
+ *  entrance both move rects for the first ~0.5s — landing on a moving target
+ *  would visibly miss), then either carve the shell down onto it (on-screen)
+ *  or dissolve gracefully in place (off-screen / never found). Never waits
+ *  forever: the frame budget and the flight's hard timeout both cap it. */
+function startReturnLanding(ref: FlightRef, flight: ZoomFlight) {
+  let prevRect: DOMRect | null = null;
+  const tick = () => {
+    if (flight.disposed) return;
+    const card = document.querySelector<HTMLElement>(
+      `[data-flip-source="${flight.slug}"]`,
+    );
+    const cr = card?.getBoundingClientRect();
+    if (card && cr && cr.width > 2 && cr.height > 2) {
+      // Settled = the rect held still across two CONSECUTIVE frames (the
+      // 0.5px epsilon lets the expo-out tails of the entrance tweens pass —
+      // their remaining sub-pixel drift is invisible under the carve).
+      const stable =
+        prevRect !== null &&
+        Math.abs(cr.left - prevRect.left) < 0.5 &&
+        Math.abs(cr.top - prevRect.top) < 0.5 &&
+        Math.abs(cr.width - prevRect.width) < 0.5 &&
+        Math.abs(cr.height - prevRect.height) < 0.5;
+      prevRect = cr;
+      if (stable) {
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        const ccx = cr.left + cr.width / 2;
+        const ccy = cr.top + cr.height / 2;
+        // On-screen = the card's centre is inside the viewport. A push
+        // navigation lands at the top of the destination page, so a
+        // below-the-fold card is a REAL case (not just failed restoration) —
+        // dissolve rather than fly somewhere the user can't see.
+        if (ccx > 0 && ccx < vw && ccy > 0 && ccy < vh) {
+          // The terminal tween takes over from here and GSAP guarantees its
+          // onComplete — retire the hard timeout so it can never cut the
+          // carve mid-flight (its job was the WAITING phases only).
+          window.clearTimeout(flight.timeout);
+          const rad = parseRadiusPx(getComputedStyle(card).borderRadius);
+          // DEFLATE — same interpolation contract as landOnHero: the clip and
+          // the media box share ease + duration, so their rects match at
+          // every step and the cover-fit re-crops instead of stretching.
+          gsap.to(flight.shell, {
+            clipPath: `inset(${cr.top}px ${vw - cr.right}px ${vh - cr.bottom}px ${cr.left}px round ${rad}px)`,
+            duration: LAND_S,
+            ease: "power3.inOut",
+          });
+          gsap.to(flight.backdrop, {
+            opacity: 0,
+            duration: LAND_S,
+            ease: "power2.inOut",
+          });
+          gsap.to(flight.media!, {
+            left: cr.left,
+            top: cr.top,
+            width: cr.width,
+            height: cr.height,
+            duration: LAND_S,
+            ease: "power3.inOut",
+            // The card at rest is a TEXT card (its media only shows on
+            // hover), so the landed clone must not linger: fade the shell's
+            // chrome out over the real card and dispose.
+            onComplete: () => disposeFlight(ref, flight, CHROME_FADE_S),
+          });
+          return;
+        }
+        // Found and settled but off-screen: graceful in-place dissolve.
+        disposeFlight(ref, flight, RETURN_FADE_S);
+        return;
+      }
+    } else {
+      // Not laid out this frame — stability needs two consecutive samples.
+      prevRect = null;
+    }
+    if (++flight.frames > MAX_CARD_FRAMES) {
+      disposeFlight(ref, flight, RETURN_FADE_S);
+      return;
+    }
+    flight.raf = requestAnimationFrame(tick);
+  };
+  flight.raf = requestAnimationFrame(tick);
+}
+
 export function FlipHandoffOverlay() {
   const pathname = usePathname();
   const flightRef = useRef<ZoomFlight | null>(null);
@@ -452,7 +740,11 @@ export function FlipHandoffOverlay() {
   // route swap happens beneath it.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setZoomListener((snap) => startFlight(flightRef, snap));
+    setZoomListener((snap) =>
+      snap.direction === "return"
+        ? startReturnFlight(flightRef, snap)
+        : startFlight(flightRef, snap),
+    );
     return () => {
       setZoomListener(null);
       const f = flightRef.current;
@@ -467,6 +759,23 @@ export function FlipHandoffOverlay() {
     // ---- Zoom path: an active flight owns this navigation.
     const flight = flightRef.current;
     if (flight && !flight.disposed) {
+      if (flight.direction === "return") {
+        if (pathname === flight.returnPath) {
+          // Landed where the back-link pointed. Consume the snapshot (list
+          // pages never peek it — consumption just retires it from the
+          // freshness window) and start hunting for the card to deflate onto.
+          consumeFlip(flight.slug);
+          if (!flight.settling) {
+            flight.settling = true;
+            flight.arrived = true;
+            startReturnLanding(flightRef, flight);
+          }
+        } else {
+          // Navigated somewhere unexpected mid-flight — stale clone.
+          disposeFlight(flightRef, flight, 0.25);
+        }
+        return;
+      }
       if (m && m[1] === flight.slug) {
         // Landed where the click pointed. Consume the snapshot (the detail
         // hero already PEEKED it in its layout effect and is hiding) and
@@ -487,7 +796,10 @@ export function FlipHandoffOverlay() {
     if (!m) return;
     const slug = m[1];
     const snap = consumeFlip(slug);
-    if (!snap || !snap.src) return;
+    // A return snapshot must never fly the legacy card→hero path — its rect
+    // IS the hero, so Flip.fit would fly the image onto itself (and the
+    // arrival it describes is a list page, not this detail route anyway).
+    if (!snap || !snap.src || snap.direction === "return") return;
     const src = snap.src;
 
     let raf = 0;

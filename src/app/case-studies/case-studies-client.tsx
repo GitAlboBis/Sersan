@@ -1,7 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowRight } from "lucide-react";
+import gsap from "gsap";
+import { Flip } from "gsap/Flip";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Button } from "@/components/ui/button";
 import { caseStudies, type CaseStudy } from "@/data/case-studies";
 import { useLanguage } from "@/components/language-provider";
@@ -11,6 +15,12 @@ import WorkInProgress from "@/components/sections/work-in-progress";
 import { CardImageDistort } from "@/components/fx/card-image-distort";
 import { CardLogoReveal } from "@/components/fx/card-logo-reveal";
 import { useFlipSource } from "@/lib/use-flip-source";
+import { cn } from "@/lib/utils";
+
+// Flip is already registered by the persistent flip-handoff overlay (root
+// layout), so this adds no bundle weight — registering again is idempotent
+// and keeps this module self-sufficient if the overlay is ever removed.
+if (typeof window !== "undefined") gsap.registerPlugin(Flip, ScrollTrigger);
 
 /**
  * Per-industry eyebrow tint — mirrors the home rail's INDUSTRY_COLOR map
@@ -29,6 +39,255 @@ const INDUSTRY_COLOR: Record<CaseStudy["industry"], string> = {
   Agritech: "text-[hsl(100_45%_60%)]",
 };
 
+/* ------------------------------------------------------------------------- */
+/* Sector filter rail + FLIP re-sort                                          */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Spec-ordered sector rail (All · FinTech · Healthcare · Aerospace · Public
+ * Sector · Industrial · Energy · Agritech), intersected with the sectors that
+ * actually exist in the data: a sector with zero studies silently drops its
+ * pill instead of offering a click that filters the grid into blankness.
+ */
+const SECTOR_ORDER: CaseStudy["industry"][] = [
+  "FinTech",
+  "Healthcare",
+  "Aerospace",
+  "Public Sector",
+  "Industrial",
+  "Energy",
+  "Agritech",
+];
+const SECTORS = SECTOR_ORDER.filter((s) =>
+  caseStudies.some((study) => study.industry === s),
+);
+
+type SectorFilter = "all" | CaseStudy["industry"];
+
+/** URL slug for the ?filter= deep link ("Public Sector" → "public-sector"). */
+const sectorSlug = (s: CaseStudy["industry"]) =>
+  s.toLowerCase().replace(/\s+/g, "-");
+
+const prefersReducedMotion = () =>
+  typeof window !== "undefined" &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/**
+ * One mono filter pill. Eyebrow language (JetBrains Mono, uppercase, tracked)
+ * with the site's dot idiom: the dot is ALWAYS in the layout (accent when
+ * active, rule-grey at rest) so toggling never reflows the rail. h-9 keeps the
+ * ≥36px tap height of the navbar's language pill (WCAG 2.5.8 target size);
+ * keyboard focus is handled by the global :focus-visible ring.
+ */
+function FilterPill({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      data-cursor="link"
+      className={cn(
+        "inline-flex h-9 items-center gap-2 rounded-full border px-3.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-300",
+        active
+          ? "border-[hsl(var(--accent)/0.55)] bg-[hsl(var(--accent)/0.08)] text-ink"
+          : "border-rule/80 text-ink-mute hover:border-rule hover:text-ink",
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "h-1.5 w-1.5 rounded-full transition-colors duration-300",
+          active ? "bg-[hsl(var(--accent))]" : "bg-rule",
+        )}
+      />
+      {label}
+    </button>
+  );
+}
+
+/**
+ * useArchiveResort — entrance choreography + FLIP re-sort engine for the
+ * archive grid. Deliberately a LOCAL twin of the hook in
+ * resources/resources-client.tsx (same rationale as INDUSTRY_COLOR above:
+ * the two archives stay independently tunable and neither route imports the
+ * other's module for a shared hook).
+ *
+ * ENTRANCES — cards fade + rise 24px (0.85s expo.out) via ONE
+ * IntersectionObserver over the card wrappers. Entries that arrive in the
+ * SAME IO callback crossed the threshold together and stagger as one wave
+ * (0.08s steps) instead of replaying a fixed per-row delay pair; a solo card
+ * on a slow scroll enters alone. IO (not ScrollTrigger) so wrappers mounted
+ * already-in-view after an SPA navigation still fire — same contract as
+ * ui/reveal.tsx, which owned these entrances before the filter rail existed
+ * (a Reveal wrapper can't be reused here: its once-only IO play would fight
+ * the flip's onEnter when a filtered-out card returns).
+ *
+ * RE-SORT — the pill click calls arm() BEFORE the React state change:
+ * Flip.getState captures the resting grid, React re-renders (display:none
+ * via the `hidden` class — cards stay MOUNTED so Flip can classify
+ * visible→hidden as "leaving" and hidden→visible as "entering", and so the
+ * per-card zoom-handoff arming keeps stable element instances), then the
+ * layout effect keyed on the filter plays Flip.from before paint: movers
+ * glide (0.6s expo.inOut, 0.03 stagger, absolute so the grid re-packs
+ * beneath them), leavers fall away (0.25s power2.in), enterers rise in
+ * (0.4s expo.out). The CONTAINER itself is captured too, so the grid height
+ * eases instead of snapping (no scrollbar jump). clearProps on complete:
+ * transforms never rest on cards — critical because the [data-flip-source]
+ * zoom flight measures card rects at click time.
+ *
+ * Reduced motion: arm() refuses to capture → the layout effect takes the
+ * instant path (plain re-render + ScrollTrigger re-measure only).
+ */
+function useArchiveResort(
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  filter: string,
+) {
+  const pendingState = useRef<ReturnType<typeof Flip.getState> | null>(null);
+  const mounted = useRef(false);
+
+  const items = () =>
+    containerRef.current
+      ? Array.from(
+          containerRef.current.querySelectorAll<HTMLElement>(
+            "[data-archive-item]",
+          ),
+        )
+      : [];
+
+  useEffect(() => {
+    const els = items();
+    if (!els.length) return;
+    if (prefersReducedMotion()) {
+      // Instant final state — SSR markup is already visible, so there is
+      // nothing to set; just retire the choreography per element.
+      els.forEach((el) => (el.dataset.entered = "1"));
+      return;
+    }
+    const pending = els.filter((el) => el.dataset.entered !== "1");
+    gsap.set(pending, { opacity: 0, y: 24 });
+    const io = new IntersectionObserver(
+      (entries) => {
+        let wave = 0;
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const el = entry.target as HTMLElement;
+          io.unobserve(el);
+          if (el.dataset.entered === "1") continue; // arm() got here first
+          el.dataset.entered = "1";
+          gsap.to(el, {
+            opacity: 1,
+            y: 0,
+            duration: 0.85,
+            ease: "expo.out",
+            delay: Math.min(wave++, 5) * 0.08,
+            // Resting cards carry NO inline transform/opacity: the zoom
+            // handoff and the next Flip capture both read clean rects.
+            onComplete: () => gsap.set(el, { clearProps: "transform,opacity" }),
+          });
+        }
+      },
+      // -18% bottom rootMargin ≈ the old "top 82%" start (see ui/reveal.tsx).
+      { rootMargin: "0px 0px -18% 0px", threshold: 0 },
+    );
+    pending.forEach((el) => io.observe(el));
+    return () => {
+      io.disconnect();
+      gsap.killTweensOf(pending);
+    };
+    // Mount-only: every card stays mounted across filter/language changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const arm = () => {
+    const container = containerRef.current;
+    if (!container || prefersReducedMotion()) return; // instant swap instead
+    const els = items();
+    // Interrupted-flight discipline: force any in-flight re-sort to its END
+    // state (progress 1 restores layout and runs its clearProps sweep) —
+    // killing alone would strand absolute-positioned movers or half-faded
+    // leavers, and the state captured below must be a RESTING layout.
+    Flip.killFlipsOf([container, ...els], true);
+    // Entrance tweens (running or still inside their wave delay) animate the
+    // same transforms Flip is about to own. From the first filter interaction
+    // the re-sort owns every wrapper: settle them all to the resting visible
+    // state and retire the IO entrance for good. (Un-entered wrappers are
+    // below the fold by definition — revealing them early is invisible, and
+    // a flight that pulls one into the viewport SHOULD show it mid-glide.)
+    gsap.killTweensOf(els);
+    els.forEach((el) => (el.dataset.entered = "1"));
+    gsap.set(els, { clearProps: "transform,opacity,visibility" });
+    pendingState.current = Flip.getState([container, ...els]);
+  };
+
+  useLayoutEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    const container = containerRef.current;
+    const state = pendingState.current;
+    pendingState.current = null;
+    const els = items();
+    if (!container || !state) {
+      // Instant path — reduced motion, or the ?filter= deep-link init right
+      // after mount. The document height still changed, so downstream
+      // ScrollTriggers must re-measure (the signature line re-glues itself
+      // separately via the section bus's body ResizeObserver).
+      ScrollTrigger.refresh();
+      return;
+    }
+    const tl = Flip.from(state, {
+      targets: [container, ...els],
+      duration: 0.6,
+      ease: "expo.inOut",
+      stagger: 0.03,
+      // Movers/leavers leave document flow during the flight so the grid can
+      // re-pack beneath them; the container is NOT absolutized — Flip eases
+      // its width/height, which is what keeps the page height (and the
+      // scrollbar) gliding instead of snapping.
+      absolute: "[data-archive-item]",
+      nested: false,
+      onEnter: (entered) =>
+        gsap.fromTo(
+          entered,
+          { autoAlpha: 0, y: 16 },
+          { autoAlpha: 1, y: 0, duration: 0.4, ease: "expo.out" },
+        ),
+      onLeave: (left) =>
+        gsap.to(left, {
+          autoAlpha: 0,
+          scale: 0.96,
+          duration: 0.25,
+          ease: "power2.in",
+        }),
+      onComplete: () => {
+        // Never leave transforms resting on cards (zoom-handoff rect reads,
+        // the next getState) — and hand the height back to natural flow.
+        gsap.set(els, { clearProps: "transform,opacity,visibility" });
+        gsap.set(container, { clearProps: "width,height" });
+        ScrollTrigger.refresh();
+      },
+    });
+    return () => {
+      // Re-arms mid-flight are already force-completed inside arm(); this
+      // only fires on unmount — jump to the end state so nothing ever rests
+      // absolute or half-hidden while React tears the grid down.
+      if (tl.isActive()) tl.progress(1).kill();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter]);
+
+  return arm;
+}
+
 /**
  * GridCard — one archive grid card, extracted so useFlipSource (a hook) is
  * called once per card at component top level (rules of hooks). The card markup
@@ -41,7 +300,7 @@ const INDUSTRY_COLOR: Record<CaseStudy["industry"], string> = {
  * detail hero); the rest inflate as a navy panel that cross-fades out.
  * Typography + the static STACK chips are aligned to the redesigned home rail
  * cards (visual language only — the grid keeps its layout, media priority and
- * Reveal entrances untouched).
+ * wave entrances untouched).
  */
 function GridCard({ study, isEn }: { study: CaseStudy; isEn: boolean }) {
   const engagement = isEn ? study.engagement : study.engagementIt;
@@ -118,6 +377,38 @@ export function CaseStudiesClient() {
   const { language } = useLanguage();
   const isEn = language === "en";
 
+  // Sector filter — SSR always renders the full archive ("all"); a ?filter=
+  // deep link applies after hydration (instant path, under the initial
+  // reveal) so server and client markup never diverge.
+  const [sector, setSector] = useState<SectorFilter>("all");
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const armResort = useArchiveResort(gridRef, sector);
+
+  useEffect(() => {
+    const param = new URLSearchParams(window.location.search).get("filter");
+    if (!param) return;
+    const match = SECTORS.find((s) => sectorSlug(s) === param.toLowerCase());
+    if (match) setSector(match);
+  }, []);
+
+  const selectSector = (next: SectorFilter) => {
+    if (next === sector) return;
+    armResort(); // capture the resting layout BEFORE React re-renders
+    setSector(next);
+    // Deep-linkable choice: sync ?filter= via replaceState — no navigation,
+    // no route transition, no scroll reset. Passing the existing
+    // history.state keeps Next's App Router history entry intact.
+    const url = new URL(window.location.href);
+    if (next === "all") url.searchParams.delete("filter");
+    else url.searchParams.set("filter", sectorSlug(next));
+    window.history.replaceState(window.history.state, "", url.toString());
+  };
+
+  const visibleCount =
+    sector === "all"
+      ? caseStudies.length
+      : caseStudies.filter((s) => s.industry === sector).length;
+
   return (
     <div className="min-h-screen pt-24 relative">
       {/* Hero */}
@@ -173,27 +464,87 @@ export function CaseStudiesClient() {
         </div>
       </section>
 
-      {/* Grid */}
+      {/* Grid + sector filter rail */}
       <section data-line-anchor="grid" className="py-16 sm:py-24">
         <div className="container-px">
           <div className="max-w-6xl mx-auto">
             <h2 className="sr-only">{isEn ? "Case studies" : "Case study"}</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
-              {caseStudies.map((study, i) => (
-                /* Cards WITH a product preview (the three Sersan builds —
-                   SphereNode, Quantex, Terra Noa) get the Lusion-style
-                   hover-reveal: the shot fades in BEHIND the text and distorts
-                   (RGB-shift + parallax + zoom) via a self-contained WebGL2
-                   canvas, with a CSS-only fade fallback for reduced-motion /
-                   touch / no-WebGL2. The media layer is the FIRST child so it
-                   sits behind the text under a navy scrim; the text is wrapped
-                   in a relative z-10 stack so it stays fully readable. Cards
-                   WITHOUT a preview keep the asset-free CSS/GSAP hover (tilt +
-                   sheen + glow + arrow) unchanged. */
-                <Reveal key={study.id} delay={(i % 2) * 90} className="h-full">
-                  <GridCard study={study} isEn={isEn} />
-                </Reveal>
-              ))}
+
+            {/* Filter rail — mono pills (spec: All · FinTech · … · Agritech)
+                plus a live entry count. The count span REMOUNTS on every
+                filter change (key), so the delegated LabelScrambler sees a
+                fresh .eyebrow and decodes it once per change — one calm
+                decode for the whole rail, never one per pill. It is
+                aria-hidden (the decode mutates its text nodes); the sr-only
+                status line is the assistive announcement, and each pill
+                carries aria-pressed. Sector names stay untranslated in IT on
+                purpose: the card eyebrows show them raw in both languages. */}
+            <div className="mb-10 flex flex-wrap items-center gap-x-6 gap-y-4">
+              <div
+                role="group"
+                aria-label={
+                  isEn
+                    ? "Filter case studies by sector"
+                    : "Filtra i case study per settore"
+                }
+                className="flex flex-wrap items-center gap-2"
+              >
+                <FilterPill
+                  active={sector === "all"}
+                  label={isEn ? "All" : "Tutti"}
+                  onClick={() => selectSector("all")}
+                />
+                {SECTORS.map((s) => (
+                  <FilterPill
+                    key={s}
+                    active={sector === s}
+                    label={s}
+                    onClick={() => selectSector(s)}
+                  />
+                ))}
+              </div>
+              <span key={sector} className="eyebrow ms-auto" aria-hidden="true">
+                {visibleCount}{" "}
+                {visibleCount === 1
+                  ? isEn
+                    ? "entry"
+                    : "voce"
+                  : isEn
+                    ? "entries"
+                    : "voci"}
+              </span>
+              <span className="sr-only" role="status">
+                {isEn
+                  ? `Showing ${visibleCount} of ${caseStudies.length} case studies`
+                  : `${visibleCount} case study su ${caseStudies.length} visibili`}
+              </span>
+            </div>
+
+            {/* relative: the FLIP re-sort absolutizes cards mid-flight — give
+                them a positioning context that IS the grid. */}
+            <div
+              ref={gridRef}
+              className="relative grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8"
+            >
+              {caseStudies.map((study) => {
+                const hidden = sector !== "all" && study.industry !== sector;
+                return (
+                  /* Filtered-out cards are `hidden`, never UNMOUNTED: gsap
+                     Flip needs leaving elements alive to animate them off,
+                     display:none children vanish from the grid flow for
+                     free, and stable instances preserve entrance state, the
+                     per-card WebGL distort contexts and the zoom-handoff
+                     arming across re-sorts. Card hover behavior (distort /
+                     logo reveal / tilt) is documented on GridCard. */
+                  <div
+                    key={study.id}
+                    data-archive-item=""
+                    className={cn("h-full", hidden && "hidden")}
+                  >
+                    <GridCard study={study} isEn={isEn} />
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>

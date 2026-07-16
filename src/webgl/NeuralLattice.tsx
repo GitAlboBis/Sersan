@@ -254,10 +254,33 @@ export function NeuralLattice({
     group.quaternion.copy(camera.quaternion);
     group.scale.set(wWorld, hWorld, zWorld);
 
+    // --- Arrival ramp: assemble when the READER arrives, not at route load --
+    // scrollStore.reveal stays the MASTER gate (preloader / route beat), but on
+    // its own it flips to 1 while this section is still a viewport below the
+    // fold — the seed-cloud→network coalesce (uReveal lerps seed→anchor AND
+    // multiplies alpha, on both sub-backends) would play entirely off-screen
+    // and the reader would only ever meet a finished, static lattice. So the
+    // gate is multiplied by a per-section visibility ramp derived from numbers
+    // already on hand (vpTop/ih): 0 while the section top sits ~half a cull
+    // pad below the bottom edge, 1 once it has risen to ~70% up the screen.
+    // The damp is deliberately slower than the old route-beat chase (2.5 vs 8
+    // → ~95% in ~1.2s) so the 9000 particles visibly COALESCE as the section
+    // scrolls into view; the same ramp runs in reverse when the section sinks
+    // back below the fold, so re-entry from below replays the assembly
+    // (scroll-direction awareness), while re-entry from ABOVE keeps vis=1 —
+    // the network stays built when the reader merely backtracks past it.
+    // While hard-culled (early return above) the ref freezes at its last
+    // value, so scrolling far past never pops it in either direction. Both
+    // lattice instances (broken/healthy) share this path.
+    const vis = THREE.MathUtils.clamp(
+      (ih + CULL_PAD / 2 - vpTop) / (ih * 0.7),
+      0,
+      1,
+    );
     revealDamped.current = THREE.MathUtils.damp(
       revealDamped.current,
-      useScrollStore.getState().reveal,
-      8,
+      useScrollStore.getState().reveal * vis,
+      2.5,
       delta,
     );
     const reveal = revealDamped.current;

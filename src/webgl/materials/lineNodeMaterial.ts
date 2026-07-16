@@ -16,21 +16,27 @@
  *
  * Parity contract with lineShader.ts (must match exactly):
  *   - vertex: radial breath = pos += normal * (uBreath * breathField(uv.x)),
- *     breathField = 0.6*sin(x*7 + t*0.55) + 0.4*sin(x*3 - t*0.37); normal is
- *     passed through UNPERTURBED (the <0.2° facing tilt is dropped on purpose).
- *   - fragment: head-draw mask on uv.x with fwidth AA, bright head band,
- *     animated cyan→blue gradient, view-facing core glow (abs(viewNormal.z)
- *     ^ uGlowFalloff), the "gel tube" fresnel rim + fake-scatter
- *     (fres = pow(1 - abs(viewNormal.z), uFresnelPower); col += grad*fres*uScatter
- *     added into HDR color BEFORE × uEmissive), color × uEmissive (HDR >1.0 for
- *     bloom-by-threshold), alpha = drawn * core * uReveal, additive,
- *     depthWrite/depthTest off, toneMapped off.
+ *     breathField = 0.6*sin(x*7 + t*0.55) + 0.4*sin(x*3 - t*0.37), PLUS the
+ *     comet swell — a gaussian bump uBreath*1.25*uVel*exp(-rel²) centered on
+ *     the lit head (rel = (uv.x - uProgress)/(headLen*2)); normal is passed
+ *     through UNPERTURBED (the <0.2° facing tilt is dropped on purpose).
+ *   - fragment: head-draw mask on uv.x with fwidth AA, bright head band whose
+ *     length breathes with scroll velocity (headLen = uHeadSharp*(1+uVel*5) —
+ *     a point at rest, a ≤6× comet tail under a flick) and whose hot mix lifts
+ *     with it (head*(0.85+0.3*uVel)), animated cyan→blue gradient, view-facing
+ *     core glow (abs(viewNormal.z) ^ uGlowFalloff), the "gel tube" fresnel rim
+ *     + fake-scatter (fres = pow(1 - abs(viewNormal.z), uFresnelPower);
+ *     col += grad*fres*uScatter added into HDR color BEFORE × uEmissive),
+ *     color × uEmissive (HDR >1.0 for bloom-by-threshold),
+ *     alpha = drawn * core * uReveal, additive, depthWrite/depthTest off,
+ *     toneMapped off.
  *
  * TSL node names verified against the INSTALLED build:
  *   `node_modules/three/build/three.tsl.js` (via `require('three/tsl')`) and
  *   `three/webgpu` for `MeshBasicNodeMaterial`/`AdditiveBlending`/`Color`.
  *   Verified present: Fn, uniform, uv, positionLocal, normalLocal, normalView,
- *   sin, abs, pow, mix, smoothstep, fwidth, float, vec3, vec4, oneMinus, time.
+ *   sin, abs, pow, mix, smoothstep, fwidth, float, vec3, vec4, oneMinus, time,
+ *   exp.
  */
 import { Color, MeshBasicNodeMaterial, AdditiveBlending } from "three/webgpu";
 import {
@@ -48,6 +54,7 @@ import {
   fwidth,
   float,
   vec3,
+  exp,
 } from "three/tsl";
 
 /**
@@ -71,6 +78,7 @@ export type LineNodeUniforms = {
   uBreath: { value: number };
   uFresnelPower: { value: number };
   uScatter: { value: number };
+  uVel: { value: number };
 };
 
 export function createLineNodeMaterial(): {
@@ -91,23 +99,38 @@ export function createLineNodeMaterial(): {
   const uBreath = uniform(0);
   const uFresnelPower = uniform(2.5);
   const uScatter = uniform(0.4);
+  // Smoothed scroll velocity, 0..1 (damped in SignatureLine so it eases in on
+  // a flick and relaxes back over ~0.5s). Drives the comet-head stretch.
+  const uVel = uniform(0);
 
   const material = new MeshBasicNodeMaterial();
 
-  // --- Vertex: radial breath (matches lineShader.ts vertex shader) -----------
+  // --- Vertex: radial breath + comet swell (matches lineShader.ts vertex) ----
   // breathField(along) = 0.6*sin(along*7 + t*0.55) + 0.4*sin(along*3 - t*0.37).
   // Offset each vertex along its own surface normal by uBreath * field. The
   // displacement depends only on uv.x (the along coordinate), so it inflates/
   // deflates the tube radius uniformly per cross-section without disturbing the
-  // uv.x head-mask coordinate. When uBreath is 0 (every non-full tier) the
-  // offset term is 0 → positionLocal is unchanged, matching the GLSL branch
-  // skip. The normal is passed through unperturbed (see lineShader.ts note).
+  // uv.x head-mask coordinate. Comet swell: a gaussian bump centered on the
+  // lit head, ONLY under scroll velocity (uVel damped to 0 at rest → the term
+  // vanishes). Amplitude rides on uBreath — already radius-relative AND
+  // velocity-scaled by the driver — so at uVel=1 the bulge peaks at
+  // ~0.5·radius; width tracks the stretched fragment head band (same headLen
+  // formula) so the physical swell and the hot tail cover the same arc. When
+  // uBreath is 0 (every non-full tier) BOTH terms are 0 → positionLocal is
+  // unchanged, matching the GLSL branch skip. The normal is passed through
+  // unperturbed (see lineShader.ts note).
   material.positionNode = Fn(() => {
     const along = uv().x;
     const field = sin(along.mul(7.0).add(uTime.mul(0.55)))
       .mul(0.6)
       .add(sin(along.mul(3.0).sub(uTime.mul(0.37))).mul(0.4));
-    const d = uBreath.mul(field);
+    const headLen = uHeadSharp.mul(uVel.mul(5.0).add(1.0));
+    const rel = along.sub(uProgress).div(headLen.mul(2.0));
+    const swell = uBreath
+      .mul(1.25)
+      .mul(uVel)
+      .mul(exp(rel.mul(rel).negate()));
+    const d = uBreath.mul(field).add(swell);
     return positionLocal.add(normalLocal.mul(d));
   })();
 
@@ -124,9 +147,14 @@ export function createLineNodeMaterial(): {
     smoothstep(uProgress.sub(aa), uProgress.add(aa), along),
   );
 
-  // Bright "signal head" band right behind the leading edge.
-  // head = smoothstep(uProgress - uHeadSharp, uProgress, along) * drawn.
-  const head = smoothstep(uProgress.sub(uHeadSharp), uProgress, along).mul(
+  // Bright "signal head" band right behind the leading edge. COMET HEAD:
+  // headLen = uHeadSharp * (1 + uVel*5) — a point at rest (uVel=0 → exactly
+  // the pre-comet band), stretching up to 6× into a comet tail under a fast
+  // flick, tightening back as uVel relaxes. The 6× ceiling is inherent (uVel
+  // is clamped 0..1 by the driver).
+  // head = smoothstep(uProgress - headLen, uProgress, along) * drawn.
+  const headLen = uHeadSharp.mul(uVel.mul(5.0).add(1.0));
+  const head = smoothstep(uProgress.sub(headLen), uProgress, along).mul(
     drawn,
   );
 
@@ -151,8 +179,12 @@ export function createLineNodeMaterial(): {
   // → no new per-frame animation, safe on every tier.
   const fres = pow(facing.oneMinus(), uFresnelPower);
 
-  // col = mix(grad, uColorHot, head * 0.85); col += grad*fres*uScatter; col *= uEmissive.
-  const col = mix(grad, uColorHot, head.mul(0.85))
+  // col = mix(grad, uColorHot, head * (0.85 + 0.3*uVel)); col += grad*fres*uScatter;
+  // col *= uEmissive. The head→hot mix lifts with velocity (0.85 at rest —
+  // unchanged — up to 1.15 at full flick; the mild extrapolation past
+  // uColorHot just pushes the comet core a touch hotter in HDR, which the
+  // threshold-1.0 bloom reads as extra glow exactly where the energy is).
+  const col = mix(grad, uColorHot, head.mul(uVel.mul(0.3).add(0.85)))
     .add(grad.mul(fres).mul(uScatter))
     .mul(uEmissive);
   // alpha = drawn * core * uReveal.
@@ -189,6 +221,7 @@ export function createLineNodeMaterial(): {
     uBreath,
     uFresnelPower,
     uScatter,
+    uVel,
   };
 
   return { material, uniforms };

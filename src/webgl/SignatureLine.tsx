@@ -281,6 +281,11 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   const shakeY = useRef(0);
   const shakeVel = useRef(0);
   const gateEnergy = useRef(0);
+  // Comet-head velocity (uVel, 0..1): the normalized alive velocity damped at
+  // λ=4 so a scroll flick eases the comet tail IN quickly and relaxes it back
+  // to a point over ~0.5s (95% settle ≈ 3/λ = 0.75s) instead of the raw
+  // velocity's frame-to-frame jitter snapping the head length around.
+  const cometVel = useRef(0);
   // Camera-descent beat state (tilt phase): the previous camTilt clock (the
   // pitch is now derived from the SMOOTH 0→1 beat clock velocity, not
   // world-units/sec, so it can't spike on the gate's odd dt) and the smoothed
@@ -903,7 +908,11 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // pulse adds a brief ~×1.2 bump as the head "arrives" at each section
     // (proportional to base emissive so it reads as ×1.0→1.2→1.0). Both are
     // SUMMED then clamped to the same single ceiling — no double-counting.
-    const velocityBoost = aliveVelocity * 0.004;
+    // Weight HALVED (0.004 → 0.002) when the comet head landed: speed should
+    // read LOCALLY at the head (the uVel tail stretch + hot lift below), not
+    // as a whole-page brightness lift — the global term stays only as a faint
+    // supporting glow so the rest of the drawn path still feels the motion.
+    const velocityBoost = aliveVelocity * 0.002;
     const pulseBoost = fx.emissive * 0.2 * decayedPulse;
     // BEAT 1 — production-grade per-panel pulse, gated to a smooth 0→1→0
     // triangle across the production section so the lift only ever reads near
@@ -968,6 +977,17 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     const velNorm = Math.min(aliveVelocity * 0.01, 1);
     u.uBreath.value =
       tier === "full" ? 0.4 * radius * (0.45 + 0.55 * velNorm) : 0;
+    // Comet head (uVel): damp the SAME normalized alive velocity the breath
+    // uses toward the shader — the fragment stretches the hot head band into
+    // a tail (headLen ×(1+5·uVel)) and lifts its hot mix, the vertex swells
+    // the tube radius under the head. Damping (vs writing velNorm raw) is
+    // what makes the effect invisible at rest and during slow reading
+    // scrolls: only a genuine flick pumps it up, and it relaxes back to a
+    // point over ~0.5s once the hand stops. aliveVelocity already includes
+    // the intro-gate gesture energy, so the gated hero gets the same comet
+    // response while the document is pinned.
+    cometVel.current = THREE.MathUtils.damp(cometVel.current, velNorm, 4, delta);
+    u.uVel.value = cometVel.current;
     // Base = the live fxStore color (dev tuning), lerped toward the route tone
     // by colorBlend. On home colorBlend is 0 AND the endpoints are equal, so
     // the result is byte-identical to today's fx.color* set.

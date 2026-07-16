@@ -1,23 +1,313 @@
 "use client";
 
 import Link from "next/link";
-import { useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowRight, Clock } from "lucide-react";
-import { resources, type Resource } from "@/data/resources";
+import gsap from "gsap";
+import { Flip } from "gsap/Flip";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import {
+  resources,
+  type Resource,
+  type ResourceCategory,
+} from "@/data/resources";
 import { useLanguage } from "@/components/language-provider";
 import { Reveal } from "@/components/ui/reveal";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { useTierStore } from "@/webgl/store/tierStore";
+import { webgpuEnabled } from "@/webgl/renderer/createRenderer";
 import {
   useResourcePreview,
   ResourcePreviewCard,
   type ResourceItemHandlers,
 } from "@/components/resources/resource-preview";
 
+// Flip is already registered by the persistent flip-handoff overlay (root
+// layout), so this adds no bundle weight — registering again is idempotent
+// and keeps this module self-sufficient if the overlay is ever removed.
+if (typeof window !== "undefined") gsap.registerPlugin(Flip, ScrollTrigger);
+
+/* ------------------------------------------------------------------------- */
+/* Type filter rail + FLIP re-sort                                            */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * Spec-ordered type rail (All · Article · Guide · Case Study · Whitepaper),
+ * intersected with what actually exists in the data: a category with zero
+ * posts silently drops its pill instead of offering a click that filters the
+ * list into blankness. Category ids double as the ?filter= slugs (they are
+ * already URL-safe: "case-study").
+ */
+const CATEGORY_ORDER: ResourceCategory[] = [
+  "article",
+  "guide",
+  "case-study",
+  "whitepaper",
+];
+const CATEGORIES = CATEGORY_ORDER.filter((c) =>
+  resources.some((r) => r.category === c),
+);
+
+type CategoryFilter = "all" | ResourceCategory;
+
+const prefersReducedMotion = () =>
+  typeof window !== "undefined" &&
+  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/**
+ * One mono filter pill. Eyebrow language (JetBrains Mono, uppercase, tracked)
+ * with the site's dot idiom: the dot is ALWAYS in the layout (accent when
+ * active, rule-grey at rest) so toggling never reflows the rail. h-9 keeps the
+ * ≥36px tap height of the navbar's language pill (WCAG 2.5.8 target size);
+ * keyboard focus is handled by the global :focus-visible ring.
+ */
+function FilterPill({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      data-cursor="link"
+      className={cn(
+        "inline-flex h-9 items-center gap-2 rounded-full border px-3.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-300",
+        active
+          ? "border-[hsl(var(--accent)/0.55)] bg-[hsl(var(--accent)/0.08)] text-ink"
+          : "border-rule/80 text-ink-mute hover:border-rule hover:text-ink",
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "h-1.5 w-1.5 rounded-full transition-colors duration-300",
+          active ? "bg-[hsl(var(--accent))]" : "bg-rule",
+        )}
+      />
+      {label}
+    </button>
+  );
+}
+
+/**
+ * useArchiveResort — entrance choreography + FLIP re-sort engine for the
+ * article list. Deliberately a LOCAL twin of the hook in
+ * case-studies/case-studies-client.tsx (the two archives stay independently
+ * tunable and neither route imports the other's module for a shared hook —
+ * same rationale as that file's local INDUSTRY_COLOR copy). Row-specific
+ * tuning here: the wave steps 0.07s and caps at 4 like the old
+ * Math.min(i, 4) * 70ms Reveal delays this replaces.
+ *
+ * ENTRANCES — rows fade + rise 24px (0.85s expo.out) via ONE
+ * IntersectionObserver over the row wrappers. Entries that arrive in the
+ * SAME IO callback crossed the threshold together and stagger as one wave;
+ * a solo row on a slow scroll enters alone. IO (not ScrollTrigger) so
+ * wrappers mounted already-in-view after an SPA navigation still fire —
+ * same contract as ui/reveal.tsx, which owned these entrances before the
+ * filter rail existed (a Reveal wrapper can't be reused here: its once-only
+ * IO play would fight the flip's onEnter when a filtered-out row returns).
+ *
+ * RE-SORT — the pill click calls arm() BEFORE the React state change:
+ * Flip.getState captures the resting list, React re-renders (display:none
+ * via the `hidden` class — rows stay MOUNTED so Flip can classify
+ * visible→hidden as "leaving" and hidden→visible as "entering", and so each
+ * row keeps its SOURCE-array index for the preview store), then the layout
+ * effect keyed on the filter plays Flip.from before paint: movers glide
+ * (0.6s expo.inOut, 0.03 stagger, absolute so the column re-packs beneath
+ * them), leavers fall away (0.25s power2.in), enterers rise in (0.4s
+ * expo.out). The CONTAINER itself is captured too, so the list height eases
+ * instead of snapping (no scrollbar jump). clearProps on complete: no
+ * transforms ever rest on rows (the lens caches row rects per pointerenter).
+ *
+ * Reduced motion: arm() refuses to capture → the layout effect takes the
+ * instant path (plain re-render + ScrollTrigger re-measure only).
+ */
+function useArchiveResort(
+  containerRef: React.RefObject<HTMLDivElement | null>,
+  filter: string,
+) {
+  const pendingState = useRef<ReturnType<typeof Flip.getState> | null>(null);
+  const mounted = useRef(false);
+
+  const items = () =>
+    containerRef.current
+      ? Array.from(
+          containerRef.current.querySelectorAll<HTMLElement>(
+            "[data-archive-item]",
+          ),
+        )
+      : [];
+
+  useEffect(() => {
+    const els = items();
+    if (!els.length) return;
+    if (prefersReducedMotion()) {
+      // Instant final state — SSR markup is already visible, so there is
+      // nothing to set; just retire the choreography per element.
+      els.forEach((el) => (el.dataset.entered = "1"));
+      return;
+    }
+    const pending = els.filter((el) => el.dataset.entered !== "1");
+    gsap.set(pending, { opacity: 0, y: 24 });
+    const io = new IntersectionObserver(
+      (entries) => {
+        let wave = 0;
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const el = entry.target as HTMLElement;
+          io.unobserve(el);
+          if (el.dataset.entered === "1") continue; // arm() got here first
+          el.dataset.entered = "1";
+          gsap.to(el, {
+            opacity: 1,
+            y: 0,
+            duration: 0.85,
+            ease: "expo.out",
+            delay: Math.min(wave++, 4) * 0.07,
+            // Resting rows carry NO inline transform/opacity: the lens rect
+            // cache and the next Flip capture both read clean layout.
+            onComplete: () => gsap.set(el, { clearProps: "transform,opacity" }),
+          });
+        }
+      },
+      // -18% bottom rootMargin ≈ the old "top 82%" start (see ui/reveal.tsx).
+      { rootMargin: "0px 0px -18% 0px", threshold: 0 },
+    );
+    pending.forEach((el) => io.observe(el));
+    return () => {
+      io.disconnect();
+      gsap.killTweensOf(pending);
+    };
+    // Mount-only: every row stays mounted across filter/language changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const arm = () => {
+    const container = containerRef.current;
+    if (!container || prefersReducedMotion()) return; // instant swap instead
+    const els = items();
+    // Interrupted-flight discipline: force any in-flight re-sort to its END
+    // state (progress 1 restores layout and runs its clearProps sweep) —
+    // killing alone would strand absolute-positioned movers or half-faded
+    // leavers, and the state captured below must be a RESTING layout.
+    Flip.killFlipsOf([container, ...els], true);
+    // Entrance tweens (running or still inside their wave delay) animate the
+    // same transforms Flip is about to own. From the first filter interaction
+    // the re-sort owns every wrapper: settle them all to the resting visible
+    // state and retire the IO entrance for good. (Un-entered wrappers are
+    // below the fold by definition — revealing them early is invisible, and
+    // a flight that pulls one into the viewport SHOULD show it mid-glide.)
+    gsap.killTweensOf(els);
+    els.forEach((el) => (el.dataset.entered = "1"));
+    gsap.set(els, { clearProps: "transform,opacity,visibility" });
+    pendingState.current = Flip.getState([container, ...els]);
+  };
+
+  useLayoutEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    const container = containerRef.current;
+    const state = pendingState.current;
+    pendingState.current = null;
+    const els = items();
+    if (!container || !state) {
+      // Instant path — reduced motion, or the ?filter= deep-link init right
+      // after mount. The document height still changed, so downstream
+      // ScrollTriggers must re-measure (the signature line re-glues itself
+      // separately via the section bus's body ResizeObserver).
+      ScrollTrigger.refresh();
+      return;
+    }
+    const tl = Flip.from(state, {
+      targets: [container, ...els],
+      duration: 0.6,
+      ease: "expo.inOut",
+      stagger: 0.03,
+      // Movers/leavers leave document flow during the flight so the column
+      // can re-pack beneath them; the container is NOT absolutized — Flip
+      // eases its width/height, which is what keeps the page height (and
+      // the scrollbar) gliding instead of snapping.
+      absolute: "[data-archive-item]",
+      nested: false,
+      onEnter: (entered) =>
+        gsap.fromTo(
+          entered,
+          { autoAlpha: 0, y: 16 },
+          { autoAlpha: 1, y: 0, duration: 0.4, ease: "expo.out" },
+        ),
+      onLeave: (left) =>
+        gsap.to(left, {
+          autoAlpha: 0,
+          scale: 0.96,
+          duration: 0.25,
+          ease: "power2.in",
+        }),
+      onComplete: () => {
+        // Never leave transforms resting on rows (lens rect caching, the
+        // next getState) — and hand the height back to natural flow.
+        gsap.set(els, { clearProps: "transform,opacity,visibility" });
+        gsap.set(container, { clearProps: "width,height" });
+        ScrollTrigger.refresh();
+      },
+    });
+    return () => {
+      // Re-arms mid-flight are already force-completed inside arm(); this
+      // only fires on unmount — jump to the end state so nothing ever rests
+      // absolute or half-hidden while React tears the list down.
+      if (tl.isActive()) tl.progress(1).kill();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter]);
+
+  return arm;
+}
+
 export function ResourcesClient() {
   const { language } = useLanguage();
   const isEn = language === "en";
   const { getItemHandlers, onListPointerLeave } = useResourcePreview();
+
+  // Type filter — SSR always renders the full list ("all"); a ?filter= deep
+  // link applies after hydration (instant path, under the initial reveal) so
+  // server and client markup never diverge.
+  const [category, setCategory] = useState<CategoryFilter>("all");
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const armResort = useArchiveResort(listRef, category);
+
+  useEffect(() => {
+    const param = new URLSearchParams(window.location.search).get("filter");
+    if (!param) return;
+    const match = CATEGORIES.find((c) => c === param.toLowerCase());
+    if (match) setCategory(match);
+  }, []);
+
+  const selectCategory = (next: CategoryFilter) => {
+    if (next === category) return;
+    armResort(); // capture the resting layout BEFORE React re-renders
+    setCategory(next);
+    // Deep-linkable choice: sync ?filter= via replaceState — no navigation,
+    // no route transition, no scroll reset. Passing the existing
+    // history.state keeps Next's App Router history entry intact.
+    const url = new URL(window.location.href);
+    if (next === "all") url.searchParams.delete("filter");
+    else url.searchParams.set("filter", next);
+    window.history.replaceState(window.history.state, "", url.toString());
+  };
+
+  const visibleCount =
+    category === "all"
+      ? resources.length
+      : resources.filter((r) => r.category === category).length;
 
   const categoryLabel: Record<string, string> = isEn
     ? {
@@ -89,29 +379,92 @@ export function ResourcesClient() {
         </div>
       </section>
 
-      {/* Articles list */}
+      {/* Articles list + type filter rail */}
       <section data-line-anchor="list" className="pb-24">
         <div className="container-px">
-          <div
-            className="max-w-4xl mx-auto space-y-5"
-            onPointerLeave={onListPointerLeave}
-          >
-            {/* ResourceCard COMPOSES the preview-store handlers (WebGL hover
-                plane / DOM fallback card wiring) with the card-surface hover
-                lens + click radial wipe — it wraps getItemHandlers(i), never
-                replaces it. */}
-            {resources.map((r, i) => (
-              <Reveal key={r.slug} delay={Math.min(i, 4) * 70}>
-                <ResourceCard
-                  r={r}
-                  index={i}
-                  isEn={isEn}
-                  categoryLabel={categoryLabel}
-                  dateLocale={dateLocale}
-                  preview={getItemHandlers(i)}
+          <div className="max-w-4xl mx-auto">
+            {/* Filter rail — mono pills (spec: All · Article · Guide · Case
+                Study · Whitepaper, empty categories dropped) plus a live
+                entry count. The count span REMOUNTS on every filter change
+                (key), so the delegated LabelScrambler sees a fresh .eyebrow
+                and decodes it once per change — one calm decode for the
+                whole rail, never one per pill. It is aria-hidden (the decode
+                mutates its text nodes); the sr-only status line is the
+                assistive announcement, and each pill carries aria-pressed. */}
+            <div className="mb-8 flex flex-wrap items-center gap-x-6 gap-y-4">
+              <div
+                role="group"
+                aria-label={
+                  isEn ? "Filter writing by type" : "Filtra i contenuti per tipo"
+                }
+                className="flex flex-wrap items-center gap-2"
+              >
+                <FilterPill
+                  active={category === "all"}
+                  label={isEn ? "All" : "Tutte"}
+                  onClick={() => selectCategory("all")}
                 />
-              </Reveal>
-            ))}
+                {CATEGORIES.map((c) => (
+                  <FilterPill
+                    key={c}
+                    active={category === c}
+                    label={categoryLabel[c]}
+                    onClick={() => selectCategory(c)}
+                  />
+                ))}
+              </div>
+              <span key={category} className="eyebrow ms-auto" aria-hidden="true">
+                {visibleCount}{" "}
+                {visibleCount === 1
+                  ? isEn
+                    ? "entry"
+                    : "voce"
+                  : isEn
+                    ? "entries"
+                    : "voci"}
+              </span>
+              <span className="sr-only" role="status">
+                {isEn
+                  ? `Showing ${visibleCount} of ${resources.length} posts`
+                  : `${visibleCount} ${visibleCount === 1 ? "voce" : "voci"} su ${resources.length} visibili`}
+              </span>
+            </div>
+
+            {/* relative: the FLIP re-sort absolutizes rows mid-flight — give
+                them a positioning context that IS the list. flex+gap (not
+                space-y margins) so display:none rows leave no phantom gap. */}
+            <div
+              ref={listRef}
+              className="relative flex flex-col gap-5"
+              onPointerLeave={onListPointerLeave}
+            >
+              {/* ResourceCard COMPOSES the preview-store handlers (WebGL hover
+                  plane / DOM fallback card wiring) with the card-surface hover
+                  lens + click radial wipe — it wraps getItemHandlers(i), never
+                  replaces it. Filtered-out rows are `hidden`, never UNMOUNTED:
+                  gsap Flip needs leaving elements alive to animate them off,
+                  and every row keeps its SOURCE-array index `i` so the
+                  preview store / plane seeds stay stable across re-sorts. */}
+              {resources.map((r, i) => {
+                const hidden = category !== "all" && r.category !== category;
+                return (
+                  <div
+                    key={r.slug}
+                    data-archive-item=""
+                    className={cn(hidden && "hidden")}
+                  >
+                    <ResourceCard
+                      r={r}
+                      index={i}
+                      isEn={isEn}
+                      categoryLabel={categoryLabel}
+                      dateLocale={dateLocale}
+                      preview={getItemHandlers(i)}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </div>
       </section>
@@ -238,7 +591,10 @@ interface ResourceCardProps {
  * card from the click point with a corner-max-normalized radius, so coverage
  * always completes regardless of origin. Passive: NO preventDefault — the wipe
  * is a confirmation flourish and <Link> navigation proceeds natively (same
- * arming contract as use-flip-source).
+ * arming contract as use-flip-source). Fires ONLY where the DOM owns the
+ * preview: on the desktop WebGPU full path the signal plane's uWipe flood is
+ * the click confirmation and this layer stays quiet (one flourish per
+ * gesture, one owner per tier).
  */
 function ResourceCard({
   r,
@@ -300,6 +656,14 @@ function ResourceCard({
       return;
     if (e.detail === 0) return; // keyboard "click"
     if (!cardFxOn()) return;
+    // ONE confirmation per gesture, per tier: on the desktop WebGPU full path
+    // the signal plane's domain-warped uWipe flood (already triggered by
+    // preview.onPointerDown) owns the click — flooding this DOM layer on top
+    // stacked two wipe metaphors on a single gesture. The gate mirrors
+    // ResourcePreviewCard's planeOwnsPreview exactly, so whichever layer owns
+    // the hover preview also owns the click confirmation; on lite / flag-off
+    // paths (no plane) the DOM flood below stays the confirmation.
+    if (useTierStore.getState().tier === "full" && webgpuEnabled()) return;
     const wipe = wipeRef.current;
     if (!wipe) return;
     const rect = rectRef.current ?? e.currentTarget.getBoundingClientRect();

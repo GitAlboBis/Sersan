@@ -20,6 +20,13 @@ const vertexShader = /* glsl */ `
   // Breath amplitude in WORLD units (already radius-relative: the builder
   // passes <= 0.4 * tubeRadius). 0 disables the breath entirely.
   uniform float uBreath;
+  // Comet head (see fragment): the same head position / velocity / band
+  // length drive a head-LOCAL radial swell so the tube physically bulges
+  // where the scroll energy is. All three are shared with the fragment stage
+  // (ShaderMaterial uniforms span both stages).
+  uniform float uProgress;
+  uniform float uHeadSharp;
+  uniform float uVel;
 
   // Cheap analytic value-noise-ish term: two low-frequency sines whose phase
   // walks along the tube (uv.x) and slowly in time. Smooth + periodic, so no
@@ -49,6 +56,18 @@ const vertexShader = /* glsl */ `
     if (uBreath > 0.0001) {
       float along = uv.x;
       float d = uBreath * breathField(along);
+      // Comet swell: a gaussian bump centered on the lit head, ONLY under
+      // scroll velocity (uVel is damped 0 at rest → this term vanishes and
+      // the tube is byte-identical to the pre-comet look). Amplitude rides on
+      // uBreath — already radius-relative AND velocity-scaled by the driver
+      // (≤0.4·radius at full speed) — so at uVel=1 the bulge peaks at
+      // ~0.5·radius without needing a separate radius uniform. Width tracks
+      // the stretched head band (headLen, same formula as the fragment) so
+      // the physical swell and the hot comet tail always cover the same arc.
+      // Sharing the uBreath>0 gate keeps this full-tier only, like the breath.
+      float headLen = uHeadSharp * (1.0 + uVel * 5.0);
+      float rel = (along - uProgress) / (headLen * 2.0);
+      d += uBreath * 1.25 * uVel * exp(-rel * rel);
       pos += normal * d;
     }
 
@@ -73,6 +92,9 @@ const fragmentShader = /* glsl */ `
   uniform float uReveal;
   uniform float uFresnelPower;
   uniform float uScatter;
+  // Smoothed scroll velocity, 0..1 (damped in SignatureLine so it eases in on
+  // a flick and relaxes back over ~0.5s). Drives the comet-head stretch.
+  uniform float uVel;
 
   void main() {
     // three.js TubeGeometry maps uv.x ALONG the tube (0 = start, 1 = end)
@@ -84,8 +106,15 @@ const fragmentShader = /* glsl */ `
     float aa = fwidth(along) + 0.0005;
     float drawn = 1.0 - smoothstep(uProgress - aa, uProgress + aa, along);
 
-    // Bright "signal head" band right behind the leading edge.
-    float head = smoothstep(uProgress - uHeadSharp, uProgress, along) * drawn;
+    // Bright "signal head" band right behind the leading edge. COMET HEAD:
+    // the band length breathes with scroll velocity — at rest it collapses to
+    // the tuned uHeadSharp point (uVel=0 → exactly the pre-comet band); under
+    // a fast flick it stretches up to 6× into a comet tail trailing the head,
+    // then tightens back as uVel relaxes. The 6× ceiling is inherent (uVel is
+    // clamped 0..1 by the driver), so the tail can never smear across a whole
+    // section even on arc-dense routes like the 580vh /audit page.
+    float headLen = uHeadSharp * (1.0 + uVel * 5.0);
+    float head = smoothstep(uProgress - headLen, uProgress, along) * drawn;
 
     // Animated cyan -> blue gradient flowing along the tube. Sine keeps
     // the wrap seamless (no fract() seam).
@@ -106,7 +135,11 @@ const fragmentShader = /* glsl */ `
     // a thick halo. View-dependent only → no new per-frame animation.
     float fres = pow(1.0 - facing, uFresnelPower);
 
-    vec3 col = mix(grad, uColorHot, head * 0.85);
+    // Head→hot mix lifts with velocity (0.85 at rest — unchanged — up to 1.15
+    // at full flick; the mild extrapolation past uColorHot just pushes the
+    // comet core a touch hotter in HDR, which the threshold-1.0 bloom reads
+    // as extra glow exactly where the energy is).
+    vec3 col = mix(grad, uColorHot, head * (0.85 + 0.3 * uVel));
     col += grad * fres * uScatter;
     col *= uEmissive;
     float alpha = drawn * core * uReveal;
@@ -129,6 +162,7 @@ export type LineUniforms = {
   uBreath: { value: number };
   uFresnelPower: { value: number };
   uScatter: { value: number };
+  uVel: { value: number };
 };
 
 export function createLineMaterial(): THREE.ShaderMaterial & {
@@ -151,6 +185,7 @@ export function createLineMaterial(): THREE.ShaderMaterial & {
       uBreath: { value: 0 },
       uFresnelPower: { value: 2.5 },
       uScatter: { value: 0.4 },
+      uVel: { value: 0 },
     },
     transparent: true,
     depthWrite: false,

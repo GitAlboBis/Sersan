@@ -11,6 +11,7 @@ import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
 import { type CaseStudy } from "@/data/case-studies";
 import { isFlipArmedFor } from "@/lib/flip-handoff-store";
+import { useReturnFlipSource } from "@/lib/use-flip-source";
 
 const INDUSTRY_ACCENT: Record<CaseStudy["industry"], string> = {
   FinTech: "var(--accent)",
@@ -42,6 +43,17 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
 
   const hasHero = Boolean(study.previewImage);
   const heroRef = useRef<HTMLElement>(null);
+
+  // The breadcrumb is the page's EXPLICIT way back to the work archive: a
+  // plain left click on it arms the REVERSE flight (the hero deflates onto
+  // its matching card — fx/flip-handoff-overlay) while the <Link> navigates
+  // natively. Arming is passive and per-click gated inside the hook —
+  // reduced-motion / coarse pointers / modified clicks / no-hero studies all
+  // fall through to the standard route cover unchanged, and browser
+  // back/forward (popstate) never arms since no click handler runs. The hook
+  // also toggles [data-no-curtain] on the link so the generic cover twin
+  // (navbar's RouteTransitionCover) never double-covers an armed flight.
+  const onReturnFlip = useReturnFlipSource(study.id, study.previewImage);
 
   // Hero image entrance. The hook is called unconditionally (rules of hooks);
   // `if (!el) return` covers the no-figure case so the effect is a no-op when
@@ -102,6 +114,7 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
         <nav aria-label="Breadcrumb" className="mb-10">
           <Link
             href="/case-studies"
+            onClick={onReturnFlip}
             className="inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.16em] text-ink-mute hover:text-[hsl(var(--accent))] transition-colors"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
