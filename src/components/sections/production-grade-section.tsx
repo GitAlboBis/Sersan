@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { SectionGlow } from "@/components/ui/section-glow";
-import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
 import { useProductionPulseStore } from "@/webgl/store/productionPulseStore";
 import { useNeuralLatticeStore } from "@/webgl/store/neuralLatticeStore";
@@ -25,6 +26,24 @@ import { NeuralCenterpiece } from "@/components/fx/neural-centerpiece";
  * cards use the shared NeuralCard chrome (compact → expand, cyan→blue glass)
  * identical to the Problem section; only the copy + healthy accent differ. The
  * copy from getArtifacts() stays as accessible, selectable DOM at all times.
+ *
+ * ENTRANCE — the "systems come online" BOOT SEQUENCE. One GSAP timeline, owned
+ * by the section row's in-view edge, replaces the three independent fade-ups
+ * the cards used to carry. In pipeline order (eval → trace → guardrail), each
+ * beat ignites system i on EVERY presentation tier at once:
+ *   - the DOM marker dot pops 0→1 with a one-shot halo ring (.is-igniting);
+ *   - the matching side card rises in sync with its marker;
+ *   - WebGPU tier: bumpCluster("healthy", i) fires on the SAME beat, so the 3D
+ *     lattice orbs pulse in phase with the DOM ignition;
+ *   - fallback tier: the SVG hub pops and the pathway stroke DRAWS from the
+ *     previous node (stroke-dashoffset), so the network visibly wires itself
+ *     up — the narrative reads without WebGL.
+ * The timeline is the SINGLE owner of the per-cluster bumps (the old per-card
+ * IntersectionObservers double-fired under fast scroll); it plays exactly once,
+ * tolerates mounting already in view (IO fires at observe time), and reverses
+ * nothing on exit — systems that came online stay online. Reduced-motion:
+ * nothing is ever primed hidden, no halo, no store bumps — the section rests in
+ * its final state, exactly like the rest of the file's guards.
  *
  * The three claims:
  *   - Every system ships with a regression set.   (eval baseline)
@@ -49,14 +68,15 @@ function useInView<T extends HTMLElement>(margin = "0px 0px -10% 0px") {
   return { ref, inView };
 }
 
-// === Shared: bump the signature-line pulse on a card's first appearance ====
-// Each of the 3 cards calls this with its own `inView` flag. On the false→true
-// edge it bumps the globalThis-pinned production pulse store; SignatureLine
-// (the lazy WebGL island) reads + decays it, lifting the line's emissive above
-// the bloom threshold near the production section (BEAT 1). PRESERVED VERBATIM
-// from the file-panel version — the signature-line boost is unchanged. Inert
-// under reduced-motion (the WebGL layer is unmounted at tier "off", and we
-// early-return here too so the store is never even touched).
+// === Shared: bump the signature-line pulse on the section's appearance =====
+// On each false→true edge it bumps the globalThis-pinned production pulse
+// store; SignatureLine (the lazy WebGL island) reads + decays it, lifting the
+// line's emissive above the bloom threshold near the production section
+// (BEAT 1). This used to ride the three per-card observers (three bumps per
+// pass); it now rides the ONE section-row observer — same 0..1 target, same
+// liveness on re-entry, one writer. Inert under reduced-motion (the WebGL
+// layer is unmounted at tier "off", and we early-return here too so the store
+// is never even touched).
 function useProductionPulseOnEnter(inView: boolean) {
   const bump = useProductionPulseStore((s) => s.bump);
   useEffect(() => {
@@ -68,25 +88,6 @@ function useProductionPulseOnEnter(inView: boolean) {
       return;
     bump();
   }, [inView, bump]);
-}
-
-// === Shared: ignite this card's lattice cluster (healthy, in sequence) =====
-// The 3 cards enter the viewport sequentially, so this fires three staggered
-// cluster ignitions on the new neural-lattice store's "healthy" surface; the
-// WebGL NeuralLattice reads + decays them, pulsing eval baseline → trace →
-// guardrail in order. Additive to the productionPulse boost above (different
-// store). Inert under reduced-motion.
-function useHealthyClusterOnEnter(inView: boolean, index: number) {
-  const bumpCluster = useNeuralLatticeStore((s) => s.bumpCluster);
-  useEffect(() => {
-    if (!inView) return;
-    if (
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    )
-      return;
-    bumpCluster("healthy", index);
-  }, [inView, bumpCluster, index]);
 }
 
 // === Section ==============================================================
@@ -138,36 +139,191 @@ function bodyId(i: number) {
   return `neural-production-card-${i}`;
 }
 
-function ArtifactCard({ a, index }: { a: Artifact; index: number }) {
-  const { language } = useLanguage();
-  const isEn = language === "en";
-  // Keep the in-view bridge: an outer wrapper carries the IntersectionObserver
-  // ref so the section's signature-line pulse + the healthy cluster sequence
-  // still ignite on first appearance (additive to the hover flare/burst).
-  const { ref, inView } = useInView<HTMLDivElement>();
-  useProductionPulseOnEnter(inView);
-  useHealthyClusterOnEnter(inView, index);
-
-  return (
-    <div ref={ref}>
-      <NeuralCard
-        index={index}
-        surface="healthy"
-        tone="healthy"
-        bodyId={bodyId(index)}
-        eyebrow={clusterLabel(index, isEn)}
-        title={a.claim}
-        body={a.why}
-      />
-    </div>
-  );
-}
+// === Boot choreography constants ==========================================
+// Seconds between system ignitions, in pipeline order (eval → trace →
+// guardrail). Tight enough to read as ONE boot pass, wide enough that the
+// three halo pings and the lattice cluster pulses resolve as a sequence, not
+// a chord.
+const BOOT_BEAT = 0.15;
+/** Number of systems in the pipeline (markers = cards = lattice clusters). */
+const BOOT_NODES = 3;
 
 export default function ProductionGradeSection() {
   const { language } = useLanguage();
   const isEn = language === "en";
   const artifacts = getArtifacts(isEn);
   const showFallback = useNeuralLatticeFallback();
+
+  // ONE in-view edge for the whole network row. It (a) re-bumps the
+  // signature-line pulse on every re-entry (tracking observer — preserves the
+  // section's historical liveness) and (b) arms the once-only boot timeline.
+  const { ref: rowRef, inView } = useInView<HTMLDivElement>();
+  useProductionPulseOnEnter(inView);
+
+  const bumpCluster = useNeuralLatticeStore((s) => s.bumpCluster);
+  // The boot plays exactly once per page life; the observer keeps toggling for
+  // the pulse hook above, so this latch is what makes the timeline calm —
+  // scroll-away/scroll-back never re-runs (or reverses) the entrance.
+  const playedRef = useRef(false);
+
+  useGSAP(
+    () => {
+      const row = rowRef.current;
+      if (!row) return;
+      // Reduced-motion: never prime anything hidden, never stamp the halo,
+      // never touch the stores — the section simply rests in its final state
+      // (same early-return guard style as the hooks above).
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      if (playedRef.current) return;
+
+      // --- Collect the per-system targets (scoped to THIS section's row, so
+      // the Problem section's markers/SVG are never touched). The dot is the
+      // WebGL-measured node anchor; scaling it composes around its own center,
+      // so the hub pinning measure is unaffected even at scale 0.
+      const systems: {
+        dot: HTMLElement;
+        label: HTMLElement | null;
+        card: HTMLElement | null;
+      }[] = [];
+      for (let i = 0; i < BOOT_NODES; i++) {
+        const dot = row.querySelector<HTMLElement>(
+          `[data-lattice-node="production:${i}"]`,
+        );
+        if (!dot) return; // markers not mounted yet — a dep re-run retries
+        systems.push({
+          dot,
+          label: dot.parentElement?.querySelector<HTMLElement>(
+            ".neural-node-marker__label",
+          ) ?? null,
+          card: row.querySelector<HTMLElement>(`[data-boot-card="${i}"]`),
+        });
+      }
+
+      // --- Fallback-tier targets: the SVG pathways + hubs that will draw/pop
+      // on the same beats. Present only when the WebGL island is absent; the
+      // hook flips false→true after the tier probe, which re-runs this effect
+      // (pre-paint) so the freshly-mounted SVG is primed before it ever shows.
+      const svg = showFallback
+        ? row.querySelector<SVGSVGElement>(".neural-centerpiece svg")
+        : null;
+      const arcs = svg
+        ? Array.from(svg.querySelectorAll<SVGPathElement>("[data-arc]"))
+        : [];
+      // Hubs carry no data hook of their own: they are the only circles that
+      // are neither packets nor scatter dots (document order = hub index).
+      const hubs = svg
+        ? Array.from(
+            svg.querySelectorAll<SVGCircleElement>(
+              "circle:not([data-packet]):not([data-scatter])",
+            ),
+          )
+        : [];
+
+      // --- PRIME (idempotent across dep re-runs; useGSAP is a layout effect,
+      // so this lands before paint — no hidden-then-visible flash). `.is-booting`
+      // suspends the dot's 300ms hover transition while GSAP owns its transform
+      // (a CSS transition would re-ease every per-frame write and smear the
+      // pop); it is removed the moment the ignite tween completes.
+      for (const s of systems) {
+        s.dot.classList.add("is-booting");
+        gsap.set(s.dot, { scale: 0 });
+        if (s.label) gsap.set(s.label, { opacity: 0 });
+        if (s.card) gsap.set(s.card, { opacity: 0, y: 16 });
+      }
+      for (const p of arcs) {
+        const len = p.getTotalLength();
+        // opacity 0 as well: with the dash fully offset, round linecaps can
+        // still leak a cap-dot at the path start in some renderers; the
+        // timeline flips each arc visible exactly when its draw begins.
+        gsap.set(p, { strokeDasharray: len, strokeDashoffset: len, opacity: 0 });
+      }
+      if (hubs.length) {
+        gsap.set(hubs, { scale: 0, transformOrigin: "50% 50%" });
+      }
+
+      // Primed but not yet on screen: wait for the IO edge (the inView dep
+      // re-runs this effect, falls through the guards above, and plays).
+      if (!inView) return;
+      playedRef.current = true;
+
+      // --- The boot. One timeline, one owner: every per-cluster store bump,
+      // every DOM ignition and every SVG draw fires from these beats, so the
+      // three presentation tiers can never drift out of phase (and fast scroll
+      // can never double-fire a cluster, which the old per-card observers
+      // could). Entrances ride expo.out; the node-to-node pathway draws ride
+      // expo.inOut (they are crossings, not arrivals).
+      const tl = gsap.timeline({ defaults: { ease: "expo.out" } });
+      systems.forEach(({ dot, label, card }, i) => {
+        const t = i * BOOT_BEAT;
+        // WebGPU tier: pulse lattice cluster i on this exact beat. Harmless
+        // no-op store write when the island is absent (fallback tier).
+        tl.call(
+          () => {
+            bumpCluster("healthy", i);
+          },
+          undefined,
+          t,
+        );
+        // Marker dot ignites. clearProps hands the transform back to the
+        // stylesheet at rest so the CSS hover surge (scale 1.18) keeps winning
+        // over what would otherwise be a stale inline transform.
+        tl.to(
+          dot,
+          {
+            scale: 1,
+            duration: 0.5,
+            onComplete: () => {
+              gsap.set(dot, { clearProps: "transform" });
+              dot.classList.remove("is-booting");
+            },
+          },
+          t,
+        );
+        // One-shot halo ring (globals.css keyframe). The class persists after
+        // its single run — the keyframe parks the ring invisible — so no
+        // remove-choreography is needed.
+        tl.call(
+          () => {
+            dot.classList.add("is-igniting");
+          },
+          undefined,
+          t + 0.1,
+        );
+        if (label) tl.to(label, { opacity: 1, duration: 0.3 }, t + 0.08);
+        // The card rises in sync with its marker. The tween rides the WRAPPER
+        // div, never the card itself, so NeuralCard's own hover/open
+        // transitions (box-shadow, grid-rows) stay CSS-owned throughout.
+        if (card) tl.to(card, { opacity: 1, y: 0, duration: 0.7 }, t);
+        // Fallback tier: the SVG hub pops on the beat, and the pathway from
+        // the previous node draws INTO this one — the wire arrives as the
+        // system comes online.
+        if (hubs[i]) tl.to(hubs[i], { scale: 1, duration: 0.5 }, t);
+        if (i > 0 && arcs[i - 1]) {
+          const drawAt = (i - 1) * BOOT_BEAT + 0.02;
+          tl.set(arcs[i - 1], { opacity: 1 }, drawAt);
+          tl.to(
+            arcs[i - 1],
+            { strokeDashoffset: 0, duration: 0.2, ease: "expo.inOut" },
+            drawAt,
+          );
+        }
+      });
+      // The 0→2 span closes the mesh last — the network is whole once every
+      // system is up (arc order mirrors ARCS in neural-graph-fallback.tsx:
+      // chain 0→1, 1→2, then the span).
+      if (arcs[2]) {
+        const spanAt = (BOOT_NODES - 1) * BOOT_BEAT + 0.12;
+        tl.set(arcs[2], { opacity: 1 }, spanAt);
+        tl.to(
+          arcs[2],
+          { strokeDashoffset: 0, duration: 0.5, ease: "expo.inOut" },
+          spanAt,
+        );
+      }
+    },
+    { dependencies: [inView, showFallback, bumpCluster], scope: rowRef },
+  );
+
   return (
     <section
       id="trust"
@@ -214,7 +370,14 @@ export default function ProductionGradeSection() {
             matching side card). When WebGL is absent the SVG fallback shows the
             three healthy pathways. Both aria-hidden. Stacks on narrow widths
             (network on top, cards below). */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-8 lg:gap-12 items-center">
+        {/* items-start (NOT center): a card expanding must not re-center this
+            row, or the %-anchored node markers would shift out from under a
+            still cursor and the hover would oscillate — the exact fix the
+            Problem section's twin rows already carry. */}
+        <div
+          ref={rowRef}
+          className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-8 lg:gap-12 items-start"
+        >
           <NeuralCenterpiece
             anchorId="production"
             surface="healthy"
@@ -228,12 +391,22 @@ export default function ProductionGradeSection() {
             ]}
           />
 
-          {/* Cards column — OFFSET from the network (never overlapping it). */}
+          {/* Cards column — OFFSET from the network (never overlapping it).
+              Each wrapper is a boot-timeline target (opacity/y only; the card
+              inside keeps sole ownership of its hover/open transitions). */}
           <div className="relative flex flex-col gap-5 sm:gap-6">
             {artifacts.map((a, i) => (
-              <Reveal key={i} delay={i * 90}>
-                <ArtifactCard a={a} index={i} />
-              </Reveal>
+              <div key={i} data-boot-card={i}>
+                <NeuralCard
+                  index={i}
+                  surface="healthy"
+                  tone="healthy"
+                  bodyId={bodyId(i)}
+                  eyebrow={clusterLabel(i, isEn)}
+                  title={a.claim}
+                  body={a.why}
+                />
+              </div>
             ))}
           </div>
         </div>

@@ -22,6 +22,15 @@
  * (the canvas paints the dense particle orb behind/around it); the marker chrome
  * itself is minimal so the WebGL centerpiece reads as the hero. Reduced-motion:
  * no transition, still toggles.
+ *
+ * BOOT CONTRACT (production surface): the ProductionGrade section's one boot
+ * timeline ignites the dot on its beat — it primes the dot to scale 0 (safe:
+ * the scale composes around the dot's own center, so the WebGL hub measure is
+ * unaffected), stamps `.is-booting` (suspends the hover transition while GSAP
+ * owns the transform) then `.is-igniting` (one-shot halo ring, globals.css),
+ * and hands the transform back to the stylesheet on completion so the hover
+ * surge below keeps working. This file renders no boot state of its own —
+ * SSR/no-JS/reduced-motion always see the resting marker.
  */
 import { useEffect, useRef, useState } from "react";
 import { useNeuralLatticeStore } from "@/webgl/store/neuralLatticeStore";

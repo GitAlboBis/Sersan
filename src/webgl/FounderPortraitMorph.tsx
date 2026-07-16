@@ -124,8 +124,22 @@ const SPREAD_MAX = 1.1;
 const ORBIT_MAX = 0.7;
 /** Max group dolly toward the camera (world units) at the midpoint. */
 const DOLLY = 2.2;
-/** Mid-flight pointer parallax (radians), gated by the same sin(g·π) envelope. */
+/** Mid-flight pointer parallax (radians) at the flight-envelope peak. */
 const PARALLAX_MAX = 0.18;
+/** Pointer-parallax floor at the LOCKED stages (radians). The gate holds the
+ * page at A/B, so a bust with zero pointer response there reads as a
+ * freeze-frame; this floor lets it turn fractionally toward the cursor while
+ * staying far below the mid-flight amplitude. */
+const PARALLAX_REST = 0.05;
+/** Rest-idle life at the locked stages — GROUP-level ONLY (the per-particle
+ * spring targets stay pixel-pinned, so the silhouette registration is never
+ * touched): a slow two-axis sway + breath, faded out by the flight envelope
+ * so mid-flight motion stays owned by orbit/spread. Amplitudes are
+ * deliberately tiny — beyond ~0.02 rad the "locked, crisp face" contract
+ * erodes into wobble. */
+const REST_SWAY_YAW = 0.02; // rad, at 0.11 rad/s
+const REST_SWAY_PITCH = 0.012; // rad, at 0.07 rad/s
+const REST_BREATH = 0.004; // scale fraction, at 0.5 rad/s
 /** Entry assemble duration (seconds) once the section reveals. */
 const ENTRY_DURATION = 2.2;
 /** One-shot A→B (or B→A) auto-play duration (seconds). Mirrors the hero morph. */
@@ -688,12 +702,27 @@ export function FounderPortraitMorph() {
       .add(camera.position);
     group.position.copy(scratch);
 
-    // Orbit yaw + subtle pointer parallax, both scaled by the sin(g·π) envelope
-    // so the group transform is EXACTLY neutral at g=0 and g=1 (faces frontal +
-    // pixel-registered at rest). The camera is NEVER touched.
+    // Orbit yaw + pointer parallax + rest-idle sway — GROUP transform only
+    // (the camera is NEVER touched; the per-particle springs stay pixel-pinned
+    // so the face itself remains crisp). The orbit rides the sin(g·π) flight
+    // envelope; the rest-idle terms ride its COMPLEMENT, so at the locked A/B
+    // stages (where the gate holds the page) the bust keeps a slow sway and a
+    // fractional turn toward the cursor instead of freezing, and mid-flight
+    // the idle life yields entirely to the orbit. Both crossings are absorbed
+    // by the damp-6 smoothers below — no term ever steps. Reduced-motion never
+    // reaches this: founders-rail only pins the store on the non-reduced
+    // pinned-desktop mode.
     const mouse = store.mouse;
-    const yawTarget = env * (ORBIT_MAX + (mouse.x - 0.5) * PARALLAX_MAX);
-    const pitchTarget = env * ((0.5 - mouse.y) * PARALLAX_MAX * 0.6);
+    const t = timeRef.current;
+    const restEnv = 1 - env;
+    const parallaxAmp = THREE.MathUtils.lerp(PARALLAX_REST, PARALLAX_MAX, env);
+    const yawTarget =
+      env * ORBIT_MAX +
+      (mouse.x - 0.5) * parallaxAmp +
+      restEnv * Math.sin(t * 0.11) * REST_SWAY_YAW;
+    const pitchTarget =
+      (0.5 - mouse.y) * parallaxAmp * 0.6 +
+      restEnv * Math.sin(t * 0.07) * REST_SWAY_PITCH;
     yawRef.current = THREE.MathUtils.damp(yawRef.current, yawTarget, 6, delta);
     pitchRef.current = THREE.MathUtils.damp(
       pitchRef.current,
@@ -704,6 +733,13 @@ export function FounderPortraitMorph() {
     euler.set(pitchRef.current, yawRef.current, 0);
     quat.setFromEuler(euler);
     group.quaternion.copy(camera.quaternion).multiply(quat);
+
+    // Breath: a slow whole-group swell, again gated by restEnv so it dies
+    // mid-flight. Written fresh every visible frame as 1 + term (never
+    // accumulated), so an interrupted leg can never leave a drifted scale
+    // baked in; every particle scales together about the group origin, so
+    // the sampled silhouette stays registered to itself.
+    group.scale.setScalar(1 + restEnv * REST_BREATH * Math.sin(t * 0.5));
 
     const dpr = Math.min(gl.getPixelRatio(), 2);
     b.uPixelRatio.value = dpr;

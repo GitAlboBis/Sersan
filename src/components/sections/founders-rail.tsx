@@ -38,8 +38,12 @@ if (typeof window !== "undefined") {
  *      stage. The WebGL particle-portrait morph island (webgl/FounderPortraitMorph)
  *      renders a ~26k-point cloud over [data-founder-stage] that composes founder
  *      A, decomposes into a swarm at mid-scroll, and recomposes founder B; the two
- *      DOM copy blocks cross-fade in lockstep with the scroll progress. The DOM
- *      portrait posters in the stage cross-fade too but are driven transparent
+ *      DOM copy blocks hand off in lockstep with the island's live uMorph —
+ *      A's block exits early in the leg, the swarm owns the stage alone
+ *      through the middle, B's copy arrives child-by-child late — and a small
+ *      gate chrome (stage counter + accent hairline + idle scroll hint, the
+ *      fit-section grammar) tells the user the page is intentionally held. The
+ *      DOM portrait posters in the stage cross-fade too but are driven transparent
  *      once the cloud is live (they stay a graceful static poster on a flag-on
  *      WebGL2 fallback); kept in the a11y tree (img alt). Pure CSS sticky — NO ScrollTrigger `pin:`
  *      (a pin-spacer would break the [data-line-anchor="founders"] measurement of
@@ -84,6 +88,29 @@ const G_ENGAGE_EXIT = 0.28;
 const G_MAX_ENGAGE_MS = 16000;
 /** Touch drag maps a bit faster than wheel (shorter gestures). */
 const G_TOUCH_FACTOR = 2.0;
+
+// --- MORPH-mode copy handoff (pure functions of the island's live uMorph, so
+// reverse legs mirror automatically) -----------------------------------------
+/** Founder A's copy EXITS over m∈[start,end] — it departs BEFORE the swarm
+ * owns the stage, instead of ghost-overlapping founder B at 50/50. */
+const COPY_EXIT_START = 0.02;
+const COPY_EXIT_END = 0.3;
+/** Exit travel (px, upward — the copy lifts away with the dissolving face). */
+const COPY_EXIT_Y = 16;
+/** Founder B's copy ENTERS over m∈[start,end], child by child (counter →
+ * name → bio → chips → previously → link). The window ends at 0.98 — exactly
+ * the island's stage-B lock threshold — so the B lock can never land with
+ * copy still mid-flight. */
+const COPY_ENTER_START = 0.7;
+const COPY_ENTER_END = 0.98;
+/** Per-child window offset in m-space (the arrival stagger). */
+const COPY_ENTER_STAGGER = 0.035;
+/** Enter travel (px, from below). */
+const COPY_ENTER_Y = 18;
+/** Gate chrome: idle time (ms) at a LOCKED stage before the scroll hint
+ * fades in (any input restarts the clock — the hint only surfaces after
+ * true silence, mirroring the gate's own re-arm discipline). */
+const HINT_IDLE_MS = 1200;
 
 /** clamped smoothstep(edge0, edge1, x). */
 function smoothstep(edge0: number, edge1: number, x: number): number {
@@ -505,12 +532,8 @@ export default function FoundersRail() {
     if (!section) return;
 
     const store = useFoundersMorphStore.getState();
-    const setOpA = copyARef.current
-      ? (gsap.quickSetter(copyARef.current, "opacity") as (v: number) => void)
-      : null;
-    const setOpB = copyBRef.current
-      ? (gsap.quickSetter(copyBRef.current, "opacity") as (v: number) => void)
-      : null;
+    const copyA = copyARef.current;
+    const copyB = copyBRef.current;
     const setImgA = stageImgARef.current
       ? (gsap.quickSetter(stageImgARef.current, "opacity") as (v: number) => void)
       : null;
@@ -518,7 +541,122 @@ export default function FoundersRail() {
       ? (gsap.quickSetter(stageImgBRef.current, "opacity") as (v: number) => void)
       : null;
 
-    // Copy cross-fade FOLLOWS the island's live uMorph (store.morph), NOT scroll.
+    // Founder A exits as ONE block (opacity + y). Prime the full transform
+    // BEFORE creating the writers (repo convention: unrecorded components
+    // trip "not eligible for reset").
+    let setOpA: ((v: number) => void) | null = null;
+    let setYA: ((v: number) => void) | null = null;
+    if (copyA) {
+      gsap.set(copyA, { opacity: 1, y: 0 });
+      setOpA = gsap.quickSetter(copyA, "opacity") as (v: number) => void;
+      setYA = gsap.quickSetter(copyA, "y", "px") as (v: number) => void;
+    }
+
+    // Founder B arrives child by child. Writers are built ONCE — the child
+    // elements are stable across language toggles (only text nodes change).
+    // The block's SSR inline opacity:0 exists only so B never flashes before
+    // this effect arms the children at their hidden pose; once they are
+    // armed the block itself flips to opacity 1 and the children own the
+    // presentation (applyStage below immediately re-poses them for the
+    // store's current morph value, so a mid-B remount shows B, not a flash).
+    const bChildren = copyB
+      ? Array.from(copyB.querySelectorAll<HTMLElement>(":scope > div > *"))
+      : [];
+    // Staggered starts; every child's window still completes by ENTER_END.
+    const childDur = Math.max(
+      0.06,
+      COPY_ENTER_END -
+        COPY_ENTER_START -
+        (bChildren.length - 1) * COPY_ENTER_STAGGER,
+    );
+    const bFx = bChildren.map((el, i) => {
+      gsap.set(el, { opacity: 0, y: COPY_ENTER_Y });
+      return {
+        start: COPY_ENTER_START + i * COPY_ENTER_STAGGER,
+        setO: gsap.quickSetter(el, "opacity") as (v: number) => void,
+        setY: gsap.quickSetter(el, "y", "px") as (v: number) => void,
+      };
+    });
+    if (copyB) gsap.set(copyB, { opacity: 1 });
+
+    // --- Gate affordance chrome ---------------------------------------------
+    // Same grammar as fit-section's counter + progress line: mono stage
+    // counter, a 1px accent hairline whose scaleX tracks the live morph, and
+    // a scroll hint that surfaces after idle at a locked stage. This is what
+    // stops the hijack from reading as broken scroll. The cluster exists ONLY
+    // in this canMorph JSX branch (zero on fallback paths), ships with inline
+    // opacity 0, and only becomes visible while the gate holds the page.
+    const chromeEl = section.querySelector<HTMLElement>(
+      "[data-founders-chrome]",
+    );
+    const chromeCounterEl = section.querySelector<HTMLElement>(
+      "[data-founders-counter]",
+    );
+    const chromeLineEl = section.querySelector<HTMLElement>(
+      "[data-founders-line]",
+    );
+    const chromeHintEl = section.querySelector<HTMLElement>(
+      "[data-founders-hint]",
+    );
+    const setChromeLine = chromeLineEl
+      ? (gsap.quickSetter(chromeLineEl, "scaleX") as (v: number) => void)
+      : null;
+    if (chromeLineEl) {
+      gsap.set(chromeLineEl, { transformOrigin: "0% 50%", scaleX: 0 });
+    }
+    let lastLineQ = -1;
+    let lastCounter = "";
+    let chromeShown = false;
+    let hintShown = false;
+    let hintT: ReturnType<typeof setTimeout> | undefined;
+
+    const showHint = () => {
+      if (!chromeHintEl || hintShown) return;
+      hintShown = true;
+      gsap.killTweensOf(chromeHintEl);
+      gsap.to(chromeHintEl, { opacity: 1, duration: 0.4, ease: "power2.out" });
+    };
+    const hideHint = () => {
+      clearTimeout(hintT);
+      if (!chromeHintEl || !hintShown) return;
+      hintShown = false;
+      gsap.killTweensOf(chromeHintEl);
+      gsap.to(chromeHintEl, { opacity: 0, duration: 0.2, ease: "power2.in" });
+    };
+    const scheduleHint = () => {
+      clearTimeout(hintT);
+      hintT = setTimeout(() => {
+        const s = useFoundersMorphStore.getState();
+        // Surface only while the gate still holds at a LOCKED stage — a leg
+        // in flight or a released gate must never grow a hint.
+        if (s.gateEngaged && s.stage !== "morphing") showHint();
+      }, HINT_IDLE_MS);
+    };
+    /** Any input while engaged hides the hint and restarts its idle clock. */
+    const noteInput = () => {
+      hideHint();
+      scheduleHint();
+    };
+    const showChrome = () => {
+      if (!chromeEl || chromeShown) return;
+      chromeShown = true;
+      gsap.killTweensOf(chromeEl);
+      gsap.to(chromeEl, { opacity: 1, duration: 0.5, ease: "expo.out" });
+      scheduleHint();
+    };
+    const hideChrome = () => {
+      hideHint();
+      if (!chromeEl || !chromeShown) return;
+      chromeShown = false;
+      gsap.killTweensOf(chromeEl);
+      gsap.to(chromeEl, { opacity: 0, duration: 0.3, ease: "power2.in" });
+    };
+
+    // Copy handoff + chrome FOLLOW the island's live uMorph (store.morph),
+    // NOT scroll. Three readable acts, all pure functions of m so reverse
+    // legs mirror automatically: A departs over [EXIT_START, EXIT_END], the
+    // swarm owns the stage ALONE through the middle, B arrives child by child
+    // over [ENTER_START, ENTER_END] — never the old 50/50 ghost overlay.
     //
     // Posters: the static portrait is ONLY a fallback (WebGL2 session / very slow
     // build). On a real WebGPU backend we want to go STRAIGHT to the particles
@@ -526,16 +664,57 @@ export default function FoundersRail() {
     // has NOT gone live by the grace deadline below (`posterShown`). Once it's a
     // confirmed fallback, the poster cross-fades on morph like before.
     let posterShown = false;
+    let lastAHidden: boolean | null = null;
+    let lastBHidden: boolean | null = null;
     const applyStage = (m: number) => {
+      const exitT = smoothstep(COPY_EXIT_START, COPY_EXIT_END, m);
+      setOpA?.(1 - exitT);
+      setYA?.(-COPY_EXIT_Y * exitT);
+      for (const c of bFx) {
+        const e = smoothstep(c.start, c.start + childDur, m);
+        c.setO(e);
+        c.setY(COPY_ENTER_Y * (1 - e));
+      }
+      // The two blocks OVERLAY each other, so a fully-faded block must drop
+      // out of hit-testing AND the tab order (visibility, not just opacity) —
+      // an invisible LinkedIn link must never swallow a click or a Tab stop.
+      // Driven directly by m (no tween to interrupt); mid-swarm BOTH are
+      // hidden by design — the swarm is the content there, and a leg always
+      // plays through to a locked end on the island's own clock.
+      const aHidden = exitT >= 1;
+      const bHidden = m <= COPY_ENTER_START;
+      if (copyA && aHidden !== lastAHidden) {
+        lastAHidden = aHidden;
+        copyA.style.visibility = aHidden ? "hidden" : "";
+      }
+      if (copyB && bHidden !== lastBHidden) {
+        lastBHidden = bHidden;
+        copyB.style.visibility = bHidden ? "hidden" : "";
+      }
+      // Posters: fallback-only mid-crossfade (contract unchanged).
       const bF = smoothstep(0.35, 0.65, m);
-      setOpA?.(1 - bF);
-      setOpB?.(bF);
       if (useFoundersMorphStore.getState().active || !posterShown) {
         setImgA?.(0);
         setImgB?.(0);
       } else {
         setImgA?.(1 - bF);
         setImgB?.(bF);
+      }
+      // Chrome: hairline tracks m (quantized so parked frames write nothing,
+      // fit-section idiom); the counter flips at the midpoint.
+      if (setChromeLine) {
+        const q = Math.round(m * 512) / 512;
+        if (q !== lastLineQ) {
+          lastLineQ = q;
+          setChromeLine(q);
+        }
+      }
+      if (chromeCounterEl) {
+        const label = m >= 0.5 ? "02" : "01";
+        if (label !== lastCounter) {
+          lastCounter = label;
+          chromeCounterEl.textContent = label;
+        }
       }
     };
 
@@ -553,8 +732,14 @@ export default function FoundersRail() {
     applyStage(store.morph);
 
     // Poster hides the instant the cloud goes live; copy follows uMorph.
+    // Stage transitions drive the scroll hint's idle clock: a leg starting
+    // retires the hint instantly, a leg completing re-opens the window.
     const unsub = useFoundersMorphStore.subscribe((s, prev) => {
       if (s.morph !== prev.morph || s.active !== prev.active) applyStage(s.morph);
+      if (s.stage !== prev.stage) {
+        if (s.stage === "morphing") hideHint();
+        else if (s.gateEngaged) scheduleHint();
+      }
     });
 
     // Poster fallback grace: reveal the static poster ONLY if the WebGPU cloud
@@ -623,6 +808,9 @@ export default function FoundersRail() {
       } else {
         window.scrollTo(0, target);
       }
+      // The page is now intentionally held — say so (counter + hairline +
+      // idle hint), or the hijack reads as broken scroll.
+      showChrome();
     };
 
     const release = (dir: number) => {
@@ -631,6 +819,9 @@ export default function FoundersRail() {
       armed = true;
       acc = 0;
       lastDir = dir;
+      // The gate no longer holds the page — the affordance cluster (and any
+      // pending hint) leaves with it, whatever mid-state a tween was in.
+      hideChrome();
       const s = useFoundersMorphStore.getState();
       s.setGateEngaged(false);
       const lenis = getLenis();
@@ -672,6 +863,9 @@ export default function FoundersRail() {
       e.preventDefault();
       e.stopImmediatePropagation();
       lastDir = deltaPx >= 0 ? 1 : -1;
+      // Live input retires the scroll hint and restarts its idle clock
+      // (cheap: guarded writes + one timer swap, same class as idleT below).
+      noteInput();
       // Re-arm only after input idles: EVERY input event (including the entry
       // fling's inertial tail) reschedules this, so `armed` flips true only
       // after G_IDLE_MS of TRUE silence — the entry momentum can never arm.
@@ -751,12 +945,14 @@ export default function FoundersRail() {
       };
       if (["ArrowDown", "PageDown", "End", " ", "Spacebar"].includes(k)) {
         e.preventDefault();
+        noteInput();
         if (armed) {
           step(1);
           rearm();
         }
       } else if (["ArrowUp", "PageUp", "Home"].includes(k)) {
         e.preventDefault();
+        noteInput();
         if (armed) {
           step(-1);
           rearm();
@@ -881,7 +1077,31 @@ export default function FoundersRail() {
       fontsCancelled = true;
       cancelAnimationFrame(raf);
       clearTimeout(idleT);
+      clearTimeout(hintT);
       clearTimeout(posterGrace);
+      // Chrome: kill any in-flight fade and re-assert hidden — the cluster
+      // must never rest visible past the gate's lifetime.
+      if (chromeEl) {
+        gsap.killTweensOf(chromeEl);
+        gsap.set(chromeEl, { opacity: 0 });
+      }
+      if (chromeHintEl) {
+        gsap.killTweensOf(chromeHintEl);
+        gsap.set(chromeHintEl, { opacity: 0 });
+      }
+      // Copy: settle to the stage-A rest pose (matches the store reset
+      // below). A stale visibility:hidden must never survive the teardown.
+      if (copyA) {
+        gsap.set(copyA, { opacity: 1, y: 0 });
+        copyA.style.visibility = "";
+      }
+      if (copyB) {
+        gsap.set(copyB, { opacity: 0 });
+        copyB.style.visibility = "";
+      }
+      bChildren.forEach((el) =>
+        gsap.set(el, { clearProps: "opacity,transform" }),
+      );
       window.removeEventListener("wheel", onWheel, { capture: true });
       window.removeEventListener("touchstart", onTouchStart);
       window.removeEventListener("touchmove", onTouchMove, { capture: true });
@@ -1235,6 +1455,47 @@ export default function FoundersRail() {
                     />
                   </div>
                 </div>
+              </div>
+            </div>
+            {/* Gate affordance chrome — fit-section's counter/hairline grammar:
+                stage counter (01/02 → 02/02), a 1px accent hairline whose
+                scaleX tracks the live morph, and an idle scroll hint. Pure
+                presentation → aria-hidden; pointer-events-none so it can't
+                trap the stage's pointer bridge; ships at inline opacity 0 and
+                is faded in/out ONLY by the gate (engage/release) — it never
+                flashes on paths where the gate does not run. */}
+            <div
+              data-founders-chrome
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 bottom-0 z-10"
+              style={{ opacity: 0 }}
+            >
+              <div className="container-px flex items-end gap-6 pb-7 sm:gap-8 sm:pb-8">
+                <div className="flex items-baseline gap-2 font-mono tabular-nums">
+                  <span
+                    data-founders-counter
+                    className="text-[1.5rem] leading-none tracking-tight text-ink"
+                  >
+                    01
+                  </span>
+                  <span className="text-[11px] tracking-[0.18em] text-ink-dim">
+                    / 02
+                  </span>
+                </div>
+                <div className="relative mb-[0.3rem] h-px max-w-[16rem] flex-1 bg-[hsl(var(--rule))]">
+                  <div
+                    data-founders-line
+                    className="absolute inset-0 origin-left bg-[hsl(var(--accent))]"
+                    style={{ transform: "scaleX(0)" }}
+                  />
+                </div>
+                <span
+                  data-founders-hint
+                  className="mb-[0.15rem] font-mono text-[10px] tracking-[0.18em] uppercase text-ink-dim"
+                  style={{ opacity: 0 }}
+                >
+                  {isEn ? "Scroll" : "Scorri"}
+                </span>
               </div>
             </div>
           </div>

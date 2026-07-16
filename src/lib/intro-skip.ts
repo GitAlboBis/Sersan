@@ -1,12 +1,18 @@
 /**
- * CURRENTLY UNUSED (2026-06-13): the gesture-based auto-skip was removed
- * (mouse-wheel notches are fixed-magnitude — a flick can't be distinguished
- * from normal scrolling, which false-fired the skip). This module has no
- * writer now; it is kept inert, reserved for a future explicit skip
- * affordance (e.g. an Esc key / button).
+ * Intro-skip session flag — "the visitor explicitly skipped the hero
+ * particle intro; don't gate them again this tab session".
  *
- * Intro-skip session flag — "the visitor double wheel-flicked through the
- * hero particle intro; don't gate them again this tab session".
+ * WRITER: HeroIntroGate (src/components/fx/hero-intro-gate.tsx) — the
+ * explicit skip affordance: Esc while the intro gate is engaged, or the
+ * bottom-right mono "skip" label. Only deliberate, unambiguous input may
+ * write this flag: a gesture-based auto-skip (double wheel-flick) was tried
+ * and removed 2026-06-13 — mouse-wheel notches are fixed-magnitude, so a
+ * flick can't be distinguished from normal scrolling and it false-fired.
+ *
+ * READERS: HeroTextParticles jumps every morph clock to its end state on
+ * introSkipped; HeroIntroGate's canEngage refuses to (re-)engage and its
+ * tick re-pins the journey flags after any rewind (e.g. the provider's
+ * nav-into-home replay reset, which deliberately keeps introSkipped).
  *
  * Persistence: sessionStorage (key "sersan_skip_intro"), following the
  * audioStore idiom — never read at module scope or during render (SSR-safe:

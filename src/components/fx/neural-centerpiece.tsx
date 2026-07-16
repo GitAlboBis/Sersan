@@ -20,6 +20,12 @@
  * The markers' positions (MARKER_LAYOUT) mirror the WebGL hub default LOCAL xy
  * (HUB_DEFAULT_XY in neuralLatticeConfig) mapped to CSS % of this box, so the DOM
  * markers and the WebGL orbs coincide even before the per-marker measure lands.
+ *
+ * The owning section may choreograph this centerpiece as part of its entrance
+ * (the ProductionGrade boot timeline ignites the markers and, on the fallback
+ * tier, draws the SVG's `[data-arc]` pathways / pops its hub circles on the
+ * same beats). The centerpiece itself stays choreography-free: everything here
+ * renders in its resting state so tiers where no timeline runs never flash.
  */
 import type { ReactNode } from "react";
 import { NeuralGraphFallback } from "@/components/fx/neural-graph-fallback";

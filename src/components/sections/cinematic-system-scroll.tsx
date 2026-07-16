@@ -26,7 +26,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import Snap from "lenis/snap";
 import { Button } from "@/components/ui/button";
 import { Magnetic } from "@/components/ui/magnetic";
-import { HeroDragLayer } from "@/components/hero-drag-layer";
+import { HeroHoverLayer } from "@/components/hero-hover-layer";
 import { HeroIntroGate } from "@/components/fx/hero-intro-gate";
 import { useLanguage } from "@/components/language-provider";
 import { useTextMorphStore } from "@/webgl/store/textMorphStore";
@@ -353,12 +353,24 @@ const SPINE_COPY = {
     seeWhatWeBuild: "See what we build",
     seeSelectedWork: "See selected work",
     scroll: "Scroll",
+    // Hero cluster — the DOM payoff the intro gate releases onto (the
+    // [data-hero-stagger] cascade in StagePanel's isHero branch). Eyebrow is
+    // the brand's canonical positioning line (same string as the OG image).
+    heroEyebrow: "AI-powered software engineering · London",
+    heroSub:
+      "We build it. We operate it. If it breaks at 3am, we're the ones who wake up.",
+    // Intro-gate skip affordance (HeroIntroGate's bottom-right mono label).
+    skipIntro: "Skip intro",
   },
   it: {
     ctaPrimary: "Prenota una call di scoping di 30 min",
     seeWhatWeBuild: "Guarda cosa costruiamo",
     seeSelectedWork: "Guarda i nostri lavori",
     scroll: "Scorri",
+    heroEyebrow: "Ingegneria software AI-powered · Londra",
+    heroSub:
+      "Lo costruiamo. Lo gestiamo. Se si rompe alle 3 di notte, siamo noi a svegliarci.",
+    skipIntro: "Salta l'intro",
   },
 } as const;
 
@@ -415,7 +427,14 @@ function StagePanel({
     let lastO = Number.NaN;
     let lastReveal = Number.NaN;
     let lastActive = false;
-    let lit = true; // last applied inert/aria state — start "lit" so first tick syncs
+    // Last applied inert/aria state. Starts null so the FIRST tick always
+    // syncs in BOTH directions: panels that start hidden get their inert/
+    // pointer-events-none write as before, and the hero — which starts
+    // VISIBLE but ships the class-level pointer-events-none every stacked
+    // panel shares — gets its pointer-events:auto write too. (A `true` seed
+    // here would skip that first flip and leave the hero's CTA cluster
+    // click-dead on every path where the morph never activates.)
+    let lit: boolean | null = null;
     let kids: HTMLElement[] | null = null;
     const tick = () => {
       const el = ref.current;
@@ -423,9 +442,11 @@ function StagePanel({
       // The WebGL text-particle intro (HeroTextParticles) owns the hero
       // headline visuals while active: the white H1 is SUPPRESSED for the
       // whole hero stay (the particle text IS the title — user decision
-      // 2026-06-10), and the other elements ([data-hero-stagger]: eyebrow,
-      // body, chips/proof, CTAs) cascade in bottom-up as domReveal rises.
-      // Inactive (any fallback) → everything renders exactly as before.
+      // 2026-06-10), and the cluster below it ([data-hero-stagger]: eyebrow,
+      // sub, CTA pair) cascades in as domReveal rises over the gate's final
+      // stretch — the intro releases onto an actionable invitation, not an
+      // empty frame. Inactive (any fallback) → everything renders visible
+      // from first paint, no cascade.
       const morph = isHero ? useTextMorphStore.getState() : null;
       const active = !!(morph && morph.active);
       const reveal = active && morph ? morph.domReveal : 1;
@@ -529,17 +550,75 @@ function StagePanel({
       <div className="container-px w-full">
         <div className="max-w-[42rem]">
           {isHero ? (
-            // The hero stage is the page's H1 — particle-only otherwise: the
-            // WebGL morph (Sersan AI → We build… → see what we build) is the
-            // entire hero, no white DOM copy (no eyebrow/body/CTAs).
-            // data-hero-headline: anchor + typography source for the WebGL
-            // text-particle intro (HeroTextParticles samples this element).
-            <h1
-              data-hero-headline
-              className="font-display text-[clamp(2.35rem,4.8vw,4.5rem)] leading-[0.98] tracking-[-0.03em] text-ink mb-4 text-balance"
-            >
-              {blocks[0]?.title}
-            </h1>
+            <>
+              {/* The page's H1 — typography source for the WebGL text-particle
+                  intro (HeroTextParticles samples its computed style + width).
+                  While the morph is active the rAF above keeps it at opacity 0
+                  (the particle text IS the title); on every fallback path it
+                  renders as a normal visible H1. */}
+              <h1
+                data-hero-headline
+                className="font-display text-[clamp(2.35rem,4.8vw,4.5rem)] leading-[0.98] tracking-[-0.03em] text-ink mb-4 text-balance"
+              >
+                {blocks[0]?.title}
+              </h1>
+              {/* Hero cluster — the [data-hero-stagger] targets of the
+                  domReveal cascade (eyebrow → sub → CTAs rise 26px on a
+                  smoothstep as the gate's last stretch plays out, while the
+                  particle cue composes below). The cluster sits BELOW the H1
+                  so the headline's sampled rect/width never shifts. It ships
+                  VISIBLE (no inline hiding): on paths where the morph never
+                  activates (non-WebGPU, no-JS) the cascade engine never
+                  touches these nodes, so inline opacity:0 would orphan them
+                  hidden forever — instead they follow the H1's own
+                  discipline: visible by default, suppressed by the rAF only
+                  while the morph owns the hero, restored on teardown. On the
+                  WebGPU path the preloader curtain still covers the page when
+                  `active` flips, so they never flash before the cascade. */}
+              <p
+                data-hero-stagger
+                className="eyebrow inline-flex items-center gap-2 text-ink/80 mb-3"
+              >
+                <span aria-hidden="true" className="status-dot" />
+                <span>{copy.heroEyebrow}</span>
+              </p>
+              <p
+                data-hero-stagger
+                className="text-base sm:text-lg text-foreground/80 leading-[1.55] max-w-[40rem]"
+              >
+                {copy.heroSub}
+              </p>
+              {/* pointer-events-auto: the panel itself is pointer-events-none
+                  (stacked full-viewport siblings must not swallow input), and
+                  without JS the rAF never flips it — the CTAs must still be
+                  clickable on the SSR-only path. Hidden panels stay inert
+                  (attribute in the SSR HTML + re-asserted by the rAF), and
+                  inert blocks child pointer events regardless, so this can
+                  never make an invisible CTA clickable. */}
+              <div className="mt-7 flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center pointer-events-auto">
+                {/* The stagger wrappers own the cascade transform; Magnetic
+                    owns its own x/y chase on the node inside — separate
+                    elements so the two transform writers never clobber each
+                    other. */}
+                <div data-hero-stagger>
+                  <Magnetic>
+                    <Link href={START_HREF} className="block">
+                      <Button variant="hero" size="xl" className="group">
+                        {copy.ctaPrimary}
+                        <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
+                      </Button>
+                    </Link>
+                  </Magnetic>
+                </div>
+                <div data-hero-stagger>
+                  <Link href="#work" className="block">
+                    <Button variant="heroOutline" size="xl">
+                      {copy.seeSelectedWork}
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </>
           ) : (
             (() => {
               // Merged groups: every block but the last renders as a compact
@@ -740,15 +819,16 @@ function MobileFallback({
               />
             ) : null}
             <div className={cn("max-w-2xl", isHero && "relative z-10")}>
-              {/* Hero on mobile/fallback: keep only the headline (the desktop
-                  particle morph's text source), drop the white marketing copy
-                  + CTAs to match the stripped hero. */}
-              {!isHero && (
-                <p className="eyebrow mb-4 inline-flex items-center gap-2 text-ink-mute">
-                  <span aria-hidden="true" className="status-dot" />
-                  <span>{stage.eyebrow}</span>
-                </p>
-              )}
+              {/* The hero mirrors the desktop cluster (eyebrow · H1 · sub ·
+                  CTA pair) STATICALLY: this stacked path has no cascade
+                  engine, so the cluster simply ships visible from first
+                  paint — no gating, no entrance choreography (correct for
+                  reduced motion, which also lands here). Eyebrow reads above
+                  the title like every other stacked block. */}
+              <p className="eyebrow mb-4 inline-flex items-center gap-2 text-ink-mute">
+                <span aria-hidden="true" className="status-dot" />
+                <span>{isHero ? copy.heroEyebrow : stage.eyebrow}</span>
+              </p>
               {isHero ? (
                 <h1 className="font-display text-[clamp(2.25rem,8vw,3.25rem)] leading-[1.02] tracking-[-0.028em] text-ink mb-4">
                   {stage.title}
@@ -758,12 +838,24 @@ function MobileFallback({
                   {stage.title}
                 </h2>
               )}
-              {!isHero && (
-                <p className="text-base text-ink-mute leading-relaxed">
-                  {stage.body}
-                </p>
-              )}
+              <p className="text-base text-ink-mute leading-relaxed">
+                {isHero ? copy.heroSub : stage.body}
+              </p>
               {!isHero && stage.extras}
+              {isHero ? (
+                <div className="mt-6 flex flex-col gap-3">
+                  <Link href={START_HREF}>
+                    <Button variant="hero" size="xl" className="w-full">
+                      {copy.ctaPrimary}
+                    </Button>
+                  </Link>
+                  <Link href="#work">
+                    <Button variant="heroOutline" size="xl" className="w-full">
+                      {copy.seeSelectedWork}
+                    </Button>
+                  </Link>
+                </div>
+              ) : null}
               {isFinal ? (
                 <div className="mt-6 flex flex-col gap-3">
                   <Link href={START_HREF}>
@@ -1084,15 +1176,21 @@ export default function CinematicSystemScroll() {
             "see what we build" cue (third morph stage), which is the closing
             call to action instead of a scroll label. */}
 
-        {/* Drag-to-rotate capture over the planet (right half). Mounts only
-            once the WebGL hero is live; wheel scrolling bubbles through. */}
-        <HeroDragLayer />
+        {/* Hover-sense layer over the mark (right half) — gates the cursor
+            erode/dissolve. Mounts only once the WebGL hero is live; wheel
+            scrolling bubbles through. (The old drag-to-rotate capture was
+            retired: nothing consumed the rotation, so the grab cursor
+            promised an interaction that never happened.) */}
+        <HeroHoverLayer />
 
         {/* Scroll hijack for the text intro: while the gate is engaged the
             page does NOT scroll — wheel/touch input only drives the
             "Sersan AI" → headline particle transition. Self-gates on the
-            WebGL morph being active; inert on every fallback. */}
-        <HeroIntroGate />
+            WebGL morph being active; inert on every fallback. Also renders
+            the explicit skip affordance (Esc + the bottom-right mono label)
+            — kept OUTSIDE the inert stage panels so it stays reachable while
+            they are hidden. */}
+        <HeroIntroGate skipLabel={copy.skipIntro} />
 
         {/* The 3D camera-descent hand-off at the END of the spine (after
             stage 05) — locks the page once more and dives the WebGL camera
