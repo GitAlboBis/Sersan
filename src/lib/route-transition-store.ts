@@ -75,6 +75,13 @@ const LIFT_RECENT_MS = 250;
  *  owns the pending navigation. */
 export function armCover(): void {
   holder.armedAt = Date.now();
+  // A new navigation invalidates the previous one's lift stamp: without this,
+  // a commit landing within LIFT_RECENT_MS of the PRIOR route's lift-start
+  // would fire `onLiftOnce` synchronously off that stale stamp — Scene would
+  // redraw the line under this navigation's still-opaque sheet, the exact
+  // under-cover redraw the store exists to eliminate. This navigation's own
+  // announce re-stamps when its visible lift actually starts.
+  holder.liftAt = 0;
 }
 
 /** Called by the cover layer's force-open failsafe: the click never navigated,

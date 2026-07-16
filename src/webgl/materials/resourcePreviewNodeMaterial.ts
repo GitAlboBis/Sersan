@@ -119,7 +119,11 @@ export function createResourcePreviewMaterial(): {
   // disk the seeded gradient brightens slightly (still sub-threshold); outside
   // it stays the dim navy base.
   const diskR = mix(float(0.0), float(0.95), uHover);
-  const disk = smoothstep(diskR, diskR.sub(0.35), r); // 1 inside, 0 outside (feathered)
+  // 1 inside, 0 outside (feathered). Forward edges + oneMinus — reversed
+  // edges (edge0 > edge1) are undefined in WGSL's smoothstep (see the parity
+  // rule in railPlaneNodeMaterial.ts); this material is WebGPU-only so the
+  // GLSL leniency never applies.
+  const disk = smoothstep(diskR.sub(0.35), diskR, r).oneMinus();
   const inner = mix(uColorA, uColorB, phase).mul(0.45);
   const fill = mix(grad, grad.add(inner), disk.mul(0.6));
 
@@ -147,12 +151,13 @@ export function createResourcePreviewMaterial(): {
   const dWarp = dOrigin.add(warpX.mul(warpY).mul(0.06));
   const BAND = 0.13;
   const front = uWipe.mul(1.55); // reaches the far corner (~1.4) by uWipe≈0.9
-  // Flood: 1 behind the front (passed), feathered to 0 ahead of it.
-  const flood = smoothstep(front, front.sub(BAND), dWarp);
+  // Flood: 1 behind the front (passed), feathered to 0 ahead of it. Forward
+  // edges + oneMinus (WGSL forbids reversed-edge smoothstep, see disk above).
+  const flood = smoothstep(front.sub(BAND), front, dWarp).oneMinus();
   // Rim glow riding the moving front; bells in/out via sin(π·uWipe) so it is
   // absent at both ends. Emissive >1 (uScanEmissive) → selective bloom.
   const rimEnv = sin(uWipe.mul(Math.PI));
-  const rimGlow = smoothstep(BAND, 0.0, abs(dWarp.sub(front))).mul(rimEnv);
+  const rimGlow = smoothstep(0.0, BAND, abs(dWarp.sub(front))).oneMinus().mul(rimEnv);
   const floodTint = mix(uColorA, uColorB, u.y).mul(0.5).mul(flood); // fill: sub-1.0
   const rimCol = mix(uColorA, uColorB, dWarp).mul(uScanEmissive).mul(rimGlow); // >1.0
   const wipeCol = col.add(floodTint).add(rimCol);
@@ -165,7 +170,7 @@ export function createResourcePreviewMaterial(): {
     .mul(smoothstep(0.94, 1.0, u.x).oneMinus())
     .mul(smoothstep(0.0, 0.06, u.y))
     .mul(smoothstep(0.94, 1.0, u.y).oneMinus());
-  const vignette = smoothstep(1.0, 0.55, r);
+  const vignette = smoothstep(0.55, 1.0, r).oneMinus();
 
   material.colorNode = vec3(wipeCol);
   // Hover fade OR wipe presence, whichever is higher; feather + vignette keep

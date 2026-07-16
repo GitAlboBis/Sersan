@@ -1066,7 +1066,7 @@ export function MultiStepIntake() {
                       <div
                         key={row.label}
                         data-intake-field
-                        className="px-4 py-3 grid grid-cols-[10rem,1fr] gap-3 items-baseline"
+                        className="px-4 py-3 grid grid-cols-[10rem_1fr] gap-3 items-baseline"
                       >
                         <dt className="text-[10px] font-mono uppercase tracking-[0.16em] text-ink-mute">
                           {row.label}

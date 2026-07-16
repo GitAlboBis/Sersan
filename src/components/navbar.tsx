@@ -384,6 +384,15 @@ function RouteTransitionCover() {
           startLift();
           return;
         }
+        // Mid-lift commit (interleaved navigations): the sheet is already
+        // uncovering, so the visible lift IS this navigation's crossing —
+        // announce it, or Scene's per-pathname effect (which just set reveal
+        // to 0 on commit) sits dark until its 650ms fallback and the line
+        // pops in out of beat on an already-open page.
+        if (phase === "lifting") {
+          announceLift();
+          return;
+        }
         // Already open: the failsafe resolved before this (very) slow commit.
         // No sheet to lift — just announce so the line redraw isn't left
         // waiting on Scene's fallback timer.
@@ -401,9 +410,14 @@ function RouteTransitionCover() {
         // reveal on the new pathname either way; this just starts the fade on
         // the click beat instead of the commit beat.
         useScrollStore.getState().setReveal(0);
+        // The newest click owns the pending navigation — clear any release
+        // latched by a PREVIOUS commit BEFORE the in-flight early-return, or
+        // a rapid re-click inherits the stale flag and onCovered lifts the
+        // sheet for the wrong navigation (the new route then swaps in fully
+        // uncovered). The superseding route's own commit re-latches it.
+        pendingRelease = false;
         if (phase === "covering" || phase === "covered") return;
 
-        pendingRelease = false;
         gsap.killTweensOf(pose);
         const onCovered = () => {
           phase = "covered";

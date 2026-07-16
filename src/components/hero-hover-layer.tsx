@@ -16,12 +16,22 @@
  * grab cursor was an anti-affordance: it promised a rotation that never
  * happened. The drag machinery was retired; hover-sense is the whole job.
  */
+import { useEffect } from "react";
 import { useHeroHoverStore } from "@/webgl/store/heroHoverStore";
 import { useTierStore } from "@/webgl/store/tierStore";
 
 export function HeroHoverLayer() {
   // Only meaningful while the WebGL mark is live.
   const heroReady = useTierStore((s) => s.heroReady);
+
+  // If the sense div disappears WHILE hovered (tier demotion flips heroReady
+  // false, or the whole section unmounts) no pointerleave ever fires, so the
+  // store flag would stay latched true and the mark's erode gate would rest
+  // open with no pointer over it. Clear it on both edges.
+  useEffect(() => {
+    if (!heroReady) useHeroHoverStore.getState().setHovering(false);
+    return () => useHeroHoverStore.getState().setHovering(false);
+  }, [heroReady]);
 
   if (!heroReady) return null;
 

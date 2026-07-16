@@ -256,6 +256,18 @@ export function LanguageProvider({ children }: LanguageProviderProps) {
       return;
     }
 
+    // Hidden tab: GSAP's rAF ticker is frozen, so a dip started now would
+    // never reach onComplete — the page would rest dimmed in the OLD language
+    // while the cookie already says otherwise. Nobody can see the beat in a
+    // hidden tab; commit instantly.
+    if (typeof document !== "undefined" && document.hidden) {
+      pendingSwapRef.current = null;
+      gsap.killTweensOf(targets);
+      gsap.set(targets, { clearProps: "opacity" });
+      setLanguageState(lang);
+      return;
+    }
+
     // THE TOGGLE BEAT — dip, swap while dimmed, rise. The rise is armed here
     // but executed by the [language] layout effect above, so it can only
     // start once React has committed the swapped text. killTweensOf makes
@@ -274,6 +286,17 @@ export function LanguageProvider({ children }: LanguageProviderProps) {
         setLanguageState(lang);
       },
     });
+    // Failsafe for a tab hidden MID-dip: the frozen ticker parks the tween
+    // before onComplete, but setTimeout still runs in background tabs (merely
+    // clamped), so the swap commits within ~1s regardless. The pendingSwapRef
+    // check makes this a no-op whenever the dip completed or was superseded;
+    // the armed rise then plays on the next visible frame.
+    window.setTimeout(() => {
+      if (pendingSwapRef.current !== lang) return;
+      pendingSwapRef.current = null;
+      fadeUpRef.current = SWAP_IN_S;
+      setLanguageState(lang);
+    }, 600);
   }, []);
 
   const t = useCallback(

@@ -72,12 +72,20 @@ const RECT_W = VB + PAD * 2;
  *  the non-uniform stretch). Tuned for an organic rim without shredding. */
 const DISP_SCALE = 6;
 
-/** Safari (incl. iOS): every non-Chromium-on-Apple engine. Chromium/Firefox on
- *  macOS carry "Safari" in the UA too, hence the exclusion list. */
+/** WebKit engines where the feMorphology∘feDisplacementMap path is slow/buggy:
+ *  desktop Safari AND every iOS browser — Chrome (CriOS) and Firefox (FxiOS)
+ *  on iOS are the same WebKit engine under a different shell, so excluding
+ *  them from the gate would keep the dilate primitive on exactly the engine
+ *  it exists to avoid. Chromium/Firefox on macOS carry "Safari" in the UA
+ *  too, hence the desktop exclusion list. */
 function isSafari(): boolean {
   if (typeof navigator === "undefined") return false;
   const ua = navigator.userAgent;
-  return /^((?!chrome|chromium|android|crios|fxios|edg).)*safari/i.test(ua);
+  // Any iOS device → WebKit, regardless of the browser shell.
+  if (/iphone|ipad|ipod/i.test(ua)) return true;
+  // iPadOS 13+ masquerades as macOS Safari but reports touch points.
+  if (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1) return true;
+  return /^((?!chrome|chromium|android|edg).)*safari/i.test(ua);
 }
 
 /** Integer-quantized attribute writer (fit-section idiom): quantizing lets us

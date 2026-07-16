@@ -464,7 +464,17 @@ function StagePanel({
         if (isHero) {
           const h1 = el.querySelector<HTMLElement>("[data-hero-headline]");
           if (active) {
-            if (h1) h1.style.opacity = "0";
+            // The real H1 CROSSFADES IN as the particle title yields
+            // (HeroTextParticles fades its whole block by 1-reveal): during
+            // the journey the particles ARE the title; at rest the page hands
+            // back to crisp DOM text — without this the released hero has no
+            // headline at all. Opacity ONLY, never transform: the particle
+            // system anchors to this element's live rect, so it must not
+            // move. Reverse scrubbing mirrors automatically (pure in reveal).
+            if (h1) {
+              const hT = Math.min(1, Math.max(0, (reveal - 0.35) / 0.6));
+              h1.style.opacity = String(hT * hT * (3 - 2 * hT));
+            }
             if (!kids) {
               kids = Array.from(
                 el.querySelectorAll<HTMLElement>("[data-hero-stagger]"),
@@ -548,14 +558,23 @@ function StagePanel({
       }}
     >
       <div className="container-px w-full">
-        <div className="max-w-[42rem]">
+        {/* relative z-10 (hero only): the copy block must paint/hit ABOVE the
+            HeroHoverLayer sense overlay (z-[5], right 46%, full height) — on
+            ~1000-1300px viewports the CTA row crosses the 54% mark and the
+            overlay would otherwise swallow clicks on the secondary button's
+            right half. Lifting the block costs the mark's hover-erode only
+            the pixels over the copy itself. */}
+        <div className={cn("max-w-[42rem]", isHero && "relative z-10")}>
           {isHero ? (
             <>
               {/* The page's H1 — typography source for the WebGL text-particle
                   intro (HeroTextParticles samples its computed style + width).
-                  While the morph is active the rAF above keeps it at opacity 0
-                  (the particle text IS the title); on every fallback path it
-                  renders as a normal visible H1. */}
+                  While the morph is active the rAF above drives it: opacity 0
+                  through the journey (the particle text IS the title), then a
+                  crossfade IN over the gate's last stretch as the particle
+                  block yields — so the released hero rests on a real DOM
+                  headline. On every fallback path it renders as a normal
+                  visible H1. */}
               <h1
                 data-hero-headline
                 className="font-display text-[clamp(2.35rem,4.8vw,4.5rem)] leading-[0.98] tracking-[-0.03em] text-ink mb-4 text-balance"
