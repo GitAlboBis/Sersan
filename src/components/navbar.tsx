@@ -16,6 +16,12 @@ import { START_HREF } from "@/lib/site";
 import { getLenis } from "@/lib/lenis-singleton";
 import { useAudioStore } from "@/webgl/store/audioStore";
 import { useScrollStore } from "@/webgl/store/scrollStore";
+import {
+  armCover,
+  disarmCover,
+  setReleaseListener,
+  announceLift,
+} from "@/lib/route-transition-store";
 
 // Real site pages — the dropdown menu navigates the app, not homepage anchors.
 type NavItem = { href: string; label: string; labelIt: string };
@@ -45,6 +51,11 @@ CustomEase.create("ease-menu-open", "0.16, 1, 0.3, 1");
 // deliberately distinct from the soft open landing.
 CustomEase.create("ease-menu-close", "0.7, 0, 0.84, 0");
 
+// setLanguage plays the site-wide swap beat (language-provider: dip → swap →
+// rise on [data-lang-fade]), so the active pill flips ~150ms after the click,
+// when the swapped copy actually commits — deliberate: the control and the
+// content change state on the same beat, not out of sync. Under reduced
+// motion the swap (and the flip) is instant.
 function LanguageToggle({ compact = false }: { compact?: boolean }) {
   const { language, setLanguage } = useLanguage();
   return (
@@ -168,6 +179,359 @@ function MenuPill({
         className="absolute left-[20%] top-[40%] h-2 w-2 scale-100 rounded-lg bg-accent transition-all duration-300 group-hover:left-0 group-hover:top-0 group-hover:h-full group-hover:w-full group-hover:scale-[1.8] motion-reduce:transition-none"
       />
     </Link>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Route-transition cover twin — the exit-before-enter half of the navigation
+// choreography ("cover → cross → resolve").
+// ---------------------------------------------------------------------------
+
+/** Cover sweep duration (the exit). Short + accelerating (power2.in, the
+ *  repo's exit gesture): the sheet consumes the old page fast so the click
+ *  gets immediate feedback without delaying the navigation underneath. */
+const COVER_DURATION = 0.38;
+/** Beat between the new route committing (release) and the lift starting —
+ *  long enough for the new page's first paint to settle under the sheet,
+ *  short enough to read as one continuous gesture. */
+const COVER_HOLD = 0.12;
+/** Lift duration — mirrors template.tsx's CURTAIN_DURATION so the covered and
+ *  uncovered navigation paths resolve on the same beat. */
+const LIFT_DURATION = 0.62;
+/** Hard failsafe: if the armed navigation never commits (preventDefault'd
+ *  click, route error, anything), force-open so the page can NEVER rest
+ *  covered. Slightly shorter than the store's freshness window (1.5s) so a
+ *  commit that beats freshness still finds a consistent (open) twin. */
+const FAILSAFE_MS = 1200;
+
+/**
+ * RouteTransitionCover — a persistent, fixed navy sheet (a "twin" of the
+ * template curtain) owned by the layout-level navbar, plus the document-level
+ * click listener that arms it.
+ *
+ * Why it lives HERE and not in template.tsx: the cover phase must play over
+ * the OLD page, before Next commits the route — but App Router remounts
+ * template.tsx on commit, so the old template (and any element it owns) dies
+ * exactly when the crossing needs continuity. The navbar mounts once in the
+ * root layout and survives every navigation, making it the natural host —
+ * the same reasoning that puts the flip-handoff overlay at layout level.
+ *
+ * The sheet's journey is ONE upward pass through the viewport, driven by a
+ * single proxy scalar j ∈ [0..2]:
+ *   j 0→1  COVER: rises from the bottom edge until fully covering (click time)
+ *   j = 1  COVERED: holds while Next commits the route underneath
+ *   j 1→2  LIFT: continues upward, revealing the new page bottom-up
+ * A travelling luminous edge (the displacement-wipe rim recipe — cyan→blue
+ * hairline + glow) rides the moving boundary, opacity belled sin(π·p) per
+ * phase so it ignites mid-sweep and resolves out at both rests. Both rest
+ * poses (j=0 and j=2) are zero-area — the sheet is invisible at rest, so
+ * normalizing j between navigations can never flash.
+ *
+ * Guarantees (the template-curtain discipline, copied):
+ *   - pointer-events:none always (base .transition-curtain class), aria-hidden.
+ *   - Ships open (CSS default pose) — first paint is never covered, and paths
+ *     where the choreography never runs never see it.
+ *   - Every terminal path re-asserts the byte-identical open pose
+ *     (`inset(0% 0% 100% 0%)`), and the failsafe force-opens + disarms if the
+ *     navigation never commits — no interruption can rest covered.
+ *   - prefers-reduced-motion: the click listener never arms, and the base
+ *     class is display:none in globals.css (belt-and-suspenders).
+ *   - Sits at z-40: BELOW the fixed navbar (z-50), above the z-[1] content
+ *     wrapper — exactly the layers the template curtain covers (it lives
+ *     inside that wrapper), so the covered→covered handoff between the two
+ *     identical sheets is pixel-invisible.
+ */
+function RouteTransitionCover() {
+  const twinRef = useRef<HTMLDivElement>(null);
+  const edgeRef = useRef<HTMLDivElement>(null);
+
+  useGSAP(
+    () => {
+      const twin = twinRef.current;
+      if (!twin || typeof window === "undefined") return;
+
+      type Phase = "open" | "covering" | "covered" | "lifting";
+      let phase: Phase = "open";
+      // Release arrived while the cover sweep was still running (fast commit,
+      // e.g. a prefetched route) — the sweep's onComplete continues into the
+      // lift instead of aborting mid-cover with a hard cut.
+      let pendingRelease = false;
+      let failsafeId = 0;
+      // The OLD page's content wrapper, dipped during the cover. Tracked so
+      // the failsafe can restore it if the navigation never commits (on a
+      // successful commit the element unmounts with the old template — its
+      // inline dip dies with it, no cleanup needed).
+      let dipped: HTMLElement | null = null;
+
+      // Single proxy driving both clip-path and the travelling edge, so the
+      // sheet and its rim can never desync. Rest pose after a full journey.
+      const pose = { j: 2 };
+
+      const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+      /** Map j onto the sheet + edge. Direct style writes (no per-frame GSAP
+       *  target parsing); the edge is a child of the clipped sheet, so its
+       *  glow only bleeds onto the sheet side — the page side stays clean. */
+      const apply = () => {
+        const el = twinRef.current;
+        const edge = edgeRef.current;
+        if (!el) return;
+        const j = pose.j;
+        if (j <= 1) {
+          // COVER: top inset shrinks — the sheet grows upward from the bottom.
+          const inset = ((1 - j) * 100).toFixed(3);
+          el.style.clipPath = `inset(${inset}% 0% 0% 0%)`;
+          if (edge) {
+            // Leading (top) boundary; the 2px hairline hangs just inside it.
+            edge.style.top = `${inset}%`;
+            edge.style.transform = "translateY(0)";
+            edge.style.opacity = String(Math.sin(Math.PI * clamp01(j)));
+          }
+        } else {
+          // LIFT: bottom inset grows — the sheet retreats upward, revealing
+          // the page bottom-up (same pose family as the template curtain).
+          const inset = ((j - 1) * 100).toFixed(3);
+          el.style.clipPath = `inset(0% 0% ${inset}% 0%)`;
+          if (edge) {
+            // Trailing (bottom) boundary; translate the hairline back inside
+            // the visible region or the clip would swallow it entirely.
+            edge.style.top = `${((2 - j) * 100).toFixed(3)}%`;
+            edge.style.transform = "translateY(-100%)";
+            edge.style.opacity = String(Math.sin(Math.PI * clamp01(j - 1)));
+          }
+        }
+      };
+
+      /** Terminal state for every path: fully open, inert, byte-identical to
+       *  the CSS default so an un-animated mount and a finished journey are
+       *  indistinguishable. */
+      const assertOpen = () => {
+        gsap.killTweensOf(pose);
+        pose.j = 2;
+        phase = "open";
+        pendingRelease = false;
+        if (twinRef.current) {
+          gsap.set(twinRef.current, {
+            clipPath: "inset(0% 0% 100% 0%)",
+            pointerEvents: "none",
+          });
+        }
+        if (edgeRef.current) gsap.set(edgeRef.current, { opacity: 0 });
+      };
+
+      /** LIFT (j 1→2) after the hold. The hold is the tween's own delay so
+       *  killTweensOf(pose) cancels a lift still waiting in it. onStart (which
+       *  fires AFTER the delay) announces the beat: Scene.tsx re-ignites the
+       *  signature line's reveal on it, so the line redraws THROUGH the
+       *  uncovering viewport — the visible crossing. */
+      const startLift = () => {
+        phase = "lifting";
+        gsap.to(pose, {
+          j: 2,
+          delay: COVER_HOLD,
+          duration: LIFT_DURATION,
+          ease: "expo.inOut",
+          onStart: announceLift,
+          onUpdate: apply,
+          onComplete: assertOpen,
+        });
+      };
+
+      /** Failsafe: the armed click never navigated. Restore everything the
+       *  arm touched — sheet open, arm flag cleared, old page un-dipped, line
+       *  reveal back — so an aborted navigation leaves zero residue. */
+      const forceOpen = () => {
+        disarmCover();
+        pendingRelease = false;
+        if (dipped) {
+          gsap.killTweensOf(dipped);
+          gsap.to(dipped, {
+            autoAlpha: 1,
+            duration: 0.3,
+            ease: "power2.out",
+            clearProps: "all",
+          });
+          dipped = null;
+        }
+        useScrollStore.getState().setReveal(1);
+        if (phase === "covering" || phase === "covered") {
+          phase = "lifting";
+          gsap.killTweensOf(pose);
+          gsap.to(pose, {
+            j: 2,
+            duration: 0.45,
+            ease: "expo.inOut",
+            onUpdate: apply,
+            onComplete: assertOpen,
+          });
+        }
+      };
+
+      /** Template.tsx consumed the armed handoff on the new route's mount. */
+      const onRelease = () => {
+        window.clearTimeout(failsafeId);
+        // The dip target just unmounted with the old template — kill its tween
+        // so nothing keeps writing to a detached node.
+        if (dipped) {
+          gsap.killTweensOf(dipped);
+          dipped = null;
+        }
+        if (phase === "covering") {
+          pendingRelease = true;
+          return;
+        }
+        if (phase === "covered") {
+          startLift();
+          return;
+        }
+        // Already open: the failsafe resolved before this (very) slow commit.
+        // No sheet to lift — just announce so the line redraw isn't left
+        // waiting on Scene's fallback timer.
+        if (phase === "open") announceLift();
+      };
+
+      /** COVER, from a click on an internal link. */
+      const beginCover = (contentEl: HTMLElement | null) => {
+        // Newest click owns the pending navigation: refresh the arm + failsafe
+        // even when a sweep is already running (rapid re-click).
+        window.clearTimeout(failsafeId);
+        failsafeId = window.setTimeout(forceOpen, FAILSAFE_MS);
+        armCover();
+        // The signature line dims as the page is consumed — Scene.tsx re-arms
+        // reveal on the new pathname either way; this just starts the fade on
+        // the click beat instead of the commit beat.
+        useScrollStore.getState().setReveal(0);
+        if (phase === "covering" || phase === "covered") return;
+
+        pendingRelease = false;
+        gsap.killTweensOf(pose);
+        const onCovered = () => {
+          phase = "covered";
+          if (pendingRelease) {
+            pendingRelease = false;
+            startLift();
+          }
+        };
+        if (phase === "open") {
+          // Both rest poses are zero-area, so snapping j to the pre-cover pose
+          // can never flash.
+          pose.j = 0;
+          apply();
+          phase = "covering";
+          gsap.to(pose, {
+            j: 1,
+            duration: COVER_DURATION,
+            ease: "power2.in",
+            onUpdate: apply,
+            onComplete: onCovered,
+          });
+        } else {
+          // Mid-lift re-arm: bring the sheet back down from wherever it is —
+          // spatially continuous, no restart-from-bottom pop.
+          phase = "covering";
+          gsap.to(pose, {
+            j: 1,
+            duration: 0.28,
+            ease: "power2.in",
+            onUpdate: apply,
+            onComplete: onCovered,
+          });
+        }
+
+        // The old page dims under the sweep — a dim alone is enough, the sheet
+        // covers fast. Deliberately NO transform: a y-drift would make this
+        // wrapper a containing block for position:fixed descendants, and the
+        // /resources DOM-fallback preview card is exactly that AND can be
+        // visible at click time (you click the row you're hovering) — it would
+        // jump mid-cover. The enter tween's transform never hits this (nothing
+        // is hovered during an enter); the exit must stay opacity-only. On
+        // commit the element unmounts with its inline styles.
+        if (contentEl) {
+          dipped = contentEl;
+          gsap.killTweensOf(contentEl);
+          gsap.to(contentEl, {
+            autoAlpha: 0.8,
+            duration: COVER_DURATION,
+            ease: "power2.in",
+          });
+        }
+      };
+
+      // Document-level BUBBLE-phase listener (not capture): it runs after the
+      // target's own handlers, so (a) e.defaultPrevented is meaningful and
+      // (b) the flip-handoff's target-level arm has already happened for card
+      // clicks. Next's <Link> has also already scheduled its transition — the
+      // commit lands asynchronously, well after this same-tick sweep starts.
+      // Never calls preventDefault: prefetch/navigation semantics untouched.
+      const onClick = (e: MouseEvent) => {
+        if (e.defaultPrevented) return;
+        // Plain same-tab left click only — modified clicks open elsewhere and
+        // must never be covered (mirrors use-flip-source's guard).
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey)
+          return;
+        // Live check (not a mount-time snapshot) so toggling the OS setting
+        // mid-session is honored without a reload.
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+          return;
+        const target = e.target as HTMLElement | null;
+        const link = target?.closest?.("a[href]") as HTMLAnchorElement | null;
+        if (!link) return;
+        // New-tab / download links never navigate this document.
+        if (link.target && link.target !== "_self") return;
+        if (link.hasAttribute("download")) return;
+        // Explicit opt-out hook for links that manage their own transition.
+        if (link.closest("[data-no-curtain]")) return;
+        // Work-card zoom clicks: the inflating clone IS that navigation's
+        // curtain (flip-handoff suppresses the template wipe too) — one cover
+        // per navigation. Skipped by attribute rather than by peeking the flip
+        // store so coarse/RM clicks (where the flip never arms) also fall
+        // through to today's behavior unchanged.
+        if (link.closest("[data-flip-source]")) return;
+        let url: URL;
+        try {
+          url = new URL(link.href, window.location.href);
+        } catch {
+          return;
+        }
+        // External origins (and mailto:/tel:, whose origin never matches)
+        // leave the page — no crossing to stage.
+        if (url.origin !== window.location.origin) return;
+        // Same-pathname covers hash-only and query-only clicks: template does
+        // not remount for those, so a cover would have no release and would
+        // ride the failsafe — never arm it.
+        if (url.pathname === window.location.pathname) return;
+
+        beginCover(
+          document.querySelector<HTMLElement>("[data-route-content]"),
+        );
+      };
+
+      document.addEventListener("click", onClick);
+      setReleaseListener(onRelease);
+
+      return () => {
+        document.removeEventListener("click", onClick);
+        setReleaseListener(null);
+        window.clearTimeout(failsafeId);
+        if (dipped) gsap.killTweensOf(dipped);
+        // Unmount mid-journey (StrictMode remount, HMR): never rest covered.
+        assertOpen();
+      };
+    },
+    { scope: twinRef },
+  );
+
+  return (
+    // Decorative, never traps interaction (base class is pointer-events:none
+    // and display:none under reduced-motion). Ships in the CSS default OPEN
+    // pose; only an armed click ever makes it visible.
+    <div
+      ref={twinRef}
+      className="transition-curtain transition-curtain--cover"
+      aria-hidden="true"
+    >
+      <div ref={edgeRef} className="transition-curtain__edge" />
+    </div>
   );
 }
 
@@ -346,6 +710,7 @@ export function Navbar() {
   );
 
   return (
+    <>
     <nav
       className={cn(
         "fixed top-0 left-0 right-0 z-50 transition-[border-color,backdrop-filter,background-color,box-shadow] duration-300",
@@ -533,6 +898,14 @@ export function Navbar() {
         </div>
       )}
     </nav>
+    {/* Exit-before-enter cover twin + its document-level arming listener.
+        A SIBLING of the nav, not a child: the nav's backdrop-filter makes it
+        a containing block for fixed descendants, which would pin the
+        full-viewport sheet to the 64px bar. Hosted by Navbar because Navbar
+        is the persistent layout-level client component that survives the
+        template remount the cover must bridge. */}
+    <RouteTransitionCover />
+    </>
   );
 }
 

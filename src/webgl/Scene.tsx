@@ -38,6 +38,7 @@ import { PostFXNodes } from "./PostFXNodes";
 import { useSectionAnchors } from "./hooks/useSectionAnchors";
 import { CAMERA_FOV, CAMERA_Z } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
+import { onLiftOnce } from "@/lib/route-transition-store";
 import type { SectionAnchors } from "./hooks/useSectionAnchors";
 import { useTierStore, type SceneTier } from "./store/tierStore";
 
@@ -55,8 +56,8 @@ if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
   import("./store/scrollStore").then((m) => {
     (window as unknown as Record<string, unknown>).__sersanScroll = m.useScrollStore;
   });
-  import("./store/heroDragStore").then((m) => {
-    (window as unknown as Record<string, unknown>).__sersanHeroDrag = m.useHeroDragStore;
+  import("./store/heroHoverStore").then((m) => {
+    (window as unknown as Record<string, unknown>).__sersanHeroHover = m.useHeroHoverStore;
   });
   import("./store/textMorphStore").then((m) => {
     (window as unknown as Record<string, unknown>).__sersanTextMorph = m.useTextMorphStore;
@@ -206,14 +207,35 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
 
   // Route-transition beat for the signature line: fade out, let the curve
   // rebuild against the new page's anchors, fade back in. On first mount
-  // this doubles as the intro draw (0 → 1). The DOM enter animation in
-  // app/template.tsx runs on the same navigation, so page and line breathe
-  // together.
+  // this doubles as the intro draw (0 → 1).
+  //
+  // The re-ignition is timed to the LIFT, not to a fixed delay: the old
+  // fixed 420ms fired while the viewport was still fully covered, so the
+  // line finished redrawing under the sheet and the viewer only ever saw a
+  // static navy panel rising. `onLiftOnce` (route-transition-store) fires
+  // the moment a curtain actually starts opening — the cover twin's lift on
+  // click-covered navigations, template.tsx's own wipe otherwise — so the
+  // damped uReveal (~400ms visible tail, lambda 8 in SignatureLine) draws
+  // the line back in THROUGH the uncovering viewport: the crossing plays in
+  // view. The 650ms timeout is the fallback for paths that never announce a
+  // lift (first mount, where the preloader hand-off in SignatureLine owns
+  // the draw-in anyway; flip-zoom navigations, where the inflating clone
+  // covers well past it) — reveal can never be left stuck at 0.
   useEffect(() => {
     const { setReveal } = useScrollStore.getState();
     setReveal(0);
-    const t = window.setTimeout(() => setReveal(1), 420);
-    return () => window.clearTimeout(t);
+    let fired = false;
+    const fire = () => {
+      if (fired) return;
+      fired = true;
+      setReveal(1);
+    };
+    const offLift = onLiftOnce(fire);
+    const t = window.setTimeout(fire, 650);
+    return () => {
+      offLift();
+      window.clearTimeout(t);
+    };
   }, [pathname]);
 
   return (

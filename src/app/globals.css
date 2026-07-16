@@ -1028,6 +1028,47 @@ img { height: auto; max-width: 100%; }
   box-shadow: 0 0 24px hsl(var(--accent) / 0.45);
 }
 
+/* Cover twin (exit-before-enter navigation) — the persistent sheet owned by
+   the navbar layer that sweeps up over the OLD page at click time, then plays
+   the lift itself on the new route. z-40 sits BELOW the fixed navbar (z-50):
+   the template curtain lives inside the z-[1] content wrapper, so it too
+   resolves under the navbar — both sheets cover exactly the same pixels and
+   any handoff between them is invisible. The bottom-pinned ::after glow is
+   disabled here: during a bottom-up cover the element's bottom edge is the
+   TRAILING side, so a pinned glow would sit at the viewport bottom for the
+   whole sweep — this sheet carries a travelling edge child instead. */
+.transition-curtain--cover {
+  z-index: 40;
+}
+.transition-curtain--cover::after {
+  content: none;
+}
+
+/* Travelling luminous edge riding the cover/lift boundary — the same rim
+   recipe as the /audit displacement wipe (cyan→blue hairline + dual glow), so
+   the site's two wipe idioms share one edge language. top/transform/opacity
+   are written per-frame by the sweep proxy in navbar.tsx; it ships
+   transparent, and the parent's clip-path crops the glow to the sheet side so
+   the page side stays clean. */
+.transition-curtain__edge {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 2px;
+  opacity: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    #3be1ff 22%,
+    #2a7fff 78%,
+    transparent 100%
+  );
+  box-shadow:
+    0 0 10px 1px rgba(59, 225, 255, 0.7),
+    0 0 22px 3px rgba(42, 127, 255, 0.35);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .card-lift { transition: none; }
   .card-lift:hover { transform: none; box-shadow: none; }
@@ -1230,4 +1271,62 @@ html.cursor-none input:not([type="button"]):not([type="submit"]):not([type="rese
 html.cursor-none textarea,
 html.cursor-none [contenteditable="true"] {
   cursor: text !important;
+}
+
+/* ============================================================================
+ * ProductionGrade "systems come online" boot — ignition chrome.
+ *
+ * The section's single GSAP boot timeline (production-grade-section.tsx) pops
+ * each marker dot 0→1 in pipeline order (eval → trace → guardrail) and stamps
+ * `.is-igniting` on the dot at each beat. The one-shot halo ring below is the
+ * CSS half of that beat; the WebGL lattice cluster pulse and the fallback SVG
+ * pathway draw fire on the same beats from the same timeline, so the boot
+ * reads identically on every tier. Both classes are timeline-stamped only —
+ * no render path ever adds them on its own, so reduced-motion (where the
+ * timeline never runs) never sees either.
+ * ========================================================================== */
+
+/* While the boot timeline owns the dot's transform, the dot's 300ms hover
+   transition must not intercept the per-frame GSAP writes (a CSS transition
+   re-eases every inline style change and would smear the pop into mush). The
+   class is added at prime time and removed the moment the ignite tween
+   completes and clears its inline transform, so the hover grammar (scale 1.18
+   surge) resumes untouched. */
+.neural-node-marker__dot.is-booting {
+  transition: none;
+}
+
+/* The ignition halo: a single expanding ring on the dot's ::after, fired when
+   the boot timeline stamps `.is-igniting`. One-shot; `both` parks the ring at
+   its final frame (opacity 0), so the class can persist inertly afterwards and
+   never interferes with the hover/open box-shadow states — those live on the
+   dot itself, not the pseudo. */
+.neural-node-marker__dot.is-igniting::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 1px solid hsl(var(--accent) / 0.85);
+  box-shadow: 0 0 12px 2px hsl(var(--accent) / 0.35);
+  animation: neural-node-ignite 700ms var(--ease-entrance) 1 both;
+}
+@keyframes neural-node-ignite {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(3.2);
+    opacity: 0;
+  }
+}
+
+/* Reduced motion: the boot timeline never runs, so `.is-igniting` is never
+   stamped — this guard only covers a mid-session preference flip, parking the
+   ring invisible instead of mid-pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .neural-node-marker__dot.is-igniting::after {
+    animation: none !important;
+    opacity: 0 !important;
+  }
 }
