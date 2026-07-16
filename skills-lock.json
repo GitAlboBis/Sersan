@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "skills": {
+    "awwwards-landing-page": {
+      "source": "eng0ai/eng0-template-skills",
+      "sourceType": "github",
+      "skillPath": "awwwards-landing-page/SKILL.md",
+      "computedHash": "dbfbafce339f6d66da38f978f9e009cfd699c1b5c4a5932e56bc453447aa96f3"
+    },
+    "gsap-framer-scroll-animation": {
+      "source": "github/awesome-copilot",
+      "sourceType": "github",
+      "skillPath": "skills/gsap-framer-scroll-animation/SKILL.md",
+      "computedHash": "e6a4caf23b818ffc5185d51339e941ca783944b6693da877fc1206693b2dff66"
+    },
+    "hover-interactions": {
+      "source": "dylantarre/animation-principles",
+      "sourceType": "github",
+      "skillPath": "skills/05-by-animation-type/hover-interactions/SKILL.md",
+      "computedHash": "a8f7f1b5d48dce5de96b8dda19e1c2cde134552856c3eb3ac8f1eb3a9e69f26f"
+    },
+    "micro-interactions": {
+      "source": "dylantarre/animation-principles",
+      "sourceType": "github",
+      "skillPath": "skills/01-by-domain/micro-interactions/SKILL.md",
+      "computedHash": "3329f824de3660f2aef6ea2974f7410fab5865ce0250fa2191a87370c616c093"
+    },
+    "motion": {
+      "source": "secondsky/claude-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/motion/skills/motion/SKILL.md",
+      "computedHash": "07e39574eb2f22d7d3daa430c9b53abf3b2127c2801008205916334f8aa0143d"
+    },
+    "page-transitions": {
+      "source": "dylantarre/animation-principles",
+      "sourceType": "github",
+      "skillPath": "skills/01-by-domain/page-transitions/SKILL.md",
+      "computedHash": "e9533dfd2d0ff0ede5202eb4b85bfd6a2271b10675f17403e0c49121749a917a"
+    },
+    "scroll-animations": {
+      "source": "dylantarre/animation-principles",
+      "sourceType": "github",
+      "skillPath": "skills/05-by-animation-type/scroll-animations/SKILL.md",
+      "computedHash": "16e1d229291ca23991f26215efd830f1ce942fdca60deb43f9fbe04a1fee43c2"
+    }
+  }
+}
