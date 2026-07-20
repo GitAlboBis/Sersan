@@ -20,9 +20,10 @@
  *   - TONE IS CARRIED BY PARTICLE SIZE, NOT BY PARTICLE COUNT. The reference
  *     does `psize *= max(grey, 0.2)`; we invert it for a light backdrop and
  *     scale size by INK — the luma-weighted distance from the backdrop colour.
- *   - NO HARD BACKGROUND MASK. The backdrop simply has ink ≈ 0, so its
- *     particles shrink to nothing and vanish smoothly. Nothing can punch a hole
- *     in the subject.
+ *   - THE BACKDROP IS REMOVED SPATIALLY, NEVER CHROMATICALLY. A border-seeded
+ *     flood fill (see BG_FILL_TOL) marks the wall; the ink curve itself stays
+ *     gentle. No per-pixel colour/luminance test is allowed to decide what is
+ *     backdrop — see the flood-fill comment for why every one of them fails.
  *   - SHARED GRID / SHARED CELL LIST. Both portraits are sampled onto the SAME
  *     grid and one cell list is built from the union of their ink, so output
  *     index `j` is the same cell in BOTH images. That gives A↔B index pairing
@@ -62,17 +63,6 @@ export interface PortraitPairSpec {
   inkFloor: number;
   /** Ink gamma (<1 lifts the mid-tones so cheeks/shirt keep some weight). */
   inkGamma: number;
-  /** Low-end NOISE GATE, applied to the normalized distance `v` BEFORE the
-   * gamma lift. `inkGamma < 1` is a 2–4× amplifier in exactly the near-zero
-   * band, and a studio backdrop is never flat (vignetting, shadow-side light
-   * falloff, JPEG chroma blocking put the wall 10–25 levels off the median), so
-   * without a gate the wall is MANUFACTURED as real ink. `v ≤ inkGateLo` maps
-   * to a literal 0; the gate smoothsteps to 1 by `inkGateHi`, above which the
-   * mid-tone lift is untouched. Gating here (not by raising inkGamma above 1)
-   * leaves the face's own shadow detail uncrushed. */
-  inkGateLo: number;
-  /** Upper edge of the low-end noise gate (normalized distance `v`). */
-  inkGateHi: number;
   /** Normalized y at which the vertical dissolve starts (bust → darkness). */
   fadeStart: number;
   /** Normalized y span over which the dissolve completes. */
@@ -128,6 +118,13 @@ const FACE_CY = 0.44;
 const BULGE_RADIUS = 0.75;
 /** Sub-cell jitter amplitude in CELL units (breaks the grid without blurring). */
 const JITTER = 0.9;
+/** Colour-distance tolerance admitted by the backdrop flood fill (same
+ * luma-weighted metric as the ink). Wide enough to walk the wall's own
+ * vignetting / shadow-side falloff / JPEG blocking, far too tight to step
+ * across the shoulder shadow or a hairline. */
+const BG_FILL_TOL = 0.055;
+/** Normalized y below which the flood fill may not travel (see the fill). */
+const BG_FILL_ROW_LIMIT = 0.62;
 
 /** Exact three.js sRGB→linear transfer (ColorManagement.SRGBToLinear). */
 function srgbToLinear(c: number): number {
@@ -245,6 +242,60 @@ function readGrid(
   const bgG = median(cg);
   const bgB = median(cb);
 
+  // --- Per-cell colour distance from the backdrop (the one shared metric) ----
+  const dist = new Float32Array(cells);
+  for (let i = 0; i < cells; i++) {
+    const dr = r[i] - bgR;
+    const dg = g[i] - bgG;
+    const db = b[i] - bgB;
+    dist[i] = Math.sqrt(0.299 * dr * dr + 0.587 * dg * dg + 0.114 * db * db);
+  }
+
+  // --- Backdrop mask: BORDER-SEEDED FLOOD FILL (spatial, not chromatic) ------
+  // WHY NO PER-PIXEL COLOUR TEST CAN WORK HERE — do not reintroduce one. A lit
+  // bald scalp and a white shirt are chromatically THE SAME as a white studio
+  // wall, so every threshold that deletes the wall (the old `lumCeil`/
+  // `neutralSat` test, then the `inkGateLo`/`inkGateHi` noise gate) also punches
+  // a hole through the top of the head and hollows the bust. Colour cannot
+  // separate them; POSITION can. The wall is exactly the region CONNECTED TO THE
+  // IMAGE BORDER: a scalp is enclosed by hair/ears/face and a shirt by the
+  // shoulders, so neither is reachable from the border without crossing an edge
+  // far wider than BG_FILL_TOL.
+  //
+  // ROW LIMIT — LOAD-BEARING, DO NOT REMOVE. The shirt touches the BOTTOM
+  // border, and a white shirt against a white wall is separated only by a soft
+  // shoulder shadow. Seeding from the bottom, or letting the fill run down past
+  // the shoulders, leaks into the shirt and deletes the bust. Below the limit
+  // the vertical dissolve already fades everything out, so the wall down there
+  // costs nothing.
+  //
+  // Explicit stack, never recursion: the grid is ~117k cells.
+  const bgMask = new Uint8Array(cells);
+  const rowLimit = Math.max(1, Math.floor(gridH * BG_FILL_ROW_LIMIT));
+  const stack = new Int32Array(cells);
+  let sp = 0;
+  const admit = (i: number) => {
+    if (bgMask[i] === 0 && dist[i] < BG_FILL_TOL) {
+      bgMask[i] = 1;
+      stack[sp++] = i;
+    }
+  };
+  // Seeds: the entire TOP row, plus the left/right columns above the row limit.
+  for (let x = 0; x < gridW; x++) admit(x);
+  for (let y = 1; y < rowLimit; y++) {
+    admit(y * gridW);
+    admit(y * gridW + gridW - 1);
+  }
+  while (sp > 0) {
+    const i = stack[--sp];
+    const x = i % gridW;
+    const y = (i / gridW) | 0;
+    if (x > 0) admit(i - 1);
+    if (x < gridW - 1) admit(i + 1);
+    if (y > 0) admit(i - gridW);
+    if (y + 1 < rowLimit) admit(i + gridW);
+  }
+
   // --- Ink: luma-weighted distance from the backdrop, curved + dissolved -----
   const ink = new Float32Array(cells);
   const invFloor = 1 / Math.max(1 - spec.inkFloor, 1e-4);
@@ -261,26 +312,16 @@ function readGrid(
     const row = y * gridW;
     for (let x = 0; x < gridW; x++) {
       const i = row + x;
-      const dr = r[i] - bgR;
-      const dg = g[i] - bgG;
-      const db = b[i] - bgB;
-      const dist =
-        Math.sqrt(0.299 * dr * dr + 0.587 * dg * dg + 0.114 * db * db) *
-        spec.inkGain;
-      const v = Math.min(1, Math.max(0, (dist - spec.inkFloor) * invFloor));
-      // Noise gate BEFORE the gamma lift: `pow(v, 0.7)` multiplies the
-      // near-zero band by 2–4×, which is precisely where a real backdrop's own
-      // vignetting / shadow-side falloff / JPEG blocking lives — so the wall
-      // gets promoted into visible ink. The gate maps that band to a literal 0
-      // and ramps smoothly (smoothstep, C1 at both edges) so the SUBJECT's own
-      // faint rim still fades in over several cells instead of clipping to a
-      // cut-out. The mid-tones (v ≥ inkGateHi) keep the full gamma lift.
-      const gt = Math.min(
+      // Flood-filled backdrop is gone unconditionally — the mask, not the
+      // curve, owns the wall. That is what lets the curve below stay GENTLE:
+      // every low-end gate we ever put here to kill the wall also dimmed the
+      // subject's own mid-band (facial detail) or deleted a lit scalp.
+      if (bgMask[i] === 1) continue;
+      const v = Math.min(
         1,
-        Math.max(0, (v - spec.inkGateLo) / Math.max(spec.inkGateHi - spec.inkGateLo, 1e-4)),
+        Math.max(0, (dist[i] * spec.inkGain - spec.inkFloor) * invFloor),
       );
-      const gate = gt * gt * (3 - 2 * gt);
-      ink[i] = Math.pow(v, spec.inkGamma) * gate * fade;
+      ink[i] = Math.pow(v, spec.inkGamma) * fade;
     }
   }
 

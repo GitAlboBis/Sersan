@@ -1373,21 +1373,21 @@ export function createTextMorphComputeBuild(
     // clipping to a hard cut-out. The Discard below then removes the
     // true-zero particles entirely.
     if (hasPortraitSize) {
-      // (a) TONAL KNEE. The old `smoothstep(0.0, 0.14, ink)` saturated at ink
-      // 0.14 — only ~6% colour distance from the backdrop — while the disc was
-      // still at 19% of full size, so everything above it drew fully opaque and
-      // size was the sole remaining tonal channel exactly where size cannot
-      // attenuate. Widened to 0.03 → 0.35, squared for low-end shaping.
-      // ENDPOINT ARITHMETIC: diameter = 2·(0.06 + 0.94·ink)·spacingDev, so at
-      // ink 0.35 the disc is ~3.35 devpx ≈ 2× the 1.5 devpx coverage threshold
-      // — the point at which geometric AREA attenuation is fully functional
-      // again and alpha no longer has to carry tone. So the ramp ends exactly
-      // where the coverage term below reaches 1, and the two never
-      // double-attenuate: the FACE (ink ≫ 0.35) gets 1.0 × 1.0, byte-unchanged.
-      // Lower edge 0.03 (not 0) gives a true-zero pedestal for the Discard;
-      // smoothstep is C1 at both edges, so it is still a smooth start.
-      const inkA = smoothstep(0.03, 0.35, vInkF!).toVar();
-      alpha.mulAssign(inkA.mul(inkA));
+      // (a) TONAL KNEE — deliberately NARROW and UNSQUARED. The previous wide
+      // squared knee (`smoothstep(0.03, 0.35, ink)²`) was compensating for a
+      // BACKDROP problem, and it paid for it with the subject: the whole mid
+      // band where facial detail lives was dimmed, which is why the faces read
+      // as less defined. Two independent changes make the narrow knee safe:
+      //   1. The sampler's border-seeded flood fill now drives true backdrop to
+      //      EXACTLY 0 ink (sampleImagePoints.ts), so there is no wall
+      //      population left to ghost — alpha no longer has to suppress one.
+      //   2. The sub-pixel coverage compensation below still handles every disc
+      //      under the rasterizer's one-pixel floor, which is the other half of
+      //      what the wide knee was doing by hand.
+      // What remains is a short fade-in off zero so the subject's own faint
+      // edge (and the dissolve band) still ramps smoothly instead of clipping
+      // to a cut-out. The FACE (ink ≫ 0.10) gets exactly 1.0, untouched.
+      alpha.mulAssign(smoothstep(0.0, 0.1, vInkF!));
       // (b) SUB-PIXEL COVERAGE COMPENSATION — see PORTRAIT_COV_MIN_PX. With
       // `antialias:false` a disc narrower than a device pixel is shaded at FULL
       // intensity over one whole fragment, so its energy must be scaled back by
@@ -1402,12 +1402,19 @@ export function createTextMorphComputeBuild(
       ).toVar();
       alpha.mulAssign(cov.mul(cov));
     }
-    // Portrait cull raised to 0.02: with the ramp above, 0.004 corresponds to
-    // ink ~0.041 and 0.02 to ink ~0.105, i.e. it now discards the residual
-    // backdrop band outright instead of feeding near-white fragments into the
-    // HDR/selective-bloom pass. 2% opacity over the navy stage is imperceptible,
-    // so no visible silhouette edge is introduced. JS ternary on a BUILD-TIME
-    // boolean → the hero emits the literal 0.004 verbatim.
+    // Portrait cull stays at 0.02, but the narrow knee above changed what it
+    // MEANS, and the new meaning is what makes it safe. Under the old wide
+    // squared knee 0.02 corresponded to ink ≈ 0.105 — with today's knee that
+    // same ink is a fully opaque disc, so keeping the old pairing would clip
+    // the subject. Re-derived against the current terms
+    // (alpha = smoothstep(0,0.1,ink)·cov², POINT_ALPHA 1) the threshold now
+    // culls only ink ≲ 0.018 in the spacing-relative worst case (covPx =
+    // 0.35·spacingDev) and ink ≲ 0.008 whenever cov has already saturated:
+    // i.e. sub-2%-opacity sub-pixel discs over a near-black stage, genuinely
+    // invisible, while the faint-edge band the knee is there to preserve
+    // (ink 0.02–0.1) survives. It still keeps near-invisible fragments out of
+    // the HDR/selective-bloom pass. JS ternary on a BUILD-TIME boolean → the
+    // hero emits the literal 0.004 verbatim.
     Discard(alpha.lessThan(hasPortraitSize ? 0.02 : 0.004));
     return vec4(col, alpha);
   })();

@@ -57,9 +57,8 @@
  * getSampler / getStage / setPointSize / setSpread / setEmissive / setDepth /
  * setMorph(override) / setStage / playMorph / resample / project / bbox — so
  * the final look (point size / spread / emissive / ink curve / grid) is tuned
- * without rebuilds. `resample({ inkGain, inkFloor, inkGamma, inkGateLo,
- * inkGateHi, fadeStart, fadeSpan, inkCut, gridW, gridH })` re-runs the pair
- * sampler in place.
+ * without rebuilds. `resample({ inkGain, inkFloor, inkGamma, fadeStart,
+ * fadeSpan, inkCut, gridW, gridH })` re-runs the pair sampler in place.
  */
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -126,21 +125,16 @@ const SAMPLE_SPEC_BASE: Omit<PortraitPairSpec, "maxCount"> = {
   // grid it produced a visible rounded bulge artifact around the chin/face
   // centre, and it compounds the edge-tearing described at Z_RELIEF_MAX_FRAC.
   centerZBias: 0,
+  // Gentle curve — the backdrop is removed SPATIALLY by the sampler's
+  // border-seeded flood fill, so nothing here has to fight the wall. Every
+  // low-end gate that used to live here (lumCeil/neutralSat, then
+  // inkGateLo/inkGateHi) deleted the lit scalp and dimmed the subject's mid
+  // band along with it; do not reintroduce one.
   inkGain: 1.7, // contrast gain on the backdrop distance
-  inkFloor: 0.05, // below this the cell is backdrop → ink 0
-  inkGamma: 0.7, // <1 keeps mid-tones (cheeks, shirt folds) present
-  // Low-end noise gate on the normalized distance `v`, applied BEFORE the gamma
-  // lift. v = (dist·inkGain − inkFloor)/(1 − inkFloor), so with gain 1.7 /
-  // floor 0.05 these edges are, in RAW luma-weighted colour distance from the
-  // measured backdrop: v 0.05 → d 0.0574 (≈15/255 levels) → ink EXACTLY 0, and
-  // v 0.22 → d 0.152 (≈39/255) → full lift. A wall cell 20 levels off the
-  // median now reads ink 0.023 (was 0.186) and a 25-level one 0.090 (was
-  // 0.234), while a real hair-wisp edge at 31 levels keeps ink 0.20 and any
-  // genuine mid-tone (≥39 levels: cheeks, shirt folds) is BYTE-UNCHANGED.
-  inkGateLo: 0.05,
-  inkGateHi: 0.22,
-  fadeStart: 0.6, // the bust dissolves into darkness below this normalized y
-  fadeSpan: 0.34,
+  inkFloor: 0.03, // below this the cell is sensor noise → ink 0
+  inkGamma: 0.62, // <1 keeps mid-tones (cheeks, shirt folds) present
+  fadeStart: 0.62, // the bust dissolves into darkness below this normalized y
+  fadeSpan: 0.32,
   inkCut: 0.03, // union ink above which a cell joins the shared list
   extentInk: 0.15, // only real ink counts toward the measured face extent
 };
