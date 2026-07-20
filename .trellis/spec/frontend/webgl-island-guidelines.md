@@ -150,29 +150,64 @@ else                    { /* fresh build: full reset */ }
 clock, never from a lifecycle flag that merely correlates with it. Verify with the dev
 handle at scroll 0 — the entry uniform must still read 0.
 
-## Convention: image→particle sampling, background isolation is polarity-dependent
+## Don't: carry image tone with particle DENSITY
 
-`sampleImagePoints` isolates the subject from the backdrop, and the correct test
-depends on the source:
+Rewritten 2026-07-20 — the threshold-family model this section used to describe
+(`lumFloor` / `lumCeil` / `neutralSat` / `lumGamma` / `radialFalloff` / `crop`) and the
+weighted-pick sampler are both **deleted**. Keep this history: the replacement is only
+obvious once you know why the old one failed.
 
-| Source | Backdrop | Isolate with |
-|---|---|---|
-| Environmental photo (dark surround) | dark | `lumFloor` (drop below) |
-| Studio headshot (white seamless) | bright + neutral | `lumCeil` + `neutralSat` (drop bright AND low-chroma), with `lumFloor` near 0 |
+**Problem**: `sampleImagePoints` drew `count` weighted random picks **with replacement**
+over the candidate cells, so brightness became particle COUNT. Measured on the shipped
+Michele headshot at the shipped settings:
 
-Applying the dark-surround profile to a white-backdrop headshot is exactly backwards:
-it keeps the wall and the white shirt while starving the hair, beard, brows and
-glasses — the features that make a face legible — producing a bright formless blob.
-Headshots also want a flatter `lumGamma` (~0.6) so lit skin does not starve dark
-features, and a wide gentle `radialFalloff`, since the crop already isolates the face.
+```
+candidate cells 17545 · particles 42000
+empty cells      1902  (11% of the subject rendered NOTHING -> visible voids)
+duplicates      26357  (63% of the budget stacked on already-covered cells)
+```
 
-Tune the ceiling against the actual photos: below ~0.8 it starts eating a bald lit
-scalp, which is bright and near-neutral and therefore indistinguishable from wall by
-this test alone.
+Sampling with replacement cannot cover uniformly, so a density model always leaves
+holes — no threshold tuning reaches it.
 
-Prefer real `-headshot` assets over fallback crops: `loadFounder()` already prefers
-`/founders/<slug>-headshot.{webp,jpg,png}` and passes `crop: undefined` for them. The
-hardcoded `DEFAULT_FALLBACK_CROPS` are a last resort and were measurably wrong.
+**Also don't** isolate a backdrop with a per-pixel luminance threshold. It cannot
+distinguish "white wall" from "lit scalp" or "white shirt", so on a studio headshot it
+punches holes through the brightest parts of the SUBJECT.
+
+**Instead** (after `.refs/interactive-particles`, whose vertex shader does
+`psize *= max(grey, 0.2)`):
+- **One particle per grid cell.** Uniform coverage by construction — holes and
+  duplicates become impossible rather than unlikely.
+- **Tone from particle SIZE (and alpha)**, driven by `ink` = luma-weighted distance
+  from the backdrop colour, measured as the per-channel MEDIAN of the top corner
+  patches (median for robustness; top only, because shoulders reach the bottom corners)
+  and then contrast-curved.
+- **No mask at all.** Backdrop ink ≈ 0, so those particles shrink to nothing and
+  vanish. Nothing can pierce the subject.
+- A smoothstep vertical dissolve so a bust emerges from darkness instead of reading as
+  a cut-out.
+
+**Pairing comes free**: rasterize both portraits onto ONE shared grid and build one cell
+list from the union of their ink. Index `j` is the same cell in both, so the morph
+recomposes in place. This replaced the radial sort (`PAIR_SECTORS`), now deleted.
+
+Count follows the sampler, never the reverse: build the cell list, then set the instance
+count from it, clamped by a tier ceiling with a FIXED uniform stride. Never subsample
+randomly (that reintroduces clumping) and never pad by duplicating cells.
+
+> **Warning**: one particle per cell makes the cloud newly sensitive to per-particle
+> z. A luminance z-relief that was invisible with sparse random points will, on a
+> regular grid, give neighbours straddling a luminance edge (hairline, beard, glasses
+> rim) very different z — they separate laterally under perspective and, with
+> `depthTest` on, occlude each other, producing a vertical comb that shreds every edge.
+> Keep the resting relief far below the cell pitch (`Z_RELIEF_MAX_FRAC` 0.04, centre
+> bulge 0) and render the portrait `depthTest:false` / `depthWrite:false`, as both
+> reference implementations do. Isolate this class of defect with the dev handle
+> (`setDepth(0)`) before theorising — it is one call and it answers the question.
+
+Prefer real `-headshot` assets over fallback crops: `loadFounder()` prefers
+`/founders/<slug>-headshot.{webp,jpg,png}`. The ink model measures its own backdrop, so
+headshots and environmental sources now share one code path with no per-source profile.
 
 ## Convention: scroll-jack engage predicates are ORDER-sensitive
 
