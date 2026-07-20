@@ -22,7 +22,7 @@ import FinalCTA from "@/components/sections/final-cta";
  *   04  Work                 — sticky horizontal rail (13 engagements + WIP)
  *   05  Services             — what we build (pains surfaced per card)
  *   06  Production-grade     — operational definition + live artifacts
- *   07  Founders             — the two people who ship every engagement
+ *   07  Founders             — the people who ship every engagement
  *   08  Fixed-scope strip    — one-line process distillation (full map → /consulting)
  *   09  Fit                  — disqualify honestly
  *   10  Final CTA            — into /start

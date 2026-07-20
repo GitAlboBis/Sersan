@@ -16,8 +16,8 @@ export default function OurWhy() {
     {
       title: isEn ? "Opposite backgrounds." : "Background opposti.",
       desc: isEn
-        ? "One deeply technical. One deeply commercial. Both senior. Both in the room from week one."
-        : "Uno fortemente tecnico. Uno fortemente commerciale. Entrambi senior. Entrambi presenti dalla prima settimana.",
+        ? "One deeply technical. One deeply commercial. Both founders senior. Both in the room from week one."
+        : "Uno fortemente tecnico. Uno fortemente commerciale. Entrambi i fondatori senior. Entrambi presenti dalla prima settimana.",
     },
     {
       title: isEn ? "AI that extends." : "AI che estende.",

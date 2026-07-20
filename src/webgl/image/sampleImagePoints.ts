@@ -24,11 +24,11 @@
  *     flood fill (see BG_FILL_TOL) marks the wall; the ink curve itself stays
  *     gentle. No per-pixel colour/luminance test is allowed to decide what is
  *     backdrop — see the flood-fill comment for why every one of them fails.
- *   - SHARED GRID / SHARED CELL LIST. Both portraits are sampled onto the SAME
- *     grid and one cell list is built from the union of their ink, so output
- *     index `j` is the same cell in BOTH images. That gives A↔B index pairing
- *     for free and replaces the old radial-sector sort entirely: the morph
- *     reads as the portrait re-forming in place.
+ *   - SHARED GRID / SHARED CELL LIST. EVERY portrait in the set is sampled onto
+ *     the SAME grid and one cell list is built from the union of their ink, so
+ *     output index `j` is the same cell in EVERY image. That gives A↔B↔C index
+ *     pairing for free and replaces the old radial-sector sort entirely: the
+ *     morph reads as the portrait re-forming in place.
  *
  * Backdrop colour is the per-channel MEDIAN of the two TOP corner patches —
  * median (not mean) to shrug off a stray dark pixel, top corners only because
@@ -47,7 +47,7 @@
  * text px → world). xy is y-up, from the grid centre.
  */
 
-export interface PortraitPairSpec {
+export interface PortraitSpec {
   /** Shared offscreen grid width. One particle per kept cell — the grid area
    * (not a `count`) is what sets the instance count. */
   gridW: number;
@@ -77,8 +77,10 @@ export interface PortraitPairSpec {
   maxCount: number;
 }
 
-/** Per-image, per-particle outputs. Index `j` is the SAME shared cell in both
- * images of a pair, which is what pairs the A→B morph. */
+/** Per-image, per-particle outputs. Index `j` is the SAME shared cell in EVERY
+ * image of the set, which is what pairs the A→B→C morph. A cell that is ink in
+ * only ONE portrait still exists in all the others, there with ink 0 — the cell
+ * list is a UNION, never an intersection. */
 export interface PortraitPoints {
   /** count×2 floats: x,y GRID px from the grid centre, y-up. */
   xy: Float32Array;
@@ -97,12 +99,17 @@ export interface PortraitPoints {
   halfExtentY: number;
 }
 
-export interface PortraitPair {
-  a: PortraitPoints;
-  b: PortraitPoints;
+export interface PortraitSet {
+  /** One entry per input image, in input order. `points[k].xy[j*2]` and
+   * `points[m].xy[j*2]` are the SAME grid cell for every k, m — that shared
+   * index is what pairs particle `j` across every leg of the morph. */
+  points: PortraitPoints[];
   /** Final instance count — the caller's particle count FOLLOWS this. */
   count: number;
-  /** Shared cells found, BEFORE any stride subsample (the calibration number). */
+  /** UNION cells found, BEFORE any stride subsample (the calibration number).
+   * GROWS monotonically with each portrait added: a cell joins if ANY portrait
+   * inks it. Watch this against `spec.maxCount` — the stride is an INTEGER
+   * CLIFF and crossing it halves the count for EVERY portrait at once. */
   sharedCells: number;
   /** Subsample stride used to reach `count` (1 = none). */
   stride: number;
@@ -121,7 +128,14 @@ const JITTER = 0.9;
 /** Colour-distance tolerance admitted by the backdrop flood fill (same
  * luma-weighted metric as the ink). Wide enough to walk the wall's own
  * vignetting / shadow-side falloff / JPEG blocking, far too tight to step
- * across the shoulder shadow or a hairline. */
+ * across the shoulder shadow or a hairline.
+ *
+ * Backdrop detection is PER-PORTRAIT (colour + flood fill both run inside
+ * `readGrid` on one image), so adding a portrait cannot perturb the others. It
+ * does assume each portrait's backdrop is far in colour from its subject's
+ * CLOTHING — a dark garment against a dark backdrop would sit within
+ * BG_FILL_TOL of the wall and the fill could walk into the torso from the side
+ * seeds above BG_FILL_ROW_LIMIT. */
 const BG_FILL_TOL = 0.055;
 /** Normalized y below which the flood fill may not travel (see the fill). */
 const BG_FILL_ROW_LIMIT = 0.62;
@@ -165,7 +179,7 @@ interface GridRead {
  */
 function readGrid(
   image: HTMLImageElement,
-  spec: PortraitPairSpec,
+  spec: PortraitSpec,
 ): GridRead | null {
   const { gridW, gridH } = spec;
   const srcW = image.naturalWidth;
@@ -332,7 +346,7 @@ function readGrid(
 function emit(
   read: GridRead,
   cells: Int32Array,
-  spec: PortraitPairSpec,
+  spec: PortraitSpec,
 ): PortraitPoints {
   const { gridW, gridH } = spec;
   const count = cells.length;
@@ -389,28 +403,49 @@ function emit(
 }
 
 /**
- * Sample BOTH founder portraits onto one shared grid and return index-paired
- * per-particle arrays. The instance count FOLLOWS the sampler (one particle per
- * shared cell, uniformly strided down to `spec.maxCount` if the grid overshoots)
- * — never the other way round, because padding to a fixed count means
- * duplicates, and duplicates were the bug.
+ * Sample N founder portraits onto ONE shared grid and return index-paired
+ * per-particle arrays. The instance count FOLLOWS the sampler (one particle
+ * per union cell, uniformly strided down to `spec.maxCount` if the grid
+ * overshoots) — never the other way round, because padding to a fixed count
+ * means duplicates, and duplicates were the bug.
+ *
+ * THE CELL LIST IS A UNION, AND IT GROWS WITH N. A cell joins if ANY portrait
+ * inks it above `inkCut`; portraits that do NOT ink it still emit it, at ink
+ * 0, and the renderer collapses it (PORTRAIT_SIZE_MIN). Adding a portrait
+ * therefore never removes coverage — but `stride` is an INTEGER CLIFF against
+ * `maxCount`, so re-measure `sharedCells` whenever a portrait is added,
+ * especially a DARK-CLOTHED one whose garment sits far from the measured
+ * backdrop colour and inks at ~1.0 across the whole torso. Retarget the grid
+ * with `scale = sqrt(wanted / measured)`.
+ *
+ * At N = 2 the inner max-loop reduces EXACTLY to the old
+ * `Math.max(readA.ink[i], readB.ink[i])`, so this is output-identical to the
+ * pair sampler it replaced.
  */
-export function samplePortraitPair(
-  imageA: HTMLImageElement,
-  imageB: HTMLImageElement,
-  spec: PortraitPairSpec,
-): PortraitPair | null {
-  const readA = readGrid(imageA, spec);
-  const readB = readGrid(imageB, spec);
-  if (!readA || !readB) return null;
+export function samplePortraitSet(
+  images: HTMLImageElement[],
+  spec: PortraitSpec,
+): PortraitSet | null {
+  if (images.length === 0) return null;
+  const reads: GridRead[] = [];
+  for (const img of images) {
+    const rd = readGrid(img, spec);
+    if (!rd) return null; // one bad decode invalidates the shared grid
+    reads.push(rd);
+  }
 
-  // --- Shared cell list: the UNION of both inks -----------------------------
-  // Index j in the output arrays is cells[j] in BOTH images, so particle j
-  // morphs from its own cell in A to the SAME cell in B.
+  // --- Shared cell list: the UNION of every ink -----------------------------
+  // Index j in the output arrays is cells[j] in EVERY image, so particle j
+  // morphs from its own cell in A to the SAME cell in B, then in C.
   const total = spec.gridW * spec.gridH;
   const hits: number[] = [];
   for (let i = 0; i < total; i++) {
-    if (Math.max(readA.ink[i], readB.ink[i]) > spec.inkCut) hits.push(i);
+    let maxInk = 0;
+    for (let k = 0; k < reads.length; k++) {
+      const v = reads[k].ink[i];
+      if (v > maxInk) maxInk = v;
+    }
+    if (maxInk > spec.inkCut) hits.push(i);
   }
   const sharedCells = hits.length;
   if (sharedCells === 0) return null;
@@ -424,8 +459,7 @@ export function samplePortraitPair(
   for (let j = 0; j < count; j++) cells[j] = hits[j * stride];
 
   return {
-    a: emit(readA, cells, spec),
-    b: emit(readB, cells, spec),
+    points: reads.map((rd) => emit(rd, cells, spec)),
     count,
     sharedCells,
     stride,

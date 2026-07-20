@@ -2,6 +2,7 @@
 // rather than imported, so Next.js handles them as static assets.
 const alessandroImg = "/founders/alessandro-serratt.webp";
 const micheleImg = "/founders/michele-sanna.webp";
+const mattiaImg = "/founders/mattia-scattu.webp";
 
 export interface FounderProfile {
   name: string;
@@ -10,6 +11,12 @@ export interface FounderProfile {
   anchor: string;
   linkedIn: string;
   badges: string[];
+  /** Founder vs employed team member. Any surface whose copy says the word
+   * "founder" — /contact's "Talk to a founder", /start's "Who reads this" —
+   * MUST iterate `coFounders`, not `founders`. The home rail and /about
+   * render the FULL team. Required (not optional) so the compiler forces
+   * every entry to be annotated and no consumer can be surprised later. */
+  kind: "founder" | "team";
   roleKey: string;
   bioKey: string;
   /** Title only, short. E.g. "CEO · Commercial Lead" */
@@ -44,6 +51,7 @@ export const founders: FounderProfile[] = [
     anchor: "alessandro",
     linkedIn: "https://www.linkedin.com/in/alessandro-serratt/",
     badges: ["USAAI CAIC", "Dual MBA + AI"],
+    kind: "founder",
     roleKey: "founders.sebastiano.role",
     bioKey: "founders.sebastiano.bio",
     roleEn: "CEO · Commercial Systems Lead",
@@ -79,6 +87,7 @@ export const founders: FounderProfile[] = [
     anchor: "michele",
     linkedIn: "https://www.linkedin.com/in/michele-sanna-work/",
     badges: ["PhD, LSE", "8 yrs senior delivery"],
+    kind: "founder",
     roleKey: "founders.andrea.role",
     bioKey: "founders.andrea.bio",
     roleEn: "CPTO · Technical Lead",
@@ -108,9 +117,63 @@ export const founders: FounderProfile[] = [
     authorBio:
       "Enterprise architect and ML engineer. Builds AI-powered software, data platforms, and the production systems that run them.",
   },
+  {
+    name: "Mattia Scattu",
+    initials: "MS",
+    image: mattiaImg,
+    // MUST match /public/founders/<anchor>-headshot.webp — the WebGL sampler
+    // resolves the headshot by this slug (FounderPortraitMorph.loadFounder).
+    anchor: "mattia",
+    linkedIn: "https://www.linkedin.com/in/mattia-scattu-481271356",
+    // `badges` and `expertiseEn/It` are required by the interface but currently
+    // have NO live render surface (their only consumer, who-and-why.tsx, is a
+    // dead file). Kept accurate rather than decorative in case one revives.
+    badges: ["BSc Computer Science", "Published research"],
+    kind: "team",
+    roleKey: "",
+    bioKey: "",
+    roleEn: "Software Engineer",
+    roleIt: "Software Engineer",
+    accent: "cool",
+    credentialsEn: [
+      "BSc Computer Science, Università di Camerino",
+      "Published: Knowledge Graphs as a Semantic Layer for Understanding Robotic Video",
+    ],
+    credentialsIt: [
+      "Laurea Triennale in Informatica, Università di Camerino",
+      "Pubblicazione: Knowledge Graphs as a Semantic Layer for Understanding Robotic Video",
+    ],
+    shortBioEn:
+      "Designs and builds internal systems end to end — requirements, data model, interface, delivery. Shipped a maintenance and inventory management system for a resort operator, from formal requirements analysis through to the running software.",
+    shortBioIt:
+      "Progetta e realizza sistemi gestionali interni dall'inizio alla fine: requisiti, modello dati, interfaccia, rilascio. Ha realizzato un sistema di gestione della manutenzione e dell'inventario per un operatore turistico, dall'analisi formale dei requisiti fino al software in esercizio.",
+    bioEn:
+      "Software engineer with a Computer Science degree from Università di Camerino. At L'Ultima Spiaggia S.r.l. he designed and built the information system for a campsite resort, covering maintenance operations and inventory tracking: formal requirements analysis, logical and physical database modelling, interface design, and implementation across the full software lifecycle. Previously an IT intern at ARES Sardegna. Co-author of \"Knowledge Graphs as a Semantic Layer for Understanding Robotic Video\".",
+    bioIt:
+      "Software engineer, laureato in Informatica all'Università di Camerino. In L'Ultima Spiaggia S.r.l. ha progettato e realizzato il sistema informativo di un villaggio turistico, per la gestione della manutenzione e il tracciamento dell'inventario: analisi formale dei requisiti, modellazione logica e fisica della base dati, progettazione dell'interfaccia e implementazione lungo l'intero ciclo di vita del software. In precedenza stagista IT presso ARES Sardegna. Co-autore di \"Knowledge Graphs as a Semantic Layer for Understanding Robotic Video\".",
+    expertiseEn: ["Software Design", "Data Modelling", "Process Optimisation", "Applied AI"],
+    expertiseIt: ["Progettazione Software", "Modellazione Dati", "Ottimizzazione Processi", "AI Applicata"],
+    // `stack` deliberately OMITTED — the source lists no languages or
+    // frameworks. Inventing chips here would be the one unverifiable claim on
+    // the page. `previouslyAt` likewise omitted: it renders under a "Previously"
+    // label directly parallel to Michele's tier-1 row, and a 3-month internship
+    // there reads as padding.
+    authorRole: "Software Engineer, SERSAN",
+    authorBio:
+      "Software engineer. Builds internal systems end to end, from requirements and data model through to the running software.",
+  },
 ];
 
 export const getFounder = (name: string) => founders.find((f) => f.name === name);
+
+/** The two co-founders ONLY. Use this on any surface whose copy says the word
+ * "founder". `founders` remains the FULL team and drives the home rail,
+ * /about, and the WebGL morph. Keeping `founders` as the full list means the
+ * two surfaces that MUST include Mattia need no import change at all, so the
+ * blast radius is exactly the two that must exclude him. */
+export const coFounders: FounderProfile[] = founders.filter(
+  (f) => f.kind === "founder",
+);
 
 export const authorBios: Record<string, { initials: string; role: string; bio: string }> = Object.fromEntries(
   founders.map((f) => [f.name, { initials: f.initials, role: f.authorRole, bio: f.authorBio }])

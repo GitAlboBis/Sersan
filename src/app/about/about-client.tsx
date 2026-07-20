@@ -140,7 +140,7 @@ export function AboutClient() {
                   style={{ background: "hsl(var(--accent))" }}
                   aria-hidden="true"
                 />
-                {isEn ? "The founding pair" : "La coppia fondatrice"}
+                {isEn ? "The team" : "Il team"}
               </p>
               {/* key={language}: SplitText owns this subtree once split; a
                   language swap must remount it or React reconciles against
@@ -148,14 +148,14 @@ export function AboutClient() {
               <h1 key={language} data-split-reveal className="font-display text-[clamp(2.5rem,8vw,5.5rem)] leading-[1.15] tracking-[-0.025em] text-ink text-balance mb-8 pb-1">
                 {isEn ? (
                   <>
-                    Two operators.{" "}
+                    Three operators.{" "}
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
                       One thesis.
                     </span>
                   </>
                 ) : (
                   <>
-                    Due operatori.{" "}
+                    Tre operatori.{" "}
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
                       Una sola tesi.
                     </span>
@@ -165,8 +165,8 @@ export function AboutClient() {
               <Reveal delay={150}>
                 <p className="text-lg sm:text-xl text-ink-mute max-w-2xl mx-auto leading-[1.5]">
                   {isEn
-                    ? "Deep engineering and deep commercial in the same room. Both senior. Both staffed on every engagement. No layer of juniors between you and the people doing the work."
-                    : "Ingegneria profonda e dimensione commerciale profonda nella stessa stanza. Entrambi senior. Entrambi assegnati a ogni ingaggio. Nessuno strato di junior tra voi e le persone che fanno il lavoro."}
+                    ? "Deep engineering and deep commercial in the same room. Both founders senior. Both staffed on every engagement. No layer of juniors between you and the people doing the work."
+                    : "Ingegneria profonda e dimensione commerciale profonda nella stessa stanza. Entrambi i fondatori senior. Entrambi assegnati a ogni ingaggio. Nessuno strato di junior tra voi e le persone che fanno il lavoro."}
                 </p>
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center mt-10">
                   <Button asChild size="lg" className="group">
@@ -190,22 +190,39 @@ export function AboutClient() {
           <OurWhy />
         </div>
 
-        {/* The Founding Pair */}
+        {/* The team — the two co-founders plus the engineering hire. */}
         <section data-line-anchor="founders" className="container-px mb-24">
           <div className="text-center mb-12 max-w-3xl mx-auto">
             <p className="text-[11px] font-mono uppercase tracking-[0.25em] text-muted-foreground mb-4">
               {isEn
-                ? "Two opposite skill sets, one thesis."
-                : "Due competenze opposte, un'unica tesi."}
+                ? "Two founders, one engineer, one thesis."
+                : "Due fondatori, un ingegnere, un'unica tesi."}
             </p>
           </div>
 
+          {/* `md` deliberately STAYS a 2-column grid, so the first two cards are
+              byte-identical to the shipped md design. A third card would
+              otherwise sit alone in the left column of row 2 and read as a
+              broken grid, so an odd LAST card spans both columns and is centred
+              at exactly one column's width (50% − half the 2rem gap). Every one
+              of those classes resets at `lg`, where it becomes a normal grid
+              item. `lg:max-w-6xl` (72rem) restores ~21.3rem per card —
+              max-w-5xl across three columns gives ~19rem, too narrow for the bio
+              paragraph. */}
           <div
             ref={foundersGridRef}
-            className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto"
+            className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-5xl lg:max-w-6xl mx-auto"
           >
             {founders.map((f, i) => (
-              <Reveal key={f.name} delay={i * 100} className="h-full">
+              <Reveal
+                key={f.name}
+                delay={i * 100}
+                className={
+                  i === founders.length - 1 && founders.length % 2 === 1
+                    ? "h-full md:col-span-2 md:justify-self-center md:w-[calc(50%-1rem)] lg:col-span-1 lg:w-auto"
+                    : "h-full"
+                }
+              >
               <div
                 id={f.anchor}
                 className="card-steel rounded-2xl p-8 h-full scroll-mt-32"

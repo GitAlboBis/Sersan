@@ -8,24 +8,26 @@
  * founder A's portrait (Alessandro) with luminance-driven z-relief so it reads
  * as a 3D bust. The founders section PINS via a scroll-jack gate (founders-rail,
  * mirrors HeroIntroGate): while pinned the page does NOT scroll and the morph is
- * NOT scrubbed. One scroll-down gesture triggers a ONE-SHOT auto-play A→B that
- * runs to completion on its own clock (MORPH_DURATION); at B the cloud LOCKS;
- * another gesture releases the page. Reverse symmetrically for scroll-up. The
- * particle GROUP orbits + dollies in real 3D (group transform ONLY — never the
- * global camera; SignatureLine is the single camera authority). At uMorph 0 and
- * 1 the spring pins each particle to its exact sampled pixel so the faces read
- * crisply; mid-flight the swarm surges cyan (feeds the selective bloom). The two
- * DOM copy blocks cross-fade following uMorph (owned by founders-rail.tsx).
+ * NOT scrubbed. One scroll-down gesture triggers a ONE-SHOT auto-play of ONE LEG
+ * that runs to completion on its own clock (MORPH_DURATION); at each locked
+ * stage the cloud LOCKS; a gesture at an END stage releases the page. Reverse
+ * symmetrically for scroll-up. The particle GROUP orbits + dollies in real 3D
+ * (group transform ONLY — never the global camera; SignatureLine is the single
+ * camera authority). At every locked stage the spring pins each particle to its
+ * exact sampled pixel so the faces read crisply; mid-flight the swarm surges
+ * cyan (feeds the selective bloom). The DOM copy blocks cross-fade following the
+ * progress scalar (owned by founders-rail.tsx).
  *
- * SAMPLING (rewritten 2026-07-20). Both portraits are sampled onto ONE shared
- * grid by samplePortraitPair: one particle per grid cell (no random picks → no
+ * SAMPLING (rewritten 2026-07-20). ALL portraits are sampled onto ONE shared
+ * grid by samplePortraitSet: one particle per grid cell (no random picks → no
  * holes, no duplicates), tone carried by particle SIZE via the per-particle
  * `ink` scalar rather than by particle DENSITY, and no hard background mask
  * (the backdrop simply has ink ≈ 0 and shrinks away). The shared cell list also
- * supplies A↔B index pairing for free — particle j is the same cell in both
- * images — which retired the old radial-sector sort. Consequently the INSTANCE
- * COUNT FOLLOWS THE SAMPLER (cells found, strided down to the tier ceiling);
- * it is never a fixed budget padded with duplicates.
+ * supplies A↔B↔C index pairing for free — particle j is the same cell in every
+ * image — which retired the old radial-sector sort. The cell list is a UNION,
+ * so adding a portrait can only GROW it; it never removes coverage.
+ * Consequently the INSTANCE COUNT FOLLOWS THE SAMPLER (cells found, strided
+ * down to the tier ceiling); it is never a fixed budget padded with duplicates.
  *
  * WORLD SCALE (fills the stage). The sampler returns the sampled FACE extent
  * (a robust percentile half-width/height in grid px). This island maps grid-px →
@@ -41,8 +43,21 @@
  * dust. The cyan travel-tint only rises with speed mid-morph.
  *
  * ENGINE REUSE. createTextMorphComputeBuild (gpgpu/gpgpuNodeSim.ts) with the
- * OPTIONAL `portrait` param. homeC/homeD = homeB, uMorph2/uMorph3 stay 0 (single
- * A→B leg). With `portrait` undefined the build is byte-identical to the hero.
+ * OPTIONAL `portrait` param. The N founder homes are wired straight through as
+ * homeA/homeB/homeC (homeD = homeC, an inert identity leg), with colorsC/sizeC
+ * passed so COLOUR AND INK chain to the third target too — without them the
+ * third face would render its own POSITIONS in the second face's colours and
+ * ink, i.e. a stencil, because the colour/ink path keys off uMorph alone.
+ *
+ * SEQUENCING INVARIANT. uMorph, uMorph2 and uMorph3 are all derived from ONE
+ * progress scalar (`morphRef`, 0..MORPH_MAX) via applyMorph(), which is what
+ * guarantees uMorph reaches EXACTLY 1.0 before uMorph2 leaves 0. The kernel's
+ * target blend is CHAINED — mix(mix(A,B,m1), C, m2) — so overlapping the legs
+ * would cut the corner between A and C and never touch B. Do NOT "align with
+ * the hero" here: HeroTextParticles deliberately opens its second leg at 0.95,
+ * which is invisible on abstract motes and would skip a whole face here.
+ *
+ * With `portrait` undefined the build is byte-identical to the hero.
  *
  * GATING. Mounted by Scene.tsx only on home + full tier + webgpuEnabled(); this
  * component additionally requires a TRUE-WebGPU compute backend (storage
@@ -58,22 +73,26 @@
  * setMorph(override) / setStage / playMorph / resample / project / bbox — so
  * the final look (point size / spread / emissive / ink curve / grid) is tuned
  * without rebuilds. `resample({ inkGain, inkFloor, inkGamma, fadeStart,
- * fadeSpan, inkCut, gridW, gridH })` re-runs the pair sampler in place.
+ * fadeSpan, inkCut, gridW, gridH })` re-runs the set sampler in place.
  */
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { CAMERA_Z, WORLD_VIEW_HEIGHT } from "./constants";
-import { webgpuEnabled } from "./renderer/createRenderer";
+import { webgpuEnabled, backendOf } from "./renderer/createRenderer";
 import {
   useFoundersMorphStore,
   foundersGateApi,
+  MORPH_MAX,
+  STAGE_ORDER,
+  stageFromMorph,
+  legFract,
 } from "./store/foundersMorphStore";
 import { useTierStore } from "./store/tierStore";
 import { founders } from "@/data/founders";
 import type {
-  PortraitPair,
-  PortraitPairSpec,
+  PortraitSet,
+  PortraitSpec,
   PortraitPoints,
 } from "./image/sampleImagePoints";
 
@@ -81,17 +100,59 @@ import type {
  * count (one particle per shared grid cell) and only gets strided down if the
  * grid overshoots this. */
 const MAX_COUNT_BY_TIER: Record<"full" | "lite", number> = {
-  full: 48000,
+  // MEASURED IN-BROWSER with all three shipped headshots (Alessandro, Michele,
+  // Mattia), via __sersanFounderMorph.getSampler():
+  //
+  //   sharedCells 51,751 · stride 1 · count 51,751
+  //
+  // Frame timing at that real instance count: median 144.9fps, p95 7.3ms — no
+  // performance concern here, the count is not what to economise on.
+  //
+  // THE OFFLINE ESTIMATE UNDER-PREDICTED BY ~8%. research/portrait-calibration/
+  // sampler_port.py projected 47,636 (51,166 offline-port cells × a 0.931
+  // browser-normalisation factor). The 0.931 factor was calibrated on the A+B
+  // pair and did NOT transfer to the third, higher-contrast portrait: the true
+  // browser union came in 8.6% above the projection. Treat the port as an
+  // ORDER-OF-MAGNITUDE check for a new face, never as a number to size this
+  // ceiling against — measure in-browser and write the measurement here.
+  //
+  // WHY 60000. The ceiling is a PERF GUARD, not a target. `count === sharedCells`
+  // whenever `sharedCells <= maxCount`, so a higher ceiling costs exactly
+  // nothing until the union actually grows into it; what it buys is distance
+  // from the stride-2 cliff. At the previous 52,000 the margin was 249 cells —
+  // 0.5% — so any re-export that nudged a headshot's ink even slightly would
+  // have silently flipped stride to 2, halving the cloud for ALL three faces
+  // into something that reads uniformly SOFT rather than obviously broken. That
+  // is precisely the regression class that ships unnoticed. 60,000 leaves ~16%.
+  //
+  // WHY NOT HIGHER STILL. `count` feeds spacingDev = sqrt(areaDev/count), which
+  // feeds defPointSize and PORTRAIT_COV_MIN_PX — an unbounded count shrinks
+  // every disc and would change Alessandro's and Michele's faces without their
+  // assets changing. The ceiling still has to mean something.
+  //
+  // Per-portrait figures behind the union (offline-port units, post-wash):
+  // own ink cells — Mattia 38,387, Alessandro 38,555, Michele 38,833; mean ink
+  // 0.550; halfExtent Mattia [135.92, 135.27]. max(halfExtentX) is
+  // ALESSANDRO's 136.50, NOT Mattia's, so the fit stays X-bound and
+  // `worldPerGrid` is unchanged from the two-portrait build.
+  //
+  // Measure any future portrait added to this rail BEFORE it lands — the union
+  // is monotone in image count, so every new face can only grow it.
+  full: 60000,
   lite: 16000,
 };
 
 // --- Sampler grid + look constants -----------------------------------------
 /** Shared sample grid (5:7 portrait). Measured on the two shipped headshots:
  * 290×405 → 42,087 shared cells at stride 1, which lands on the full tier's
- * budget with headroom under the 48,000 ceiling. Cell count scales with grid
- * AREA, so retarget with `scale = sqrt(wanted / measured)` if the assets or the
- * ink curve change; keep it under the ceiling so the stride stays 1 (the
- * integer stride is a cliff — 50k cells would halve the count to 25k). */
+ * budget with headroom under the 48,000 ceiling. The union is MONOTONE in image
+ * count, so a third portrait can only grow it — re-measure after any asset
+ * change. Cell count scales with grid AREA, so retarget with
+ * `scale = sqrt(wanted / measured)` if the assets or the ink curve change; keep
+ * it under the ceiling so the stride stays 1. THE INTEGER STRIDE IS A CLIFF:
+ * one cell over the ceiling halves the count for EVERY face at once, and the
+ * failure reads as uniformly SOFT rather than sparse (spacingDev auto-grows the
+ * discs), so it is easy to ship by accident. */
 const GRID_W = 290;
 const GRID_H = 405;
 /** Portrait fill fraction of the stage rect (leaves a small margin). */
@@ -117,7 +178,7 @@ const DEFAULT_EMISSIVE = 1.18;
  * alpha, which is what replaced the old density/threshold model (a per-pixel
  * backdrop threshold cannot tell "white wall" from "lit scalp", so it punched
  * holes through the brightest parts of the SUBJECT). */
-const SAMPLE_SPEC_BASE: Omit<PortraitPairSpec, "maxCount"> = {
+const SAMPLE_SPEC_BASE: Omit<PortraitSpec, "maxCount"> = {
   gridW: GRID_W,
   gridH: GRID_H,
   depth: 90, // grid-px of luminance relief front-to-back (capped in toWorld)
@@ -165,7 +226,13 @@ const CULL_PAD = 120;
 
 /** Headshot asset discovery — preferred over the environmental fallback. */
 const HEADSHOT_EXTS = ["webp", "jpg", "png"];
-const FOUNDER_SLUGS = ["alessandro", "michele"];
+/** Morph targets in the chain, A→B→C. Derived from MORPH_MAX — i.e. from the
+ * COLOUR/INK wiring ceiling (WIRED_TARGETS), NOT from the engine's four
+ * position targets — so the sampler can never prepare a target the renderer
+ * would draw as a stencil. See foundersMorphStore.WIRED_TARGETS. Tying it here
+ * also protects the `imgs.length < TARGET_COUNT` early return below from
+ * silently disabling resampling when a 4th headshot asset is absent. */
+const TARGET_COUNT = MORPH_MAX + 1;
 
 interface MorphBuild {
   geometry: THREE.InstancedBufferGeometry;
@@ -187,6 +254,24 @@ interface MorphBuild {
   dispose: () => void;
 }
 
+/**
+ * THE single writer of the three morph uniforms — used by BOTH the build and
+ * the frame loop so there is exactly one clamp form in the codebase.
+ *
+ * Deriving all three from ONE progress scalar is what guarantees `uMorph`
+ * reaches EXACTLY 1.0 before `uMorph2` leaves 0. The compute kernel's target
+ * blend is CHAINED — mix(mix(A,B,m1), C, m2) — so overlapping the legs yields
+ * mix(mix(A,B,s), C, s), a shortcut that cuts the corner between A and C and
+ * never forms the middle face at all. The stagger saturates exactly (at
+ * uMorph = 1 the worst-case particle reaches 0.45/0.45 = 1.0), so target == hB
+ * exactly for EVERY particle at p = 1, which is what makes sequencing sound.
+ */
+function applyMorph(b: MorphBuild, p: number) {
+  b.uMorph.value = THREE.MathUtils.clamp(p, 0, 1);
+  b.uMorph2.value = THREE.MathUtils.clamp(p - 1, 0, 1);
+  b.uMorph3.value = THREE.MathUtils.clamp(p - 2, 0, 1); // ≡ 0 at N=3
+}
+
 interface StageRect {
   /** Stage top offset within the sticky frame (CSS px). */
   offsetY: number;
@@ -197,7 +282,7 @@ interface StageRect {
 }
 
 /** Live-tunable subset of the sampler spec (dev handle `resample`). */
-type SampleTuning = Partial<Omit<PortraitPairSpec, "maxCount">>;
+type SampleTuning = Partial<Omit<PortraitSpec, "maxCount">>;
 
 /** Force-fetch an image (native lazy-load never fires inside a sticky/transform
  * frame — the trap documented in card-image-distort.tsx / FounderPlanes). */
@@ -217,15 +302,20 @@ const loadImg = (src: string) =>
  * from the frame's top corners, so a studio-white seamless and a dark
  * environmental surround are handled by the same code path. */
 async function loadFounder(idx: number): Promise<HTMLImageElement> {
-  const slug = FOUNDER_SLUGS[idx] ?? FOUNDER_SLUGS[0];
+  const f = founders[idx];
+  if (!f) throw new Error(`no founder at index ${idx}`);
+  // The slug IS the data anchor — /public/founders/<anchor>-headshot.<ext>. A
+  // parallel slug ARRAY was the hazard here: an out-of-range index silently fell
+  // back to slot 0 and sampled Alessandro as target C, with no error anywhere.
   for (const ext of HEADSHOT_EXTS) {
     try {
-      return await loadImg(`/founders/${slug}-headshot.${ext}`);
+      return await loadImg(`/founders/${f.anchor}-headshot.${ext}`);
     } catch {
       /* try next extension / fall back */
     }
   }
-  return loadImg(founders[idx]?.image ?? "");
+  if (!f.image) throw new Error(`no portrait asset for founder ${f.name}`);
+  return loadImg(f.image);
 }
 
 export function FounderPortraitMorph() {
@@ -237,10 +327,9 @@ export function FounderPortraitMorph() {
   // Rare-change reactive reads (allowed) — trigger (re)build + (re)measure.
   const measureVersion = useFoundersMorphStore((s) => s.measureVersion);
 
-  // Cached decoded portraits + the (scale-independent) shared-grid PAIR sample.
-  const imgARef = useRef<HTMLImageElement | null>(null);
-  const imgBRef = useRef<HTMLImageElement | null>(null);
-  const pairRef = useRef<PortraitPair | null>(null);
+  // Cached decoded portraits + the (scale-independent) shared-grid SET sample.
+  const imgsRef = useRef<HTMLImageElement[]>([]);
+  const setRef = useRef<PortraitSet | null>(null);
   const [sampleEpoch, setSampleEpoch] = useState(0);
   const sampleModRef = useRef<typeof import("./image/sampleImagePoints") | null>(
     null,
@@ -260,7 +349,9 @@ export function FounderPortraitMorph() {
 
   // Per-frame clocks (refs — never React state in the loop, island rule).
   const timeRef = useRef(0);
-  const morphRef = useRef(0); // one-shot uMorph clock (0=A … 1=B)
+  // One-shot progress clock spanning 0..MORPH_MAX (0=A, 1=B, 2=C). One unit is
+  // exactly one leg, so MORPH_DURATION stays per-leg.
+  const morphRef = useRef(0);
   const entryRef = useRef(0);
   const fadeRef = useRef(0);
   const yawRef = useRef(0);
@@ -285,41 +376,60 @@ export function FounderPortraitMorph() {
   const cornerV = useRef(new THREE.Vector3()).current;
 
   /** Full sampler spec = the validated defaults + any live overrides + the
-   * tier ceiling. Both portraits share ONE spec by construction — the shared
-   * grid is what pairs them. */
-  const sampleSpec = (): PortraitPairSpec => ({
+   * tier ceiling. EVERY portrait shares ONE spec by construction — the shared
+   * grid is what pairs them. Never split the spec per portrait (a per-portrait
+   * fadeStart etc. would break the shared-grid invariant outright). */
+  const sampleSpec = (): PortraitSpec => ({
     ...SAMPLE_SPEC_BASE,
     ...tuningRef.current,
     maxCount,
   });
 
-  // === Load + sample both portraits (headshot preferred, else fallback) ======
+  // === Load + sample every portrait (headshot preferred, else fallback) ======
   useEffect(() => {
-    if (!webgpuEnabled()) return;
+    // Gate on the RUNTIME backend, not just the build-time flag. Scene.tsx mounts
+    // this island on webgpuEnabled(), so a WebGL2-fallback session used to fetch
+    // and decode every headshot and run samplePortraitSet — three readGrid passes
+    // over a 290×405 grid plus three emit passes over ~47.6k cells, on the main
+    // thread — before the build path's own probe threw it all away.
+    //
+    // SAFE because createWebGPURenderer awaits renderer.init() (including the
+    // forceWebGL retry) before R3F mounts children, so gl.backend is already
+    // resolved here. This effect never re-runs, so a false negative would mean a
+    // permanently blank morph on real WebGPU machines — re-check this precondition
+    // if renderer construction ever changes. Do NOT substitute tierStore.backend:
+    // it is null until Scene's onCreated.
+    if (!webgpuEnabled() || backendOf(gl) !== "webgpu") return;
     let cancelled = false;
 
     void Promise.all([
-      loadFounder(0),
-      loadFounder(1),
+      Promise.all(
+        Array.from({ length: TARGET_COUNT }, (_, i) => loadFounder(i)),
+      ),
       import("./image/sampleImagePoints"),
     ])
-      .then(([a, b, mod]) => {
+      .then(([imgs, mod]) => {
         if (cancelled) return;
-        imgARef.current = a;
-        imgBRef.current = b;
+        imgsRef.current = imgs;
         sampleModRef.current = mod;
-        // ONE call samples BOTH portraits onto the shared grid — that shared
-        // cell list is what index-pairs particle j across A and B.
-        pairRef.current = mod.samplePortraitPair(a, b, sampleSpec());
+        // ONE call samples ALL portraits onto the shared grid — that shared
+        // cell list is what index-pairs particle j across A, B and C.
+        setRef.current = mod.samplePortraitSet(imgs, sampleSpec());
         setSampleEpoch((e) => e + 1);
       })
-      .catch(() => {});
+      .catch((err) => {
+        // A bare swallow here turns a total failure into a silently blank
+        // founders stage, which is indistinguishable from "not reached yet".
+        if (process.env.NODE_ENV !== "production") {
+          console.error("[FounderPortraitMorph] portrait load/sample failed", err);
+        }
+      });
 
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [maxCount]);
+  }, [maxCount, gl]);
 
   // === Core build: measure stage rect, fit grid-px → world, spin up the sim ===
   // Kept in a ref so live knobs (resample/setDepth/setEmissive) can rebuild
@@ -327,24 +437,20 @@ export function FounderPortraitMorph() {
   const buildNowRef = useRef<(preserveState: boolean) => void>(() => {});
   buildNowRef.current = (preserveState: boolean) => {
     if (!webgpuEnabled()) return;
-    const pair = pairRef.current;
+    const set = setRef.current;
     const webgpu = webgpuModRef.current as typeof import("three/webgpu") | null;
     const tslNs = tslModRef.current as typeof import("three/tsl") | null;
     const mod = simModRef.current;
-    if (!pair || !webgpu || !tslNs || !mod) return;
-    const sA = pair.a;
-    const sB = pair.b;
+    if (!set || !webgpu || !tslNs || !mod) return;
+    const pts = set.points;
+    if (pts.length < 2) return;
     // The instance count FOLLOWS the sampler (one particle per shared cell).
-    const count = pair.count;
+    const count = set.count;
 
     // True-WebGPU compute only (storage indexing no-ops on WebGL2, #31221).
-    const bk = (gl as unknown as { backend?: { isWebGLBackend?: boolean } })
-      .backend;
-    const isWebGPUBackend =
-      !!bk &&
-      bk.isWebGLBackend !== true &&
-      typeof (gl as unknown as { compute?: unknown }).compute === "function";
-    if (!isWebGPUBackend) return;
+    // Shares backendOf with createRenderer — whose doc comment requires this
+    // island's probe to mirror it — so the two cannot drift.
+    if (backendOf(gl) !== "webgpu") return;
 
     const sticky = document.querySelector<HTMLElement>(
       "[data-founders-morph-sticky]",
@@ -365,11 +471,31 @@ export function FounderPortraitMorph() {
 
     // --- WORLD-SCALE FIT: map the sampled FACE extent onto the stage rect -----
     // The sampler returns the robust half-extent (grid px) of the sampled face.
-    // A & B SHARE ONE scale (paired morph → short travel): fit the LARGER of the
-    // two extents so both faces stay inside the stage. Uniform (contain) scale so
-    // the cloud FILLS ~STAGE_FILL of the stage without distorting the aspect.
-    const halfX = Math.max(sA.halfExtentX, sB.halfExtentX, 1e-3);
-    const halfY = Math.max(sA.halfExtentY, sB.halfExtentY, 1e-3);
+    // ALL targets SHARE ONE scale (paired morph → short travel): fit the LARGEST
+    // extent across every portrait so no face overflows the stage. Uniform
+    // (contain) scale so the cloud FILLS ~STAGE_FILL without distorting aspect.
+    //
+    // The fit is X-bound iff maxHalfX > 0.75 · maxHalfY (0.75 = the stage's
+    // aspect-[3/4]). It is X-bound with all three shipped headshots, and a
+    // subject with a wider measured extent would not flip the fit — it would
+    // simply lower worldPerGrid a few percent and render EVERY face slightly
+    // smaller. Expect halfExtent ≈ [[136,134],[129,137],[136,135]]; investigate
+    // only if max(halfExtentX) > 143. NEVER lower `fadeStart` to chase this: it
+    // is shared, so it would shrink everyone's bust. Check getSampler().
+    //
+    // max(halfExtentX) is ALESSANDRO's 136.50, as it has always been. Mattia is
+    // NOT the widest extent, so `worldPerGrid` is unchanged from the two-portrait
+    // build and the ~3% global face shrink the pre-wash analysis predicted does
+    // NOT occur. That is a property of the ASSET, not of this code: Mattia's
+    // headshot carries a vertical wash of the torso toward the white backdrop
+    // (face untouched above the chin), which took his halfExtent from [140,146]
+    // to [136,135]. Re-export that headshot WITHOUT the wash and both these
+    // expectations and the measured 51,751 union behind MAX_COUNT_BY_TIER stop
+    // holding — re-measure IN-BROWSER via __sersanFounderMorph.getSampler().
+    // research/portrait-calibration/sampler_port.py is an order-of-magnitude
+    // check only; it under-predicted the three-portrait union by ~8%.
+    const halfX = Math.max(...pts.map((p) => p.halfExtentX), 1e-3);
+    const halfY = Math.max(...pts.map((p) => p.halfExtentY), 1e-3);
     const stageWorldW = sr.width * worldPerPx;
     const stageWorldH = sr.height * worldPerPx;
     const scaleX = (stageWorldW * STAGE_FILL) / (2 * halfX);
@@ -379,11 +505,11 @@ export function FounderPortraitMorph() {
     // z-relief cap: normalize the sampler's grid-px relief so its max depth is
     // ≤ Z_RELIEF_MAX_FRAC of the face height, then apply the live depth knob.
     let maxAbsZ = 1e-4;
-    for (let i = 0; i < count; i++) {
-      const za = Math.abs(sA.z[i]);
-      if (za > maxAbsZ) maxAbsZ = za;
-      const zb = Math.abs(sB.z[i]);
-      if (zb > maxAbsZ) maxAbsZ = zb;
+    for (const p of pts) {
+      for (let i = 0; i < count; i++) {
+        const za = Math.abs(p.z[i]);
+        if (za > maxAbsZ) maxAbsZ = za;
+      }
     }
     const faceHeightGrid = 2 * halfY;
     const zNorm = Math.min(1, (Z_RELIEF_MAX_FRAC * faceHeightGrid) / maxAbsZ);
@@ -398,8 +524,13 @@ export function FounderPortraitMorph() {
       }
       return out;
     };
-    const homeA = toWorld(sA);
-    const homeB = toWorld(sB);
+    const homes = pts.map(toWorld);
+    const homeA = homes[0];
+    const homeB = homes[1] ?? homeA;
+    // At N=2 these collapse to homeB — identical to the shipped 2-target wiring.
+    const homeC = homes[2] ?? homeB;
+    // Inert 4th leg passed as a TRUE identity mix (uMorph3 never leaves 0).
+    const homeD = homes[3] ?? homeC;
 
     extentRef.current = {
       hx: halfX * worldPerGrid,
@@ -421,7 +552,15 @@ export function FounderPortraitMorph() {
     // the morph does not snap (keep uMorph).
     let seed: Float32Array;
     if (keepEntry) {
-      seed = (morphRef.current >= 0.5 ? homeB : homeA).slice();
+      // Snap to the NEAREST locked stage — a resize while parked on the third
+      // face must seed at homeC, not spring back across from the second.
+      // Math.round(0.5) === 1 reproduces the old `>= 0.5 ? homeB : homeA`.
+      const k = THREE.MathUtils.clamp(
+        Math.round(morphRef.current),
+        0,
+        MORPH_MAX,
+      );
+      seed = (homes[k] ?? homeA).slice();
     } else {
       seed = new Float32Array(count * 3);
       for (let i = 0; i < count; i++) {
@@ -462,9 +601,8 @@ export function FounderPortraitMorph() {
       tslNs as never,
       homeA,
       homeB,
-      // Single A→B leg: homeC/homeD = homeB, uMorph2/uMorph3 never advanced.
-      homeB,
-      homeB,
+      homeC,
+      homeD,
       count,
       {
         SPRING: 52,
@@ -481,12 +619,19 @@ export function FounderPortraitMorph() {
       },
       seed,
       {
-        colorsA: sA.rgb,
-        colorsB: sB.rgb,
+        colorsA: pts[0].rgb,
+        colorsB: (pts[1] ?? pts[0]).rgb,
+        // Real third target: colour AND ink, or the C leg renders the third
+        // face's POSITIONS with the second face's colours and ink — and ink
+        // gates disc size, the alpha knee, coverage and the alpha Discard, so
+        // cells that are subject in C but backdrop in B get culled outright.
+        // `undefined` at N=2 → hasPortraitC false → the exact 2-target graph.
+        colorsC: pts[2]?.rgb,
         // Tone comes from particle SIZE: ink scales each disc (and its alpha),
-        // morphed A→B on the same staggered wave as the colour.
-        sizeA: sA.ink,
-        sizeB: sB.ink,
+        // morphed along the same staggered wave as the colour, chained A→B→C.
+        sizeA: pts[0].ink,
+        sizeB: (pts[1] ?? pts[0]).ink,
+        sizeC: pts[2]?.ink,
         blending: "normal",
         // Depth OFF. With one particle per grid cell there is nothing
         // meaningful to occlude, and depth-testing overlapping discs at
@@ -503,9 +648,11 @@ export function FounderPortraitMorph() {
       },
     ) as unknown as MorphBuild;
 
-    built.uMorph2.value = 0;
-    built.uMorph3.value = 0;
     built.uFade.value = 0;
+    // PINNED AT 1, NEVER ANIMATED. These become live terms the moment uMorph2
+    // animates (gpgpuNodeSim's sizeFC), and portraitSizePxExpr deliberately
+    // omits sizeFD — exact ONLY while these are 1. Animating them silently
+    // desynchronises the sub-pixel coverage compensation.
     built.uSizeComp.value = 1;
     built.uSizeComp2.value = 1;
     built.uSizeComp3.value = 1;
@@ -515,18 +662,18 @@ export function FounderPortraitMorph() {
       // Live rebuild after the entry finished: keep the morph where the user
       // left it, skip the entry.
       built.uAssemble.value = 1;
-      built.uMorph.value = morphRef.current;
+      applyMorph(built, morphRef.current);
       entryRef.current = 1;
     } else if (preserveState) {
       // Rebuild BEFORE the entry played (a measure bump / resize while the
       // section is still below the fold): keep the morph position but carry the
       // entry progress across so it still plays when the section is reached.
       built.uAssemble.value = entryRef.current;
-      built.uMorph.value = morphRef.current;
+      applyMorph(built, morphRef.current);
     } else {
       // Fresh build → replay the entry + reset the smoothers.
       built.uAssemble.value = 0;
-      built.uMorph.value = 0;
+      applyMorph(built, 0);
       morphRef.current = 0;
       entryRef.current = 0;
       fadeRef.current = 0;
@@ -547,26 +694,25 @@ export function FounderPortraitMorph() {
     useFoundersMorphStore.getState().setActive(true);
   };
 
-  // Re-run the PAIR sampler with new ink/grid params, then rebuild in place
-  // (preserve the morph — no snap). Used by the live dev knobs. Both portraits
-  // are re-sampled by the one call, so they can never drift onto different grids.
+  // Re-run the SET sampler with new ink/grid params, then rebuild in place
+  // (preserve the morph — no snap). Used by the live dev knobs. EVERY portrait
+  // is re-sampled by the one call, so they can never drift onto different grids.
   const resampleNowRef = useRef<(opts: SampleTuning) => void>(() => {});
   resampleNowRef.current = (opts) => {
     const mod = sampleModRef.current;
-    const ia = imgARef.current;
-    const ib = imgBRef.current;
-    if (!mod || !ia || !ib) return;
+    const imgs = imgsRef.current;
+    if (!mod || imgs.length < TARGET_COUNT) return;
     tuningRef.current = { ...tuningRef.current, ...opts };
-    const next = mod.samplePortraitPair(ia, ib, sampleSpec());
+    const next = mod.samplePortraitSet(imgs, sampleSpec());
     if (!next) return;
-    pairRef.current = next;
+    setRef.current = next;
     buildNowRef.current(true);
   };
 
   // === Build effect: load modules, build fresh on tier/resize/measure/sample ==
   useEffect(() => {
     if (!webgpuEnabled()) return;
-    if (!pairRef.current) return;
+    if (!setRef.current) return;
     let cancelled = false;
 
     const ensureModules = async () => {
@@ -638,14 +784,16 @@ export function FounderPortraitMorph() {
     group.visible = true;
 
     // --- ONE-SHOT morph clock (gate-driven, NOT scrubbed) --------------------
-    // The gate sets store.morphTarget (0|1) + optional morphImmediate; the clock
-    // advances uMorph toward it at delta/MORPH_DURATION. A dev override pins it.
+    // The gate sets store.morphTarget (integer 0..MORPH_MAX) + optional
+    // morphImmediate; the clock advances the progress scalar toward it at
+    // delta/MORPH_DURATION. A dev override pins it.
     const override = morphOverrideRef.current;
     if (override != null) {
       // Dev override WINS even while the gate is engaged — freeze the gate's
-      // morphTarget→uMorph drive so a mid-morph state can be inspected. Swallow
-      // any pending immediate so it can't fire when the override releases.
-      morphRef.current = THREE.MathUtils.clamp(override, 0, 1);
+      // morphTarget→progress drive so a mid-morph state can be inspected.
+      // Swallow any pending immediate so it can't fire when the override
+      // releases.
+      morphRef.current = THREE.MathUtils.clamp(override, 0, MORPH_MAX);
       if (store.morphImmediate) store.setMorphImmediate(false);
     } else {
       if (store.morphImmediate) {
@@ -655,23 +803,32 @@ export function FounderPortraitMorph() {
       const target = store.morphTarget;
       const cur = morphRef.current;
       if (cur !== target) {
-        const dir = target > cur ? 1 : -1;
-        morphRef.current = THREE.MathUtils.clamp(
-          cur + (dir * delta) / MORPH_DURATION,
-          0,
-          1,
-        );
+        // UNCHANGED RATE: one unit of the scalar IS one leg, so MORPH_DURATION
+        // stays PER-LEG and the shipped feel is preserved exactly. Clamp toward
+        // the TARGET, not the rail bounds: with MORPH_MAX = 2 the target may be
+        // INTERIOR (1 = Michele), where a bounds-only clamp overshoots and the
+        // clock limit-cycles forever — shimmering the face, violating the
+        // "uMorph reaches exactly 1.0 before uMorph2 leaves 0" invariant and
+        // re-running the DOM applyStage sweep every frame at rest.
+        const step = delta / MORPH_DURATION;
+        morphRef.current =
+          target > cur ? Math.min(cur + step, target) : Math.max(cur - step, target);
       }
     }
-    const gc = THREE.MathUtils.clamp(morphRef.current, 0, 1);
-    b.uMorph.value = gc;
-    // Report live morph + derived stage for the DOM copy cross-fade + the gate.
+    const gc = THREE.MathUtils.clamp(morphRef.current, 0, MORPH_MAX);
+    // ONE writer, shared with the build path — see applyMorph for why the
+    // sequencing this produces is load-bearing.
+    applyMorph(b, gc);
+    // Report live progress + derived stage for the DOM copy cross-fade + gate.
     if (Math.abs(store.morph - gc) > 1e-4) store.setMorph(gc);
-    const nextStage = gc <= 0.02 ? "A" : gc >= 0.98 ? "B" : "morphing";
+    const nextStage = stageFromMorph(gc);
     if (store.stage !== nextStage) store.setStage(nextStage);
 
-    // Peak spread + orbit envelope at the midpoint; EXACTLY 0 at both ends.
-    const env = Math.sin(gc * Math.PI);
+    // Flight envelope: PER LEG. Peaks mid-leg, EXACTLY 0 at every locked stage.
+    // MUST be leg-local: sin(gc·π) goes NEGATIVE for gc ∈ (1,2], which would
+    // invert uSpread, dolly AWAY from the camera, orbit backwards and double
+    // restEnv to 2.
+    const env = Math.sin(legFract(gc) * Math.PI);
     b.uSpread.value = env * spreadMaxRef.current;
 
     // --- Entry assemble: advance once on the reveal edge ---------------------
@@ -708,10 +865,11 @@ export function FounderPortraitMorph() {
 
     // Orbit yaw + pointer parallax + rest-idle sway — GROUP transform only (the
     // camera is NEVER touched; the per-particle springs stay pixel-pinned so the
-    // face itself remains crisp). Orbit and parallax both ride the sin(g·π)
-    // flight envelope, so the group transform is EXACTLY neutral at g=0 and g=1
-    // and the RESTING face never tracks the cursor. The rest-idle terms ride the
-    // envelope's COMPLEMENT instead: at the locked A/B stages — where the gate
+    // face itself remains crisp). Orbit and parallax both ride the LEG-LOCAL
+    // sin(legFract·π) flight envelope, so the group transform is EXACTLY
+    // neutral at EVERY locked stage (0, 1, 2 …) and the RESTING face never
+    // tracks the cursor. The rest-idle terms ride the
+    // envelope's COMPLEMENT instead: at the locked stages — where the gate
     // holds the page for an open-ended hold — the bust keeps a slow sway and
     // breath rather than sitting as a literal freeze-frame, and mid-flight that
     // idle life yields entirely to the orbit. Both crossings are absorbed by the
@@ -759,7 +917,7 @@ export function FounderPortraitMorph() {
       maxCount,
       /** Live instance count — decided by the sampler, not by a tier budget. */
       get count() {
-        return pairRef.current?.count ?? 0;
+        return setRef.current?.count ?? 0;
       },
       get stageRect() {
         return stageRectRef.current;
@@ -767,23 +925,48 @@ export function FounderPortraitMorph() {
       /** Sampler calibration readout: shared cells found for the current grid,
        * the stride that clamped them to the tier ceiling, and the mean ink. */
       getSampler() {
-        const p = pairRef.current;
-        if (!p) return null;
-        const meanInk = (s: PortraitPoints) => {
+        const s = setRef.current;
+        if (!s) return null;
+        // NOTE: `meanInk` averages over the UNION cell list, which GROWS when a
+        // portrait is added — so every existing portrait's mean falls purely by
+        // denominator growth, with zero change to its pixels. Do NOT gate a
+        // regression check on it. `meanInkSubject` (mean over the cells that
+        // THIS portrait actually inks) is the comparable number — but ONLY
+        // against a baseline taken at the SAME inkCut, since the threshold is a
+        // live knob (resample({inkCut})). The published 0.550 baseline is at
+        // inkCut 0.03; `inkCut` is returned below so a readout always says which
+        // threshold produced it.
+        const cut = sampleSpec().inkCut;
+        const meanInk = (pt: PortraitPoints) => {
           let t = 0;
-          for (let i = 0; i < p.count; i++) t += s.ink[i];
-          return t / Math.max(p.count, 1);
+          for (let i = 0; i < s.count; i++) t += pt.ink[i];
+          return t / Math.max(s.count, 1);
+        };
+        const meanInkSubject = (pt: PortraitPoints) => {
+          let t = 0;
+          let n = 0;
+          for (let i = 0; i < s.count; i++) {
+            // MUST follow the LIVE spec, not the frozen SAMPLE_SPEC_BASE: the
+            // cell list itself was built with sampleSpec(), so a frozen cut
+            // silently disagrees with the data after any resample({inkCut}).
+            if (pt.ink[i] > cut) {
+              t += pt.ink[i];
+              n++;
+            }
+          }
+          return n === 0 ? 0 : t / n;
         };
         return {
-          gridW: p.gridW,
-          gridH: p.gridH,
-          sharedCells: p.sharedCells,
-          stride: p.stride,
-          count: p.count,
+          gridW: s.gridW,
+          gridH: s.gridH,
+          sharedCells: s.sharedCells,
+          stride: s.stride,
+          count: s.count,
           maxCount,
-          meanInkA: meanInk(p.a),
-          meanInkB: meanInk(p.b),
-          halfExtent: [p.a.halfExtentX, p.a.halfExtentY, p.b.halfExtentX, p.b.halfExtentY],
+          inkCut: cut, // the threshold meanInkSubject was measured at
+          meanInk: s.points.map(meanInk), // [A, B, C] — union-denominated
+          meanInkSubject: s.points.map(meanInkSubject), // [A, B, C] — at `inkCut`
+          halfExtent: s.points.map((pt) => [pt.halfExtentX, pt.halfExtentY]),
         };
       },
       getUniforms() {
@@ -791,6 +974,11 @@ export function FounderPortraitMorph() {
         return {
           uAssemble: bb?.uAssemble.value ?? 0,
           uMorph: bb?.uMorph.value ?? 0,
+          // Without uMorph2 exposed, QA cannot distinguish "parked at B" from
+          // "parked at C" — both report uMorph: 1.
+          uMorph2: bb?.uMorph2.value ?? 0,
+          uMorph3: bb?.uMorph3.value ?? 0,
+          progress: morphRef.current, // 0..MORPH_MAX
           uFade: bb?.uFade.value ?? 0,
           uSpread: bb?.uSpread.value ?? 0,
           emissive: bb?.uEmissive?.value ?? emissiveRef.current,
@@ -824,20 +1012,37 @@ export function FounderPortraitMorph() {
         depthScaleRef.current = v;
         buildNowRef.current(true);
       },
+      /** Pin the progress scalar, 0..MORPH_MAX (null = release to the gate). */
       setMorph(v: number | null) {
         morphOverrideRef.current = v;
       },
-      setStage(s: "A" | "B") {
+      setStage(s: string) {
         morphOverrideRef.current = null;
-        useFoundersMorphStore.getState().setMorphTarget(s === "B" ? 1 : 0, true);
-      },
-      playMorph(dir: number) {
-        morphOverrideRef.current = null;
+        const t = Math.max(0, STAGE_ORDER.indexOf(s as never));
         useFoundersMorphStore
           .getState()
-          .setMorphTarget(dir >= 0 ? 1 : 0, false);
+          .setMorphTarget(Math.min(t, MORPH_MAX), true);
       },
-      /** Re-run the pair sampler with ink/grid overrides, e.g.
+      /** Advance/retreat exactly ONE leg from the current progress. Stepping
+       * from the CURRENT stage (not to a fixed 0|1) is what makes stage C
+       * reachable from the dev handle at all. */
+      playMorph(dir: number) {
+        morphOverrideRef.current = null;
+        // floor/ceil, NOT round: called mid-leg at progress 0.6 with dir=+1,
+        // Math.round would target 2 and sweep straight past Michele without
+        // locking — the exact "never forms the middle face" outcome this tool
+        // exists to disprove. Exact in both cases now that the clock lands
+        // precisely on integers (see the morph-clock fix in useFrame).
+        const p = morphRef.current;
+        const cur = dir >= 0 ? Math.floor(p) : Math.ceil(p);
+        const t = THREE.MathUtils.clamp(
+          cur + (dir >= 0 ? 1 : -1),
+          0,
+          MORPH_MAX,
+        );
+        useFoundersMorphStore.getState().setMorphTarget(t, false);
+      },
+      /** Re-run the set sampler with ink/grid overrides, e.g.
        * resample({ inkGain: 2.0, gridW: 310, gridH: 434 }). Overrides persist
        * for later resamples; the instance count follows the new grid. */
       resample(opts?: SampleTuning) {

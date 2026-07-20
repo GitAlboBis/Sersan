@@ -19,6 +19,9 @@ import { getLenis } from "@/lib/lenis-singleton";
 import {
   useFoundersMorphStore,
   foundersGateApi,
+  MORPH_MAX,
+  STAGE_TOTAL,
+  stageIndex,
 } from "@/webgl/store/foundersMorphStore";
 import { useIntroStore } from "@/webgl/store/introStore";
 import { founderCardMotion } from "@/webgl/store/founderMotion";
@@ -36,16 +39,20 @@ if (typeof window !== "undefined") {
  *   1. MORPH (full tier + a RESOLVED WebGPU backend + a roomy pinned desktop):
  *      a VERTICAL CSS-sticky
  *      stage. The WebGL particle-portrait morph island (webgl/FounderPortraitMorph)
- *      renders a ~26k-point cloud over [data-founder-stage] that composes founder
- *      A, decomposes into a swarm at mid-scroll, and recomposes founder B; the two
- *      DOM copy blocks hand off in lockstep with the island's live uMorph —
- *      A's block exits early in the leg, the swarm owns the stage alone
- *      through the middle, B's copy arrives child-by-child late — and a small
- *      gate chrome (stage counter + accent hairline + idle scroll hint, the
- *      fit-section grammar) tells the user the page is intentionally held. The
- *      DOM portrait posters in the stage cross-fade too but are driven transparent
- *      once the cloud is live (they stay a graceful static poster on a flag-on
- *      WebGL2 fallback); kept in the a11y tree (img alt). Pure CSS sticky — NO ScrollTrigger `pin:`
+ *      renders a particle cloud over [data-founder-stage] that composes the first
+ *      person, decomposes into a swarm mid-leg, and recomposes the next — for
+ *      STAGE_TOTAL people chained A→B→C. Every DOM copy block hands off in
+ *      lockstep with the island's live progress scalar (store.morph, 0..MORPH_MAX)
+ *      — the departing block exits early in the leg, the swarm owns the stage
+ *      alone through the middle, the arriving block enters child-by-child late —
+ *      and a small gate chrome (stage counter + accent hairline + idle scroll
+ *      hint, the fit-section grammar) tells the user the page is intentionally
+ *      held. INTERIOR people (Michele at N=3) both enter and exit; only the two
+ *      sequence ENDS are one-sided, and that falls out of the leg-local math with
+ *      no special-casing. The DOM portrait posters in the stage cross-fade too but
+ *      are driven transparent once the cloud is live (they stay a graceful static
+ *      poster on a flag-on WebGL2 fallback); kept in the a11y tree (img alt).
+ *      Pure CSS sticky — NO ScrollTrigger `pin:`
  *      (a pin-spacer would break the [data-line-anchor="founders"] measurement of
  *      the signature line), section height = 100vh + travel set in px by measure().
  *
@@ -84,23 +91,55 @@ const G_TRIGGER_PX = 140;
 const G_IDLE_MS = 160;
 /** Fraction of the viewport the section top must leave before re-engaging. */
 const G_ENGAGE_EXIT = 0.28;
-/** Max time (ms) the gate may hold the page before force-releasing (safety). */
-const G_MAX_ENGAGE_MS = 16000;
+/** Max time (ms) the gate may hold the page before force-releasing (safety).
+ * THIS BOUNDS SILENCE, NOT THE TOTAL SESSION. A per-session budget cannot be
+ * made large enough: any fixed total ejects a slow reader mid-sequence, and at
+ * N=3 the ejection is worse than it was at N=2 — the recovery path (scroll back
+ * up → fromBottom → engage(MORPH_MAX)) lands on the LAST person, skipping the
+ * one they were reading. With two stages every locked stage was an extreme end,
+ * so either re-entry was legitimate.
+ *
+ * So `engageTime` is re-armed on REAL PROGRESS (a leg actually starting, inside
+ * step()) and nowhere else. Deliberately NOT re-armed in consume()/noteInput():
+ * step() early-returns while `!assembleDone`, so in the wedge case the user
+ * wheels continuously and nothing advances — that is precisely when this timer
+ * has to fire, and resetting on raw input would pin the page forever. The
+ * scrollbar-fight case is covered independently by the `drift > 15%` release.
+ *
+ * Side benefit: the timer can no longer expire while a 1.4s leg is in flight,
+ * which closes the largest entry point into the release()-mid-leg case
+ * documented below.
+ *
+ * KNOWN, PRE-EXISTING: a force-release calls release(lastDir), which does NOT
+ * touch morphTarget — so if Escape or the drift valve fires mid-leg the island
+ * finishes that leg on its own clock while the page scrolls away. The leg
+ * COMPLETES and lands on a locked, consistent stage (and the next engage()
+ * reasserts the target with immediate:true), so this is a visible unowned
+ * animation, not a broken state. Deliberately NOT fixed here. */
+const G_MAX_ENGAGE_MS = 20000;
 /** Touch drag maps a bit faster than wheel (shorter gestures). */
 const G_TOUCH_FACTOR = 2.0;
 
-// --- MORPH-mode copy handoff (pure functions of the island's live uMorph, so
-// reverse legs mirror automatically) -----------------------------------------
-/** Founder A's copy EXITS over m∈[start,end] — it departs BEFORE the swarm
- * owns the stage, instead of ghost-overlapping founder B at 50/50. */
+// --- MORPH-mode copy handoff (pure functions of the island's live progress
+// scalar, so reverse legs mirror automatically) -------------------------------
+//
+// EVERY window below is LEG-LOCAL: it is evaluated against progress WITHIN one
+// leg (0..1), not against the raw 0..MORPH_MAX scalar. applyStage derives the
+// two leg-local coordinates per block — `local = m - i` (how far this block has
+// DEPARTED) and `u = local + 1` (how far the leg that BRINGS it in has run) —
+// so these constants keep their EXACT shipped values and the first leg is
+// numerically byte-identical to what ships today. That is the whole reason the
+// N-stage generalisation costs no retuning.
+/** A departing block's copy EXITS over local∈[start,end] — it leaves BEFORE the
+ * swarm owns the stage, instead of ghost-overlapping the next person at 50/50. */
 const COPY_EXIT_START = 0.02;
 const COPY_EXIT_END = 0.3;
 /** Exit travel (px, upward — the copy lifts away with the dissolving face). */
 const COPY_EXIT_Y = 16;
-/** Founder B's copy ENTERS over m∈[start,end], child by child (counter →
+/** An arriving block's copy ENTERS over u∈[start,end], child by child (counter →
  * name → bio → chips → previously → link). The window ends at 0.98 — exactly
- * the island's stage-B lock threshold — so the B lock can never land with
- * copy still mid-flight. */
+ * the island's per-leg lock threshold (1 − LOCK_EPS) — so a leg can never lock
+ * with copy still mid-flight. */
 const COPY_ENTER_START = 0.7;
 const COPY_ENTER_END = 0.98;
 /** Per-child window offset in m-space (the arrival stagger). */
@@ -491,6 +530,24 @@ export default function FoundersRail() {
   // Enough room for the morph stage's TWO-COLUMN layout (see the mode effect).
   const [roomy, setRoomy] = useState(false);
 
+  // Island liveness latch. `canMorph` goes true as soon as the RUNTIME backend
+  // is webgpu, so the morph branch renders — but the island can still fail for
+  // reasons that have nothing to do with the backend: any one of the N
+  // loadFounder promises rejecting (Promise.all is all-or-nothing), or any
+  // single readGrid returning null (which makes samplePortraitSet return null
+  // for the WHOLE set). Then setActive(true) is never reached, `morph` stays 0,
+  // and every copy block and poster past the first stays visibility:hidden —
+  // i.e. all but the first person's name, bio and LinkedIn link are unreachable
+  // to both mouse and screen reader. Each extra portrait adds another
+  // independent failure input to this all-or-nothing path.
+  //
+  // Latch on "NEVER WENT LIVE", not on the instantaneous `active` flag: the
+  // island's build cleanup calls setActive(false) on EVERY rebuild, so a
+  // resize-triggered rebuild in flight at the grace deadline would eject a
+  // perfectly healthy morph.
+  const everLiveRef = useRef(false);
+  const [morphFailed, setMorphFailed] = useState(false);
+
   // MORPH mode: the WebGL particle-portrait island is mounted (Scene.tsx). It
   // requires the RESOLVED pinned desktop path + full tier + a viewport with
   // room for the two-column stage + a TRUE-WebGPU runtime backend.
@@ -504,9 +561,10 @@ export default function FoundersRail() {
   // env read, so on a flag-on build in a browser without WebGPU the renderer
   // resolves to the WebGL2 fallback and the island — which requires a compute
   // backend — never builds and never calls setActive(true). The gate then never
-  // engages, `morph` never advances, and founder B's copy + poster (both
-  // rendered at opacity 0) stayed permanently invisible and unreachable. The
-  // horizontal rail shows BOTH founders, so it is the correct fallback. `null`
+  // engages, `morph` never advances, and every copy block + poster past the
+  // first (all rendered at opacity 0) stayed permanently invisible and
+  // unreachable. The horizontal rail shows EVERY person, so it is the correct
+  // fallback (and, unlike the morph stage, it has no engine target cap). `null`
   // (unresolved) is deliberately falsy: first paint must never show a layout
   // the island may turn out to be unable to drive.
   //
@@ -522,7 +580,12 @@ export default function FoundersRail() {
     roomy &&
     tierResolved &&
     tier === "full" &&
-    backend === "webgpu";
+    backend === "webgpu" &&
+    // The island rendered but never went live → fall through to the horizontal
+    // rail, which renders EVERY person as real focusable DOM. The gate effect is
+    // keyed on [canMorph], so its cleanup restores lenis.start(), setPinned(false)
+    // and the section height automatically.
+    !morphFailed;
 
   // ...but `backend === null` means two different things, and only ONE of them
   // means "the rail is the answer". `backend` is written once from Scene.tsx's
@@ -531,7 +594,7 @@ export default function FoundersRail() {
   // target machine there is a guaranteed multi-frame window where every morph
   // precondition holds and the backend simply hasn't reported yet. Rendering
   // the rail MARKUP through that window is correct and deliberate (it shows
-  // both founders as real, focusable DOM — the safe first paint). ARMING the
+  // every person as real, focusable DOM — the safe first paint). ARMING the
   // rail's machinery through it is not: measure() writes
   // `section.style.height = innerHeight + travel`, per-panel quickSetters are
   // built and a ScrollTrigger is created, all to be torn down a few frames
@@ -553,10 +616,12 @@ export default function FoundersRail() {
   const sectionRef = useRef<HTMLDivElement | null>(null);
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLUListElement | null>(null);
-  const copyARef = useRef<HTMLDivElement | null>(null);
-  const copyBRef = useRef<HTMLDivElement | null>(null);
-  const stageImgARef = useRef<HTMLImageElement | null>(null);
-  const stageImgBRef = useRef<HTMLImageElement | null>(null);
+  // One entry per morph stage, indexed by stage (0 = Alessandro, 1 = Michele,
+  // 2 = Mattia). NOT querySelectorAll: the gate effect reads these
+  // synchronously below (refs are already committed there), and a query would
+  // be order-fragile against the poster imgs that share [data-founder-media].
+  const copyRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const stageImgRefs = useRef<(HTMLImageElement | null)[]>([]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -582,9 +647,10 @@ export default function FoundersRail() {
   // === MORPH mode: pinned stage + GATED, self-playing morph ==================
   // Mirrors HeroIntroGate. When the section top reaches the viewport top the
   // gate ENGAGES: Lenis is stopped, the section snaps to top, and wheel/touch is
-  // consumed here. One scroll-down gesture triggers a ONE-SHOT auto-play A→B
-  // (the island plays it on its own clock, absorbing extra scroll); at B another
-  // gesture RELEASES the page. Reverse symmetrically for scroll-up. NO
+  // consumed here. Each scroll-down gesture triggers a ONE-SHOT auto-play of the
+  // NEXT leg (the island plays it on its own clock, absorbing extra scroll);
+  // only a gesture at a true sequence BOUNDARY releases the page. Reverse
+  // symmetrically for scroll-up. NO
   // ScrollTrigger `pin:` — the section's own height is the runway, so the
   // [data-line-anchor="founders"] waypoint stays measurable. NEVER permanently
   // hijacks: a hard-delta cap, a max-engage timer, and Escape all force-release.
@@ -594,52 +660,92 @@ export default function FoundersRail() {
     if (!section) return;
 
     const store = useFoundersMorphStore.getState();
-    const copyA = copyARef.current;
-    const copyB = copyBRef.current;
-    const setImgA = stageImgARef.current
-      ? (gsap.quickSetter(stageImgARef.current, "opacity") as (v: number) => void)
-      : null;
-    const setImgB = stageImgBRef.current
-      ? (gsap.quickSetter(stageImgBRef.current, "opacity") as (v: number) => void)
-      : null;
 
-    // Founder A exits as ONE block (opacity + y). Prime the full transform
-    // BEFORE creating the writers (repo convention: unrecorded components
-    // trip "not eligible for reset").
-    let setOpA: ((v: number) => void) | null = null;
-    let setYA: ((v: number) => void) | null = null;
-    if (copyA) {
-      gsap.set(copyA, { opacity: 1, y: 0 });
-      setOpA = gsap.quickSetter(copyA, "opacity") as (v: number) => void;
-      setYA = gsap.quickSetter(copyA, "y", "px") as (v: number) => void;
-    }
-
-    // Founder B arrives child by child. Writers are built ONCE — the child
-    // elements are stable across language toggles (only text nodes change).
-    // The block's SSR inline opacity:0 exists only so B never flashes before
-    // this effect arms the children at their hidden pose; once they are
-    // armed the block itself flips to opacity 1 and the children own the
-    // presentation (applyStage below immediately re-poses them for the
-    // store's current morph value, so a mid-B remount shows B, not a flash).
-    const bChildren = copyB
-      ? Array.from(copyB.querySelectorAll<HTMLElement>(":scope > div > *"))
-      : [];
-    // Staggered starts; every child's window still completes by ENTER_END.
-    const childDur = Math.max(
-      0.06,
-      COPY_ENTER_END -
-        COPY_ENTER_START -
-        (bChildren.length - 1) * COPY_ENTER_STAGGER,
-    );
-    const bFx = bChildren.map((el, i) => {
-      gsap.set(el, { opacity: 0, y: COPY_ENTER_Y });
-      return {
-        start: COPY_ENTER_START + i * COPY_ENTER_STAGGER,
-        setO: gsap.quickSetter(el, "opacity") as (v: number) => void,
+    // --- Copy writers: ONE UNIFORM BUNDLE PER BLOCK ---------------------------
+    // Every block gets BOTH a block-level exit writer (opacity + y) and
+    // per-child enter writers. The two ENDS of the sequence need no
+    // special-casing: block 0's enter term always evaluates to 1 (its `u` is
+    // permanently past COPY_ENTER_END) and the last block's exit term always to
+    // 0 (its `local` never goes positive) — they fall out of the leg-local math
+    // in applyStage. INTERIOR blocks (Michele at N=3) get both, which is the
+    // only genuinely new DOM behaviour in the N-stage widening.
+    //
+    // Block opacity multiplies child opacity in the compositor, so exit-on-the-
+    // block and enter-on-the-children compose without fighting — exactly how the
+    // shipped A/B pair already behaves.
+    //
+    // NOTE: block 0's children are GSAP-driven for the FIRST TIME here (today
+    // only block B's are). The VALUES are identical to today — every child rests
+    // at opacity 1 / y 0 — but the WRITES are new: each child now carries an
+    // explicit transform and so becomes a containing block. Watch the credential
+    // chips' backdrop-blur at stage A; block B's chips already live under the
+    // same treatment, so this is consistent rather than novel.
+    //
+    // Writers are built ONCE — the child elements are stable across language
+    // toggles (only text nodes change). A block's inline opacity:0 (i > 0) is a
+    // FIRST-CLIENT-PAINT contract, NOT an SSR/hydration one: this branch is
+    // client-only (canMorph depends on `detected`, set in a client effect), so
+    // the morph markup never appears in the server HTML and never renders on the
+    // first client render either. The guard covers the frames between the
+    // canMorph commit and this effect arming the children — without it all
+    // STAGE_TOTAL copy blocks paint stacked on top of one another. It is
+    // load-bearing; do not delete it on the belief that "there is no SSR here".
+    // Once armed the block flips to opacity 1 and the children
+    // own the presentation (applyStage below immediately re-poses everything for
+    // the store's current morph value, so a mid-leg remount shows the right
+    // block, not a flash). Priming the full transform BEFORE creating the writers
+    // is the repo convention (unrecorded components trip "not eligible for
+    // reset").
+    type BlockFx = {
+      el: HTMLElement;
+      setOp: (v: number) => void;
+      setY: (v: number) => void;
+      children: {
+        el: HTMLElement;
+        start: number;
+        dur: number;
+        setO: (v: number) => void;
+        setY: (v: number) => void;
+      }[];
+      lastHidden: boolean | null;
+    };
+    const blocks: BlockFx[] = [];
+    copyRefs.current.slice(0, STAGE_TOTAL).forEach((el, i) => {
+      if (!el) return;
+      gsap.set(el, { opacity: 1, y: 0 });
+      const kids = Array.from(el.querySelectorAll<HTMLElement>(":scope > div > *"));
+      // `dur` is PER BLOCK, not shared: FounderCopy renders a `previouslyAt` row
+      // only when the data has one, so Michele has 6 children where Alessandro
+      // and Mattia have 5. A single shared dur would land the 5-child blocks'
+      // last child at 0.945 instead of COPY_ENTER_END (0.98) — early, not late,
+      // but still off the lock.
+      const dur = Math.max(
+        0.06,
+        COPY_ENTER_END - COPY_ENTER_START - (kids.length - 1) * COPY_ENTER_STAGGER,
+      );
+      const children = kids.map((k, j) => {
+        gsap.set(k, i === 0 ? { opacity: 1, y: 0 } : { opacity: 0, y: COPY_ENTER_Y });
+        return {
+          el: k,
+          start: COPY_ENTER_START + j * COPY_ENTER_STAGGER,
+          dur,
+          setO: gsap.quickSetter(k, "opacity") as (v: number) => void,
+          setY: gsap.quickSetter(k, "y", "px") as (v: number) => void,
+        };
+      });
+      blocks[i] = {
+        el,
+        setOp: gsap.quickSetter(el, "opacity") as (v: number) => void,
         setY: gsap.quickSetter(el, "y", "px") as (v: number) => void,
+        children,
+        lastHidden: null,
       };
     });
-    if (copyB) gsap.set(copyB, { opacity: 1 });
+    const setImgs = stageImgRefs.current
+      .slice(0, STAGE_TOTAL)
+      .map((el) =>
+        el ? (gsap.quickSetter(el, "opacity") as (v: number) => void) : null,
+      );
 
     // --- Gate affordance chrome ---------------------------------------------
     // Same grammar as fit-section's counter + progress line: mono stage
@@ -714,11 +820,24 @@ export default function FoundersRail() {
       gsap.to(chromeEl, { opacity: 0, duration: 0.3, ease: "power2.in" });
     };
 
-    // Copy handoff + chrome FOLLOW the island's live uMorph (store.morph),
-    // NOT scroll. Three readable acts, all pure functions of m so reverse
-    // legs mirror automatically: A departs over [EXIT_START, EXIT_END], the
-    // swarm owns the stage ALONE through the middle, B arrives child by child
-    // over [ENTER_START, ENTER_END] — never the old 50/50 ghost overlay.
+    // Copy handoff + chrome FOLLOW the island's live progress scalar
+    // (store.morph, 0..MORPH_MAX), NOT scroll. Three readable acts per leg, all
+    // pure functions of m so reverse legs mirror automatically: the departing
+    // block leaves over [EXIT_START, EXIT_END], the swarm owns the stage ALONE
+    // through the middle, the arriving block enters child by child over
+    // [ENTER_START, ENTER_END] — never the old 50/50 ghost overlay.
+    //
+    // The generalisation is TWO leg-local coordinates per block i:
+    //   local = m - i   → how far block i has DEPARTED   (its leg is m∈[i, i+1])
+    //   u     = local+1 → how far the leg that BRINGS IT IN has run (m∈[i-1, i])
+    // Every COPY_* window is then evaluated in leg-local space and keeps its
+    // exact shipped value. The edges need no branches:
+    //   - block 0:   local = m ≥ 0 → u ≥ 1 > COPY_ENTER_END, so every child
+    //                saturates at 1. Permanently "entered", exactly as today.
+    //   - block N−1: local ≤ 0 → exitT = 0. Never exits, exactly as today.
+    //   - block 1 at N=3 is a MIDDLE block and correctly gets both: it enters
+    //                over m∈[0.7, 0.98] and exits over m∈[1.02, 1.3].
+    // At N=2 this is numerically identical to the shipped two-block form.
     //
     // Posters: the static portrait is ONLY a fallback (WebGL2 session / very slow
     // build). On a real WebGPU backend we want to go STRAIGHT to the particles
@@ -726,53 +845,64 @@ export default function FoundersRail() {
     // has NOT gone live by the grace deadline below (`posterShown`). Once it's a
     // confirmed fallback, the poster cross-fades on morph like before.
     let posterShown = false;
-    let lastAHidden: boolean | null = null;
-    let lastBHidden: boolean | null = null;
     const applyStage = (m: number) => {
-      const exitT = smoothstep(COPY_EXIT_START, COPY_EXIT_END, m);
-      setOpA?.(1 - exitT);
-      setYA?.(-COPY_EXIT_Y * exitT);
-      for (const c of bFx) {
-        const e = smoothstep(c.start, c.start + childDur, m);
-        c.setO(e);
-        c.setY(COPY_ENTER_Y * (1 - e));
-      }
-      // The two blocks OVERLAY each other, so a fully-faded block must drop
-      // out of hit-testing AND the tab order (visibility, not just opacity) —
-      // an invisible LinkedIn link must never swallow a click or a Tab stop.
-      // Driven directly by m (no tween to interrupt); mid-swarm BOTH are
-      // hidden by design — the swarm is the content there, and a leg always
-      // plays through to a locked end on the island's own clock.
-      const aHidden = exitT >= 1;
-      const bHidden = m <= COPY_ENTER_START;
-      if (copyA && aHidden !== lastAHidden) {
-        lastAHidden = aHidden;
-        copyA.style.visibility = aHidden ? "hidden" : "";
-      }
-      if (copyB && bHidden !== lastBHidden) {
-        lastBHidden = bHidden;
-        copyB.style.visibility = bHidden ? "hidden" : "";
-      }
-      // Posters: fallback-only mid-crossfade (contract unchanged).
-      const bF = smoothstep(0.35, 0.65, m);
-      if (useFoundersMorphStore.getState().active || !posterShown) {
-        setImgA?.(0);
-        setImgB?.(0);
-      } else {
-        setImgA?.(1 - bF);
-        setImgB?.(bF);
+      const hidePosters = useFoundersMorphStore.getState().active || !posterShown;
+      for (let i = 0; i < STAGE_TOTAL; i++) {
+        const local = m - i; // > 0 while this block is DEPARTING
+        const u = local + 1; // 0..1 across the leg that BRINGS it in
+        const exitT = smoothstep(COPY_EXIT_START, COPY_EXIT_END, local);
+        const b = blocks[i];
+        if (b) {
+          b.setOp(1 - exitT);
+          b.setY(-COPY_EXIT_Y * exitT);
+          for (const c of b.children) {
+            const e = smoothstep(c.start, c.start + c.dur, u);
+            c.setO(e);
+            c.setY(COPY_ENTER_Y * (1 - e));
+          }
+          // The blocks OVERLAY each other, so a fully-faded block must drop out
+          // of hit-testing AND the tab order (visibility, not just opacity) — an
+          // invisible LinkedIn link must never swallow a click or a Tab stop.
+          // Driven directly by m (no tween to interrupt); mid-swarm EVERY block
+          // is hidden by design — the swarm is the content there, and a leg
+          // always plays through to a locked end on the island's own clock.
+          const hidden = exitT >= 1 || u <= COPY_ENTER_START;
+          if (hidden !== b.lastHidden) {
+            b.lastHidden = hidden;
+            b.el.style.visibility = hidden ? "hidden" : "";
+          }
+        }
+        // Poster i = (entering weight) × (1 − exiting weight). Both legs use the
+        // SAME 0.35/0.65 window, so the visible posters sum to exactly 1 at every
+        // m and the seam at integer m is one poster at 1 — no flash, no dip.
+        // Fallback-only (contract unchanged).
+        const set = setImgs[i];
+        if (set) {
+          set(
+            hidePosters
+              ? 0
+              : smoothstep(0.35, 0.65, u) * (1 - smoothstep(0.35, 0.65, local)),
+          );
+        }
       }
       // Chrome: hairline tracks m (quantized so parked frames write nothing,
-      // fit-section idiom); the counter flips at the midpoint.
+      // fit-section idiom); the counter flips at each leg MIDPOINT.
       if (setChromeLine) {
-        const q = Math.round(m * 512) / 512;
+        // Normalised to the WHOLE sequence — raw m would overshoot the 16rem
+        // track by 2× on leg 2.
+        const q = Math.round((m / Math.max(1, MORPH_MAX)) * 512) / 512;
         if (q !== lastLineQ) {
           lastLineQ = q;
           setChromeLine(q);
         }
       }
       if (chromeCounterEl) {
-        const label = m >= 0.5 ? "02" : "01";
+        // Math.round is half-up, so this flips at each leg midpoint — exactly
+        // reproducing the shipped `m >= 0.5 ? "02" : "01"` and extending it.
+        const label = String(Math.min(Math.round(m), MORPH_MAX) + 1).padStart(
+          2,
+          "0",
+        );
         if (label !== lastCounter) {
           lastCounter = label;
           chromeCounterEl.textContent = label;
@@ -783,6 +913,15 @@ export default function FoundersRail() {
     const measure = () => {
       // No travel (gate model): the section is exactly one viewport tall — the
       // gate holds the page while a leg plays. secTop drives island placement.
+      //
+      // THE SECTION STAYS ONE VIEWPORT TALL REGARDLESS OF STAGE COUNT. `travel`
+      // is literally 0: the hold is produced by lenis.stop() plus the per-frame
+      // re-snap in tick(), NOT by a tall runway, so a third (or fourth) stage
+      // costs ZERO extra scroll pixels. Do not "make room" by growing the
+      // height — that creates dead space the gate immediately re-snaps away
+      // from, and it moves the [data-line-anchor="founders"] waypoint the header
+      // warns about. What lengthens with stage count is the TIME budget
+      // (G_MAX_ENGAGE_MS), not the geometry.
       section.style.height = `${window.innerHeight}px`;
       const secTop = section.getBoundingClientRect().top + window.scrollY;
       store.setLayout(0, secTop);
@@ -797,6 +936,8 @@ export default function FoundersRail() {
     // Stage transitions drive the scroll hint's idle clock: a leg starting
     // retires the hint instantly, a leg completing re-opens the window.
     const unsub = useFoundersMorphStore.subscribe((s, prev) => {
+      // Sticky liveness latch — see everLiveRef. `active` alone flaps on rebuild.
+      if (s.active) everLiveRef.current = true;
       if (s.morph !== prev.morph || s.active !== prev.active) applyStage(s.morph);
       if (s.stage !== prev.stage) {
         if (s.stage === "morphing") hideHint();
@@ -810,17 +951,46 @@ export default function FoundersRail() {
     // backend `active` becomes true first, so the poster never shows and there is
     // no photo→particles flash — the section goes straight to the particles.
     const posterGrace = setTimeout(() => {
-      if (!useFoundersMorphStore.getState().active) {
+      const live = useFoundersMorphStore.getState();
+      // Read the flag too, not just the latch: `active` can already have been
+      // true before this effect subscribed.
+      if (live.active) everLiveRef.current = true;
+      if (!live.active) {
         posterShown = true;
-        applyStage(useFoundersMorphStore.getState().morph);
+        applyStage(live.morph);
       }
     }, 4000);
 
+    // A11y failsafe, SEPARATE from the poster grace above and deliberately much
+    // later. If the island NEVER goes live, blocks 1..N-1 stay visibility:hidden
+    // forever and those people are unreachable to mouse and screen reader — so
+    // drop the whole morph branch and fall through to the horizontal rail, which
+    // renders everyone as real focusable DOM.
+    //
+    // WHY NOT REUSE THE 4s POSTER TIMER: the poster is REVERSIBLE (it hides the
+    // instant `active` flips), whereas this is a ONE-WAY DOOR — once the branch
+    // is dropped the morph does not come back this mount. The island's build is
+    // a cold-cache network path (three headshots + the three/webgpu, three/tsl
+    // and gpgpu dynamic chunks, then sampling and the GPU build), which can
+    // legitimately exceed 4s on a slow connection; latching failure there would
+    // cost a healthy session its flagship visual. 12s is past any plausible
+    // honest build and still bounds the a11y hole to a few seconds.
+    //
+    // Checked against the LATCH, never the instantaneous `active` flag: the
+    // island's build cleanup calls setActive(false) on EVERY rebuild, so a
+    // resize-triggered rebuild in flight at this deadline would otherwise eject
+    // a perfectly healthy morph.
+    const morphFailGrace = setTimeout(() => {
+      if (useFoundersMorphStore.getState().active) everLiveRef.current = true;
+      if (!everLiveRef.current) setMorphFailed(true);
+    }, 12000);
+
     // --- GATE state machine --------------------------------------------------
     // Deterministic + momentum-proof: gestures are gated on STAGE + a signed
-    // accumulator that resets each leg, and RELEASE requires the FAR end (B for
-    // down, A for up) — a near-end gesture can therefore ONLY morph, never
-    // release. There is no momentum-driven escape (the old |delta| cap released
+    // accumulator that resets each leg, and RELEASE requires a true SEQUENCE
+    // BOUNDARY (no next node in that direction) — an interior gesture can
+    // therefore ONLY morph, never release. There is no momentum-driven escape
+    // (the old |delta| cap released
     // at A on the entry fling's inertial wheel tail); the anti-trap is the
     // morph-then-release path + Escape + the max-engage safety timer.
     let engaged = false;
@@ -839,7 +1009,7 @@ export default function FoundersRail() {
     //
     // The window is latched on the PRECONDITION, not on effect setup. `inside`
     // is consumed under `live.active`, which only flips after the island's full
-    // async build (two headshot fetches + decode, two 42k-point samples, the
+    // async build (three headshot fetches + decode, three ~48k-point samples, the
     // three/webgpu + three/tsl + gpgpu dynamic imports, then the GPU build).
     // Both clocks start together, so a setup-relative budget was reliably spent
     // before its own guard could open on a cold cache — killing the
@@ -852,7 +1022,12 @@ export default function FoundersRail() {
     let insideEngageDeadline = 0;
     let prevTop = section.getBoundingClientRect().top;
 
-    const engage = (initStage: "A" | "B") => {
+    /** `initIndex` is a STAGE INDEX, not a letter: 0 = first person (arriving
+     * from above), MORPH_MAX = last person (arriving from below). A literal
+     * "B" here was a two-target encoding — at N=3 a user scrolling UP into the
+     * section would be dropped mid-rail on Michele and their very first
+     * up-gesture would play a leg backward from a stage they never saw. */
+    const engage = (initIndex: number) => {
       if (engaged) return;
       engaged = true;
       insideEngageUsed = true;
@@ -861,13 +1036,14 @@ export default function FoundersRail() {
       const s = useFoundersMorphStore.getState();
       s.setGateEngaged(true);
       s.setReveal(1);
-      // Entry LOCKS at the entry side FIRST (A from above, B from below) — the
-      // entry scroll is NOT the morph gesture. DISARM and zero the accumulator;
+      // Entry LOCKS at the entry side FIRST (the FIRST stage from above, the
+      // LAST from below) — the entry scroll is NOT the morph gesture. DISARM
+      // and zero the accumulator;
       // the entry flick's momentum (inertial wheel/Lenis fling) keeps resetting
       // the idle timer while armed=false, so it can never count as the first
       // gesture. Re-arm ONLY after G_IDLE_MS of TRUE silence → a fresh, separate
       // impulse then plays the morph.
-      s.setMorphTarget(initStage === "B" ? 1 : 0, true);
+      s.setMorphTarget(initIndex, true);
       armed = false;
       acc = 0;
       clearTimeout(idleT);
@@ -878,7 +1054,8 @@ export default function FoundersRail() {
       // secTop is kept EXACTLY fresh every frame by the tick (it ran this frame
       // before engage), so it already equals the section's live document top:
       // snap the page to it so the [data-founder-stage] lands at its designed
-      // viewport position and A/B share the IDENTICAL on-screen rect. The tick
+      // viewport position and EVERY stage shares the IDENTICAL on-screen rect.
+      // The tick
       // then re-asserts the pin for the whole engaged session.
       const target = useFoundersMorphStore.getState().secTop;
       const lenis = getLenis();
@@ -917,25 +1094,32 @@ export default function FoundersRail() {
       cooldownUntil = performance.now() + 500;
     };
 
-    // One discrete gesture → play a leg OR release, GATED ON STAGE. Release is
-    // only possible from the FAR end (B for down, A for up): a near-end gesture
-    // can only ever morph. `morphing` is absorbed (leg must finish first).
+    // One discrete gesture → advance ONE leg, or RELEASE at a sequence
+    // BOUNDARY. `morphing` is absorbed (the leg must finish first).
+    //
+    // Release is NO LONGER A LETTER TEST. The shipped form encoded "far end" as
+    // a property of the STAGE (B releases down, A releases up), which is only
+    // correct because with exactly two stages every locked stage IS an extreme
+    // end. With three, Michele is far-end for NEITHER direction — the letter
+    // test made a down-gesture at B release the page, which is the reported
+    // "it won't let me scroll between Michele and Mattia". Encoded as a BOUNDS
+    // CHECK instead: release means "there is no next node in this direction".
+    // INTERIOR nodes morph in BOTH directions and can never release — which is
+    // exactly the old "a near-end gesture can only morph, never release"
+    // anti-trap guarantee, generalised rather than weakened. Correct for any N.
     const step = (dir: number) => {
       const s = useFoundersMorphStore.getState();
       if (s.stage === "morphing" || !s.assembleDone) return; // absorb mid-play
-      if (dir > 0) {
-        if (s.stage === "A") {
-          s.setMorphTarget(1, false); // near end → auto-play A→B, STAY engaged
-          armed = false;
-        } else if (s.stage === "B") {
-          release(1); // far end → release downward
-        }
-      } else if (s.stage === "B") {
-        s.setMorphTarget(0, false); // near end (up) → auto-play B→A, STAY engaged
-        armed = false;
-      } else if (s.stage === "A") {
-        release(-1); // far end (up) → release upward
-      }
+      const i = stageIndex(s.stage); // 0..MORPH_MAX; never -1 past the guard
+      const next = i + (dir > 0 ? 1 : -1);
+      if (next < 0) return release(-1); // far end (up) → release upward
+      if (next > MORPH_MAX) return release(1); // far end (down) → release down
+      s.setMorphTarget(next, false); // interior → play one leg, STAY engaged
+      // REAL PROGRESS re-arms the safety valve — see G_MAX_ENGAGE_MS. This is
+      // the ONLY reset site: resetting on raw input instead would pin the page
+      // forever in the wedge case this timer exists to escape.
+      engageTime = performance.now();
+      armed = false;
     };
 
     const consume = (deltaPx: number, e: Event) => {
@@ -987,6 +1171,10 @@ export default function FoundersRail() {
       return {
         engaged,
         stage: s.stage,
+        // With three nodes the letter alone is an ambiguous assertion for QA
+        // (the wheel path is momentum-flaky by design), so expose the index the
+        // bounds check actually uses. -1 while a leg is in flight.
+        stageIndex: stageIndex(s.stage),
         morphTarget: s.morphTarget,
         armed,
         accum: acc,
@@ -1134,6 +1322,27 @@ export default function FoundersRail() {
         // scroll, so the DOM poster/section is the whole (non-trapping)
         // experience.
         if (!reBlocked && live.active) {
+          // PRE-POSITION THE ENTRY SIDE WHILE THE SECTION IS OFF-SCREEN, where
+          // the island culls the group (visible=false, uFade=0). Without this,
+          // an approach from below runs a full un-pinned viewport with morph at
+          // 0 (Alessandro's face, copy block 0, counter 01) and then engage()'s
+          // setMorphTarget(MORPH_MAX, immediate) snaps face, copy, hairline
+          // scaleX and counter across the WHOLE rail in a single frame, with the
+          // chrome fading in over 0.5s on top of an already-completed jump.
+          // Doing it here makes that assignment a genuine no-op in both
+          // directions. The two conditions are disjoint and are both mutually
+          // exclusive with any on-screen state, so no one-shot flag is needed
+          // and this cannot fight a normal downward approach.
+          if (rect.bottom <= 0) {
+            // Fully ABOVE the viewport → the user is below; next entry is
+            // fromBottom, which lands on the LAST stage.
+            if (live.morphTarget !== MORPH_MAX)
+              live.setMorphTarget(MORPH_MAX, true);
+          } else if (top >= ihNow) {
+            // Fully BELOW the viewport → the user is above; next entry is
+            // fromTop, which lands on the FIRST stage.
+            if (live.morphTarget !== 0) live.setMorphTarget(0, true);
+          }
           // Arm the reload-landed-inside window on the FIRST frame the island
           // is live (see the declaration): 600ms from here, not from mount.
           if (insideEngageDeadline === 0) insideEngageDeadline = now + 600;
@@ -1145,9 +1354,10 @@ export default function FoundersRail() {
             top <= ihNow * 0.5 &&
             rect.bottom >= ihNow * 0.5;
           if ((fromTop || fromBottom) && rect.bottom > 0 && top < ihNow) {
-            engage(fromBottom ? "B" : "A");
+            // Arriving from BELOW pins the LAST stage, not a hardcoded "B".
+            engage(fromBottom ? MORPH_MAX : 0);
           } else if (inside) {
-            engage("A"); // reload landed inside → pin without wedging
+            engage(0); // reload landed inside → pin without wedging
           }
         }
       }
@@ -1190,6 +1400,8 @@ export default function FoundersRail() {
     // rebuild landed). Split the two costs: the layout write is cheap and must
     // stay live so the gate's runway/secTop are correct THIS frame; only the
     // SETTLED size gets to trigger a rebuild.
+    // (Height stays exactly one viewport here too — see measure(): the stage
+    // count never buys scroll pixels.)
     let resizeT: ReturnType<typeof setTimeout> | undefined;
     const onResize = () => {
       section.style.height = `${window.innerHeight}px`;
@@ -1228,6 +1440,7 @@ export default function FoundersRail() {
       clearTimeout(hintT);
       clearTimeout(resizeT);
       clearTimeout(posterGrace);
+      clearTimeout(morphFailGrace);
       // Chrome: kill any in-flight fade and re-assert hidden — the cluster
       // must never rest visible past the gate's lifetime.
       if (chromeEl) {
@@ -1238,19 +1451,16 @@ export default function FoundersRail() {
         gsap.killTweensOf(chromeHintEl);
         gsap.set(chromeHintEl, { opacity: 0 });
       }
-      // Copy: settle to the stage-A rest pose (matches the store reset
-      // below). A stale visibility:hidden must never survive the teardown.
-      if (copyA) {
-        gsap.set(copyA, { opacity: 1, y: 0 });
-        copyA.style.visibility = "";
-      }
-      if (copyB) {
-        gsap.set(copyB, { opacity: 0 });
-        copyB.style.visibility = "";
-      }
-      bChildren.forEach((el) =>
-        gsap.set(el, { clearProps: "opacity,transform" }),
-      );
+      // Copy: settle to the STAGE-0 rest pose (matches the store reset below —
+      // reset() puts morph back at 0). A stale visibility:hidden or a stale
+      // opacity on a later block must never survive into a horizontal-rail /
+      // native remount, where those blocks are real, visible DOM.
+      blocks.forEach((b, i) => {
+        if (!b) return;
+        gsap.set(b.el, i === 0 ? { opacity: 1, y: 0 } : { opacity: 0, y: 0 });
+        b.el.style.visibility = "";
+        b.children.forEach((c) => gsap.set(c.el, { clearProps: "opacity,transform" }));
+      });
       window.removeEventListener("wheel", onWheel, { capture: true });
       window.removeEventListener("touchstart", onTouchStart);
       window.removeEventListener("touchmove", onTouchMove, { capture: true });
@@ -1497,7 +1707,7 @@ export default function FoundersRail() {
         href="/about"
         className="group inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.14em] uppercase text-ink hover:text-[hsl(var(--accent))] transition-colors shrink-0"
       >
-        {isEn ? "Full founder bios" : "Bio complete dei fondatori"}
+        {isEn ? "Full team bios" : "Bio complete del team"}
         <ArrowUpRight
           className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
           aria-hidden="true"
@@ -1534,7 +1744,8 @@ export default function FoundersRail() {
   }
 
   // MORPH mode: vertical CSS-sticky stage. The WebGL particle cloud renders
-  // over [data-founder-stage]; the two DOM copy blocks cross-fade on scroll.
+  // over [data-founder-stage]; the DOM copy blocks cross-fade on the island's
+  // live progress scalar, one block per morph stage.
   if (canMorph) {
     return (
       <section id="founders" className="relative scroll-mt-24">
@@ -1554,67 +1765,69 @@ export default function FoundersRail() {
               <div className="mb-8 max-w-2xl sm:mb-10">{heading()}</div>
               <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-[minmax(0,26rem)_1fr]">
                 {/* Stage: the WebGL particle cloud (persistent canvas, behind the
-                    content) renders over this box. The two DOM portraits are a
+                    content) renders over this box. The DOM portraits are a
                     STATIC POSTER cross-fade — visible only while the cloud is not
                     live (flag-on WebGL2 fallback / island still building), driven
-                    transparent once it renders. Kept in the a11y tree via alt. */}
+                    transparent once it renders. Kept in the a11y tree via alt.
+                    `f.image` is the DOM poster, NOT the sampler's `-headshot`
+                    asset — the headshot preference lives in the island.
+                    STAGE_TOTAL, not founders.length: the compute engine has a
+                    hard four-target cap, so a 5th person degrades to graceful
+                    truncation HERE while the rail/native branches below keep
+                    rendering everyone. */}
                 <div
                   data-founder-stage
                   className="relative mx-auto aspect-[3/4] w-full max-w-[26rem]"
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    ref={stageImgARef}
-                    src={founders[0].image}
-                    alt={`${founders[0].name}, ${
-                      isEn ? founders[0].roleEn : founders[0].roleIt
-                    }`}
-                    data-founder-media
-                    draggable={false}
-                    style={{ opacity: 0 }}
-                    className="absolute inset-0 h-full w-full rounded-lg object-cover"
-                  />
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    ref={stageImgBRef}
-                    src={founders[1].image}
-                    alt={`${founders[1].name}, ${
-                      isEn ? founders[1].roleEn : founders[1].roleIt
-                    }`}
-                    data-founder-media
-                    draggable={false}
-                    style={{ opacity: 0 }}
-                    className="absolute inset-0 h-full w-full rounded-lg object-cover"
-                  />
+                  {founders.slice(0, STAGE_TOTAL).map((f, i) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={f.anchor}
+                      ref={(el) => {
+                        stageImgRefs.current[i] = el;
+                      }}
+                      src={f.image}
+                      alt={`${f.name}, ${isEn ? f.roleEn : f.roleIt}`}
+                      data-founder-media
+                      draggable={false}
+                      style={{ opacity: 0 }}
+                      className="absolute inset-0 h-full w-full rounded-lg object-cover"
+                    />
+                  ))}
                 </div>
-                {/* Copy region: both blocks overlaid, cross-fading on progress. */}
+                {/* Copy region: every block overlaid, cross-fading on progress.
+                    The inline opacity:0 on i > 0 is a FIRST-CLIENT-PAINT
+                    contract, not an SSR one — this branch is client-only
+                    (canMorph depends on `detected`) — so it covers the frames
+                    between the canMorph commit and the gate effect arming the
+                    children. Load-bearing: without it every block paints
+                    stacked. See the writer construction. */}
                 <div className="relative min-h-[26rem]">
-                  <div ref={copyARef} className="absolute inset-x-0 top-0">
-                    <FounderCopy
-                      f={founders[0]}
-                      index={0}
-                      total={total}
-                      isEn={isEn}
-                    />
-                  </div>
-                  <div
-                    ref={copyBRef}
-                    className="absolute inset-x-0 top-0"
-                    style={{ opacity: 0 }}
-                  >
-                    <FounderCopy
-                      f={founders[1]}
-                      index={1}
-                      total={total}
-                      isEn={isEn}
-                    />
-                  </div>
+                  {founders.slice(0, STAGE_TOTAL).map((f, i) => (
+                    <div
+                      key={f.anchor}
+                      ref={(el) => {
+                        copyRefs.current[i] = el;
+                      }}
+                      className="absolute inset-x-0 top-0"
+                      style={i === 0 ? undefined : { opacity: 0 }}
+                    >
+                      <FounderCopy
+                        f={f}
+                        index={i}
+                        total={STAGE_TOTAL}
+                        isEn={isEn}
+                      />
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>
             {/* Gate affordance chrome — fit-section's counter/hairline grammar:
-                stage counter (01/02 → 02/02), a 1px accent hairline whose
-                scaleX tracks the live morph, and an idle scroll hint. Pure
+                stage counter (01/03 → 02/03 → 03/03 at N=3, flipping at each
+                leg midpoint), a 1px accent hairline whose scaleX tracks the live
+                progress scalar NORMALISED over the whole sequence, and an idle
+                scroll hint. Pure
                 presentation → aria-hidden; pointer-events-none so it can't
                 trap the stage's pointer bridge; ships at inline opacity 0 and
                 is faded in/out ONLY by the gate (engage/release) — it never
@@ -1633,8 +1846,13 @@ export default function FoundersRail() {
                   >
                     01
                   </span>
+                  {/* STAGE_TOTAL, not founders.length — the counter's
+                      denominator must agree with the stages the gate can
+                      actually reach. "01" above stays literal: it is the SSR
+                      seed applyStage overwrites via textContent, correct for
+                      any N. */}
                   <span className="text-[11px] tracking-[0.18em] text-ink-dim">
-                    / 02
+                    / {String(STAGE_TOTAL).padStart(2, "0")}
                   </span>
                 </div>
                 <div className="relative mb-[0.3rem] h-px max-w-[16rem] flex-1 bg-[hsl(var(--rule))]">
