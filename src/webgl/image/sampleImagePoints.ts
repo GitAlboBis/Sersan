@@ -1,140 +1,122 @@
 /**
- * Portrait image → particle home positions + per-particle colour + z-relief.
+ * Founder portraits → particle home positions + per-particle colour, z-relief
+ * and INK (the tonal weight that drives disc size).
  *
- * The image analog of text/sampleTextPoints.ts (same offscreen-2D-canvas →
- * getImageData → weighted-random-pick discipline, same xy convention: CSS-px
- * offsets from the block CENTER, y-UP), extended for a photographic morph:
+ * MODEL (rewrite 2026-07-20, after the weighted-pick sampler was rejected).
+ * The previous sampler drew `count` weighted random picks WITH REPLACEMENT over
+ * the candidate cells. Measured on the shipped Michele headshot it spent 63% of
+ * the particle budget stacking duplicates while leaving 11% of the face with no
+ * particle at all — the blocky voids the boss rejected. Its second defect was a
+ * per-pixel `lumCeil`/`neutralSat` backdrop test, which cannot tell "white wall"
+ * from "lit scalp" or "white shirt" and so punched holes through the brightest
+ * parts of the SUBJECT.
  *
- *   - PORTRAIT CROP: the sources are landscape JPEGs (1920×1280) with NO
- *     cutout, so we cover-crop a centred portrait band onto a bounded grid
- *     (~300×420, stride 2) before reading pixels.
- *   - LUMINANCE × RADIAL weighting: each covered cell's pick-weight is its
- *     luminance (0.299/0.587/0.114) raised to `lumGamma`, times a center-radial
- *     falloff around the face — this biases particles ONTO the centred face and
- *     thins the corners/background (there is no alpha cutout to lean on). The
- *     surround itself is isolated by whichever test matches the source: a DARK
- *     environmental surround by `lumFloor`, a BRIGHT studio-white seamless
- *     backdrop by `lumCeil` + `neutralSat` (bright AND near-neutral = backdrop).
- *   - Z-RELIEF: per-particle z = (lum−0.5)·depth + a center bias, so brighter
- *     (frontal, lit) pixels push toward the camera and the cloud reads as a 3D
- *     bust once the render depth-tests it.
- *   - sRGB→LINEAR: every colour is converted per-channel (the exact three.js
- *     SRGBToLinear curve). MANDATORY — the render is toneMapped:false, so raw
- *     sRGB values would render dark/oversaturated.
- *   - INDEX PAIRING: with `pair:true` the picks are radial-sorted (quantised
- *     atan2 sector, then radius) with a SEEDED rng, so index i in portrait A
- *     lands in a comparable region of portrait B — short, legible morph travel.
- *     The seed makes picks + jitter STABLE across resample (a mid-scroll
- *     rebuild must not snap the morph). Both portraits MUST be sampled with the
- *     same `count`. Pass `pair:false` for a chaotic swirl (no region matching).
+ * Both defects are gone because the model changed, following
+ * brunoimbrizi/interactive-particles (`.refs/interactive-particles`):
+ *
+ *   - ONE PARTICLE PER GRID CELL, on a regular grid. Coverage is uniform by
+ *     construction: no holes, no duplicates, no rng anywhere (the sampler is
+ *     fully deterministic — there is no seed).
+ *   - TONE IS CARRIED BY PARTICLE SIZE, NOT BY PARTICLE COUNT. The reference
+ *     does `psize *= max(grey, 0.2)`; we invert it for a light backdrop and
+ *     scale size by INK — the luma-weighted distance from the backdrop colour.
+ *   - NO HARD BACKGROUND MASK. The backdrop simply has ink ≈ 0, so its
+ *     particles shrink to nothing and vanish smoothly. Nothing can punch a hole
+ *     in the subject.
+ *   - SHARED GRID / SHARED CELL LIST. Both portraits are sampled onto the SAME
+ *     grid and one cell list is built from the union of their ink, so output
+ *     index `j` is the same cell in BOTH images. That gives A↔B index pairing
+ *     for free and replaces the old radial-sector sort entirely: the morph
+ *     reads as the portrait re-forming in place.
+ *
+ * Backdrop colour is the per-channel MEDIAN of the two TOP corner patches —
+ * median (not mean) to shrug off a stray dark pixel, top corners only because
+ * the subject's shoulders reach the bottom ones.
+ *
+ * z-RELIEF: per-particle z = (lum−0.5)·depth + a centre bulge, so brighter
+ * (frontal, lit) pixels push toward the camera and the cloud reads as a 3D bust
+ * once the render depth-tests it.
+ *
+ * sRGB→LINEAR: every colour is converted per-channel (the exact three.js
+ * SRGBToLinear curve). MANDATORY — the render is toneMapped:false, so raw sRGB
+ * values would render dark/oversaturated.
  *
  * Returned coordinates/relief are in GRID px (the caller scales grid-px → world
  * to fit the [data-founder-stage] rect, exactly as HeroTextParticles scales
  * text px → world). xy is y-up, from the grid centre.
  */
 
-export interface ImageSampleSpec {
-  /** Offscreen grid width (bounded — cost cap). */
+export interface PortraitPairSpec {
+  /** Shared offscreen grid width. One particle per kept cell — the grid area
+   * (not a `count`) is what sets the instance count. */
   gridW: number;
-  /** Offscreen grid height (portrait-ish). */
+  /** Shared offscreen grid height (portrait, ~5:7). */
   gridH: number;
-  /** Sample stride on the grid (cost bound). */
-  stride: number;
-  /** z relief depth in grid-px: z = (lum−0.5)·depth + center bias. */
+  /** z relief depth in grid-px: z = (lum−0.5)·depth + centre bulge. */
   depth: number;
   /** Extra forward push at the face centre (grid-px), falling off radially. */
   centerZBias: number;
-  /** Radial weight falloff exponent (higher = tighter to the face centre). */
-  radialFalloff: number;
-  /** Radius (normalized) at which the radial weight reaches 0. */
-  radius: number;
-  /** Normalized face-centre Y (0 = top … 1 = bottom); faces sit a touch high. */
-  faceBias: number;
-  /** Luminance exponent — >1 pushes weight toward the brightest (lit) pixels. */
-  lumGamma: number;
-  /** Luminance floor: cells dimmer than this are treated as background, dropped. */
-  lumFloor: number;
-  /**
-   * Saturation (chroma = max−min RGB) floor for BACKGROUND ISOLATION. Cells
-   * with chroma below this are treated as neutral background and dropped, so a
-   * headshot's dark/neutral surround never seeds particles. Skin tones clear a
-   * small floor easily; 0 (default) disables the test. Live-tunable.
-   */
-  satFloor?: number;
-  /**
-   * BRIGHT-backdrop isolation (studio white seamless): cells brighter than this
-   * AND less saturated than `neutralSat` are treated as backdrop and dropped.
-   * The INVERSE of `lumFloor`, which drops a DARK surround. The two tests are
-   * independent, so a white-background headshot runs a near-zero `lumFloor`
-   * (keep the hair/beard/glasses, which are dark AND neutral, and which carry
-   * most of the face's legibility) together with this ceiling. Skin clears the
-   * neutrality test comfortably, so a lit forehead is never mistaken for wall.
-   * Absent (default) = disabled, and the sampler behaves exactly as before.
-   */
-  lumCeil?: number;
-  /**
-   * Chroma (max−min RGB) below which a cell counts as neutral for the `lumCeil`
-   * backdrop test. Default 0.1. Only consulted when `lumCeil` is set.
-   */
-  neutralSat?: number;
-  /**
-   * Optional NORMALIZED focus crop (0..1 of the source), applied BEFORE the
-   * cover-crop-to-grid. Lets a non-headshot / environmental source be cropped to
-   * the face region so the cloud reads as a face. Absent = full frame.
-   */
-  crop?: { x: number; y: number; w: number; h: number };
-  /** Deterministic seed (stable picks + jitter across resample). */
-  seed: number;
-  /** Radial-sort the picks so index i pairs comparable A/B regions (default). */
-  pair: boolean;
+  /** Ink contrast gain applied to the backdrop distance before the curve. */
+  inkGain: number;
+  /** Ink floor — distance below this is remapped to 0 (kills sensor noise). */
+  inkFloor: number;
+  /** Ink gamma (<1 lifts the mid-tones so cheeks/shirt keep some weight). */
+  inkGamma: number;
+  /** Normalized y at which the vertical dissolve starts (bust → darkness). */
+  fadeStart: number;
+  /** Normalized y span over which the dissolve completes. */
+  fadeSpan: number;
+  /** Union-ink above which a cell joins the SHARED cell list. */
+  inkCut: number;
+  /** Ink above which a cell counts toward the measured face extent. Cells
+   * below it are the near-invisible fringe, which would otherwise inflate the
+   * extent and render the face too small in the stage. */
+  extentInk: number;
+  /** Tier ceiling on the instance count (uniform stride subsample if over). */
+  maxCount: number;
 }
 
-export interface ImagePoints {
+/** Per-image, per-particle outputs. Index `j` is the SAME shared cell in both
+ * images of a pair, which is what pairs the A→B morph. */
+export interface PortraitPoints {
   /** count×2 floats: x,y GRID px from the grid centre, y-up. */
   xy: Float32Array;
   /** count×3 floats: LINEAR rgb (sRGB→linear converted). */
   rgb: Float32Array;
   /** count floats: z relief in GRID px (same space as xy). */
   z: Float32Array;
-  widthPx: number;
-  heightPx: number;
-  /** Covered (weighted) candidate cells found — a proportional ink measure. */
-  inkPx: number;
-  /** Half extent (grid px, from centre) of |x| across the picks — a robust
-   * (~99th-percentile) measure of the sampled FACE width; the caller fits this
-   * to the stage rect so the cloud FILLS (not overflows) the stage. */
+  /** count floats in 0..1: tonal weight. Drives particle size and alpha. */
+  ink: Float32Array;
+  /** Half extent (grid px, from centre) of |x| over the cells with
+   * ink > `extentInk` — a robust (~99th-percentile) measure of the sampled
+   * FACE width; the caller fits it to the stage rect so the cloud FILLS (not
+   * overflows) the stage. */
   halfExtentX: number;
-  /** Half extent (grid px) of |y| across the picks — the sampled face height. */
+  /** Half extent (grid px) of |y| over the same cells — the face height. */
   halfExtentY: number;
 }
 
-/** Robust half extent of |component| (grid px, from centre) across the picks —
- * a high percentile so the sampler's few stray outliers don't inflate it. Used
- * by the caller to map the sampled face extent onto the stage rect. */
-function percentileAbs(
-  xy: Float32Array,
-  count: number,
-  comp: 0 | 1,
-  p: number,
-): number {
-  if (count <= 0) return 1;
-  const a = new Float32Array(count);
-  for (let i = 0; i < count; i++) a[i] = Math.abs(xy[i * 2 + comp]);
-  a.sort();
-  const idx = Math.min(count - 1, Math.max(0, Math.floor(count * p)));
-  return Math.max(a[idx], 1e-3);
+export interface PortraitPair {
+  a: PortraitPoints;
+  b: PortraitPoints;
+  /** Final instance count — the caller's particle count FOLLOWS this. */
+  count: number;
+  /** Shared cells found, BEFORE any stride subsample (the calibration number). */
+  sharedCells: number;
+  /** Subsample stride used to reach `count` (1 = none). */
+  stride: number;
+  gridW: number;
+  gridH: number;
 }
 
-/** Small, fast, deterministic PRNG (mulberry32). */
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return function () {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+/** Backdrop-probe patch size (px) taken from each TOP corner. */
+const CORNER_PATCH = 14;
+/** Normalized y of the face centre — the centre-bulge origin (faces sit high). */
+const FACE_CY = 0.44;
+/** Normalized radius over which the centre bulge falls to 0. */
+const BULGE_RADIUS = 0.75;
+/** Sub-cell jitter amplitude in CELL units (breaks the grid without blurring). */
+const JITTER = 0.9;
 
 /** Exact three.js sRGB→linear transfer (ColorManagement.SRGBToLinear). */
 function srgbToLinear(c: number): number {
@@ -143,67 +125,65 @@ function srgbToLinear(c: number): number {
     : Math.pow(c * 0.9478672986 + 0.0521327014, 2.4);
 }
 
-/** Number of angular sectors used to pair A↔B (radial sort). */
-const PAIR_SECTORS = 48;
+/** Deterministic scalar hash → [0,1). Fed the CELL index (never the particle
+ * index) so A and B jitter identically and a particle cannot twitch at rest. */
+function hash01(n: number): number {
+  const s = Math.sin(n) * 43758.5453123;
+  return s - Math.floor(s);
+}
 
-const EMPTY = (count: number): ImagePoints => ({
-  xy: new Float32Array(count * 2),
-  rgb: new Float32Array(count * 3),
-  z: new Float32Array(count),
-  widthPx: 1,
-  heightPx: 1,
-  inkPx: 0,
-  halfExtentX: 1,
-  halfExtentY: 1,
-});
+/** Robust half extent of |component| (grid px, from centre) — a high percentile
+ * so a few stray fringe cells don't inflate it. */
+function percentile(values: number[], p: number): number {
+  if (values.length === 0) return 1;
+  const a = Float64Array.from(values).sort();
+  const idx = Math.min(a.length - 1, Math.max(0, Math.floor(a.length * p)));
+  return Math.max(a[idx], 1e-3);
+}
+
+/** Full-grid rasterization of one portrait: normalized rgb + luminance + ink. */
+interface GridRead {
+  r: Float32Array;
+  g: Float32Array;
+  b: Float32Array;
+  lum: Float32Array;
+  ink: Float32Array;
+}
 
 /**
- * Rasterizes a centred portrait crop of `image` to `spec.gridW × spec.gridH`
- * and samples `count` weighted points inside it.
+ * Cover-crop `image` to the grid aspect (centred), rasterize it, then derive
+ * per-cell ink = luma-weighted distance from the measured backdrop colour,
+ * contrast-curved and vertically dissolved toward the bottom.
  */
-export function sampleImagePoints(
+function readGrid(
   image: HTMLImageElement,
-  srcW: number,
-  srcH: number,
-  count: number,
-  spec: ImageSampleSpec,
-): ImagePoints {
-  const { gridW, gridH, stride } = spec;
-  if (srcW <= 0 || srcH <= 0) return EMPTY(count);
+  spec: PortraitPairSpec,
+): GridRead | null {
+  const { gridW, gridH } = spec;
+  const srcW = image.naturalWidth;
+  const srcH = image.naturalHeight;
+  if (srcW <= 0 || srcH <= 0) return null;
 
   const canvas = document.createElement("canvas");
   canvas.width = gridW;
   canvas.height = gridH;
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return EMPTY(count);
+  if (!ctx) return null;
 
-  // Optional NORMALIZED focus crop (0..1 of the source) — isolates a face
-  // region so a non-headshot / environmental source still samples face-only.
-  // Defaults to the full frame. The cover-crop below fits THIS region to grid.
-  const cr = spec.crop;
-  const regX = cr ? cr.x * srcW : 0;
-  const regY = cr ? cr.y * srcH : 0;
-  const regW = cr ? Math.max(cr.w * srcW, 1) : srcW;
-  const regH = cr ? Math.max(cr.h * srcH, 1) : srcH;
-
-  // Cover-crop the region to the grid's aspect, centred within the region.
+  // Cover-crop the source to the grid's aspect, centred on both axes.
   const targetAspect = gridW / gridH;
-  const regionAspect = regW / regH;
+  const srcAspect = srcW / srcH;
   let cropW: number;
   let cropH: number;
-  let sx: number;
-  let sy: number;
-  if (regionAspect > targetAspect) {
-    cropH = regH;
-    cropW = regH * targetAspect;
-    sx = regX + (regW - cropW) / 2;
-    sy = regY;
+  if (srcAspect > targetAspect) {
+    cropH = srcH;
+    cropW = srcH * targetAspect;
   } else {
-    cropW = regW;
-    cropH = regW / targetAspect;
-    sx = regX;
-    sy = regY + (regH - cropH) / 2;
+    cropW = srcW;
+    cropH = srcW / targetAspect;
   }
+  const sx = (srcW - cropW) / 2;
+  const sy = (srcH - cropH) / 2;
   ctx.drawImage(image, sx, sy, cropW, cropH, 0, 0, gridW, gridH);
 
   let data: Uint8ClampedArray;
@@ -211,164 +191,181 @@ export function sampleImagePoints(
     data = ctx.getImageData(0, 0, gridW, gridH).data;
   } catch {
     // Tainted canvas (should not happen for same-origin static assets).
-    return EMPTY(count);
+    return null;
   }
 
-  // --- Collect covered cells with pick-weights + colour + relief -------------
-  const candX: number[] = [];
-  const candY: number[] = [];
-  const candR: number[] = [];
-  const candG: number[] = [];
-  const candB: number[] = [];
-  const candZ: number[] = [];
-  const cum: number[] = []; // cumulative weight (for weighted pick)
-  let total = 0;
+  const cells = gridW * gridH;
+  const r = new Float32Array(cells);
+  const g = new Float32Array(cells);
+  const b = new Float32Array(cells);
+  const lum = new Float32Array(cells);
+  for (let i = 0; i < cells; i++) {
+    const o = i * 4;
+    const rn = data[o] / 255;
+    const gn = data[o + 1] / 255;
+    const bn = data[o + 2] / 255;
+    r[i] = rn;
+    g[i] = gn;
+    b[i] = bn;
+    lum[i] = 0.299 * rn + 0.587 * gn + 0.114 * bn;
+  }
 
-  const faceCx = 0.5;
-  const faceCy = spec.faceBias;
-  // Aspect scale so the radial falloff is a true circle in grid space.
-  const ax = gridW / gridH;
-  const invR = 1 / Math.max(spec.radius, 1e-3);
+  // --- Backdrop colour: per-channel MEDIAN of the two TOP corner patches -----
+  // Median, not mean: robust to a stray dark pixel. Top corners only: the
+  // subject's shoulders reach the bottom corners.
+  const patch = Math.min(CORNER_PATCH, gridW >> 1, gridH);
+  const cr: number[] = [];
+  const cg: number[] = [];
+  const cb: number[] = [];
+  for (let y = 0; y < patch; y++) {
+    for (let x = 0; x < patch; x++) {
+      const left = y * gridW + x;
+      const right = y * gridW + (gridW - 1 - x);
+      cr.push(r[left], r[right]);
+      cg.push(g[left], g[right]);
+      cb.push(b[left], b[right]);
+    }
+  }
+  const median = (a: number[]) => {
+    a.sort((p, q) => p - q);
+    return a[a.length >> 1];
+  };
+  const bgR = median(cr);
+  const bgG = median(cg);
+  const bgB = median(cb);
 
-  for (let y = 0; y < gridH; y += stride) {
-    for (let x = 0; x < gridW; x += stride) {
-      const idx = (y * gridW + x) * 4;
-      const a = data[idx + 3];
-      if (a < 8) continue;
-      const rn = data[idx] / 255;
-      const gn = data[idx + 1] / 255;
-      const bn = data[idx + 2] / 255;
-      const lum = 0.299 * rn + 0.587 * gn + 0.114 * bn;
-      if (lum < spec.lumFloor) continue;
-      // Bright neutral backdrop (studio white seamless): drop. Gated on
-      // luminance FIRST so dark hair/beard/glasses can never trip it.
-      if (spec.lumCeil != null && lum > spec.lumCeil) {
-        const bmx = Math.max(rn, gn, bn);
-        const bmn = Math.min(rn, gn, bn);
-        if (bmx - bmn < (spec.neutralSat ?? 0.1)) continue;
-      }
-      // Background isolation: drop neutral (low-chroma) pixels — a headshot's
-      // dark/neutral surround, or a bright studio bg, never seeds the cloud.
-      if (spec.satFloor && spec.satFloor > 0) {
-        const mx = Math.max(rn, gn, bn);
-        const mn = Math.min(rn, gn, bn);
-        if (mx - mn < spec.satFloor) continue;
-      }
-
-      const nx = (x / gridW - faceCx) * ax;
-      const ny = y / gridH - faceCy;
-      const dist = Math.sqrt(nx * nx + ny * ny);
-      const radial = Math.pow(Math.max(0, 1 - dist * invR), spec.radialFalloff);
-      if (radial <= 0) continue;
-
-      const w = Math.pow(lum, spec.lumGamma) * radial + 1e-4;
-      total += w;
-      candX.push(x);
-      candY.push(y);
-      candR.push(rn);
-      candG.push(gn);
-      candB.push(bn);
-      // Relief: brighter → forward; plus a smooth center bulge for the bust.
-      candZ.push(
-        (lum - 0.5) * spec.depth + Math.max(0, 1 - dist * invR) * spec.centerZBias,
-      );
-      cum.push(total);
+  // --- Ink: luma-weighted distance from the backdrop, curved + dissolved -----
+  const ink = new Float32Array(cells);
+  const invFloor = 1 / Math.max(1 - spec.inkFloor, 1e-4);
+  for (let y = 0; y < gridH; y++) {
+    const ny = y / gridH;
+    // Vertical dissolve so the bust emerges from darkness instead of reading
+    // as a cut-out. smoothstep so the fringe has no hard edge.
+    const f = Math.min(
+      1,
+      Math.max(0, 1 - (ny - spec.fadeStart) / Math.max(spec.fadeSpan, 1e-4)),
+    );
+    const fade = f * f * (3 - 2 * f);
+    if (fade <= 0) continue;
+    const row = y * gridW;
+    for (let x = 0; x < gridW; x++) {
+      const i = row + x;
+      const dr = r[i] - bgR;
+      const dg = g[i] - bgG;
+      const db = b[i] - bgB;
+      const dist =
+        Math.sqrt(0.299 * dr * dr + 0.587 * dg * dg + 0.114 * db * db) *
+        spec.inkGain;
+      const v = Math.min(1, Math.max(0, (dist - spec.inkFloor) * invFloor));
+      ink[i] = Math.pow(v, spec.inkGamma) * fade;
     }
   }
 
-  const n = cum.length;
-  if (n === 0 || total <= 0) return EMPTY(count);
+  return { r, g, b, lum, ink };
+}
 
-  // --- Weighted random pick (with replacement) + sub-cell jitter ------------
-  const rng = mulberry32(spec.seed);
-  const cx = gridW / 2;
-  const cy = gridH / 2;
+/** Emit the per-particle arrays for one image over the SHARED cell list. */
+function emit(
+  read: GridRead,
+  cells: Int32Array,
+  spec: PortraitPairSpec,
+): PortraitPoints {
+  const { gridW, gridH } = spec;
+  const count = cells.length;
   const xy = new Float32Array(count * 2);
   const rgb = new Float32Array(count * 3);
   const z = new Float32Array(count);
+  const ink = new Float32Array(count);
+  const cx = gridW / 2;
+  const cy = gridH / 2;
+  // Aspect scale so the centre bulge is a true circle in grid space.
+  const ax = gridW / gridH;
+  const extX: number[] = [];
+  const extY: number[] = [];
 
-  for (let i = 0; i < count; i++) {
-    const target = rng() * total;
-    // Binary search the cumulative-weight array.
-    let lo = 0;
-    let hi = n - 1;
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (cum[mid] < target) lo = mid + 1;
-      else hi = mid;
+  for (let j = 0; j < count; j++) {
+    const i = cells[j];
+    const gx = i % gridW;
+    const gy = (i / gridW) | 0;
+    // Stable sub-cell jitter, hashed from the CELL index so A and B agree.
+    const jx = (hash01(i * 12.9898) - 0.5) * JITTER;
+    const jy = (hash01(i * 78.233) - 0.5) * JITTER;
+    const px = gx + 0.5 + jx - cx;
+    const py = -(gy + 0.5 + jy - cy); // y-up
+    xy[j * 2] = px;
+    xy[j * 2 + 1] = py;
+    rgb[j * 3] = srgbToLinear(read.r[i]);
+    rgb[j * 3 + 1] = srgbToLinear(read.g[i]);
+    rgb[j * 3 + 2] = srgbToLinear(read.b[i]);
+
+    // Relief: brighter → forward, plus a smooth centre bulge for the bust.
+    const nx = (gx / gridW - 0.5) * ax;
+    const ny = gy / gridH - FACE_CY;
+    const rad = Math.sqrt(nx * nx + ny * ny) / BULGE_RADIUS;
+    z[j] =
+      (read.lum[i] - 0.5) * spec.depth +
+      Math.max(0, 1 - rad) * spec.centerZBias;
+
+    const v = read.ink[i];
+    ink[j] = v;
+    if (v > spec.extentInk) {
+      extX.push(Math.abs(px));
+      extY.push(Math.abs(py));
     }
-    const k = lo;
-    const px = candX[k] + rng() * stride;
-    const py = candY[k] + rng() * stride;
-    xy[i * 2] = px - cx;
-    xy[i * 2 + 1] = -(py - cy); // y-up
-    rgb[i * 3] = srgbToLinear(candR[k]);
-    rgb[i * 3 + 1] = srgbToLinear(candG[k]);
-    rgb[i * 3 + 2] = srgbToLinear(candB[k]);
-    z[i] = candZ[k];
-  }
-
-  // Robust sampled-face extent (grid px, from centre). Pairing below is a pure
-  // permutation of the SAME point set, so the extent is identical either way —
-  // compute it once here and return it on both branches.
-  const halfExtentX = percentileAbs(xy, count, 0, 0.99);
-  const halfExtentY = percentileAbs(xy, count, 1, 0.99);
-
-  if (!spec.pair) {
-    return {
-      xy,
-      rgb,
-      z,
-      widthPx: gridW,
-      heightPx: gridH,
-      inkPx: n,
-      halfExtentX,
-      halfExtentY,
-    };
-  }
-
-  // --- Radial pairing: sort picks by (angular sector, radius) so index i in A
-  // and B occupy comparable regions → short, legible morph travel. Deterministic
-  // (pure function of the picks), so it is stable across a reseeded resample. --
-  const order = new Int32Array(count);
-  for (let i = 0; i < count; i++) order[i] = i;
-  const keys = new Float64Array(count);
-  let maxR = 1e-4;
-  for (let i = 0; i < count; i++) {
-    const r = Math.hypot(xy[i * 2], xy[i * 2 + 1]);
-    if (r > maxR) maxR = r;
-  }
-  for (let i = 0; i < count; i++) {
-    const vx = xy[i * 2];
-    const vy = xy[i * 2 + 1];
-    const ang = Math.atan2(vy, vx) + Math.PI; // 0..2π
-    const sector = Math.floor((ang / (Math.PI * 2)) * PAIR_SECTORS);
-    keys[i] = sector + Math.hypot(vx, vy) / maxR; // sector.radius
-  }
-  const idx = Array.from(order);
-  idx.sort((p, q) => keys[p] - keys[q]);
-
-  const sxy = new Float32Array(count * 2);
-  const srgb = new Float32Array(count * 3);
-  const sz = new Float32Array(count);
-  for (let i = 0; i < count; i++) {
-    const j = idx[i];
-    sxy[i * 2] = xy[j * 2];
-    sxy[i * 2 + 1] = xy[j * 2 + 1];
-    srgb[i * 3] = rgb[j * 3];
-    srgb[i * 3 + 1] = rgb[j * 3 + 1];
-    srgb[i * 3 + 2] = rgb[j * 3 + 2];
-    sz[i] = z[j];
   }
 
   return {
-    xy: sxy,
-    rgb: srgb,
-    z: sz,
-    widthPx: gridW,
-    heightPx: gridH,
-    inkPx: n,
-    halfExtentX,
-    halfExtentY,
+    xy,
+    rgb,
+    z,
+    ink,
+    halfExtentX: percentile(extX, 0.99),
+    halfExtentY: percentile(extY, 0.99),
+  };
+}
+
+/**
+ * Sample BOTH founder portraits onto one shared grid and return index-paired
+ * per-particle arrays. The instance count FOLLOWS the sampler (one particle per
+ * shared cell, uniformly strided down to `spec.maxCount` if the grid overshoots)
+ * — never the other way round, because padding to a fixed count means
+ * duplicates, and duplicates were the bug.
+ */
+export function samplePortraitPair(
+  imageA: HTMLImageElement,
+  imageB: HTMLImageElement,
+  spec: PortraitPairSpec,
+): PortraitPair | null {
+  const readA = readGrid(imageA, spec);
+  const readB = readGrid(imageB, spec);
+  if (!readA || !readB) return null;
+
+  // --- Shared cell list: the UNION of both inks -----------------------------
+  // Index j in the output arrays is cells[j] in BOTH images, so particle j
+  // morphs from its own cell in A to the SAME cell in B.
+  const total = spec.gridW * spec.gridH;
+  const hits: number[] = [];
+  for (let i = 0; i < total; i++) {
+    if (Math.max(readA.ink[i], readB.ink[i]) > spec.inkCut) hits.push(i);
+  }
+  const sharedCells = hits.length;
+  if (sharedCells === 0) return null;
+
+  // Over the tier ceiling → FIXED uniform stride. Never a random subsample
+  // (that reintroduces clumping) and never a duplicate pad.
+  const stride =
+    sharedCells > spec.maxCount ? Math.ceil(sharedCells / spec.maxCount) : 1;
+  const count = Math.ceil(sharedCells / stride);
+  const cells = new Int32Array(count);
+  for (let j = 0; j < count; j++) cells[j] = hits[j * stride];
+
+  return {
+    a: emit(readA, cells, spec),
+    b: emit(readB, cells, spec),
+    count,
+    sharedCells,
+    stride,
+    gridW: spec.gridW,
+    gridH: spec.gridH,
   };
 }

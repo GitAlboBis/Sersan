@@ -817,26 +817,44 @@ export interface TextMorphParams {
 
 /**
  * OPTIONAL portrait-morph extension (P1R particle-portrait morph). When passed,
- * each particle carries a per-particle LINEAR colour for target A and target B;
- * the render blends A→B with the SAME per-particle stagger the compute kernel
- * uses for the anchor, so colour and position morph in lockstep. When ABSENT the
- * build is BYTE-IDENTICAL to the hero text intro (no colour buffers, additive
- * unlit sprite look) — the shared-engine contract for the hero regression.
+ * each particle carries a per-particle LINEAR colour AND an optional per-particle
+ * INK scalar for target A and target B; the render blends both A→B with the SAME
+ * per-particle stagger the compute kernel uses for the anchor, so colour, size
+ * and position morph in lockstep. When ABSENT the build is BYTE-IDENTICAL to the
+ * hero text intro (no colour buffers, no size buffers, additive unlit sprite
+ * look) — the shared-engine contract for the hero regression.
  *
- * The photographic look uses depth-tested NORMAL blending by default (front
- * discs occlude back → real luminance relief); only mid-flight travel + any
- * >1.0 travelTint feed the selective bloom, so faces stay photographic at rest.
+ * INK → SIZE is the tonal model (after brunoimbrizi/interactive-particles, which
+ * does `psize *= max(grey, 0.2)`): a portrait's tone is carried by particle SIZE
+ * on a uniform one-per-cell grid, NOT by particle density. Density-based tone
+ * needs random resampling, which leaves holes where the rng missed and wastes
+ * the budget on duplicates — the defect this replaced.
+ *
+ * The photographic look uses NORMAL blending with depth OFF by default: the
+ * sampler emits one particle per grid cell, so there is nothing meaningful to
+ * occlude, and depth-testing overlapping discs at slightly different z mottles
+ * and tears the face along luminance edges instead of reading as relief (the
+ * reference implementation, .refs/interactive-particles Particles.js, likewise
+ * sets depthTest:false). Only mid-flight travel + any >1.0 travelTint feed the
+ * selective bloom, so faces stay photographic at rest.
  */
 export interface PortraitMorphOpts {
   /** count×3 LINEAR rgb for target A (index-matched to homeA). */
   colorsA: Float32Array;
   /** count×3 LINEAR rgb for target B (index-matched to homeB). */
   colorsB: Float32Array;
+  /** count floats in 0..1: per-particle tonal weight for target A. Scales the
+   * disc size and alpha. Both `sizeA` and `sizeB` must be present to enable the
+   * ink path; absent = flat-size discs (the pre-ink portrait look). */
+  sizeA?: Float32Array;
+  /** count floats in 0..1: per-particle tonal weight for target B. */
+  sizeB?: Float32Array;
   /** Render blending — "normal" (default, real occlusion) or "additive". */
   blending?: "normal" | "additive";
-  /** Depth test (default true so front discs occlude back = relief). */
+  /** Depth test (default false — one particle per cell has nothing to occlude,
+   * and depth-testing overlapping discs tears the face at luminance edges). */
   depthTest?: boolean;
-  /** Depth write (default true). */
+  /** Depth write (default false, same reason). */
   depthWrite?: boolean;
   /** Colour multiplier (default 1 — faces photographic, no bloom at rest). */
   emissive?: number;
@@ -910,6 +928,16 @@ export function createTextMorphComputeBuild(
     : null;
   const colorBBuffer = portrait
     ? instancedArray(portrait.colorsB.slice(), "vec3")
+    : null;
+  // Portrait INK (tone → disc size + alpha). Scalar `"float"` storage buffers,
+  // so their `.toAttribute()` reads are UNPADDED — no trailing `.xyz` (unlike
+  // the `"vec3"` colour/position buffers above).
+  const hasPortraitSize = !!portrait?.sizeA && !!portrait?.sizeB;
+  const sizeABuffer = hasPortraitSize
+    ? instancedArray(portrait!.sizeA!.slice(), "float")
+    : null;
+  const sizeBBuffer = hasPortraitSize
+    ? instancedArray(portrait!.sizeB!.slice(), "float")
     : null;
   // Entry-assemble fields: the scattered start each particle flies in FROM,
   // and its stagger delay = normalized home-A x (ICS-media: "the normalized X
@@ -1076,6 +1104,15 @@ export function createTextMorphComputeBuild(
   // stage from the SAME stagger the kernel uses for the anchor. Only created on
   // the portrait path (the hero vertex graph is untouched).
   const vMorphColorSrc = hasPortrait ? float(0).toVar() : null;
+  // Portrait: the A→B-blended ink of THIS particle, computed in the vertex stage
+  // (it scales the disc there) and carried to the fragment to fade the fringe.
+  const vInkSrc = hasPortraitSize ? float(0).toVar() : null;
+
+  /** Portrait disc size floor — the share of the disc that is NOT ink-driven,
+   * so a faint particle still exists instead of collapsing to nothing. */
+  const PORTRAIT_SIZE_MIN = 0.32;
+  /** Portrait disc size gained at full ink (validated ratio with SIZE_MIN). */
+  const PORTRAIT_SIZE_INK = 0.66;
 
   const material = new MeshBasicNodeMaterial();
   material.vertexNode = Fn(() => {
@@ -1103,6 +1140,30 @@ export function createTextMorphComputeBuild(
       1.0,
     );
     vAssemble.assign(smoothstep(0.0, 0.35, aw));
+    // Portrait colour/ink-morph scalar — the same staggered A→B wave the kernel
+    // applies to the anchor (delay = hash(instanceIndex)·0.55, window 0.45), so
+    // a particle's colour AND size cross from A to B exactly as it flies A→B.
+    // Computed HERE (not after the size math) because the size expression below
+    // consumes the blended ink. Hero path: this whole block does not exist.
+    let inkNow: AnyNode | null = null;
+    if (hasPortrait) {
+      const rC = hash(instanceIndex);
+      const mC = smoothstep(
+        0.0,
+        1.0,
+        clamp(morphN.sub(rC.mul(0.55)).div(0.45), 0.0, 1.0),
+      ).toVar();
+      vMorphColorSrc!.assign(mC);
+      if (hasPortraitSize) {
+        // `"float"` storage buffers are unpadded — NO `.xyz` on these reads.
+        inkNow = mix(
+          sizeABuffer!.toAttribute(),
+          sizeBBuffer!.toAttribute(),
+          mC,
+        ).toVar();
+        vInkSrc!.assign(inkNow);
+      }
+    }
     const mv = modelViewMatrix.mul(vec4(p, 1.0)).toVar();
     const dist = mv.z.negate();
     const clip = cameraProjectionMatrix.mul(mv).toVar();
@@ -1124,24 +1185,28 @@ export function createTextMorphComputeBuild(
       uSizeComp3 as unknown as AnyNode,
       smoothstep(0.25, 0.75, morph3N),
     );
-    const sizeNode = (uPointSize as unknown as AnyNode)
-      .mul(uPixelRatio as unknown as AnyNode)
-      .mul(float(0.7).add(float(0.7).mul(vRandSrc)))
-      .mul(sizeFD)
-      .div(max(dist, 0.001));
+    // Portrait: tone is carried by SIZE — scale the disc by the blended ink,
+    // and NARROW the per-particle random spread (0.85+0.3·rand instead of
+    // 0.7+0.7·rand), because the old wide range fights the tonal signal once
+    // ink drives size. Hero path keeps its exact original expression.
+    const sizeNode = hasPortraitSize
+      ? (uPointSize as unknown as AnyNode)
+          .mul(uPixelRatio as unknown as AnyNode)
+          .mul(
+            float(PORTRAIT_SIZE_MIN).add(float(PORTRAIT_SIZE_INK).mul(inkNow!)),
+          )
+          .mul(float(0.85).add(float(0.3).mul(vRandSrc)))
+          .mul(sizeFD)
+          .div(max(dist, 0.001))
+      : (uPointSize as unknown as AnyNode)
+          .mul(uPixelRatio as unknown as AnyNode)
+          .mul(float(0.7).add(float(0.7).mul(vRandSrc)))
+          .mul(sizeFD)
+          .div(max(dist, 0.001));
     const corner = positionLocal.xy;
     clip.xy.addAssign(
       corner.mul(sizeNode).div(uViewport as unknown as AnyNode).mul(2.0).mul(clip.w),
     );
-    // Portrait colour-morph scalar — the same staggered A→B wave the kernel
-    // applies to the anchor (delay = hash(instanceIndex)·0.55, window 0.45), so
-    // a particle's colour crosses from A to B exactly as it flies A→B.
-    if (hasPortrait) {
-      const rC = hash(instanceIndex);
-      vMorphColorSrc!.assign(
-        smoothstep(0.0, 1.0, clamp(morphN.sub(rC.mul(0.55)).div(0.45), 0.0, 1.0)),
-      );
-    }
     return clip;
   })();
 
@@ -1150,6 +1215,7 @@ export function createTextMorphComputeBuild(
   const vRandF = varying(vRandSrc);
   const vAssembleF = varying(vAssemble);
   const vMorphColorF = hasPortrait ? varying(vMorphColorSrc!) : null;
+  const vInkF = hasPortraitSize ? varying(vInkSrc!) : null;
 
   // Portrait travel tint (HDR cyan) + emissive — created only on the portrait
   // path so the hero fragment graph is unchanged.
@@ -1205,16 +1271,22 @@ export function createTextMorphComputeBuild(
       .mul(uFade as unknown as AnyNode)
       .mul(vAssembleF)
       .toVar();
+    // Portrait: fade the faint fringe out instead of letting near-zero-ink
+    // particles read as hard dots. The Discard below then removes them entirely.
+    if (hasPortraitSize) {
+      alpha.mulAssign(clamp(float(0.35).add(vInkF!.mul(0.9)), 0.0, 1.0));
+    }
     Discard(alpha.lessThan(0.004));
     return vec4(col, alpha);
   })();
   material.colorNode = (shade as AnyNode).xyz;
   material.opacityNode = (shade as AnyNode).w;
   material.transparent = true;
-  // Portrait: depth-tested normal blending (front discs occlude back = relief);
+  // Portrait: normal blending, depth OFF (one particle per cell → nothing to
+  // occlude; depth-testing overlapping discs mottles/tears luminance edges);
   // hero: additive, depth off (byte-identical to before).
-  material.depthWrite = hasPortrait ? (portrait!.depthWrite ?? true) : false;
-  material.depthTest = hasPortrait ? (portrait!.depthTest ?? true) : false;
+  material.depthWrite = hasPortrait ? (portrait!.depthWrite ?? false) : false;
+  material.depthTest = hasPortrait ? (portrait!.depthTest ?? false) : false;
   material.blending = hasPortrait
     ? portrait!.blending === "additive"
       ? AdditiveBlending
