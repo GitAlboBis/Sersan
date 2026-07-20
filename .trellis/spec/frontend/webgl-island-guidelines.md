@@ -43,6 +43,56 @@ useEffect(() => {
   with explicit geometry ownership: memo-committed vs frame-owned, each disposed by
   exactly one owner).
 
+## Don't: build a TSL `varying()` from an outer `.toVar()` you assign inside the Fn
+
+Confirmed 2026-07-20 against three r184 by generating the shader offline.
+
+**Problem** — the idiom used throughout this file's node materials:
+```ts
+const vThing = float(0).toVar();          // declared OUTSIDE the Fn
+material.vertexNode = Fn(() => {
+  vThing.assign(someExpression);          // assigned INSIDE
+  return clip;
+})();
+const vThingF = varying(vThing);          // read in the fragment
+```
+**`vThingF` is always the `.toVar()`'s INITIAL value.** Never the assigned one.
+
+`VaryingNode.generate` (`three/src/nodes/core/VaryingNode.js:162-182`) calls
+`builder.flowNodeFromShaderStage(VERTEX, …)`, which appends `<varying> = <result>;`
+to `this.flowCode['vertex']` (`NodeBuilder.js:2572-2600`); `buildCode()` then
+**prepends** that buffer ahead of the flow nodes (`GLSLNodeBuilder.js:1478-1497`,
+`WGSLNodeBuilder.js:2106-2128`). So every varying is written at the TOP of vertex
+`main()`, before the `vertexNode` body runs. Generated proof:
+
+```glsl
+nodeVar0 = 1.0;             // outer var re-emitted with its INITIAL value
+nodeVarying1 = nodeVar0;    // varying captured here, at the top
+positionLocal = position;   // ...only now does the Fn body begin
+nodeVar0 = ((nodeUniform0*7.0)+0.25);   // the in-Fn assign — too late
+```
+
+Moving the assignment around inside the Fn changes nothing — a tempting but useless
+"fix". **Instead**, pass the expression straight in:
+```ts
+const thingExpr = someExpression;          // self-contained: uniforms + attributes
+const vThingF = varying(thingExpr);        // re-emitted at the top of main()
+// the Fn body can still use `thingExpr` — three reuses the same generated var,
+// so there is no duplicated ALU.
+```
+
+This silently degrades rather than crashing, which is why it survived so long: a
+varying whose initial happens to be benign just disables a feature. In this repo
+`vAssemble ≡ 1` (per-particle entry fade absent), `vSpeed ≡ 0` (speed→colour travel
+tint never fires), `vRandSrc ≡ 0` (per-particle brightness jitter constant) — all
+invisible-ish. The portrait's two scalars had catastrophic initials instead:
+`vMorphColorF ≡ 0` pinned the A→B colour blend to A (the morph appeared not to work at
+all) and `vInkF ≡ 0` pinned fringe alpha to a constant (a halo of backdrop particles).
+
+**Diagnostic**: if one consumer of a per-particle scalar behaves and another does not,
+check whether the working one reads it in the VERTEX stage directly while the broken
+one goes through a varying. That asymmetry identifies this bug immediately.
+
 ## Convention: scroll-position ⇄ tube parametrization
 
 `uProgress` fed to the line shader must be an **arc-length** fraction (TubeGeometry's
