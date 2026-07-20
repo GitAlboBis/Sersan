@@ -273,13 +273,24 @@ export default function CaseStudiesRail() {
   const skewRef = useRef<HTMLDivElement | null>(null);
   const railRef = useRef<HTMLUListElement | null>(null);
 
+  // Subscribed, not sampled: a window snapped under 768px (or devtools docked
+  // sideways, or OS reduced-motion toggled mid-session) must flip the rail to
+  // the native snap scroller. Sampling once at mount left the pinned track +
+  // live Draggable on viewports that have no narrow-width layout.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const mobile = window.matchMedia("(max-width: 768px)").matches;
-    const coarse = window.matchMedia("(pointer: coarse)").matches;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    setMode(mobile || coarse || reduced ? "native" : "pinned");
-    setDetected(true);
+    const qs = [
+      window.matchMedia("(max-width: 768px)"),
+      window.matchMedia("(pointer: coarse)"),
+      window.matchMedia("(prefers-reduced-motion: reduce)"),
+    ];
+    const sync = () => {
+      setMode(qs.some((q) => q.matches) ? "native" : "pinned");
+      setDetected(true);
+    };
+    sync();
+    qs.forEach((q) => q.addEventListener("change", sync));
+    return () => qs.forEach((q) => q.removeEventListener("change", sync));
   }, []);
 
   // ScrollTrigger scrub + analytic card motion + drag bridge + velocity skew
@@ -549,6 +560,21 @@ export default function CaseStudiesRail() {
       // survives route changes).
       useRailStore.getState().reset();
     };
+  }, [detected, mode]);
+
+  // A mode flip swaps the pinned runway (100vh + travel) for the native
+  // scroller, so the document height changes with no guaranteed resize event
+  // (an OS reduced-motion toggle fires none). Refresh once the new tree has
+  // painted so every other trigger on the page re-measures. Skipped on the
+  // initial detection settle — the scrub effect above already measures there.
+  const prevModeRef = useRef<"pinned" | "native" | null>(null);
+  useEffect(() => {
+    if (!detected) return;
+    const prev = prevModeRef.current;
+    prevModeRef.current = mode;
+    if (prev === null || prev === mode) return;
+    const raf = requestAnimationFrame(() => ScrollTrigger.refresh());
+    return () => cancelAnimationFrame(raf);
   }, [detected, mode]);
 
   const onHover = (index: number, target: number) =>

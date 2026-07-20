@@ -408,15 +408,24 @@ export default function FitSection() {
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const skewRef = useRef<HTMLDivElement | null>(null);
 
+  // Subscribed, not sampled: a window resized under 768px (or devtools docked
+  // sideways, or OS reduced-motion flipped mid-session) must flip the layout
+  // mode, otherwise the pinned two-column theater stays on a viewport that has
+  // no narrow-width variant.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const mobile = window.matchMedia("(max-width: 768px)").matches;
-    const coarse = window.matchMedia("(pointer: coarse)").matches;
-    const reduced = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    setMode(mobile || coarse || reduced ? "native" : "pinned");
-    setDetected(true);
+    const qs = [
+      window.matchMedia("(max-width: 768px)"),
+      window.matchMedia("(pointer: coarse)"),
+      window.matchMedia("(prefers-reduced-motion: reduce)"),
+    ];
+    const sync = () => {
+      setMode(qs.some((q) => q.matches) ? "native" : "pinned");
+      setDetected(true);
+    };
+    sync();
+    qs.forEach((q) => q.addEventListener("change", sync));
+    return () => qs.forEach((q) => q.removeEventListener("change", sync));
   }, []);
 
   // Verdict-beats scrub — pinned mode only, after detection settles.
@@ -818,9 +827,33 @@ export default function FitSection() {
       if (lineEl) gsap.set(lineEl, { clearProps: "transform" });
       ensureSpan();
       if (poseSpan) gsap.set(poseSpan, { clearProps: "transform" });
-      runway.style.height = "";
+      // NOTE: the measured runway height is deliberately NOT released here.
+      // This cleanup also runs on a pure re-arm (EN↔IT toggle re-runs the
+      // effect with the user parked mid-section). Clearing the inline height
+      // drops the runway from ~520vh to the JSX minHeight of 100vh for the
+      // window between destroy and the next measure(), and any layout-forcing
+      // read in that window (gsap.set transform parsing, SplitText re-split)
+      // makes the browser clamp scrollY against the shrunken document —
+      // ejecting the reader out of the section. Keeping the stale px height
+      // means the document never changes size; measure() overwrites it on the
+      // next arm. On a true unmount (or a pinned→native switch, which renders
+      // a different subtree with no runway node) the element is discarded
+      // together with its inline style, so releasing it buys nothing.
     };
   }, [detected, mode, isEn]);
+
+  // A pinned→native flip discards the ~520vh runway with no guaranteed resize
+  // event (an OS reduced-motion toggle fires none), so the rest of the page
+  // must re-measure against the new document height once the new tree paints.
+  const prevModeRef = useRef<"pinned" | "native" | null>(null);
+  useEffect(() => {
+    if (!detected) return;
+    const prev = prevModeRef.current;
+    prevModeRef.current = mode;
+    if (prev === null || prev === mode) return;
+    const raf = requestAnimationFrame(() => ScrollTrigger.refresh());
+    return () => cancelAnimationFrame(raf);
+  }, [detected, mode]);
 
   /* ---- Shared blocks (heading / closing — copy byte-identical) -------- */
 

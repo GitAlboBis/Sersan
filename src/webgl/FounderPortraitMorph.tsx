@@ -62,13 +62,15 @@ import { founders } from "@/data/founders";
 import type { ImagePoints, ImageSampleSpec } from "./image/sampleImagePoints";
 
 const COUNT_BY_TIER: Record<"full" | "lite", number> = {
-  full: 26000,
+  full: 42000,
   lite: 12000,
 };
 
 // --- Sampler grid + look constants -----------------------------------------
-const GRID_W = 300;
-const GRID_H = 420;
+// Finer sample grid = less pick jitter = sharper features; same 5:7 aspect,
+// stride stays 2. More, smaller discs (COUNT_BY_TIER) resolve facial detail.
+const GRID_W = 420;
+const GRID_H = 588;
 const STRIDE = 2;
 /** Portrait fill fraction of the stage rect (leaves a small margin). */
 const STAGE_FILL = 0.92;
@@ -83,19 +85,41 @@ const SEED_B = 0x9c3f22;
  * luminance; a neutral bg can additionally be dropped by raising sat. */
 const DEFAULT_LUM_THRESHOLD = 0.1;
 const DEFAULT_SAT_FLOOR = 0;
+/** Headshot sources are studio white-seamless portraits, so their background
+ * isolation is the INVERSE of the environmental fallbacks': a luminance CEILING
+ * plus a neutrality test kills the wall and the white shirt, while the floor
+ * drops to near-zero so the dark hair/beard/glasses that carry the face's
+ * legibility survive. */
+const HEADSHOT_LUM_FLOOR = 0.02;
+const HEADSHOT_LUM_CEIL = 0.8;
+const HEADSHOT_NEUTRAL_SAT = 0.1;
+/** A headshot is already tight on the face, so the sampler does not need the
+ * fallbacks' aggressive centre bias: a flatter luminance exponent (dark beard
+ * and brows keep a fair share of the particles instead of being starved by the
+ * lit skin) and a wide, gentle radial falloff that only feathers the corners. */
+const HEADSHOT_LUM_GAMMA = 0.6;
+const HEADSHOT_RADIUS = 1.05;
+const HEADSHOT_FALLOFF = 0.85;
 /** Modest emissive so faces stay photographic at rest (task: ~1.0–1.3). */
-const DEFAULT_EMISSIVE = 1.1;
-/** Fallback (environmental) sources: PER-FOUNDER centred upper crop to isolate
- * each face — Alessandro and Michele sit differently in their environmental
- * photos, so a single shared crop cut Michele. Indexed by founder; only used
- * when a tight headshot file is absent. Interim defaults (real headshots are
- * coming); live-tunable via resample({crop}) / resample({cropA,cropB}). */
+const DEFAULT_EMISSIVE = 1.18;
+/** Fallback (environmental) sources: PER-FOUNDER face crop, measured from the
+ * actual photos — Alessandro sits centre-right and in focus, Michele centre-left,
+ * so a shared crop cut one of them. Sized to the grid's 5:7 aspect (normalized
+ * w/h = 0.476 on a 3:2 source) so the sampler's cover-crop is a near no-op, and
+ * both crops are the SAME size so the two heads share one world scale (the build
+ * fits `Math.max` of the two extents). Positioned so each face centre lands at
+ * ~`faceBias` of the crop height. Superseded automatically the moment a tight
+ * /founders/<slug>-headshot.<ext> lands; live-tunable via
+ * resample({cropA, cropB}). */
 const DEFAULT_FALLBACK_CROPS = [
-  { x: 0.3, y: 0.02, w: 0.42, h: 0.58 }, // Alessandro
-  { x: 0.34, y: 0.06, w: 0.4, h: 0.56 }, // Michele
+  { x: 0.458, y: 0.079, w: 0.219, h: 0.46 }, // Alessandro
+  { x: 0.221, y: 0.0, w: 0.219, h: 0.46 }, // Michele
 ];
 
-/** Shape of the sampler spec minus the per-call/tunable fields. */
+/** Shape of the sampler spec minus the per-call/tunable fields. The radial
+ * falloff/radius/lumGamma below are the ENVIRONMENTAL-FALLBACK values (tuned for
+ * a cropped face inside a wider frame); headshot sources override all three in
+ * `specFor` with the flatter, wider HEADSHOT_* profile. */
 const SAMPLE_SPEC_BASE: Omit<
   ImageSampleSpec,
   "seed" | "lumFloor" | "satFloor" | "crop"
@@ -105,8 +129,8 @@ const SAMPLE_SPEC_BASE: Omit<
   stride: STRIDE,
   depth: 90, // grid-px of luminance relief front-to-back (capped in toWorld)
   centerZBias: 40, // extra forward bulge at the face centre
-  radialFalloff: 1.7, // tighter to the centred face
-  radius: 0.72,
+  radialFalloff: 1.15, // the crop isolates the face now — this only feathers corners
+  radius: 0.95, // wide enough to keep jaw, ears and hair inside full weight
   faceBias: 0.44, // faces sit a touch above centre
   lumGamma: 1.15,
   pair: true,
@@ -122,9 +146,9 @@ const DOLLY = 2.2;
 /** Mid-flight pointer parallax (radians), gated by the same sin(g·π) envelope. */
 const PARALLAX_MAX = 0.18;
 /** Entry assemble duration (seconds) once the section reveals. */
-const ENTRY_DURATION = 2.2;
+const ENTRY_DURATION = 1.8;
 /** One-shot A→B (or B→A) auto-play duration (seconds). Mirrors the hero morph. */
-const MORPH_DURATION = 2.6;
+const MORPH_DURATION = 1.4;
 /** Off-screen cull margin (CSS px). */
 const CULL_PAD = 120;
 
@@ -242,6 +266,8 @@ export function FounderPortraitMorph() {
   const satFloorRef = useRef(DEFAULT_SAT_FLOOR);
   const cropARef = useRef<Crop>(undefined);
   const cropBRef = useRef<Crop>(undefined);
+  const headshotARef = useRef(false);
+  const headshotBRef = useRef(false);
   /** Dev override for uMorph (null = gate/scroll control). */
   const morphOverrideRef = useRef<number | null>(null);
 
@@ -252,12 +278,23 @@ export function FounderPortraitMorph() {
   const quat = useRef(new THREE.Quaternion()).current;
   const cornerV = useRef(new THREE.Vector3()).current;
 
-  const specFor = (seed: number, crop: Crop): ImageSampleSpec => ({
+  const specFor = (
+    seed: number,
+    crop: Crop,
+    isHeadshot: boolean,
+  ): ImageSampleSpec => ({
     ...SAMPLE_SPEC_BASE,
     seed,
-    lumFloor: lumThresholdRef.current,
-    satFloor: satFloorRef.current,
     crop,
+    lumFloor: isHeadshot ? HEADSHOT_LUM_FLOOR : lumThresholdRef.current,
+    satFloor: isHeadshot ? 0 : satFloorRef.current,
+    lumCeil: isHeadshot ? HEADSHOT_LUM_CEIL : undefined,
+    neutralSat: isHeadshot ? HEADSHOT_NEUTRAL_SAT : undefined,
+    lumGamma: isHeadshot ? HEADSHOT_LUM_GAMMA : SAMPLE_SPEC_BASE.lumGamma,
+    radius: isHeadshot ? HEADSHOT_RADIUS : SAMPLE_SPEC_BASE.radius,
+    radialFalloff: isHeadshot
+      ? HEADSHOT_FALLOFF
+      : SAMPLE_SPEC_BASE.radialFalloff,
   });
 
   // === Load + sample both portraits (headshot preferred, else fallback) ======
@@ -279,19 +316,21 @@ export function FounderPortraitMorph() {
         // per-founder face crop.
         cropARef.current = a.isHeadshot ? undefined : DEFAULT_FALLBACK_CROPS[0];
         cropBRef.current = b.isHeadshot ? undefined : DEFAULT_FALLBACK_CROPS[1];
+        headshotARef.current = a.isHeadshot;
+        headshotBRef.current = b.isHeadshot;
         sampleARef.current = mod.sampleImagePoints(
           a.img,
           a.img.naturalWidth,
           a.img.naturalHeight,
           count,
-          specFor(SEED_A, cropARef.current),
+          specFor(SEED_A, cropARef.current, a.isHeadshot),
         );
         sampleBRef.current = mod.sampleImagePoints(
           b.img,
           b.img.naturalWidth,
           b.img.naturalHeight,
           count,
-          specFor(SEED_B, cropBRef.current),
+          specFor(SEED_B, cropBRef.current, b.isHeadshot),
         );
         setSampleEpoch((e) => e + 1);
       })
@@ -386,11 +425,20 @@ export function FounderPortraitMorph() {
       hz: maxAbsZ * zFactor,
     };
 
+    // A rebuild can arrive long BEFORE the entry has ever played: measure()
+    // bumps measureVersion on mount, on intro-complete, on fonts-ready and on
+    // every resize, and the build effect re-runs on each. Taking the preserve
+    // path then would seed the cloud at its formed home positions AND pin
+    // uAssemble at 1 — silently consuming the entry so the section arrives
+    // already formed (the bug). Only a rebuild that happens after the entry
+    // actually completed may skip it; every earlier one re-scatters and replays.
+    const keepEntry = preserveState && entryRef.current >= 1;
+
     // Seed positions. Fresh build → a scattered cloud the particles fly IN from
     // on the entry assemble. Live rebuild (preserveState) → the current home so
     // the morph does not snap (keep uMorph).
     let seed: Float32Array;
-    if (preserveState) {
+    if (keepEntry) {
       seed = (morphRef.current >= 0.5 ? homeB : homeA).slice();
     } else {
       seed = new Float32Array(count * 3);
@@ -405,8 +453,10 @@ export function FounderPortraitMorph() {
     }
 
     // --- DENSITY: default disc size so ~count soft discs OVERLAP into tone -----
-    // spacing ≈ sqrt(stageArea_devpx / count); disc diameter ≈ 1.9× spacing so
-    // neighbours touch and the face reads as continuous shaded tone, not dots.
+    // spacing ≈ sqrt(stageArea_devpx / count); disc diameter ≈ 1.55× spacing so
+    // neighbours cover without smearing. With the crisper disc edge (see the
+    // portrait branch of gpgpuNodeSim shade()), the old 1.9× overlap averaged
+    // neighbours into mush; 1.55× keeps coverage while resolving facial detail.
     const dprNow = Math.min(
       typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1,
       2,
@@ -414,7 +464,7 @@ export function FounderPortraitMorph() {
     const areaDev =
       sr.width * dprNow * sr.height * dprNow * STAGE_FILL * STAGE_FILL;
     const spacingDev = Math.sqrt(Math.max(areaDev / count, 1));
-    const discDev = spacingDev * 1.9;
+    const discDev = spacingDev * 1.55;
     const defPointSize = THREE.MathUtils.clamp(
       (discDev * CAMERA_Z) / (dprNow * 1.05),
       10,
@@ -433,9 +483,9 @@ export function FounderPortraitMorph() {
       homeB,
       count,
       {
-        SPRING: 34,
-        DAMPING: 6.2,
-        MAX_SPEED: 11,
+        SPRING: 52,
+        DAMPING: 7.5,
+        MAX_SPEED: 16,
         TURB: 9,
         POINT_SIZE: pointSize,
         POINT_ALPHA: 1.0,
@@ -465,11 +515,18 @@ export function FounderPortraitMorph() {
     built.uSizeComp3.value = 1;
     built.uPointSize.value = pointSize;
 
-    if (preserveState) {
-      // Live rebuild: keep the morph where the user left it, skip the entry.
+    if (keepEntry) {
+      // Live rebuild after the entry finished: keep the morph where the user
+      // left it, skip the entry.
       built.uAssemble.value = 1;
       built.uMorph.value = morphRef.current;
       entryRef.current = 1;
+    } else if (preserveState) {
+      // Rebuild BEFORE the entry played (a measure bump / resize while the
+      // section is still below the fold): keep the morph position but carry the
+      // entry progress across so it still plays when the section is reached.
+      built.uAssemble.value = entryRef.current;
+      built.uMorph.value = morphRef.current;
     } else {
       // Fresh build → replay the entry + reset the smoothers.
       built.uAssemble.value = 0;
@@ -524,14 +581,14 @@ export function FounderPortraitMorph() {
       ia.naturalWidth,
       ia.naturalHeight,
       count,
-      specFor(SEED_A, cropARef.current),
+      specFor(SEED_A, cropARef.current, headshotARef.current),
     );
     sampleBRef.current = mod.sampleImagePoints(
       ib,
       ib.naturalWidth,
       ib.naturalHeight,
       count,
-      specFor(SEED_B, cropBRef.current),
+      specFor(SEED_B, cropBRef.current, headshotBRef.current),
     );
     buildNowRef.current(true);
   };
@@ -656,11 +713,15 @@ export function FounderPortraitMorph() {
     if (store.assembleDone !== assembleDone) store.setAssembleDone(assembleDone);
 
     // --- In-view fade (edge ramp) -------------------------------------------
+    // Held at 0 until the entry assemble has begun: before the reveal the
+    // particles sit motionless at their scatter seeds (uAssemble = 0, no
+    // transit turbulence) — a frozen dust field we must never show.
     const ramp = ih * 0.28;
     const edge = Math.min(1, (ih - vpY) / ramp, (vpY + rect.h) / ramp);
+    const shown = store.reveal >= 1 || entryRef.current > 0;
     fadeRef.current = THREE.MathUtils.damp(
       fadeRef.current,
-      THREE.MathUtils.clamp(edge, 0, 1),
+      shown ? THREE.MathUtils.clamp(edge, 0, 1) : 0,
       8,
       delta,
     );

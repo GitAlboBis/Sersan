@@ -112,13 +112,24 @@ export default function AuditWeekTimeline({ week, isEn }: AuditWeekTimelineProps
   // rAF crossfade tick — no React state churn during scroll.
   const progressRef = useRef(0);
 
+  // Subscribed, not sampled: a window snapped under 768px (or devtools docked
+  // sideways, or OS reduced-motion toggled mid-session) must flip the timeline
+  // to the native stack. Sampling once at mount left the pinned runway + live
+  // Draggable/Snap on viewports that have no such layout.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const mobile = window.matchMedia("(max-width: 768px)").matches;
-    const coarse = window.matchMedia("(pointer: coarse)").matches;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    setMode(mobile || coarse || reduced ? "native" : "pinned");
-    setDetected(true);
+    const qs = [
+      window.matchMedia("(max-width: 768px)"),
+      window.matchMedia("(pointer: coarse)"),
+      window.matchMedia("(prefers-reduced-motion: reduce)"),
+    ];
+    const sync = () => {
+      setMode(qs.some((q) => q.matches) ? "native" : "pinned");
+      setDetected(true);
+    };
+    sync();
+    qs.forEach((q) => q.addEventListener("change", sync));
+    return () => qs.forEach((q) => q.removeEventListener("change", sync));
   }, []);
 
   // rAF crossfade: drive each Day card's opacity + inert/aria state and the
@@ -333,6 +344,21 @@ export default function AuditWeekTimeline({ week, isEn }: AuditWeekTimelineProps
       useAuditTimelineStore.getState().reset();
     };
   }, [detected, mode, count]);
+
+  // A mode flip adds/removes the px-measured runway (the cleanup above clears
+  // section.style.height), so the document height changes with no guaranteed
+  // resize event (an OS reduced-motion toggle fires none). Refresh once the new
+  // tree has painted so every other trigger on the page re-measures. Skipped on
+  // the initial detection settle — the effect above already measures there.
+  const prevModeRef = useRef<"pinned" | "native" | null>(null);
+  useEffect(() => {
+    if (!detected) return;
+    const prev = prevModeRef.current;
+    prevModeRef.current = mode;
+    if (prev === null || prev === mode) return;
+    const raf = requestAnimationFrame(() => ScrollTrigger.refresh());
+    return () => cancelAnimationFrame(raf);
+  }, [detected, mode]);
 
   const heading = (
     <SectionHeading

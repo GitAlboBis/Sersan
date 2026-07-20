@@ -1167,7 +1167,13 @@ export function createTextMorphComputeBuild(
 
   const shade = Fn(() => {
     const rr = length(vQuadUv);
-    const a = smoothstep(0.5, 0.12, rr).toVar();
+    // Portrait: a much crisper disc edge — the hero's soft mote (0.5→0.12
+    // feather) averages overlapping photographic discs into mush; a tight
+    // edge lets depth-tested neighbours resolve facial detail. Hero path
+    // unchanged (byte-identical contract).
+    const a = (
+      hasPortrait ? smoothstep(0.5, 0.34, rr) : smoothstep(0.5, 0.12, rr)
+    ).toVar();
     let col: AnyNode;
     if (hasPortrait) {
       // Per-particle photographic colour, morphed A→B by the vertex-computed

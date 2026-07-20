@@ -178,8 +178,17 @@ export function DriftParticles({ tier, anchors, pathname }: DriftParticlesProps)
     geo.instanceCount = count;
     return geo;
     // route.particleCountScale changes the count → rebuild on route.
+    //
+    // `k` and `worldViewWidth` are INTENTIONALLY omitted (do not "fix" this
+    // back): both derive from useThree().size, which R3F republishes on every
+    // ResizeObserver observation, so listing them reallocated three Float32Arrays
+    // + a fresh InstancedBufferGeometry for up to 3000 instances on every tick of
+    // a resize drag. They are recomputed on every render regardless, so the memo
+    // body still reads current values whenever it does run — the spawn spread is
+    // simply refreshed once on the 150ms-debounced `anchors.version` bump from
+    // SectionBus instead of per observation tick.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [count, anchors.version, k, worldViewWidth]);
+  }, [count, anchors.version]);
 
   useEffect(() => () => geometry?.dispose(), [geometry]);
 
@@ -192,7 +201,13 @@ export function DriftParticles({ tier, anchors, pathname }: DriftParticlesProps)
     uniforms.uColorB.value.set("#7C5CFF").lerp(routeColors.b, colorBlend);
   }, [uniforms, routeColors, colorBlend]);
 
-  useFrame((_, delta) => {
+  useFrame((_, rawDelta) => {
+    // Clamp the delta like every other island. R3F's rAF loop stops in a hidden
+    // tab and the clock's delta is unclamped, so the first frame after a refocus
+    // carries the whole background duration — feeding that straight into uTime
+    // snaps the sin/cos wander by up to ~8% of screen height in one frame (a
+    // visible pop on every route). 1/30 matches HeroLogo/NeuralLattice/etc.
+    const delta = Math.min(rawDelta, 1 / 30);
     // On the ON path the TSL material loads lazily; until its chunk resolves
     // `uniforms` is undefined and the per-frame writes are skipped. On the OFF
     // path `uniforms` is always set synchronously.

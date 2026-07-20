@@ -249,12 +249,22 @@ function ResourceCard({
   preview,
 }: ResourceCardProps) {
   const rectRef = useRef<DOMRect | null>(null);
+  const scrollYRef = useRef(0);
   const lastRef = useRef({ x: -1, y: -1 });
   const wipeRef = useRef<HTMLDivElement | null>(null);
 
   const writeLensVars = (el: HTMLElement, clientX: number, clientY: number) => {
-    const rect = rectRef.current;
+    let rect = rectRef.current;
     if (!rect) return;
+    // getBoundingClientRect is viewport-relative, so any scroll invalidates
+    // the cached rect — and pointerleave does NOT fire while the card merely
+    // translates under a stationary cursor. Re-read once per scroll-then-move
+    // (not per move, not in a frame loop) so the lens stays glued to the
+    // pointer while preserving the "no rect read per move" contract.
+    if (window.scrollY !== scrollYRef.current) {
+      rect = rectRef.current = el.getBoundingClientRect();
+      scrollYRef.current = window.scrollY;
+    }
     const x = Math.round(clientX - rect.left);
     const y = Math.round(clientY - rect.top);
     const last = lastRef.current;
@@ -270,6 +280,7 @@ function ResourceCard({
     if (e.pointerType === "touch" || !cardFxOn()) return;
     // ONE rect read per pointerenter — cached for every move/click after it.
     rectRef.current = e.currentTarget.getBoundingClientRect();
+    scrollYRef.current = window.scrollY;
     lastRef.current.x = -1;
     lastRef.current.y = -1;
     writeLensVars(e.currentTarget, e.clientX, e.clientY);

@@ -11,7 +11,10 @@
  *   - LUMINANCE × RADIAL weighting: each covered cell's pick-weight is its
  *     luminance (0.299/0.587/0.114) raised to `lumGamma`, times a center-radial
  *     falloff around the face — this biases particles ONTO the centred face and
- *     thins the corners/background (there is no alpha cutout to lean on).
+ *     thins the corners/background (there is no alpha cutout to lean on). The
+ *     surround itself is isolated by whichever test matches the source: a DARK
+ *     environmental surround by `lumFloor`, a BRIGHT studio-white seamless
+ *     backdrop by `lumCeil` + `neutralSat` (bright AND near-neutral = backdrop).
  *   - Z-RELIEF: per-particle z = (lum−0.5)·depth + a center bias, so brighter
  *     (frontal, lit) pixels push toward the camera and the cloud reads as a 3D
  *     bust once the render depth-tests it.
@@ -58,6 +61,22 @@ export interface ImageSampleSpec {
    * small floor easily; 0 (default) disables the test. Live-tunable.
    */
   satFloor?: number;
+  /**
+   * BRIGHT-backdrop isolation (studio white seamless): cells brighter than this
+   * AND less saturated than `neutralSat` are treated as backdrop and dropped.
+   * The INVERSE of `lumFloor`, which drops a DARK surround. The two tests are
+   * independent, so a white-background headshot runs a near-zero `lumFloor`
+   * (keep the hair/beard/glasses, which are dark AND neutral, and which carry
+   * most of the face's legibility) together with this ceiling. Skin clears the
+   * neutrality test comfortably, so a lit forehead is never mistaken for wall.
+   * Absent (default) = disabled, and the sampler behaves exactly as before.
+   */
+  lumCeil?: number;
+  /**
+   * Chroma (max−min RGB) below which a cell counts as neutral for the `lumCeil`
+   * backdrop test. Default 0.1. Only consulted when `lumCeil` is set.
+   */
+  neutralSat?: number;
   /**
    * Optional NORMALIZED focus crop (0..1 of the source), applied BEFORE the
    * cover-crop-to-grid. Lets a non-headshot / environmental source be cropped to
@@ -221,6 +240,13 @@ export function sampleImagePoints(
       const bn = data[idx + 2] / 255;
       const lum = 0.299 * rn + 0.587 * gn + 0.114 * bn;
       if (lum < spec.lumFloor) continue;
+      // Bright neutral backdrop (studio white seamless): drop. Gated on
+      // luminance FIRST so dark hair/beard/glasses can never trip it.
+      if (spec.lumCeil != null && lum > spec.lumCeil) {
+        const bmx = Math.max(rn, gn, bn);
+        const bmn = Math.min(rn, gn, bn);
+        if (bmx - bmn < (spec.neutralSat ?? 0.1)) continue;
+      }
       // Background isolation: drop neutral (low-chroma) pixels — a headshot's
       // dark/neutral surround, or a bright studio bg, never seeds the cloud.
       if (spec.satFloor && spec.satFloor > 0) {

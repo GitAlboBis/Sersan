@@ -23,7 +23,6 @@ import {
 import { useIntroStore } from "@/webgl/store/introStore";
 import { founderCardMotion } from "@/webgl/store/founderMotion";
 import { useTierStore } from "@/webgl/store/tierStore";
-import { webgpuEnabled } from "@/webgl/renderer/createRenderer";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
@@ -453,25 +452,49 @@ export default function FoundersRail() {
 
   const tier = useTierStore((s) => s.tier);
   const tierResolved = useTierStore((s) => s.resolved);
+  // The RESOLVED runtime backend (null until the Canvas exists). NOT the
+  // build-time WebGPU flag — see canMorph below.
+  const backend = useTierStore((s) => s.backend);
 
   // SSR default = pinned (desktop) layout so all links are in the initial
   // HTML — same convention as case-studies-rail.
   const [mode, setMode] = useState<"pinned" | "native">("pinned");
   const [detected, setDetected] = useState(false);
+  // Enough room for the morph stage's TWO-COLUMN layout (see the mode effect).
+  const [roomy, setRoomy] = useState(false);
 
   // MORPH mode: the WebGL particle-portrait island is mounted (Scene.tsx). It
-  // requires the RESOLVED pinned desktop path + full tier + the WebGPU flag.
+  // requires the RESOLVED pinned desktop path + full tier + a viewport with
+  // room for the two-column stage + a TRUE-WebGPU runtime backend.
   // tierStore uses strict `innerWidth < 768` while the mode effect uses
   // matchMedia('(max-width: 768px)'), so gating on detected + mode==='pinned'
   // guarantees: whenever the section is native for ANY reason, the DOM portrait
-  // shows and no store writes leak. On pinned-but-not-full/webgpu it falls back
+  // shows and no store writes leak. On pinned-but-not-eligible it falls back
   // to the horizontal DOM rail (mode 2).
+  //
+  // `backend === "webgpu"` (NOT `webgpuEnabled()`): the flag is a build-time
+  // env read, so on a flag-on build in a browser without WebGPU the renderer
+  // resolves to the WebGL2 fallback and the island — which requires a compute
+  // backend — never builds and never calls setActive(true). The gate then never
+  // engages, `morph` never advances, and founder B's copy + poster (both
+  // rendered at opacity 0) stayed permanently invisible and unreachable. The
+  // horizontal rail shows BOTH founders, so it is the correct fallback. `null`
+  // (unresolved) is deliberately falsy: first paint must never show a layout
+  // the island may turn out to be unable to drive.
+  //
+  // `roomy`: the morph stage stacks a 26rem portrait ABOVE the copy column
+  // below the `lg` breakpoint, inside a `h-screen … overflow-hidden` sticky
+  // frame — ~1360px of content that gets clipped at BOTH ends (heading, and the
+  // credential chips / Previously row / LinkedIn link) on 769–1023px-wide or
+  // short viewports, with no scroll position able to reveal it. Below the floor
+  // the horizontal rail, which is sized for an h-screen frame, takes over.
   const canMorph =
     detected &&
     mode === "pinned" &&
+    roomy &&
     tierResolved &&
     tier === "full" &&
-    webgpuEnabled();
+    backend === "webgpu";
 
   const sectionRef = useRef<HTMLDivElement | null>(null);
   const stickyRef = useRef<HTMLDivElement | null>(null);
@@ -487,7 +510,19 @@ export default function FoundersRail() {
     const coarse = window.matchMedia("(pointer: coarse)").matches;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     setMode(mobile || coarse || reduced ? "native" : "pinned");
+    // Viewport floor for the MORPH layout (see canMorph). Tracked live so a
+    // mid-session window snap / devtools open drops to the horizontal rail
+    // instead of clipping the copy inside the overflow-hidden sticky frame.
+    // Resolved in this same client effect as `detected`, so SSR markup is
+    // unaffected and no store writes leak.
+    const roomQ = window.matchMedia(
+      "(min-width: 1024px) and (min-height: 780px)",
+    );
+    const applyRoom = () => setRoomy(roomQ.matches);
+    applyRoom();
     setDetected(true);
+    roomQ.addEventListener("change", applyRoom);
+    return () => roomQ.removeEventListener("change", applyRoom);
   }, []);
 
   // === MORPH mode: pinned stage + GATED, self-playing morph ==================
@@ -524,6 +559,13 @@ export default function FoundersRail() {
       const bF = smoothstep(0.35, 0.65, m);
       setOpA?.(1 - bF);
       setOpB?.(bF);
+      // The cross-fade only animates OPACITY, so without this the hidden copy's
+      // LinkedIn link stays focusable at opacity 0 — Tab lands on an invisible
+      // control (WCAG 2.4.7). `inert` removes the whole faded-out block from the
+      // tab order and the a11y tree; the JSX carries it on copyB to match the
+      // pre-hydration state, and the effect cleanup strips both.
+      copyARef.current?.toggleAttribute("inert", bF > 0.5);
+      copyBRef.current?.toggleAttribute("inert", bF <= 0.5);
       if (useFoundersMorphStore.getState().active) {
         setImgA?.(0);
         setImgB?.(0);
@@ -567,6 +609,14 @@ export default function FoundersRail() {
     let cooldownUntil = 0;
     let lastDir = 1;
     let insideEngageUsed = false; // one-shot: reload-landed-inside engage
+    // ...AND time-boxed. The `inside` band (top <= 0.5vh) is satisfied MANY
+    // frames before the `fromTop` top-edge crossing on a normal scroll-down, so
+    // leaving the arm live for the whole session let it win the branch and snap
+    // the page ~50vh forward. The window only has to cover the browser applying
+    // scroll restoration a few frames after mount (which a strict first-tick
+    // latch would miss); after it, only the top-edge crossings can engage —
+    // where the snap distance is ~0px as designed.
+    const insideEngageDeadline = performance.now() + 600;
     let prevTop = section.getBoundingClientRect().top;
 
     const engage = (initStage: "A" | "B") => {
@@ -747,6 +797,19 @@ export default function FoundersRail() {
       // Tab is NOT intercepted → focus still moves into the section's links.
     };
 
+    // ...and once focus LEAVES the pinned frame (e.g. Tab reaches the closing
+    // "Full founder bios" link, which lives after the sticky container), stop
+    // hijacking. The browser scrolls the newly focused element into view; the
+    // per-frame pin would otherwise undo that on the next rAF, leaving focus
+    // off-screen with no visible indicator (WCAG 2.4.3 / 2.4.7). Uses the
+    // existing release() so the cooldown / re-engage guards stay intact.
+    const onFocusIn = (e: FocusEvent) => {
+      if (!engaged) return;
+      const t = e.target as Node | null;
+      if (t && stickyRef.current?.contains(t)) return;
+      release(lastDir || 1);
+    };
+
     // Engage on the top-edge crossing (both directions) + hold/escape poll.
     let raf = 0;
     const tick = () => {
@@ -768,7 +831,21 @@ export default function FoundersRail() {
         getLenis()?.stop(); // re-assert (survive stray Lenis starts)
         // Hold the pin: keep the section top exactly at the viewport top so A
         // and B occupy the IDENTICAL on-screen stage rect (re-assert on drift).
-        if (Math.abs(top) > 1) {
+        const drift = Math.abs(top);
+        if (drift > ihNow * 0.15) {
+          // A real EXTERNAL scroll source moved the document — scrollbar drag,
+          // find-in-page, an anchor jump. `stop()` doesn't block those (Lenis
+          // only preventDefaults the wheel/touch it listens to), and re-snapping
+          // is a corrective loop, not a block: the page moves, we teleport it
+          // back next frame, the user moves it again — a visible 60Hz fight that
+          // can hold for the full G_MAX_ENGAGE_MS. Hand the page back instead
+          // (same safety valve as hero-intro-gate.tsx). release() runs the full
+          // teardown incl. the re-engage cooldown, so this can't ping-pong.
+          release(top < 0 ? 1 : -1);
+        } else if (drift > 1) {
+          // Sub-viewport drift only (layout shift above, sub-pixel rounding) —
+          // engage()'s snap already lands within a pixel, so normal pinned
+          // operation is unchanged.
           const ny = window.scrollY + top;
           const lenis = getLenis();
           if (lenis) lenis.scrollTo(ny, { immediate: true, force: true });
@@ -776,8 +853,12 @@ export default function FoundersRail() {
         }
         if (now - engageTime > G_MAX_ENGAGE_MS) release(lastDir);
       } else {
-        // Start forming Alessandro as soon as the section peeks in.
-        if (top < ihNow && rect.bottom > 0) live.setReveal(1);
+        // Fire the reveal only once the section is ~pinned (top within 18% of
+        // the viewport): the entry assemble is a hero beat the user must SEE —
+        // firing it on first peek let the 2.2s formation finish off-screen and
+        // Alessandro arrived already formed. engage() also fires it as a
+        // belt-and-braces (fast flings that skip this band still assemble).
+        if (top < ihNow * 0.18 && rect.bottom > 0) live.setReveal(1);
         if (
           reBlocked &&
           now > cooldownUntil &&
@@ -794,6 +875,7 @@ export default function FoundersRail() {
           const fromBottom = prevTop < 0 && top >= 0; // scrolled UP into it
           const inside =
             !insideEngageUsed &&
+            now < insideEngageDeadline &&
             top <= ihNow * 0.5 &&
             rect.bottom >= ihNow * 0.5;
           if ((fromTop || fromBottom) && rect.bottom > 0 && top < ihNow) {
@@ -816,6 +898,7 @@ export default function FoundersRail() {
       capture: true,
     });
     window.addEventListener("keydown", onKey, { capture: true });
+    window.addEventListener("focusin", onFocusIn);
 
     // Pointer bridge on the stage → subtle mid-flight parallax (getState only).
     const stage = section.querySelector<HTMLElement>("[data-founder-stage]");
@@ -834,7 +917,20 @@ export default function FoundersRail() {
     stage?.addEventListener("pointermove", onMove);
     stage?.addEventListener("pointerleave", onLeave);
 
-    const onResize = () => measure();
+    // Resize fires per-frame during a window-edge drag, and measure() bumps
+    // measureVersion — a REACTIVE subscription inside the Canvas island and a
+    // dep of its build effect, so every raw event forced a dispose + O(count)
+    // re-fit + fresh GPU storage allocation (and a blank frame while the
+    // rebuild landed). Split the two costs: the layout write is cheap and must
+    // stay live so the gate's runway/secTop are correct THIS frame; only the
+    // SETTLED size gets to trigger a rebuild.
+    let resizeT: ReturnType<typeof setTimeout> | undefined;
+    const onResize = () => {
+      section.style.height = `${window.innerHeight}px`;
+      store.setLayout(0, section.getBoundingClientRect().top + window.scrollY);
+      clearTimeout(resizeT);
+      resizeT = setTimeout(measure, 150);
+    };
     window.addEventListener("resize", onResize);
 
     // Full re-measure (rebuild → fresh stage rect + docTop) when the layout
@@ -863,11 +959,16 @@ export default function FoundersRail() {
       fontsCancelled = true;
       cancelAnimationFrame(raf);
       clearTimeout(idleT);
+      clearTimeout(resizeT);
       window.removeEventListener("wheel", onWheel, { capture: true });
       window.removeEventListener("touchstart", onTouchStart);
       window.removeEventListener("touchmove", onTouchMove, { capture: true });
       window.removeEventListener("keydown", onKey, { capture: true });
+      window.removeEventListener("focusin", onFocusIn);
       window.removeEventListener("resize", onResize);
+      // Never leave a copy block inert after unmount / a mode flip.
+      copyARef.current?.removeAttribute("inert");
+      copyBRef.current?.removeAttribute("inert");
       stage?.removeEventListener("pointermove", onMove);
       stage?.removeEventListener("pointerleave", onLeave);
       unsubIntro();
@@ -1199,10 +1300,14 @@ export default function FoundersRail() {
                       isEn={isEn}
                     />
                   </div>
+                  {/* `inert` matches the opacity-0 start state so founder B's
+                      LinkedIn link is never focusable while invisible;
+                      applyStage() toggles it in lockstep with the cross-fade. */}
                   <div
                     ref={copyBRef}
                     className="absolute inset-x-0 top-0"
                     style={{ opacity: 0 }}
+                    inert
                   >
                     <FounderCopy
                       f={founders[1]}

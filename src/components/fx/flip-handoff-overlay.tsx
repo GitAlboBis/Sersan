@@ -196,6 +196,20 @@ function maybeSettle(ref: FlightRef, flight: ZoomFlight) {
   if (flight.disposed || flight.settling) return;
   if (!(flight.inflated && flight.arrived)) return;
   flight.settling = true;
+  // Re-arm the ceiling against the REMAINING work. HARD_TIMEOUT_MS is absolute
+  // from click time, but the flight is a chain of independent stages
+  // (inflate → route arrival → hero poll → land), so a route that arrives late
+  // (~1.9-2.5s on a cold-cache chunk) leaves the landing carve unfinished when
+  // the arm-time timeout fires — failSafe then kills the tweens mid-flight and
+  // snaps a near-fullscreen half-landed clone away over an already-visible
+  // page. The 2500ms ceiling still guards the pre-settle phase (route never
+  // arrives); from here the budget is sized to the settle path instead.
+  // max(LAND_S, FADE_S) covers the no-image dissolve branch below too.
+  window.clearTimeout(flight.timeout);
+  flight.timeout = window.setTimeout(
+    () => failSafe(ref, flight),
+    MAX_HERO_FRAMES * 17 + Math.max(LAND_S, FADE_S) * 1000 + 300,
+  );
   if (flight.img) landOnHero(ref, flight);
   // Small delay so the new page has a painted frame beneath before the
   // panel dissolves (its content fade-up runs in parallel under us).

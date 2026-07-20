@@ -57,6 +57,7 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
           morphDone: false,
           morph2Done: false,
           camTilt: 0,
+          tiltAnchorY: 0,
           camDescend: 0,
           tiltDone: false,
           domReveal: 1,

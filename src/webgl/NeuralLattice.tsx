@@ -182,7 +182,18 @@ export function NeuralLattice({
       docTop: r.top + scrollY,
       hubs,
     });
-  }, [measureVersion, anchorId]);
+    // size.* is included DELIBERATELY: everything stored above is a PIXEL
+    // quantity (cxBase/w/h/docTop + the card-derived hub locals), but
+    // sectionStore.setMeasured skips the measureVersion bump when the
+    // NORMALIZED spans are unchanged — which is exactly what a width-only
+    // resize produces (docking devtools as a side panel, widening past the
+    // container max-width, some tablet rotations). measureVersion alone
+    // therefore leaves this rect stale and the hub orbs detach from their
+    // cards. Cheap to re-run: this effect only setRect()s, and the downstream
+    // effect writes uniforms only — no buffer/geometry rebuild, matching the
+    // header's "resize updates ONLY these uniforms (no rebuild)" contract.
+    // (Same pattern as FounderPortraitMorph's measure deps.)
+  }, [measureVersion, anchorId, size.width, size.height]);
 
   // Push the measured hub LOCAL positions into the build uniforms whenever the
   // rect (or build) changes — resize = uniform update, no buffer rebuild.

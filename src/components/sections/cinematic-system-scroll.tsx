@@ -799,11 +799,25 @@ export default function CinematicSystemScroll() {
   const [hasDetectedViewport, setHasDetectedViewport] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
 
+  // Subscribed, not sampled: a window resized under 768px or an OS
+  // reduced-motion toggle mid-session must switch the spine to the stacked
+  // fallback, not wait for a full reload.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setIsMobile(window.matchMedia("(max-width: 768px)").matches);
-    setHasDetectedViewport(true);
-    setReduceMotion(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    const mobileQ = window.matchMedia("(max-width: 768px)");
+    const reducedQ = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => {
+      setIsMobile(mobileQ.matches);
+      setReduceMotion(reducedQ.matches);
+      setHasDetectedViewport(true);
+    };
+    sync();
+    mobileQ.addEventListener("change", sync);
+    reducedQ.addEventListener("change", sync);
+    return () => {
+      mobileQ.removeEventListener("change", sync);
+      reducedQ.removeEventListener("change", sync);
+    };
   }, []);
 
   // (Removed: the orb-core poster image + its cross-fade machinery. The hero
@@ -932,7 +946,15 @@ export default function CinematicSystemScroll() {
   // of the particle text — then ease back to full exactly as domReveal brings
   // the crisp DOM H1 in (which is what they exist to keep readable). Inactive
   // morph (every fallback path) → opacity 1, identical to before.
+  // Gated on the same condition as the render branch below: the scrims only
+  // exist in the desktop subtree, so on the mobile / reduced-motion fallback
+  // both refs stay null forever and this loop was a no-op wake-up running at
+  // display refresh rate for the whole page lifetime — exactly the work the
+  // reduced-motion path exists to shed. On a desktop cold load
+  // hasDetectedViewport is false for the first commit, so the loop now starts
+  // one commit later; harmless, since the refs are null on that commit anyway.
   useEffect(() => {
+    if (!hasDetectedViewport || isMobile || reduceMotion) return;
     let raf = 0;
     let last = -1;
     const tick = () => {
@@ -948,7 +970,7 @@ export default function CinematicSystemScroll() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [hasDetectedViewport, isMobile, reduceMotion]);
 
   // Mobile users — and anyone with prefers-reduced-motion (on any viewport)
   // — get the stacked fallback once detection has resolved. The pinned
@@ -1289,6 +1311,17 @@ function SpineExitGate({
         stage.style.opacity = "";
       }
       release();
+      // The beat clock lives in the globalThis-pinned textMorphStore, so it
+      // SURVIVES this unmount (soft nav away mid-dive). SignatureLine gates
+      // the descent on `pathname === "/"`, which makes a frozen mid-flight
+      // clock harmless off-home — but home is exactly where the gate is live,
+      // so navigating back would restore a half-dived camera anchored to a
+      // stale scrollY. Reset to the store's initial resting values.
+      useTextMorphStore.setState({
+        camTilt: 0,
+        tiltAnchorY: 0,
+        tiltDone: false,
+      });
     };
   }, [outerRef, stageRef]);
 

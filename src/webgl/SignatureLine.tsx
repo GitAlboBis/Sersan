@@ -4,10 +4,20 @@
  * The signature scroll line (AGENTS.md §3a) — a CatmullRom tube snaking
  * through document space, progressively "drawn" by scroll.
  *
- * World mapping: document pixels scale to world units by
- * k = viewport.height / window.innerHeight, so the curve spans the whole
- * page in world-Y and the camera glides down it as the user scrolls —
- * waypoints stay visually glued to their sections at any page height.
+ * World mapping — TWO viewport heights, deliberately kept apart:
+ *  - the world↔CSS-px SCALE uses the CANVAS height (r3f `size.height`, the
+ *    layout viewport the frustum actually spans):
+ *        k = WORLD_VIEW_HEIGHT / size.height
+ *  - the document↔scroll-offset MAPPING uses `window.innerHeight` (`ih`),
+ *    because that is the denominator Lenis uses for its scroll limit
+ *    (scrollHeight − innerHeight) and hence for the `progress` we consume.
+ * On iOS Safari a `position: fixed` box keeps the LARGE viewport height while
+ * innerHeight reports the small one, so the two differ by the browser-chrome
+ * height; mixing them drifts the lit head ~10% of a viewport by page bottom.
+ * Desktop is unaffected (the two are equal without dynamic chrome).
+ *
+ * The curve spans the whole page in world-Y and the camera glides down it as
+ * the user scrolls — waypoints stay glued to their sections at any page height.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -273,6 +283,23 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   // pitch itself.
   const prevCamTilt = useRef(0);
   const descendPitch = useRef(0);
+  // Cached `window.innerHeight` — the viewport height Lenis derives its scroll
+  // limit from, and therefore the only correct denominator for the doc→scroll
+  // mapping below (see the file header). A REF, not state: it is read inside
+  // useFrame and must never trigger a React commit inside the Canvas island.
+  const vhRef = useRef(typeof window === "undefined" ? 0 : window.innerHeight);
+  useEffect(() => {
+    const onResize = () => {
+      vhRef.current = window.innerHeight;
+    };
+    onResize();
+    window.addEventListener("resize", onResize);
+    window.visualViewport?.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.visualViewport?.removeEventListener("resize", onResize);
+    };
+  }, []);
 
   // Material selection by the build-time WebGPU flag (createRenderer.ts):
   //   flag OFF → the GLSL ShaderMaterial (unchanged, byte-identical to today),
@@ -626,7 +653,13 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // consumed the same per-frame snapshot, so camera glide, head fraction
     // and tube stay mutually consistent even when the anchors prop is stale.
     const sh = section.scrollHeight;
-    const ih = size.height;
+    // window.innerHeight (NOT size.height) — matches Lenis's scroll limit, so
+    // the camera lands where the reader actually is even when browser chrome
+    // makes the fixed canvas box taller than the visual viewport. Falls back to
+    // the canvas height if the ref has not resolved yet, so an unresolved value
+    // can never collapse the mapping. `k`/`worldViewWidth` deliberately stay on
+    // `size` — they are the world↔canvas scale/aspect (see file header).
+    const ih = vhRef.current || size.height;
     const scrollYWorld = dampedProgress.current * Math.max(sh - ih, 0);
 
     // Camera glides down the world strip; the viewport center tracks the
@@ -650,11 +683,22 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // landing glide's distance (1·ih), so desc reaches 0 exactly as the
     // landing lenis.scrollTo completes — zero residual left to unwind.
     const { camTilt, tiltAnchorY } = useTextMorphStore.getState();
-    const tiltEase = camTilt * camTilt * (3 - 2 * camTilt);
+    // The descent beat belongs to the home cinematic spine ONLY. textMorphStore
+    // is globalThis-pinned, so camTilt/tiltDone/tiltAnchorY survive soft nav and
+    // no writer resets them on LEAVING home — an interior route would otherwise
+    // consume a home-only beat clock (frozen mid-flight camTilt → a permanent
+    // half-viewport camera offset; a completed camTilt=1 → a full dive/un-dive
+    // as the reader scrolls past home's stale tiltAnchorY on a long route).
+    // Gating the CLOCK here (not the `camera.position.y -= desc` line) collapses
+    // desc, descPx, the tiltVel pitch and the published camDescend to 0 together,
+    // so no consumer is ever left reading a stale offset.
+    const beatActive = pathname === "/";
+    const t = beatActive ? camTilt : 0;
+    const tiltEase = t * t * (3 - 2 * t);
     const scrollPxNow = dampedProgress.current * Math.max(sh - ih, 0);
     const distT = Math.min(Math.abs(scrollPxNow - tiltAnchorY) / ih, 1);
     const distRamp = 1 - distT * distT * (3 - 2 * distT);
-    const beatInFlight = camTilt > 0.0001 && camTilt < 0.9999;
+    const beatInFlight = t > 0.0001 && t < 0.9999;
     const scrollRamp = beatInFlight ? 1 : distRamp;
     // Normalized applied descent, 0..1 — desc = WORLD_VIEW_HEIGHT · descRamp.
     const descRamp = tiltEase * scrollRamp;
@@ -732,8 +776,11 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // bounded signal that can't spike on the gate's odd dt the way the old
     // (desc - prevDescend)/delta did. Diving (camTilt↑) pitches the head down;
     // reversing (camTilt↓) pitches it up; at rest → level.
-    const tiltVel = (camTilt - prevCamTilt.current) / Math.max(delta, 1e-4);
-    prevCamTilt.current = camTilt;
+    // `t` (the route-gated clock), never the raw camTilt: on the frame the route
+    // flips, recording the raw value would register a phantom step and pitch the
+    // camera on an interior route.
+    const tiltVel = (t - prevCamTilt.current) / Math.max(delta, 1e-4);
+    prevCamTilt.current = t;
     descendPitch.current = THREE.MathUtils.damp(
       descendPitch.current,
       THREE.MathUtils.clamp(tiltVel * 0.45, -0.4, 0.4),
@@ -962,7 +1009,11 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
         meshVisible: mesh?.visible ?? null,
         k,
         viewportH: WORLD_VIEW_HEIGHT,
-        sizeH: ih,
+        // Both heights: `mapH` drives the doc→scroll mapping (Lenis's
+        // denominator), `sizeH` drives the world↔px scale. A persistent gap
+        // between them is the mobile browser-chrome case.
+        mapH: ih,
+        sizeH: size.height,
         bboxY: liveGeo?.boundingBox
           ? [liveGeo.boundingBox.max.y, liveGeo.boundingBox.min.y]
           : null,
