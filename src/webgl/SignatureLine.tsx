@@ -893,6 +893,11 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // giving a subtle pitch without altering the vertical glide.
     // On lite/off tiers we skip this entirely → camera looks straight down -Z
     // (its default orientation), exactly as before this change.
+    // The roll ACTUALLY applied to the camera this frame — stays 0 whenever the
+    // full-tier bank block below does not run (lite tier / no curve), so a tier
+    // or route change can never leave a consumer holding a stale angle.
+    // Published to textMorphStore after the block (parity with camDescend).
+    let appliedRoll = 0;
     const curve = curveRef.current;
     if (tier === "full" && curve) {
       // FIX A1: the ahead parameter is the SAME arc-length fraction the lit
@@ -941,15 +946,36 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       // camera.position, so the camDescend station-subtract in HeroLogo /
       // HeroTextParticles / RouteHero / GatewayPortal is unaffected.
       curve.getTangentAt(ahead, aheadTangent.current);
+      // HERO SQUARE GATE — camera.rotateZ banks the ENTIRE WebGL layer, so every
+      // camera-locked billboard (HeroLogo's brand mark, HeroTextParticles'
+      // headline) inherits the roll. EVERY route's curve opens with a hard
+      // lateral swing (x ≈ +1.2 at t=0 → x ≈ -1.2 at the first anchor), so the
+      // look-ahead tangent's x is already large at scrollY 0 and the roll pins
+      // at ±CAM_ROLL_MAX (≈2.6°) from the very first frame — the mark and the
+      // headline would render visibly off-square at the top of the page, while
+      // the DOM headline beside them stays level. Ramp the bank in over one
+      // viewport of scroll so the hero reads square and the banking survives
+      // undiminished in the bends below. Smoothstep, not a linear clamp: this
+      // file's convention is zero slope at BOTH ends of any hand-off between a
+      // time-driven beat and a scroll-driven mapping (a linear ramp lands as a
+      // visible velocity kink). The gate multiplies the TARGET, so the damp()
+      // and the ±CAM_ROLL_MAX clamp below still govern the transition. Keyed on
+      // scroll position only — never on the route — so it squares up every
+      // route's hero uniformly, including the 0.5 / 1.25 cameraRollScale ones.
+      const rollGateT = THREE.MathUtils.clamp(scrollPxNow / ih, 0, 1);
+      const rollGate = rollGateT * rollGateT * (3 - 2 * rollGateT);
       const rollTarget = THREE.MathUtils.clamp(
-        -aheadTangent.current.x * fx.camRoll * route.cameraRollScale,
+        -aheadTangent.current.x * fx.camRoll * route.cameraRollScale * rollGate,
         -CAM_ROLL_MAX,
         CAM_ROLL_MAX,
       );
       // Damp toward the target every frame (C1 across route/curve rebuilds; eases
       // in from 0 on first frame — no snap, no pop).
       rollCurrent.current = THREE.MathUtils.damp(rollCurrent.current, rollTarget, 3, delta);
-      if (Math.abs(rollCurrent.current) > 1e-5) camera.rotateZ(rollCurrent.current);
+      if (Math.abs(rollCurrent.current) > 1e-5) {
+        camera.rotateZ(rollCurrent.current);
+        appliedRoll = rollCurrent.current;
+      }
     }
 
     // Camera-descent PITCH application (FIX 1b). The vertical descent
@@ -964,6 +990,21 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     if ((tier !== "full" || !curve) && Math.abs(descendPitch.current) > 0.0001) {
       camera.quaternion.set(0, 0, 0, 1);
       camera.rotateX(-descendPitch.current);
+    }
+
+    // Publish the APPLIED camera roll (same discipline as camDescend above:
+    // transient store write, no React state, no per-frame commit). Written
+    // AFTER both orientation writers so it always describes the camera as it
+    // actually ends this frame. The bank rotates the ENTIRE WebGL layer — right
+    // for the line and the scene, wrong for a brand mark, whose strong
+    // horizontal bars read as crooked rather than cinematic (and would visibly
+    // ROTATE while the bank's scroll gate ramps in across the hero). HeroLogo
+    // counter-rotates ITS OWN group by this angle so the mark stays square;
+    // this file remains the single camera authority.
+    // Epsilon-gated to the same 1e-5 threshold that governs the rotateZ above,
+    // so a settled roll stops churning the store every frame.
+    if (Math.abs(useTextMorphStore.getState().camRoll - appliedRoll) > 1e-5) {
+      useTextMorphStore.setState({ camRoll: appliedRoll });
     }
 
     // On the ON path the TSL material loads lazily; until its chunk resolves

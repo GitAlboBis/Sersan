@@ -1102,11 +1102,44 @@ export function createTextMorphComputeBuild(
     new Color().fromArray(params.COL_HOT),
   ) as UniformNode<ColorLike>;
 
-  const vSpeed = float(0).toVar();
-  const vRandSrc = float(0).toVar();
-  // Per-particle entry visibility: alpha rises as the particle's own journey
-  // starts (ICS: each particle tweens `alpha: 0 → visible` with its delay).
-  const vAssemble = float(1).toVar();
+  // === Per-particle scalars carried to the FRAGMENT stage ==================
+  // These three MUST stay self-contained node EXPRESSIONS. Do NOT "simplify"
+  // them back into an outer `float(x).toVar()` that the vertex `Fn` `.assign()`s
+  // into — that idiom is silently broken. See the full VaryingNode hazard note
+  // on `portraitMorphExpr` immediately below: three writes every varying at the
+  // TOP of vertex `main()`, BEFORE the `material.vertexNode` body runs, so a
+  // varying built from an outer var carries that var's DECLARED INITIAL value
+  // forever, whatever the Fn later assigns.
+  //
+  // That is exactly the bug this shape fixes: `vSpeedF` read a constant 0 (hero
+  // colour pinned to COL_COLD, no speed brightening, and the portrait's
+  // mid-flight HDR travel tint dead), `vRandF` a constant 0 (no per-particle
+  // 0.75–1.15 brightness spread — a flat, uniformly dimmer cloud), and
+  // `vAssembleF` a constant 1 (the staggered per-particle entry FADE never ran;
+  // only the staggered motion did, since that comes from the kernel's anchor).
+  /** Per-particle speed (world units/s). Hero: cold→hot colour ramp + a
+   * brightness boost. Portrait: gain into the HDR travel tint that feeds
+   * selective bloom. */
+  const heroSpeedExpr = length(velocityBuffer.toAttribute().xyz);
+  /** Stable per-particle random in [0,1) — brightness and size spread. */
+  const heroRandExpr = hash(instanceIndex);
+  /** Per-particle entry visibility: alpha rises as the particle's own journey
+   * starts (ICS: each particle tweens `alpha: 0 → visible` with its delay).
+   * Mirrors the compute kernel's `aw` window EXACTLY — same `ASSEMBLE_WINDOW`,
+   * same `delayBuffer` read (a `"float"` buffer: unpadded, NO `.xyz`) — so the
+   * fade tracks the travelling recomposition wave it belongs to. */
+  const heroAssembleExpr = smoothstep(
+    0.0,
+    0.35,
+    clamp(
+      assembleN
+        .mul(1.0 + ASSEMBLE_WINDOW)
+        .sub(delayBuffer.toAttribute())
+        .div(ASSEMBLE_WINDOW),
+      0.0,
+      1.0,
+    ),
+  );
   // Portrait: the per-particle A→B colour-blend scalar and the A→B-blended ink,
   // held as plain node EXPRESSIONS — deliberately NOT as outer `.toVar()`s that
   // the vertex Fn assigns into.
@@ -1189,8 +1222,9 @@ export function createTextMorphComputeBuild(
   // `.toVar()` — see the VaryingNode hazard documented above: a varying built
   // from an outer var is written at the top of vertex main() and carries that
   // var's INITIAL value forever). This mirrors `sizeNode` below EXACTLY, with
-  // `hash(instanceIndex)` in place of the `vRandSrc` var (same value) and the
-  // `/dist` divide deferred to the fragment via `vPortraitDistF`.
+  // its own `hash(instanceIndex)` where `sizeNode` uses `heroRandExpr` (the
+  // same hash of the same seed → bit-identical value) and the `/dist` divide
+  // deferred to the fragment via `vPortraitDistF`.
   //
   // EXACTNESS NOTE: omitting `sizeFD` here is exact — NOT an approximation —
   // only because `uSizeComp`/`uSizeComp2`/`uSizeComp3` are hard-set to 1 on the
@@ -1232,20 +1266,13 @@ export function createTextMorphComputeBuild(
     // MANDATORY (it is NOT a drop-in for `.element(i).xyz`); without it
     // `vec4(p, 1.0)` becomes 5 components and the shader throws / truncates.
     const p = positionBuffer.toAttribute().xyz.toVar();
-    const v = velocityBuffer.toAttribute().xyz;
-    vSpeed.assign(length(v));
-    vRandSrc.assign(hash(instanceIndex));
-    // delayBuffer is a `"float"` (scalar) storage buffer — no padding, no `.xyz`.
-    const delay = delayBuffer.toAttribute();
-    const aw = clamp(
-      assembleN
-        .mul(1.0 + ASSEMBLE_WINDOW)
-        .sub(delay)
-        .div(ASSEMBLE_WINDOW),
-      0.0,
-      1.0,
-    );
-    vAssemble.assign(smoothstep(0.0, 0.35, aw));
+    // NOTE: speed / rand / assemble are NOT computed here any more. They are
+    // outer expression nodes (`heroSpeedExpr` / `heroRandExpr` /
+    // `heroAssembleExpr`) fed straight into `varying(...)` — assigning them into
+    // outer `.toVar()`s from inside this Fn is the VaryingNode hazard that made
+    // all three read their initial constants. Only `heroRandExpr` has a
+    // vertex-stage consumer (the size spread below); it reads the expression
+    // node directly, which three materialises once (see below).
     // Portrait ink for the size expression below — the SAME expression node the
     // `vInkF` varying is built from, so the disc size and the fragment's fringe
     // alpha read one identical value (three reuses the generated var here rather
@@ -1285,12 +1312,12 @@ export function createTextMorphComputeBuild(
           .mul(
             float(PORTRAIT_SIZE_MIN).add(float(PORTRAIT_SIZE_INK).mul(inkNow!)),
           )
-          .mul(float(0.85).add(float(0.3).mul(vRandSrc)))
+          .mul(float(0.85).add(float(0.3).mul(heroRandExpr)))
           .mul(sizeFD)
           .div(max(dist, 0.001))
       : (uPointSize as unknown as AnyNode)
           .mul(uPixelRatio as unknown as AnyNode)
-          .mul(float(0.7).add(float(0.7).mul(vRandSrc)))
+          .mul(float(0.7).add(float(0.7).mul(heroRandExpr)))
           .mul(sizeFD)
           .div(max(dist, 0.001));
     const corner = positionLocal.xy;
@@ -1301,11 +1328,12 @@ export function createTextMorphComputeBuild(
   })();
 
   const vQuadUv = varying(positionLocal.xy);
-  const vSpeedF = varying(vSpeed);
-  const vRandF = varying(vRandSrc);
-  const vAssembleF = varying(vAssemble);
-  // Built from expressions, not from outer vars — see the comment on
-  // `portraitMorphExpr` for why that distinction is load-bearing.
+  // All built from expressions, not from outer vars — see the comments on the
+  // `heroSpeedExpr` block and on `portraitMorphExpr` for why that distinction
+  // is load-bearing.
+  const vSpeedF = varying(heroSpeedExpr);
+  const vRandF = varying(heroRandExpr);
+  const vAssembleF = varying(heroAssembleExpr);
   const vMorphColorF = hasPortrait ? varying(portraitMorphExpr!) : null;
   const vInkF = hasPortraitSize ? varying(portraitInkExpr!) : null;
   // Sub-pixel coverage inputs (portrait only): the disc diameter BEFORE the

@@ -587,6 +587,8 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // === Per-frame: shell choreography + model-space mouse + sim step =========
   // Scratch objects (no per-frame allocation).
   const planeN = useMemo(() => new THREE.Vector3(), []);
+  /** Scratch for the camera's world-space view axis (the counter-roll axis). */
+  const viewAxis = useMemo(() => new THREE.Vector3(), []);
   const worldHit = useMemo(() => new THREE.Vector3(), []);
   const worldCenter = useMemo(() => new THREE.Vector3(), []);
   const plane = useMemo(() => new THREE.Plane(), []);
@@ -747,6 +749,43 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       TILT_DAMP,
       delta,
     );
+
+    // --- HOLD THE MARK SQUARE against the cinematic camera bank --------------
+    // SignatureLine (the single camera authority) banks the camera into the
+    // curve's bends with `camera.rotateZ`, which rotates the ENTIRE WebGL
+    // layer. That reads as cinematography for the signature LINE — a path the
+    // camera travels along, whose whole point is leaning into a turn — and for
+    // the scene at large. It does NOT read that way on a brand mark: the mark's
+    // strong horizontal bars make even the ±2.6° clamp look plainly CROOKED,
+    // and because the bank's scroll gate ramps in over one viewport while the
+    // mark is still on screen, the mark would visibly ROTATE as the reader
+    // scrolls the hero — a rotating logo being worse than a statically tilted
+    // one. So the scene keeps its bank and the mark holds its OWN orientation.
+    //
+    // Axis: the camera rolls about its LOCAL +Z (the view axis, applied after
+    // lookAt), so on screen the world appears to rotate by −roll. Cancelling
+    // that means rotating the object by +roll about that SAME axis in world
+    // space. The mark is NOT billboarded — it is a world-space object — but its
+    // outer group sits directly under the scene root (Scene.tsx mounts
+    // RouteRitual as a Canvas child, no wrapping transform), so the group's
+    // local frame IS the world frame and a world-axis quaternion can be written
+    // straight to `group.quaternion`. The camera looks down its local −Z, so
+    // camera-local +Z in world is −getWorldDirection(); a rotation of +roll
+    // about −dir is identical to −roll about +dir, which is what we build.
+    //
+    // COMPOSITION: this is the OUTERMOST group, so the counter-roll composes
+    // AFTER the parallax the mark already does — `assembly` still carries the
+    // base TILT plus the pointer pitch and `spin` the pointer yaw, both in this
+    // group's local frame. Net world orientation is R_counterRoll · R_pitch ·
+    // R_yaw: the parallax tilt survives untouched and only gets re-squared on
+    // screen. `group.rotation` has no other writer (position/scale only).
+    const camRoll = useTextMorphStore.getState().camRoll;
+    if (camRoll !== 0) {
+      camera.getWorldDirection(viewAxis);
+      group.quaternion.setFromAxisAngle(viewAxis, -camRoll);
+    } else {
+      group.quaternion.identity();
+    }
 
     // --- STATIC fallback feed (analytic dispersion) --------------------------
     // The static render reads its own per-instance `aHome` positions (no sim,
