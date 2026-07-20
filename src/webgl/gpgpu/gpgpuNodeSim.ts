@@ -860,6 +860,13 @@ export interface PortraitMorphOpts {
   emissive?: number;
   /** HDR cyan the discs surge toward mid-flight (>1 → selective bloom). */
   travelTint?: [number, number, number];
+  /** Grid spacing in DEVICE px (`sqrt(stageAreaDev / count)`), i.e. the pitch
+   * of the one-particle-per-cell lattice on screen. Used ONLY to size the
+   * sub-pixel coverage compensation (see PORTRAIT_COV_MIN_PX): the disc
+   * diameter is exactly `2·f·spacingDev`, so a spacing-relative threshold makes
+   * the correction track stage size and dpr instead of assuming a retina
+   * layout. Absent → the absolute 1.25 devpx floor is used alone. */
+  spacingDev?: number;
 }
 
 export function createTextMorphComputeBuild(
@@ -1150,6 +1157,69 @@ export function createTextMorphComputeBuild(
    * tonal signal, since the floor above is now negligible. */
   const PORTRAIT_SIZE_INK = 0.94;
 
+  // === Sub-pixel COVERAGE COMPENSATION (portrait only) =====================
+  // The renderer runs with `antialias: false` (Scene.tsx), so there is no MSAA
+  // and a quad narrower than one device pixel CANNOT attenuate: the rasterizer
+  // either shades a whole fragment at the disc term's full value
+  // (smoothstep(0.5,0.34,rr) = 1 at rr≈0) or misses it entirely. Coverage
+  // therefore saturates at one whole pixel, and every low-ink disc in the
+  // sub-pixel band paints an isolated FULL-BRIGHTNESS near-white pixel on the
+  // jittered lattice — the ragged pale fringe beside the head and shoulders.
+  // Size is the only tonal control down there and it has stopped working.
+  //
+  // Fix: fold the size deficit back into alpha (standard antialiased
+  // point-sprite coverage compensation), `alpha *= cov²` with
+  // `cov = clamp(diameterPx / threshold, 0, 1)`.
+  //
+  // THRESHOLD: 1.25 devpx, NOT 2.0. The rasterizer floors a sub-pixel disc at
+  // one whole pixel, so the energy deficit normalizes at ~1.1–1.2 devpx; a 2.0
+  // denominator over-corrects and thins the SUBJECT's own soft edge (the ink
+  // 0.14–0.23 shell, whose 1.6–2.1 devpx discs are already correctly sized).
+  // Spacing-relative form preferred where the caller supplies `spacingDev`:
+  // diameter = 2·f·spacingDev exactly, so `0.35·spacingDev` keeps the
+  // correction tracking stage size and dpr instead of assuming a retina layout.
+  const PORTRAIT_COV_MIN_PX = Math.max(
+    1.25,
+    0.35 * (portrait?.spacingDev ?? 0),
+  );
+  const uPortraitCovPx = hasPortraitSize
+    ? (uniform(PORTRAIT_COV_MIN_PX) as UniformNode<number>)
+    : null;
+  // Device-px disc DIAMETER as a self-contained EXPRESSION (never an outer
+  // `.toVar()` — see the VaryingNode hazard documented above: a varying built
+  // from an outer var is written at the top of vertex main() and carries that
+  // var's INITIAL value forever). This mirrors `sizeNode` below EXACTLY, with
+  // `hash(instanceIndex)` in place of the `vRandSrc` var (same value) and the
+  // `/dist` divide deferred to the fragment via `vPortraitDistF`.
+  //
+  // EXACTNESS NOTE: omitting `sizeFD` here is exact — NOT an approximation —
+  // only because `uSizeComp`/`uSizeComp2`/`uSizeComp3` are hard-set to 1 on the
+  // portrait path (FounderPortraitMorph.tsx:492-494) and never animated. If
+  // anyone ever animates them, this varying silently DESYNCHRONISES from the
+  // real disc size and the coverage term starts lying. Fold `sizeFD` in here
+  // if that day comes.
+  const portraitSizePxExpr = hasPortraitSize
+    ? (uPointSize as unknown as AnyNode)
+        .mul(uPixelRatio as unknown as AnyNode)
+        .mul(
+          float(PORTRAIT_SIZE_MIN).add(
+            float(PORTRAIT_SIZE_INK).mul(portraitInkExpr!),
+          ),
+        )
+        .mul(float(0.85).add(float(0.3).mul(hash(instanceIndex))))
+    : null;
+  // View-space distance carried as its own varying rather than divided out by a
+  // constant CAMERA_Z: the group dollies ±2.2 world units mid-morph, which is
+  // up to ±18% error on the diameter otherwise. One extra interpolant.
+  const portraitDistExpr = hasPortraitSize
+    ? max(
+        modelViewMatrix
+          .mul(vec4(positionBuffer.toAttribute().xyz, 1.0))
+          .z.negate(),
+        0.001,
+      )
+    : null;
+
   const material = new MeshBasicNodeMaterial();
   material.vertexNode = Fn(() => {
     // Render-stage reads via `.toAttribute()` ONLY (three #31221): the
@@ -1238,6 +1308,10 @@ export function createTextMorphComputeBuild(
   // `portraitMorphExpr` for why that distinction is load-bearing.
   const vMorphColorF = hasPortrait ? varying(portraitMorphExpr!) : null;
   const vInkF = hasPortraitSize ? varying(portraitInkExpr!) : null;
+  // Sub-pixel coverage inputs (portrait only): the disc diameter BEFORE the
+  // perspective divide, and the view-space distance to divide it by.
+  const vSizePxF = hasPortraitSize ? varying(portraitSizePxExpr!) : null;
+  const vPortraitDistF = hasPortraitSize ? varying(portraitDistExpr!) : null;
 
   // Portrait travel tint (HDR cyan) + emissive — created only on the portrait
   // path so the hero fragment graph is unchanged.
@@ -1294,14 +1368,47 @@ export function createTextMorphComputeBuild(
       .mul(vAssembleF)
       .toVar();
     // Portrait: the ink term must reach EXACTLY 0 at ink 0 so a backdrop cell
-    // disappears rather than lingering as a pale fringe. A smoothstep knee
-    // (not a step) keeps the subject's own faint edge fading smoothly instead
-    // of clipping to a hard cut-out. The Discard below then removes the
+    // disappears rather than lingering as a pale fringe. Smoothsteps (never a
+    // step) keep the subject's own faint edge fading smoothly instead of
+    // clipping to a hard cut-out. The Discard below then removes the
     // true-zero particles entirely.
     if (hasPortraitSize) {
-      alpha.mulAssign(smoothstep(0.0, 0.14, vInkF!));
+      // (a) TONAL KNEE. The old `smoothstep(0.0, 0.14, ink)` saturated at ink
+      // 0.14 — only ~6% colour distance from the backdrop — while the disc was
+      // still at 19% of full size, so everything above it drew fully opaque and
+      // size was the sole remaining tonal channel exactly where size cannot
+      // attenuate. Widened to 0.03 → 0.35, squared for low-end shaping.
+      // ENDPOINT ARITHMETIC: diameter = 2·(0.06 + 0.94·ink)·spacingDev, so at
+      // ink 0.35 the disc is ~3.35 devpx ≈ 2× the 1.5 devpx coverage threshold
+      // — the point at which geometric AREA attenuation is fully functional
+      // again and alpha no longer has to carry tone. So the ramp ends exactly
+      // where the coverage term below reaches 1, and the two never
+      // double-attenuate: the FACE (ink ≫ 0.35) gets 1.0 × 1.0, byte-unchanged.
+      // Lower edge 0.03 (not 0) gives a true-zero pedestal for the Discard;
+      // smoothstep is C1 at both edges, so it is still a smooth start.
+      const inkA = smoothstep(0.03, 0.35, vInkF!).toVar();
+      alpha.mulAssign(inkA.mul(inkA));
+      // (b) SUB-PIXEL COVERAGE COMPENSATION — see PORTRAIT_COV_MIN_PX. With
+      // `antialias:false` a disc narrower than a device pixel is shaded at FULL
+      // intensity over one whole fragment, so its energy must be scaled back by
+      // hand. cov is EXACTLY 1 for every disc at or above the threshold, which
+      // is the guarantee that full-ink face discs (~8.4 devpx ≈ 2× spacing) are
+      // untouched; it is a smooth quadratic ramp below it, so the subject's own
+      // faint edge fades rather than clipping.
+      const cov = clamp(
+        vSizePxF!.div(vPortraitDistF!).div(uPortraitCovPx as unknown as AnyNode),
+        0.0,
+        1.0,
+      ).toVar();
+      alpha.mulAssign(cov.mul(cov));
     }
-    Discard(alpha.lessThan(0.004));
+    // Portrait cull raised to 0.02: with the ramp above, 0.004 corresponds to
+    // ink ~0.041 and 0.02 to ink ~0.105, i.e. it now discards the residual
+    // backdrop band outright instead of feeding near-white fragments into the
+    // HDR/selective-bloom pass. 2% opacity over the navy stage is imperceptible,
+    // so no visible silhouette edge is introduced. JS ternary on a BUILD-TIME
+    // boolean → the hero emits the literal 0.004 verbatim.
+    Discard(alpha.lessThan(hasPortraitSize ? 0.02 : 0.004));
     return vec4(col, alpha);
   })();
   material.colorNode = (shade as AnyNode).xyz;

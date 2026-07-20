@@ -62,6 +62,17 @@ export interface PortraitPairSpec {
   inkFloor: number;
   /** Ink gamma (<1 lifts the mid-tones so cheeks/shirt keep some weight). */
   inkGamma: number;
+  /** Low-end NOISE GATE, applied to the normalized distance `v` BEFORE the
+   * gamma lift. `inkGamma < 1` is a 2–4× amplifier in exactly the near-zero
+   * band, and a studio backdrop is never flat (vignetting, shadow-side light
+   * falloff, JPEG chroma blocking put the wall 10–25 levels off the median), so
+   * without a gate the wall is MANUFACTURED as real ink. `v ≤ inkGateLo` maps
+   * to a literal 0; the gate smoothsteps to 1 by `inkGateHi`, above which the
+   * mid-tone lift is untouched. Gating here (not by raising inkGamma above 1)
+   * leaves the face's own shadow detail uncrushed. */
+  inkGateLo: number;
+  /** Upper edge of the low-end noise gate (normalized distance `v`). */
+  inkGateHi: number;
   /** Normalized y at which the vertical dissolve starts (bust → darkness). */
   fadeStart: number;
   /** Normalized y span over which the dissolve completes. */
@@ -257,7 +268,19 @@ function readGrid(
         Math.sqrt(0.299 * dr * dr + 0.587 * dg * dg + 0.114 * db * db) *
         spec.inkGain;
       const v = Math.min(1, Math.max(0, (dist - spec.inkFloor) * invFloor));
-      ink[i] = Math.pow(v, spec.inkGamma) * fade;
+      // Noise gate BEFORE the gamma lift: `pow(v, 0.7)` multiplies the
+      // near-zero band by 2–4×, which is precisely where a real backdrop's own
+      // vignetting / shadow-side falloff / JPEG blocking lives — so the wall
+      // gets promoted into visible ink. The gate maps that band to a literal 0
+      // and ramps smoothly (smoothstep, C1 at both edges) so the SUBJECT's own
+      // faint rim still fades in over several cells instead of clipping to a
+      // cut-out. The mid-tones (v ≥ inkGateHi) keep the full gamma lift.
+      const gt = Math.min(
+        1,
+        Math.max(0, (v - spec.inkGateLo) / Math.max(spec.inkGateHi - spec.inkGateLo, 1e-4)),
+      );
+      const gate = gt * gt * (3 - 2 * gt);
+      ink[i] = Math.pow(v, spec.inkGamma) * gate * fade;
     }
   }
 
