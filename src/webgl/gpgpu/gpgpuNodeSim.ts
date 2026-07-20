@@ -1116,7 +1116,8 @@ export function createTextMorphComputeBuild(
   // from an outer `.toVar()` therefore carries that var's INITIAL value forever,
   // no matter where inside the Fn the `.assign()` sits — which is exactly how
   // `vMorphColorF` read a constant 0 (face never left target A) and `vInkF` read
-  // a constant 0 (fringe alpha pinned at 0.35 → the halo behind the face).
+  // a constant 0 (fringe alpha pinned at the ink term's floor → the halo behind
+  // the face).
   //
   // A varying built from a self-contained EXPRESSION is correct instead: three
   // re-emits the whole expression at the top of `main()`, where uniforms and
@@ -1139,11 +1140,15 @@ export function createTextMorphComputeBuild(
       )
     : null;
 
-  /** Portrait disc size floor — the share of the disc that is NOT ink-driven,
-   * so a faint particle still exists instead of collapsing to nothing. */
-  const PORTRAIT_SIZE_MIN = 0.32;
-  /** Portrait disc size gained at full ink (validated ratio with SIZE_MIN). */
-  const PORTRAIT_SIZE_INK = 0.66;
+  /** Portrait disc size floor — kept barely non-zero ONLY so the quad never
+   * degenerates. A backdrop cell (ink 0) MUST collapse to nothing: it is the
+   * vanishing of the backdrop that makes the subject read. Anything larger
+   * leaves ~48% of the cloud (the cells that are subject in only one of the two
+   * headshots, plus the dissolve band) drawn as a ghost fringe. */
+  const PORTRAIT_SIZE_MIN = 0.06;
+  /** Portrait disc size gained at full ink — carries essentially the whole
+   * tonal signal, since the floor above is now negligible. */
+  const PORTRAIT_SIZE_INK = 0.94;
 
   const material = new MeshBasicNodeMaterial();
   material.vertexNode = Fn(() => {
@@ -1288,10 +1293,13 @@ export function createTextMorphComputeBuild(
       .mul(uFade as unknown as AnyNode)
       .mul(vAssembleF)
       .toVar();
-    // Portrait: fade the faint fringe out instead of letting near-zero-ink
-    // particles read as hard dots. The Discard below then removes them entirely.
+    // Portrait: the ink term must reach EXACTLY 0 at ink 0 so a backdrop cell
+    // disappears rather than lingering as a pale fringe. A smoothstep knee
+    // (not a step) keeps the subject's own faint edge fading smoothly instead
+    // of clipping to a hard cut-out. The Discard below then removes the
+    // true-zero particles entirely.
     if (hasPortraitSize) {
-      alpha.mulAssign(clamp(float(0.35).add(vInkF!.mul(0.9)), 0.0, 1.0));
+      alpha.mulAssign(smoothstep(0.0, 0.14, vInkF!));
     }
     Discard(alpha.lessThan(0.004));
     return vec4(col, alpha);
