@@ -43,6 +43,56 @@ useEffect(() => {
   with explicit geometry ownership: memo-committed vs frame-owned, each disposed by
   exactly one owner).
 
+## Don't: build a TSL `varying()` from an outer `.toVar()` you assign inside the Fn
+
+Confirmed 2026-07-20 against three r184 by generating the shader offline.
+
+**Problem** — the idiom used throughout this file's node materials:
+```ts
+const vThing = float(0).toVar();          // declared OUTSIDE the Fn
+material.vertexNode = Fn(() => {
+  vThing.assign(someExpression);          // assigned INSIDE
+  return clip;
+})();
+const vThingF = varying(vThing);          // read in the fragment
+```
+**`vThingF` is always the `.toVar()`'s INITIAL value.** Never the assigned one.
+
+`VaryingNode.generate` (`three/src/nodes/core/VaryingNode.js:162-182`) calls
+`builder.flowNodeFromShaderStage(VERTEX, …)`, which appends `<varying> = <result>;`
+to `this.flowCode['vertex']` (`NodeBuilder.js:2572-2600`); `buildCode()` then
+**prepends** that buffer ahead of the flow nodes (`GLSLNodeBuilder.js:1478-1497`,
+`WGSLNodeBuilder.js:2106-2128`). So every varying is written at the TOP of vertex
+`main()`, before the `vertexNode` body runs. Generated proof:
+
+```glsl
+nodeVar0 = 1.0;             // outer var re-emitted with its INITIAL value
+nodeVarying1 = nodeVar0;    // varying captured here, at the top
+positionLocal = position;   // ...only now does the Fn body begin
+nodeVar0 = ((nodeUniform0*7.0)+0.25);   // the in-Fn assign — too late
+```
+
+Moving the assignment around inside the Fn changes nothing — a tempting but useless
+"fix". **Instead**, pass the expression straight in:
+```ts
+const thingExpr = someExpression;          // self-contained: uniforms + attributes
+const vThingF = varying(thingExpr);        // re-emitted at the top of main()
+// the Fn body can still use `thingExpr` — three reuses the same generated var,
+// so there is no duplicated ALU.
+```
+
+This silently degrades rather than crashing, which is why it survived so long: a
+varying whose initial happens to be benign just disables a feature. In this repo
+`vAssemble ≡ 1` (per-particle entry fade absent), `vSpeed ≡ 0` (speed→colour travel
+tint never fires), `vRandSrc ≡ 0` (per-particle brightness jitter constant) — all
+invisible-ish. The portrait's two scalars had catastrophic initials instead:
+`vMorphColorF ≡ 0` pinned the A→B colour blend to A (the morph appeared not to work at
+all) and `vInkF ≡ 0` pinned fringe alpha to a constant (a halo of backdrop particles).
+
+**Diagnostic**: if one consumer of a per-particle scalar behaves and another does not,
+check whether the working one reads it in the VERTEX stage directly while the broken
+one goes through a varying. That asymmetry identifies this bug immediately.
+
 ## Convention: scroll-position ⇄ tube parametrization
 
 `uProgress` fed to the line shader must be an **arc-length** fraction (TubeGeometry's
@@ -76,6 +126,173 @@ clamp on a linear ramp is a visible velocity kink.
   suppression arms only after a real drag.
 - Full cleanup contract on unmount: kill trigger + draggable, transforms zeroed,
   `section.style.height = ""`, store reset, listeners/observers off.
+
+## Don't: detect the runtime backend with a negative-flag test
+
+Learned 2026-07-20 (motion fix round, commit 69e49a6 + follow-up).
+
+**Problem**:
+```ts
+// DON'T — reports "webgl2" on EVERY machine
+return backend?.isWebGLBackend === false ? "webgpu" : "webgl2";
+```
+
+**Why it's bad**: three sets only each backend's OWN positive flag —
+`WebGPUBackend.js` sets `isWebGPUBackend = true`, `WebGLBackend.js` sets
+`isWebGLBackend = true`, and **neither sets the other's**. On a true WebGPU backend
+`isWebGLBackend` is therefore `undefined`, `undefined === false` is `false`, and the
+gate fails closed. This typechecks, looks obviously correct in review, and silently
+disabled the founders morph on every machine until it was caught in the browser.
+
+**Instead** — mirror the consumer's own probe exactly, and require the capability
+you actually need (compute), not just the backend label:
+```ts
+const backend = r?.backend;
+if (!backend) return "webgl2";                       // plain WebGLRenderer
+return backend.isWebGLBackend !== true && typeof r?.compute === "function"
+  ? "webgpu"
+  : "webgl2";
+```
+`FounderPortraitMorph`'s in-island guard uses this same three-term predicate. If the
+DOM gate and the island gate ever disagree, the DOM renders a layout the island can
+never drive (see next section). The equivalence is currently maintained by hand across
+two files — prefer a shared exported helper if either side is touched again.
+
+## Convention: capability-dependent DOM layouts gate on the RESOLVED backend
+
+`webgpuEnabled()` is a **build-time** env read. With the flag on, a browser without
+WebGPU still resolves to the WebGL2 fallback at runtime. A DOM layout whose animation
+lives in a compute-only island must therefore gate on the resolved runtime backend
+(`tierStore.backend`, published once from Scene's `onCreated`), never on the flag.
+
+Failure this prevents: the founders morph rendered its two-column stage on WebGL2,
+where the island never builds and never calls `setActive(true)`; the scroll gate then
+never engaged, `morph` never advanced, and founder B's name, bio, credentials and
+LinkedIn — all rendered at `opacity: 0` awaiting the morph — stayed permanently
+invisible and unreachable. Treat `backend === null` (unresolved) as falsy so first
+paint never shows a layout that may turn out to be undriveable.
+
+## Don't: treat "a build happened" as "the one-shot animation played"
+
+**Problem**:
+```ts
+// DON'T — hasBuiltRef is set at BUILD time, not at completion time
+buildNow(hasBuiltRef.current);          // → preserveState
+if (preserveState) { uAssemble.value = 1; entryRef.current = 1; }
+```
+
+**Why it's bad**: rebuilds are triggered by `measureVersion` bumps, which fire on
+mount, intro-complete, `document.fonts.ready` and every resize — routinely long
+before the section is scrolled into view. Each one seeded the cloud at its formed
+home positions and pinned the entry uniform at 1, silently **consuming** the entry
+animation. The section then arrived already assembled, with no error anywhere.
+
+**Instead**: gate the skip on actual completion, and keep the scattered seed until
+then, so a pre-entry rebuild replays rather than cancels:
+```ts
+const keepEntry = preserveState && entryRef.current >= 1;
+seed = keepEntry ? homeAtCurrentLeg.slice() : scatteredSeed();
+if (keepEntry)          { uAssemble.value = 1; entryRef.current = 1; }
+else if (preserveState) { uAssemble.value = entryRef.current; }   // carry progress
+else                    { /* fresh build: full reset */ }
+```
+**Prevention**: any "skip the entrance" flag must be derived from the animation's own
+clock, never from a lifecycle flag that merely correlates with it. Verify with the dev
+handle at scroll 0 — the entry uniform must still read 0.
+
+## Don't: carry image tone with particle DENSITY
+
+Rewritten 2026-07-20 — the threshold-family model this section used to describe
+(`lumFloor` / `lumCeil` / `neutralSat` / `lumGamma` / `radialFalloff` / `crop`) and the
+weighted-pick sampler are both **deleted**. Keep this history: the replacement is only
+obvious once you know why the old one failed.
+
+**Problem**: `sampleImagePoints` drew `count` weighted random picks **with replacement**
+over the candidate cells, so brightness became particle COUNT. Measured on the shipped
+Michele headshot at the shipped settings:
+
+```
+candidate cells 17545 · particles 42000
+empty cells      1902  (11% of the subject rendered NOTHING -> visible voids)
+duplicates      26357  (63% of the budget stacked on already-covered cells)
+```
+
+Sampling with replacement cannot cover uniformly, so a density model always leaves
+holes — no threshold tuning reaches it.
+
+**Also don't** isolate a backdrop with a per-pixel luminance threshold. It cannot
+distinguish "white wall" from "lit scalp" or "white shirt", so on a studio headshot it
+punches holes through the brightest parts of the SUBJECT.
+
+**Instead** (after `.refs/interactive-particles`, whose vertex shader does
+`psize *= max(grey, 0.2)`):
+- **One particle per grid cell.** Uniform coverage by construction — holes and
+  duplicates become impossible rather than unlikely.
+- **Tone from particle SIZE (and alpha)**, driven by `ink` = luma-weighted distance
+  from the backdrop colour, measured as the per-channel MEDIAN of the top corner
+  patches (median for robustness; top only, because shoulders reach the bottom corners)
+  and then contrast-curved.
+- **No mask at all.** Backdrop ink ≈ 0, so those particles shrink to nothing and
+  vanish. Nothing can pierce the subject.
+- A smoothstep vertical dissolve so a bust emerges from darkness instead of reading as
+  a cut-out.
+
+**Pairing comes free**: rasterize both portraits onto ONE shared grid and build one cell
+list from the union of their ink. Index `j` is the same cell in both, so the morph
+recomposes in place. This replaced the radial sort (`PAIR_SECTORS`), now deleted.
+
+Count follows the sampler, never the reverse: build the cell list, then set the instance
+count from it, clamped by a tier ceiling with a FIXED uniform stride. Never subsample
+randomly (that reintroduces clumping) and never pad by duplicating cells.
+
+> **Warning**: one particle per cell makes the cloud newly sensitive to per-particle
+> z. A luminance z-relief that was invisible with sparse random points will, on a
+> regular grid, give neighbours straddling a luminance edge (hairline, beard, glasses
+> rim) very different z — they separate laterally under perspective and, with
+> `depthTest` on, occlude each other, producing a vertical comb that shreds every edge.
+> Keep the resting relief far below the cell pitch (`Z_RELIEF_MAX_FRAC` 0.04, centre
+> bulge 0) and render the portrait `depthTest:false` / `depthWrite:false`, as both
+> reference implementations do. Isolate this class of defect with the dev handle
+> (`setDepth(0)`) before theorising — it is one call and it answers the question.
+
+Prefer real `-headshot` assets over fallback crops: `loadFounder()` prefers
+`/founders/<slug>-headshot.{webp,jpg,png}`. The ink model measures its own backdrop, so
+headshots and environmental sources now share one code path with no per-source profile.
+
+## Convention: scroll-jack engage predicates are ORDER-sensitive
+
+A gate that offers both "crossed the top edge" and "reloaded already inside" arms must
+ensure the edge-crossing arm can actually win. On a continuous scroll down, `top`
+satisfies a `top <= 0.5·ih` inside-test many frames **before** `prevTop > 0 && top <= 0`
+can ever be true, so an `if (fromTop || fromBottom) … else if (inside)` chain fires the
+inside arm first and snaps the page half a viewport.
+
+Time-box the reload-landed-inside arm (`now < effectSetupTime + ~600ms`) rather than
+latching it on first use: the window still covers browser scroll restoration applied a
+few frames after mount, but a scroll-in seconds later can only engage via the top-edge
+crossings, where the snap distance is ~0px by construction.
+
+Related: hold the pin with a drift **threshold** plus release, not an unconditional
+per-frame re-snap — the latter fights any native scroll source (scrollbar drag,
+`scrollIntoView` from Tab focus) into a 60Hz jitter instead of a clean block.
+
+## Don't: sample `matchMedia` once at mount for a mode that changes layout
+
+`const mobile = matchMedia("(max-width: 768px)").matches` inside a mount-only effect
+never re-evaluates. A desktop window snapped narrow, devtools docked to the side, or an
+OS reduced-motion toggle then keeps the pinned/desktop path with measurements that no
+longer apply. Subscribe with one shared `change` handler across the query list and
+remove it in cleanup (canonical shape: `case-studies-rail.tsx`).
+
+Where the mode flip changes document height (a px-measured runway being set or
+cleared), add a mode-flip-only `ScrollTrigger.refresh()` guarded by a `prevModeRef` —
+an OS reduced-motion toggle fires no resize event, so nothing else re-measures.
+
+> **Warning**: an effect whose deps include `isEn` (language) re-runs on every language
+> toggle, so its cleanup runs mid-session — not only on unmount. Clearing an inline
+> px height there collapses a multi-viewport runway under the reader and ejects them
+> from the section. Only clear inline sizing in a cleanup that genuinely corresponds to
+> the node going away.
 
 ## Convention: measurement freshness
 

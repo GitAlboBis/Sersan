@@ -407,17 +407,54 @@ export default function FitSection() {
   const runwayRef = useRef<HTMLDivElement | null>(null);
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const skewRef = useRef<HTMLDivElement | null>(null);
+  // The runway node captured at arm time. React detaches runwayRef during the
+  // commit that unmounts the pinned branch, so the mode-flip effect below —
+  // which runs AFTER that commit — needs its own handle to release the px
+  // height it wrote.
+  const runwayNodeRef = useRef<HTMLDivElement | null>(null);
+  const prevModeRef = useRef<"pinned" | "native" | null>(null);
 
+  // Mode detection is a SUBSCRIPTION, not a one-shot sample: a window snapped
+  // narrow, devtools docked, or an OS reduced-motion toggle must flip the path
+  // live. Sampling once on mount kept the pinned path alive with measurements
+  // taken against a viewport that no longer exists.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const mobile = window.matchMedia("(max-width: 768px)").matches;
-    const coarse = window.matchMedia("(pointer: coarse)").matches;
-    const reduced = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    setMode(mobile || coarse || reduced ? "native" : "pinned");
-    setDetected(true);
+    const queries = [
+      window.matchMedia("(max-width: 768px)"),
+      window.matchMedia("(pointer: coarse)"),
+      window.matchMedia("(prefers-reduced-motion: reduce)"),
+    ];
+    const sync = () => {
+      setMode(queries.some((q) => q.matches) ? "native" : "pinned");
+      setDetected(true);
+    };
+    sync();
+    queries.forEach((q) => q.addEventListener("change", sync));
+    return () => queries.forEach((q) => q.removeEventListener("change", sync));
   }, []);
+
+  // Runway release + re-measure on a MODE FLIP ONLY — deliberately NOT in the
+  // scrub effect's cleanup below, whose deps include the language: that
+  // cleanup also runs on every EN↔IT toggle, and collapsing the ~520vh runway
+  // under the reader's feet clamps the scroll position and ejects them out of
+  // the pinned section entirely. Here the height is released BEFORE a deferred
+  // ScrollTrigger.refresh() measures the committed layout. An OS
+  // reduced-motion toggle fires no resize event, so nothing else re-measures.
+  useEffect(() => {
+    if (!detected) return;
+    const prev = prevModeRef.current;
+    prevModeRef.current = mode;
+    if (prev === null || prev === mode) return;
+    // Only on the way OUT of pinned: entering pinned, the scrub effect below
+    // arms right after this one and measures a fresh height of its own.
+    if (mode === "native" && runwayNodeRef.current) {
+      runwayNodeRef.current.style.height = "";
+      runwayNodeRef.current = null;
+    }
+    const raf = requestAnimationFrame(() => ScrollTrigger.refresh());
+    return () => cancelAnimationFrame(raf);
+  }, [detected, mode]);
 
   // Verdict-beats scrub — pinned mode only, after detection settles.
   // isEn is a dep on purpose: the EN↔IT toggle swaps copy in place (and
@@ -431,6 +468,9 @@ export default function FitSection() {
     const sticky = stickyRef.current;
     const skewWrap = skewRef.current;
     if (!headingWrap || !runway || !sticky || !skewWrap) return;
+    // Handle for the mode-flip effect above (React's ref is already detached
+    // by the time that effect runs on a pinned→native flip).
+    runwayNodeRef.current = runway;
 
     /* ---- Collect targets ONCE (no per-frame queries) ----------------- */
 
@@ -818,7 +858,11 @@ export default function FitSection() {
       if (lineEl) gsap.set(lineEl, { clearProps: "transform" });
       ensureSpan();
       if (poseSpan) gsap.set(poseSpan, { clearProps: "transform" });
-      runway.style.height = "";
+      // The px runway height is deliberately NOT cleared here. This cleanup
+      // runs on every EN↔IT toggle too (isEn is a dep), and collapsing the
+      // runway mid-read clamps the scroll position and ejects the reader out
+      // of the section. Release lives in the mode-flip effect above; the
+      // re-arm below re-measures it in place.
     };
   }, [detected, mode, isEn]);
 
@@ -1014,8 +1058,17 @@ export default function FitSection() {
       </div>
 
       {/* The tall scroll runway: height = 100vh + 6×70vh, set in px by
-          measure(). minHeight is the SSR placeholder before JS measures. */}
-      <div ref={runwayRef} className="relative" style={{ minHeight: "100vh" }}>
+          measure(). minHeight is the SSR placeholder before JS measures.
+          The key is load-bearing: both branches render a <div> in this slot,
+          so without it React would REUSE this node for the native layout's
+          container and the imperatively-written px height (invisible to
+          React) would leak onto a layout that must be content-sized. */}
+      <div
+        key="fit-runway"
+        ref={runwayRef}
+        className="relative"
+        style={{ minHeight: "100vh" }}
+      >
         {/* Sticky viewport — this IS the pin (no pin-spacer, anchors stay
             valid). */}
         <div ref={stickyRef} className="sticky top-0 h-screen overflow-hidden">

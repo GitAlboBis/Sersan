@@ -23,7 +23,6 @@ import {
 import { useIntroStore } from "@/webgl/store/introStore";
 import { founderCardMotion } from "@/webgl/store/founderMotion";
 import { useTierStore } from "@/webgl/store/tierStore";
-import { webgpuEnabled } from "@/webgl/renderer/createRenderer";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
@@ -34,7 +33,8 @@ if (typeof window !== "undefined") {
  *
  * THREE presentation modes (all copy verbatim from src/data/founders.ts):
  *
- *   1. MORPH (full tier + WebGPU flag + pinned desktop): a VERTICAL CSS-sticky
+ *   1. MORPH (full tier + a RESOLVED WebGPU backend + a roomy pinned desktop):
+ *      a VERTICAL CSS-sticky
  *      stage. The WebGL particle-portrait morph island (webgl/FounderPortraitMorph)
  *      renders a ~26k-point cloud over [data-founder-stage] that composes founder
  *      A, decomposes into a swarm at mid-scroll, and recomposes founder B; the two
@@ -49,7 +49,7 @@ if (typeof window !== "undefined") {
  *      (a pin-spacer would break the [data-line-anchor="founders"] measurement of
  *      the signature line), section height = 100vh + travel set in px by measure().
  *
- *   2. HORIZONTAL RAIL (pinned desktop, NOT full+webgpu): the previous sticky
+ *   2. HORIZONTAL RAIL (pinned desktop, NOT morph-eligible): the previous sticky
  *      horizontal set-piece, full DOM (SVG duotone portrait + hover clip reveal +
  *      windowed name sweep + portrait parallax). Complete fallback on its own.
  *
@@ -480,25 +480,75 @@ export default function FoundersRail() {
 
   const tier = useTierStore((s) => s.tier);
   const tierResolved = useTierStore((s) => s.resolved);
+  // The RESOLVED runtime backend (null until the Canvas exists). NOT the
+  // build-time WebGPU flag — see canMorph below.
+  const backend = useTierStore((s) => s.backend);
 
   // SSR default = pinned (desktop) layout so all links are in the initial
   // HTML — same convention as case-studies-rail.
   const [mode, setMode] = useState<"pinned" | "native">("pinned");
   const [detected, setDetected] = useState(false);
+  // Enough room for the morph stage's TWO-COLUMN layout (see the mode effect).
+  const [roomy, setRoomy] = useState(false);
 
   // MORPH mode: the WebGL particle-portrait island is mounted (Scene.tsx). It
-  // requires the RESOLVED pinned desktop path + full tier + the WebGPU flag.
+  // requires the RESOLVED pinned desktop path + full tier + a viewport with
+  // room for the two-column stage + a TRUE-WebGPU runtime backend.
   // tierStore uses strict `innerWidth < 768` while the mode effect uses
   // matchMedia('(max-width: 768px)'), so gating on detected + mode==='pinned'
   // guarantees: whenever the section is native for ANY reason, the DOM portrait
-  // shows and no store writes leak. On pinned-but-not-full/webgpu it falls back
+  // shows and no store writes leak. On pinned-but-not-eligible it falls back
   // to the horizontal DOM rail (mode 2).
+  //
+  // `backend === "webgpu"` (NOT `webgpuEnabled()`): the flag is a build-time
+  // env read, so on a flag-on build in a browser without WebGPU the renderer
+  // resolves to the WebGL2 fallback and the island — which requires a compute
+  // backend — never builds and never calls setActive(true). The gate then never
+  // engages, `morph` never advances, and founder B's copy + poster (both
+  // rendered at opacity 0) stayed permanently invisible and unreachable. The
+  // horizontal rail shows BOTH founders, so it is the correct fallback. `null`
+  // (unresolved) is deliberately falsy: first paint must never show a layout
+  // the island may turn out to be unable to drive.
+  //
+  // `roomy`: the morph stage stacks a 26rem portrait ABOVE the copy column
+  // below the `lg` breakpoint, inside a `h-screen … overflow-hidden` sticky
+  // frame — ~1360px of content that gets clipped at BOTH ends (heading, and the
+  // credential chips / Previously row / LinkedIn link) on 769–1023px-wide or
+  // short viewports, with no scroll position able to reveal it. Below the floor
+  // the horizontal rail, which is sized for an h-screen frame, takes over.
   const canMorph =
     detected &&
     mode === "pinned" &&
+    roomy &&
     tierResolved &&
     tier === "full" &&
-    webgpuEnabled();
+    backend === "webgpu";
+
+  // ...but `backend === null` means two different things, and only ONE of them
+  // means "the rail is the answer". `backend` is written once from Scene.tsx's
+  // `onCreated`, which sits behind next/dynamic(ssr:false) + `await
+  // renderer.init()` (async adapter/device negotiation) — so on the primary
+  // target machine there is a guaranteed multi-frame window where every morph
+  // precondition holds and the backend simply hasn't reported yet. Rendering
+  // the rail MARKUP through that window is correct and deliberate (it shows
+  // both founders as real, focusable DOM — the safe first paint). ARMING the
+  // rail's machinery through it is not: measure() writes
+  // `section.style.height = innerHeight + travel`, per-panel quickSetters are
+  // built and a ScrollTrigger is created, all to be torn down a few frames
+  // later when the backend resolves to webgpu.
+  //
+  // So: "undecided" = every OTHER morph precondition already holds and the
+  // backend alone is outstanding. Any session where the rail is the FINAL
+  // answer — WebGL2 (backend non-null), lite/off tier, a sub-1024px or short
+  // viewport (roomy false), native mode — fails this predicate and arms the
+  // rail immediately, exactly as before.
+  const morphUndecided =
+    detected &&
+    mode === "pinned" &&
+    roomy &&
+    tierResolved &&
+    tier === "full" &&
+    backend === null;
 
   const sectionRef = useRef<HTMLDivElement | null>(null);
   const stickyRef = useRef<HTMLDivElement | null>(null);
@@ -514,7 +564,19 @@ export default function FoundersRail() {
     const coarse = window.matchMedia("(pointer: coarse)").matches;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     setMode(mobile || coarse || reduced ? "native" : "pinned");
+    // Viewport floor for the MORPH layout (see canMorph). Tracked live so a
+    // mid-session window snap / devtools open drops to the horizontal rail
+    // instead of clipping the copy inside the overflow-hidden sticky frame.
+    // Resolved in this same client effect as `detected`, so SSR markup is
+    // unaffected and no store writes leak.
+    const roomQ = window.matchMedia(
+      "(min-width: 1024px) and (min-height: 780px)",
+    );
+    const applyRoom = () => setRoomy(roomQ.matches);
+    applyRoom();
     setDetected(true);
+    roomQ.addEventListener("change", applyRoom);
+    return () => roomQ.removeEventListener("change", applyRoom);
   }, []);
 
   // === MORPH mode: pinned stage + GATED, self-playing morph ==================
@@ -770,6 +832,24 @@ export default function FoundersRail() {
     let cooldownUntil = 0;
     let lastDir = 1;
     let insideEngageUsed = false; // one-shot: reload-landed-inside engage
+    // The reload-landed-inside arm is a NARROW window, not a standing rule: on
+    // a normal scroll-in the section sweeps through the `inside` band (top ≤
+    // 50vh) one frame BEFORE the top-edge crossing, so leaving the arm live for
+    // the whole session let it win the branch and snap the page ~50vh forward.
+    //
+    // The window is latched on the PRECONDITION, not on effect setup. `inside`
+    // is consumed under `live.active`, which only flips after the island's full
+    // async build (two headshot fetches + decode, two 42k-point samples, the
+    // three/webgpu + three/tsl + gpgpu dynamic imports, then the GPU build).
+    // Both clocks start together, so a setup-relative budget was reliably spent
+    // before its own guard could open on a cold cache — killing the
+    // reload-landed-inside engage and leaving founder B's copy at opacity:0 AND
+    // inert (Michele's name/bio/credentials/LinkedIn out of the a11y tree).
+    // Measuring 600ms from "the island went live" still fixes the 50vh snap: in
+    // a normal session `active` latches during page load while the section is
+    // far below the fold, so the window is long expired by the time the user
+    // scrolls into the band.
+    let insideEngageDeadline = 0;
     let prevTop = section.getBoundingClientRect().top;
 
     const engage = (initStage: "A" | "B") => {
@@ -961,6 +1041,42 @@ export default function FoundersRail() {
       // Tab is NOT intercepted → focus still moves into the section's links.
     };
 
+    // Keyboard escape hatch: when focus LEAVES the pinned viewport, release the
+    // gate. Tab is deliberately not intercepted, so focus can walk out of the
+    // sticky frame and the browser scrolls it into view — but the per-frame pin
+    // would otherwise undo that on the next rAF, leaving focus off-screen with
+    // no visible indicator (WCAG 2.4.3 / 2.4.7). Uses the existing release() so
+    // the cooldown / re-engage guards stay intact.
+    //
+    // "LEAVES" is the load-bearing word: the gate is only ever entered by
+    // SCROLLING, so at engage time document.activeElement is <body> and focus
+    // was never inside the sticky. The first Tab then lands on the FIRST
+    // tabbable element in document order (skip link / header nav) — far ABOVE
+    // this section and not contained by stickyRef. Releasing on that would
+    // eject the keyboard user before the morph ever played, and with a stale
+    // `lastDir` of 1 it would run a 0.6s scrollTo one viewport DOWN while the
+    // browser scrolls the header UP into view — the two fight. So: only fire
+    // once focus has actually BEEN inside, and take the direction from
+    // geometry (focus above the section → release upward, following the
+    // browser) instead of from the last wheel direction.
+    let focusWasInside = false;
+    const onFocusIn = (e: FocusEvent) => {
+      if (!engaged) return;
+      const t = e.target as Node | null;
+      if (t && stickyRef.current?.contains(t)) {
+        focusWasInside = true;
+        return;
+      }
+      if (!focusWasInside) return; // focus never entered the frame — not a "leave"
+      focusWasInside = false;
+      const el = t instanceof Element ? t : null;
+      const dir =
+        el && el.getBoundingClientRect().top < section.getBoundingClientRect().top
+          ? -1
+          : 1;
+      release(dir);
+    };
+
     // Engage on the top-edge crossing (both directions) + hold/escape poll.
     let raf = 0;
     const tick = () => {
@@ -982,7 +1098,21 @@ export default function FoundersRail() {
         getLenis()?.stop(); // re-assert (survive stray Lenis starts)
         // Hold the pin: keep the section top exactly at the viewport top so A
         // and B occupy the IDENTICAL on-screen stage rect (re-assert on drift).
-        if (Math.abs(top) > 1) {
+        const drift = Math.abs(top);
+        if (drift > ihNow * 0.15) {
+          // A real EXTERNAL scroll source moved the document — scrollbar drag,
+          // find-in-page, an anchor jump. `stop()` doesn't block those (Lenis
+          // only preventDefaults the wheel/touch it listens to), and re-snapping
+          // is a corrective loop, not a block: the page moves, we teleport it
+          // back next frame, the user moves it again — a visible 60Hz fight that
+          // can hold for the full G_MAX_ENGAGE_MS. Hand the page back instead
+          // (same safety valve as hero-intro-gate.tsx). release() runs the full
+          // teardown incl. the re-engage cooldown, so this can't ping-pong.
+          release(top < 0 ? 1 : -1);
+        } else if (drift > 1) {
+          // Sub-viewport drift only (layout shift above, sub-pixel rounding) —
+          // engage()'s snap already lands within a pixel, so normal pinned
+          // operation is unchanged.
           const ny = window.scrollY + top;
           const lenis = getLenis();
           if (lenis) lenis.scrollTo(ny, { immediate: true, force: true });
@@ -1004,10 +1134,14 @@ export default function FoundersRail() {
         // scroll, so the DOM poster/section is the whole (non-trapping)
         // experience.
         if (!reBlocked && live.active) {
+          // Arm the reload-landed-inside window on the FIRST frame the island
+          // is live (see the declaration): 600ms from here, not from mount.
+          if (insideEngageDeadline === 0) insideEngageDeadline = now + 600;
           const fromTop = prevTop > 0 && top <= 0; // scrolled DOWN to top edge
           const fromBottom = prevTop < 0 && top >= 0; // scrolled UP into it
           const inside =
             !insideEngageUsed &&
+            now < insideEngageDeadline &&
             top <= ihNow * 0.5 &&
             rect.bottom >= ihNow * 0.5;
           if ((fromTop || fromBottom) && rect.bottom > 0 && top < ihNow) {
@@ -1030,6 +1164,7 @@ export default function FoundersRail() {
       capture: true,
     });
     window.addEventListener("keydown", onKey, { capture: true });
+    window.addEventListener("focusin", onFocusIn);
 
     // Pointer bridge on the stage → subtle mid-flight parallax (getState only).
     const stage = section.querySelector<HTMLElement>("[data-founder-stage]");
@@ -1048,7 +1183,20 @@ export default function FoundersRail() {
     stage?.addEventListener("pointermove", onMove);
     stage?.addEventListener("pointerleave", onLeave);
 
-    const onResize = () => measure();
+    // Resize fires per-frame during a window-edge drag, and measure() bumps
+    // measureVersion — a REACTIVE subscription inside the Canvas island and a
+    // dep of its build effect, so every raw event forced a dispose + O(count)
+    // re-fit + fresh GPU storage allocation (and a blank frame while the
+    // rebuild landed). Split the two costs: the layout write is cheap and must
+    // stay live so the gate's runway/secTop are correct THIS frame; only the
+    // SETTLED size gets to trigger a rebuild.
+    let resizeT: ReturnType<typeof setTimeout> | undefined;
+    const onResize = () => {
+      section.style.height = `${window.innerHeight}px`;
+      store.setLayout(0, section.getBoundingClientRect().top + window.scrollY);
+      clearTimeout(resizeT);
+      resizeT = setTimeout(measure, 150);
+    };
     window.addEventListener("resize", onResize);
 
     // Full re-measure (rebuild → fresh stage rect + docTop) when the layout
@@ -1078,6 +1226,7 @@ export default function FoundersRail() {
       cancelAnimationFrame(raf);
       clearTimeout(idleT);
       clearTimeout(hintT);
+      clearTimeout(resizeT);
       clearTimeout(posterGrace);
       // Chrome: kill any in-flight fade and re-assert hidden — the cluster
       // must never rest visible past the gate's lifetime.
@@ -1106,6 +1255,7 @@ export default function FoundersRail() {
       window.removeEventListener("touchstart", onTouchStart);
       window.removeEventListener("touchmove", onTouchMove, { capture: true });
       window.removeEventListener("keydown", onKey, { capture: true });
+      window.removeEventListener("focusin", onFocusIn);
       window.removeEventListener("resize", onResize);
       stage?.removeEventListener("pointermove", onMove);
       stage?.removeEventListener("pointerleave", onLeave);
@@ -1129,9 +1279,14 @@ export default function FoundersRail() {
     };
   }, [canMorph]);
 
-  // === HORIZONTAL RAIL mode: pinned desktop, NOT full+webgpu (pure DOM) ======
+  // === HORIZONTAL RAIL mode: pinned desktop, NOT morph-eligible (pure DOM) ======
   useEffect(() => {
     if (!detected || mode !== "pinned" || canMorph) return;
+    // Don't arm while the morph is still undecided (see morphUndecided): the
+    // rail MARKUP is the correct first paint through that window, but its
+    // machinery waits for the backend to report. `morphUndecided` is a dep, so
+    // a backend that resolves to WebGL2 arms the rail on that same commit.
+    if (morphUndecided) return;
     const section = sectionRef.current;
     const sticky = stickyRef.current;
     const track = trackRef.current;
@@ -1269,7 +1424,7 @@ export default function FoundersRail() {
         p.circle.setAttribute("r", String(MASK_FINAL_R));
       }
     };
-  }, [detected, mode, canMorph]);
+  }, [detected, mode, canMorph, morphUndecided]);
 
   const total = founders.length;
 
@@ -1506,7 +1661,7 @@ export default function FoundersRail() {
     );
   }
 
-  // HORIZONTAL RAIL mode: pinned desktop, NOT full+webgpu (pure DOM fallback).
+  // HORIZONTAL RAIL mode: pinned desktop, NOT morph-eligible (pure DOM fallback).
   return (
     <section id="founders" className="relative scroll-mt-24">
       {/* The tall scroll runway: height = 100vh + travel, set in px by

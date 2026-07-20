@@ -8,7 +8,7 @@
  * scroll-linked animations stay in sync with the smoothed scroll position.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -23,6 +23,49 @@ if (typeof window !== "undefined") {
 export function SmoothScrollProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const prevPathRef = useRef<string | null>(null);
+  // prefers-reduced-motion is LIVE, both directions. Sampling it once on
+  // mount left Lenis hijacking the wheel for a user who enabled reduced
+  // motion mid-session (an OS-level toggle fires no resize / reload), and
+  // left them on native scroll for the rest of the session if they turned it
+  // back off. SSR starts false — the provider renders no DOM of its own, so
+  // there is nothing to mismatch on hydration.
+  const [reduceMotion, setReduceMotion] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const sync = () => setReduceMotion(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  // ScrollTrigger's scrollerProxy is registered ONCE, for the life of the
+  // page. GSAP has no unregister API — a proxy stays in its internal `_proxies`
+  // list forever — so it must never close over a Lenis instance that a
+  // reduced-motion toggle can destroy. It resolves the live instance per call
+  // and falls back to native scrolling when there is none.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    ScrollTrigger.scrollerProxy(document.documentElement, {
+      scrollTop(value) {
+        if (arguments.length && typeof value === "number") {
+          const lenis = getLenis();
+          if (lenis) lenis.scrollTo(value, { immediate: true });
+          else window.scrollTo(0, value);
+        }
+        return window.scrollY;
+      },
+      getBoundingClientRect() {
+        return {
+          top: 0,
+          left: 0,
+          width: window.innerWidth,
+          height: window.innerHeight,
+        };
+      },
+    });
+  }, []);
 
   // Per-route-change handling on client-side (SPA) navigation:
   //  - Inner routes: reset to the top + re-refresh ScrollTrigger so scrub /
@@ -83,17 +126,22 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
     // Respect prefers-reduced-motion — fall back to native scroll. The
     // scroll store still gets a progress source (any non-WebGL consumer may
     // read it; the canvas itself self-disables under reduced motion).
-    const prefersReduced = window.matchMedia(
-      "(prefers-reduced-motion: reduce)",
-    ).matches;
-    if (prefersReduced) {
+    if (reduceMotion) {
       const onNativeScroll = () => {
         const max =
           document.documentElement.scrollHeight - window.innerHeight;
         setScroll(max > 0 ? window.scrollY / max : 0, 0);
+        // The proxy above reads window.scrollY, so triggers resolve correctly
+        // on native scroll — but drive the update from the same handler that
+        // feeds the store, so both stay on one source.
+        ScrollTrigger.update();
       };
       window.addEventListener("scroll", onNativeScroll, { passive: true });
       onNativeScroll();
+      // Toggling INTO reduced motion swaps the scroll source under every
+      // existing trigger; re-measure once so nothing is left resolving
+      // against the smoothed position.
+      ScrollTrigger.refresh();
       return () => window.removeEventListener("scroll", onNativeScroll);
     }
 
@@ -129,24 +177,8 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
     };
     document.addEventListener("click", onClick);
 
-    // Tell ScrollTrigger to use Lenis as its scroller proxy so triggers
-    // resolve against the smooth-scroll position, not native scrollTop.
-    ScrollTrigger.scrollerProxy(document.documentElement, {
-      scrollTop(value) {
-        if (arguments.length && typeof value === "number") {
-          lenis.scrollTo(value, { immediate: true });
-        }
-        return window.scrollY;
-      },
-      getBoundingClientRect() {
-        return {
-          top: 0,
-          left: 0,
-          width: window.innerWidth,
-          height: window.innerHeight,
-        };
-      },
-    });
+    // (The scrollerProxy that makes triggers resolve against the smooth-scroll
+    // position is registered once, above — it reads getLenis() live.)
 
     // Re-sync on resize. Debounced — a resize/orientation change fires a
     // burst of events, and ScrollTrigger.refresh() re-measures every trigger
@@ -164,7 +196,22 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
       window.removeEventListener("resize", onResize);
       document.removeEventListener("click", onClick);
       offScroll();
+      delete (window as unknown as { __lenis?: unknown }).__lenis;
+      // Exactly one release per acquire above. The singleton is refcounted and
+      // hands the RAF baton to the R3F FrameDriver when the canvas is up
+      // (setExternalPump): re-acquiring after a reduced-motion toggle picks
+      // that handoff back up on its own, so we must never double-release here
+      // nor touch the pump flag — that would strand R3F's pump or restart a
+      // second private RAF.
       releaseLenis();
+    };
+  }, [reduceMotion]);
+
+  // Killing EVERY trigger on the page is an unmount-only teardown. Running it
+  // on a reduced-motion toggle would take out triggers owned by sibling
+  // sections that never re-rendered — nothing would ever rebuild them.
+  useEffect(() => {
+    return () => {
       ScrollTrigger.getAll().forEach((st) => st.kill());
     };
   }, []);

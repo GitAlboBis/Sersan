@@ -110,12 +110,33 @@ export async function createWebGPURenderer(defaults: GLFactoryDefaults) {
 }
 
 /**
- * Runtime backend detector. After the renderer exists, `backend.isWebGLBackend`
- * tells us whether WebGPU or the WebGL2 fallback was selected. Safe to call on
- * the default WebGLRenderer too (no `backend` field → defaults to "webgl2").
+ * Runtime backend detector, read once in Scene.tsx's `onCreated` and published
+ * to `tierStore.backend` so the DOM can lay out for the backend it actually got.
+ *
+ * Each three r184 backend sets only its OWN positive flag — `WebGPUBackend` sets
+ * `isWebGPUBackend = true` and leaves `isWebGLBackend` **undefined**
+ * (webgpu/WebGPUBackend.js:66), while the fallback sets `isWebGLBackend = true`
+ * (webgl-fallback/WebGLBackend.js:57). Neither sets the other's flag. So the
+ * three conjuncts of the test below are equivalent to "is this a true WebGPU
+ * backend": a plain WebGLRenderer has no `backend` field at all → "webgl2"; the
+ * WebGL2 fallback is identified POSITIVELY by `isWebGLBackend === true`; and
+ * everything else is *confirmed* by the presence of the `compute` entry point
+ * rather than by any negative flag.
  */
 export function backendOf(renderer: unknown): Backend {
-  const backend = (renderer as { backend?: { isWebGLBackend?: boolean } } | null)
-    ?.backend;
-  return backend?.isWebGLBackend === false ? "webgpu" : "webgl2";
+  const r = renderer as {
+    backend?: { isWebGLBackend?: boolean };
+    compute?: unknown;
+  } | null;
+  const backend = r?.backend;
+  if (!backend) return "webgl2";
+  // MUST mirror FounderPortraitMorph's own in-island compute probe exactly, or
+  // the DOM gate and the island can disagree about whether the morph is
+  // driveable. Test isWebGLBackend NEGATIVELY (an `=== false` test is never
+  // true — the flag is `undefined` on a WebGPU backend — and would report every
+  // machine as webgl2), and require the compute entry point, since the compute
+  // kernels are what the morph actually needs.
+  return backend.isWebGLBackend !== true && typeof r?.compute === "function"
+    ? "webgpu"
+    : "webgl2";
 }

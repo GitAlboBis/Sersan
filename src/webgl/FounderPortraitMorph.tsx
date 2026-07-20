@@ -4,7 +4,7 @@
  * FounderPortraitMorph — the GATED, self-playing particle-portrait morph for the
  * home founders section (WEBGL_UPGRADE_PLAN §4R). Supersedes FounderPlanes.
  *
- * CONCEPT. One ~26k-point 3D particle cloud, PLACED and COLOURED by sampling
+ * CONCEPT. One ~42k-point 3D particle cloud, PLACED and COLOURED by sampling
  * founder A's portrait (Alessandro) with luminance-driven z-relief so it reads
  * as a 3D bust. The founders section PINS via a scroll-jack gate (founders-rail,
  * mirrors HeroIntroGate): while pinned the page does NOT scroll and the morph is
@@ -17,15 +17,26 @@
  * crisply; mid-flight the swarm surges cyan (feeds the selective bloom). The two
  * DOM copy blocks cross-fade following uMorph (owned by founders-rail.tsx).
  *
+ * SAMPLING (rewritten 2026-07-20). Both portraits are sampled onto ONE shared
+ * grid by samplePortraitPair: one particle per grid cell (no random picks → no
+ * holes, no duplicates), tone carried by particle SIZE via the per-particle
+ * `ink` scalar rather than by particle DENSITY, and no hard background mask
+ * (the backdrop simply has ink ≈ 0 and shrinks away). The shared cell list also
+ * supplies A↔B index pairing for free — particle j is the same cell in both
+ * images — which retired the old radial-sector sort. Consequently the INSTANCE
+ * COUNT FOLLOWS THE SAMPLER (cells found, strided down to the tier ceiling);
+ * it is never a fixed budget padded with duplicates.
+ *
  * WORLD SCALE (fills the stage). The sampler returns the sampled FACE extent
  * (a robust percentile half-width/height in grid px). This island maps grid-px →
  * world so that extent ≈ STAGE_FILL × the measured [data-founder-stage] rect —
  * so the face FILLS (not overflows) the stage regardless of how much of the
  * source frame the face occupies. z-relief is capped to ≤ Z_RELIEF_MAX_FRAC of
- * the face height so the orbit reads 3D without smearing the silhouette.
+ * the face height — deliberately near-flat, see that constant for why relief
+ * tears a regular one-particle-per-cell grid.
  *
- * COLOUR AT REST. NormalBlending + depthTest/Write (front discs occlude back =
- * real relief); at speed≈0 each particle shows its sampled sRGB→linear pixel
+ * COLOUR AT REST. NormalBlending with depthTest/depthWrite OFF (nothing to
+ * occlude at one particle per cell); at speed≈0 each particle shows its sRGB→linear pixel
  * colour × a modest emissive (~1.1) — photographic skin tone, not additive white
  * dust. The cyan travel-tint only rises with speed mid-morph.
  *
@@ -43,10 +54,11 @@
  * the stage rect is measured ONLY on measureVersion bumps; dispose on cleanup.
  *
  * LIVE TUNING. window.__sersanFounderMorph (dev-only) exposes getUniforms /
- * getStage / setPointSize / setSpread / setEmissive / setLumThreshold / setDepth
- * / setMorph(override) / setStage / playMorph / resample / project / bbox — so
- * the final look (point size / spread / emissive / threshold / crop) is tuned
- * without rebuilds.
+ * getSampler / getStage / setPointSize / setSpread / setEmissive / setDepth /
+ * setMorph(override) / setStage / playMorph / resample / project / bbox — so
+ * the final look (point size / spread / emissive / ink curve / grid) is tuned
+ * without rebuilds. `resample({ inkGain, inkFloor, inkGamma, fadeStart,
+ * fadeSpan, inkCut, gridW, gridH })` re-runs the pair sampler in place.
  */
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -59,62 +71,72 @@ import {
 } from "./store/foundersMorphStore";
 import { useTierStore } from "./store/tierStore";
 import { founders } from "@/data/founders";
-import type { ImagePoints, ImageSampleSpec } from "./image/sampleImagePoints";
+import type {
+  PortraitPair,
+  PortraitPairSpec,
+  PortraitPoints,
+} from "./image/sampleImagePoints";
 
-const COUNT_BY_TIER: Record<"full" | "lite", number> = {
-  full: 26000,
-  lite: 12000,
+/** Tier CEILING on the instance count — not a target. The sampler decides the
+ * count (one particle per shared grid cell) and only gets strided down if the
+ * grid overshoots this. */
+const MAX_COUNT_BY_TIER: Record<"full" | "lite", number> = {
+  full: 48000,
+  lite: 16000,
 };
 
 // --- Sampler grid + look constants -----------------------------------------
-const GRID_W = 300;
-const GRID_H = 420;
-const STRIDE = 2;
+/** Shared sample grid (5:7 portrait). Measured on the two shipped headshots:
+ * 290×405 → 42,087 shared cells at stride 1, which lands on the full tier's
+ * budget with headroom under the 48,000 ceiling. Cell count scales with grid
+ * AREA, so retarget with `scale = sqrt(wanted / measured)` if the assets or the
+ * ink curve change; keep it under the ceiling so the stride stays 1 (the
+ * integer stride is a cliff — 50k cells would halve the count to 25k). */
+const GRID_W = 290;
+const GRID_H = 405;
 /** Portrait fill fraction of the stage rect (leaves a small margin). */
 const STAGE_FILL = 0.92;
-/** z-relief cap as a fraction of the sampled FACE height (keeps the bust 3D
- * without smearing the silhouette on orbit). */
-const Z_RELIEF_MAX_FRAC = 0.15;
-/** Per-image seeds (deterministic picks; pairing comes from the radial sort). */
-const SEED_A = 0x51e7a1;
-const SEED_B = 0x9c3f22;
-
-/** Default background-isolation thresholds (live-tunable). The real headshots
- * are on a near-WHITE studio wall; luminance can't drop a bright bg and satFloor
- * would also cull dark hair/beard, so the wall is removed by BG_LUM_CEIL —
- * drop only BRIGHT + near-neutral cells (wall / white shirt), keeping the dark
- * neutral hair/beard, so the face reads clean with no rectangular halo. */
-const DEFAULT_LUM_THRESHOLD = 0.1;
-const DEFAULT_SAT_FLOOR = 0;
-const DEFAULT_BG_LUM_CEIL = 0.62;
-const DEFAULT_BG_CHROMA_CEIL = 0.06;
+/** z-relief cap as a fraction of the sampled FACE height. Kept DELIBERATELY tiny
+ * (0.04) — the resting cloud is effectively flat. WHY: since the sampler places
+ * one particle per cell on a REGULAR grid, adjacent cells that straddle a
+ * luminance edge (hairline, beard edge, glasses rim) receive very different z.
+ * Under perspective those neighbours separate LATERALLY, which shreds every
+ * luminance edge into a vertical comb — severe on high-local-contrast portraits
+ * (dark beard against lit skin). The relief must therefore stay far below the
+ * cell pitch. It bought almost nothing anyway: the group only orbits mid-morph,
+ * where the swarm is scattered, while the resting face is the state the visitor
+ * actually reads. Verified live via __sersanFounderMorph.setDepth(): 0 = clean,
+ * 0.3 = visible tearing, 1 = severe comb. */
+const Z_RELIEF_MAX_FRAC = 0.04;
 /** Modest emissive so faces stay photographic at rest (task: ~1.0–1.3). */
-const DEFAULT_EMISSIVE = 1.1;
-/** Fallback (environmental) sources: PER-FOUNDER centred upper crop to isolate
- * each face — Alessandro and Michele sit differently in their environmental
- * photos, so a single shared crop cut Michele. Indexed by founder; only used
- * when a tight headshot file is absent. Interim defaults (real headshots are
- * coming); live-tunable via resample({crop}) / resample({cropA,cropB}). */
-const DEFAULT_FALLBACK_CROPS = [
-  { x: 0.3, y: 0.02, w: 0.42, h: 0.58 }, // Alessandro
-  { x: 0.34, y: 0.06, w: 0.4, h: 0.56 }, // Michele
-];
+const DEFAULT_EMISSIVE = 1.18;
 
-/** Shape of the sampler spec minus the per-call/tunable fields. */
-const SAMPLE_SPEC_BASE: Omit<
-  ImageSampleSpec,
-  "seed" | "lumFloor" | "satFloor" | "bgLumCeil" | "bgChromaCeil" | "crop"
-> = {
+/** Ink-model defaults, validated in-browser on both shipped headshots. `ink` is
+ * the luma-weighted distance from the measured backdrop colour, contrast-curved
+ * and dissolved toward the bottom of the frame; it drives particle SIZE and
+ * alpha, which is what replaced the old density/threshold model (a per-pixel
+ * backdrop threshold cannot tell "white wall" from "lit scalp", so it punched
+ * holes through the brightest parts of the SUBJECT). */
+const SAMPLE_SPEC_BASE: Omit<PortraitPairSpec, "maxCount"> = {
   gridW: GRID_W,
   gridH: GRID_H,
-  stride: STRIDE,
   depth: 90, // grid-px of luminance relief front-to-back (capped in toWorld)
-  centerZBias: 40, // extra forward bulge at the face centre
-  radialFalloff: 1.7, // tighter to the centred face
-  radius: 0.72,
-  faceBias: 0.44, // faces sit a touch above centre
-  lumGamma: 1.15,
-  pair: true,
+  // Forward bulge at the face centre: DISABLED (0). On the regular one-per-cell
+  // grid it produced a visible rounded bulge artifact around the chin/face
+  // centre, and it compounds the edge-tearing described at Z_RELIEF_MAX_FRAC.
+  centerZBias: 0,
+  // Gentle curve — the backdrop is removed SPATIALLY by the sampler's
+  // border-seeded flood fill, so nothing here has to fight the wall. Every
+  // low-end gate that used to live here (lumCeil/neutralSat, then
+  // inkGateLo/inkGateHi) deleted the lit scalp and dimmed the subject's mid
+  // band along with it; do not reintroduce one.
+  inkGain: 1.7, // contrast gain on the backdrop distance
+  inkFloor: 0.03, // below this the cell is sensor noise → ink 0
+  inkGamma: 0.62, // <1 keeps mid-tones (cheeks, shirt folds) present
+  fadeStart: 0.62, // the bust dissolves into darkness below this normalized y
+  fadeSpan: 0.32,
+  inkCut: 0.03, // union ink above which a cell joins the shared list
+  extentInk: 0.15, // only real ink counts toward the measured face extent
 };
 
 // --- Motion constants -------------------------------------------------------
@@ -124,26 +146,20 @@ const SPREAD_MAX = 1.1;
 const ORBIT_MAX = 0.7;
 /** Max group dolly toward the camera (world units) at the midpoint. */
 const DOLLY = 2.2;
-/** Mid-flight pointer parallax (radians) at the flight-envelope peak. */
+/** Mid-flight pointer parallax (radians), gated by the same sin(g·π) envelope. */
 const PARALLAX_MAX = 0.18;
-/** Pointer-parallax floor at the LOCKED stages (radians). The gate holds the
- * page at A/B, so a bust with zero pointer response there reads as a
- * freeze-frame; this floor lets it turn fractionally toward the cursor while
- * staying far below the mid-flight amplitude. */
-const PARALLAX_REST = 0.05;
 /** Rest-idle life at the locked stages — GROUP-level ONLY (the per-particle
  * spring targets stay pixel-pinned, so the silhouette registration is never
- * touched): a slow two-axis sway + breath, faded out by the flight envelope
- * so mid-flight motion stays owned by orbit/spread. Amplitudes are
- * deliberately tiny — beyond ~0.02 rad the "locked, crisp face" contract
- * erodes into wobble. */
+ * touched): a slow two-axis sway + breath, faded out by the flight envelope so
+ * mid-flight motion stays owned by orbit/spread. Amplitudes are deliberately
+ * tiny — beyond ~0.02 rad the "locked, crisp face" contract erodes into wobble. */
 const REST_SWAY_YAW = 0.02; // rad, at 0.11 rad/s
 const REST_SWAY_PITCH = 0.012; // rad, at 0.07 rad/s
 const REST_BREATH = 0.004; // scale fraction, at 0.5 rad/s
 /** Entry assemble duration (seconds) once the section reveals. */
-const ENTRY_DURATION = 2.2;
+const ENTRY_DURATION = 1.8;
 /** One-shot A→B (or B→A) auto-play duration (seconds). Mirrors the hero morph. */
-const MORPH_DURATION = 2.6;
+const MORPH_DURATION = 1.4;
 /** Off-screen cull margin (CSS px). */
 const CULL_PAD = 120;
 
@@ -180,7 +196,8 @@ interface StageRect {
   h: number;
 }
 
-type Crop = { x: number; y: number; w: number; h: number } | undefined;
+/** Live-tunable subset of the sampler spec (dev handle `resample`). */
+type SampleTuning = Partial<Omit<PortraitPairSpec, "maxCount">>;
 
 /** Force-fetch an image (native lazy-load never fires inside a sticky/transform
  * frame — the trap documented in card-image-distort.tsx / FounderPlanes). */
@@ -195,37 +212,35 @@ const loadImg = (src: string) =>
 
 /** Prefer a tight headshot (public/founders/<slug>-headshot.<ext>) if present;
  * otherwise fall back to the environmental portrait. Presence is detected by
- * attempting the load and falling back on error. */
-async function loadFounder(
-  idx: number,
-): Promise<{ img: HTMLImageElement; isHeadshot: boolean }> {
+ * attempting the load and falling back on error. The two sources need no
+ * per-source profile any more: the ink model measures its own backdrop colour
+ * from the frame's top corners, so a studio-white seamless and a dark
+ * environmental surround are handled by the same code path. */
+async function loadFounder(idx: number): Promise<HTMLImageElement> {
   const slug = FOUNDER_SLUGS[idx] ?? FOUNDER_SLUGS[0];
   for (const ext of HEADSHOT_EXTS) {
     try {
-      const img = await loadImg(`/founders/${slug}-headshot.${ext}`);
-      return { img, isHeadshot: true };
+      return await loadImg(`/founders/${slug}-headshot.${ext}`);
     } catch {
       /* try next extension / fall back */
     }
   }
-  const img = await loadImg(founders[idx]?.image ?? "");
-  return { img, isHeadshot: false };
+  return loadImg(founders[idx]?.image ?? "");
 }
 
 export function FounderPortraitMorph() {
   const { camera, size, gl } = useThree();
 
   const tier = useTierStore((s) => s.tier);
-  const count = COUNT_BY_TIER[tier === "lite" ? "lite" : "full"];
+  const maxCount = MAX_COUNT_BY_TIER[tier === "lite" ? "lite" : "full"];
 
   // Rare-change reactive reads (allowed) — trigger (re)build + (re)measure.
   const measureVersion = useFoundersMorphStore((s) => s.measureVersion);
 
-  // Cached decoded portraits + their (scale-independent) samples + modules.
+  // Cached decoded portraits + the (scale-independent) shared-grid PAIR sample.
   const imgARef = useRef<HTMLImageElement | null>(null);
   const imgBRef = useRef<HTMLImageElement | null>(null);
-  const sampleARef = useRef<ImagePoints | null>(null);
-  const sampleBRef = useRef<ImagePoints | null>(null);
+  const pairRef = useRef<PortraitPair | null>(null);
   const [sampleEpoch, setSampleEpoch] = useState(0);
   const sampleModRef = useRef<typeof import("./image/sampleImagePoints") | null>(
     null,
@@ -257,12 +272,8 @@ export function FounderPortraitMorph() {
   const spreadMaxRef = useRef(SPREAD_MAX);
   const pointSizeRef = useRef<number | null>(null);
   const emissiveRef = useRef(DEFAULT_EMISSIVE);
-  const lumThresholdRef = useRef(DEFAULT_LUM_THRESHOLD);
-  const satFloorRef = useRef(DEFAULT_SAT_FLOOR);
-  const bgLumCeilRef = useRef(DEFAULT_BG_LUM_CEIL);
-  const bgChromaCeilRef = useRef(DEFAULT_BG_CHROMA_CEIL);
-  const cropARef = useRef<Crop>(undefined);
-  const cropBRef = useRef<Crop>(undefined);
+  /** Live overrides merged over SAMPLE_SPEC_BASE on the next resample. */
+  const tuningRef = useRef<SampleTuning>({});
   /** Dev override for uMorph (null = gate/scroll control). */
   const morphOverrideRef = useRef<number | null>(null);
 
@@ -273,14 +284,13 @@ export function FounderPortraitMorph() {
   const quat = useRef(new THREE.Quaternion()).current;
   const cornerV = useRef(new THREE.Vector3()).current;
 
-  const specFor = (seed: number, crop: Crop): ImageSampleSpec => ({
+  /** Full sampler spec = the validated defaults + any live overrides + the
+   * tier ceiling. Both portraits share ONE spec by construction — the shared
+   * grid is what pairs them. */
+  const sampleSpec = (): PortraitPairSpec => ({
     ...SAMPLE_SPEC_BASE,
-    seed,
-    lumFloor: lumThresholdRef.current,
-    satFloor: satFloorRef.current,
-    bgLumCeil: bgLumCeilRef.current,
-    bgChromaCeil: bgChromaCeilRef.current,
-    crop,
+    ...tuningRef.current,
+    maxCount,
   });
 
   // === Load + sample both portraits (headshot preferred, else fallback) ======
@@ -295,27 +305,12 @@ export function FounderPortraitMorph() {
     ])
       .then(([a, b, mod]) => {
         if (cancelled) return;
-        imgARef.current = a.img;
-        imgBRef.current = b.img;
+        imgARef.current = a;
+        imgBRef.current = b;
         sampleModRef.current = mod;
-        // Headshots sample full-frame; environmental fallbacks get their OWN
-        // per-founder face crop.
-        cropARef.current = a.isHeadshot ? undefined : DEFAULT_FALLBACK_CROPS[0];
-        cropBRef.current = b.isHeadshot ? undefined : DEFAULT_FALLBACK_CROPS[1];
-        sampleARef.current = mod.sampleImagePoints(
-          a.img,
-          a.img.naturalWidth,
-          a.img.naturalHeight,
-          count,
-          specFor(SEED_A, cropARef.current),
-        );
-        sampleBRef.current = mod.sampleImagePoints(
-          b.img,
-          b.img.naturalWidth,
-          b.img.naturalHeight,
-          count,
-          specFor(SEED_B, cropBRef.current),
-        );
+        // ONE call samples BOTH portraits onto the shared grid — that shared
+        // cell list is what index-pairs particle j across A and B.
+        pairRef.current = mod.samplePortraitPair(a, b, sampleSpec());
         setSampleEpoch((e) => e + 1);
       })
       .catch(() => {});
@@ -324,7 +319,7 @@ export function FounderPortraitMorph() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [count]);
+  }, [maxCount]);
 
   // === Core build: measure stage rect, fit grid-px → world, spin up the sim ===
   // Kept in a ref so live knobs (resample/setDepth/setEmissive) can rebuild
@@ -332,12 +327,15 @@ export function FounderPortraitMorph() {
   const buildNowRef = useRef<(preserveState: boolean) => void>(() => {});
   buildNowRef.current = (preserveState: boolean) => {
     if (!webgpuEnabled()) return;
-    const sA = sampleARef.current;
-    const sB = sampleBRef.current;
+    const pair = pairRef.current;
     const webgpu = webgpuModRef.current as typeof import("three/webgpu") | null;
     const tslNs = tslModRef.current as typeof import("three/tsl") | null;
     const mod = simModRef.current;
-    if (!sA || !sB || !webgpu || !tslNs || !mod) return;
+    if (!pair || !webgpu || !tslNs || !mod) return;
+    const sA = pair.a;
+    const sB = pair.b;
+    // The instance count FOLLOWS the sampler (one particle per shared cell).
+    const count = pair.count;
 
     // True-WebGPU compute only (storage indexing no-ops on WebGL2, #31221).
     const bk = (gl as unknown as { backend?: { isWebGLBackend?: boolean } })
@@ -391,7 +389,7 @@ export function FounderPortraitMorph() {
     const zNorm = Math.min(1, (Z_RELIEF_MAX_FRAC * faceHeightGrid) / maxAbsZ);
     const zFactor = worldPerGrid * zNorm * depthScaleRef.current;
 
-    const toWorld = (s: ImagePoints) => {
+    const toWorld = (s: PortraitPoints) => {
       const out = new Float32Array(count * 3);
       for (let i = 0; i < count; i++) {
         out[i * 3] = s.xy[i * 2] * worldPerGrid;
@@ -409,11 +407,20 @@ export function FounderPortraitMorph() {
       hz: maxAbsZ * zFactor,
     };
 
+    // A rebuild can arrive long BEFORE the entry has ever played: measure()
+    // bumps measureVersion on mount, on intro-complete, on fonts-ready and on
+    // every resize, and the build effect re-runs on each. Taking the preserve
+    // path then would seed the cloud at its formed home positions AND pin
+    // uAssemble at 1 — silently consuming the entry so the section arrives
+    // already formed (the bug). Only a rebuild that happens after the entry
+    // actually completed may skip it; every earlier one re-scatters and replays.
+    const keepEntry = preserveState && entryRef.current >= 1;
+
     // Seed positions. Fresh build → a scattered cloud the particles fly IN from
     // on the entry assemble. Live rebuild (preserveState) → the current home so
     // the morph does not snap (keep uMorph).
     let seed: Float32Array;
-    if (preserveState) {
+    if (keepEntry) {
       seed = (morphRef.current >= 0.5 ? homeB : homeA).slice();
     } else {
       seed = new Float32Array(count * 3);
@@ -427,9 +434,13 @@ export function FounderPortraitMorph() {
       }
     }
 
-    // --- DENSITY: default disc size so ~count soft discs OVERLAP into tone -----
-    // spacing ≈ sqrt(stageArea_devpx / count); disc diameter ≈ 1.9× spacing so
-    // neighbours touch and the face reads as continuous shaded tone, not dots.
+    // --- DENSITY: default disc size so the FACE's discs OVERLAP into tone -----
+    // spacing ≈ sqrt(stageArea_devpx / count). The overlap factor is now sized
+    // for a FULL-INK particle, not an average one: the render scales every disc
+    // by (SIZE_MIN + SIZE_INK·ink), so at the face's high ink the discs land at
+    // ~1.7× spacing and touch (continuous tone), while the faint fringe shrinks
+    // below 1× and stays sparse. That per-particle ink term is what carries the
+    // tone now, so the base factor must NOT assume every particle is full size.
     const dprNow = Math.min(
       typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1,
       2,
@@ -437,7 +448,7 @@ export function FounderPortraitMorph() {
     const areaDev =
       sr.width * dprNow * sr.height * dprNow * STAGE_FILL * STAGE_FILL;
     const spacingDev = Math.sqrt(Math.max(areaDev / count, 1));
-    const discDev = spacingDev * 1.9;
+    const discDev = spacingDev * 2.1;
     const defPointSize = THREE.MathUtils.clamp(
       (discDev * CAMERA_Z) / (dprNow * 1.05),
       10,
@@ -456,9 +467,9 @@ export function FounderPortraitMorph() {
       homeB,
       count,
       {
-        SPRING: 34,
-        DAMPING: 6.2,
-        MAX_SPEED: 11,
+        SPRING: 52,
+        DAMPING: 7.5,
+        MAX_SPEED: 16,
         TURB: 9,
         POINT_SIZE: pointSize,
         POINT_ALPHA: 1.0,
@@ -472,11 +483,23 @@ export function FounderPortraitMorph() {
       {
         colorsA: sA.rgb,
         colorsB: sB.rgb,
-        blending: "normal", // depth-tested occlusion = real relief
-        depthTest: true,
-        depthWrite: true,
+        // Tone comes from particle SIZE: ink scales each disc (and its alpha),
+        // morphed A→B on the same staggered wave as the colour.
+        sizeA: sA.ink,
+        sizeB: sB.ink,
+        blending: "normal",
+        // Depth OFF. With one particle per grid cell there is nothing
+        // meaningful to occlude, and depth-testing overlapping discs at
+        // slightly different z is exactly what turned the (now tiny) luminance
+        // relief into mottling / comb tearing along every luminance edge.
+        depthTest: false,
+        depthWrite: false,
         emissive: emissiveRef.current, // faces photographic at rest
         travelTint: [0.16, 2.4, 3.0], // HDR cyan mid-flight → bloom
+        // Lattice pitch in device px — sizes the render's sub-pixel coverage
+        // compensation (disc diameter is exactly 2·f·spacingDev), so the
+        // correction tracks this stage/dpr rather than assuming retina.
+        spacingDev,
       },
     ) as unknown as MorphBuild;
 
@@ -488,11 +511,18 @@ export function FounderPortraitMorph() {
     built.uSizeComp3.value = 1;
     built.uPointSize.value = pointSize;
 
-    if (preserveState) {
-      // Live rebuild: keep the morph where the user left it, skip the entry.
+    if (keepEntry) {
+      // Live rebuild after the entry finished: keep the morph where the user
+      // left it, skip the entry.
       built.uAssemble.value = 1;
       built.uMorph.value = morphRef.current;
       entryRef.current = 1;
+    } else if (preserveState) {
+      // Rebuild BEFORE the entry played (a measure bump / resize while the
+      // section is still below the fold): keep the morph position but carry the
+      // entry progress across so it still plays when the section is reached.
+      built.uAssemble.value = entryRef.current;
+      built.uMorph.value = morphRef.current;
     } else {
       // Fresh build → replay the entry + reset the smoothers.
       built.uAssemble.value = 0;
@@ -517,56 +547,26 @@ export function FounderPortraitMorph() {
     useFoundersMorphStore.getState().setActive(true);
   };
 
-  // Re-run the sampler for both portraits with new params, then rebuild in place
-  // (preserve the morph — no snap). Used by the live lum/sat/crop knobs.
-  const resampleNowRef = useRef<
-    (opts: {
-      crop?: Crop;
-      cropA?: Crop;
-      cropB?: Crop;
-      lumThreshold?: number;
-      sat?: number;
-      bgLumCeil?: number;
-      bgChromaCeil?: number;
-    }) => void
-  >(() => {});
+  // Re-run the PAIR sampler with new ink/grid params, then rebuild in place
+  // (preserve the morph — no snap). Used by the live dev knobs. Both portraits
+  // are re-sampled by the one call, so they can never drift onto different grids.
+  const resampleNowRef = useRef<(opts: SampleTuning) => void>(() => {});
   resampleNowRef.current = (opts) => {
     const mod = sampleModRef.current;
     const ia = imgARef.current;
     const ib = imgBRef.current;
     if (!mod || !ia || !ib) return;
-    if (opts.lumThreshold != null) lumThresholdRef.current = opts.lumThreshold;
-    if (opts.sat != null) satFloorRef.current = opts.sat;
-    if (opts.bgLumCeil != null) bgLumCeilRef.current = opts.bgLumCeil;
-    if (opts.bgChromaCeil != null) bgChromaCeilRef.current = opts.bgChromaCeil;
-    // `crop` sets both; `cropA`/`cropB` override per-founder.
-    if (opts.crop !== undefined) {
-      cropARef.current = opts.crop;
-      cropBRef.current = opts.crop;
-    }
-    if (opts.cropA !== undefined) cropARef.current = opts.cropA;
-    if (opts.cropB !== undefined) cropBRef.current = opts.cropB;
-    sampleARef.current = mod.sampleImagePoints(
-      ia,
-      ia.naturalWidth,
-      ia.naturalHeight,
-      count,
-      specFor(SEED_A, cropARef.current),
-    );
-    sampleBRef.current = mod.sampleImagePoints(
-      ib,
-      ib.naturalWidth,
-      ib.naturalHeight,
-      count,
-      specFor(SEED_B, cropBRef.current),
-    );
+    tuningRef.current = { ...tuningRef.current, ...opts };
+    const next = mod.samplePortraitPair(ia, ib, sampleSpec());
+    if (!next) return;
+    pairRef.current = next;
     buildNowRef.current(true);
   };
 
   // === Build effect: load modules, build fresh on tier/resize/measure/sample ==
   useEffect(() => {
     if (!webgpuEnabled()) return;
-    if (!sampleARef.current || !sampleBRef.current) return;
+    if (!pairRef.current) return;
     let cancelled = false;
 
     const ensureModules = async () => {
@@ -594,7 +594,7 @@ export function FounderPortraitMorph() {
       useFoundersMorphStore.getState().setActive(false);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gl, count, sampleEpoch, measureVersion, size.width]);
+  }, [gl, maxCount, sampleEpoch, measureVersion, size.width]);
 
   useFrame((_, rawDelta) => {
     const group = groupRef.current;
@@ -683,11 +683,15 @@ export function FounderPortraitMorph() {
     if (store.assembleDone !== assembleDone) store.setAssembleDone(assembleDone);
 
     // --- In-view fade (edge ramp) -------------------------------------------
+    // Held at 0 until the entry assemble has begun: before the reveal the
+    // particles sit motionless at their scatter seeds (uAssemble = 0, no
+    // transit turbulence) — a frozen dust field we must never show.
     const ramp = ih * 0.28;
     const edge = Math.min(1, (ih - vpY) / ramp, (vpY + rect.h) / ramp);
+    const shown = store.reveal >= 1 || entryRef.current > 0;
     fadeRef.current = THREE.MathUtils.damp(
       fadeRef.current,
-      THREE.MathUtils.clamp(edge, 0, 1),
+      shown ? THREE.MathUtils.clamp(edge, 0, 1) : 0,
       8,
       delta,
     );
@@ -702,26 +706,26 @@ export function FounderPortraitMorph() {
       .add(camera.position);
     group.position.copy(scratch);
 
-    // Orbit yaw + pointer parallax + rest-idle sway — GROUP transform only
-    // (the camera is NEVER touched; the per-particle springs stay pixel-pinned
-    // so the face itself remains crisp). The orbit rides the sin(g·π) flight
-    // envelope; the rest-idle terms ride its COMPLEMENT, so at the locked A/B
-    // stages (where the gate holds the page) the bust keeps a slow sway and a
-    // fractional turn toward the cursor instead of freezing, and mid-flight
-    // the idle life yields entirely to the orbit. Both crossings are absorbed
-    // by the damp-6 smoothers below — no term ever steps. Reduced-motion never
-    // reaches this: founders-rail only pins the store on the non-reduced
-    // pinned-desktop mode.
+    // Orbit yaw + pointer parallax + rest-idle sway — GROUP transform only (the
+    // camera is NEVER touched; the per-particle springs stay pixel-pinned so the
+    // face itself remains crisp). Orbit and parallax both ride the sin(g·π)
+    // flight envelope, so the group transform is EXACTLY neutral at g=0 and g=1
+    // and the RESTING face never tracks the cursor. The rest-idle terms ride the
+    // envelope's COMPLEMENT instead: at the locked A/B stages — where the gate
+    // holds the page for an open-ended hold — the bust keeps a slow sway and
+    // breath rather than sitting as a literal freeze-frame, and mid-flight that
+    // idle life yields entirely to the orbit. Both crossings are absorbed by the
+    // damp-6 smoothers below, so no term ever steps. Reduced-motion never reaches
+    // this: founders-rail only pins the store on the non-reduced pinned-desktop
+    // mode.
     const mouse = store.mouse;
     const t = timeRef.current;
     const restEnv = 1 - env;
-    const parallaxAmp = THREE.MathUtils.lerp(PARALLAX_REST, PARALLAX_MAX, env);
     const yawTarget =
-      env * ORBIT_MAX +
-      (mouse.x - 0.5) * parallaxAmp +
+      env * (ORBIT_MAX + (mouse.x - 0.5) * PARALLAX_MAX) +
       restEnv * Math.sin(t * 0.11) * REST_SWAY_YAW;
     const pitchTarget =
-      (0.5 - mouse.y) * parallaxAmp * 0.6 +
+      env * ((0.5 - mouse.y) * PARALLAX_MAX * 0.6) +
       restEnv * Math.sin(t * 0.07) * REST_SWAY_PITCH;
     yawRef.current = THREE.MathUtils.damp(yawRef.current, yawTarget, 6, delta);
     pitchRef.current = THREE.MathUtils.damp(
@@ -736,9 +740,9 @@ export function FounderPortraitMorph() {
 
     // Breath: a slow whole-group swell, again gated by restEnv so it dies
     // mid-flight. Written fresh every visible frame as 1 + term (never
-    // accumulated), so an interrupted leg can never leave a drifted scale
-    // baked in; every particle scales together about the group origin, so
-    // the sampled silhouette stays registered to itself.
+    // accumulated), so an interrupted leg can never leave a drifted scale baked
+    // in; every particle scales together about the group origin, so the sampled
+    // silhouette stays registered to itself.
     group.scale.setScalar(1 + restEnv * REST_BREATH * Math.sin(t * 0.5));
 
     const dpr = Math.min(gl.getPixelRatio(), 2);
@@ -752,9 +756,35 @@ export function FounderPortraitMorph() {
   if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
     (window as unknown as Record<string, unknown>).__sersanFounderMorph = {
       hasBuild: !!buildRef.current,
-      count,
+      maxCount,
+      /** Live instance count — decided by the sampler, not by a tier budget. */
+      get count() {
+        return pairRef.current?.count ?? 0;
+      },
       get stageRect() {
         return stageRectRef.current;
+      },
+      /** Sampler calibration readout: shared cells found for the current grid,
+       * the stride that clamped them to the tier ceiling, and the mean ink. */
+      getSampler() {
+        const p = pairRef.current;
+        if (!p) return null;
+        const meanInk = (s: PortraitPoints) => {
+          let t = 0;
+          for (let i = 0; i < p.count; i++) t += s.ink[i];
+          return t / Math.max(p.count, 1);
+        };
+        return {
+          gridW: p.gridW,
+          gridH: p.gridH,
+          sharedCells: p.sharedCells,
+          stride: p.stride,
+          count: p.count,
+          maxCount,
+          meanInkA: meanInk(p.a),
+          meanInkB: meanInk(p.b),
+          halfExtent: [p.a.halfExtentX, p.a.halfExtentY, p.b.halfExtentX, p.b.halfExtentY],
+        };
       },
       getUniforms() {
         const bb = buildRef.current;
@@ -790,17 +820,6 @@ export function FounderPortraitMorph() {
         if (buildRef.current?.uEmissive) buildRef.current.uEmissive.value = v;
         else buildNowRef.current(true);
       },
-      setLumThreshold(v: number) {
-        resampleNowRef.current({ lumThreshold: v });
-      },
-      setSat(v: number) {
-        resampleNowRef.current({ sat: v });
-      },
-      /** Bright-neutral wall drop. setBg(lumCeil, chromaCeil?) — lower lumCeil
-       * strips more of the (bright) wall; keep it above skin-highlight luminance. */
-      setBg(lumCeil: number, chromaCeil?: number) {
-        resampleNowRef.current({ bgLumCeil: lumCeil, bgChromaCeil: chromaCeil });
-      },
       setDepth(v: number) {
         depthScaleRef.current = v;
         buildNowRef.current(true);
@@ -818,15 +837,10 @@ export function FounderPortraitMorph() {
           .getState()
           .setMorphTarget(dir >= 0 ? 1 : 0, false);
       },
-      resample(opts?: {
-        crop?: Crop;
-        cropA?: Crop;
-        cropB?: Crop;
-        lumThreshold?: number;
-        sat?: number;
-        bgLumCeil?: number;
-        bgChromaCeil?: number;
-      }) {
+      /** Re-run the pair sampler with ink/grid overrides, e.g.
+       * resample({ inkGain: 2.0, gridW: 310, gridH: 434 }). Overrides persist
+       * for later resamples; the instance count follows the new grid. */
+      resample(opts?: SampleTuning) {
         resampleNowRef.current(opts ?? {});
       },
       project() {

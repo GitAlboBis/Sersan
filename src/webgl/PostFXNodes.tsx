@@ -159,6 +159,13 @@ export function PostFXNodes({ pathname = "/" }: { pathname?: string }) {
   // fluid on coarse pointers or under prefers-reduced-motion. PostFXNodes only
   // mounts at tier "full" already, so this just excludes touch/RM desktops.
   const fluidEnabledRef = useRef(false);
+  // The LIVE pathname, reachable from the async build. Assigned during render
+  // (no effect): it is only ever read from async/frame callbacks, never during
+  // render, so there is no tearing concern. The build effect's deps are
+  // [gl, scene, camera] — stable across client-side routing — so its `pathname`
+  // closure is frozen at mount and cannot be trusted once the graph lands.
+  const pathnameRef = useRef(pathname);
+  pathnameRef.current = pathname;
 
   // Build the node graph once (per renderer). All `three/webgpu` + `three/tsl`
   // imports are lazy here, so the OFF build never bundles them.
@@ -325,6 +332,19 @@ export function PostFXNodes({ pathname = "/" }: { pathname?: string }) {
       built = post;
       postRef.current = post;
       bloomRef.current = bloomPass;
+
+      // The graph was built from the pathname captured at MOUNT. If the visitor
+      // navigated while the BloomNode chunk was still in flight (its own chunk —
+      // a real cold-cache round-trip), the [pathname] effect below already ran
+      // and bailed on a null bloomRef, and it will never re-run because its only
+      // dep did not change again. Re-apply the CURRENT route now so the stale
+      // closure can never win. Idempotent on the no-navigation path (writes back
+      // the same numbers already baked into bloom()), and it touches uniform
+      // values only — no graph rebuild or recompile.
+      const cur = resolveBloom(pathnameRef.current);
+      bloomPass.strength.value = cur.intensity;
+      bloomPass.radius.value = cur.radius;
+      bloomPass.threshold.value = cur.threshold;
     })();
 
     return () => {

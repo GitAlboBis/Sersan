@@ -14,7 +14,11 @@ import { Canvas } from "@react-three/fiber";
 import { usePathname } from "next/navigation";
 import { Suspense } from "react";
 import { FrameDriver } from "./FrameDriver";
-import { webgpuEnabled, createWebGPURenderer } from "./renderer/createRenderer";
+import {
+  webgpuEnabled,
+  createWebGPURenderer,
+  backendOf,
+} from "./renderer/createRenderer";
 import { SignatureLine } from "./SignatureLine";
 import { HeroLogo } from "./HeroLogo";
 import { HeroTextParticles } from "./HeroTextParticles";
@@ -250,9 +254,27 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
             }
       }
       dpr={dprInitial}
+      // R3F's default is `{ scroll: 50, resize: 0 }` — `size` therefore updates
+      // on EVERY raw resize event, and islands that list `size.width` in a build
+      // effect's deps (FounderPortraitMorph) tear down + rebuild per event
+      // during a window-edge drag: dispose, O(count) CPU re-fit, fresh GPU
+      // storage buffers, and a blank frame each time. Debouncing the measurement
+      // means only the SETTLED size drives a rebuild; the cost is that the
+      // drawing buffer lags the element by 150ms mid-drag (a stretched frame
+      // while dragging), which is the standard trade and far cheaper than the
+      // realloc storm. Scroll debounce left at R3F's default.
+      resize={{ scroll: true, debounce: { scroll: 50, resize: 150 } }}
       camera={{ fov: CAMERA_FOV, position: [0, 0, CAMERA_Z], near: 0.1, far: 200 }}
       onCreated={({ gl }) => {
         gl.setClearColor(0x000000, 0);
+        // Publish the RESOLVED runtime backend exactly once (one-shot callback,
+        // never per-frame, never inside useFrame). `webgpuEnabled()` is only a
+        // build-time flag: with it on, a browser without WebGPU still lands on
+        // the WebGL2 fallback backend here. DOM features whose island needs a
+        // true compute backend (the founders morph) gate on this instead of the
+        // flag, so they fall back to a fully-populated DOM layout rather than
+        // rendering content their island can never drive.
+        useTierStore.getState().setBackend(backendOf(gl));
       }}
       frameloop="always"
       style={{ position: "absolute", inset: 0 }}

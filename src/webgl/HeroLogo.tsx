@@ -68,7 +68,10 @@ import { SPINE_TRAVEL_VH } from "@/lib/spine";
 import { WORLD_VIEW_HEIGHT } from "./constants";
 import { useTextMorphStore } from "./store/textMorphStore";
 import { useIntroStore } from "./store/introStore";
-import { sampleMarkHomePositions } from "./geometry/sersanMark";
+import {
+  sampleMarkHomePositions,
+  type MarkHomeField,
+} from "./geometry/sersanMark";
 import {
   createGpgpuStaticBuild,
   type GpgpuStaticUniforms,
@@ -259,7 +262,15 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   const worldViewWidth = WORLD_VIEW_HEIGHT * (size.width / size.height);
 
   // Static-fallback grid size for the active tier (full 448², lite 224²).
-  const gridSize = SIZE_BY_TIER[tier] ?? SIZE_BY_TIER.lite;
+  // The BACKEND-FALLBACK path gets an honest budget instead of the tier's: it
+  // only engages because the WebGPU renderer resolved to its WebGL2 sub-backend
+  // — i.e. a weak/older GPU — and detectTier() returns "full" for any fine-
+  // pointer viewport ≥768px without ever consulting GPU strength. Sampling 448²
+  // (≈200k) there stalls exactly the machines least able to absorb it; lite
+  // (224² ≈ 50k) is ~4× less work.
+  const gridSize = sporeStaticFallback
+    ? SIZE_BY_TIER.lite
+    : (SIZE_BY_TIER[tier] ?? SIZE_BY_TIER.lite);
 
   // === Geometry: the Blender-built mark (sampled, NEVER rendered). ==========
   // drei caches the loaded geometry across remounts, so we CLONE it and only
@@ -308,11 +319,30 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // grid UV (hashed for size variance). The mesh is unrendered. GATED on the
   // static build actually being shown (448² ≈ 200k samples is real startup
   // work — don't pay it under the shipping spores mode).
-  const homeField = useMemo(
-    () =>
-      showStaticBuild ? sampleMarkHomePositions(bodyGeometry, gridSize) : null,
-    [bodyGeometry, gridSize, showStaticBuild],
-  );
+  // NOT a useMemo: the sampling is a rejection loop over gridSize² surface
+  // samples (hundreds of ms), and the flip that turns it on
+  // (setSporeBackendFallback from the ASYNC backend probe) is a state set — so a
+  // memo body ran it synchronously INSIDE a React commit, freezing the main
+  // thread (and the shared Lenis/R3F loop with it) right across the preloader
+  // handoff. The rAF defers the work past the commit so the frame that flips the
+  // fallback still paints. Consumers already tolerate `null` (it is null for the
+  // whole spores path), so the one-frame delay is safe.
+  const [homeField, setHomeField] = useState<MarkHomeField | null>(null);
+  useEffect(() => {
+    if (!showStaticBuild) {
+      setHomeField(null);
+      return;
+    }
+    let cancelled = false;
+    const id = requestAnimationFrame(() => {
+      if (cancelled) return;
+      setHomeField(sampleMarkHomePositions(bodyGeometry, gridSize));
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(id);
+    };
+  }, [bodyGeometry, gridSize, showStaticBuild]);
 
   // Spore home fields — TWO shells on their own (smaller) grid: the erodible
   // violet CRUST outside + the immortal glowing cyan CORE inset beneath it
