@@ -133,6 +133,14 @@ export function DriftParticles({ tier, anchors, pathname }: DriftParticlesProps)
 
   const k = WORLD_VIEW_HEIGHT / size.height;
   const worldViewWidth = WORLD_VIEW_HEIGHT * (size.width / size.height);
+  // Coarse width signal for the geometry memo below. `anchors.version` alone
+  // does NOT cover width: setMeasured short-circuits the bump when the
+  // NORMALIZED spans and px scrollHeight are unchanged, which is exactly what
+  // a width-only resize inside one responsive tier produces (content sits in
+  // max-width-capped containers, so 1500→1920px moves no element). Bucketing
+  // at 128 CSS px keeps the realloc-storm protection: R3F already debounces
+  // resize at 150ms, and the bucket collapses that to ~one rebuild per 128px.
+  const widthBucket = Math.round(size.width / 128);
 
   // Instance count for the active tier/route — used both to size the geometry
   // buffers and to set the InstancedMesh draw count.
@@ -184,11 +192,16 @@ export function DriftParticles({ tier, anchors, pathname }: DriftParticlesProps)
     // ResizeObserver observation, so listing them reallocated three Float32Arrays
     // + a fresh InstancedBufferGeometry for up to 3000 instances on every tick of
     // a resize drag. They are recomputed on every render regardless, so the memo
-    // body still reads current values whenever it does run — the spawn spread is
-    // simply refreshed once on the 150ms-debounced `anchors.version` bump from
-    // SectionBus instead of per observation tick.
+    // body still reads current values whenever it does run.
+    //
+    // `widthBucket` stands in for the width half of that pair. It is NOT
+    // redundant with `anchors.version`: that bump is skipped on width-only
+    // resizes (see the note by widthBucket above), which would otherwise leave
+    // aOffset.x sampled from a stale `worldViewWidth` for the rest of the
+    // session — the dust field confined to the middle of a widened viewport,
+    // since the vertex stage consumes aOffset with no aspect correction.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [count, anchors.version]);
+  }, [count, anchors.version, widthBucket]);
 
   useEffect(() => () => geometry?.dispose(), [geometry]);
 

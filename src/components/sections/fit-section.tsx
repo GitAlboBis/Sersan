@@ -405,6 +405,12 @@ export default function FitSection() {
   const headingRef = useRef<HTMLDivElement | null>(null);
   const poseProxyRef = useRef<HTMLSpanElement | null>(null);
   const runwayRef = useRef<HTMLDivElement | null>(null);
+  // React detaches runwayRef on a pinned→native flip, but the DOM node itself
+  // can survive (see the mode-flip effect below), and measure() writes an
+  // inline px height that React never owns and therefore never clears. This
+  // second ref is written only on attach, never nulled, so the flip handler
+  // still has a handle on the node it must release.
+  const runwayNodeRef = useRef<HTMLDivElement | null>(null);
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const skewRef = useRef<HTMLDivElement | null>(null);
 
@@ -836,9 +842,12 @@ export default function FitSection() {
       // makes the browser clamp scrollY against the shrunken document —
       // ejecting the reader out of the section. Keeping the stale px height
       // means the document never changes size; measure() overwrites it on the
-      // next arm. On a true unmount (or a pinned→native switch, which renders
-      // a different subtree with no runway node) the element is discarded
-      // together with its inline style, so releasing it buys nothing.
+      // next arm. This cleanup CANNOT distinguish a re-arm from a real
+      // pinned→native flip, and on that flip the node is NOT reliably
+      // discarded — React can reuse it as the native container, carrying the
+      // stale height with it. So the flip case is handled explicitly in the
+      // prevModeRef effect below, which clears the height off runwayNodeRef
+      // before refreshing.
     };
   }, [detected, mode, isEn]);
 
@@ -851,6 +860,15 @@ export default function FitSection() {
     const prev = prevModeRef.current;
     prevModeRef.current = mode;
     if (prev === null || prev === mode) return;
+    // Release the runway height HERE, not in the scrub cleanup: this effect is
+    // the only place that can tell a genuine mode flip from an EN↔IT re-arm.
+    // React may reuse the runway DOM node as the native container (both
+    // branches render unkeyed children of the same host type at the same
+    // index), and it only diffs the style props it owns — the px height
+    // written by measure() would otherwise survive and lock the native layout
+    // at ~520vh, which the refresh below would then bake into every
+    // downstream trigger and [data-line-anchor] waypoint.
+    if (runwayNodeRef.current) runwayNodeRef.current.style.height = "";
     const raf = requestAnimationFrame(() => ScrollTrigger.refresh());
     return () => cancelAnimationFrame(raf);
   }, [detected, mode]);
@@ -1048,7 +1066,15 @@ export default function FitSection() {
 
       {/* The tall scroll runway: height = 100vh + 6×70vh, set in px by
           measure(). minHeight is the SSR placeholder before JS measures. */}
-      <div ref={runwayRef} className="relative" style={{ minHeight: "100vh" }}>
+      <div
+        key="fit-runway"
+        ref={(el) => {
+          runwayRef.current = el;
+          if (el) runwayNodeRef.current = el;
+        }}
+        className="relative"
+        style={{ minHeight: "100vh" }}
+      >
         {/* Sticky viewport — this IS the pin (no pin-spacer, anchors stay
             valid). */}
         <div ref={stickyRef} className="sticky top-0 h-screen overflow-hidden">

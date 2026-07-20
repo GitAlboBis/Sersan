@@ -496,6 +496,32 @@ export default function FoundersRail() {
     tier === "full" &&
     backend === "webgpu";
 
+  // ...but `backend === null` means two different things, and only ONE of them
+  // means "the rail is the answer". `backend` is written once from Scene.tsx's
+  // `onCreated`, which sits behind next/dynamic(ssr:false) + `await
+  // renderer.init()` (async adapter/device negotiation) — so on the primary
+  // target machine there is a guaranteed multi-frame window where every morph
+  // precondition holds and the backend simply hasn't reported yet. Rendering
+  // the rail MARKUP through that window is correct and deliberate (it shows
+  // both founders as real, focusable DOM — the safe first paint). ARMING the
+  // rail's machinery through it is not: measure() writes
+  // `section.style.height = innerHeight + travel`, per-panel quickSetters are
+  // built and a ScrollTrigger is created, all to be torn down a few frames
+  // later when the backend resolves to webgpu.
+  //
+  // So: "undecided" = every OTHER morph precondition already holds and the
+  // backend alone is outstanding. Any session where the rail is the FINAL
+  // answer — WebGL2 (backend non-null), lite/off tier, a sub-1024px or short
+  // viewport (roomy false), native mode — fails this predicate and arms the
+  // rail immediately, exactly as before.
+  const morphUndecided =
+    detected &&
+    mode === "pinned" &&
+    roomy &&
+    tierResolved &&
+    tier === "full" &&
+    backend === null;
+
   const sectionRef = useRef<HTMLDivElement | null>(null);
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLUListElement | null>(null);
@@ -612,11 +638,22 @@ export default function FoundersRail() {
     // ...AND time-boxed. The `inside` band (top <= 0.5vh) is satisfied MANY
     // frames before the `fromTop` top-edge crossing on a normal scroll-down, so
     // leaving the arm live for the whole session let it win the branch and snap
-    // the page ~50vh forward. The window only has to cover the browser applying
-    // scroll restoration a few frames after mount (which a strict first-tick
-    // latch would miss); after it, only the top-edge crossings can engage —
-    // where the snap distance is ~0px as designed.
-    const insideEngageDeadline = performance.now() + 600;
+    // the page ~50vh forward. After the window, only the top-edge crossings can
+    // engage — where the snap distance is ~0px as designed.
+    //
+    // The window is latched on the PRECONDITION, not on effect setup. `inside`
+    // is consumed under `live.active`, which only flips after the island's full
+    // async build (two headshot fetches + decode, two 42k-point samples, the
+    // three/webgpu + three/tsl + gpgpu dynamic imports, then the GPU build).
+    // Both clocks start together, so a setup-relative budget was reliably spent
+    // before its own guard could open on a cold cache — killing the
+    // reload-landed-inside engage and leaving founder B's copy at opacity:0 AND
+    // inert (Michele's name/bio/credentials/LinkedIn out of the a11y tree).
+    // Measuring 600ms from "the island went live" still fixes the 50vh snap: in
+    // a normal session `active` latches during page load while the section is
+    // far below the fold, so the window is long expired by the time the user
+    // scrolls into the band.
+    let insideEngageDeadline = 0;
     let prevTop = section.getBoundingClientRect().top;
 
     const engage = (initStage: "A" | "B") => {
@@ -803,11 +840,34 @@ export default function FoundersRail() {
     // per-frame pin would otherwise undo that on the next rAF, leaving focus
     // off-screen with no visible indicator (WCAG 2.4.3 / 2.4.7). Uses the
     // existing release() so the cooldown / re-engage guards stay intact.
+    //
+    // "LEAVES" is the load-bearing word: the gate is only ever entered by
+    // SCROLLING, so at engage time document.activeElement is <body> and focus
+    // was never inside the sticky. The first Tab then lands on the FIRST
+    // tabbable element in document order (skip link / header nav) — far ABOVE
+    // this section and not contained by stickyRef. Releasing on that would
+    // eject the keyboard user before the morph ever played, and with a stale
+    // `lastDir` of 1 it would run a 0.6s scrollTo one viewport DOWN while the
+    // browser scrolls the header UP into view — the two fight. So: only fire
+    // once focus has actually BEEN inside, and take the direction from
+    // geometry (focus above the section → release upward, following the
+    // browser) instead of from the last wheel direction.
+    let focusWasInside = false;
     const onFocusIn = (e: FocusEvent) => {
       if (!engaged) return;
       const t = e.target as Node | null;
-      if (t && stickyRef.current?.contains(t)) return;
-      release(lastDir || 1);
+      if (t && stickyRef.current?.contains(t)) {
+        focusWasInside = true;
+        return;
+      }
+      if (!focusWasInside) return; // focus never entered the frame — not a "leave"
+      focusWasInside = false;
+      const el = t instanceof Element ? t : null;
+      const dir =
+        el && el.getBoundingClientRect().top < section.getBoundingClientRect().top
+          ? -1
+          : 1;
+      release(dir);
     };
 
     // Engage on the top-edge crossing (both directions) + hold/escape poll.
@@ -871,6 +931,9 @@ export default function FoundersRail() {
         // scroll, so the DOM poster/section is the whole (non-trapping)
         // experience.
         if (!reBlocked && live.active) {
+          // Arm the reload-landed-inside window on the FIRST frame the island
+          // is live (see the declaration): 600ms from here, not from mount.
+          if (insideEngageDeadline === 0) insideEngageDeadline = now + 600;
           const fromTop = prevTop > 0 && top <= 0; // scrolled DOWN to top edge
           const fromBottom = prevTop < 0 && top >= 0; // scrolled UP into it
           const inside =
@@ -994,6 +1057,11 @@ export default function FoundersRail() {
   // === HORIZONTAL RAIL mode: pinned desktop, NOT full+webgpu (pure DOM) ======
   useEffect(() => {
     if (!detected || mode !== "pinned" || canMorph) return;
+    // Don't arm while the morph is still undecided (see morphUndecided): the
+    // markup stays rendered, only the ScrollTrigger / measure / quickSetter
+    // machinery waits for the backend to report. `morphUndecided` is a dep, so
+    // a backend that resolves to WebGL2 arms the rail on that same commit.
+    if (morphUndecided) return;
     const section = sectionRef.current;
     const sticky = stickyRef.current;
     const track = trackRef.current;
@@ -1131,7 +1199,7 @@ export default function FoundersRail() {
         p.circle.setAttribute("r", String(MASK_FINAL_R));
       }
     };
-  }, [detected, mode, canMorph]);
+  }, [detected, mode, canMorph, morphUndecided]);
 
   const total = founders.length;
 

@@ -839,8 +839,14 @@ export default function CinematicSystemScroll() {
   // ScrollTrigger pin + scrub. Only attach once the viewport detection
   // has settled — otherwise on a mobile cold load we'd briefly pin to a
   // section that's about to be replaced by MobileFallback.
+  // reduceMotion is gated AND in the deps on purpose: it is a live matchMedia
+  // subscription, and flipping it mid-session swaps the render branch below to
+  // <MobileFallback>, unmounting `outer`. Without the dep this effect would
+  // never re-run, leaving `st` bound to a detached trigger and the Snap
+  // holding absolute px points measured over a runway that no longer exists —
+  // the reader's next wheel gesture would be proximity-snapped into nowhere.
   useEffect(() => {
-    if (!hasDetectedViewport || isMobile) return;
+    if (!hasDetectedViewport || isMobile || reduceMotion) return;
     if (typeof window === "undefined") return;
 
     const outer = outerRef.current;
@@ -938,7 +944,7 @@ export default function CinematicSystemScroll() {
       snap?.destroy();
       snap = null;
     };
-  }, [isMobile, hasDetectedViewport]);
+  }, [isMobile, reduceMotion, hasDetectedViewport]);
 
   // Scrim dimmer: while the WebGL particle text owns the hero (textMorph
   // active, DOM headline hidden) the two center-left contrast scrims drop to
