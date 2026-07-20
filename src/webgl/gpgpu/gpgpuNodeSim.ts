@@ -1100,13 +1100,44 @@ export function createTextMorphComputeBuild(
   // Per-particle entry visibility: alpha rises as the particle's own journey
   // starts (ICS: each particle tweens `alpha: 0 → visible` with its delay).
   const vAssemble = float(1).toVar();
-  // Portrait: the per-particle A→B colour-blend scalar, computed in the vertex
-  // stage from the SAME stagger the kernel uses for the anchor. Only created on
-  // the portrait path (the hero vertex graph is untouched).
-  const vMorphColorSrc = hasPortrait ? float(0).toVar() : null;
-  // Portrait: the A→B-blended ink of THIS particle, computed in the vertex stage
-  // (it scales the disc there) and carried to the fragment to fade the fringe.
-  const vInkSrc = hasPortraitSize ? float(0).toVar() : null;
+  // Portrait: the per-particle A→B colour-blend scalar and the A→B-blended ink,
+  // held as plain node EXPRESSIONS — deliberately NOT as outer `.toVar()`s that
+  // the vertex Fn assigns into.
+  //
+  // WHY (three r184, verified by generating the shader): `varying(node)` does
+  // NOT read the node where you wrote it. `VaryingNode.generate`
+  // (three/src/nodes/core/VaryingNode.js:162-182) calls
+  // `builder.flowNodeFromShaderStage(VERTEX, node, type, propertyName)`
+  // (NodeBuilder.js:2572-2600), which appends `<varying> = <node>;` to
+  // `flowCode.vertex`; `buildCode()` then PREPENDS `flowCode[stage]` ahead of
+  // the stage's flow nodes (GLSLNodeBuilder.js:1478-1497,
+  // WGSLNodeBuilder.js:2106-2128). So the varying is written at the TOP of the
+  // vertex `main()`, BEFORE the `material.vertexNode` body runs. A varying built
+  // from an outer `.toVar()` therefore carries that var's INITIAL value forever,
+  // no matter where inside the Fn the `.assign()` sits — which is exactly how
+  // `vMorphColorF` read a constant 0 (face never left target A) and `vInkF` read
+  // a constant 0 (fringe alpha pinned at 0.35 → the halo behind the face).
+  //
+  // A varying built from a self-contained EXPRESSION is correct instead: three
+  // re-emits the whole expression at the top of `main()`, where uniforms and
+  // per-instance attributes are already available, and the Fn body below then
+  // reuses the very same generated var for the size math. Keep it this way; do
+  // not "simplify" these back into an outer var + `.assign()` inside the Fn.
+  const portraitMorphExpr = hasPortrait
+    ? smoothstep(
+        0.0,
+        1.0,
+        clamp(morphN.sub(hash(instanceIndex).mul(0.55)).div(0.45), 0.0, 1.0),
+      )
+    : null;
+  // `"float"` storage buffers are unpadded — NO `.xyz` on these reads.
+  const portraitInkExpr = hasPortraitSize
+    ? mix(
+        sizeABuffer!.toAttribute(),
+        sizeBBuffer!.toAttribute(),
+        portraitMorphExpr!,
+      )
+    : null;
 
   /** Portrait disc size floor — the share of the disc that is NOT ink-driven,
    * so a faint particle still exists instead of collapsing to nothing. */
@@ -1140,30 +1171,14 @@ export function createTextMorphComputeBuild(
       1.0,
     );
     vAssemble.assign(smoothstep(0.0, 0.35, aw));
-    // Portrait colour/ink-morph scalar — the same staggered A→B wave the kernel
-    // applies to the anchor (delay = hash(instanceIndex)·0.55, window 0.45), so
-    // a particle's colour AND size cross from A to B exactly as it flies A→B.
-    // Computed HERE (not after the size math) because the size expression below
-    // consumes the blended ink. Hero path: this whole block does not exist.
-    let inkNow: AnyNode | null = null;
-    if (hasPortrait) {
-      const rC = hash(instanceIndex);
-      const mC = smoothstep(
-        0.0,
-        1.0,
-        clamp(morphN.sub(rC.mul(0.55)).div(0.45), 0.0, 1.0),
-      ).toVar();
-      vMorphColorSrc!.assign(mC);
-      if (hasPortraitSize) {
-        // `"float"` storage buffers are unpadded — NO `.xyz` on these reads.
-        inkNow = mix(
-          sizeABuffer!.toAttribute(),
-          sizeBBuffer!.toAttribute(),
-          mC,
-        ).toVar();
-        vInkSrc!.assign(inkNow);
-      }
-    }
+    // Portrait ink for the size expression below — the SAME expression node the
+    // `vInkF` varying is built from, so the disc size and the fragment's fringe
+    // alpha read one identical value (three reuses the generated var here rather
+    // than recomputing it). The staggered A→B wave inside it matches the one the
+    // kernel applies to the anchor (delay = hash(instanceIndex)·0.55, window
+    // 0.45), so colour, size and position cross from A to B in lockstep.
+    // Hero path: `portraitInkExpr` is null and this contributes nothing.
+    const inkNow: AnyNode | null = hasPortraitSize ? portraitInkExpr! : null;
     const mv = modelViewMatrix.mul(vec4(p, 1.0)).toVar();
     const dist = mv.z.negate();
     const clip = cameraProjectionMatrix.mul(mv).toVar();
@@ -1214,8 +1229,10 @@ export function createTextMorphComputeBuild(
   const vSpeedF = varying(vSpeed);
   const vRandF = varying(vRandSrc);
   const vAssembleF = varying(vAssemble);
-  const vMorphColorF = hasPortrait ? varying(vMorphColorSrc!) : null;
-  const vInkF = hasPortraitSize ? varying(vInkSrc!) : null;
+  // Built from expressions, not from outer vars — see the comment on
+  // `portraitMorphExpr` for why that distinction is load-bearing.
+  const vMorphColorF = hasPortrait ? varying(portraitMorphExpr!) : null;
+  const vInkF = hasPortraitSize ? varying(portraitInkExpr!) : null;
 
   // Portrait travel tint (HDR cyan) + emissive — created only on the portrait
   // path so the hero fragment graph is unchanged.
