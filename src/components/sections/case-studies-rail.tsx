@@ -721,7 +721,7 @@ export default function CaseStudiesRail() {
               (scale/opacity/y-arc) so the card box above stays untransformed
               for RailPlanes' rect cache and the focus-scroll handler. Inert
               in native mode. */}
-          <div data-rail-inner className="h-full will-change-transform">
+          <div data-rail-inner className="h-full will-change-transform [transition:filter_240ms_ease-out]">
             <StudyCard
               study={study}
               index={i}
@@ -739,7 +739,7 @@ export default function CaseStudiesRail() {
         data-rail-index={RAIL_LIMIT}
         className={liClass}
       >
-        <div data-rail-inner className="h-full will-change-transform">
+        <div data-rail-inner className="h-full will-change-transform [transition:filter_240ms_ease-out]">
           <SeeMorePortal
             total={caseStudies.length}
             shown={RAIL_LIMIT}
