@@ -412,7 +412,7 @@ export function CaseStudiesClient() {
   return (
     <div className="min-h-screen pt-24 relative">
       {/* Hero */}
-      <section data-line-anchor="hero" className="py-20 sm:py-32 relative">
+      <section data-line-anchor="hero" data-snap className="py-20 sm:py-32 relative">
         <div className="container-px relative">
           {/* H1 outside the Reveal: the choreographer's line-mask reveal owns
               it (data-split-reveal) — no double animation. Eyebrow entrance =
@@ -573,7 +573,7 @@ export function CaseStudiesClient() {
       <div data-line-anchor="ritual" aria-hidden="true" className="py-28 sm:py-40" />
 
       {/* Closing CTA */}
-      <section data-line-anchor="final-cta" className="section-lg relative">
+      <section data-line-anchor="final-cta" data-snap className="section-lg relative">
         <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] opacity-20 pointer-events-none"
           aria-hidden="true"

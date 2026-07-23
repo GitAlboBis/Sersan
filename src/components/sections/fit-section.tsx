@@ -8,6 +8,7 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
 import { getLenis } from "@/lib/lenis-singleton";
+import { snapPoint } from "@/lib/scroll-snap";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
@@ -758,6 +759,17 @@ export default function FitSection() {
     // runway — no fly-in from the beat-0 pose.
     applyAll(st.progress, true);
 
+    // Site-wide snap stations (lib/scroll-snap): the runway start + each
+    // beat's LOCK position — the same Ys the focusin handler computes
+    // (FOCUS_LOCK_AT inside the beat window), where the verdict row is fully
+    // revealed. Lazy getters over the live measure() vars.
+    const clearSnapPoints: Array<() => void> = [
+      snapPoint(() => secTop),
+      ...Array.from({ length: BEATS }, (_, i) =>
+        snapPoint(() => secTop + travel * ((i + FOCUS_LOCK_AT) / BP_MAX)),
+      ),
+    ];
+
     /* ---- Keyboard: focusin inside a beat → its lock scroll position ---- */
 
     const onFocusIn = (e: FocusEvent) => {
@@ -799,6 +811,7 @@ export default function FitSection() {
       cancelled = true;
       window.clearTimeout(fontTimer);
       sticky.removeEventListener("focusin", onFocusIn);
+      clearSnapPoints.forEach((off) => off());
       gsap.ticker.remove(skewTick);
       st.kill();
       stPose.kill();

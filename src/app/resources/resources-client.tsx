@@ -328,7 +328,7 @@ export function ResourcesClient() {
   return (
     <div className="min-h-screen text-foreground relative">
       {/* Hero */}
-      <section data-line-anchor="hero" className="pt-24 pb-16 md:pb-24 relative overflow-hidden">
+      <section data-line-anchor="hero" data-snap className="pt-24 pb-16 md:pb-24 relative overflow-hidden">
         <div aria-hidden="true" className="absolute inset-0 pointer-events-none">
           <div
             className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[75vw] h-[36vw] max-w-[1000px] max-h-[560px] blur-3xl opacity-25"
@@ -480,7 +480,7 @@ export function ResourcesClient() {
           giving final-cta real height shifts its measured center fraction down
           the document, fixing the curve tail via the existing waypoint (no
           routeCurves edit). */}
-      <section data-line-anchor="final-cta" className="section-lg relative">
+      <section data-line-anchor="final-cta" data-snap className="section-lg relative">
         <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] opacity-20 pointer-events-none"
           aria-hidden="true"

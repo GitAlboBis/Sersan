@@ -71,7 +71,7 @@ export function ContactClient() {
   return (
     <div className="min-h-screen relative">
       {/* Hero */}
-      <section data-line-anchor="hero" className="pt-24 pb-12 md:pt-32 md:pb-16 relative overflow-hidden">
+      <section data-line-anchor="hero" data-snap className="pt-24 pb-12 md:pt-32 md:pb-16 relative overflow-hidden">
         <div aria-hidden="true" className="absolute inset-0 pointer-events-none">
           <div
             className="absolute left-1/2 top-0 -translate-x-1/2 w-[80vw] h-[40vw] max-w-[1100px] max-h-[600px] blur-3xl opacity-30"

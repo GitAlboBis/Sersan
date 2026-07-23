@@ -115,7 +115,7 @@ export function AboutClient() {
     <div className="min-h-screen text-foreground">
       <div className="pt-20 pb-20 relative">
         {/* Hero */}
-        <section data-line-anchor="hero" className="relative overflow-hidden mb-20 sm:mb-24 py-20 md:py-28">
+        <section data-line-anchor="hero" data-snap className="relative overflow-hidden mb-20 sm:mb-24 py-20 md:py-28">
           <div aria-hidden="true" className="absolute inset-0 pointer-events-none">
             <div
               className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[85vw] h-[45vw] max-w-[1200px] max-h-[700px] blur-3xl opacity-30"
@@ -191,7 +191,7 @@ export function AboutClient() {
         </div>
 
         {/* The Founding Pair */}
-        <section data-line-anchor="founders" className="container-px mb-24">
+        <section data-line-anchor="founders" data-snap className="container-px mb-24">
           <div className="text-center mb-12 max-w-3xl mx-auto">
             <p className="text-[11px] font-mono uppercase tracking-[0.25em] text-muted-foreground mb-4">
               {isEn
@@ -280,7 +280,7 @@ export function AboutClient() {
         </section>
 
         {/* Mission, quiet, single statement */}
-        <section className="mb-24">
+        <section data-snap className="mb-24">
           <div className="container-px">
             <div className="max-w-3xl mx-auto text-center">
               <p className="eyebrow mb-6">{isEn ? "The job" : "Il mestiere"}</p>
@@ -301,7 +301,7 @@ export function AboutClient() {
         </section>
 
         {/* Three pillars */}
-        <section data-line-anchor="rules" className="container-px mb-24">
+        <section data-line-anchor="rules" data-snap className="container-px mb-24">
           <SectionHeading
             align="center"
             className="mx-auto mb-12 max-w-3xl"
@@ -401,7 +401,7 @@ export function AboutClient() {
         <div data-line-anchor="ritual" aria-hidden="true" className="py-28 sm:py-40" />
 
         {/* Final beat */}
-        <section data-line-anchor="final-cta" className="container-px">
+        <section data-line-anchor="final-cta" data-snap className="container-px">
           <div className="max-w-3xl mx-auto text-center py-12">
             <SectionHeading
               align="center"

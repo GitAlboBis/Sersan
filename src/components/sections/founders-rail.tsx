@@ -16,6 +16,7 @@ import { SectionGlow } from "@/components/ui/section-glow";
 import { founders, type FounderProfile } from "@/data/founders";
 import { useLanguage } from "@/components/language-provider";
 import { getLenis } from "@/lib/lenis-singleton";
+import { snapPoint, snapBarrier } from "@/lib/scroll-snap";
 import {
   useFoundersMorphStore,
   foundersGateApi,
@@ -731,6 +732,16 @@ export default function FoundersRail() {
     store.setPinned(true);
     applyStage(store.morph);
 
+    // Site-wide snap engine (lib/scroll-snap): a settle must never animate
+    // ACROSS this section's top edge — the gate treats any crossing as user
+    // scroll and would hijack the page mid-settle. (While the gate is
+    // actually engaged the provider suspends the engine entirely via
+    // gateEngaged; this barrier covers the un-engaged approach paths.)
+    const clearSnapBarrier = snapBarrier(() => {
+      const s = useFoundersMorphStore.getState();
+      return s.pinned && s.secTop > 0 ? s.secTop : Number.NaN;
+    });
+
     // Poster hides the instant the cloud goes live; copy follows uMorph.
     // Stage transitions drive the scroll hint's idle clock: a leg starting
     // retires the hint instantly, a leg completing re-opens the window.
@@ -1111,6 +1122,7 @@ export default function FoundersRail() {
       stage?.removeEventListener("pointerleave", onLeave);
       unsubIntro();
       unsub();
+      clearSnapBarrier();
       foundersGateApi.current = null;
       if (engaged) getLenis()?.start(); // never leave scroll stopped
       section.style.height = "";
@@ -1229,6 +1241,23 @@ export default function FoundersRail() {
     setX(-trackX);
     applyFx();
 
+    // Site-wide snap stations (lib/scroll-snap): the runway start (intro
+    // heading panel) + the scrollY at which each founder panel sits
+    // horizontally centered (clamped to the runway — founder 2 rests at the
+    // release edge on wide viewports). Lazy getters over the live measure()
+    // caches; same formula as the focusin handler.
+    const clearSnapPoints: Array<() => void> = [
+      snapPoint(() => (travel > 0 ? secTop : Number.NaN)),
+      ...fx.map((p) =>
+        snapPoint(() =>
+          travel > 0
+            ? secTop +
+              Math.min(Math.max(p.baseCenter - vw / 2, 0), travel)
+            : Number.NaN,
+        ),
+      ),
+    ];
+
     // One-shot late refresh once webfonts land.
     let fontsCancelled = false;
     document.fonts?.ready
@@ -1260,6 +1289,7 @@ export default function FoundersRail() {
     return () => {
       fontsCancelled = true;
       track.removeEventListener("focusin", onFocusIn);
+      clearSnapPoints.forEach((off) => off());
       st.kill();
       gsap.set(track, { x: 0 });
       section.style.height = "";

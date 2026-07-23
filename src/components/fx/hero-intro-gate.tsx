@@ -44,17 +44,15 @@ import { isIntroSkipped, markIntroSkipped } from "@/lib/intro-skip";
 import { useIntroStore } from "@/webgl/store/introStore";
 import { useTextMorphStore } from "@/webgl/store/textMorphStore";
 
-/** Total wheel distance (px) that maps the gate 0 → 1. The intro should feel
- * like a deliberate BLOCK the visitor scrolls through (designer-site style),
- * not a flick, but the client found 6300px STILL too long — tightened to
- * 4200px (~⅓ shorter, ~2.7 deliberate swipes) on 2026-06-29. The morph
- * triggers in HeroTextParticles are FRACTIONS of this distance so they rescale
- * automatically and the proportions hold: brand "Sersan AI" ~0→0.30 (~1260px),
- * headline ~0.30→0.59 (~1218px), the cue owns the remaining ~0.59→1.0
- * (~1722px) before the gate releases. Do NOT drop below ~3600px: the cue leg
- * then gets shorter than the 2.6s morph wave and the page can release over
- * half-formed text. */
-const GATE_DISTANCE = 4200;
+/** Total wheel distance (px) that maps the gate 0 → 1. The intro is ONE beat
+ * now (client 2026-07-23: the three-stage text chain was too long — only the
+ * "Sersan AI" brand keeps the particle treatment): the brand holds ~0→0.20
+ * (~300px), melts over ~0.20→0.75 (~825px) while the DOM hero cascades in,
+ * and the tail releases the page. ~1500px ≈ one committed swipe. The old
+ * ≥3600px floor guarded the removed morph legs' fixed-duration waves; the
+ * dissolve is scrubbed (pure function of gate progress), so it completes at
+ * whatever pace the visitor scrolls — no half-formed-text risk. */
+const GATE_DISTANCE = 1500;
 /** Touch drag maps a bit faster (smaller screens, shorter gestures). */
 const TOUCH_FACTOR = 2.2;
 /** How long the gate must have HELD (ms) before the skip label fades in.

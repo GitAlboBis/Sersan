@@ -17,6 +17,7 @@ import {
   RAIL_MEDIA_SHIFT,
 } from "@/webgl/store/railMotion";
 import { getLenis } from "@/lib/lenis-singleton";
+import { snapPoint, suspendSnap } from "@/lib/scroll-snap";
 import { CardImageDistort } from "@/components/fx/card-image-distort";
 import { CardLogoReveal } from "@/components/fx/card-logo-reveal";
 import { SeeMorePortal } from "@/components/fx/see-more-portal";
@@ -405,6 +406,21 @@ export default function CaseStudiesRail() {
     applyMotion(travel * st.progress);
     store.setPinned(true);
 
+    // Site-wide snap stations (lib/scroll-snap): one per rail card — the
+    // vertical scrollY at which card i sits horizontally CENTERED (the same
+    // formula the focusin handler uses; 1 scrolled px = 1 translated px).
+    // Card 0 clamps to the runway start and the SeeMorePortal clamps to the
+    // release edge, so the rail's entry/exit are covered by the same set.
+    // Lazy getters over the live measure() caches — no re-registration.
+    const clearSnapPoints: Array<() => void> = cardTargets.map((_, i) =>
+      snapPoint(() => {
+        const c = cardTargets[i];
+        if (!c || travel <= 0) return Number.NaN;
+        const { secTop } = useRailStore.getState();
+        return secTop + Math.min(Math.max(c.baseCenter - vw / 2, 0), travel);
+      }),
+    );
+
     // ---- Velocity skew writer (gsap.ticker, DOM-only, transform-only).
     // Damps skew toward the decaying target and EARLY-RETURNS once parked —
     // zero writes at rest (repo invariant for DOM style writers).
@@ -477,6 +493,14 @@ export default function CaseStudiesRail() {
       else window.scrollTo({ top: target, behavior: inPin ? "auto" : "smooth" });
     };
 
+    // Snap-engine hold while the hand owns the rail: a debounced settle from
+    // a pre-drag wheel must never fire into the drag/throw scrub. Release is
+    // idempotent (fires from both onDragEnd and onThrowComplete).
+    let releaseDragHold: (() => void) | null = null;
+    const endDragHold = () => {
+      releaseDragHold?.();
+      releaseDragHold = null;
+    };
     drag = Draggable.create(rail, {
       type: "x",
       bounds: { minX: -travel, maxX: 0 },
@@ -489,10 +513,13 @@ export default function CaseStudiesRail() {
       activeCursor: "grabbing",
       onDragStart: () => {
         suppressClick = false;
+        releaseDragHold ??= suspendSnap();
       },
       onDrag: dragToScroll,
       onThrowUpdate: dragToScroll,
+      onThrowComplete: endDragHold,
       onDragEnd: () => {
+        endDragHold();
         // Belt + braces over Draggable's own small-movement click pass-through:
         // a real drag arms the capture handler above for the click that
         // follows pointerup, then disarms on the next macrotask.
@@ -555,6 +582,8 @@ export default function CaseStudiesRail() {
       rail.removeEventListener("focusin", onFocusIn);
       rail.removeEventListener("click", onRailClickCapture, true);
       gsap.ticker.remove(skewTick);
+      endDragHold();
+      clearSnapPoints.forEach((off) => off());
       drag?.kill();
       st.kill();
       gsap.set(rail, { x: 0 });

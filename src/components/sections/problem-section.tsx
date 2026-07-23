@@ -192,6 +192,7 @@ export default function ProblemSection() {
   return (
     <section
       id="problem"
+      data-snap
       className="section-accent-tint relative section-lg scroll-mt-24 overflow-hidden"
     >
       <SectionGlow position="top-right" intensity={1.2} />

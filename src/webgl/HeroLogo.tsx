@@ -655,7 +655,15 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
 
     // Hold through the pin; recede + fade over the last quarter (identical to
     // the previous HeroLogo so the handoff is unchanged).
-    const fade = 1 - THREE.MathUtils.smoothstep(hp, 0.74, 0.97);
+    let fade = 1 - THREE.MathUtils.smoothstep(hp, 0.74, 0.97);
+    // Brand-beat yield (2026-07-23): while the particle "Sersan AI" owns the
+    // hero (textMorph active, DOM not yet revealed) the mark hides FULLY —
+    // the client flagged even a 15% ghost as visible overlap under the
+    // centered brand — and blooms back in with domReveal exactly as the
+    // brand melts into the DOM hero. Inactive morph (any fallback path) → 1,
+    // unchanged.
+    const morph = useTextMorphStore.getState();
+    if (morph.active) fade *= morph.domReveal;
     fadeRef.current = fade;
     group.visible = fade > 0.005;
     if (!group.visible) return;

@@ -17,6 +17,7 @@ import { Reveal } from "@/components/ui/reveal";
 import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
 import { getLenis } from "@/lib/lenis-singleton";
+import { snapPoint } from "@/lib/scroll-snap";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
@@ -557,6 +558,19 @@ export default function ServicesSection() {
     // restores a scroll position inside the runway — no fly-in from origin.
     snapToProgress(st.progress);
 
+    // Site-wide snap stations (lib/scroll-snap): the runway start (the
+    // establishing overview shot) + the four segment LOCK positions — the
+    // exact Ys the focusin handler computes, where zoom=1 / rotation=0 and
+    // card i is fully focused. Lazy getters over the live measure() vars, so
+    // refreshes need no re-registration; a wheel settle mid-runway glides to
+    // the nearest intentional pose instead of parking half-travelled.
+    const clearSnapPoints: Array<() => void> = [
+      snapPoint(() => secTop),
+      ...Array.from({ length: SEGMENTS }, (_, i) =>
+        snapPoint(() => secTop + (travel * (i + 1)) / SEGMENTS),
+      ),
+    ];
+
     // One-shot late refresh once webfonts land: the heading above the runway
     // reflows on font swap → secTop shifts (the provider deliberately never
     // refreshes on "/" — same caveat as the work rail).
@@ -590,6 +604,7 @@ export default function ServicesSection() {
     return () => {
       fontsCancelled = true;
       sticky.removeEventListener("focusin", onFocusIn);
+      clearSnapPoints.forEach((off) => off());
       st.kill();
       gsap.killTweensOf([stage, scaleWrap]);
       gsap.set(stage, { clearProps: "transform" });

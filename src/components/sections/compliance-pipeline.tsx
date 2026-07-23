@@ -732,6 +732,7 @@ export default function CompliancePipeline() {
 
   return (
     <section
+      data-snap
       className="section-lg relative overflow-hidden"
       aria-labelledby="compliance-pipeline-heading"
     >
