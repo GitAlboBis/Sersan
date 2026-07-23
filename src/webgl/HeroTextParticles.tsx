@@ -114,7 +114,43 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
   const count = COUNT_BY_TIER[tier] ?? COUNT_BY_TIER.lite;
 
   // World units per CSS pixel at the z=0 content plane (camera at CAMERA_Z).
+  // Held in a REF, not a build dep: R3F publishes `size` on every
+  // ResizeObserver tick (Scene passes no `resize` prop → debounce 0), so
+  // depending on it directly rebuilt the whole 26k sim on every pixel of a
+  // window drag. The build reads the ref, so it always samples at the CURRENT
+  // metrics whenever a rebuild actually is warranted (see sizeEpoch below).
   const worldPerPx = WORLD_VIEW_HEIGHT / size.height;
+  const worldPerPxRef = useRef(worldPerPx);
+  worldPerPxRef.current = worldPerPx;
+
+  // Quantized resize signal: only a MEANINGFUL viewport change (>5% on either
+  // axis) bumps the epoch and re-samples the text. Sub-threshold ticks — a slow
+  // window-edge drag, the mobile URL bar collapsing — leave the sim alone. The
+  // bump is also debounced ~200ms so a drag rebuilds once at the end rather
+  // than at each 5% step.
+  const lastSizeRef = useRef({ w: 0, h: 0 });
+  const [sizeEpoch, setSizeEpoch] = useState(0);
+  useEffect(() => {
+    const { w, h } = lastSizeRef.current;
+    // First observation: seed the baseline WITHOUT bumping — the build effect
+    // already runs at mount with these exact metrics, so a bump here would only
+    // buy a redundant 26k rebuild 200ms into the intro.
+    if (!w || !h) {
+      lastSizeRef.current = { w: size.width, h: size.height };
+      return;
+    }
+    if (
+      Math.abs(size.width - w) / w < 0.05 &&
+      Math.abs(size.height - h) / h < 0.05
+    ) {
+      return;
+    }
+    const id = window.setTimeout(() => {
+      lastSizeRef.current = { w: size.width, h: size.height };
+      setSizeEpoch((e) => e + 1);
+    }, 200);
+    return () => window.clearTimeout(id);
+  }, [size.width, size.height]);
 
   // === Build: sample the brand from the live DOM, spin up the sim ===========
   useEffect(() => {
@@ -160,11 +196,15 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       };
       const a = sampleTextPoints(brandSpec, count);
 
+      // Metrics from the ref, not the closure — the build must sample at the
+      // CURRENT viewport whenever a (quantized) rebuild fires, while raw
+      // resize ticks never re-run this effect (see sizeEpoch above).
+      const wpp = worldPerPxRef.current;
       const toWorld = (xy: Float32Array) => {
         const out = new Float32Array(count * 3);
         for (let i = 0; i < count; i++) {
-          out[i * 3] = xy[i * 2] * worldPerPx;
-          out[i * 3 + 1] = xy[i * 2 + 1] * worldPerPx;
+          out[i * 3] = xy[i * 2] * wpp;
+          out[i * 3 + 1] = xy[i * 2 + 1] * wpp;
           out[i * 3 + 2] = (Math.random() - 0.5) * 0.1;
         }
         return out;
@@ -291,19 +331,36 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       built?.dispose();
       setBuild(null);
       if (brandRef.current) brandRef.current.style.opacity = "0";
-      // Reset ONLY the visual-handoff fields. The gate/journey state
-      // (gateProgress, morphDone, …) deliberately SURVIVES: rebuilds happen
-      // mid-session (resize, and a phantom prod remount seen 2026-06-10) and
-      // zeroing the progress yanked the visitor's intro back to the start.
-      // entryRef persists across rebuilds and re-primes the fresh sim.
-      useTextMorphStore.setState({
-        active: false,
-        domReveal: 1,
-      });
+      // NOTE: the visual-handoff reset (active/domReveal) deliberately does NOT
+      // live here — see the unmount-only effect below. This cleanup also runs on
+      // an IN-PLACE rebuild (meaningful resize), and publishing
+      // `active:false, domReveal:1` there is observed by the DOM side
+      // (cinematic-system-scroll.tsx restores the crisp hero + clears every
+      // [data-hero-stagger] inline style) AND by HeroLogo's lockup flight, so
+      // the particle brand blinked out and the mark snapped to hero-right for
+      // the rebuild's duration. The gate/journey state (gateProgress,
+      // morphDone, …) likewise SURVIVES a rebuild: the component refs
+      // (entryRef, gSmoothRef) persist and re-prime the fresh sim's uniforms.
     };
-    // worldPerPx/size changes re-run (resize → resample at the new metrics).
+    // Rebuild ONLY on a real change: renderer identity, particle count, or a
+    // quantized+debounced viewport change (sizeEpoch — NOT raw size, which
+    // ticks per ResizeObserver observation). No language dep: the one-beat
+    // brand ("Sersan AI") is language-invariant. Current metrics are read
+    // from worldPerPxRef inside the build.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gl, count, worldPerPx, size.width]);
+  }, [gl, count, sizeEpoch]);
+
+  // Unmount-only visual handoff. This is the ONLY correct discriminator between
+  // "the island is going away, hand the hero back to the DOM" and "the sim is
+  // being rebuilt in place, keep the DOM suppressed". (entryRef >= 1 is NOT a
+  // usable discriminator: it is 0 during the entry, i.e. exactly the mid-intro
+  // case this protects.)
+  useEffect(
+    () => () => {
+      useTextMorphStore.setState({ active: false, domReveal: 1 });
+    },
+    [],
+  );
 
   // === Per frame: gate-driven timeline ======================================
   const scratch = useMemo(() => new THREE.Vector3(), []);

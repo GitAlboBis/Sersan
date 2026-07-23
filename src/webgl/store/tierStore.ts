@@ -10,12 +10,28 @@
  *   off  — prefers-reduced-motion or no WebGL: no canvas at all
  */
 import { create } from "zustand";
+import type { Backend } from "../renderer/createRenderer";
 
 export type SceneTier = "full" | "lite" | "off";
 
 interface TierState {
   tier: SceneTier;
   resolved: boolean;
+  /**
+   * The RESOLVED runtime render backend, written once from Scene.tsx's
+   * `onCreated` (via `backendOf(gl)`). `null` until the renderer exists.
+   *
+   * `webgpuEnabled()` is only a BUILD-TIME env read: with the flag on, a
+   * browser without WebGPU (Safari, Firefox default, blocklisted Chrome) still
+   * resolves to the WebGL2 fallback backend at runtime. DOM features that
+   * require a true compute backend to be driveable must gate on THIS, not on
+   * the flag — otherwise they render a layout their island can never animate
+   * (the founders morph left founder B permanently at opacity 0).
+   *
+   * Consumers must treat `null` as "not webgpu" so first paint never shows a
+   * layout that may turn out to be undriveable.
+   */
+  backend: Backend | null;
   /**
    * GPU-aware render device-pixel-ratio range, resolved on the client. The
    * EFFECTS are identical at any DPR — only the render resolution differs — so
@@ -34,6 +50,7 @@ interface TierState {
   resolve: () => void;
   degrade: () => void;
   setHeroReady: (ready: boolean) => void;
+  setBackend: (backend: Backend) => void;
 }
 
 function detectTier(): SceneTier {
@@ -105,6 +122,7 @@ function detectDprRange(): { initial: number; min: number; max: number } {
 export const useTierStore = create<TierState>((set, get) => ({
   tier: "off",
   resolved: false,
+  backend: null,
   dprInitial: 2,
   dprMin: 1,
   dprMax: 2,
@@ -125,4 +143,10 @@ export const useTierStore = create<TierState>((set, get) => ({
     else if (tier === "lite") set({ tier: "off", heroReady: false });
   },
   setHeroReady: (heroReady) => set({ heroReady }),
+  // One-shot, written from Scene.tsx `onCreated`. Guarded so a repeat write
+  // (e.g. a Canvas remount onto the same backend) is a no-op and never
+  // re-renders subscribers.
+  setBackend: (backend) => {
+    if (get().backend !== backend) set({ backend });
+  },
 }));

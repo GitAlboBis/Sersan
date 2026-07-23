@@ -595,9 +595,10 @@ interface ResourceCardProps {
  * HOVER LENS (demo 2) — a circular influence follows the pointer, revealing an
  * aria-hidden "hot" duplicate of the card copy (accent-cyan tint + dot grid
  * lighting up) through a radial-gradient mask centered at --mx/--my.
- * pointermove writes the vars in card-local px against a rect cached ONCE per
- * pointerenter (no rect reads in any frame loop; the pointer stays inside the
- * card, so scroll recompute is unnecessary). Only the radius eases — via the
+ * pointermove writes the vars in card-local px against a rect cached at
+ * pointerenter and re-read only when window.scrollY has changed since that
+ * write (no rect reads in any frame loop, none at all on a stationary hover —
+ * but a wheel under a held hover DOES move the card). Only the radius eases — via the
  * registered `--lens-r` @property transition (opens on enter, collapses on
  * leave).
  *
@@ -626,10 +627,22 @@ function ResourceCard({
   preview,
 }: ResourceCardProps) {
   const rectRef = useRef<DOMRect | null>(null);
+  // window.scrollY as of the cached rect. The rect is viewport-relative, so
+  // any scroll under a held hover invalidates it — without this the lens
+  // detaches from the cursor by exactly the scrolled distance.
+  const rectScrollYRef = useRef(0);
   const lastRef = useRef({ x: -1, y: -1 });
   const wipeRef = useRef<HTMLDivElement | null>(null);
 
   const writeLensVars = (el: HTMLElement, clientX: number, clientY: number) => {
+    // Re-read ONLY when the page actually scrolled since the cached write —
+    // a stationary hover still costs zero layout reads. Note we cannot use
+    // offsetX/offsetY instead: the event target is a descendant of the card
+    // (the copy, the dot grid), so those are relative to the wrong box.
+    if (rectRef.current && window.scrollY !== rectScrollYRef.current) {
+      rectRef.current = el.getBoundingClientRect();
+      rectScrollYRef.current = window.scrollY;
+    }
     const rect = rectRef.current;
     if (!rect) return;
     const x = Math.round(clientX - rect.left);
@@ -645,8 +658,10 @@ function ResourceCard({
   const onPointerEnter = (e: React.PointerEvent<HTMLAnchorElement>) => {
     preview.onPointerEnter(e);
     if (e.pointerType === "touch" || !cardFxOn()) return;
-    // ONE rect read per pointerenter — cached for every move/click after it.
+    // ONE rect read per pointerenter — cached for every move/click after it,
+    // and re-read by writeLensVars only when the page has scrolled since.
     rectRef.current = e.currentTarget.getBoundingClientRect();
+    rectScrollYRef.current = window.scrollY;
     lastRef.current.x = -1;
     lastRef.current.y = -1;
     writeLensVars(e.currentTarget, e.clientX, e.clientY);
@@ -687,7 +702,12 @@ function ResourceCard({
     if (useTierStore.getState().tier === "full" && webgpuEnabled()) return;
     const wipe = wipeRef.current;
     if (!wipe) return;
-    const rect = rectRef.current ?? e.currentTarget.getBoundingClientRect();
+    // Same freshness rule as the lens: a cached rect from before a scroll
+    // would put the flood origin off the click point.
+    const rect =
+      rectRef.current && window.scrollY === rectScrollYRef.current
+        ? rectRef.current
+        : e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     // Corner-max-normalized radius (template 4 demo 1): the largest distance

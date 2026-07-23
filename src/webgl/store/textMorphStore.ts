@@ -101,6 +101,20 @@ interface TextMorphState {
    * camera dives — instead of riding along and "reappearing".
    */
   camDescend: number;
+  /**
+   * Current camera ROLL (radians, signed) actually applied by SignatureLine
+   * for the cinematic bank — 0 whenever the bank does not run (lite tier, no
+   * curve). `camera.rotateZ` rotates the ENTIRE WebGL layer, which is exactly
+   * right for the signature LINE (a path you travel along) and for the scene
+   * at large, but WRONG for a brand mark: the mark's strong horizontal bars
+   * read as plainly crooked at the ±2.6° clamp, and worse, the bank's scroll
+   * gate ramps in while the mark is still on screen, so it would visibly
+   * ROTATE as the reader scrolls the hero. HeroLogo counter-rotates its own
+   * group by this angle (never the camera — SignatureLine stays the single
+   * camera authority) so the mark holds itself square while everything else
+   * keeps banking.
+   */
+  camRoll: number;
   /** True once the camera-tilt beat has fully played — the gate releases
    * the page only after this (morphDone alone is no longer enough). */
   tiltDone: boolean;
@@ -130,6 +144,7 @@ const createTextMorphStore = () =>
     camTilt: 0,
     tiltAnchorY: 0,
     camDescend: 0,
+    camRoll: 0,
     tiltDone: false,
     introSkipped: false,
   }));

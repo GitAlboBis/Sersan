@@ -79,6 +79,11 @@ const LAND_S = 0.6; // full viewport → detail hero rect
 const FADE_S = 0.45; // no-image cross-fade out
 const HARD_TIMEOUT_MS = 2500; // absolute self-clean ceiling from arm time
 const MAX_HERO_FRAMES = 50; // ~0.8s to find a laid-out hero
+// Ceiling RE-ARMED at settle time, budgeted against the work that is actually
+// left (hero poll + the terminal carve) rather than counted from the click.
+// MAX_HERO_FRAMES is a FRAME budget, so on a janky route it can outlast its
+// nominal ~0.8s — hence the generous poll allowance plus the landing duration.
+const SETTLE_TIMEOUT_MS = 2000;
 
 // ---- Return-flight tuning. The reverse journey has no inflate phase, so its
 // budgets are tighter: the shell must resolve (deflate or dissolve) fast
@@ -210,6 +215,11 @@ function landOnHero(ref: FlightRef, flight: ZoomFlight) {
         duration: LAND_S,
         ease: "power2.inOut",
       });
+      // The terminal tweens take over from here and GSAP guarantees their
+      // onComplete — retire the ceiling so it can never cut the carve
+      // mid-flight (its job was the WAITING phases only). Same contract as
+      // the return landing's deflate branch.
+      window.clearTimeout(flight.timeout);
       gsap.to(flight.img!, {
         left: hr.left,
         top: hr.top,
@@ -239,6 +249,17 @@ function maybeSettle(ref: FlightRef, flight: ZoomFlight) {
   if (flight.disposed || flight.settling) return;
   if (!(flight.inflated && flight.arrived)) return;
   flight.settling = true;
+  // Re-arm the ceiling against the REMAINING work. The arm-time timeout is
+  // budgeted from the click, so on a slow route it can expire part-way
+  // through the landing and failSafe would yank a half-landed clone off the
+  // screen — a visible flash. From here the ceiling guards only the settle
+  // phase; disposeFlight clears whichever handle is current, so overwriting
+  // flight.timeout keeps the existing dispose path correct.
+  window.clearTimeout(flight.timeout);
+  flight.timeout = window.setTimeout(
+    () => failSafe(ref, flight),
+    SETTLE_TIMEOUT_MS,
+  );
   if (flight.img) landOnHero(ref, flight);
   // Small delay so the new page has a painted frame beneath before the
   // panel dissolves (its content fade-up runs in parallel under us).

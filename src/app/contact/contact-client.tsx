@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Mail, MapPin, Clock, Building2, ArrowRight, Phone, MessageCircle } from "lucide-react";
 import { LinkedinIcon } from "@/components/icons/brand";
 import { Button } from "@/components/ui/button";
-import { founders } from "@/data/founders";
+import { coFounders } from "@/data/founders";
 import { ContactForm } from "@/components/contact-form";
 import { CalEmbed } from "@/components/cal-embed";
 import { Reveal } from "@/components/ui/reveal";
@@ -178,7 +178,7 @@ export function ContactClient() {
                     {isEn ? "Talk to a founder" : "Scrivi a un founder"}
                   </p>
                   <div className="flex flex-col gap-2">
-                    {founders.map((f) => (
+                    {coFounders.map((f) => (
                       <a
                         key={f.name}
                         href={f.linkedIn}

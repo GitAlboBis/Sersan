@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
-import { founders } from "@/data/founders";
+import { coFounders } from "@/data/founders";
 import StartIntakeForm from "@/components/start-intake-form";
 
 export const metadata: Metadata = {
@@ -99,11 +99,14 @@ export default function StartPage() {
                   Who reads this
                 </h2>
 
-                {/* Founder block — the brief literally lands with one of these
-                    two people. Pulled live from src/data/founders.ts so the
-                    photos / roles / LinkedIn URLs stay in sync with /about. */}
+                {/* Founder block — the brief literally lands with one of the
+                    CO-FOUNDERS, so this pulls `coFounders` (not the full team)
+                    from src/data/founders.ts. The prose above promises "read by
+                    one of the founders" twice; anyone with kind:"team" must not
+                    appear here. Photos / roles / LinkedIn URLs stay in sync
+                    with /about. */}
                 <ul className="flex flex-col gap-4 mb-6 list-none">
-                  {founders.map((f) => (
+                  {coFounders.map((f) => (
                     <li key={f.anchor} className="flex items-center gap-3.5">
                       <div className="relative w-12 h-12 rounded-full overflow-hidden border border-[hsl(var(--rule))] bg-[hsl(var(--surface))] shrink-0">
                         <Image

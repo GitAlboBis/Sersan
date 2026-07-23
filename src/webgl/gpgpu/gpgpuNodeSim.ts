@@ -7,17 +7,34 @@
  * Particle state (position / velocity / homes / life) lives in GPU storage
  * buffers (`instancedArray`, seeded straight from CPU Float32Arrays), advanced
  * by compute kernels (`Fn(...)().compute(count)`) dispatched with
- * `gl.compute(node)` once per frame from the caller's useFrame. Render
- * materials read the buffers in the VERTEX stage via `.toAttribute()` ONLY —
- * `.element(i)` outside compute is broken on the WebGL fallback backend
- * (three #31221), and `.toAttribute()` is sampler-free (no texture round-trip,
- * no orientation/LOD pitfalls), which is what retired the FBO rigs for good.
+ * `gl.compute(node)` once per frame from the caller's useFrame.
+ *
+ * RENDER-STAGE READS — TWO FORMS, TWO SEPARATE DEVICE BUDGETS.
+ *   `.toAttribute()` binds the buffer as a per-instance VERTEX BUFFER. Works on
+ *   every backend and in every stage; sampler-free (no texture round-trip, no
+ *   orientation/LOD pitfalls), which is what retired the FBO rigs for good.
+ *   Costs one of WebGPU's 8 `maxVertexBuffers` slots. Use it for buffers the
+ *   COMPUTE KERNEL WRITES, and for anything that must survive the WebGL2
+ *   fallback.
+ *   `.element(instanceIndex)` binds the buffer as a read-only STORAGE buffer in
+ *   the vertex stage instead (a different, separate 8-slot budget). True-WebGPU
+ *   only (`.element(i)` no-ops under the WebGL2 emulation, three #31221) and
+ *   vertex/compute stage only (`instanceIndex` degrades to a varying in the
+ *   fragment stage). Use it for read-only per-instance payload on WebGPU-gated
+ *   paths — this is what keeps the founders portrait's colour/ink targets off
+ *   the vertex-buffer budget. See the RENDER BINDING BUDGET block in
+ *   createTextMorphComputeBuild: overrunning either budget makes
+ *   CreateRenderPipeline fail and the mesh silently never draws.
  * WIDTH CAVEAT: `.toAttribute()` is NOT a drop-in for `.element(i).xyz`. A
- * `"vec3"` storage buffer is padded to 16 bytes in the WebGPU storage layout,
- * so `.toAttribute()` yields a 4-COMPONENT node — every vec3-buffer render read
- * MUST trail `.xyz` (feeding a bare 4-comp into `vec4(p, 1.0)` / `length()` /
- * a vec3 `.add()` throws "Length of parameters exceeds maximum" or truncates).
- * Scalar `"float"` buffers are unpadded — no `.xyz` on those.
+ * `"vec3"` storage buffer is padded to 16 bytes in the WebGPU storage layout
+ * (WebGPUAttributeUtils rewrites itemSize 3 → 4), so `.toAttribute()` yields a
+ * 4-COMPONENT node — every vec3-buffer `.toAttribute()` read MUST trail `.xyz`
+ * (feeding a bare 4-comp into `vec4(p, 1.0)` / `length()` / a vec3 `.add()`
+ * throws "Length of parameters exceeds maximum" or truncates). Scalar `"float"`
+ * buffers are unpadded — no `.xyz` on those. `.element(i)` is unaffected by any
+ * of this: it yields the DECLARED type (a `"vec3"` buffer reads as a real
+ * vec3, a `"vec4"` buffer as a real vec4), so re-derive swizzles when you
+ * switch a read between the two forms rather than carrying them across.
  *
  * RETIRED in C3: createGpgpuNodeSim (the TSL FBO ping-pong rig — its RT
  * round-trip scrambled on the WebGPU backend and it only served the parked
@@ -60,11 +77,19 @@ type AnyNode = {
   assign: (n: AnyNode | number) => void;
   lessThan: (n: AnyNode | number) => AnyNode;
   greaterThan: (n: AnyNode | number) => AnyNode;
-  /** Storage-buffer element accessor (read/write handle) by index node —
-   * COMPUTE-STAGE ONLY (broken in render stages on WebGL, three #31221). */
+  /** Storage-buffer element accessor (read/write handle) by index node.
+   * READ/WRITE in compute. Read-only but LEGAL in the vertex stage on the true
+   * WebGPU backend (WGSLNodeBuilder emits `var<storage, read>` and
+   * getNodeAccess forces READ_ONLY outside compute) — costs a storage binding,
+   * not a vertex-buffer slot. NOT usable on the WebGL fallback (three #31221),
+   * and NOT in the fragment stage (`instanceIndex` degrades to a varying
+   * there). Unlike `.toAttribute()`, this yields the DECLARED type: a `"vec3"`
+   * buffer reads as a true vec3, so NO trailing `.xyz`. */
   element: (index: AnyNode) => AnyNode & { value: unknown };
-  /** Expose a storage/instanced buffer as a per-instance vertex attribute —
-   * the ONLY legal render-stage read of a storage buffer. */
+  /** Expose a storage/instanced buffer as a per-instance VERTEX BUFFER. Works
+   * on every backend and in every stage, but spends one of WebGPU's 8
+   * `maxVertexBuffers` slots — see the RENDER BINDING BUDGET block in
+   * createTextMorphComputeBuild before adding another. */
   toAttribute: () => AnyNode;
   /** Build a compute node from a kernel Fn result: `Fn(...)().compute(count)`. */
   compute: (count: number) => AnyNode;
@@ -648,7 +673,7 @@ export function createSporeComputeNodeBuild(
 
     // Excitement = speed (storage read auto-varied into the fragment) OR the
     // regrow flash (DDD: brightness = max(0, life−1) — re-forming spores flash
-    // cyan). Quadratic ramp so the resting crust stays dark blue and only
+    // cyan). Quadratic ramp so the resting crust stays dark violet and only
     // excited spores lerp toward cyan AND cross the selective-bloom threshold.
     // `.xyz` MANDATORY: `velocityBuffer` is a padded `"vec3"` storage buffer,
     // so `.toAttribute()` is 4-component — `length()` must see the true vec3.
@@ -817,31 +842,85 @@ export interface TextMorphParams {
 
 /**
  * OPTIONAL portrait-morph extension (P1R particle-portrait morph). When passed,
- * each particle carries a per-particle LINEAR colour for target A and target B;
- * the render blends A→B with the SAME per-particle stagger the compute kernel
- * uses for the anchor, so colour and position morph in lockstep. When ABSENT the
- * build is BYTE-IDENTICAL to the hero text intro (no colour buffers, additive
- * unlit sprite look) — the shared-engine contract for the hero regression.
+ * each particle carries a per-particle LINEAR colour AND an optional per-particle
+ * INK scalar for target A and target B; the render blends both A→B with the SAME
+ * per-particle stagger the compute kernel uses for the anchor, so colour, size
+ * and position morph in lockstep. When ABSENT the build is BYTE-IDENTICAL to the
+ * hero text intro (no colour buffers, no size buffers, additive unlit sprite
+ * look) — the shared-engine contract for the hero regression.
  *
- * The photographic look uses depth-tested NORMAL blending by default (front
- * discs occlude back → real luminance relief); only mid-flight travel + any
- * >1.0 travelTint feed the selective bloom, so faces stay photographic at rest.
+ * THIRD TARGET (A→B→C). `colorsC` + `sizeC` are OPTIONAL and, when present,
+ * chain a second colour/ink leg driven by `uMorph2` on the SAME stagger —
+ * CHAINED AFTER the A→B blend, exactly mirroring the kernel's
+ * `mix(mix(A,B,m1), C, m2)` anchor. This is mandatory for a real third portrait,
+ * not polish: colour and ink otherwise key off `uMorph` ALONE, so target C's
+ * positions would render in target B's colours with target B's ink — and ink
+ * gates disc size, the alpha knee, coverage and the alpha Discard, so cells that
+ * are subject in C but backdrop in B would be culled outright (C would appear as
+ * a B-shaped stencil). Absent → the exact 2-target graph.
+ *
+ * SEQUENCING INVARIANT (caller's responsibility). `uMorph` must reach EXACTLY
+ * 1.0 before `uMorph2` leaves 0. The blend is chained, so driving both legs at
+ * once yields `mix(mix(A,B,s), C, s)` — a shortcut that cuts the corner between
+ * A and C and never touches B. Derive both uniforms from one progress scalar.
+ *
+ * INK → SIZE is the tonal model (after brunoimbrizi/interactive-particles, which
+ * does `psize *= max(grey, 0.2)`): a portrait's tone is carried by particle SIZE
+ * on a uniform one-per-cell grid, NOT by particle density. Density-based tone
+ * needs random resampling, which leaves holes where the rng missed and wastes
+ * the budget on duplicates — the defect this replaced.
+ *
+ * The photographic look uses NORMAL blending with depth OFF by default: the
+ * sampler emits one particle per grid cell, so there is nothing meaningful to
+ * occlude, and depth-testing overlapping discs at slightly different z mottles
+ * and tears the face along luminance edges instead of reading as relief (the
+ * reference implementation, .refs/interactive-particles Particles.js, likewise
+ * sets depthTest:false). Only mid-flight travel + any >1.0 travelTint feed the
+ * selective bloom, so faces stay photographic at rest.
  */
 export interface PortraitMorphOpts {
   /** count×3 LINEAR rgb for target A (index-matched to homeA). */
   colorsA: Float32Array;
   /** count×3 LINEAR rgb for target B (index-matched to homeB). */
   colorsB: Float32Array;
+  /** OPTIONAL count×3 LINEAR rgb for target C (index-matched to homeC).
+   * Present ONLY on a real 3-target chain; absent → the exact 2-target graph.
+   * MUST be passed together with `sizeC` — colour without ink chains the
+   * photograph to C while leaving the disc size and alpha on B. */
+  colorsC?: Float32Array;
+  /** count floats in 0..1: per-particle tonal weight for target A. Scales the
+   * disc size and alpha. Both `sizeA` and `sizeB` must be present to enable the
+   * ink path; absent = flat-size discs (the pre-ink portrait look). */
+  sizeA?: Float32Array;
+  /** count floats in 0..1: per-particle tonal weight for target B. */
+  sizeB?: Float32Array;
+  /** OPTIONAL count floats 0..1: per-particle tonal weight for target C.
+   * Requires `colorsC` + `sizeA` + `sizeB` present. NOTE: there is deliberately
+   * no colorsD/sizeD — a FOURTH portrait target would render target D's
+   * positions with target C's colours. Add them if that day comes: colour and
+   * ink pack together into ONE `tintD` vec4 buffer, so the render cost is +1
+   * vertex-stage storage binding (4 of 8) and ZERO vertex-buffer slots. Read
+   * the RENDER BINDING BUDGET block in createTextMorphComputeBuild first — the
+   * COMPUTE kernel is the tighter wall, already at 8 of 8 storage buffers. */
+  sizeC?: Float32Array;
   /** Render blending — "normal" (default, real occlusion) or "additive". */
   blending?: "normal" | "additive";
-  /** Depth test (default true so front discs occlude back = relief). */
+  /** Depth test (default false — one particle per cell has nothing to occlude,
+   * and depth-testing overlapping discs tears the face at luminance edges). */
   depthTest?: boolean;
-  /** Depth write (default true). */
+  /** Depth write (default false, same reason). */
   depthWrite?: boolean;
   /** Colour multiplier (default 1 — faces photographic, no bloom at rest). */
   emissive?: number;
   /** HDR cyan the discs surge toward mid-flight (>1 → selective bloom). */
   travelTint?: [number, number, number];
+  /** Grid spacing in DEVICE px (`sqrt(stageAreaDev / count)`), i.e. the pitch
+   * of the one-particle-per-cell lattice on screen. Used ONLY to size the
+   * sub-pixel coverage compensation (see PORTRAIT_COV_MIN_PX): the disc
+   * diameter is exactly `2·f·spacingDev`, so a spacing-relative threshold makes
+   * the correction track stage size and dpr instead of assuming a retina
+   * layout. Absent → the absolute 1.25 devpx floor is used alone. */
+  spacingDev?: number;
 }
 
 export function createTextMorphComputeBuild(
@@ -909,15 +988,69 @@ export function createTextMorphComputeBuild(
   const homeBBuffer = instancedArray(homeB.slice(), "vec3");
   const homeCBuffer = instancedArray(homeC.slice(), "vec3");
   const homeDBuffer = instancedArray(homeD.slice(), "vec3");
-  // Portrait extension: per-particle LINEAR colour for A/B (render-only; the
-  // kernel never reads these). Absent → no buffers, hero look byte-identical.
+  // === PORTRAIT per-particle data — colour + ink PACKED into ONE vec4 =======
+  // Render-only (the kernel never reads these). Absent → no buffers at all, and
+  // the hero graph is byte-identical.
+  //
+  // WHY PACKED, and why these are read with `.element()` and not
+  // `.toAttribute()`: see the RENDER BINDING BUDGET block above
+  // `material.vertexNode` below. Short version — `.toAttribute()` binds the
+  // storage buffer as a VERTEX BUFFER, WebGPU allows only 8 of those, and six
+  // independent colour/ink attributes took the 3-target build to 10 and the
+  // render pipeline failed to create (nothing drew at all). Packing rgb into
+  // `.xyz` and the ink scalar into `.w` halves the per-target cost, and reading
+  // via `.element(instanceIndex)` moves it off the vertex-buffer budget
+  // entirely onto the (separate, roomier) read-only-storage budget.
+  //
+  // LAYOUT: `"vec4"` is NOT padded — WebGPUAttributeUtils only rewrites
+  // itemSize 3 → 4 (that rewrite is exactly why a `"vec3"` `.toAttribute()`
+  // yields a 4-component node). So each instance is literally [r, g, b, ink],
+  // and `.element(i)` on it yields a true vec4: `.xyz` = colour, `.w` = ink.
   const hasPortrait = !!portrait;
-  const colorABuffer = portrait
-    ? instancedArray(portrait.colorsA.slice(), "vec3")
+  const hasPortraitSize = !!portrait?.sizeA && !!portrait?.sizeB;
+  // Optional THIRD portrait target (A→B→C). Absent → the exact 2-target graph.
+  // All gates are build-time JS booleans, so the hero emits an unchanged graph.
+  const hasPortraitC = !!portrait?.colorsC;
+  // `hasPortraitC` FIRST: `sizeC` without `colorsC` would leave
+  // `portraitMorph2Expr` null while this gate is true, and the `!` below would
+  // then dereference it and throw at shader-build time.
+  const hasPortraitSizeC = hasPortraitC && hasPortraitSize && !!portrait?.sizeC;
+
+  /**
+   * Interleave a count×3 LINEAR rgb array and an optional count ink array into
+   * one count×4 `[r, g, b, ink]` buffer. Ink defaults to 0 when the caller
+   * supplied none — harmless, because `.w` is only ever READ behind the
+   * `hasPortraitSize` / `hasPortraitSizeC` build-time gates, so the flat-size
+   * portrait path (colours, no ink) never sees it.
+   */
+  const packTint = (rgb: Float32Array, ink?: Float32Array): Float32Array => {
+    const out = new Float32Array(count * 4);
+    for (let i = 0; i < count; i++) {
+      out[i * 4] = rgb[i * 3];
+      out[i * 4 + 1] = rgb[i * 3 + 1];
+      out[i * 4 + 2] = rgb[i * 3 + 2];
+      out[i * 4 + 3] = ink ? ink[i] : 0;
+    }
+    return out;
+  };
+
+  const tintABuffer = portrait
+    ? instancedArray(packTint(portrait.colorsA, portrait.sizeA), "vec4")
     : null;
-  const colorBBuffer = portrait
-    ? instancedArray(portrait.colorsB.slice(), "vec3")
+  const tintBBuffer = portrait
+    ? instancedArray(packTint(portrait.colorsB, portrait.sizeB), "vec4")
     : null;
+  const tintCBuffer = hasPortraitC
+    ? instancedArray(packTint(portrait!.colorsC!, portrait!.sizeC), "vec4")
+    : null;
+  // Element handles — plain node EXPRESSIONS (NOT `.toVar()`s), so they are
+  // safe to feed `varying(...)`; see the VaryingNode hazard note below. Every
+  // read of these happens in the VERTEX stage: `instanceIndex` degrades to an
+  // interpolated varying in the fragment stage (IndexNode.generate), which
+  // would turn a per-instance load into a per-PIXEL storage read.
+  const tintA = tintABuffer ? tintABuffer.element(instanceIndex) : null;
+  const tintB = tintBBuffer ? tintBBuffer.element(instanceIndex) : null;
+  const tintC = tintCBuffer ? tintCBuffer.element(instanceIndex) : null;
   // Entry-assemble fields: the scattered start each particle flies in FROM,
   // and its stagger delay = normalized home-A x (ICS-media: "the normalized X
   // position directly becomes the delay value" → a left→right forming wave).
@@ -1077,42 +1210,249 @@ export function createTextMorphComputeBuild(
     new Color().fromArray(params.COL_HOT),
   ) as UniformNode<ColorLike>;
 
-  const vSpeed = float(0).toVar();
-  const vRandSrc = float(0).toVar();
-  // Per-particle entry visibility: alpha rises as the particle's own journey
-  // starts (ICS: each particle tweens `alpha: 0 → visible` with its delay).
-  const vAssemble = float(1).toVar();
-  // Portrait: the per-particle A→B colour-blend scalar, computed in the vertex
-  // stage from the SAME stagger the kernel uses for the anchor. Only created on
-  // the portrait path (the hero vertex graph is untouched).
-  const vMorphColorSrc = hasPortrait ? float(0).toVar() : null;
+  // === Per-particle scalars carried to the FRAGMENT stage ==================
+  // These three MUST stay self-contained node EXPRESSIONS. Do NOT "simplify"
+  // them back into an outer `float(x).toVar()` that the vertex `Fn` `.assign()`s
+  // into — that idiom is silently broken. See the full VaryingNode hazard note
+  // on `portraitMorphExpr` immediately below: three writes every varying at the
+  // TOP of vertex `main()`, BEFORE the `material.vertexNode` body runs, so a
+  // varying built from an outer var carries that var's DECLARED INITIAL value
+  // forever, whatever the Fn later assigns.
+  //
+  // That is exactly the bug this shape fixes: `vSpeedF` read a constant 0 (hero
+  // colour pinned to COL_COLD, no speed brightening, and the portrait's
+  // mid-flight HDR travel tint dead), `vRandF` a constant 0 (no per-particle
+  // 0.75–1.15 brightness spread — a flat, uniformly dimmer cloud), and
+  // `vAssembleF` a constant 1 (the staggered per-particle entry FADE never ran;
+  // only the staggered motion did, since that comes from the kernel's anchor).
+  /** Per-particle speed (world units/s). Hero: cold→hot colour ramp + a
+   * brightness boost. Portrait: gain into the HDR travel tint that feeds
+   * selective bloom. */
+  const heroSpeedExpr = length(velocityBuffer.toAttribute().xyz);
+  /** Stable per-particle random in [0,1) — brightness and size spread. */
+  const heroRandExpr = hash(instanceIndex);
+  /** Per-particle entry visibility: alpha rises as the particle's own journey
+   * starts (ICS: each particle tweens `alpha: 0 → visible` with its delay).
+   * Mirrors the compute kernel's `aw` window EXACTLY — same `ASSEMBLE_WINDOW`,
+   * same `delayBuffer` read (a `"float"` buffer: unpadded, NO `.xyz`) — so the
+   * fade tracks the travelling recomposition wave it belongs to. */
+  const heroAssembleExpr = smoothstep(
+    0.0,
+    0.35,
+    clamp(
+      assembleN
+        .mul(1.0 + ASSEMBLE_WINDOW)
+        .sub(delayBuffer.toAttribute())
+        .div(ASSEMBLE_WINDOW),
+      0.0,
+      1.0,
+    ),
+  );
+  // Portrait: the per-particle A→B colour-blend scalar and the A→B-blended ink,
+  // held as plain node EXPRESSIONS — deliberately NOT as outer `.toVar()`s that
+  // the vertex Fn assigns into.
+  //
+  // WHY (three r184, verified by generating the shader): `varying(node)` does
+  // NOT read the node where you wrote it. `VaryingNode.generate`
+  // (three/src/nodes/core/VaryingNode.js:162-182) calls
+  // `builder.flowNodeFromShaderStage(VERTEX, node, type, propertyName)`
+  // (NodeBuilder.js:2572-2600), which appends `<varying> = <node>;` to
+  // `flowCode.vertex`; `buildCode()` then PREPENDS `flowCode[stage]` ahead of
+  // the stage's flow nodes (GLSLNodeBuilder.js:1478-1497,
+  // WGSLNodeBuilder.js:2106-2128). So the varying is written at the TOP of the
+  // vertex `main()`, BEFORE the `material.vertexNode` body runs. A varying built
+  // from an outer `.toVar()` therefore carries that var's INITIAL value forever,
+  // no matter where inside the Fn the `.assign()` sits — which is exactly how
+  // `vMorphColorF` read a constant 0 (face never left target A) and `vInkF` read
+  // a constant 0 (fringe alpha pinned at the ink term's floor → the halo behind
+  // the face).
+  //
+  // A varying built from a self-contained EXPRESSION is correct instead: three
+  // re-emits the whole expression at the top of `main()`, where uniforms and
+  // per-instance attributes are already available, and the Fn body below then
+  // reuses the very same generated var for the size math. Keep it this way; do
+  // not "simplify" these back into an outer var + `.assign()` inside the Fn.
+  const portraitMorphExpr = hasPortrait
+    ? smoothstep(
+        0.0,
+        1.0,
+        clamp(morphN.sub(hash(instanceIndex).mul(0.55)).div(0.45), 0.0, 1.0),
+      )
+    : null;
+  /** Second-leg (B→C) stagger. MUST mirror the kernel's `m2` EXACTLY — same
+   * 0.55 delay, same 0.45 window, same hash — or colour and ink travel a
+   * different path than position. Self-contained expression, never an outer
+   * `.toVar()` (VaryingNode hazard, documented above). */
+  const portraitMorph2Expr = hasPortraitC
+    ? smoothstep(
+        0.0,
+        1.0,
+        clamp(morph2N.sub(hash(instanceIndex).mul(0.55)).div(0.45), 0.0, 1.0),
+      )
+    : null;
+  // Ink lives in `.w` of the packed tint vec4 — a `.element()` read of a
+  // `"vec4"` buffer is a TRUE vec4 (no 3→4 padding rewrite applies), so `.w` is
+  // the real scalar and there is no `.xyz` question here at all.
+  // CHAINED to match the kernel's `target`: mix(mix(A,B,m1), C, m2). Rewriting
+  // this one expression is what makes the third leg cheap — it is read by the
+  // vertex Fn's `inkNow`, by `portraitSizePxExpr` and by the `vInkF` varying, so
+  // disc size, sub-pixel coverage compensation and fragment alpha all pick up
+  // the 3-way chain and stay in lockstep with no further edits.
+  const portraitInkExpr = hasPortraitSize
+    ? hasPortraitSizeC
+      ? mix(mix(tintA!.w, tintB!.w, portraitMorphExpr!), tintC!.w, portraitMorph2Expr!)
+      : mix(tintA!.w, tintB!.w, portraitMorphExpr!)
+    : null;
 
+  /** Portrait disc size floor — kept barely non-zero ONLY so the quad never
+   * degenerates. A backdrop cell (ink 0) MUST collapse to nothing: it is the
+   * vanishing of the backdrop that makes the subject read. Anything larger
+   * leaves ~48% of the cloud (the cells that are subject in only one of the two
+   * headshots, plus the dissolve band) drawn as a ghost fringe. */
+  const PORTRAIT_SIZE_MIN = 0.06;
+  /** Portrait disc size gained at full ink — carries essentially the whole
+   * tonal signal, since the floor above is now negligible. */
+  const PORTRAIT_SIZE_INK = 0.94;
+
+  // === Sub-pixel COVERAGE COMPENSATION (portrait only) =====================
+  // The renderer runs with `antialias: false` (Scene.tsx), so there is no MSAA
+  // and a quad narrower than one device pixel CANNOT attenuate: the rasterizer
+  // either shades a whole fragment at the disc term's full value
+  // (smoothstep(0.5,0.34,rr) = 1 at rr≈0) or misses it entirely. Coverage
+  // therefore saturates at one whole pixel, and every low-ink disc in the
+  // sub-pixel band paints an isolated FULL-BRIGHTNESS near-white pixel on the
+  // jittered lattice — the ragged pale fringe beside the head and shoulders.
+  // Size is the only tonal control down there and it has stopped working.
+  //
+  // Fix: fold the size deficit back into alpha (standard antialiased
+  // point-sprite coverage compensation), `alpha *= cov²` with
+  // `cov = clamp(diameterPx / threshold, 0, 1)`.
+  //
+  // THRESHOLD: 1.25 devpx, NOT 2.0. The rasterizer floors a sub-pixel disc at
+  // one whole pixel, so the energy deficit normalizes at ~1.1–1.2 devpx; a 2.0
+  // denominator over-corrects and thins the SUBJECT's own soft edge (the ink
+  // 0.14–0.23 shell, whose 1.6–2.1 devpx discs are already correctly sized).
+  // Spacing-relative form preferred where the caller supplies `spacingDev`:
+  // diameter = 2·f·spacingDev exactly, so `0.35·spacingDev` keeps the
+  // correction tracking stage size and dpr instead of assuming a retina layout.
+  const PORTRAIT_COV_MIN_PX = Math.max(
+    1.25,
+    0.35 * (portrait?.spacingDev ?? 0),
+  );
+  const uPortraitCovPx = hasPortraitSize
+    ? (uniform(PORTRAIT_COV_MIN_PX) as UniformNode<number>)
+    : null;
+  // Device-px disc DIAMETER as a self-contained EXPRESSION (never an outer
+  // `.toVar()` — see the VaryingNode hazard documented above: a varying built
+  // from an outer var is written at the top of vertex main() and carries that
+  // var's INITIAL value forever). This mirrors `sizeNode` below EXACTLY, with
+  // its own `hash(instanceIndex)` where `sizeNode` uses `heroRandExpr` (the
+  // same hash of the same seed → bit-identical value) and the `/dist` divide
+  // deferred to the fragment via `vPortraitDistF`.
+  //
+  // EXACTNESS NOTE: omitting `sizeFD` here is exact — NOT an approximation —
+  // only because `uSizeComp`/`uSizeComp2`/`uSizeComp3` are hard-set to 1 on the
+  // portrait path (FounderPortraitMorph.tsx, the `built.uSizeComp*` pins right
+  // after the build call) and never animated — including on the 3-target
+  // founders chain, where `uMorph2` DOES animate and would otherwise make
+  // `sizeFC` a live term. If anyone ever animates them, this varying silently
+  // DESYNCHRONISES from the real disc size and the coverage term starts lying.
+  // Fold `sizeFD` in here if that day comes.
+  const portraitSizePxExpr = hasPortraitSize
+    ? (uPointSize as unknown as AnyNode)
+        .mul(uPixelRatio as unknown as AnyNode)
+        .mul(
+          float(PORTRAIT_SIZE_MIN).add(
+            float(PORTRAIT_SIZE_INK).mul(portraitInkExpr!),
+          ),
+        )
+        .mul(float(0.85).add(float(0.3).mul(hash(instanceIndex))))
+    : null;
+  // View-space distance carried as its own varying rather than divided out by a
+  // constant CAMERA_Z: the group dollies ±2.2 world units mid-morph, which is
+  // up to ±18% error on the diameter otherwise. One extra interpolant.
+  const portraitDistExpr = hasPortraitSize
+    ? max(
+        modelViewMatrix
+          .mul(vec4(positionBuffer.toAttribute().xyz, 1.0))
+          .z.negate(),
+        0.001,
+      )
+    : null;
+
+  // ===========================================================================
+  // RENDER BINDING BUDGET — read this BEFORE adding another morph target.
+  // ===========================================================================
+  // Two hard DEVICE limits govern this material. Neither is visible to
+  // TypeScript, to a code review of the colour/ink chain, or to any test that
+  // is not a real WebGPU browser session. Exceeding either makes
+  // `CreateRenderPipeline` FAIL, which means the mesh silently never draws —
+  // no exception, no visual artefact, just an empty stage plus one console
+  // line. That is exactly how the 3-target founders portrait shipped invisible.
+  //
+  //   (1) maxVertexBuffers = 8.  EVERY `storageBuffer.toAttribute()` in the
+  //       render stage costs ONE slot (three binds the storage buffer as a
+  //       per-instance vertex buffer — WebGPUAttributeUtils keys its
+  //       `vertexBuffers` map by bufferAttribute). Geometry attributes cost
+  //       slots too. The index buffer does not.
+  //   (2) maxStorageBuffersInVertexStage = 8.  Every distinct storage buffer
+  //       read with `.element(i)` in the vertex stage costs one read-only
+  //       storage binding instead (WGSLNodeBuilder emits
+  //       `var<storage, read>`; getNodeAccess forces READ_ONLY outside
+  //       compute). Separate budget, separate ceiling.
+  //
+  // MEASURED SLOT COUNTS (r184, this material):
+  //                                   vertex buffers | vertex-stage storage
+  //   hero text (no portrait)                4 of 8  |        0 of 8
+  //   portrait, 2 targets                    4 of 8  |        2 of 8
+  //   portrait, 3 targets (ships today)      4 of 8  |        3 of 8
+  //   ── for comparison, the layout this replaced ──
+  //   portrait, 2 targets (all toAttribute)  8 of 8  |        0    ← at the wall
+  //   portrait, 3 targets (all toAttribute) 10 of 8  |        0    ← FAILED
+  //
+  // The 4 vertex buffers are: the quad `position` geometry attribute, plus
+  // `positionBuffer`, `velocityBuffer` and `delayBuffer` via `.toAttribute()`.
+  // Those three are identical on the hero path, which is why the hero graph is
+  // untouched by all of this. The portrait storage bindings are the packed
+  // `tintA` / `tintB` / `tintC` vec4s — ONE per target, colour in `.xyz`, ink
+  // in `.w`.
+  //
+  // COST OF A FOURTH TARGET: +1 vertex-stage storage binding (a `tintD`), i.e.
+  // 4 of 8. There is room. What there is NOT room for is going back to a
+  // buffer-per-attribute layout.
+  //
+  // AND CHECK THE COMPUTE KERNEL TOO: `simulate` above already binds EIGHT
+  // storage buffers (position, velocity, homeA–homeD, start, delay) — it is at
+  // 8 of 8 on maxStorageBuffersPerShaderStage. A fifth home target breaks the
+  // COMPUTE pipeline before the render budget above is anywhere near spent.
+  // ===========================================================================
   const material = new MeshBasicNodeMaterial();
   material.vertexNode = Fn(() => {
-    // Render-stage reads via `.toAttribute()` ONLY (three #31221): the
-    // storage buffers written by the compute kernel are bound as per-instance
-    // vertex attributes — sampler-free, valid in any stage, and the only form
-    // that also works under the WebGL fallback. (Migrated from the previous
-    // `.element(instanceIndex)` vertex reads in C3.) NOTE: `.toAttribute()` on
+    // Buffers the COMPUTE KERNEL WRITES are read here via `.toAttribute()`
+    // (three #31221): sampler-free, valid in any stage, and the only form that
+    // also works under the WebGL fallback. NOTE: `.toAttribute()` on
     // a `"vec3"` storage buffer yields a 4-COMPONENT node — vec3 is padded to
     // 16 bytes in the WebGPU storage layout — so the trailing `.xyz` swizzle is
     // MANDATORY (it is NOT a drop-in for `.element(i).xyz`); without it
     // `vec4(p, 1.0)` becomes 5 components and the shader throws / truncates.
+    // The read-only PORTRAIT buffers deliberately do NOT use `.toAttribute()`
+    // — see the binding budget above.
     const p = positionBuffer.toAttribute().xyz.toVar();
-    const v = velocityBuffer.toAttribute().xyz;
-    vSpeed.assign(length(v));
-    vRandSrc.assign(hash(instanceIndex));
-    // delayBuffer is a `"float"` (scalar) storage buffer — no padding, no `.xyz`.
-    const delay = delayBuffer.toAttribute();
-    const aw = clamp(
-      assembleN
-        .mul(1.0 + ASSEMBLE_WINDOW)
-        .sub(delay)
-        .div(ASSEMBLE_WINDOW),
-      0.0,
-      1.0,
-    );
-    vAssemble.assign(smoothstep(0.0, 0.35, aw));
+    // NOTE: speed / rand / assemble are NOT computed here any more. They are
+    // outer expression nodes (`heroSpeedExpr` / `heroRandExpr` /
+    // `heroAssembleExpr`) fed straight into `varying(...)` — assigning them into
+    // outer `.toVar()`s from inside this Fn is the VaryingNode hazard that made
+    // all three read their initial constants. Only `heroRandExpr` has a
+    // vertex-stage consumer (the size spread below); it reads the expression
+    // node directly, which three materialises once (see below).
+    // Portrait ink for the size expression below — the SAME expression node the
+    // `vInkF` varying is built from, so the disc size and the fragment's fringe
+    // alpha read one identical value (three reuses the generated var here rather
+    // than recomputing it). The staggered A→B wave inside it matches the one the
+    // kernel applies to the anchor (delay = hash(instanceIndex)·0.55, window
+    // 0.45), so colour, size and position cross from A to B in lockstep.
+    // Hero path: `portraitInkExpr` is null and this contributes nothing.
+    const inkNow: AnyNode | null = hasPortraitSize ? portraitInkExpr! : null;
     const mv = modelViewMatrix.mul(vec4(p, 1.0)).toVar();
     const dist = mv.z.negate();
     const clip = cameraProjectionMatrix.mul(mv).toVar();
@@ -1134,32 +1474,43 @@ export function createTextMorphComputeBuild(
       uSizeComp3 as unknown as AnyNode,
       smoothstep(0.25, 0.75, morph3N),
     );
-    const sizeNode = (uPointSize as unknown as AnyNode)
-      .mul(uPixelRatio as unknown as AnyNode)
-      .mul(float(0.7).add(float(0.7).mul(vRandSrc)))
-      .mul(sizeFD)
-      .div(max(dist, 0.001));
+    // Portrait: tone is carried by SIZE — scale the disc by the blended ink,
+    // and NARROW the per-particle random spread (0.85+0.3·rand instead of
+    // 0.7+0.7·rand), because the old wide range fights the tonal signal once
+    // ink drives size. Hero path keeps its exact original expression.
+    const sizeNode = hasPortraitSize
+      ? (uPointSize as unknown as AnyNode)
+          .mul(uPixelRatio as unknown as AnyNode)
+          .mul(
+            float(PORTRAIT_SIZE_MIN).add(float(PORTRAIT_SIZE_INK).mul(inkNow!)),
+          )
+          .mul(float(0.85).add(float(0.3).mul(heroRandExpr)))
+          .mul(sizeFD)
+          .div(max(dist, 0.001))
+      : (uPointSize as unknown as AnyNode)
+          .mul(uPixelRatio as unknown as AnyNode)
+          .mul(float(0.7).add(float(0.7).mul(heroRandExpr)))
+          .mul(sizeFD)
+          .div(max(dist, 0.001));
     const corner = positionLocal.xy;
     clip.xy.addAssign(
       corner.mul(sizeNode).div(uViewport as unknown as AnyNode).mul(2.0).mul(clip.w),
     );
-    // Portrait colour-morph scalar — the same staggered A→B wave the kernel
-    // applies to the anchor (delay = hash(instanceIndex)·0.55, window 0.45), so
-    // a particle's colour crosses from A to B exactly as it flies A→B.
-    if (hasPortrait) {
-      const rC = hash(instanceIndex);
-      vMorphColorSrc!.assign(
-        smoothstep(0.0, 1.0, clamp(morphN.sub(rC.mul(0.55)).div(0.45), 0.0, 1.0)),
-      );
-    }
     return clip;
   })();
 
   const vQuadUv = varying(positionLocal.xy);
-  const vSpeedF = varying(vSpeed);
-  const vRandF = varying(vRandSrc);
-  const vAssembleF = varying(vAssemble);
-  const vMorphColorF = hasPortrait ? varying(vMorphColorSrc!) : null;
+  // All built from expressions, not from outer vars — see the comments on the
+  // `heroSpeedExpr` block and on `portraitMorphExpr` for why that distinction
+  // is load-bearing.
+  const vSpeedF = varying(heroSpeedExpr);
+  const vRandF = varying(heroRandExpr);
+  const vAssembleF = varying(heroAssembleExpr);
+  const vInkF = hasPortraitSize ? varying(portraitInkExpr!) : null;
+  // Sub-pixel coverage inputs (portrait only): the disc diameter BEFORE the
+  // perspective divide, and the view-space distance to divide it by.
+  const vSizePxF = hasPortraitSize ? varying(portraitSizePxExpr!) : null;
+  const vPortraitDistF = hasPortraitSize ? varying(portraitDistExpr!) : null;
 
   // Portrait travel tint (HDR cyan) + emissive — created only on the portrait
   // path so the hero fragment graph is unchanged.
@@ -1175,27 +1526,72 @@ export function createTextMorphComputeBuild(
   /** Speed→travel-tint gain: fast (mid-flight) discs surge to the HDR cyan. */
   const PORTRAIT_TRAVEL_K = 0.16;
 
-  const shade = Fn(() => {
-    const rr = length(vQuadUv);
-    const a = smoothstep(0.5, 0.12, rr).toVar();
-    let col: AnyNode;
-    if (hasPortrait) {
-      // Per-particle photographic colour, morphed A→B by the vertex-computed
-      // stagger. `.xyz` MANDATORY: a "vec3" storage buffer pads to 4 comps.
-      const cA = colorABuffer!.toAttribute().xyz;
-      const cB = colorBBuffer!.toAttribute().xyz;
-      const base = mix(cA, cB, vMorphColorF!).toVar();
-      // Travel glow: fast (mid-flight) discs surge toward HDR cyan → the >1.0
-      // values feed the selective bloom; at rest speed≈0 so faces stay photo.
-      base.assign(
-        mix(
+  /**
+   * PORTRAIT COLOUR — resolved ENTIRELY in the vertex stage and handed to the
+   * fragment as ONE vec3 varying (`vPortraitColorF`).
+   *
+   * This used to be assembled in the fragment `Fn` from three separate
+   * `colorXBuffer.toAttribute().xyz` reads plus two stagger varyings. It moved
+   * here for two reasons, in this order of importance:
+   *   1. BINDING BUDGET (see the block above `material.vertexNode`). The reads
+   *      are now `.element(instanceIndex)` on the packed tint vec4s, and
+   *      `instanceIndex` is only a real builtin in the vertex and compute
+   *      stages — in the fragment stage `IndexNode.generate` silently wraps it
+   *      in a varying, which would turn one per-instance load into a
+   *      per-PIXEL storage read across every disc's coverage.
+   *   2. It is EXACT, not an approximation. All four quad vertices of an
+   *      instance carry identical per-instance values, so interpolating the
+   *      finished colour is bit-equivalent to interpolating the inputs and
+   *      blending per-fragment — and it replaces 3 colour + 2 scalar
+   *      interpolants with 1.
+   *
+   * The blend is CHAINED — mix(mix(A,B,m1), C, m2) — mirroring the kernel's
+   * `target` exactly, so colour, ink and position cross targets in lockstep.
+   * `.xyz` here is a genuine vec4 swizzle, NOT the `"vec3"`-padding workaround:
+   * a `.element()` read of a `"vec4"` buffer is a true 4-component value.
+   *
+   * VaryingNode discipline: built by JS-level composition of plain node
+   * expressions. Do NOT rewrite this as an outer `.toVar()` that a vertex `Fn`
+   * `.assign()`s into — three writes every varying at the TOP of vertex
+   * `main()`, before any `Fn` body runs, so such a varying would carry the
+   * var's declared initial value forever. That is the bug that pinned
+   * `vMorphColorF` at 0 (every face stuck on target A) once already.
+   */
+  const portraitColorExpr = hasPortrait
+    ? (() => {
+        let base = mix(tintA!.xyz, tintB!.xyz, portraitMorphExpr!);
+        if (hasPortraitC) {
+          base = mix(base, tintC!.xyz, portraitMorph2Expr!);
+        }
+        // Travel glow: fast (mid-flight) discs surge toward HDR cyan → the >1.0
+        // values feed the selective bloom; at rest speed≈0 so faces stay photo.
+        base = mix(
           base,
           (uTravelTint as unknown as AnyNode).toVec3(),
-          clamp(vSpeedF.mul(PORTRAIT_TRAVEL_K), 0.0, 1.0),
-        ),
-      );
-      base.assign(base.mul(uPortraitEmissive as unknown as AnyNode));
-      col = base;
+          clamp(heroSpeedExpr.mul(PORTRAIT_TRAVEL_K), 0.0, 1.0),
+        );
+        return base.mul(uPortraitEmissive as unknown as AnyNode);
+      })()
+    : null;
+  const vPortraitColorF = hasPortrait ? varying(portraitColorExpr!) : null;
+
+  const shade = Fn(() => {
+    const rr = length(vQuadUv);
+    // Portrait: a much crisper disc edge — the hero's soft mote (0.5→0.12
+    // feather) averages overlapping photographic discs into mush; a tight
+    // edge lets depth-tested neighbours resolve facial detail. Hero path
+    // unchanged (byte-identical contract).
+    const a = (
+      hasPortrait ? smoothstep(0.5, 0.34, rr) : smoothstep(0.5, 0.12, rr)
+    ).toVar();
+    let col: AnyNode;
+    if (hasPortrait) {
+      // The whole A→B→C blend + travel tint + emissive is resolved in the
+      // VERTEX stage and arrives as one interpolant — see `portraitColorExpr`.
+      // Nothing portrait-specific may read a storage buffer down here: doing so
+      // drags `instanceIndex` into the fragment stage as a varying and turns a
+      // per-instance load into a per-pixel one.
+      col = vPortraitColorF!;
     } else {
       const t = clamp(vSpeedF.mul(0.5), 0.0, 1.0);
       col = mix(uColCold as unknown as AnyNode, uColHot as unknown as AnyNode, t)
@@ -1209,16 +1605,65 @@ export function createTextMorphComputeBuild(
       .mul(uFade as unknown as AnyNode)
       .mul(vAssembleF)
       .toVar();
-    Discard(alpha.lessThan(0.004));
+    // Portrait: the ink term must reach EXACTLY 0 at ink 0 so a backdrop cell
+    // disappears rather than lingering as a pale fringe. Smoothsteps (never a
+    // step) keep the subject's own faint edge fading smoothly instead of
+    // clipping to a hard cut-out. The Discard below then removes the
+    // true-zero particles entirely.
+    if (hasPortraitSize) {
+      // (a) TONAL KNEE — deliberately NARROW and UNSQUARED. The previous wide
+      // squared knee (`smoothstep(0.03, 0.35, ink)²`) was compensating for a
+      // BACKDROP problem, and it paid for it with the subject: the whole mid
+      // band where facial detail lives was dimmed, which is why the faces read
+      // as less defined. Two independent changes make the narrow knee safe:
+      //   1. The sampler's border-seeded flood fill now drives true backdrop to
+      //      EXACTLY 0 ink (sampleImagePoints.ts), so there is no wall
+      //      population left to ghost — alpha no longer has to suppress one.
+      //   2. The sub-pixel coverage compensation below still handles every disc
+      //      under the rasterizer's one-pixel floor, which is the other half of
+      //      what the wide knee was doing by hand.
+      // What remains is a short fade-in off zero so the subject's own faint
+      // edge (and the dissolve band) still ramps smoothly instead of clipping
+      // to a cut-out. The FACE (ink ≫ 0.10) gets exactly 1.0, untouched.
+      alpha.mulAssign(smoothstep(0.0, 0.1, vInkF!));
+      // (b) SUB-PIXEL COVERAGE COMPENSATION — see PORTRAIT_COV_MIN_PX. With
+      // `antialias:false` a disc narrower than a device pixel is shaded at FULL
+      // intensity over one whole fragment, so its energy must be scaled back by
+      // hand. cov is EXACTLY 1 for every disc at or above the threshold, which
+      // is the guarantee that full-ink face discs (~8.4 devpx ≈ 2× spacing) are
+      // untouched; it is a smooth quadratic ramp below it, so the subject's own
+      // faint edge fades rather than clipping.
+      const cov = clamp(
+        vSizePxF!.div(vPortraitDistF!).div(uPortraitCovPx as unknown as AnyNode),
+        0.0,
+        1.0,
+      ).toVar();
+      alpha.mulAssign(cov.mul(cov));
+    }
+    // Portrait cull stays at 0.02, but the narrow knee above changed what it
+    // MEANS, and the new meaning is what makes it safe. Under the old wide
+    // squared knee 0.02 corresponded to ink ≈ 0.105 — with today's knee that
+    // same ink is a fully opaque disc, so keeping the old pairing would clip
+    // the subject. Re-derived against the current terms
+    // (alpha = smoothstep(0,0.1,ink)·cov², POINT_ALPHA 1) the threshold now
+    // culls only ink ≲ 0.018 in the spacing-relative worst case (covPx =
+    // 0.35·spacingDev) and ink ≲ 0.008 whenever cov has already saturated:
+    // i.e. sub-2%-opacity sub-pixel discs over a near-black stage, genuinely
+    // invisible, while the faint-edge band the knee is there to preserve
+    // (ink 0.02–0.1) survives. It still keeps near-invisible fragments out of
+    // the HDR/selective-bloom pass. JS ternary on a BUILD-TIME boolean → the
+    // hero emits the literal 0.004 verbatim.
+    Discard(alpha.lessThan(hasPortraitSize ? 0.02 : 0.004));
     return vec4(col, alpha);
   })();
   material.colorNode = (shade as AnyNode).xyz;
   material.opacityNode = (shade as AnyNode).w;
   material.transparent = true;
-  // Portrait: depth-tested normal blending (front discs occlude back = relief);
+  // Portrait: normal blending, depth OFF (one particle per cell → nothing to
+  // occlude; depth-testing overlapping discs mottles/tears luminance edges);
   // hero: additive, depth off (byte-identical to before).
-  material.depthWrite = hasPortrait ? (portrait!.depthWrite ?? true) : false;
-  material.depthTest = hasPortrait ? (portrait!.depthTest ?? true) : false;
+  material.depthWrite = hasPortrait ? (portrait!.depthWrite ?? false) : false;
+  material.depthTest = hasPortrait ? (portrait!.depthTest ?? false) : false;
   material.blending = hasPortrait
     ? portrait!.blending === "additive"
       ? AdditiveBlending
@@ -1285,9 +1730,9 @@ export interface GpgpuStaticNodeBuild {
 /**
  * Build the FALLBACK hero render on the WebGPURenderer — each instance is
  * placed at its HOME position read from a per-instance `aHome` vec3 attribute
- * (a CRISP dense blue "52", no storage/texture reads) and then ANALYTICALLY
+ * (a CRISP dense violet "52", no storage/texture reads) and then ANALYTICALLY
  * displaced near the cursor: particles within `uRadius` of the model-space
- * mouse lift outward + toward the camera, shifting blue→CYAN (glowing)
+ * mouse lift outward + toward the camera, shifting violet→CYAN (glowing)
  * gated by the eased `uHover`, and settle back smoothly when the cursor
  * leaves. Stateless (no sim, no compute) so it is robust on EVERY backend —
  * this is where the `spores` mode degrades when true-WebGPU compute is
@@ -1389,7 +1834,7 @@ export function createStaticParticleNodeBuild(
   ).toVar();
 
   // Carry the per-particle lift (displacement amount) to the fragment so the
-  // color shifts blue→cyan exactly where the surface is disturbed.
+  // color shifts violet→cyan exactly where the surface is disturbed.
   const vLift = float(0).toVar();
 
   const material = new MeshBasicNodeMaterial();
@@ -1445,8 +1890,8 @@ export function createStaticParticleNodeBuild(
   const shade = Fn(() => {
     const r = length(vQuadUv);
     const a = smoothstep(0.5, 0.18, r).toVar();
-    // Color: blue→cyan by lift (like the GPGPU render did by speed). At rest
-    // lift≈0 → pure blue skin; lifted/hovered particles glow toward cyan.
+    // Color: violet→cyan by lift (like the GPGPU render did by speed). At rest
+    // lift≈0 → pure violet skin; lifted/hovered particles glow toward cyan.
     //   t = clamp(lift*1.2, 0, 1); col = mix(cold, hot, t);
     //   col *= (1 + lift*0.8); col *= (0.7 + 0.5*rand); col *= uEmissive;
     const t = clamp(vLiftF.mul(1.2), 0.0, 1.0);

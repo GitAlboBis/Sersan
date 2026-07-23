@@ -112,14 +112,39 @@ export default function AuditWeekTimeline({ week, isEn }: AuditWeekTimelineProps
   // rAF crossfade tick — no React state churn during scroll.
   const progressRef = useRef(0);
 
+  const prevModeRef = useRef<"pinned" | "native" | null>(null);
+
+  // Mode detection is a SUBSCRIPTION, not a one-shot sample: a window snapped
+  // narrow, devtools docked, or an OS reduced-motion toggle must flip the path
+  // live. Sampling once on mount kept the pinned path alive with measurements
+  // taken against a viewport that no longer exists.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const mobile = window.matchMedia("(max-width: 768px)").matches;
-    const coarse = window.matchMedia("(pointer: coarse)").matches;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    setMode(mobile || coarse || reduced ? "native" : "pinned");
-    setDetected(true);
+    const queries = [
+      window.matchMedia("(max-width: 768px)"),
+      window.matchMedia("(pointer: coarse)"),
+      window.matchMedia("(prefers-reduced-motion: reduce)"),
+    ];
+    const sync = () => {
+      setMode(queries.some((q) => q.matches) ? "native" : "pinned");
+      setDetected(true);
+    };
+    sync();
+    queries.forEach((q) => q.addEventListener("change", sync));
+    return () => queries.forEach((q) => q.removeEventListener("change", sync));
   }, []);
+
+  // A mode flip sets or clears the px runway height, so document height moves
+  // — and an OS reduced-motion toggle fires no resize event, so nothing else
+  // would re-measure. Deferred so the refresh reads the committed layout.
+  useEffect(() => {
+    if (!detected) return;
+    const prev = prevModeRef.current;
+    prevModeRef.current = mode;
+    if (prev === null || prev === mode) return;
+    const raf = requestAnimationFrame(() => ScrollTrigger.refresh());
+    return () => cancelAnimationFrame(raf);
+  }, [detected, mode]);
 
   // rAF crossfade: drive each Day card's opacity + inert/aria state and the
   // left rail tick from progressRef. Same discipline as the spine's StagePanel

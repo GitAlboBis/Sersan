@@ -905,13 +905,40 @@ export default function CinematicSystemScroll() {
   const [isMobile, setIsMobile] = useState<boolean>(false);
   const [hasDetectedViewport, setHasDetectedViewport] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
+  const prevFallbackRef = useRef<boolean | null>(null);
 
+  // Mode detection is a SUBSCRIPTION, not a one-shot sample: a window snapped
+  // narrow, devtools docked, or an OS reduced-motion toggle must flip the path
+  // live. Sampling once on mount kept the pinned spine alive with
+  // measurements taken against a viewport that no longer exists.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setIsMobile(window.matchMedia("(max-width: 768px)").matches);
-    setHasDetectedViewport(true);
-    setReduceMotion(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    const mobileQ = window.matchMedia("(max-width: 768px)");
+    const reducedQ = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const queries = [mobileQ, reducedQ];
+    const sync = () => {
+      setIsMobile(mobileQ.matches);
+      setReduceMotion(reducedQ.matches);
+      setHasDetectedViewport(true);
+    };
+    sync();
+    queries.forEach((q) => q.addEventListener("change", sync));
+    return () => queries.forEach((q) => q.removeEventListener("change", sync));
   }, []);
+
+  // The spine (390vh runway) and the stacked fallback have very different
+  // document heights, so a flip between them must re-measure every trigger on
+  // the page — and an OS reduced-motion toggle fires no resize event, so
+  // nothing else would. Deferred so the refresh reads the committed layout.
+  const usesFallback = hasDetectedViewport && (isMobile || reduceMotion);
+  useEffect(() => {
+    if (!hasDetectedViewport) return;
+    const prev = prevFallbackRef.current;
+    prevFallbackRef.current = usesFallback;
+    if (prev === null || prev === usesFallback) return;
+    const raf = requestAnimationFrame(() => ScrollTrigger.refresh());
+    return () => cancelAnimationFrame(raf);
+  }, [hasDetectedViewport, usesFallback]);
 
   // (Removed: the orb-core poster image + its cross-fade machinery. The hero
   // visual is now owned entirely by the persistent WebGL Saturn; on a cold
@@ -932,8 +959,12 @@ export default function CinematicSystemScroll() {
   // ScrollTrigger pin + scrub. Only attach once the viewport detection
   // has settled — otherwise on a mobile cold load we'd briefly pin to a
   // section that's about to be replaced by MobileFallback.
+  // reduceMotion is a GUARD and a DEP, not just a render-branch input: it is
+  // live-subscribed now, so a mid-session toggle must tear this down. Without
+  // it the trigger and the Lenis snap points survive on a detached spine node
+  // (the fallback has replaced it) and keep pulling the scroll position.
   useEffect(() => {
-    if (!hasDetectedViewport || isMobile) return;
+    if (!hasDetectedViewport || isMobile || reduceMotion) return;
     if (typeof window === "undefined") return;
 
     const outer = outerRef.current;
@@ -997,7 +1028,7 @@ export default function CinematicSystemScroll() {
       window.removeEventListener("resize", onResize);
       clearSnapPoints.forEach((off) => off());
     };
-  }, [isMobile, hasDetectedViewport]);
+  }, [isMobile, reduceMotion, hasDetectedViewport]);
 
   // Scrim dimmer: while the WebGL particle text owns the hero (textMorph
   // active, DOM headline hidden) the two center-left contrast scrims drop to
@@ -1005,7 +1036,13 @@ export default function CinematicSystemScroll() {
   // of the particle text — then ease back to full exactly as domReveal brings
   // the crisp DOM H1 in (which is what they exist to keep readable). Inactive
   // morph (every fallback path) → opacity 1, identical to before.
+  // Gated on the SAME condition as the render branch below: on the mobile /
+  // reduced-motion fallback the two scrim nodes are never rendered, so this
+  // loop would spin forever writing to permanently-null refs. The dep array
+  // is widened accordingly so it also tears down if detection resolves into
+  // the fallback (or an OS toggle flips into it) after mount.
   useEffect(() => {
+    if (usesFallback) return;
     let raf = 0;
     let last = -1;
     const tick = () => {
@@ -1021,14 +1058,14 @@ export default function CinematicSystemScroll() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, []);
+  }, [usesFallback]);
 
   // Mobile users — and anyone with prefers-reduced-motion (on any viewport)
   // — get the stacked fallback once detection has resolved. The pinned
   // scrub is motion-heavy by nature, so under reduced-motion we serve
   // the static stacked layout on desktop too. On the server we always render
   // the desktop layout, so the hero copy is in the initial HTML regardless.
-  if (hasDetectedViewport && (isMobile || reduceMotion)) {
+  if (usesFallback) {
     return <MobileFallback stages={stages} copy={copy} />;
   }
 

@@ -4,10 +4,27 @@
  * The signature scroll line (AGENTS.md §3a) — a CatmullRom tube snaking
  * through document space, progressively "drawn" by scroll.
  *
- * World mapping: document pixels scale to world units by
- * k = viewport.height / window.innerHeight, so the curve spans the whole
- * page in world-Y and the camera glides down it as the user scrolls —
- * waypoints stay visually glued to their sections at any page height.
+ * World mapping — TWO viewport heights, deliberately kept apart:
+ *  - the CANVAS/FRUSTUM group uses the r3f canvas height (`size.height`) —
+ *    the box the frustum actually spans. That is both the world↔CSS-px scale
+ *        k = WORLD_VIEW_HEIGHT / size.height
+ *    and, because the canvas is `fixed inset-0` (CanvasHost.tsx), the
+ *    half-viewport CENTRING term that turns a scroll offset into a camera
+ *    centre: the frustum covers doc range [scrollY, scrollY + size.height],
+ *    so its centre is `scrollY + size.height / 2` — never innerHeight.
+ *  - the document↔scroll-offset MAPPING uses `window.innerHeight` (`ih`),
+ *    because that is the denominator Lenis uses for its scroll limit
+ *    (scrollHeight − innerHeight) and hence for the `progress` we consume.
+ * On iOS Safari a `position: fixed` box keeps the LARGE viewport height while
+ * innerHeight reports the small one, so the two differ by the browser-chrome
+ * height; mixing them either drifts the lit head ~10% of a viewport by page
+ * bottom (innerHeight missing from the mapping) or shifts the WHOLE world
+ * strip off its DOM anchors by a constant ~45px at every scroll position
+ * including the hero (innerHeight leaking into the centring).
+ * Desktop is unaffected (the two are equal without dynamic chrome).
+ *
+ * The curve spans the whole page in world-Y and the camera glides down it as
+ * the user scrolls — waypoints stay glued to their sections at any page height.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -317,6 +334,23 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   const dollyCurrent = useRef(0);
   const orbitCurrent = useRef(0);
   const parCurrent = useRef({ x: 0, y: 0 });
+  // Cached `window.innerHeight` — the viewport height Lenis derives its scroll
+  // limit from, and therefore the only correct denominator for the doc→scroll
+  // mapping below (see the file header). A REF, not state: it is read inside
+  // useFrame and must never trigger a React commit inside the Canvas island.
+  const vhRef = useRef(typeof window === "undefined" ? 0 : window.innerHeight);
+  useEffect(() => {
+    const onResize = () => {
+      vhRef.current = window.innerHeight;
+    };
+    onResize();
+    window.addEventListener("resize", onResize);
+    window.visualViewport?.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.visualViewport?.removeEventListener("resize", onResize);
+    };
+  }, []);
 
   // Material selection by the build-time WebGPU flag (createRenderer.ts):
   //   flag OFF → the GLSL ShaderMaterial (unchanged, byte-identical to today),
@@ -670,12 +704,25 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // consumed the same per-frame snapshot, so camera glide, head fraction
     // and tube stay mutually consistent even when the anchors prop is stale.
     const sh = section.scrollHeight;
-    const ih = size.height;
+    // window.innerHeight (NOT size.height) — matches Lenis's scroll limit, so
+    // the camera lands where the reader actually is even when browser chrome
+    // makes the fixed canvas box taller than the visual viewport. Falls back to
+    // the canvas height if the ref has not resolved yet, so an unresolved value
+    // can never collapse the mapping. `k`/`worldViewWidth` deliberately stay on
+    // `size` — they are the world↔canvas scale/aspect (see file header).
+    const ih = vhRef.current || size.height;
     const scrollYWorld = dampedProgress.current * Math.max(sh - ih, 0);
 
     // Camera glides down the world strip; the viewport center tracks the
     // document position exactly (see file header for the k mapping).
-    camera.position.y = -(scrollYWorld + ih / 2) * k;
+    // The half-viewport CENTRING term is `size.height`, NOT `ih`: k spans the
+    // frustum over exactly the `fixed inset-0` canvas box, so the frustum
+    // covers doc range [scrollYWorld, scrollYWorld + size.height] and its
+    // centre is scrollYWorld + size.height/2. Using `ih` here displaces every
+    // world point from its DOM anchor by a constant (size.height − ih)/2 —
+    // ~45px on mobile chrome, at ALL scroll positions including the hero.
+    // Only `scrollYWorld` above is Lenis-derived and so keeps `ih`.
+    camera.position.y = -(scrollYWorld + size.height / 2) * k;
 
     // === Cinematic camera rig (see the constants block for the contract) ====
     // Everything fades in over the first ~half viewport of scroll: at the
@@ -780,11 +827,22 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // landing glide's distance (1·ih), so desc reaches 0 exactly as the
     // landing lenis.scrollTo completes — zero residual left to unwind.
     const { camTilt, tiltAnchorY } = useTextMorphStore.getState();
-    const tiltEase = camTilt * camTilt * (3 - 2 * camTilt);
+    // The descent beat belongs to the home cinematic spine ONLY. textMorphStore
+    // is globalThis-pinned, so camTilt/tiltDone/tiltAnchorY survive soft nav and
+    // no writer resets them on LEAVING home — an interior route would otherwise
+    // consume a home-only beat clock (frozen mid-flight camTilt → a permanent
+    // half-viewport camera offset; a completed camTilt=1 → a full dive/un-dive
+    // as the reader scrolls past home's stale tiltAnchorY on a long route).
+    // Gating the CLOCK here (not the `camera.position.y -= desc` line) collapses
+    // desc, descPx, the tiltVel pitch and the published camDescend to 0 together,
+    // so no consumer is ever left reading a stale offset.
+    const beatActive = pathname === "/";
+    const t = beatActive ? camTilt : 0;
+    const tiltEase = t * t * (3 - 2 * t);
     const scrollPxNow = dampedProgress.current * Math.max(sh - ih, 0);
     const distT = Math.min(Math.abs(scrollPxNow - tiltAnchorY) / ih, 1);
     const distRamp = 1 - distT * distT * (3 - 2 * distT);
-    const beatInFlight = camTilt > 0.0001 && camTilt < 0.9999;
+    const beatInFlight = t > 0.0001 && t < 0.9999;
     const scrollRamp = beatInFlight ? 1 : distRamp;
     // Normalized applied descent, 0..1 — desc = WORLD_VIEW_HEIGHT · descRamp.
     const descRamp = tiltEase * scrollRamp;
@@ -862,8 +920,11 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // bounded signal that can't spike on the gate's odd dt the way the old
     // (desc - prevDescend)/delta did. Diving (camTilt↑) pitches the head down;
     // reversing (camTilt↓) pitches it up; at rest → level.
-    const tiltVel = (camTilt - prevCamTilt.current) / Math.max(delta, 1e-4);
-    prevCamTilt.current = camTilt;
+    // `t` (the route-gated clock), never the raw camTilt: on the frame the route
+    // flips, recording the raw value would register a phantom step and pitch the
+    // camera on an interior route.
+    const tiltVel = (t - prevCamTilt.current) / Math.max(delta, 1e-4);
+    prevCamTilt.current = t;
     descendPitch.current = THREE.MathUtils.damp(
       descendPitch.current,
       THREE.MathUtils.clamp(tiltVel * 0.45, -0.4, 0.4),
@@ -884,13 +945,19 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // head TRACKS the diving camera (FIX 1b) — descPx is 0 in every other
     // state. This stays in DOC/PX space (the emissive beats + camDescend
     // below consume it there); the shader-facing progress is remapped next.
-    const headFraction = sh > 0 ? (scrollYWorld + ih * 0.5 + descPx) / sh : 0;
+    // `size.height * 0.5`, not `ih * 0.5` — this is the SAME frustum-centring
+    // term the camera uses above; the head must sit at the camera's centre.
+    const headFraction =
+      sh > 0 ? (scrollYWorld + size.height * 0.5 + descPx) / sh : 0;
 
     // FIX A1 — remap the reader's DOCUMENT fraction into the tube's
     // ARC-LENGTH space before it meets uv.x (TubeGeometry samples via
     // getPointAt, so uv.x is an arc-length fraction — the old direct write
     // made the head race/stall wherever waypoint density per doc-px deviated).
-    // headFraction spans [ih/2sh, 1−ih/2sh] (the viewport-center range):
+    // headFraction spans ~[size.height/2sh, 1−size.height/2sh] (the
+    // viewport-center range — the CANVAS height, since that is the term the
+    // numerator above carries; on mobile chrome the top end is exact and the
+    // bottom overshoots by (size.height−ih)/2sh, which the clamp absorbs):
     // normalize that onto the curve's own doc span (also fixing the
     // never-lit last segment / pre-lit first segment on short routes), find
     // the waypoint segment in docF, and lerp the matching arcF pair. Only
@@ -902,9 +969,17 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       // Unscrollable page: nothing to draw progressively — fully lit.
       arcProgress = 1;
     } else if (lut && lut.docF.length >= 2) {
-      const hMin = ih / (2 * sh);
-      const hSpan = 1 - 2 * hMin; // = hMax − hMin, > 0 since sh > ih
-      const hn = THREE.MathUtils.clamp((headFraction - hMin) / hSpan, 0, 1);
+      // The domain floor must be the SAME half-viewport term headFraction is
+      // built from (size.height/2), or hn is non-zero at scroll top and the
+      // first segment reads pre-lit on mobile chrome. With size.height ≥ ih
+      // hSpan can degenerate on a page barely taller than the canvas box —
+      // that is the unscrollable case, so fall through to fully lit.
+      const hMin = size.height / (2 * sh);
+      const hSpan = 1 - 2 * hMin; // = hMax − hMin
+      const hn =
+        hSpan > 1e-6
+          ? THREE.MathUtils.clamp((headFraction - hMin) / hSpan, 0, 1)
+          : 1;
       const { docF, arcF } = lut;
       const last = docF.length - 1;
       const hDoc = docF[0] + hn * (docF[last] - docF[0]);
@@ -929,6 +1004,11 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // giving a subtle pitch without altering the vertical glide.
     // On lite/off tiers we skip this entirely → camera looks straight down -Z
     // (its default orientation), exactly as before this change.
+    // The roll ACTUALLY applied to the camera this frame — stays 0 whenever the
+    // full-tier bank block below does not run (lite tier / no curve), so a tier
+    // or route change can never leave a consumer holding a stale angle.
+    // Published to textMorphStore after the block (parity with camDescend).
+    let appliedRoll = 0;
     const curve = curveRef.current;
     if (tier === "full" && curve) {
       // FIX A1: the ahead parameter is the SAME arc-length fraction the lit
@@ -977,20 +1057,39 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       // camera.position, so the camDescend station-subtract in HeroLogo /
       // HeroTextParticles / RouteHero / GatewayPortal is unaffected.
       curve.getTangentAt(ahead, aheadTangent.current);
-      // × rigGate: the roll must be EXACTLY level at the pinned top — the
-      // curve's first bend gives tangent.x ≠ 0 there, and a ~2° standing roll
-      // visibly tilts the huge centered "Sersan AI" wordmark against the
-      // straight DOM (client-reported). Mid-journey banking is unchanged.
-      const rollTarget =
-        THREE.MathUtils.clamp(
-          -aheadTangent.current.x * fx.camRoll * route.cameraRollScale,
-          -CAM_ROLL_MAX,
-          CAM_ROLL_MAX,
-        ) * rigGate;
+      // HERO SQUARE GATE — camera.rotateZ banks the ENTIRE WebGL layer, so every
+      // camera-locked billboard (HeroLogo's brand mark, HeroTextParticles'
+      // headline) inherits the roll. EVERY route's curve opens with a hard
+      // lateral swing (x ≈ +1.2 at t=0 → x ≈ -1.2 at the first anchor), so the
+      // look-ahead tangent's x is already large at scrollY 0 and the roll pins
+      // at ±CAM_ROLL_MAX (≈2.6°) from the very first frame — the mark and the
+      // headline would render visibly off-square at the top of the page, while
+      // the DOM headline beside them stays level. Ramp the bank in over one
+      // viewport of scroll so the hero reads square and the banking survives
+      // undiminished in the bends below. Smoothstep, not a linear clamp: this
+      // file's convention is zero slope at BOTH ends of any hand-off between a
+      // time-driven beat and a scroll-driven mapping (a linear ramp lands as a
+      // visible velocity kink). The gate multiplies the TARGET, so the damp()
+      // and the ±CAM_ROLL_MAX clamp below still govern the transition. Keyed on
+      // scroll position only — never on the route — so it squares up every
+      // route's hero uniformly, including the 0.5 / 1.25 cameraRollScale ones.
+      // (This full-viewport ramp + the appliedRoll publish below SUPERSEDE the
+      // shorter rigGate factor the camera rig briefly applied here — the rig's
+      // gate still governs dolly/orbit/parallax, which are translations.)
+      const rollGateT = THREE.MathUtils.clamp(scrollPxNow / ih, 0, 1);
+      const rollGate = rollGateT * rollGateT * (3 - 2 * rollGateT);
+      const rollTarget = THREE.MathUtils.clamp(
+        -aheadTangent.current.x * fx.camRoll * route.cameraRollScale * rollGate,
+        -CAM_ROLL_MAX,
+        CAM_ROLL_MAX,
+      );
       // Damp toward the target every frame (C1 across route/curve rebuilds; eases
       // in from 0 on first frame — no snap, no pop).
       rollCurrent.current = THREE.MathUtils.damp(rollCurrent.current, rollTarget, 3, delta);
-      if (Math.abs(rollCurrent.current) > 1e-5) camera.rotateZ(rollCurrent.current);
+      if (Math.abs(rollCurrent.current) > 1e-5) {
+        camera.rotateZ(rollCurrent.current);
+        appliedRoll = rollCurrent.current;
+      }
     }
 
     // Camera-descent PITCH application (FIX 1b). The vertical descent
@@ -1005,6 +1104,21 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     if ((tier !== "full" || !curve) && Math.abs(descendPitch.current) > 0.0001) {
       camera.quaternion.set(0, 0, 0, 1);
       camera.rotateX(-descendPitch.current);
+    }
+
+    // Publish the APPLIED camera roll (same discipline as camDescend above:
+    // transient store write, no React state, no per-frame commit). Written
+    // AFTER both orientation writers so it always describes the camera as it
+    // actually ends this frame. The bank rotates the ENTIRE WebGL layer — right
+    // for the line and the scene, wrong for a brand mark, whose strong
+    // horizontal bars read as crooked rather than cinematic (and would visibly
+    // ROTATE while the bank's scroll gate ramps in across the hero). HeroLogo
+    // counter-rotates ITS OWN group by this angle so the mark stays square;
+    // this file remains the single camera authority.
+    // Epsilon-gated to the same 1e-5 threshold that governs the rotateZ above,
+    // so a settled roll stops churning the store every frame.
+    if (Math.abs(useTextMorphStore.getState().camRoll - appliedRoll) > 1e-5) {
+      useTextMorphStore.setState({ camRoll: appliedRoll });
     }
 
     // On the ON path the TSL material loads lazily; until its chunk resolves
@@ -1140,7 +1254,14 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
         meshVisible: mesh?.visible ?? null,
         k,
         viewportH: WORLD_VIEW_HEIGHT,
-        sizeH: ih,
+        // Both heights: `mapH` drives the doc→scroll mapping ONLY (Lenis's
+        // denominator); `sizeH` drives the world↔px scale AND the
+        // half-viewport frustum centring (camera.position.y, headFraction,
+        // hMin). A persistent gap between them is the mobile browser-chrome
+        // case — if the tube ever shifts off its anchors by a constant, check
+        // whether mapH has leaked into a centring term.
+        mapH: ih,
+        sizeH: size.height,
         bboxY: liveGeo?.boundingBox
           ? [liveGeo.boundingBox.max.y, liveGeo.boundingBox.min.y]
           : null,

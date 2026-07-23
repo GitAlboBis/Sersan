@@ -8,32 +8,49 @@
  * gate state machine + measure + stage pointer events (never per React
  * render), read via useFoundersMorphStore.getState() inside useFrame.
  *
- * GATED, SELF-PLAYING MODEL (mirrors the hero intro gate, 2026-07-08). The
- * founders morph is NO LONGER scrubbed to scroll amount. When the section pins,
- * a scroll-jack (founders-rail.tsx, canMorph branch — mirrors HeroIntroGate)
- * consumes wheel/touch and drives a small state machine:
- *   - stage 'A'  : Alessandro fully formed and LOCKED (uMorph pinned at 0).
- *   - one scroll-down gesture → morphTarget = 1 → the island AUTO-PLAYS A→B on
- *     its own clock (MORPH_DURATION), absorbing further scroll until complete.
- *   - stage 'B'  : Michele fully formed and LOCKED (uMorph pinned at 1).
+ * GATED, SELF-PLAYING MODEL (mirrors the hero intro gate, 2026-07-08; widened
+ * to an N-stage rail 2026-07-20). The founders morph is NOT scrubbed to scroll
+ * amount. When the section pins, a scroll-jack (founders-rail.tsx, canMorph
+ * branch — mirrors HeroIntroGate) consumes wheel/touch and drives a small state
+ * machine over `morph`, ONE continuous scalar spanning 0..MORPH_MAX:
+ *   - stage 'A'  : Alessandro fully formed and LOCKED (morph pinned at 0).
+ *   - one scroll-down gesture → morphTarget = 1 → the island AUTO-PLAYS leg 0
+ *     on its own clock (MORPH_DURATION), absorbing further scroll until done.
+ *   - stage 'B'  : Michele fully formed and LOCKED (morph pinned at 1).
+ *   - another scroll-down gesture → morphTarget = 2 → auto-play leg 1.
+ *   - stage 'C'  : Mattia fully formed and LOCKED (morph pinned at 2).
  *   - another scroll-down gesture → the gate RELEASES (Lenis resumes).
- *   - reverse symmetrically for scroll-up (B→A auto-play, then release upward).
- * The island advances `uMorph` toward `morphTarget` on a one-shot clock and
- * reports the live value back as `morph` (0..1) + the derived `stage`; the DOM
- * copy A/B cross-fade follows `morph`, NOT raw scroll.
+ *   - reverse symmetrically for scroll-up (C→B→A, then release upward).
+ *
+ * B IS NOW A MIDDLE STAGE FROM WHICH NEITHER DIRECTION RELEASES. That is a real
+ * behaviour change, written down here rather than left to be discovered: a user
+ * parked on Michele must traverse a full leg to reach an END stage before the
+ * gate hands the page back. Escape and the G_MAX_ENGAGE_MS timer remain the
+ * only other outs.
+ *
+ * The island advances `morph` toward `morphTarget` on a one-shot clock (one
+ * unit of the scalar IS one leg, so MORPH_DURATION stays per-leg and the
+ * shipped feel is preserved exactly) and reports the live value back as `morph`
+ * + the derived `stage`; the DOM copy cross-fade follows `morph`, NOT raw
+ * scroll. floor(morph) is the leg, fract(morph) is progress within it — use
+ * legOf()/legFract(), never raw arithmetic, because every copy/poster window
+ * was authored against LEG-LOCAL progress.
  *
  * The ONLY reactive reads allowed are the rare-change fields `pinned` and
  * `measureVersion` (the island subscribes to those to know when to (re)build +
  * (re)measure the stage rect). secTop/travel are CSS px in document space.
  *
  * FIELDS:
- *   - stage        : 'A' | 'morphing' | 'B' — logical stage (island-derived).
- *   - morphTarget  : 0 | 1 — the uMorph value the island animates toward.
- *   - morphImmediate: when true, the island JUMPS uMorph to morphTarget (no
+ *   - stage        : 'A'|'B'|'C'|'D'|'morphing' — logical stage, DERIVED by the
+ *                    island from the live scalar via stageFromMorph().
+ *   - morphTarget  : integer 0..MORPH_MAX — the scalar the island animates
+ *                    toward. The gate only ever steps it by one.
+ *   - morphImmediate: when true, the island JUMPS morph to morphTarget (no
  *                     auto-play) then clears the flag — used to pin the entry
- *                     side on gate engage (arrive-from-bottom lands on B).
- *   - morph        : 0..1 — the island's live uMorph (writer: island; reader:
- *                     the DOM copy/poster cross-fade).
+ *                     side on gate engage (arrive-from-bottom lands on the LAST
+ *                     stage).
+ *   - morph        : 0..MORPH_MAX — the island's live progress scalar (writer:
+ *                    island; reader: the DOM copy/poster cross-fade).
  *   - gateEngaged  : true while the section scroll-jack owns wheel/touch.
  *   - reveal       : 0|1 fire-once — set when the section enters view / engages;
  *                    the island advances the one-shot entry assemble on it.
@@ -53,6 +70,11 @@
  * single real store.
  */
 import { create } from "zustand";
+// The island (FounderPortraitMorph) already imports this module, so the lazy
+// WebGL chunk pays nothing extra for it here. Deriving the stage count from the
+// data — rather than a parallel literal — is what kills the class of bug that
+// made the old hardcoded FOUNDER_SLUGS array silently sample the wrong face.
+import { founders } from "@/data/founders";
 
 /** Pointer position in stage UV (0..1, DOM top-left origin). */
 export interface MousePoint {
@@ -60,7 +82,78 @@ export interface MousePoint {
   y: number;
 }
 
-export type FounderStage = "A" | "morphing" | "B";
+export type FounderStage = "A" | "B" | "C" | "D" | "morphing";
+
+/** Locked stages in rail order; index == the integer value of `morph`.
+ * HARD CAP 4: the compute engine has exactly four home targets
+ * (homeA..homeD / uMorph..uMorph3, gpgpuNodeSim.createTextMorphComputeBuild). */
+export const STAGE_ORDER = ["A", "B", "C", "D"] as const;
+/** The WIRING ceiling, distinct from the engine ceiling above. The compute
+ * engine carries four home targets (homeA..homeD / uMorph..uMorph3), but the
+ * COLOUR/INK chain deliberately stops at C: there is no colorsD/sizeD in
+ * PortraitMorphOpts, portraitInkExpr and the fragment colour chain both end on
+ * colorC. A 4th target would therefore move particles to face D's positions
+ * while `base` stayed on colorCBuffer — and since ink gates disc size, the
+ * alpha knee, coverage and the alpha Discard, cells that are subject in D but
+ * backdrop in C get culled: the 4th face renders as a C-shaped STENCIL. N=4 is
+ * the one arity that is neither rendered correctly nor truncated, so cap it
+ * here and derive TARGET_COUNT from this (FounderPortraitMorph) rather than
+ * letting the position cap masquerade as the renderable cap. Raise ONLY
+ * together with colorsD/sizeD + the ink/colour chain. */
+export const WIRED_TARGETS = 3;
+/** Morph LEGS (people − 1), CAPPED at the wired targets. Capping here rather
+ * than at `founders.length` is load-bearing: at N ≥ 5 an uncapped max would
+ * make stageFromMorph return STAGE_ORDER[4] === undefined typed as
+ * FounderStage, poisoning `stage` so the gate never releases downward. Capped,
+ * an extra person degrades gracefully to truncation. `morph` spans
+ * 0..MORPH_MAX. */
+export const MORPH_MAX = Math.min(founders.length, WIRED_TARGETS) - 1;
+/** People ON THE RAIL — the gate counter's denominator (01/03 …). MUST be used
+ * instead of founders.length or the counter and the stages disagree. */
+export const STAGE_TOTAL = MORPH_MAX + 1;
+if (
+  process.env.NODE_ENV !== "production" &&
+  founders.length > WIRED_TARGETS
+) {
+  // Make the truncation VISIBLE. Silently dropping a person the data says is on
+  // the rail is exactly the failure this cap is here to prevent being mute.
+  console.warn(
+    `[foundersMorphStore] ${founders.length} founders but only ${WIRED_TARGETS} ` +
+      `are wired through the colour/ink chain — the rail truncates to ` +
+      `${STAGE_TOTAL}. Add colorsD/sizeD + extend portraitInkExpr and the ` +
+      `fragment colour chain before raising WIRED_TARGETS.`,
+  );
+}
+/** Lock tolerance: within this of an integer the stage counts as LOCKED.
+ * MUST stay 0.02 — founders-rail's COPY_ENTER_END is authored as 1 − LOCK_EPS
+ * so a leg can never lock with copy still mid-flight. */
+export const LOCK_EPS = 0.02;
+
+/** Locked-stage index 0..MORPH_MAX, or -1 while a leg is in flight. Derived,
+ * never stored: a stored index is a second writer that can desync from
+ * `morph`. */
+export const stageIndex = (s: FounderStage): number =>
+  s === "morphing" ? -1 : STAGE_ORDER.indexOf(s as (typeof STAGE_ORDER)[number]);
+
+/** THE single derivation of stage from the live scalar (island writes it).
+ * Numerically identical to the shipped 2-stage form at N=2: m ≤ 0.02 → "A",
+ * m ≥ 0.98 → "B", else "morphing". */
+export const stageFromMorph = (m: number): FounderStage => {
+  for (let i = 0; i <= MORPH_MAX; i++) {
+    if (Math.abs(m - i) <= LOCK_EPS) return STAGE_ORDER[i];
+  }
+  return "morphing";
+};
+
+/** Current leg 0..MORPH_MAX-1 (which pair of portraits is in play). Clamped at
+ * the top so legFract(MORPH_MAX) === 1 and the flight envelope closes. */
+export const legOf = (m: number): number =>
+  Math.min(Math.max(Math.floor(m), 0), Math.max(MORPH_MAX - 1, 0));
+
+/** Progress 0..1 WITHIN the current leg — the value every copy/poster window
+ * (COPY_EXIT_*, COPY_ENTER_*, the poster smoothstep) and the flight envelope
+ * were authored against. Using raw `m` instead inverts the envelope on leg 2. */
+export const legFract = (m: number): number => m - legOf(m);
 
 interface FoundersMorphState {
   /** True while the desktop vertical sticky morph mode is active. */
@@ -77,11 +170,14 @@ interface FoundersMorphState {
   gateEngaged: boolean;
   /** Logical stage — derived by the island from its live uMorph. */
   stage: FounderStage;
-  /** uMorph the island animates toward (0 = Alessandro, 1 = Michele). */
-  morphTarget: 0 | 1;
-  /** When true the island JUMPS uMorph to morphTarget (no auto-play). */
+  /** Integer 0..MORPH_MAX the island animates toward (0 = Alessandro,
+   * 1 = Michele, 2 = Mattia). The gate only ever steps it by one. */
+  morphTarget: number;
+  /** When true the island JUMPS morph to morphTarget (no auto-play). */
   morphImmediate: boolean;
-  /** Live uMorph 0..1 (writer: island; reader: DOM copy/poster cross-fade). */
+  /** Live rail scalar 0..MORPH_MAX — leg-major (1.0 = target B fully formed).
+   * floor() = leg, fract() = leg progress; use legOf()/legFract(), never raw
+   * arithmetic. Writer: island; reader: DOM copy/poster cross-fade. */
   morph: number;
   /** True once the one-shot entry assemble (Alessandro forming) has completed.
    * Writer: island; reader: the gate (refuses to trigger a leg before A is
@@ -103,7 +199,7 @@ interface FoundersMorphState {
   setActive: (active: boolean) => void;
   setGateEngaged: (gateEngaged: boolean) => void;
   setStage: (stage: FounderStage) => void;
-  setMorphTarget: (morphTarget: 0 | 1, immediate?: boolean) => void;
+  setMorphTarget: (morphTarget: number, immediate?: boolean) => void;
   setMorphImmediate: (morphImmediate: boolean) => void;
   setMorph: (morph: number) => void;
   setAssembleDone: (assembleDone: boolean) => void;
@@ -120,7 +216,7 @@ const INITIAL = {
   active: false,
   gateEngaged: false,
   stage: "A" as FounderStage,
-  morphTarget: 0 as 0 | 1,
+  morphTarget: 0,
   morphImmediate: false,
   morph: 0,
   assembleDone: false,
@@ -178,7 +274,9 @@ export const useFoundersMorphStore = (globalThis.__sersanFoundersMorph ??=
 export interface FoundersGateApi {
   /** Inject exactly ONE discrete armed gesture into the gate state machine. */
   simulateGesture: (dir: "up" | "down") => unknown;
-  /** { engaged, stage, morphTarget, armed, accum } snapshot. */
+  /** { engaged, stage: 'A'|'B'|'C'|'morphing', morphTarget: 0|1|2, armed,
+   * accum } snapshot. Typed `unknown`, so the widened values flow through
+   * without a signature change. */
   getGate: () => unknown;
 }
 export const foundersGateApi: { current: FoundersGateApi | null } = {

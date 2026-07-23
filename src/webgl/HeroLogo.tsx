@@ -68,7 +68,10 @@ import { SPINE_TRAVEL_VH } from "@/lib/spine";
 import { WORLD_VIEW_HEIGHT } from "./constants";
 import { useTextMorphStore } from "./store/textMorphStore";
 import { useIntroStore } from "./store/introStore";
-import { sampleMarkHomePositions } from "./geometry/sersanMark";
+import {
+  sampleMarkHomePositions,
+  type MarkHomeField,
+} from "./geometry/sersanMark";
 import {
   createGpgpuStaticBuild,
   type GpgpuStaticUniforms,
@@ -280,7 +283,15 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   const worldViewWidth = WORLD_VIEW_HEIGHT * (size.width / size.height);
 
   // Static-fallback grid size for the active tier (full 448², lite 224²).
-  const gridSize = SIZE_BY_TIER[tier] ?? SIZE_BY_TIER.lite;
+  // The BACKEND-FALLBACK path gets an honest budget instead of the tier's: it
+  // only engages because the WebGPU renderer resolved to its WebGL2 sub-backend
+  // — i.e. a weak/older GPU — and detectTier() returns "full" for any fine-
+  // pointer viewport ≥768px without ever consulting GPU strength. Sampling 448²
+  // (≈200k) there stalls exactly the machines least able to absorb it; lite
+  // (224² ≈ 50k) is ~4× less work.
+  const gridSize = sporeStaticFallback
+    ? SIZE_BY_TIER.lite
+    : (SIZE_BY_TIER[tier] ?? SIZE_BY_TIER.lite);
 
   // === Geometry: the Blender-built mark (sampled, NEVER rendered). ==========
   // drei caches the loaded geometry across remounts, so we CLONE it and only
@@ -329,11 +340,30 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // grid UV (hashed for size variance). The mesh is unrendered. GATED on the
   // static build actually being shown (448² ≈ 200k samples is real startup
   // work — don't pay it under the shipping spores mode).
-  const homeField = useMemo(
-    () =>
-      showStaticBuild ? sampleMarkHomePositions(bodyGeometry, gridSize) : null,
-    [bodyGeometry, gridSize, showStaticBuild],
-  );
+  // NOT a useMemo: the sampling is a rejection loop over gridSize² surface
+  // samples (hundreds of ms), and the flip that turns it on
+  // (setSporeBackendFallback from the ASYNC backend probe) is a state set — so a
+  // memo body ran it synchronously INSIDE a React commit, freezing the main
+  // thread (and the shared Lenis/R3F loop with it) right across the preloader
+  // handoff. The rAF defers the work past the commit so the frame that flips the
+  // fallback still paints. Consumers already tolerate `null` (it is null for the
+  // whole spores path), so the one-frame delay is safe.
+  const [homeField, setHomeField] = useState<MarkHomeField | null>(null);
+  useEffect(() => {
+    if (!showStaticBuild) {
+      setHomeField(null);
+      return;
+    }
+    let cancelled = false;
+    const id = requestAnimationFrame(() => {
+      if (cancelled) return;
+      setHomeField(sampleMarkHomePositions(bodyGeometry, gridSize));
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(id);
+    };
+  }, [bodyGeometry, gridSize, showStaticBuild]);
 
   // Spore home fields — TWO shells on their own (smaller) grid: the erodible
   // violet CRUST outside + the immortal glowing cyan CORE inset beneath it
@@ -578,6 +608,8 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // === Per-frame: shell choreography + model-space mouse + sim step =========
   // Scratch objects (no per-frame allocation).
   const planeN = useMemo(() => new THREE.Vector3(), []);
+  /** Scratch for the camera's world-space view axis (the counter-roll axis). */
+  const viewAxis = useMemo(() => new THREE.Vector3(), []);
   const worldHit = useMemo(() => new THREE.Vector3(), []);
   const worldCenter = useMemo(() => new THREE.Vector3(), []);
   const plane = useMemo(() => new THREE.Plane(), []);
@@ -768,6 +800,43 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       TILT_DAMP,
       delta,
     );
+
+    // --- HOLD THE MARK SQUARE against the cinematic camera bank --------------
+    // SignatureLine (the single camera authority) banks the camera into the
+    // curve's bends with `camera.rotateZ`, which rotates the ENTIRE WebGL
+    // layer. That reads as cinematography for the signature LINE — a path the
+    // camera travels along, whose whole point is leaning into a turn — and for
+    // the scene at large. It does NOT read that way on a brand mark: the mark's
+    // strong horizontal bars make even the ±2.6° clamp look plainly CROOKED,
+    // and because the bank's scroll gate ramps in over one viewport while the
+    // mark is still on screen, the mark would visibly ROTATE as the reader
+    // scrolls the hero — a rotating logo being worse than a statically tilted
+    // one. So the scene keeps its bank and the mark holds its OWN orientation.
+    //
+    // Axis: the camera rolls about its LOCAL +Z (the view axis, applied after
+    // lookAt), so on screen the world appears to rotate by −roll. Cancelling
+    // that means rotating the object by +roll about that SAME axis in world
+    // space. The mark is NOT billboarded — it is a world-space object — but its
+    // outer group sits directly under the scene root (Scene.tsx mounts
+    // RouteRitual as a Canvas child, no wrapping transform), so the group's
+    // local frame IS the world frame and a world-axis quaternion can be written
+    // straight to `group.quaternion`. The camera looks down its local −Z, so
+    // camera-local +Z in world is −getWorldDirection(); a rotation of +roll
+    // about −dir is identical to −roll about +dir, which is what we build.
+    //
+    // COMPOSITION: this is the OUTERMOST group, so the counter-roll composes
+    // AFTER the parallax the mark already does — `assembly` still carries the
+    // base TILT plus the pointer pitch and `spin` the pointer yaw, both in this
+    // group's local frame. Net world orientation is R_counterRoll · R_pitch ·
+    // R_yaw: the parallax tilt survives untouched and only gets re-squared on
+    // screen. `group.rotation` has no other writer (position/scale only).
+    const camRoll = useTextMorphStore.getState().camRoll;
+    if (camRoll !== 0) {
+      camera.getWorldDirection(viewAxis);
+      group.quaternion.setFromAxisAngle(viewAxis, -camRoll);
+    } else {
+      group.quaternion.identity();
+    }
 
     // --- STATIC fallback feed (analytic dispersion) --------------------------
     // The static render reads its own per-instance `aHome` positions (no sim,
