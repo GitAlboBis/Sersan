@@ -8,6 +8,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
 import { SersanLogo } from "@/components/sersan-logo";
 import { useLanguage } from "@/components/language-provider";
+import { NowWidget } from "@/components/fx/now-widget";
 import { CONTACT_EMAIL } from "@/lib/site";
 
 if (typeof window !== "undefined") {
@@ -76,7 +77,9 @@ const COLUMNS: Array<{ heading: string; headingIt: string; links: LinkRow[] }> =
     heading: "Studio",
     headingIt: "Studio",
     links: [
-      { href: "/about", label: "Founders", labelIt: "Fondatori" },
+      // "Team", not "Founders" — /about now shows the two co-founders PLUS
+      // the engineering hire (handoff open item #4, resolved 2026-07-23).
+      { href: "/about", label: "Team", labelIt: "Team" },
       { href: "/resources", label: "Writing", labelIt: "Scritti" },
       { href: "/consulting#faq", label: "FAQ", labelIt: "FAQ" },
       { href: "/contact", label: "Contact", labelIt: "Contatti" },
@@ -311,6 +314,7 @@ export function Footer() {
                   ? "Reply within 1 business day"
                   : "Risposta entro 1 giorno lavorativo"}
               </span>
+              <NowWidget />
             </div>
           </div>
 
@@ -429,6 +433,11 @@ export function Footer() {
             {isEn
               ? "ISO 27001 (in progress) · DORA · EU AI Act"
               : "ISO 27001 (in corso) · DORA · EU AI Act"}
+            {/* Palette discoverability — desktop/fine-pointer only (the
+                shortcut is keyboard-first by nature). */}
+            <span className="hidden lg:block pt-1 text-ink-mute/60">
+              {isEn ? "Ctrl K · quick nav" : "Ctrl K · navigazione rapida"}
+            </span>
           </div>
         </div>
       </div>

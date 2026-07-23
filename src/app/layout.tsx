@@ -15,6 +15,7 @@ import { HeadingChoreographer } from "@/components/fx/heading-choreographer";
 import { LabelScrambler } from "@/components/fx/label-scrambler";
 import { CustomCursor } from "@/components/fx/custom-cursor";
 import { FlipHandoffOverlay } from "@/components/fx/flip-handoff-overlay";
+import { CommandPalette } from "@/components/fx/command-palette";
 import { AudioTriggers } from "@/components/fx/audio-triggers";
 import { Analytics } from "@vercel/analytics/next";
 
@@ -241,6 +242,9 @@ export default function RootLayout({
             {/* Procedural UI sounds (hover/click via delegated listeners +
                 AudioContext autoplay-gesture unlock). Renders nothing. */}
             <AudioTriggers />
+            {/* ⌘K / Ctrl+K quick-nav palette (fx/command-palette). Renders a
+                portal dialog on demand; nothing at rest. */}
+            <CommandPalette />
             <Navbar />
             {/* Content wrapper above the canvas (z-1). The canvas adds
                 light behind this layer; text stays DOM-crisp.
