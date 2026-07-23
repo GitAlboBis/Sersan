@@ -8,8 +8,9 @@
  *   - components/sections/case-studies-rail.tsx applies it to each card's
  *     [data-rail-inner] wrapper (scale / opacity / translateY) from the rail's
  *     ScrollTrigger onUpdate, plus the windowed counter-sweep (−t·SWEEP px on
- *     [data-rail-sweep]) and media counter-parallax (−t·MEDIA_SHIFT xPercent
- *     on [data-rail-media]);
+ *     [data-rail-sweep]), media counter-parallax (−t·MEDIA_SHIFT xPercent
+ *     on [data-rail-media]) and the quantised depth-of-field filter falloff
+ *     (railCardFilter — DOM-only, full tier);
  *   - webgl/RailPlanes.tsx mirrors the SAME scale/y offsets in its camera-
  *     locked billboard placement, and feeds t/f into the plane material's
  *     uParallax/uFocus uniforms.
@@ -22,7 +23,7 @@
  * the rail component — it never routes through this model.
  *
  * All values are deliberately restrained ("engineered depth, not carousel
- * candy"): 6% scale falloff, 40% fade, a 12px pyramidal arc.
+ * candy"): 6% scale falloff, 40% fade, a 12px pyramidal arc, 2.5px max blur.
  */
 
 export interface RailCardMotion {
@@ -50,6 +51,14 @@ export const RAIL_SWEEP_PX = 60;
 export const RAIL_MEDIA_SHIFT = 5;
 /** uParallax fed to the plane material: t · this (procedural-field shift). */
 export const RAIL_PLANE_PARALLAX = 0.35;
+/** Max depth-of-field blur at the viewport edges, CSS px (railCardFilter). */
+export const RAIL_FOCUS_BLUR_PX = 2.5;
+/** Blur quantisation step, px — the filter string only changes on a step. */
+export const RAIL_BLUR_STEP = 0.25;
+/** Brightness dim at the edges (brightness = 1 − 0.18·q, q = blur fraction). */
+export const RAIL_FOCUS_DIM = 0.18;
+/** Saturation falloff at the edges (saturate = 1 − 0.15·q). */
+export const RAIL_FOCUS_DESAT = 0.15;
 
 /**
  * Pure per-card motion from the card's live viewport center X. `centerX` is
@@ -67,4 +76,25 @@ export function railCardMotion(centerX: number, vw: number): RailCardMotion {
     opacity: 1 - RAIL_FOCUS_FADE * f,
     y: RAIL_ARC_PX * f * f,
   };
+}
+
+/**
+ * Depth-of-field filter string for a card at center falloff f — the DOM half
+ * of the rail's focus model (the WebGL planes defocus procedurally via
+ * uFocus). Quantised: blur snaps to RAIL_BLUR_STEP increments and brightness/
+ * saturate derive from the SAME quantised fraction, so consecutive frames
+ * yield byte-identical strings and the caller's change-guard only touches
+ * style.filter on a step crossing (10 discrete states per card — no filter
+ * churn). Returns "" below the first step: the centred card carries NO filter
+ * property at all (crisp at center lock by construction; even a blur(0px)
+ * would force an offscreen composite).
+ */
+export function railCardFilter(f: number): string {
+  const blur =
+    Math.round((RAIL_FOCUS_BLUR_PX * f) / RAIL_BLUR_STEP) * RAIL_BLUR_STEP;
+  if (blur <= 0) return "";
+  const q = blur / RAIL_FOCUS_BLUR_PX;
+  const brightness = (1 - RAIL_FOCUS_DIM * q).toFixed(3);
+  const saturate = (1 - RAIL_FOCUS_DESAT * q).toFixed(3);
+  return `blur(${blur}px) brightness(${brightness}) saturate(${saturate})`;
 }

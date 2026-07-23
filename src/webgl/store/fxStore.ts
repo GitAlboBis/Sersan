@@ -170,6 +170,17 @@ interface FxState {
    * Per-route biased by routeFx.cameraRollScale (0 = flat). 0 disables roll.
    */
   camRoll: number;
+  /** Cinematic camera rig — breathing dolly-Z: max pull-back (world units)
+   * reached at full flick velocity. Translation-only, damped, and gated to 0
+   * while the page sits at the top (intro/brand registration). */
+  camDollyMax: number;
+  /** Arrival-orbit lateral sweep amplitude (world units) around the route's
+   * ritual anchor (home: the gateway). Exactly 0 AT the anchor, so settles
+   * always land back at head-on framing. 0 disables. */
+  camOrbitAmp: number;
+  /** Pointer micro-parallax amplitude on the camera (world units, x-axis;
+   * y uses 0.7×). Full tier only; coarse pointers never feed it. */
+  camParallax: number;
   set: (partial: Partial<Omit<FxState, "set">>) => void;
 }
 
@@ -237,5 +248,8 @@ export const useFxStore = create<FxState>((set) => ({
   lookAhead: 0.05,
   lookTiltScale: 0.2,
   camRoll: 0.12, // × tangent.x, then clamped to CAM_ROLL_MAX (~2.6°) in SignatureLine
+  camDollyMax: 1.15,
+  camOrbitAmp: 0.34,
+  camParallax: 0.07,
   set: (partial) => set(partial),
 }));

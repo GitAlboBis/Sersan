@@ -118,6 +118,22 @@ const TILT = THREE.MathUtils.degToRad(4);
  */
 const TILT_DAMP = 3.5; // damp lambda — soft ease toward the pointer target
 
+// --- Intro brand lockup (2026-07-23 v2, client direction) -------------------
+// While the particle "Sersan AI" wordmark owns the hero, the mark sits
+// centered UNDER it as a proper lockup, then FLIES to its hero-right rest as
+// the brand melts into the DOM hero (a pure function of domReveal, so the
+// reverse replay brings it back beneath the re-forming wordmark for free).
+/** Mark center offset below the viewport center, as a fraction of
+ * WORLD_VIEW_HEIGHT. Clears the 13vw wordmark line with a breath of gap on
+ * wide desktops; the wordmark is width-clamped, so narrower windows only
+ * gain clearance. */
+const LOCKUP_BELOW = 0.3;
+/** Mark scale at the lockup vs its hero rest — wordmark-dominant. */
+const LOCKUP_SCALE = 0.42;
+/** Toward-camera z bulge (world units) at mid-flight of the lockup→hero
+ * move, so it reads as the camera carrying the mark, not a flat slide. */
+const FLIGHT_BULGE = 0.7;
+
 /**
  * ONE-SHOT intro REFORM-from-nothing, on HARD site entry (the REVERSE of a
  * decompose — client 2026-06-29).
@@ -217,6 +233,11 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   const assemblyRef = useRef<THREE.Group>(null);
   const spinRef = useRef<THREE.Group>(null);
   const fadeRef = useRef(1);
+  // Lockup flight follower — damps the store-fed flight target so the two
+  // discontinuous edges (particle build resolving AFTER the preloader lifts
+  // on a slow GLB load, and the nav-into-home replay reset publishing
+  // domReveal 1→0) glide instead of snapping the mark across the frame.
+  const flightRef = useRef(1);
   const simTimeRef = useRef(0);
   const announcedReady = useRef(false);
   // One-shot intro REFORM clock (seconds). -1 = pre-reveal (mark held dead);
@@ -656,14 +677,22 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     // Hold through the pin; recede + fade over the last quarter (identical to
     // the previous HeroLogo so the handoff is unchanged).
     let fade = 1 - THREE.MathUtils.smoothstep(hp, 0.74, 0.97);
-    // Brand-beat yield (2026-07-23): while the particle "Sersan AI" owns the
-    // hero (textMorph active, DOM not yet revealed) the mark hides FULLY —
-    // the client flagged even a 15% ghost as visible overlap under the
-    // centered brand — and blooms back in with domReveal exactly as the
-    // brand melts into the DOM hero. Inactive morph (any fallback path) → 1,
-    // unchanged.
+    // Intro brand lockup (2026-07-23 v2, supersedes the full-hide yield): the
+    // mark stays VISIBLE through the brand beat, parked centered below the
+    // wordmark (see the LOCKUP_* constants), and `flight` carries it to the
+    // hero-right rest as the brand dissolves. Inactive morph (fallback tiers,
+    // skipped intro) → flight = 1 → the framing below is byte-identical to
+    // the pre-lockup behavior.
     const morph = useTextMorphStore.getState();
-    if (morph.active) fade *= morph.domReveal;
+    const flightT = morph.active ? morph.domReveal : 1;
+    flightRef.current = THREE.MathUtils.damp(
+      flightRef.current,
+      flightT,
+      7,
+      delta,
+    );
+    const flight =
+      flightRef.current * flightRef.current * (3 - 2 * flightRef.current);
     fadeRef.current = fade;
     group.visible = fade > 0.005;
     if (!group.visible) return;
@@ -684,14 +713,28 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     // genuinely leaves it behind (above the frame) instead of dragging it
     // along. 0 in every other state → identical to before.
     const camDescend = useTextMorphStore.getState().camDescend;
-    group.position.set(
-      worldViewWidth * (fx.heroOffsetX - hp * 0.05),
+    // Hero-rest station (unchanged math) ← lockup station, blended by the
+    // eased `flight`. During the gated beat the page is pinned (hp = 0), so
+    // the flight completes before the scroll choreography ever moves hp.
+    const heroX = worldViewWidth * (fx.heroOffsetX - hp * 0.05);
+    const heroY =
       camera.position.y +
-        camDescend -
-        WORLD_VIEW_HEIGHT * (fx.heroOffsetY + hp * 0.04),
-      fx.heroPosZ - hp * 2.2,
+      camDescend -
+      WORLD_VIEW_HEIGHT * (fx.heroOffsetY + hp * 0.04);
+    const heroZ = fx.heroPosZ - hp * 2.2;
+    const lockY =
+      camera.position.y + camDescend - WORLD_VIEW_HEIGHT * LOCKUP_BELOW;
+    group.position.set(
+      heroX * flight,
+      THREE.MathUtils.lerp(lockY, heroY, flight),
+      THREE.MathUtils.lerp(fx.heroPosZ, heroZ, flight) +
+        Math.sin(flight * Math.PI) * FLIGHT_BULGE,
     );
-    group.scale.setScalar(baseScale * (1 - 0.2 * hp) * (0.92 + 0.08 * fade));
+    group.scale.setScalar(
+      baseScale *
+        THREE.MathUtils.lerp(LOCKUP_SCALE, 1 - 0.2 * hp, flight) *
+        (0.92 + 0.08 * fade),
+    );
 
     // ANCHORED mark — no drag-to-rotate, no idle spin. The mark sits STILL at
     // its front-facing rest and only "looks toward" the cursor by a few degrees:

@@ -15,7 +15,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { createLineMaterial, type LineUniforms } from "./materials/lineShader";
 import { webgpuEnabled } from "./renderer/createRenderer";
 import { getRouteCurve } from "./curves/routeCurves";
-import { WORLD_VIEW_HEIGHT } from "./constants";
+import { CAMERA_Z, WORLD_VIEW_HEIGHT } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
 import { useSectionStore, sectionProgress } from "./store/sectionStore";
 import { useProductionPulseStore } from "./store/productionPulseStore";
@@ -23,6 +23,7 @@ import { useAuditTimelineStore } from "./store/auditTimelineStore";
 import { useTextMorphStore } from "./store/textMorphStore";
 import { useIntroStore } from "./store/introStore";
 import { useFxStore } from "./store/fxStore";
+import { usePointerStore } from "./store/pointerStore";
 import { routeFx } from "./store/routeFxStore";
 import type { SectionAnchors } from "./hooks/useSectionAnchors";
 import type { SceneTier } from "./store/tierStore";
@@ -60,6 +61,26 @@ const GATE_ENERGY_SCALE = 0.5;
 const GATE_ENERGY_MAX = 150;
 /** damp() lambda for the energy decay back to rest. */
 const GATE_ENERGY_DECAY = 4;
+
+// --- Cinematic camera rig (dolly-Z / arrival orbit / pointer parallax) ------
+// Three TRANSLATION-only channels layered onto the same single camera
+// authority (the useFrame below). They never touch orientation, and the
+// camera-space billboards (RailPlanes, FounderPortraitMorph, NeuralLattice,
+// ResourcePreviewPlane) rebuild from the camera's full pose per frame, so
+// they cancel the rig by construction — no re-registration needed anywhere.
+// World-anchored objects (the tube, RouteHero/GatewayPortal, DriftParticles)
+// receive the rig as genuine parallax/depth: that IS the effect.
+/** damp() lambda for the breathing dolly (slow, lens-like). */
+const DOLLY_DAMP = 2.2;
+/** damp() lambda for the arrival-orbit sweep. */
+const ORBIT_DAMP = 2.5;
+/** damp() lambda for the pointer micro-parallax follower. */
+const PAR_DAMP = 3;
+/** Viewport fraction over which the whole rig fades in from the top. While
+ * the page is pinned at scroll 0 (intro gate, brand replay) every channel is
+ * EXACTLY 0, so the particle brand + HeroLogo keep their pixel registration
+ * against the DOM — the camera there is byte-identical to the pre-rig one. */
+const RIG_TOP_SPAN = 0.55;
 
 // === Shared curve/geometry builder (FIX B) ==================================
 // ONE implementation used by BOTH the render-path useMemo and the
@@ -292,6 +313,10 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   // pitch itself.
   const prevCamTilt = useRef(0);
   const descendPitch = useRef(0);
+  // Cinematic camera rig state (see the rig block in useFrame).
+  const dollyCurrent = useRef(0);
+  const orbitCurrent = useRef(0);
+  const parCurrent = useRef({ x: 0, y: 0 });
 
   // Material selection by the build-time WebGPU flag (createRenderer.ts):
   //   flag OFF → the GLSL ShaderMaterial (unchanged, byte-identical to today),
@@ -652,6 +677,92 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // document position exactly (see file header for the k mapping).
     camera.position.y = -(scrollYWorld + ih / 2) * k;
 
+    // === Cinematic camera rig (see the constants block for the contract) ====
+    // Everything fades in over the first ~half viewport of scroll: at the
+    // pinned top (intro gate / brand replay) the rig is EXACTLY zero.
+    const rigT = THREE.MathUtils.clamp(scrollYWorld / (ih * RIG_TOP_SPAN), 0, 1);
+    const rigGate = rigT * rigT * (3 - 2 * rigT);
+    // (a) Breathing dolly-Z — PURE scroll velocity, never aliveVelocity: the
+    // pinned intro pumps gateEnergy while the brand must stay glued to the
+    // DOM. Normalized like velNorm below, then smoothstep-shaped so reading-
+    // speed scrolls stay imperceptible and only a genuine flick pulls the
+    // camera back; the snap engine's settles end at velocity 0 → dz relaxes
+    // to 0 and every station lands at the exact shipped framing.
+    const dollyNorm = Math.min(Math.abs(velocity) * 0.01, 1);
+    const dollyShaped = dollyNorm * dollyNorm * (3 - 2 * dollyNorm);
+    const dollyTarget =
+      dollyShaped * fx.camDollyMax * rigGate * (tier === "full" ? 1 : 0.5);
+    dollyCurrent.current = THREE.MathUtils.damp(
+      dollyCurrent.current,
+      dollyTarget,
+      DOLLY_DAMP,
+      delta,
+    );
+    // (b) Arrival orbit — as the viewport center approaches the route's
+    // ritual anchor (home: the gateway; interior routes: "ritual"), the
+    // camera sweeps laterally on a sin() bell that is exactly 0 AT the
+    // anchor, so arrivals (and snap settles) always land head-on. Full tier
+    // only: the sweep needs the lookAt below to counter-yaw toward the
+    // curve target, or it reads as a flat pan instead of an orbit.
+    let orbitTarget = 0;
+    if (
+      tier === "full" &&
+      sh > ih &&
+      curveRef.current &&
+      section.measuredPath === pathname
+    ) {
+      const ritual = section.spans[pathname === "/" ? "gateway" : "ritual"];
+      if (ritual) {
+        const ritualPx = ((ritual.start + ritual.end) / 2) * sh;
+        const bell = THREE.MathUtils.clamp(
+          1 - Math.abs(scrollYWorld + ih / 2 - ritualPx) / (ih * 1.35),
+          0,
+          1,
+        );
+        orbitTarget = Math.sin(bell * Math.PI) * fx.camOrbitAmp * rigGate;
+      }
+    }
+    orbitCurrent.current = THREE.MathUtils.damp(
+      orbitCurrent.current,
+      orbitTarget,
+      ORBIT_DAMP,
+      delta,
+    );
+    // (c) Pointer micro-parallax — full tier only. pointerStore's own gating
+    // (coarse pointer / reduced motion → no listener) leaves smooth parked at
+    // center, so the offset is structurally 0 on those devices.
+    const ptr = usePointerStore.getState().smooth;
+    const parScale = tier === "full" ? fx.camParallax * rigGate : 0;
+    parCurrent.current.x = THREE.MathUtils.damp(
+      parCurrent.current.x,
+      (ptr.x - 0.5) * 2 * parScale,
+      PAR_DAMP,
+      delta,
+    );
+    parCurrent.current.y = THREE.MathUtils.damp(
+      parCurrent.current.y,
+      -(ptr.y - 0.5) * 2 * parScale * 0.7,
+      PAR_DAMP,
+      delta,
+    );
+    // APPLY × rigGate (review fix): damp() converges only asymptotically, so
+    // after a fast return to top the currents still carry a tail exactly when
+    // the brand/DOM registration window opens (scrollPx <= 2). Gating the
+    // OUTPUT crushes that tail quadratically over the last half-viewport
+    // (mid-page feel unchanged — rigGate is 1 there), and at a true top rest
+    // the currents hard-snap to 0 so the idle frame is byte-identical to the
+    // pre-rig camera.
+    if (rigT < 0.001) {
+      dollyCurrent.current = 0;
+      orbitCurrent.current = 0;
+      parCurrent.current.x = 0;
+      parCurrent.current.y = 0;
+    }
+    camera.position.z = CAMERA_Z + dollyCurrent.current * rigGate;
+    camera.position.x =
+      (orbitCurrent.current + parCurrent.current.x) * rigGate;
+    camera.position.y += parCurrent.current.y * rigGate;
+
     // Camera-descent beat STATE (textMorphStore.camTilt 0..1) — read EARLY so
     // the gate-shake below can fade by the applied-descent factor (FIX A3).
     // The offset itself is applied further down (camera.position.y -= desc).
@@ -866,11 +977,16 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       // camera.position, so the camDescend station-subtract in HeroLogo /
       // HeroTextParticles / RouteHero / GatewayPortal is unaffected.
       curve.getTangentAt(ahead, aheadTangent.current);
-      const rollTarget = THREE.MathUtils.clamp(
-        -aheadTangent.current.x * fx.camRoll * route.cameraRollScale,
-        -CAM_ROLL_MAX,
-        CAM_ROLL_MAX,
-      );
+      // × rigGate: the roll must be EXACTLY level at the pinned top — the
+      // curve's first bend gives tangent.x ≠ 0 there, and a ~2° standing roll
+      // visibly tilts the huge centered "Sersan AI" wordmark against the
+      // straight DOM (client-reported). Mid-journey banking is unchanged.
+      const rollTarget =
+        THREE.MathUtils.clamp(
+          -aheadTangent.current.x * fx.camRoll * route.cameraRollScale,
+          -CAM_ROLL_MAX,
+          CAM_ROLL_MAX,
+        ) * rigGate;
       // Damp toward the target every frame (C1 across route/curve rebuilds; eases
       // in from 0 on first frame — no snap, no pop).
       rollCurrent.current = THREE.MathUtils.damp(rollCurrent.current, rollTarget, 3, delta);
@@ -999,6 +1115,13 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       const liveGeo = lastGoodGeometry.current;
       (window as unknown as Record<string, unknown>).__sersanLineDebug = {
         camY: camera.position.y,
+        camRig: {
+          dollyZ: dollyCurrent.current,
+          orbitX: orbitCurrent.current,
+          parX: parCurrent.current.x,
+          parY: parCurrent.current.y,
+          gate: rigGate,
+        },
         uProgress: u.uProgress.value,
         headDocFraction: headFraction,
         measuredPath: anchors.measuredPath,

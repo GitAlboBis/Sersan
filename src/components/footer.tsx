@@ -335,11 +335,26 @@ export function Footer() {
                 <ul className="flex flex-col gap-2">
                   {col.links.map((link) => (
                     <li key={link.href}>
+                      {/* Hover: 2px x-shift + accent hairline draw — the
+                          who-and-why/our-why bottom-rule grammar (h-px,
+                          origin-left scaleX 0→1, bg-accent, 500ms entrance
+                          ease). The shift is motion-safe-gated at the source
+                          (same reasoning as the button press scale: the global
+                          reduced-motion clamp only flattens durations, so the
+                          state would still SNAP); the hairline keeps its state
+                          under reduced motion like the card rules do — it
+                          just draws instantly. inline-block because
+                          transforms don't apply to inline boxes, and it
+                          shrink-wraps the hairline to the label width. */}
                       <Link
                         href={link.href}
-                        className="text-[13.5px] text-ink-mute hover:text-ink transition-colors"
+                        className="group relative inline-block text-[13.5px] text-ink-mute hover:text-ink transition-[color,transform] motion-safe:hover:translate-x-[2px]"
                       >
                         {isEn ? link.label : link.labelIt}
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-x-0 bottom-0 h-px origin-left scale-x-0 bg-accent transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-x-100"
+                        />
                       </Link>
                     </li>
                   ))}
