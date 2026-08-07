@@ -61,10 +61,12 @@ progress `[x]` done (commit).
 - [x] **B3 · P1/M — /start is English-only.** (this commit; split page/start-client with
   isEn, IT in the site's voi register, SplitText key={language} contract, Reveal stagger
   on the step cards — B11's full typographic redesign still open)
-- [ ] **B4 · P1/L — 60-second self-audit engine built and never rendered**
-  (data/audit-questions.ts — 226 lines, bilingual, zero importers). Exactly the
-  interactive non-card moment the owner wants. Build the choreographed quiz UI (big-type
-  question beats, scored map reveal) or delete the data.
+- [x] **B4 · P1/L — 60-second self-audit SHIPPED.** (this commit) The dormant engine
+  becomes /audit's participation beat: big-type one-question-at-a-time flow, hairline
+  answers, drawn progress, top-3 findings as mini-beats bridging to #book-call, honest
+  empty state. Hardened after a live-found interleaving bug: transitions are now
+  state-first (content never hostage to a tween), clock-based cooldown, atomic fromTo
+  poses, finally-guard watchdog. Verified end-to-end incl. the click+scroll repro.
 - [ ] **B5 · P1/M — Resources is a 3-article stub with CMS TODO** around
   production-grade FX machinery. Needs an owner content decision (MDX in repo is the
   cheap path); renderer TODO (B10) rides along.
@@ -176,5 +178,9 @@ key files before implementing — §1.4):
 | 6 | B1+B2 booking copy truth + owned socials | b8eab6f | tsc ✓ · browser ✓ (/audit CTA + footer icons) |
 | 7 | B7+B8+B9 dead-code purge (−2,181 lines, 2 files correctly SKIPPED on post-merge re-verify) | c5d4737 | tsc ✓ · npm run build ✓ (40 pages) · browser ✓ (/trust + home on clean server; the LOCKUP_BELOW console burst was a stale Turbopack HMR chunk from the pre-rename graph — source grep clean, prod build unaffected) |
 | 8 | B3 /start bilingual | d40911a | tsc ✓ · browser ✓ (EN intact, IT toggle full-page, split-reveal remounts clean) |
+| 9-16 | C1-C8 route redesigns + B-fixes | a2e2602…4cf91ad | all browser-verified per rows above — PUSHED |
+| 17 | C11 black hole hero + owner fix round | d9c2e33 + d735253 | shader compiles live · halo killed (true transparency) · 3D orbit · 2 live calibration rounds |
+| 18 | C1b ledger links + trust AI controls | 4e55d1b | browser ✓ (Approfondisci in the clip; accent rows) |
+| 19 | B4 self-audit quiz (+ interrupt-safety fix after live repro) | (this commit) | tsc ✓ · full flow verified: intro→5Q→top-3, click+scroll repro passes, IT verified |
 | 9 | C1 consulting practice ledger | a2e2602 | tsc ✓ · browser ✓ (scroll-active row migrates, tick+underline, desc expands) |
 | 10 | C2 engagement acts | (this commit) | tsc ✓ · browser ✓ (entrance caught mid-play, alternating offset, hairline tables) |

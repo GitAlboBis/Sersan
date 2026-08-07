@@ -10,6 +10,7 @@ import { useLanguage } from "@/components/language-provider";
 import AuditWeekTimeline from "@/components/sections/audit-week-timeline";
 import { SurfacesLedger } from "./surfaces-ledger";
 import { DoorBeats } from "./door-beats";
+import { SelfAudit } from "./self-audit";
 import { HonestFaq } from "@/components/ui/honest-faq";
 
 export function AuditClient() {
@@ -195,6 +196,24 @@ export function AuditClient() {
         </div>
       </section>
       </div>
+
+      {/* 60-second self-audit — the page's participation beat (./self-audit
+          .tsx): five questions from src/data/audit-questions.ts, one at a
+          time, ending in a top-3 scored findings preview. Sits between the
+          six-surfaces thesis and the deliverable section on purpose — you
+          try the 60-second read, then "What's in the report" shows the real
+          thing. Deliberately NO data-line-anchor: the audit route's curve
+          waypoints stay exactly as authored (anchors intact per the webgl
+          contract); data-snap centres it like the page's other focal beats
+          (the snap engine measures live, so the quiz's height changes never
+          go stale). */}
+      <section data-snap className="section-lg relative">
+        <div className="container-px relative">
+          <Reveal className="max-w-3xl mx-auto">
+            <SelfAudit isEn={isEn} />
+          </Reveal>
+        </div>
+      </section>
 
       {/* What's in the report */}
       <div data-line-anchor="deliverable">
