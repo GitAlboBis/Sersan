@@ -593,6 +593,21 @@ export function createSporeComputeNodeBuild(
       // structural core-safety: HeroLogo writes envelope 0 on non-crust
       // layers, so gate = 0 there and neither term can ever fire.
       const capGate = smoothstep(0.15, 0.35, holeStrengthN).toVar();
+      // ACCRETION geometry — hoisted OUT of extraAcc (BUG-2 fix, owner
+      // live-review 2026-08-07) so the post-step velocity RE-AIM below shares
+      // the exact same LIVE-hole direction the force uses. `pos` is only
+      // advanced after the step, so these read this frame's state; uHole is
+      // re-written by HeroLogo every frame from the freshly projected
+      // holeField, so dirHole tracks the hole as it orbits.
+      const toHole = holeN.sub(pos).toVar();
+      const dHole = length(toHole).toVar();
+      const dirHole = toHole.add(1e-5).normalize().toVar();
+      const fHole = smoothstep(holeRadiusN, 0.0, dHole).mul(holeStrengthN);
+      const capT = clamp(
+        float(1.0).sub(dHole.div(holeRadiusN.mul(0.6))),
+        0.0,
+        1.0,
+      ).toVar();
       const step = unifiedForceStep(tsl, {
         pos,
         vel,
@@ -652,25 +667,31 @@ export function createSporeComputeNodeBuild(
           // pull ≈ 97 vs spring ≈ 53; at the horizon ≈ 250 vs ≈ 79 — with
           // MAX_SPEED clamping the fall to a visible ~0.5s streak). The
           // horizon kill in the decay below finishes them. Parked at 1e9 /
-          // envelope 0 → exactly zero at any rest state.
-          const toHole = holeN.sub(pos).toVar();
-          const dHole = length(toHole).toVar();
-          const fHole = smoothstep(holeRadiusN, 0.0, dHole).mul(
-            holeStrengthN,
-          );
-          const capT = clamp(
-            float(1.0).sub(dHole.div(holeRadiusN.mul(0.6))),
-            0.0,
-            1.0,
-          );
+          // envelope 0 → exactly zero at any rest state. (Geometry nodes —
+          // toHole/dHole/dirHole/fHole/capT — are hoisted above the step so
+          // the post-step re-aim shares them; see the BUG-2 note there.)
           const boost = float(1.0).add(
             holeCaptureN.mul(capT.mul(capT)).mul(capGate),
           );
-          acc.addAssign(
-            toHole.add(1e-5).normalize().mul(fHole).mul(holePullN).mul(boost),
-          );
+          acc.addAssign(dirHole.mul(fHole).mul(holePullN).mul(boost));
         },
       });
+
+      // ACCRETION RE-AIM (BUG-2 fix, owner live-review 2026-08-07: "the
+      // stream falls straight down while the hole is lower-right"). Capture
+      // is acceleration-only, so a detached spore keeps its old momentum and
+      // the quadratic boost barely bends the path once it is moving at
+      // MAX_SPEED. As capture deepens, PROJECT the velocity onto the LIVE
+      // infall direction (kills the perpendicular component), dt-scaled so
+      // it is frame-rate independent: steer = 1 − exp(−capT²·gate·10·dt) —
+      // perpendicular-decay time-constant ≈ 0.1s at full capture, ~zero at
+      // the band edge (capT² ≈ 0.03 there, so hover physics outside the deep
+      // well are untouched). Infalling spores now visibly CURVE and chase
+      // the hole while it orbits.
+      const steer = float(1.0).sub(
+        exp(capT.mul(capT).mul(capGate).mul(10.0).negate().mul(dtN)),
+      );
+      vel.assign(mix(vel, dirHole.mul(dot(vel, dirHole)), steer));
 
       velH.assign(vel);
       pos.addAssign(vel.mul(dtN));
@@ -708,6 +729,30 @@ export function createSporeComputeNodeBuild(
       // DYING (−1,0] — free ghost flight (DDD-style, no forces); the render
       // shrinks it to nothing as life → −1. Drift factor + gentler damping so
       // the dying spores sail a touch FARTHER into space (user feedback).
+      //
+      // ACCRETION GHOST HOMING (BUG-2 fix, owner live-review 2026-08-07):
+      // the visible infall stream is mostly GHOSTS — the DDD speed-kill
+      // fires within ms of terminal infall (MAX_SPEED × 0.35 ≥ 1 ⇒ full
+      // LIFE_DECAY) — and this branch is force-free, so without steering the
+      // dead spores flew BALLISTICALLY toward where the hole USED to be
+      // while it orbited on (the owner's screenshot: stream straight down,
+      // hole lower-right). Redirect the ghost's velocity (magnitude
+      // preserved — mix toward dir·|v|) onto the LIVE hole direction,
+      // dt-scaled (1 − exp(−capT·gate·6·dt)), gated by the capture band ×
+      // envelope so every other death (hover erode, scroll burst — hole
+      // parked at 1e9 ⇒ capT 0) keeps today's exact ghost flight.
+      const toHoleD = holeN.sub(pos).toVar();
+      const dirD = toHoleD.add(1e-5).normalize();
+      const capTD = clamp(
+        float(1.0).sub(length(toHoleD).div(holeRadiusN.mul(0.6))),
+        0.0,
+        1.0,
+      );
+      const gateD = smoothstep(0.15, 0.35, holeStrengthN);
+      const steerD = float(1.0).sub(
+        exp(capTD.mul(gateD).mul(6.0).negate().mul(dtN)),
+      );
+      velH.assign(mix(velH, dirD.mul(length(velH)), steerD));
       pos.addAssign(velH.mul(0.85).mul(dtN));
       velH.mulAssign(exp(float(-1.8).mul(dtN)));
       lifeH.subAssign(dtN.mul(LIFE_DIE));

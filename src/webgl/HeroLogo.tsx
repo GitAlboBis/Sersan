@@ -155,11 +155,18 @@ const TILT_DAMP = 3.5; // damp lambda — soft ease toward the pointer target
 // gain clearance.
 /** Mark center offset from the viewport (camera) center, as a fraction of
  * WORLD_VIEW_HEIGHT — same screen-down-positive sign convention as
- * fx.heroOffsetY (the use site SUBTRACTS it), so NEGATIVE parks the mark
- * ABOVE center. −0.09 ⇒ observed mark center ≈22vh from the frame top
- * (empirical calibration above — the naive DOM-math value was −0.22 and
- * clipped the mark's top half behind the header). */
-const LOCKUP_OFFSET_Y = -0.09;
+ * fx.heroOffsetY (the use site SUBTRACTS it: lockY = cam.y − WVH·offset),
+ * so NEGATIVE parks the mark ABOVE center and moving toward 0 LOWERS it
+ * (sign verified against the use site 2026-08-07 — "more negative" is
+ * HIGHER, not lower). −0.09 → −0.04 (owner live-review 2026-08-07: nudge
+ * the whole hero composition DOWN ~5vh on tall viewports — the DOM brand
+ * translateY moved 13→18vh and the eclipse yFrac −0.42→−0.47 on the same
+ * beat, so mark, wordmark and hole keep their relationships). Previous
+ * calibration: −0.09 ⇒ observed mark center ≈22vh from the frame top (the
+ * naive DOM-math value was −0.22 and clipped the mark behind the header);
+ * −0.04 ⇒ ≈27vh, top edge ≈15.8vh — still well clear of the header band
+ * (which is now hidden inside the hero anyway). */
+const LOCKUP_OFFSET_Y = -0.04;
 /** Mark scale at the lockup vs its hero rest — the mark leads the lockup
  * (owner 2026-08-07: mark on top, a bit bigger; wordmark a bit smaller —
  * raised again 0.58 → 0.66 the same day, "a bit bigger" round two):

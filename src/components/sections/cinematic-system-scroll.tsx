@@ -1163,21 +1163,24 @@ export default function CinematicSystemScroll() {
         >
           <span
             data-hero-brand
-            // 9.5vw (was 13vw) + a +13vh push below the flex center: the mark
+            // 9.5vw (was 13vw) + an +18vh push below the flex center: the mark
             // sits ABOVE this line now (see HeroLogo's LOCKUP_* block). The
             // translate is calibrated against the LIVE particle render, not
             // rect math — the WebGL lockup renders ~19vh above the DOM-center
             // mapping on a 1440×810 desktop (browser-verified 2026-08-07), so
-            // +13vh lands the observed text center at ≈44vh from the frame
-            // top, top ≈35.5vh (a ~4vh visible gap under the mark's ≈32vh
-            // bottom), bottom ≈52.5vh — upper-half-weighted composition.
+            // +13vh landed the observed text center at ≈44vh from the frame
+            // top; 13→18vh is the owner's 2026-08-07 5vh composition nudge
+            // (taller viewports left dead space below) — center ≈49vh, top
+            // ≈40.5vh, bottom ≈57.5vh, moved IN LOCKSTEP with HeroLogo's
+            // LOCKUP_OFFSET_Y (−0.09→−0.04) and the eclipse yFrac
+            // (−0.42→−0.47) so the whole hero drops coherently.
             // HeroTextParticles samples this rect + computed style (transforms
             // included), so the size/translate here IS the particle wordmark's
             // frame; the wrapper keeps X flex-centered.
             className="font-sans font-semibold text-[clamp(3.25rem,9.5vw,10rem)] leading-none tracking-[-0.045em] text-ink inline-block whitespace-nowrap"
             style={{
               opacity: 0,
-              transform: "translateY(13vh)",
+              transform: "translateY(18vh)",
               willChange: "opacity",
             }}
           >

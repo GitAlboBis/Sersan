@@ -13,6 +13,7 @@ import { SersanLogo } from "@/components/sersan-logo";
 import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 import { START_HREF } from "@/lib/site";
+import { SPINE_TRAVEL_VH } from "@/lib/spine";
 import { getLenis } from "@/lib/lenis-singleton";
 import { useAudioStore } from "@/webgl/store/audioStore";
 import { useScrollStore } from "@/webgl/store/scrollStore";
@@ -25,6 +26,19 @@ import {
 
 // Real site pages — the dropdown menu navigates the app, not homepage anchors.
 type NavItem = { href: string; label: string; labelIt: string };
+
+/**
+ * HERO HEADER REVEAL (owner live-review 2026-08-07): on the home hero the
+ * header must be INVISIBLE — during the gated intro (page parked at scrollY
+ * 0) and while the scroll still sits inside the pinned cinematic spine — and
+ * slide/fade in once the visitor has scrolled this fraction of the spine's
+ * scrub travel (the owner's 70–90% band → 0.8 ⇒ reveal at ≈232vh of the
+ * 290vh travel, while the final spine group is settling). Applies ONLY where
+ * the desktop pinned hero actually exists (detected via [data-hero-brand] —
+ * the same probe HeroTextParticles uses); interior routes, the mobile
+ * fallback and reduced-motion keep the header exactly as before.
+ */
+const HERO_HEADER_REVEAL = 0.8;
 
 const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Home", labelIt: "Home" },
@@ -568,6 +582,12 @@ export function Navbar() {
   // GSAP close animation play on a still-mounted node, then unmount cleanly.
   const [render, setRender] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  // True while the header must stay off-screen inside the home hero
+  // (intro gate + pinned spine — see HERO_HEADER_REVEAL). Initial false =
+  // the SSR/hydration paint matches every route; on the desktop home the
+  // mount-time update() flips it before the preloader (z-[100], above this
+  // z-50 bar) lifts, so the bar is never seen inside the hero.
+  const [heroHidden, setHeroHidden] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -584,19 +604,35 @@ export function Navbar() {
     if (open) setRender(true);
   }, [open]);
 
-  // Sharpen the nav border once the user has scrolled past the hero edge.
-  // Reads the shared scroll source (scrollStore, fed by Lenis or the
-  // reduced-motion native fallback in SmoothScrollProvider) instead of a
-  // private native scroll listener — section-state-bus convention: one
-  // scroll source for the whole app. setScrolled with an unchanged boolean
-  // is a React bail-out, so this re-renders only on threshold flips, never
-  // per scroll tick.
+  // Sharpen the nav border once the user has scrolled past the hero edge,
+  // and HIDE the whole bar inside the home hero (owner 2026-08-07 — see
+  // HERO_HEADER_REVEAL). Reads the shared scroll source (scrollStore, fed by
+  // Lenis or the reduced-motion native fallback in SmoothScrollProvider)
+  // instead of a private native scroll listener — section-state-bus
+  // convention: one scroll source for the whole app. setState with an
+  // unchanged boolean is a React bail-out, so this re-renders only on
+  // threshold flips, never per scroll tick. During the intro gate the page
+  // is parked at scrollY 0 → hidden the whole beat; scrolling back into the
+  // hero hides it again (symmetric threshold). NOT ScrollTrigger — no pin,
+  // no trigger, just the scroll value.
   useEffect(() => {
-    const update = () => setScrolled(window.scrollY > 24);
+    const update = () => {
+      setScrolled(window.scrollY > 24);
+      // [data-hero-brand] exists ONLY in the desktop pinned hero layout
+      // (HeroTextParticles gates its mount on the same probe): interior
+      // routes / mobile fallback / reduced motion → header always visible.
+      // The attribute query per tick is a µs-class lookup; the setState
+      // bail-out keeps React out of the hot path entirely.
+      const heroLayout =
+        pathname === "/" && !!document.querySelector("[data-hero-brand]");
+      const revealPx =
+        window.innerHeight * (SPINE_TRAVEL_VH / 100) * HERO_HEADER_REVEAL;
+      setHeroHidden(heroLayout && window.scrollY < revealPx);
+    };
     update();
     const unsubscribe = useScrollStore.subscribe(update);
     return unsubscribe;
-  }, []);
+  }, [pathname]);
 
   // While the dropdown is open: lock the background (freeze Lenis smooth-scroll
   // AND lock body overflow so touch/native scroll can't move the page behind
@@ -735,8 +771,17 @@ export function Navbar() {
   return (
     <>
     <nav
+      // HERO HIDE (owner 2026-08-07): inside the home hero the bar slides up
+      // + fades out and is fully inert (no pointer targets, no tab stops, no
+      // AT exposure — `inert` + aria-hidden), then slides back down once the
+      // scroll clears HERO_HEADER_REVEAL of the spine travel. When revealed
+      // it is byte-identical to before (the attributes are removed, not
+      // toggled to false-y strings). The audio toggle and the "SALTA
+      // L'INTRO · ESC" hint live outside this bar and are untouched.
+      inert={heroHidden || undefined}
+      aria-hidden={heroHidden || undefined}
       className={cn(
-        "fixed top-0 left-0 right-0 z-50 transition-[border-color,backdrop-filter,background-color,box-shadow] duration-300",
+        "fixed top-0 left-0 right-0 z-50 transition-[border-color,backdrop-filter,background-color,box-shadow,transform,opacity] duration-300 motion-reduce:transition-none",
         // Steel-panel bar — vertical gradient (lit top → darker bottom)
         // implies ambient light from above the page, same as the
         // card-steel components below. Inset shadows give the bar
@@ -746,6 +791,9 @@ export function Navbar() {
         //   - drop:   soft glow that grows on scroll
         "border-b border-[hsl(var(--ink)/0.05)]",
         scrolled ? "backdrop-blur-2xl" : "backdrop-blur-xl",
+        heroHidden
+          ? "-translate-y-full opacity-0 pointer-events-none"
+          : "translate-y-0 opacity-100",
       )}
       style={{
         background: scrolled

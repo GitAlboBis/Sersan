@@ -163,6 +163,17 @@ key files before implementing — §1.4):
   existing mark fold→zoom→streak choreography. Keep: truthful readiness signals,
   watchdog, reduced-motion skip, single rAF, Lenis parking. → ITERATION 2
 
+- [ ] **B14 · P2/S — Native instant-scroll desyncs Lenis and wedges the hero.** A native
+  scroll teleport (keyboard Ctrl+Home/End, scrollbar drag, find-in-page jump) moves
+  `window.scrollY` without Lenis: its virtual value stays where it was, so the
+  scrollStore-driven WebGL keeps the lockup dissolved and the eclipse at fade 0 while
+  the page sits at the top — looks like a dead hero until the user wheels once.
+  Repro 2026-08-07: Ctrl+Home from ~400vh → stuck at scrollY 185, `lenis.scrollTo(0,
+  {immediate:true})` ignored. Pre-existing (Lenis integration era), NOT part of the
+  hero fix round. Fix direction: listen for native `scroll` events not originated by
+  Lenis and re-sync (`lenis.scrollTo(window.scrollY, {immediate: true, force: true})`),
+  or enable Lenis keyboard handling.
+
 ## Iteration log
 
 | # | Item | Commit | Verified |
@@ -181,7 +192,8 @@ key files before implementing — §1.4):
 | 9-16 | C1-C8 route redesigns + B-fixes | a2e2602…4cf91ad | all browser-verified per rows above — PUSHED |
 | 17 | C11 black hole hero + owner fix round | d9c2e33 + d735253 | shader compiles live · halo killed (true transparency) · 3D orbit · 2 live calibration rounds |
 | 18 | C1b ledger links + trust AI controls | 4e55d1b | browser ✓ (Approfondisci in the clip; accent rows) |
-| — | owner: hero package — bigger lockup + auto-burst (333e936), home eclipse (2697581), horizontal credibility passage (9990e58), intro retiming + flyby base (e485e20), accretion upgrade: infall + horizon kill + wordmark warp | (this commit) | tsc ✓ · full orbit verified live at real speed (foreground tab): early mark formation, auto-burst at 0.75, eclipse ignite, near-phase shredding toward the live hole, far-phase full recovery, console clean |
+| — | owner: hero package — bigger lockup + auto-burst (333e936), home eclipse (2697581), horizontal credibility passage (9990e58), intro retiming + flyby base (e485e20), accretion upgrade: infall + horizon kill + wordmark warp | 0360a01 | tsc ✓ · full orbit verified live at real speed (foreground tab): early mark formation, auto-burst at 0.75, eclipse ignite, near-phase shredding toward the live hole, far-phase full recovery, console clean |
+| — | owner fix round: first-orbit capture (bob phase negated — first near-approach ≈13s), live-position chase (ALIVE re-aim + ghost homing), header hidden inside the hero (reveal ≈232vh), composition down 5vh (LOCKUP_OFFSET_Y −0.04 · brand 18vh · yFrac −0.47 · anchor 0.01) | (this commit) | tsc ✓ · browser ✓ first-orbit stream at ~9-15s curving to the live hole · header hide/reveal both directions · smooth scroll down/up recovers scrollY 0 fade 1.0, lockup reassembles, console clean |
 | 19 | B4 self-audit quiz (+ interrupt-safety fix after live repro) | (this commit) | tsc ✓ · full flow verified: intro→5Q→top-3, click+scroll repro passes, IT verified |
 | 9 | C1 consulting practice ledger | a2e2602 | tsc ✓ · browser ✓ (scroll-active row migrates, tick+underline, desc expands) |
 | 10 | C2 engagement acts | (this commit) | tsc ✓ · browser ✓ (entrance caught mid-play, alternating offset, hairline tables) |

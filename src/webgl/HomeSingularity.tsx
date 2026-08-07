@@ -191,11 +191,14 @@ export const holeField = {
 /** Flyby proximity envelope — distance (view-height fractions at the group
  * plane) between the hole's apparent center and the fixed lockup anchor,
  * mapped 1→0 over [NEAR, FAR]. Derived from the shipped geometry (yFrac
- * −0.42, orbit radius 0.275 / bob 0.14, anchor +0.06 ≈ the wordmark's ~44vh
- * optical center): nearest approach d≈0.40 (bob up, orbit centered — the
- * hole sits dead-center under the lockup there) → 1; far phase d≈0.59 → 0;
- * the t=0 rest pose d≈0.48 → ~0.58. No rect reads — pure orbit arithmetic. */
-const HOLE_ANCHOR_Y_FRAC = 0.06;
+ * −0.47, orbit radius 0.275 / bob 0.14, anchor +0.01 ≈ the wordmark's ~49vh
+ * optical center after the owner's 5vh composition nudge — both moved
+ * together, so the rest distance is unchanged at ≈0.48): nearest approach
+ * d≈0.40 (bob up, orbit centered — the hole sits dead-center under the
+ * lockup, first reached at oa=π ≈ 13s with the negated bob) → 1; far phase
+ * d≈0.59 → 0; the t=0 rest pose d≈0.48 → ~0.58. No rect reads — pure orbit
+ * arithmetic. */
+const HOLE_ANCHOR_Y_FRAC = 0.01;
 const HOLE_NEAR_FRAC = 0.4;
 const HOLE_FAR_FRAC = 0.58;
 
@@ -324,10 +327,12 @@ export function HomeSingularity() {
      * 0 = dead center (the eclipse is symmetric under the wordmark). */
     xFrac: 0,
     /** Vertical offset as a fraction of the view HEIGHT at the group plane
-     * (negative = down). −0.42 sinks the center 42vh below the viewport
-     * center — the directed 35–45vh band — putting the ring's upper arc at
-     * ~71–80vh from the frame top and the core at the fold. */
-    yFrac: -0.42,
+     * (negative = down). −0.47 sinks the center 47vh below the viewport
+     * center (was −0.42 — the owner's 2026-08-07 5vh composition nudge:
+     * mark, wordmark and hole all move down together, so the hole keeps the
+     * same relationship to the wordmark), putting the ring's upper arc at
+     * ~76–85vh from the frame top and the core at the fold. */
+    yFrac: -0.47,
   });
 
   // --- Live orbit knobs -----------------------------------------------------
@@ -451,7 +456,20 @@ export function HomeSingularity() {
     const oa = clockRef.current * ((Math.PI * 2) / orbit.period);
     const ox = Math.sin(oa) * orbit.radius;
     const oz = (Math.cos(oa) - 1) * orbit.radius;
-    const oy = Math.sin(oa * 0.5) * orbit.bob;
+    // Bob NEGATED (BUG-1 fix, owner live-review 2026-08-07): the apparent
+    // center is group − offset, and the half-rate bob's first half-cycle
+    // (oa/2 ∈ 0→π over the WHOLE first lateral orbit) kept oy ≥ 0 — the hole
+    // could only sink AWAY from the lockup until the SECOND orbit, so the
+    // first true near-approach (proximity → 1, the accretion capGate open)
+    // landed at oa = 3π ≈ 39s and the first orbit never captured. Flipping
+    // the phase (sin(x+π) = −sin(x); still exactly 0 at t=0, rest framing
+    // byte-identical) makes the bob RISE toward the wordmark through orbit 1:
+    // first full-strength near-approach at oa = π ≈ t 13s — bob fully up AND
+    // laterally centered (sin(π) = 0), ignite (1.2s) long complete.
+    // Deliberate divergence from AuditSingularity's orbit grammar (twin
+    // note): /audit has no accretion consumers, its bob direction is purely
+    // aesthetic and stays as shipped.
+    const oy = -Math.sin(oa * 0.5) * orbit.bob;
 
     // --- Virtual march camera: real camera + orbit. The group is a
     // scene-root child with identity rotation/scale, so worldToLocal
