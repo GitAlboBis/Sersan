@@ -627,9 +627,9 @@ function PipelineDiagram({ mobile, stageLabel, link }: DiagramProps) {
  * On focus/hover a hotspot ignites its stage in the SVG ITSELF via link.ignite
  * (halo bloom + regulation tag to full ink — visible on EVERY tier) and writes
  * link.hovered so the travelling light swells when it next crosses the stage.
- * It also bumps compliancePipelineStore — the contract the (currently retired)
- * WebGPU CompliancePipeline3D echo reads; on every tier without that reader the
- * set is a harmless no-op, kept so a revived echo re-syncs for free.
+ * It also bumps compliancePipelineStore — the contract a WebGL echo used to
+ * read (the CompliancePipeline3D reader was deleted as dead code); with no
+ * reader the set is a harmless no-op, kept so a revived echo re-syncs for free.
  *
  * `mobile` selects the vertical (M_*) vs horizontal (D_*) viewBox mapping so the
  * overlay matches whichever PipelineDiagram its sibling card is rendering.

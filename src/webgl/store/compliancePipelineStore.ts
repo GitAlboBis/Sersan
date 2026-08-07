@@ -1,11 +1,13 @@
 /**
  * Compliance-pipeline signal store — the 3D↔DOM bridge for the /trust
- * CompliancePipeline3D centerpiece (step 7).
+ * compliance-pipeline surface (step 7).
  *
  * WRITER: the focusable DOM hotspot layer in compliance-pipeline.tsx (route
  * bundle) — on focus/hover of a stage hotspot it sets `hovered` and bumps that
- * stage's `pulse[i]` to 1. READER: CompliancePipeline3D.useFrame (lazy WebGL
- * island), via `.getState()` — never a hook in the loop.
+ * stage's `pulse[i]` to 1. READER: currently none — the WebGL echo that read
+ * this (CompliancePipeline3D.useFrame, via `.getState()` — never a hook in the
+ * loop) was deleted as dead code. The writer's sets are harmless no-ops, kept
+ * so a revived echo re-syncs for free.
  *
  * Mirrors sectionStore.pulse / productionPulseStore's writer/reader discipline:
  * the store holds 0..1 pulse TARGETS, never a per-frame increment. The WebGL
@@ -15,11 +17,10 @@
  * a DEDICATED store here rather than hijacking sectionStore.pulse (one signal
  * store per surface, per state-management.md).
  *
- * On WebGL2-fallback / off / lite the reader never mounts, so the DOM writer's
- * sets are harmless no-ops — the DOM hotspot layer is identical on every tier.
+ * The DOM hotspot layer is identical on every tier regardless of any reader.
  *
- * GLOBALTHIS PIN: written by the route bundle (compliance-pipeline.tsx) and read
- * by the lazy WebGL island (CompliancePipeline3D) — the exact cross-bundle split
+ * GLOBALTHIS PIN: written by the route bundle (compliance-pipeline.tsx) and
+ * formerly read by a lazy WebGL island — the exact cross-bundle split
  * that desynced textMorphStore/sectionStore in prod (Turbopack inlines a copy of
  * small store modules per chunk → two live instances, writer/reader split). The
  * global pin makes every bundled copy resolve to the single real store.
@@ -40,7 +41,7 @@ interface CompliancePipelineState {
   setHovered: (index: number) => void;
   /** Bump a stage's pulse to 1 (writer: the DOM hotspot). */
   bump: (index: number) => void;
-  /** Decay write-back of the whole pulse array (reader: CompliancePipeline3D). */
+  /** Decay write-back of the whole pulse array (for a revived WebGL reader). */
   setPulse: (pulse: number[]) => void;
 }
 

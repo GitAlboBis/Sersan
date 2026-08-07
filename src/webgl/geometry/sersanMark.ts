@@ -25,11 +25,14 @@
  *    matching `@types/three` declarations.)
  *
  * The body dissolve shader and the particle birth share the SAME object-space
- * noise field — `markThreshold(x, y, z)` here is the JS source of truth, and
- * `MARK_NOISE_GLSL` / the TSL twin replicate it exactly so a particle is born
- * precisely where the surface erodes (one `uDissolve` drives both). The GLB is
- * centered & ~2 units tall — the same envelope the procedural mark produced —
- * so this object-space field stays consistent.
+ * noise field — `markThreshold(x, y, z)` here is the JS source of truth, baked
+ * per-particle into the `aThreshold` attribute at sample time so a particle is
+ * born precisely where the surface erodes (one `uDissolve` drives both). The
+ * old in-shader replicas (logoShader.ts's `MARK_NOISE_GLSL` and its TSL twin
+ * logoNodeMaterial.ts) were deleted with the legacy sprite pipeline — any
+ * revived GPU evaluation must replicate this hash/fbm constant-for-constant.
+ * The GLB is centered & ~2 units tall — the same envelope the procedural mark
+ * produced — so this object-space field stays consistent.
  */
 import * as THREE from "three";
 import { MeshSurfaceSampler } from "three/examples/jsm/math/MeshSurfaceSampler.js";
@@ -37,8 +40,9 @@ import { MeshSurfaceSampler } from "three/examples/jsm/math/MeshSurfaceSampler.j
 // === Shared dissolve noise (JS source of truth) ============================
 // A compact 3D value-noise fbm of OBJECT-SPACE position. The body shader and
 // the particle birth both evaluate the SAME field so the eroding mesh front
-// and the spawning particles agree. `MARK_NOISE_GLSL` (logoShader.ts) and the
-// TSL twin (logoNodeMaterial.ts) replicate this hash/fbm constant-for-constant.
+// and the spawning particles agree. This is the only surviving implementation
+// (the GLSL/TSL in-shader replicas, logoShader.ts / logoNodeMaterial.ts, were
+// deleted); consumers read it baked into the `aThreshold` attribute.
 //
 // Returned threshold is normalized to ~[0,1] so a single `uDissolve` ∈ [0,1]
 // sweeps the whole mark.

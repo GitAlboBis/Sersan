@@ -17,8 +17,6 @@ export interface FounderProfile {
    * render the FULL team. Required (not optional) so the compiler forces
    * every entry to be annotated and no consumer can be surprised later. */
   kind: "founder" | "team";
-  roleKey: string;
-  bioKey: string;
   /** Title only, short. E.g. "CEO · Commercial Lead" */
   roleEn: string;
   roleIt: string;
@@ -52,8 +50,6 @@ export const founders: FounderProfile[] = [
     linkedIn: "https://www.linkedin.com/in/alessandro-serratt/",
     badges: ["USAAI CAIC", "Dual MBA + AI"],
     kind: "founder",
-    roleKey: "founders.sebastiano.role",
-    bioKey: "founders.sebastiano.bio",
     roleEn: "CEO · Commercial Systems Lead",
     roleIt: "CEO · Lead Sistemi Commerciali",
     accent: "warm",
@@ -88,8 +84,6 @@ export const founders: FounderProfile[] = [
     linkedIn: "https://www.linkedin.com/in/michele-sanna-work/",
     badges: ["PhD, LSE", "8 yrs senior delivery"],
     kind: "founder",
-    roleKey: "founders.andrea.role",
-    bioKey: "founders.andrea.bio",
     roleEn: "CPTO · Technical Lead",
     roleIt: "CPTO · Lead Tecnico",
     accent: "cool",
@@ -126,12 +120,11 @@ export const founders: FounderProfile[] = [
     anchor: "mattia",
     linkedIn: "https://www.linkedin.com/in/mattia-scattu-481271356",
     // `badges` and `expertiseEn/It` are required by the interface but currently
-    // have NO live render surface (their only consumer, who-and-why.tsx, is a
-    // dead file). Kept accurate rather than decorative in case one revives.
+    // have NO live render surface (their former consumer, who-and-why.tsx, was
+    // deleted in a cleanup). Kept accurate rather than decorative in case a
+    // surface revives.
     badges: ["BSc Computer Science", "Published research"],
     kind: "team",
-    roleKey: "",
-    bioKey: "",
     roleEn: "Software Engineer",
     roleIt: "Software Engineer",
     accent: "cool",

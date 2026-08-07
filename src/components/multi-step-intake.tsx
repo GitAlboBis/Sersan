@@ -1,6 +1,7 @@
 "use client";
 
-// TODO: wire to a real submission endpoint when backend is ready.
+// Submits to POST /api/intake (see the field mapping near the submit handler);
+// the route validates against its zod schema and emails ops when configured.
 import { Fragment, useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";

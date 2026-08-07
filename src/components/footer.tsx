@@ -337,7 +337,7 @@ export function Footer() {
                   {col.links.map((link) => (
                     <li key={link.href}>
                       {/* Hover: 2px x-shift + accent hairline draw — the
-                          who-and-why/our-why bottom-rule grammar (h-px,
+                          our-why bottom-rule grammar (h-px,
                           origin-left scaleX 0→1, bg-accent, 500ms entrance
                           ease). The shift is motion-safe-gated at the source
                           (same reasoning as the button press scale: the global

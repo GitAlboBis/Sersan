@@ -337,8 +337,9 @@ function FitMedallion({
 }
 
 /**
- * Torn redaction bar (built locally — the shared fx/redacted-reveal stays
- * untouched). An ink rect stretched over the bad statement; the scrub
+ * Torn redaction bar (built locally; the old shared fx/redacted-reveal it
+ * deliberately did NOT reuse has since been deleted as dead code). An ink
+ * rect stretched over the bad statement; the scrub
  * slides `x` from off-left to covering, through turbulence → displacement
  * → feMorphology(dilate 2), so the advancing RIGHT edge reads as paper
  * tearing across the sentence. SSR ships x = BAR_X_START (bar off, text

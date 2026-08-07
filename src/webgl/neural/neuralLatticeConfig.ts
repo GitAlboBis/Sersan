@@ -9,7 +9,7 @@
  *   - "healthy" → the ProductionGrade section. Three clusters that pulse in
  *                 sequence (eval baseline → trace propagation → guardrail clamp).
  *
- * COORDINATE FRAME (mirrors linkedParticlesConfig / CompliancePipeline3D): the
+ * COORDINATE FRAME (mirrors linkedParticlesConfig): the
  * lattice is a CAMERA-LOCKED group scaled to the section's right-column rect
  * (w·k × h·k). Everything here is authored in the group's LOCAL space — a
  * unit-ish rect roughly [-0.5,0.5] × [-0.5,0.5]. NOTHING here is in

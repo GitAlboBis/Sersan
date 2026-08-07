@@ -71,16 +71,14 @@ progress `[x]` done (commit).
   real i18n is inline ternaries; 5 IT values byte-identical to EN). Prune to
   cal.fallback.* or migrate for real. Includes founders.ts dead roleKey/bioKey pointing
   at wrong-persona keys.
-- [ ] **B7 · P2/S — Dead components (~750 lines):** who-and-why, how-we-work,
-  consulting-cta, fx/redacted-reveal — zero importers. Delete (mine who-and-why's
-  founder-stat treatment first).
-- [ ] **B8 · P3/S — Retired WebGL modules (~1,530 lines):** CompliancePipeline3D (+store,
-  +linkedParticles sim/config), materials/logoShader.ts, materials/logoNodeMaterial.ts
-  (carries a latent trap: vDisp frozen 0 would Discard every particle if resurrected).
-  Scene.tsx:355 already says "safe to delete".
-- [ ] **B9 · P3/S — Stale TODOs that lie:** multi-step-intake.tsx:3 says "wire to real
-  endpoint" but it IS wired; api/intake/route.ts:16 calls it "no longer primary" while
-  live on /consulting.
+- [x] **B7 · P2/S — Dead components (~750 lines):** deleted (this commit).
+- [x] **B8 · P3/S — Retired WebGL modules:** CompliancePipeline3D + linkedParticlesNodeSim
+  + both legacy logo materials deleted (this commit; latent vDisp trap gone with them).
+  SURVIVORS (post-merge re-verify): compliancePipelineStore is WRITTEN by the live
+  /trust DOM diagram (write-only, reader deleted) and linkedParticlesConfig feeds it +
+  compliancePipelineNodeMaterial — that material is now itself orphaned. → follow-up
+  cluster B8b once the /trust store write is addressed.
+- [x] **B9 · P3/S — Stale TODOs that lie:** both rewritten (this commit).
 - [ ] **B10 · P3/S — Hand-rolled markdown renderer** on resource detail (self-flagged
   TODO) — do with B5.
 - [ ] **B11 · P3/S — /start "What happens next": 3 static bordered cards, no entrance
@@ -150,4 +148,5 @@ key files before implementing — §1.4):
 | 5 | A4 sporeHomes rAF deferral | f196922 | tsc ✓ · single consumer null-gated + new shape gate · browser ✓ |
 | — | owner: preloader zoom+fade exit | dbd72e9 | browser ✓ (clean handoff, no wipe artifacts) — PUSHED |
 | — | owner: hero lockup inversion (2 rounds, empirical calibration) | b246372 | browser ✓ (mark top in-frame, wordmark below, ~4vh gap) — PUSHED |
-| 6 | B1+B2 booking copy truth + owned socials | (this commit) | tsc ✓ · browser ✓ (/audit CTA + footer icons) |
+| 6 | B1+B2 booking copy truth + owned socials | b8eab6f | tsc ✓ · browser ✓ (/audit CTA + footer icons) |
+| 7 | B7+B8+B9 dead-code purge (−2,181 lines, 2 files correctly SKIPPED on post-merge re-verify) | (this commit) | tsc ✓ · npm run build ✓ (40 pages) · browser ✓ (/trust + home on clean server; the LOCKUP_BELOW console burst was a stale Turbopack HMR chunk from the pre-rename graph — source grep clean, prod build unaffected) |

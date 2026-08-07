@@ -13,10 +13,10 @@ import { z } from "zod";
  * Keep it in sync with `src/app/start/page.tsx`.
  *
  * Schema shape was rebuilt as part of the v2 rebuild (see
- * docs/STRATEGY.md §B3). The previous schema lived in the old
- * multi-step-intake component and used very different fields — that
- * component is retained for historical/i18n reasons but is no longer the
- * primary intake.
+ * docs/STRATEGY.md §B3). This route serves TWO live forms: the /start
+ * page intake AND the multi-step intake mounted on /consulting
+ * (multi-step-intake.tsx), which maps its own fields onto this schema
+ * before POSTing here.
  */
 
 const IntakeSchema = z.object({

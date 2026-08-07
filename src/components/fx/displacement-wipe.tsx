@@ -10,7 +10,8 @@
  * liquid/torn rim rather than a straight wipe. A thin cyan → blue rim (pure DOM
  * gradient + glow, no WebGL) traces the retreating edge.
  *
- * Contract (mirrors fx/redacted-reveal — the site's fire-once IO reveal idiom):
+ * Contract (the site's fire-once IO reveal idiom, inherited from the
+ * since-deleted fx/redacted-reveal):
  *   - The children are the REAL content and are ALWAYS in the DOM, fully
  *     readable. The scrim is an ABSOLUTE overlay that never changes layout, and
  *     it ships (SSR / no-JS) already RETRACTED (mask off) — so a crawler, a

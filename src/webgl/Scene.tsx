@@ -357,8 +357,9 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           compliance diagram, so a logo at the "pipeline" anchor would be occluded
           dead pixels — instead /trust shows the logo at its VISIBLE "ritual"
           anchor (via RouteRitual above). The SVG diagram in compliance-pipeline.tsx
-          stays the accessible pipeline layer. CompliancePipeline3D.tsx + its
-          store/sim are now unmounted dead code (safe to delete in a cleanup). */}
+          stays the accessible pipeline layer. CompliancePipeline3D.tsx and its
+          TSL sim were deleted in the dead-code cleanup; only the signal store
+          survives (the DOM diagram still writes it — compliancePipelineStore). */}
       {/* Postprocessing — desktop ("full") only, exactly as before. Which rig
           mounts is a BUILD-TIME split on `webgpuEnabled()`, not a runtime backend
           check:
