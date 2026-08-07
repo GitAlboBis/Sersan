@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight, Building2, Cog, Database, Brain, Container, Code2, LineChart, Users } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { MultiStepIntake } from "@/components/multi-step-intake";
 import ProcessSection from "@/components/sections/process-section";
+import { PracticeLedger } from "./practice-ledger";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Reveal } from "@/components/ui/reveal";
 import {
@@ -19,81 +20,11 @@ export function ConsultingClient() {
   const { language } = useLanguage();
   const isEn = language === "en";
 
-  // Practice cards link out where a real detail page exists (restyle step 2:
-  // resolves the orphaned /services/* pages). Data platforms routes to the
-  // audit (its data & ML readiness surface is the entry engagement; no
-  // dedicated detail page). Fractional CTO anchors to the engagement formats
-  // on this page. FinTech engineering and Quantitative ML have no sensible
-  // target yet and stay non-link.
-  const services: {
-    icon: typeof Building2;
-    title: string;
-    desc: string;
-    href?: string;
-  }[] = [
-    {
-      icon: Building2,
-      title: isEn ? "Enterprise architecture" : "Architettura enterprise",
-      desc: isEn
-        ? "We design the system before we ship it. Boundaries, data flow, failure modes, and the upgrade path."
-        : "Progettiamo il sistema prima di metterlo in produzione. Confini, flussi dati, modalità di errore e percorso di upgrade.",
-      href: "/services/architecture",
-    },
-    {
-      icon: Cog,
-      title: isEn ? "Workflow automation" : "Automazione dei workflow",
-      desc: isEn
-        ? "Repetitive, rule-bound work that humans shouldn't be doing. We map it, automate it, monitor it."
-        : "Lavoro ripetitivo e basato su regole che non dovrebbero fare le persone. Lo mappiamo, lo automatizziamo, lo monitoriamo.",
-      href: "/services/automation",
-    },
-    {
-      icon: Database,
-      title: isEn ? "Data platforms" : "Piattaforme dati",
-      desc: isEn
-        ? "From ingest to warehouse to BI. Built to be queried, governed, and understood."
-        : "Dall'ingest al warehouse alla BI. Costruite per essere interrogate, governate e comprese.",
-      href: "/audit",
-    },
-    {
-      icon: Brain,
-      title: isEn ? "ML & production AI" : "ML e AI in produzione",
-      desc: isEn
-        ? "Models that get to production and stay there. Pre-training, fine-tuning, RAG, agentic systems."
-        : "Modelli che arrivano in produzione e ci restano. Pre-training, fine-tuning, RAG, sistemi agentici.",
-      href: "/services/engineering",
-    },
-    {
-      icon: Container,
-      title: "MLOps",
-      desc: isEn
-        ? "The boring infrastructure that makes AI shippable: feature stores, registries, monitoring, rollbacks."
-        : "L'infrastruttura noiosa che rende l'AI rilasciabile: feature store, registry, monitoring, rollback.",
-      href: "/services/mlops",
-    },
-    {
-      icon: Code2,
-      title: isEn ? "FinTech engineering" : "Ingegneria FinTech",
-      desc: isEn
-        ? "Low-latency, regulated, real money. Eight years of senior delivery at JPM, Revolut, Brevan Howard."
-        : "Bassa latenza, regolamentato, denaro reale. Otto anni di delivery senior in JPM, Revolut, Brevan Howard.",
-    },
-    {
-      icon: LineChart,
-      title: isEn ? "Quantitative ML" : "ML quantitativo",
-      desc: isEn
-        ? "Forecasting, signal generation, risk. The mathematics behind the trading and treasury surfaces."
-        : "Forecasting, generazione di segnali, gestione del rischio. La matematica dietro trading e tesoreria.",
-    },
-    {
-      icon: Users,
-      title: "Fractional CTO",
-      desc: isEn
-        ? "We own the roadmap, architecture governance, hiring, and delivery rituals for 3–12 months."
-        : "Ci prendiamo carico di roadmap, governance architetturale, hiring e riti di delivery per 3–12 mesi.",
-      href: "#engage",
-    },
-  ];
+  // Practice-area content lives in ./practice-ledger.tsx (the big-type
+  // numbered index that replaced the 4×2 icon-card grid). The per-card
+  // /services/* links were retired with the cards — those detail pages stay
+  // reachable from the home ServicesSection cards, /audit from the hero CTA
+  // above, and #engage from the packages section below.
 
   const packages = [
     {
@@ -243,7 +174,8 @@ export function ConsultingClient() {
       </section>
       </div>
 
-      {/* Practice areas grid */}
+      {/* Practice areas — full-bleed big-type numbered index (the ledger
+          replaced the 4×2 icon-card grid; see ./practice-ledger.tsx). */}
       <div data-line-anchor="practice">
       <section data-snap className="section-lg">
         <div className="container-px">
@@ -264,39 +196,7 @@ export function ConsultingClient() {
               )
             }
           />
-          <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {services.map((s, i) => {
-              const cardBody = (
-                <>
-                  <div className="mb-4 flex items-start justify-between" style={{ color: "hsl(var(--accent))" }}>
-                    <s.icon className="w-5 h-5" />
-                    {s.href ? (
-                      <ArrowUpRight
-                        className="w-3.5 h-3.5 text-ink-mute opacity-60 transition-all duration-200 group-hover:opacity-100 group-hover:text-[hsl(var(--accent))] group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                        aria-hidden="true"
-                      />
-                    ) : null}
-                  </div>
-                  <h3 className="font-display text-lg text-ink mb-2 leading-tight">{s.title}</h3>
-                  <p className="text-sm text-ink-mute leading-[1.55]">{s.desc}</p>
-                </>
-              );
-              return (
-                <Reveal key={s.title} delay={i * 60}>
-                  {s.href ? (
-                    <Link
-                      href={s.href}
-                      className="card-steel group block h-full p-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--accent)/0.45)] focus-visible:border-[hsl(var(--accent)/0.5)]"
-                    >
-                      {cardBody}
-                    </Link>
-                  ) : (
-                    <div className="card-steel h-full p-6">{cardBody}</div>
-                  )}
-                </Reveal>
-              );
-            })}
-          </div>
+          <PracticeLedger />
         </div>
       </section>
       </div>

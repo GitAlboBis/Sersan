@@ -95,9 +95,11 @@ progress `[x]` done (commit).
 Reference-backed redesigns (each consumes its dossier; personally re-read the repo's
 key files before implementing — §1.4):
 
-- [ ] **C1 · P2/M — /consulting practice areas:** flat 4×2 icon-card grid (page
-  centerpiece, zero GSAP on the whole route) → full-bleed big-type numbered index
-  (01-08 display-serif lines, scroll-scrubbed), machinery proven by home services POV-pan.
+- [x] **C1 · P2/M — /consulting practice areas → big-type scrubbed ledger.** (this
+  commit) Full-bleed numbered index, scroll-active row + hover/focus override, SSR
+  static-open, RM/mobile ledger. OPEN FOLLOW-UP C1b: the old cards linked 5 rows to
+  /services/* — links removed per spec (no orphaned routes; home cards still link);
+  consider a small "Explore →" inside the expanded description. OWNER TO CONFIRM.
 - [ ] **C2 · P2/M — /consulting engagement formats:** 3-card pricing grid → choreographed
   sequential big-type reveal / pinned step-through.
 - [ ] **C3 · P2/M — /consulting process map (ProcessSection):** 4 static card columns →
