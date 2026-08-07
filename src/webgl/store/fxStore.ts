@@ -113,6 +113,26 @@ interface FxState {
   /** Falloff exponent shaping the orbit term (higher hugs the cursor
    * tighter; the radial push keeps its approved push² shape independently). */
   sporeOrbitFalloff: number;
+  // Spore AUTO-BURST — HeroLogo's one-shot crust explosion the moment the
+  // intro assembly completes (mark reform released + "Sersan AI" wordmark
+  // formed). It rides the layers' existing uBurst mechanism (radial-from-
+  // center push + staggered kill + parked respawn → LIFE_REGROW regrowth),
+  // composed into CRUST-role layers only. These knobs shape its envelope.
+  /** Peak uBurst the envelope ramps to (~0.9, next to the intro reform's
+   * 0.92 — high enough that the staggered kill clears the whole crust). */
+  sporeAutoBurstPeak: number;
+  /** Seconds 0 → peak — the visible center-out explosion (owner spec:
+   * ~0.5–0.7s). */
+  sporeAutoBurstRamp: number;
+  /** Seconds held at peak so the staggered kill completes across the crust. */
+  sporeAutoBurstHold: number;
+  /** Seconds peak → 0. Dropping under the sim's 0.05 respawn threshold is
+   * what releases the standard LIFE_REGROW-paced regrowth. */
+  sporeAutoBurstFall: number;
+  /** Dev re-fire trigger: set to any NEW number to replay the burst envelope,
+   *   window.__sersanFx.getState().set({ sporeAutoBurstFire: Date.now() })
+   * (bypasses the one-shot / soft-entry latches — it is a tuning handle). */
+  sporeAutoBurstFire: number;
   // Particle field
   particleOpacity: number;
   // GPGPU hero STATIC fallback (HeroLogo "particles-static") — the few
@@ -229,6 +249,12 @@ export const useFxStore = create<FxState>((set) => ({
   // the hover/burst swirl.
   sporeAttractor: DEFAULT_GPGPU_CONFIG.ORBIT,
   sporeOrbitFalloff: DEFAULT_GPGPU_CONFIG.ORBIT_FALLOFF,
+  // Intro-completion crust auto-burst envelope (HeroLogo one-shot).
+  sporeAutoBurstPeak: 0.9,
+  sporeAutoBurstRamp: 0.6, // owner spec ~0.5–0.7s to peak
+  sporeAutoBurstHold: 0.18,
+  sporeAutoBurstFall: 0.35,
+  sporeAutoBurstFire: 0,
   particleOpacity: 0.35,
   gpgpuPush: DEFAULT_GPGPU_CONFIG.PUSH,
   gpgpuRadius: DEFAULT_GPGPU_CONFIG.RADIUS,

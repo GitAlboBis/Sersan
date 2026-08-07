@@ -131,20 +131,26 @@ const TILT_DAMP = 3.5; // damp lambda — soft ease toward the pointer target
 // Geometry behind the numbers (1440×810 reference desktop; WORLD_VIEW_HEIGHT
 // ≡ 100vh at the z=0 content plane):
 //   mark height = 2 (normalized) × WORLD_VIEW_HEIGHT·fx.heroScale(0.17)
-//     × LOCKUP_SCALE(0.58) ≈ 2.21 world ≈ 19.7vh (~2% smaller apparent at
-//     the lockup's z = heroPosZ −0.3), width ≈ 2.91 world.
+//     × LOCKUP_SCALE(0.66) ≈ 2.51 world ≈ 22.4vh (~2% smaller apparent at
+//     the lockup's z = heroPosZ −0.3), width ≈ 3.31 world.
 // PLACEMENT IS CALIBRATED EMPIRICALLY, not from rect math: on the reference
 // desktop the whole WebGL lockup renders ~19vh ABOVE the DOM-center mapping
 // (browser-verified 2026-08-07 — the old flex-centered wordmark's particle
 // render sat at ~31vh optical center, not 50vh), so a "pure" DOM-derived
 // offset lands the mark clipped behind the header. The numbers below come
-// from measuring the LIVE render: at −0.09 the mark's observed center is
-// ≈22vh from the frame top, top edge ≈12vh (clear of the ~7vh header band),
-// bottom ≈32vh; the wordmark span (clamp(3.25rem, 9.5vw, 10rem), translated
-// +13vh in cinematic-system-scroll) renders its text center ≈44vh, top
-// ≈35.5vh ⇒ a ~4vh visible gap under the mark, bottom ≈52.5vh — an upper-
-// half-weighted lockup, both elements in frame with margin. The wordmark is
-// width-clamped, so narrower windows only gain clearance.
+// from measuring the LIVE render AT LOCKUP_SCALE 0.58, then DERIVING the
+// 0.66 deltas (owner 2026-08-07: mark a bit bigger; +0.08 scale = +2×1.902
+// ×0.08 ≈ +0.30 world ≈ +2.7vh full height ⇒ ≈+1.4vh half-height — the
+// lead re-verifies these clearances live): at −0.09 the mark's observed
+// center stays ≈22vh from the frame top (offset unchanged); half-height
+// grows 9.85 → ≈11.2vh, so top edge ≈12vh → ≈10.8vh (still clear of the
+// ~7vh header band) and bottom ≈32vh → ≈33.2vh; the wordmark span
+// (clamp(3.25rem, 9.5vw, 10rem), translated +13vh in
+// cinematic-system-scroll) renders its text center ≈44vh, top ≈35.5vh ⇒
+// the visible gap under the mark narrows ~4vh → ≈2.3vh, still clear,
+// bottom ≈52.5vh — an upper-half-weighted lockup, both elements in frame
+// with margin. The wordmark is width-clamped, so narrower windows only
+// gain clearance.
 /** Mark center offset from the viewport (camera) center, as a fraction of
  * WORLD_VIEW_HEIGHT — same screen-down-positive sign convention as
  * fx.heroOffsetY (the use site SUBTRACTS it), so NEGATIVE parks the mark
@@ -153,9 +159,10 @@ const TILT_DAMP = 3.5; // damp lambda — soft ease toward the pointer target
  * clipped the mark's top half behind the header). */
 const LOCKUP_OFFSET_Y = -0.09;
 /** Mark scale at the lockup vs its hero rest — the mark leads the lockup
- * (owner 2026-08-07: mark on top, a bit bigger; wordmark a bit smaller):
- * ≈19.7vh tall against the wordmark's ≈16.9vh line. */
-const LOCKUP_SCALE = 0.58;
+ * (owner 2026-08-07: mark on top, a bit bigger; wordmark a bit smaller —
+ * raised again 0.58 → 0.66 the same day, "a bit bigger" round two):
+ * ≈22.4vh tall against the wordmark's ≈16.9vh line. */
+const LOCKUP_SCALE = 0.66;
 /** Toward-camera z bulge (world units) at mid-flight of the lockup→hero
  * move, so it reads as the camera carrying the mark, not a flat slide. */
 const FLIGHT_BULGE = 0.7;
@@ -168,10 +175,11 @@ const FLIGHT_BULGE = 0.7;
  * at PEAK) so there is NOTHING behind it; when the curtain lifts the spores
  * respawn AT HOME and regrow from nothing into the solid logo. The EXPLODE is
  * the OTHER half of the arc — the scroll dissolve as you reach the end of the
- * hero (the `burst` window in the frame loop). All three beats (intro reform,
- * scroll explode, scroll-back regrow) ride the SAME `uBurst` mechanism
- * (gpgpuNodeSim "disappear and regrow on top"), so they stay one coherent
- * system. Driven by a wall-clock (delta), NOT scroll, and composed with the
+ * hero (the `burst` window in the frame loop). All the burst beats (intro
+ * reform, scroll explode, scroll-back regrow, and the one-shot crust
+ * AUTO-BURST at intro completion — see the frame loop) ride the SAME `uBurst`
+ * mechanism (gpgpuNodeSim "disappear and regrow on top"), so they stay one
+ * coherent system. Driven by a wall-clock (delta), NOT scroll, and composed with the
  * scroll burst via max(). Plays on HARD load only; a soft route re-entry just
  * shows the logo already present (no replay). The visible reform is the sim's
  * regrow bloom (~1s, paced by crust/core LIFE_REGROW in sporePresets — lower it
@@ -219,6 +227,32 @@ function introReformEnvelope(te: number): number {
         INTRO_REFORM_HOLD + INTRO_REFORM_RAMP,
       ))
   );
+}
+
+/**
+ * ONE-SHOT crust AUTO-BURST envelope (owner 2026-08-07) vs seconds since the
+ * intro-completion trigger: 0 → PEAK over RAMP (the visible center-out
+ * explosion — the sim's burst term is already a radial push from the model
+ * CENTER, `pos.normalize() · uBurst`, per-spore staggered; no pointer-radius
+ * semantics anywhere near it), held at PEAK for HOLD so the staggered kill
+ * clears the whole crust, then → 0 over FALL. Dropping under the sim's 0.05
+ * respawn threshold is what releases the standard LIFE_REGROW-paced regrowth
+ * — the exact "disappear and regrow on top" release the intro reform and the
+ * scroll-back regrow already use. t < 0 = not fired → 0. All four shape
+ * params are live fxStore knobs (sporeAutoBurst* in __sersanFx).
+ */
+function autoBurstEnvelope(
+  t: number,
+  peak: number,
+  ramp: number,
+  hold: number,
+  fall: number,
+): number {
+  if (t < 0) return 0;
+  if (t < ramp) return peak * THREE.MathUtils.smoothstep(t, 0, ramp);
+  const tf = t - ramp - hold;
+  if (tf < 0) return peak;
+  return peak * (1 - THREE.MathUtils.smoothstep(tf, 0, fall));
 }
 
 /** The Blender-built SERSAN mark. Geometry-only (no materials). */
@@ -273,6 +307,17 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // Entry type, snapshotted on the first frame: true ⇒ soft route re-entry
   // (introComplete already true → no intro replay); false ⇒ hard load.
   const softEntryRef = useRef(false);
+  // ONE-SHOT crust auto-burst clock (seconds since the trigger; -1 = armed,
+  // not fired). Fired by the intro-completion edge in the frame loop below,
+  // plays the fxStore-tunable ramp/hold/fall envelope once, then holds spent
+  // (the clock never returns to -1 ⇒ one-shot per hard load, like the intro
+  // reform). Soft route re-entry never arms it; the dev re-fire knob resets
+  // the clock directly.
+  const autoBurstClock = useRef(-1);
+  // Last-seen fx.sporeAutoBurstFire (null until the first spores frame, so a
+  // pre-bumped store value can never fire spuriously on mount) — any NEW
+  // value re-fires the envelope for live tuning.
+  const autoBurstFireSeen = useRef<number | null>(null);
   // Eased global hover intensity for the analytic-dispersion static render:
   // target 1 while hovering, 0 otherwise; damped so the lift fades in/out and
   // the particles settle back softly when the cursor leaves.
@@ -1031,6 +1076,58 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       sporeOccluderMaterial.visible = occBurst < 0.97;
       if (!tslSpore) return; // occluder-only until the lazy build resolves
 
+      // --- ONE-SHOT CRUST AUTO-BURST on intro completion (owner 2026-08-07) --
+      // The moment the intro assembly is GENUINELY complete — the mark's
+      // materialise released (introReformClock past INTRO_REFORM_RELEASE: burst
+      // 0, regrow restored, and the dark body finishes fading in at exactly
+      // that instant) AND the "Sersan AI" wordmark fully formed
+      // (textMorphStore.assembleDone, flipped by HeroTextParticles only when
+      // its entry clock actually finishes — a completion signal, never a fixed
+      // timer from mount) — the OUTER CRUST explodes from the mark's center
+      // and regrows. It rides the SAME uBurst mechanism as the scroll explode
+      // and the intro reform (radial-from-center push + staggered kill +
+      // parked respawn → LIFE_REGROW regrowth once the envelope drops under
+      // the 0.05 respawn threshold): no new sim path, and uMouse/uRadius (the
+      // pointer-hover semantics) are never touched. SELECTIVITY IS STRUCTURAL:
+      // every preset layer is its own compute build with its own uBurst
+      // uniform, and the envelope is composed (max(), like the other beats)
+      // into CRUST-role layers ONLY — the core layer and the wordmark
+      // particles are untouched by construction. One-shot per hard load
+      // (clock never re-arms); softEntryRef keeps soft route re-entries from
+      // ever arming it; reduced-motion tiers never mount this component.
+      // Wordmark-clause guards against a dead latch: introSkipped pins the
+      // wordmark at its end state WITHOUT flipping assembleDone (the skip
+      // sets entryRef=1 before the <1 branch), so the skip satisfies the
+      // clause; an inactive morph system (text build absent/failed) waives it.
+      if (autoBurstClock.current < 0) {
+        const wordmarkFormed =
+          !morph.active || morph.assembleDone || morph.introSkipped;
+        if (
+          !softEntryRef.current &&
+          introReformClock.current >= INTRO_REFORM_RELEASE &&
+          wordmarkFormed
+        ) {
+          autoBurstClock.current = 0;
+        }
+      } else {
+        autoBurstClock.current += delta;
+      }
+      // Dev re-fire (__sersanFx): any NEW sporeAutoBurstFire value restarts
+      // the envelope — bypasses the one-shot/soft-entry latches (tuning only).
+      if (autoBurstFireSeen.current === null) {
+        autoBurstFireSeen.current = fx.sporeAutoBurstFire;
+      } else if (fx.sporeAutoBurstFire !== autoBurstFireSeen.current) {
+        autoBurstFireSeen.current = fx.sporeAutoBurstFire;
+        autoBurstClock.current = 0;
+      }
+      const autoBurst = autoBurstEnvelope(
+        autoBurstClock.current,
+        fx.sporeAutoBurstPeak,
+        fx.sporeAutoBurstRamp,
+        fx.sporeAutoBurstHold,
+        fx.sporeAutoBurstFall,
+      );
+
       // Model-space cursor via the raycast helper: the repulsion center is the
       // exact mark-surface point under the cursor (perspective-correct).
       projectCursorToModel(spin);
@@ -1053,9 +1150,16 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         layer.uOrbitFalloff.value = fx.sporeOrbitFalloff;
         // STAGGERED explode: the OUTER crust (i=0) leads, inner layers (the
         // core) lag, so the upper layer expands before the lower. The intro
-        // reform (when active) hits every layer together via max().
+        // reform (when active) hits every layer together via max(); the
+        // intro-completion AUTO-BURST joins the same max() composition but on
+        // CRUST-role layers ONLY — the core stays formed. Roles come from the
+        // ACTIVE preset (guarded: a preset switch swaps `preset` one commit
+        // before the rig rebuilds); solo presets have no crust layer, so they
+        // simply never auto-burst rather than bursting their only shell.
         const scrollBurst = i === 0 ? burstCrust : burstCore;
-        layer.uBurst.value = Math.max(scrollBurst, introBurst);
+        const autoLayerBurst =
+          preset.layers[i]?.role === "crust" ? autoBurst : 0;
+        layer.uBurst.value = Math.max(scrollBurst, introBurst, autoLayerBurst);
         // Slow ONLY the intro materialise bloom; 1 the rest of the time.
         layer.uRegrowScale.value = introRegrowScale;
       }
