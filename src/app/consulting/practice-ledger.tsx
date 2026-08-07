@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useLanguage } from "@/components/language-provider";
@@ -13,9 +14,17 @@ if (typeof window !== "undefined") {
  * PracticeLedger — the /consulting practice areas as a full-bleed big-type
  * numbered index ("less cards, more animation, big text"). Replaces the 4×2
  * icon-card grid; all eight EN+IT content strings are carried over verbatim,
- * only the icons and card chrome are retired. (The /services/* detail links
- * the cards held remain reachable from the home ServicesSection cards; the
- * ledger rows are deliberately non-link — no fake affordance.)
+ * only the icons and card chrome are retired. The five detail routes the
+ * retired cards held (recovered from the pre-ledger consulting-client.tsx,
+ * commit a2e2602^: architecture → /services/architecture, automation →
+ * /services/automation, data platforms → /audit, ML & production AI →
+ * /services/engineering, MLOps → /services/mlops) are restored as a small
+ * mono "Explore →" <Link> INSIDE each expanded description — it rides the
+ * height-clip reveal, so it appears only when the row is active, and is
+ * always visible in static/SSR mode (descriptions open). The row itself
+ * stays non-link — the CTA is the row's only interactive element. Keyboard:
+ * the link is tabbable and lives inside [data-pl-row], so the existing
+ * focusin lock opens the row the moment the link receives focus.
  *
  * MECHANICS (same binding contract as services-section's POV pan):
  *   - ONE ScrollTrigger over the row list, start "top 70%" / end "bottom 30%",
@@ -54,8 +63,14 @@ if (typeof window !== "undefined") {
  * can expand each entry.
  */
 
-type PracticeArea = { num: string; title: string; desc: string };
+type PracticeArea = { num: string; title: string; desc: string; href?: string };
 
+// href = the buyer path each retired practice card carried (recovered
+// verbatim from the pre-ledger consulting-client.tsx, a2e2602^). Only the
+// historical five: data platforms deliberately routed to /audit (its data &
+// ML readiness surface is the entry engagement; no dedicated detail page);
+// FinTech engineering and Quantitative ML never had a target; Fractional
+// CTO's "#engage" was an in-page anchor, not a route — all stay link-free.
 function getAreas(isEn: boolean): PracticeArea[] {
   return [
     {
@@ -64,6 +79,7 @@ function getAreas(isEn: boolean): PracticeArea[] {
       desc: isEn
         ? "We design the system before we ship it. Boundaries, data flow, failure modes, and the upgrade path."
         : "Progettiamo il sistema prima di metterlo in produzione. Confini, flussi dati, modalità di errore e percorso di upgrade.",
+      href: "/services/architecture",
     },
     {
       num: "02",
@@ -71,6 +87,7 @@ function getAreas(isEn: boolean): PracticeArea[] {
       desc: isEn
         ? "Repetitive, rule-bound work that humans shouldn't be doing. We map it, automate it, monitor it."
         : "Lavoro ripetitivo e basato su regole che non dovrebbero fare le persone. Lo mappiamo, lo automatizziamo, lo monitoriamo.",
+      href: "/services/automation",
     },
     {
       num: "03",
@@ -78,6 +95,7 @@ function getAreas(isEn: boolean): PracticeArea[] {
       desc: isEn
         ? "From ingest to warehouse to BI. Built to be queried, governed, and understood."
         : "Dall'ingest al warehouse alla BI. Costruite per essere interrogate, governate e comprese.",
+      href: "/audit",
     },
     {
       num: "04",
@@ -85,6 +103,7 @@ function getAreas(isEn: boolean): PracticeArea[] {
       desc: isEn
         ? "Models that get to production and stay there. Pre-training, fine-tuning, RAG, agentic systems."
         : "Modelli che arrivano in produzione e ci restano. Pre-training, fine-tuning, RAG, sistemi agentici.",
+      href: "/services/engineering",
     },
     {
       num: "05",
@@ -92,6 +111,7 @@ function getAreas(isEn: boolean): PracticeArea[] {
       desc: isEn
         ? "The boring infrastructure that makes AI shippable: feature stores, registries, monitoring, rollbacks."
         : "L'infrastruttura noiosa che rende l'AI rilasciabile: feature store, registry, monitoring, rollback.",
+      href: "/services/mlops",
     },
     {
       num: "06",
@@ -466,16 +486,40 @@ export function PracticeLedger() {
           </div>
           {/* Description — always in the DOM (screen readers read the full
               ledger); the wrapper is height-clipped by GSAP in interactive
-              mode and fully open in static/no-JS/reduced-motion. */}
+              mode and fully open in static/no-JS/reduced-motion. The inner
+              block (measured for descH, slid as one) holds the copy plus,
+              on the historical five, the "Explore →" buyer-path CTA — being
+              inside the clip, the link only surfaces when the row is open. */}
           <div className="grid grid-cols-[2.75rem_1fr] gap-x-2 sm:grid-cols-[4.25rem_1fr]">
             <span aria-hidden="true" />
             <div data-pl-desc-wrap className="overflow-hidden">
-              <p
-                data-pl-desc-inner
-                className="max-w-2xl pb-1 pt-3 text-[15px] leading-[1.6] text-ink-mute sm:text-base"
-              >
-                {a.desc}
-              </p>
+              <div data-pl-desc-inner className="max-w-2xl pb-1 pt-3">
+                <p className="text-[15px] leading-[1.6] text-ink-mute sm:text-base">
+                  {a.desc}
+                </p>
+                {a.href ? (
+                  <Link
+                    href={a.href}
+                    aria-label={
+                      isEn ? `Explore ${a.title}` : `Approfondisci ${a.title}`
+                    }
+                    className="group/explore relative mt-3 inline-flex items-center gap-1.5 rounded-sm font-mono text-[11px] uppercase tracking-[0.18em] text-ink-mute outline-none transition-colors duration-200 hover:text-accent focus-visible:text-accent focus-visible:ring-1 focus-visible:ring-[hsl(var(--accent)/0.45)]"
+                  >
+                    {isEn ? "Explore" : "Approfondisci"}
+                    <span
+                      aria-hidden="true"
+                      className="transition-transform duration-200 group-hover/explore:translate-x-0.5 group-focus-visible/explore:translate-x-0.5"
+                    >
+                      →
+                    </span>
+                    {/* Underline sweep — the ledger's own scaleX grammar. */}
+                    <span
+                      aria-hidden="true"
+                      className="absolute -bottom-0.5 left-0 h-px w-full origin-left scale-x-0 bg-accent/80 transition-transform duration-300 ease-out group-hover/explore:scale-x-100 group-focus-visible/explore:scale-x-100"
+                    />
+                  </Link>
+                ) : null}
+              </div>
             </div>
           </div>
         </li>

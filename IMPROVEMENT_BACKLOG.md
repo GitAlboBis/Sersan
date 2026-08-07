@@ -99,7 +99,9 @@ key files before implementing — §1.4):
   commit) Full-bleed numbered index, scroll-active row + hover/focus override, SSR
   static-open, RM/mobile ledger. OPEN FOLLOW-UP C1b: the old cards linked 5 rows to
   /services/* — links removed per spec (no orphaned routes; home cards still link);
-  consider a small "Explore →" inside the expanded description. OWNER TO CONFIRM.
+  consider a small "Explore →" inside the expanded description. RESOLVED (owner
+  delegated): the historical five hrefs restored via git evidence as "Explore →" /
+  "Approfondisci →" inside the height-clip (this commit).
 - [x] **C2 · P2/M — /consulting engagement formats → three big-type acts.** (this
   commit) One-shot entrance timelines (rule draw → number+tick → masked title →
   deliverable cascade), two-column hairline tables, act 02 offset on xl. Note: the old

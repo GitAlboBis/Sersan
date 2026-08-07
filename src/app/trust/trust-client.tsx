@@ -48,7 +48,12 @@ export function TrustClient() {
     },
   ];
 
-  const controls = [
+  // The last three rows are the AI-specific controls the spec (AGENTS.md
+  // §Security) names outright — kill switch within 30s, eval gates
+  // pre-deploy, output review. They carry `accent: true` so their mono
+  // label renders in text-accent (owner decision: the spec wins over the
+  // earlier "no accent rows on this table" call).
+  const controls: { title: string; desc: string; accent?: boolean }[] = [
     {
       title: isEn ? "Data minimisation" : "Minimizzazione dei dati",
       desc: isEn
@@ -72,6 +77,27 @@ export function TrustClient() {
       desc: isEn
         ? "A controlled list of EU-based subprocessors (cloud, observability, document storage). Full list available on request under NDA."
         : "Una lista controllata di sub-responsabili con sede UE (cloud, observability, archiviazione documenti). Elenco completo disponibile su richiesta sotto NDA.",
+    },
+    {
+      title: isEn ? "AI kill switch" : "Kill switch AI",
+      desc: isEn
+        ? "Every agentic system ships with a kill switch that halts it within 30 seconds."
+        : "Ogni sistema agentico include un kill switch che lo ferma entro 30 secondi.",
+      accent: true,
+    },
+    {
+      title: isEn ? "Eval gates" : "Eval gate",
+      desc: isEn
+        ? "No model or agent change deploys without passing its evaluation suite."
+        : "Nessuna modifica a modelli o agenti va in produzione senza superare la sua suite di valutazione.",
+      accent: true,
+    },
+    {
+      title: isEn ? "Output review" : "Revisione degli output",
+      desc: isEn
+        ? "Human review paths for AI output wherever it reaches a customer or a regulator."
+        : "Percorsi di revisione umana per gli output AI ovunque raggiungano un cliente o un'autorità.",
+      accent: true,
     },
   ];
 
@@ -312,13 +338,18 @@ export function TrustClient() {
               grammar): each control is a border-t row with a mono micro-caps
               label (uppercase is CSS-only — DOM strings stay byte-identical)
               and its description at reading size. No card fills, no outer
-              box. This page's controls carry no AI-specific accent rows
-              (kill switch / eval gates live on the pipeline diagram), so
-              every row gets the same sober treatment. */}
+              box. The three AI-specific controls the spec reserves accent
+              for (kill switch / eval gates / output review) close the list
+              with their mono label in text-accent; every other row keeps
+              the sober muted label. Same row grammar throughout. */}
           <ul role="list" className="grid grid-cols-1 gap-x-12 sm:grid-cols-2">
             {controls.map((c, i) => (
               <Reveal as="li" key={`control-${i}`} delay={i * 60} className="border-t border-rule/60 py-5">
-                <h3 className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink/80 mb-2.5">
+                <h3
+                  className={`font-mono text-[11px] uppercase tracking-[0.16em] mb-2.5 ${
+                    c.accent ? "text-accent" : "text-ink/80"
+                  }`}
+                >
                   {c.title}
                 </h3>
                 <p className="text-sm text-ink-mute leading-[1.55]">{c.desc}</p>
