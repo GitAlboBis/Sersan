@@ -1132,7 +1132,12 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // Arc-length space — matches uv.x (FIX A1). Both lineShader.ts (GLSL)
     // and lineNodeMaterial.ts (TSL) compare uProgress vs uv.x unchanged.
     u.uProgress.value = arcProgress;
-    u.uTime.value += delta;
+    // Clamped advance (1/30, the sibling-island convention — see DriftParticles):
+    // after a background-tab refocus R3F hands us the whole away-time as ONE
+    // delta, which would snap the gradient-flow phase + vertex breathField to a
+    // new phase in a single frame — a visible pop on the site's most prominent
+    // effect. The damp()/spring paths above already handle big deltas safely.
+    u.uTime.value += Math.min(delta, 1 / 30);
     u.uReveal.value = dampedReveal.current;
     // Velocity feeds a subtle energy boost into the glow; the section-arrival
     // pulse adds a brief ~×1.2 bump as the head "arrives" at each section

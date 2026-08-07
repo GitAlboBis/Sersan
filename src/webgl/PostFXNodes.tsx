@@ -376,10 +376,12 @@ export function PostFXNodes({ pathname = "/" }: { pathname?: string }) {
   // the post pipeline instead — inside the ONE existing R3F/Lenis loop, no new
   // RAF. Until the lazy graph lands, fall back to a plain scene render so the
   // first frames are not black.
-  useFrame(() => {
+  useFrame((_, delta) => {
     // Stamp + fade the pointer flowmap FIRST (renders the offscreen quad into its
     // own RT and restores the previous target), so the post pipeline samples a
     // fresh field this frame. Idle cursor → only the cheap fade runs (no stamp).
+    // delta threads through so fade/deposit are wall-clock-true at any refresh
+    // rate (the flowmap clamps it to 1/30 itself).
     const flow = flowRef.current;
     if (flow) {
       const fx = useFxStore.getState();
@@ -391,6 +393,7 @@ export function PostFXNodes({ pathname = "/" }: { pathname?: string }) {
       const aspect = w && h ? w / h : 1;
       flow.uStrength.value = fx.fluidStrength;
       flow.tick({
+        dt: delta,
         px: smooth.x,
         py: smooth.y,
         vx: vel.x,

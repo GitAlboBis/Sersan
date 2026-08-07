@@ -6,7 +6,10 @@
  * --------------------------------------------------------
  * Each frame we stamp a soft Gaussian splat at the smoothed pointer, encoding
  * its velocity into RG (and strength into B), then fade the whole accumulation
- * by `dissipation (~0.96)`. Sampling this field in the post graph and offsetting
+ * by `dissipation` (~0.96 per 60 Hz frame — tick() dt-normalizes BOTH the fade,
+ * `pow(base, dt*60)`, and the deposit, `×dt*60`, so the trail's wall-clock decay
+ * and energy-per-second are refresh-rate independent; at dt=1/60 both collapse
+ * to the plain per-frame multiply). Sampling this field in the post graph and offsetting
  * the scene-pass UV by `flow.rg * uStrength` (TINY, ~0.004–0.01) reads as a
  * premium liquid-glass breath around the cursor — the line/planet gently bow,
  * never a funhouse warp.
@@ -151,12 +154,13 @@ export interface PointerFlowmap {
   uStrength: UniformNode<number>;
   /** Advance one frame: stamp (unless idle) + fade + ping-pong. */
   tick: (params: {
+    dt: number; // frame delta, seconds (clamped internally to 1/30)
     px: number; // smoothed pointer x, clip [0..1] top-left
     py: number; // smoothed pointer y, clip [0..1] top-left
     vx: number; // velocity (clip/sec)
     vy: number;
     aspect: number; // width / height (for circular splat)
-    dissipation: number;
+    dissipation: number; // per-60Hz-frame fade factor (dt-normalized in tick)
     splatRadius: number;
     strength: number;
   }) => void;
@@ -214,6 +218,7 @@ export function createPointerFlowmap(
   const uPointer = uniform(pointerVec as unknown);
   const uVelStrength = uniform(velVec as unknown);
   const uAspect = uniform(1);
+  // Written per tick() as pow(baseDissipation, dt*60) — never the raw base.
   const uDissipation = uniform(0.96);
   const uRadius = uniform(0.07);
 
@@ -278,6 +283,7 @@ export function createPointerFlowmap(
   const uStrength = uniform(0.006) as unknown as UniformNode<number>;
 
   function tick(params: {
+    dt: number;
     px: number;
     py: number;
     vx: number;
@@ -287,8 +293,22 @@ export function createPointerFlowmap(
     splatRadius: number;
     strength: number;
   }) {
+    // dt-normalize the integrator (this was the last frame-rate-dependent one
+    // in the codebase). `dissipation` is a PER-60HZ-FRAME factor; applied raw
+    // once per tick, a 144 Hz display decays the field ~2.4× faster in
+    // wall-clock (and deposits ~2.4× more splat energy/second) than 60 Hz.
+    // Raising the fade to dt·60 and scaling the deposit by the same dt·60
+    // makes both wall-clock-true: dt=1/60 → pow(base, 1) and ×1, so 60 Hz
+    // behavior is exactly the old per-frame multiply. Clamped to 1/30
+    // (sibling convention) so a background-tab refocus can't land the whole
+    // away-time as one giant fade/deposit.
+    const dt = Math.min(params.dt, 1 / 30);
+    const dtScale = dt * 60;
     (uStrength as UniformNode<number>).value = params.strength;
-    (uDissipation as unknown as UniformNode<number>).value = params.dissipation;
+    (uDissipation as unknown as UniformNode<number>).value = Math.pow(
+      params.dissipation,
+      dtScale,
+    );
     (uRadius as unknown as UniformNode<number>).value = params.splatRadius;
     (uAspect as unknown as UniformNode<number>).value = params.aspect;
 
@@ -299,12 +319,14 @@ export function createPointerFlowmap(
     const speed = Math.hypot(params.vx, params.vy);
     const moving = speed > 0.0008;
     // Encode velocity (flip Y to match the flipped UV space). Scale into a sane
-    // range; the splat strength channel marks "freshly disturbed".
+    // range; the splat strength channel marks "freshly disturbed". ×dtScale
+    // AFTER the clamp so the per-SECOND deposit matches 60 Hz at any refresh
+    // rate (dtScale is exactly 1 at dt=1/60 — see the block above).
     const vScale = 1.5;
     velVec.set(
-      moving ? clampN(params.vx * vScale, -1, 1) : 0,
-      moving ? clampN(-params.vy * vScale, -1, 1) : 0,
-      moving ? Math.min(speed * 6, 1) : 0,
+      moving ? clampN(params.vx * vScale, -1, 1) * dtScale : 0,
+      moving ? clampN(-params.vy * vScale, -1, 1) * dtScale : 0,
+      moving ? Math.min(speed * 6, 1) * dtScale : 0,
     );
 
     // Read from rtRead (uPrev points at it), write into rtWrite.

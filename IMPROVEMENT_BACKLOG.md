@@ -13,7 +13,7 @@ progress `[x]` done (commit).
 
 ## A. WebGPU correctness (fix broken/silently-dead animation logic first)
 
-- [~] **A1 · P1/M — Frozen-varying family (TSL VaryingNode hoisting trap).** Same trap
+- [x] **A1 · P1/M — Frozen-varying family (TSL VaryingNode hoisting trap).** (aa707d4) Same trap
   fixed once in 5562211; still live in three modules. (1) `neural/neuralFieldCompute.ts`
   compute branch (~669-730) AND static branch (~463-544): all 7 varyings (vDepth, vRole,
   vDead, vGlow, vBurst, vAlive, vSignal) frozen at declaration constants — the
@@ -24,7 +24,7 @@ progress `[x]` done (commit).
   vFade frozen at 1 — WebGPU drift dust ignores depth fade (parity break vs GLSL twin +
   extra additive overdraw). Fix = self-contained expressions passed straight to
   `varying(...)` per gpgpuNodeSim.ts:1244-1264 documentation. → ITERATION 1
-- [ ] **A2 · P2/S — Frame-loop dt hygiene.** `SignatureLine.tsx:1021` `uTime += delta`
+- [x] **A2 · P2/S — Frame-loop dt hygiene.** (this commit) `SignatureLine.tsx:1021` `uTime += delta`
   unclamped (phase pop after background tab; every sibling clamps at 1/30);
   `fluid/PointerFlowmap.ts:242` dissipation+splat are per-frame not per-second (2.4×
   faster decay at 144Hz — only frame-rate-dependent integrator left; fix
@@ -129,7 +129,7 @@ key files before implementing — §1.4):
   message field condenses the visitor's words out of cyan spores.
 - [ ] **C13 · P3/M — [slug] imagery reveal (r3f-image-reveal dossier, MIT):** one
   dissolve language — imagery materializes as the hero de-materializes.
-- [~] **C14 · P1/M — Preloader particle-tunnel rebuild (OWNER DIRECTIVE 2026-08-07).**
+- [x] **C14 · P1/M — Preloader particle-tunnel rebuild (OWNER DIRECTIVE 2026-08-07).** (2715953)
   Owner: current preloader is "too static, monochrome, under-animated"; the designated
   reference is the GreenSock/TroisJS tunnel (`_refs/snippets/preloader-intro-troisjs.js`).
   Replace the 2D starfield backdrop with a faithful raw-WebGL port of the 50k-point
@@ -142,4 +142,7 @@ key files before implementing — §1.4):
 
 | # | Item | Commit | Verified |
 |---|------|--------|----------|
-| 1 | A1 frozen-varying family | (in progress) | tsc ✓ / build / browser pending |
+| 1 | A1 frozen-varying family | aa707d4 | tsc ✓ · adversarial check CLEAN · browser ✓ (signal beams travel the Problem-lattice arcs) |
+| 2 | C14 preloader particle tunnel | 2715953 | tsc ✓ · browser ✓ (tunnel + fill + handoff; warp beat lands with mark zoom) |
+| — | merge origin/main (6 commits, other-PC work) | b8e542c | no conflicts · tsc ✓ · browser ✓ (tunnel→warp→one-beat intro→hero composes) |
+| 3 | A2 frame-loop dt hygiene | (this commit) | tsc ✓ · 60Hz bit-identity proven · browser ✓ (loop alive, console clean) |
