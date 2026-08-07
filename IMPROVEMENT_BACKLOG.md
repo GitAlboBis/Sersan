@@ -121,8 +121,10 @@ key files before implementing — §1.4):
 - [ ] **C6 · P2/L — /trust:** four consecutive card grids around the stranded
   CompliancePipeline → extend the pipeline's stage-by-stage motion language to absorb
   Standards/Controls; FAQ → plain typographic Q/A.
-- [ ] **C7 · P2/S — /about "Three rules":** 3-card grid on an otherwise typographic page
-  → 01/02/03 sequential split-text beats.
+- [x] **C7 · P2/S — /about "Three rules" → numeral-hero beats.** (this commit)
+  Door-beats grammar with the 01/02/03 numerals as serif heroes (accent-dimmed,
+  em-scaled tick), title subordinated, desc at reading width. OurWhy's 2×2
+  operating-principles grid remains (the audit's "acceptable" quieter offender).
 - [ ] **C8 · P2/M — /services/* template:** three Reveal-only card sections ×4 routes →
   one template redesign.
 - [ ] **C9 · P2/L — Home section-cut grammar (era-residence dossier):** first boundary

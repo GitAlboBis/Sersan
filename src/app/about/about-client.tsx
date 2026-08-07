@@ -18,6 +18,7 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { founders } from "@/data/founders";
 import { useLanguage } from "@/components/language-provider";
 import { START_HREF } from "@/lib/site";
+import { RuleBeats } from "./rule-beats";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
@@ -342,22 +343,13 @@ export function AboutClient() {
             }
           />
 
-          <div className="grid md:grid-cols-3 gap-4 max-w-5xl mx-auto">
-            {pillars.map((p, i) => (
-              <Reveal key={p.num} delay={i * 90} className="h-full">
-              <div className="card-steel h-full p-6 lg:p-7 group">
-                <p
-                  className="text-[10px] font-mono uppercase tracking-[0.2em] mb-4"
-                  style={{ color: "hsl(var(--accent))" }}
-                >
-                  {p.num}
-                </p>
-                <h3 className="font-display text-xl text-ink mb-3 leading-tight">{p.title}</h3>
-                <p className="text-sm text-ink-mute leading-[1.6]">{p.body}</p>
-              </div>
-              </Reveal>
-            ))}
-          </div>
+          {/* Three sequential full-width typographic beats (./rule-beats.tsx)
+              — the audit door-beats grammar with one inflection: these are
+              RULES, so the "01/02/03" numeral is the hero (large display
+              serif, accent-dimmed). Replaced the md:grid-cols-3 card-steel
+              grid — the page's lone card offender; num/title/body carried
+              over byte-identical, only the card chrome retired. */}
+          <RuleBeats rules={pillars} />
         </section>
 
         {/* Verifiable proof strip */}
