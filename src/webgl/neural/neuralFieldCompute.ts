@@ -460,71 +460,79 @@ export function createNeuralFieldBuild(
     const aOff = attribute("aOff");
     const aSeed = attribute("aSeed");
 
-    const vDepth = float(0).toVar();
-    const vRole = float(0).toVar();
-    const vDead = float(0).toVar();
-    const vGlow = float(1).toVar();
-    const vBurst = float(0).toVar();
+    // --- Fragment-bound per-particle scalars ---------------------------------
+    // Every varying below is a SELF-CONTAINED expression (a pure function of
+    // the instance attributes + uniforms) fed straight into `varying(...)`, and
+    // the SAME nodes are reused by the vertex body where it needs the value —
+    // NEVER an outer `.toVar()` the vertex Fn `.assign()`s into. Three writes
+    // every varying at the TOP of vertex main(), BEFORE the vertexNode body
+    // runs, so an outer-var varying is frozen at its declared initial value
+    // forever (full VaryingNode hazard note on `portraitMorphExpr` in
+    // ../gpgpu/gpgpuNodeSim.ts) — which is exactly how this branch shipped a
+    // flat field: no depth gradient, no role shading, no dead-arc dimming, no
+    // hover glow, no burst flash, no dispersal fade, no travelling signal.
+
+    // Reveal-blended, shimmered instance center. The shimmer term reads the
+    // PRE-shimmer center — same semantics as the old `center += f(center)`.
+    const anchorS = anchorNode({ metaN: aMeta, offN: aOff });
+    const rvS = smoothstep(float(0), float(1), uReveal);
+    const centerBase = mix(aSeed, anchorS, rvS);
+    const centerS = centerBase.add(
+      vec3(
+        sin(centerBase.y.mul(7.0).add(uTime.mul(0.9))),
+        sin(centerBase.z.mul(7.0).add(uTime.mul(1.1))),
+        sin(centerBase.x.mul(7.0).add(uTime.mul(0.7))),
+      ).mul(0.004),
+    );
+    const depthS = depthT(centerS.z);
+    // hub glow that this particle belongs to (node → its hub; flow → max of
+    // its two hubs, so an arc lights with the brighter endpoint).
+    const glowS = mix(
+      hubGlow(aMeta.y),
+      max(hubGlow(aMeta.y), hubGlow(aMeta.z)),
+      aMeta.x,
+    );
+    // v5 burst envelope for this particle (node → its hub; flow → max of arc
+    // endpoints) → emissive spike in the fragment shade.
+    const burstS = mix(
+      hubBurst(aMeta.y),
+      max(hubBurst(aMeta.y), hubBurst(aMeta.z)),
+      aMeta.x,
+    );
+    const tFlowS = flowParam(aOff.x, aMeta.y, aMeta.z);
+    const signalS = mix(
+      float(1),
+      signalBrightness(tFlowS, aMeta.y, aMeta.z),
+      aMeta.x,
+    );
     // v6: static branch gains a dead-arc FADE envelope (it previously had none),
     // mirroring the compute branch so both backends carve the same severed gap.
-    const vAlive = float(1).toVar();
-    const vSignal = float(1).toVar();
+    // Dead-arc dispersal FADE (broken·dead·flow only): past BREAK_T the dead
+    // span's flow particles fade toward a ghost so the severed segment vanishes
+    // into the void (carving the gap). uBroken-gated → healthy is untouched.
+    const pastS = smoothstep(
+      float(BREAK_T),
+      float(BREAK_T).add(DISPERSE_WINDOW),
+      tFlowS,
+    );
+    const dispS = clamp(
+      uDisperse.mul(pastS).mul(aMeta.w).mul(aMeta.x).mul(uBroken),
+      float(0),
+      float(1),
+    );
+    const aliveS = float(1).sub(dispS.mul(float(DISPERSE_FADE)));
 
     material.vertexNode = Fn(() => {
-      const anchor = anchorNode({ metaN: aMeta, offN: aOff }).toVar();
-      const tFlowS = flowParam(aOff.x, aMeta.y, aMeta.z);
-      vSignal.assign(mix(float(1), signalBrightness(tFlowS, aMeta.y, aMeta.z), aMeta.x));
-      const rv = smoothstep(float(0), float(1), uReveal);
-      const center = mix(aSeed, anchor, rv).toVar();
-      center.addAssign(
-        vec3(
-          sin(center.y.mul(7.0).add(uTime.mul(0.9))),
-          sin(center.z.mul(7.0).add(uTime.mul(1.1))),
-          sin(center.x.mul(7.0).add(uTime.mul(0.7))),
-        ).mul(0.004),
-      );
-
-      // hub glow that this particle belongs to (node → its hub; flow → max of
-      // its two hubs, so an arc lights with the brighter endpoint).
-      const glowN = mix(
-        hubGlow(aMeta.y),
-        max(hubGlow(aMeta.y), hubGlow(aMeta.z)),
-        aMeta.x,
-      );
-      vGlow.assign(glowN);
-      // v5 burst envelope for this particle (node → its hub; flow → max of arc
-      // endpoints) → emissive spike in the fragment shade.
-      vBurst.assign(
-        mix(hubBurst(aMeta.y), max(hubBurst(aMeta.y), hubBurst(aMeta.z)), aMeta.x),
-      );
-      vDepth.assign(depthT(center.z));
-      vRole.assign(aMeta.x);
-      vDead.assign(aMeta.w);
-      // Dead-arc dispersal FADE (broken·dead·flow only): past BREAK_T the dead
-      // span's flow particles fade toward a ghost so the severed segment vanishes
-      // into the void (carving the gap). uBroken-gated → healthy is untouched.
-      const pastS = smoothstep(
-        float(BREAK_T),
-        float(BREAK_T).add(DISPERSE_WINDOW),
-        tFlowS,
-      );
-      const dispS = clamp(
-        uDisperse.mul(pastS).mul(aMeta.w).mul(aMeta.x).mul(uBroken),
-        float(0),
-        float(1),
-      );
-      vAlive.assign(float(1).sub(dispS.mul(float(DISPERSE_FADE))));
-
-      const mv = modelViewMatrix.mul(vec4(center, 1.0)).toVar();
+      const mv = modelViewMatrix.mul(vec4(centerS, 1.0)).toVar();
       const dist = mv.z.negate();
       const clip = cameraProjectionMatrix.mul(mv).toVar();
       const roleBoost = mix(float(NEURAL_NODE_SIZE_BOOST), float(1.0), aMeta.x);
       // hovered hub radius pulse + depth attenuation (nearer = bigger).
-      const depthAtten = float(1).add(depthT(center.z).sub(0.5).mul(float(NEURAL_DEPTH_ATTEN)));
+      const depthAtten = float(1).add(depthS.sub(0.5).mul(float(NEURAL_DEPTH_ATTEN)));
       const sizeNode = uPointSize
         .mul(uPixelRatio)
         .mul(roleBoost)
-        .mul(float(1).add(glowN.sub(1.0).mul(float(HOVER_RADIUS_PULSE))))
+        .mul(float(1).add(glowS.sub(1.0).mul(float(HOVER_RADIUS_PULSE))))
         .mul(depthAtten)
         .div(max(dist, 0.001));
       const corner = positionLocal.xy;
@@ -535,13 +543,13 @@ export function createNeuralFieldBuild(
     })();
 
     const vQuadUv = varying(positionLocal.xy);
-    const vDepthF = varying(vDepth);
-    const vRoleF = varying(vRole);
-    const vDeadF = varying(vDead);
-    const vGlowF = varying(vGlow);
-    const vBurstF = varying(vBurst);
-    const vAliveF = varying(vAlive);
-    const vSignalF = varying(vSignal);
+    const vDepthF = varying(depthS);
+    const vRoleF = varying(aMeta.x);
+    const vDeadF = varying(aMeta.w);
+    const vGlowF = varying(glowS);
+    const vBurstF = varying(burstS);
+    const vAliveF = varying(aliveS);
+    const vSignalF = varying(signalS);
 
     const shade = Fn(() => {
       const disc = smoothstep(0.5, 0.12, length(vQuadUv)).toVar();
@@ -666,51 +674,54 @@ export function createNeuralFieldBuild(
   // --- Render: instanced billboard reading the storage buffers --------------
   const material = new MeshBasicNodeMaterial();
 
-  const vDepth = float(0).toVar();
-  const vRole = float(0).toVar();
-  const vDead = float(0).toVar();
-  const vGlow = float(1).toVar();
-  const vBurst = float(0).toVar();
-  const vAlive = float(1).toVar();
-  const vSignal = float(1).toVar();
+  // Storage reads shared by the vertex body AND the varyings below.
+  // `.xyz` MANDATORY on a "vec3" storage buffer read (padded to 16B → 4-comp).
+  const posR = positionBuffer.toAttribute().xyz;
+  const metaR = metaBuffer.toAttribute();
+  const offR = offBuffer.toAttribute().xyz;
+
+  // Fragment-bound per-particle scalars — SELF-CONTAINED expressions (pure
+  // functions of the storage reads + uniforms) fed straight into `varying(...)`
+  // and reused by the vertex body. NEVER an outer `.toVar()` the vertex Fn
+  // `.assign()`s into: three writes every varying at the TOP of vertex main(),
+  // BEFORE the vertexNode body runs, so an outer-var varying is frozen at its
+  // declared initial value forever (full VaryingNode hazard note on
+  // `portraitMorphExpr` in ../gpgpu/gpgpuNodeSim.ts) — which is exactly how
+  // this render shipped a flat field: no depth gradient, no role shading, no
+  // dead-arc dimming, no hover glow, no burst flash, no dispersal fade, no
+  // travelling signal.
+  const glowR = mix(
+    hubGlow(metaR.y),
+    max(hubGlow(metaR.y), hubGlow(metaR.z)),
+    metaR.x,
+  );
+  // v5 burst envelope (node → its hub; flow → max of arc endpoints).
+  const burstR = mix(
+    hubBurst(metaR.y),
+    max(hubBurst(metaR.y), hubBurst(metaR.z)),
+    metaR.x,
+  );
+  const depthR = depthT(posR.z);
+  const tF = flowParam(offR.x, metaR.y, metaR.z);
+  const pastR = smoothstep(float(BREAK_T), float(BREAK_T).add(DISPERSE_WINDOW), tF);
+  const dispR = clamp(
+    uDisperse.mul(pastR).mul(metaR.w).mul(metaR.x).mul(uBroken),
+    float(0),
+    float(1),
+  );
+  const aliveR = float(1).sub(dispR.mul(float(DISPERSE_FADE)));
+  const signalR = mix(float(1), signalBrightness(tF, metaR.y, metaR.z), metaR.x);
 
   material.vertexNode = Fn(() => {
-    // `.xyz` MANDATORY on a "vec3" storage buffer read (padded to 16B → 4-comp).
-    const p = positionBuffer.toAttribute().xyz.toVar();
-    const m = metaBuffer.toAttribute();
-    const role = m.x;
-    const hubA = m.y;
-    const hubB = m.z;
-    const dead = m.w;
-    const off = offBuffer.toAttribute().xyz;
-
-    const glowN = mix(hubGlow(hubA), max(hubGlow(hubA), hubGlow(hubB)), role);
-    vGlow.assign(glowN);
-    // v5 burst envelope (node → its hub; flow → max of arc endpoints).
-    vBurst.assign(mix(hubBurst(hubA), max(hubBurst(hubA), hubBurst(hubB)), role));
-    vDepth.assign(depthT(p.z));
-    vRole.assign(role);
-    vDead.assign(dead);
-
-    const tF = flowParam(off.x, hubA, hubB);
-    const past = smoothstep(float(BREAK_T), float(BREAK_T).add(DISPERSE_WINDOW), tF);
-    const disp = clamp(
-      uDisperse.mul(past).mul(dead).mul(role).mul(uBroken),
-      float(0),
-      float(1),
-    );
-    vAlive.assign(float(1).sub(disp.mul(float(DISPERSE_FADE))));
-    vSignal.assign(mix(float(1), signalBrightness(tF, hubA, hubB), role));
-
-    const mv = modelViewMatrix.mul(vec4(p, 1.0)).toVar();
+    const mv = modelViewMatrix.mul(vec4(posR, 1.0)).toVar();
     const dist = mv.z.negate();
     const clip = cameraProjectionMatrix.mul(mv).toVar();
-    const roleBoost = mix(float(NEURAL_NODE_SIZE_BOOST), float(1.0), role);
-    const depthAtten = float(1).add(depthT(p.z).sub(0.5).mul(float(NEURAL_DEPTH_ATTEN)));
+    const roleBoost = mix(float(NEURAL_NODE_SIZE_BOOST), float(1.0), metaR.x);
+    const depthAtten = float(1).add(depthR.sub(0.5).mul(float(NEURAL_DEPTH_ATTEN)));
     const sizeNode = uPointSize
       .mul(uPixelRatio)
       .mul(roleBoost)
-      .mul(float(1).add(glowN.sub(1.0).mul(float(HOVER_RADIUS_PULSE))))
+      .mul(float(1).add(glowR.sub(1.0).mul(float(HOVER_RADIUS_PULSE))))
       .mul(depthAtten)
       .div(max(dist, 0.001));
     const corner = positionLocal.xy;
@@ -721,13 +732,13 @@ export function createNeuralFieldBuild(
   })();
 
   const vQuadUv = varying(positionLocal.xy);
-  const vDepthF = varying(vDepth);
-  const vRoleF = varying(vRole);
-  const vDeadF = varying(vDead);
-  const vGlowF = varying(vGlow);
-  const vBurstF = varying(vBurst);
-  const vAliveF = varying(vAlive);
-  const vSignalF = varying(vSignal);
+  const vDepthF = varying(depthR);
+  const vRoleF = varying(metaR.x);
+  const vDeadF = varying(metaR.w);
+  const vGlowF = varying(glowR);
+  const vBurstF = varying(burstR);
+  const vAliveF = varying(aliveR);
+  const vSignalF = varying(signalR);
 
   const shade = Fn(() => {
     const disc = smoothstep(0.5, 0.12, length(vQuadUv)).toVar();

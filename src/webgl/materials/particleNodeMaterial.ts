@@ -43,7 +43,7 @@
  * / `require('three/webgpu')`: MeshBasicNodeMaterial, Color, Vector2,
  * AdditiveBlending (three/webgpu); Fn, uniform, attribute, positionLocal,
  * modelViewMatrix, cameraProjectionMatrix, sin, cos, smoothstep, length, fract,
- * max, mix, float, vec4, Discard, varying (three/tsl).
+ * max, mix, vec3, vec4, Discard, varying (three/tsl).
  * `varying(node)` evaluates its argument in the vertex stage and interpolates
  * it — the idiomatic equivalent of a GLSL `varying`.
  */
@@ -68,7 +68,7 @@ import {
   fract,
   max,
   mix,
-  float,
+  vec3,
   vec4,
   Discard,
   varying,
@@ -118,25 +118,37 @@ export function createParticleNodeMaterial(): {
   // let the node pipeline run its default MVP, because the corner offset must
   // be added in CLIP space (a billboard), not local space. The depth fade is a
   // vertex-stage quantity, so it is wrapped in `varying(...)` to interpolate to
-  // the fragment (GLSL `varying float vFade`). The whole expression is
-  // evaluated in the vertex stage because `material.vertexNode` builds there.
-  const dist = float(0).toVar();
+  // the fragment (GLSL `varying float vFade`).
+  //
+  // The wandered center and its view-space depth are SELF-CONTAINED expressions
+  // hoisted OUT of the Fn, shared by the billboard body AND the `vFade` varying
+  // — never an outer `.toVar()` the Fn `.assign()`s into. Three writes every
+  // varying at the TOP of vertex main(), BEFORE the vertexNode body runs, so a
+  // varying built from an outer var is frozen at that var's declared initial
+  // value forever (full VaryingNode hazard note on `portraitMorphExpr` in
+  // ../gpgpu/gpgpuNodeSim.ts) — which is exactly how vFade shipped pinned at
+  // smoothstep(26,6,0)=1: NO depth fade, every mote at full brightness. Sharing
+  // one DAG keeps body and fragment in lockstep with the GLSL twin
+  // (particleSpriteShader.ts: vFade = smoothstep(26,6,-mv.z) of the wandered
+  // center).
+
+  // Instance center + slow per-seed wander (matches the GLSL vertex shader).
+  const wandered = vec3(
+    aOffset.x.add(sin(uTime.mul(0.08).add(aSeed.mul(43.7))).mul(0.45)),
+    aOffset.y.add(cos(uTime.mul(0.06).add(aSeed.mul(61.3))).mul(0.35)),
+    aOffset.z,
+  );
+  // Center → view space; dist = -mv.z (depth of the instance center).
+  const mvCenter = modelViewMatrix.mul(vec4(wandered, 1.0));
+  const dist = mvCenter.z.negate();
+
   material.vertexNode = Fn(() => {
-    // Instance center + slow per-seed wander (matches the GLSL vertex shader).
-    const p = aOffset.toVar();
-    p.x.addAssign(sin(uTime.mul(0.08).add(aSeed.mul(43.7))).mul(0.45));
-    p.y.addAssign(cos(uTime.mul(0.06).add(aSeed.mul(61.3))).mul(0.35));
-
-    // Center → view space; dist = -mv.z (depth of the instance center).
-    const mv = modelViewMatrix.mul(vec4(p, 1.0)).toVar();
-    dist.assign(mv.z.negate());
-
     // Center → clip space, then offset the unit-quad corner (position.xy, in
     // [-0.5,0.5]) in the clip XY plane so the quad faces the camera. The
     // device-pixel size equals the OLD gl_PointSize
     //   = aScale * uPixelRatio * 38.0 / max(dist, 0.1);
     // a device-pixel offset → clip is (px / uViewport * 2.0 * clip.w).
-    const clip = cameraProjectionMatrix.mul(mv).toVar();
+    const clip = cameraProjectionMatrix.mul(mvCenter).toVar();
     const size = aScale.mul(uPixelRatio).mul(38.0).div(max(dist, 0.1));
     const corner = positionLocal.xy;
     clip.xy.addAssign(corner.mul(size).div(uViewport).mul(2.0).mul(clip.w));
@@ -144,8 +156,8 @@ export function createParticleNodeMaterial(): {
   })();
 
   // Depth fade: distant dust dissolves into the navy. vFade = smoothstep(26, 6,
-  // dist), evaluated per vertex (dist was set in the vertexNode Fn above) and
-  // interpolated to the fragment.
+  // dist), evaluated in the vertex stage from the SAME `dist` node the billboard
+  // size math divides by, and interpolated to the fragment.
   const vFade = varying(smoothstep(26.0, 6.0, dist));
   // The unit-quad corner in [-0.5,0.5] — same span as the old gl_PointCoord-0.5
   // — interpolated to the fragment for the soft disc.

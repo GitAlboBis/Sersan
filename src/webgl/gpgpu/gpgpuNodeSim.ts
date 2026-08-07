@@ -1824,29 +1824,40 @@ export function createStaticParticleNodeBuild(
   ).toVar();
 
   // Carry the per-particle lift (displacement amount) to the fragment so the
-  // color shifts violet→cyan exactly where the surface is disturbed.
-  const vLift = float(0).toVar();
+  // color shifts violet→cyan exactly where the surface is disturbed. The lift
+  // is a SELF-CONTAINED expression (a pure function of aHome/uMouse/uRadius/
+  // uHover) fed straight into `varying(...)` below — NEVER an outer `.toVar()`
+  // the vertex Fn `.assign()`s into. Three writes every varying at the TOP of
+  // vertex main(), BEFORE the vertexNode body runs, so an outer-var varying is
+  // frozen at its declared initial value forever (full VaryingNode hazard note
+  // on `portraitMorphExpr` above) — which is exactly how vLiftF read a
+  // constant 0 here: particles displaced under the cursor but stayed pure
+  // violet at rest brightness. The vertex body reuses these SAME nodes for the
+  // displacement, so vertex and fragment can never diverge.
+  //   fromMouse = aHome - uMouse; d = length(fromMouse);
+  //   falloff   = smoothstep(uRadius, 0, d);   // 1 at cursor, 0 at/after radius
+  //   lift      = falloff * uHover;            // gated by the eased global hover
+  const fromMouse = aHomeNode.xyz.sub(uMouse as unknown as AnyNode);
+  const liftExpr = smoothstep(
+    uRadius as unknown as AnyNode,
+    0.0,
+    length(fromMouse),
+  ).mul(uHover as unknown as AnyNode);
 
   const material = new MeshBasicNodeMaterial();
   material.vertexNode = Fn(() => {
     // ANALYTIC dispersion — displace the home center near the cursor (model
-    // space). GLSL twin in gpgpuRenderShader.ts must stay in lockstep.
-    //   fromMouse = aHome - uMouse; d = length(fromMouse);
-    //   falloff   = smoothstep(uRadius, 0, d);   // 1 at cursor, 0 at/after radius
-    //   lift      = falloff * uHover;            // gated by the eased global hover
+    // space). GLSL twin in gpgpuRenderShader.ts must stay in lockstep. The
+    // dispersion math itself (`fromMouse`/`liftExpr`) lives OUTSIDE this Fn,
+    // shared with the vLiftF varying (VaryingNode hazard, above).
     const home = aHomeNode.xyz.toVar();
-    const fromMouse = home.sub(uMouse as unknown as AnyNode).toVar();
-    const d = length(fromMouse);
-    const falloff = smoothstep(uRadius as unknown as AnyNode, 0.0, d);
-    const lift = falloff.mul(uHover as unknown as AnyNode).toVar();
-    vLift.assign(lift);
 
     const dir = fromMouse.add(1e-5).normalize();
     const center = home
       // push outward in-plane …
-      .add(dir.mul(lift.mul(uPush as unknown as AnyNode)))
+      .add(dir.mul(liftExpr.mul(uPush as unknown as AnyNode)))
       // … plus a little toward the camera (+z) so the lifted ones read.
-      .add(vec3(0.0, 0.0, lift.mul(uPush as unknown as AnyNode).mul(0.5)))
+      .add(vec3(0.0, 0.0, liftExpr.mul(uPush as unknown as AnyNode).mul(0.5)))
       .toVar();
     // Subtle shimmer on LIFTED particles only (resting skin stays crisp).
     const time = uTime as unknown as AnyNode;
@@ -1855,7 +1866,7 @@ export function createStaticParticleNodeBuild(
         sin(home.y.mul(6.0).add(time.mul(1.3))),
         sin(home.z.mul(6.0).add(time.mul(1.7))),
         sin(home.x.mul(6.0).add(time.mul(1.1))),
-      ).mul(lift.mul(0.04)),
+      ).mul(liftExpr.mul(0.04)),
     );
 
     // SAME billboard math as the compute renders, around the displaced center.
@@ -1875,7 +1886,7 @@ export function createStaticParticleNodeBuild(
 
   const vQuadUv = varying(positionLocal.xy);
   const vRandF = varying(vRandSrc);
-  const vLiftF = varying(vLift);
+  const vLiftF = varying(liftExpr);
 
   const shade = Fn(() => {
     const r = length(vQuadUv);
