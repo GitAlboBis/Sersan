@@ -6,67 +6,13 @@ import { Button } from "@/components/ui/button";
 import { CalEmbed } from "@/components/cal-embed";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Reveal } from "@/components/ui/reveal";
-import { DisplacementWipeReveal } from "@/components/fx/displacement-wipe";
 import { useLanguage } from "@/components/language-provider";
 import AuditWeekTimeline from "@/components/sections/audit-week-timeline";
+import { SurfacesLedger } from "./surfaces-ledger";
 
 export function AuditClient() {
   const { language } = useLanguage();
   const isEn = language === "en";
-
-  const lookAt = isEn
-    ? [
-        {
-          title: "Your systems & architecture",
-          desc: "Cloud, services, data flows, infra. Where the bottlenecks, single points of failure, and undocumented complexity actually live.",
-        },
-        {
-          title: "Your data & ML readiness",
-          desc: "What data you have, where it lives, how clean it is, and whether it's in a state where anything (AI included) can actually use it.",
-        },
-        {
-          title: "Your workflows & manual work",
-          desc: "What your people do every day. Where humans are doing repetitive, rule-bound work that should be automated, and where they shouldn't be.",
-        },
-        {
-          title: "Your tooling & vendor stack",
-          desc: "What you're paying for, what's overlapping, what's underused, and what's blocking faster delivery.",
-        },
-        {
-          title: "Your team & delivery cadence",
-          desc: "How decisions get made, where work gets stuck, and what's slowing engineering velocity.",
-        },
-        {
-          title: "Where AI could power your product",
-          desc: "Concrete, named opportunities, not generic 'AI could help here.' Which surface, which model, what changes. Plus the parts where AI is the wrong answer and you should ship a rebuild or an automation instead.",
-        },
-      ]
-    : [
-        {
-          title: "I vostri sistemi e l'architettura",
-          desc: "Cloud, servizi, flussi di dati, infrastruttura. Dove vivono davvero i colli di bottiglia, i single point of failure e la complessità non documentata.",
-        },
-        {
-          title: "Dati e readiness ML",
-          desc: "Quali dati avete, dove risiedono, quanto sono puliti, e se sono in uno stato tale da poter essere usati (AI inclusa).",
-        },
-        {
-          title: "Workflow e lavoro manuale",
-          desc: "Cosa fanno le persone ogni giorno. Dove ci sono lavori ripetitivi e basati su regole che andrebbero automatizzati, e dove invece non andrebbero.",
-        },
-        {
-          title: "Tooling e stack di fornitori",
-          desc: "Per cosa state pagando, cosa si sovrappone, cosa è sottoutilizzato e cosa frena una delivery più veloce.",
-        },
-        {
-          title: "Team e cadenza di delivery",
-          desc: "Come vengono prese le decisioni, dove il lavoro si blocca e cosa rallenta la velocity dell'ingegneria.",
-        },
-        {
-          title: "Dove l'AI può alimentare il vostro prodotto",
-          desc: "Opportunità concrete e specifiche, non un generico 'l'AI potrebbe aiutare'. Quale superficie, quale modello, cosa cambia. E le parti in cui l'AI è la risposta sbagliata e vi conviene fare un rebuild o un'automazione.",
-        },
-      ];
 
   const reportContents = isEn
     ? [
@@ -212,7 +158,10 @@ export function AuditClient() {
       </section>
       </div>
 
-      {/* What we look at */}
+      {/* What we look at — full-bleed big-type numbered ledger (ports the
+          /consulting practice-ledger grammar; the six surfaces moved from a
+          md:grid-cols-2 card grid + DisplacementWipeReveal entrance into
+          ./surfaces-ledger.tsx, copy byte-identical). */}
       <div data-line-anchor="surfaces">
       <section data-snap className="section-lg relative">
         <div className="container-px relative">
@@ -240,30 +189,7 @@ export function AuditClient() {
             }
           />
 
-          <div className="max-w-5xl mx-auto">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
-              {lookAt.map((item, i) => (
-                // Each surface declassifies one-by-one on enter (stagger keeps
-                // ≤2 displacement filters rasterizing at once).
-                <DisplacementWipeReveal key={i} delay={i * 0.12}>
-                  <div className="card-steel h-full p-6 backdrop-blur-[1px]">
-                    <div className="flex items-start gap-4">
-                      <div
-                        className="shrink-0 text-[10px] font-mono uppercase tracking-[0.16em]"
-                        style={{ color: "hsl(var(--accent))" }}
-                      >
-                        {String(i + 1).padStart(2, "0")}
-                      </div>
-                      <div>
-                        <h3 className="font-display text-lg text-ink mb-2 leading-tight">{item.title}</h3>
-                        <p className="text-sm text-ink-mute leading-[1.55]">{item.desc}</p>
-                      </div>
-                    </div>
-                  </div>
-                </DisplacementWipeReveal>
-              ))}
-            </div>
-          </div>
+          <SurfacesLedger />
         </div>
       </section>
       </div>

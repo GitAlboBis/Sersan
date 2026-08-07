@@ -108,9 +108,11 @@ key files before implementing — §1.4):
   Horizontal accent spine draws with scroll, stations ignite at their fraction along
   it (reversible); vertical static variant below lg/coarse/RM. The /consulting trio
   (C1+C2+C3) is complete — the route went from zero GSAP to three coherent moments.
-- [ ] **C4 · P2/M — /audit six surfaces:** 2×3 card grid → big-type numbered ledger
-  (01-06 full-width split-text rows, per-row signature-line tick via auditTimelineStore).
-  Secondary dossier fit: era-residence horizontal scroller; video-projection numerals.
+- [x] **C4 · P2/M — /audit six surfaces → big-type ledger.** (this commit) Port of the
+  practice-ledger grammar (data-sl-*, duplicated with header note — shared-hook
+  refactor deferred); DisplacementWipeReveal usage removed (component kept,
+  now consumer-less → future cleanup); micro-tag idea skipped (no per-surface
+  source data — refusing to invent claims).
 - [ ] **C5 · P2/M — /audit second half (three doors + FAQ):** card stacks → three
   sequential full-width typographic beats + hairline accordion.
 - [ ] **C6 · P2/L — /trust:** four consecutive card grids around the stranded
