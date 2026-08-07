@@ -51,11 +51,11 @@ progress `[x]` done (commit).
 
 ## B. Unfinished / broken product surface
 
-- [ ] **B1 · P1/S — Booking copy promises slots that don't exist.** CAL_ENABLED=false +
+- [x] **B1 · P1/S — Booking copy promises slots that don't exist.** (this commit) CAL_ENABLED=false +
   dead slug, but `/audit` (audit-client.tsx:476,499) and `/contact`
   (contact-client.tsx:271-291) still say "Pick a 30-minute slot". Rewrite to match the
   written-intake fallback (or ship the real Cal link — owner decision; default: fix copy).
-- [ ] **B2 · P1/S — Footer links to unowned socials** (twitter.com/sersan_io,
+- [x] **B2 · P1/S — Footer links to unowned socials** (this commit; end state LinkedIn · Instagram · Email) (twitter.com/sersan_io,
   github.com/sersan — footer.tsx:382,392). Replace with LinkedIn/Instagram per brand
   data, or drop.
 - [ ] **B3 · P1/M — /start is English-only** (primary CTA destination; server component
@@ -147,4 +147,7 @@ key files before implementing — §1.4):
 | — | merge origin/main (6 commits, other-PC work) | b8e542c | no conflicts · tsc ✓ · browser ✓ (tunnel→warp→one-beat intro→hero composes) |
 | 3 | A2 frame-loop dt hygiene | f59151c | tsc ✓ · 60Hz bit-identity proven · browser ✓ (loop alive, console clean) |
 | 4 | A3 GPU-loss resilience | af75419 | tsc ✓ · guard analysis (WebGL/fallback/WebGPU) · browser ✓ happy path inert |
-| 5 | A4 sporeHomes rAF deferral | (this commit) | tsc ✓ · single consumer null-gated + new shape gate · browser check rides the next reload |
+| 5 | A4 sporeHomes rAF deferral | f196922 | tsc ✓ · single consumer null-gated + new shape gate · browser ✓ |
+| — | owner: preloader zoom+fade exit | dbd72e9 | browser ✓ (clean handoff, no wipe artifacts) — PUSHED |
+| — | owner: hero lockup inversion (2 rounds, empirical calibration) | b246372 | browser ✓ (mark top in-frame, wordmark below, ~4vh gap) — PUSHED |
+| 6 | B1+B2 booking copy truth + owned socials | (this commit) | tsc ✓ · browser ✓ (/audit CTA + footer icons) |

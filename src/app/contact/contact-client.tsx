@@ -256,14 +256,15 @@ export function ContactClient() {
         </div>
       </section>
 
-      {/* Or pick a slot directly — Cal.com */}
+      {/* Or request the call directly — written-intake fallback while the
+          Cal embed is disabled (see CAL_ENABLED in @/lib/site) */}
       <section data-line-anchor="intake" className="section relative border-t border-rule/40">
         <div className="container-px">
           <div className="max-w-6xl mx-auto grid lg:grid-cols-5 gap-10 lg:gap-14 items-start">
             <div className="lg:col-span-2">
               <Reveal>
                 <p className="eyebrow mb-4" style={{ color: "hsl(var(--accent))" }}>
-                  {isEn ? "Or pick a slot directly" : "O scegliete uno slot direttamente"}
+                  {isEn ? "Or request the call directly" : "O richiedete la call direttamente"}
                 </p>
               </Reveal>
               {/* Outside the Reveal — the choreographer's line-mask owns it.
@@ -271,24 +272,24 @@ export function ContactClient() {
               <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[2rem] text-ink leading-[1.15] tracking-tight mb-5">
                 {isEn ? (
                   <>
-                    Skip the inbox.{" "}
+                    Want the call?{" "}
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                      Book the call.
+                      Start in writing.
                     </span>
                   </>
                 ) : (
                   <>
-                    Saltate l&apos;inbox.{" "}
+                    Volete la call?{" "}
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                      Prenotate la call.
+                      Iniziate per iscritto.
                     </span>
                   </>
                 )}
               </h2>
               <p className="text-base text-ink-mute leading-[1.6] mb-4">
                 {isEn
-                  ? "Pick a 30-minute slot. We'll reply with a calendar link within 1 business day."
-                  : "Scegliete uno slot di 30 minuti. Vi rispondiamo con un link al calendario entro 1 giorno lavorativo."}
+                  ? "Send a written intake — a senior engineer replies within 1 business day to set up a 30-minute call."
+                  : "Inviate un intake scritto — un ingegnere senior risponde entro 1 giorno lavorativo per fissare una call di 30 minuti."}
               </p>
               <p className="text-sm text-ink-mute leading-[1.55]">
                 {isEn

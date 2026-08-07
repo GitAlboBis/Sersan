@@ -455,7 +455,8 @@ export function AuditClient() {
           here and the signature line threads it before the CTA. */}
       <div data-line-anchor="ritual" aria-hidden="true" className="py-28 sm:py-40" />
 
-      {/* Closing CTA — Cal.com booking */}
+      {/* Closing CTA — booking (written-intake fallback while the Cal embed
+          is disabled; see CAL_ENABLED in @/lib/site) */}
       <div data-line-anchor="final-cta">
       <section id="book-call" data-snap className="section-lg relative overflow-hidden">
         <div
@@ -473,14 +474,14 @@ export function AuditClient() {
             title={
               isEn ? (
                 <>
-                  Pick a slot.{" "}
+                  Request the call.{" "}
                   <span className="italic" style={{ color: "hsl(var(--accent))" }}>
                     30 minutes, no pitch.
                   </span>
                 </>
               ) : (
                 <>
-                  Scegliete uno slot.{" "}
+                  Richiedete la call.{" "}
                   <span className="italic" style={{ color: "hsl(var(--accent))" }}>
                     30 minuti, nessun pitch.
                   </span>
@@ -496,8 +497,8 @@ export function AuditClient() {
                 </span>
                 <span className="block mt-4 max-w-md mx-auto text-sm">
                   {isEn
-                    ? "Pick a 30-minute slot below. We'll reply with a calendar link within 1 business day."
-                    : "Scegliete uno slot di 30 minuti qui sotto. Vi rispondiamo con un link al calendario entro 1 giorno lavorativo."}
+                    ? "Send a written intake below — a senior engineer replies within 1 business day to set up the call."
+                    : "Inviate un intake scritto qui sotto — un ingegnere senior risponde entro 1 giorno lavorativo per fissare la call."}
                 </span>
               </>
             }
