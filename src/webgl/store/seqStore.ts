@@ -1,19 +1,28 @@
 /**
  * seqStore — bridge between the DOM singularity passage (the home cinematic
- * plunge between the spine's beat 05 and the ProblemSection "divario") and
+ * sequence between the spine's beat 04 and the ProblemSection "divario") and
  * the WebGL layer (SignatureLine's camera pan + the SequenceSingularity
  * island).
  *
  * OWNERSHIP (the camTilt/textMorphStore precedent):
- *   - src/components/sections/singularity-passage.tsx owns the CLOCK: its
- *     scrubbed ScrollTriggers evaluate every beat as a pure function of
- *     progress `p` (fully reversible) and write the results here per tick.
+ *   - src/components/sections/singularity-passage.tsx owns the CLOCK — in
+ *     TWO regimes (owner correction 2026-08-07):
+ *       SCRUBBED  p 0..1: settle → horizontal traverse → hold → approach.
+ *                 Every value is a pure function of progress `p` (fully
+ *                 reversible), written per scrubbed ScrollTrigger tick.
+ *       ONE-SHOT  the plunge (swallow → pure speed → zoom-in emergence) is a
+ *                 TRIGGERED GSAP timeline (~3.2s, input locked): it writes
+ *                 dist/holeFade/tunnelAlpha/warp/pan01/plungeT directly per
+ *                 timeline tick. Scroll does not scrub it; one forward
+ *                 gesture past TRIGGER_P fires it, then it plays itself,
+ *                 accelerating ("andando sempre più veloce da solo").
  *   - SignatureLine consumes `pan01` inside its priority-0 useFrame (it stays
  *     the single camera authority; the pan is one more additive term).
  *   - SequenceSingularity consumes `dist`/`holeYFrac`/`holeFade`/`starAlpha`/
- *     `tunnelAlpha` as uniform/placement inputs, and is the only writer of
- *     `holeNdcX/holeNdcY` + `marchLive` (island → DOM back-channel for the
- *     tunnel's zoom-blur center lock and the CSS-imposter suppressor).
+ *     `tunnelAlpha`/`plungeT` as uniform/placement inputs, and is the only
+ *     writer of `holeNdcX/holeNdcY` + `marchLive` (island → DOM back-channel
+ *     for the tunnel's zoom-blur center lock and the CSS-imposter
+ *     suppressor).
  *
  * No React subscribers on the hot fields — everything is read via getState()
  * inside frame loops / rAF ticks, textMorphStore discipline.
@@ -26,40 +35,40 @@
  */
 import { create } from "zustand";
 
-// === Beat map (fixed — THE LONG TAKE, judge-approved) ======================
-// All progress values are fractions of the main passage ScrollTrigger
-// (start "2.5% top" → end "bottom bottom" over the 460vh container, i.e.
-// ~348vh of scrub travel). Every downstream value is a pure function of `p`.
+// === Beat map (THE LONG TAKE v2 — horizontal traverse + one-shot plunge) ===
+// Scrub values are fractions of the main passage ScrollTrigger (start
+// "2.5% top" → end "bottom bottom" over the 380vh container ≈ 270vh of scrub
+// travel). The plunge is NOT in this scrub range anymore: it is a triggered
+// timeline in SECONDS (the *_S constants below).
 export const SEQ = {
   /** Desktop container height (sticky h-screen stage inside). */
-  DESKTOP_HEIGHT_VH: 460,
-  /** Mobile/coarse reduced container height (short fade-through beat). */
+  DESKTOP_HEIGHT_VH: 380,
+  /** Mobile/coarse reduced runway height (short fade-through beat) — the
+   * vertical section-05 panel adds its own flow height above this. */
   LITE_HEIGHT_VH: 180,
 
-  // --- Beat boundaries (p) -------------------------------------------------
-  SETTLE_END: 0.1, // handover echo rests frame-left; 2% pan pre-drift
-  TRACK_END: 0.38, // camera pans right; hole enters frame-right
-  HOLD1_END: 0.46, // dead-center rest at dist 12 — restraint beat
-  APPROACH_END: 0.72, // dist 12→2.6 exponential (micro-hold plateau at d≈6)
-  IGNITION_END: 0.8, // dist 2.6→1.9; tunnel crossfade replaces the march
-  SPEED_END: 0.9, // wordless pure-speed breath (tunnel + closing veil)
-  SEAM_START: 0.92, // second trigger: emergence into the divario
+  // --- Scrubbed beat boundaries (p) ----------------------------------------
+  SETTLE_END: 0.08, // panel 05 rests frame-left; 2% pan pre-drift
+  TRACK_END: 0.52, // horizontal parallax traverse (the domus-tua grammar)
+  HOLD1_END: 0.62, // dead-center rest at dist 12 — restraint beat
+  APPROACH_END: 1, // dist 12→2.6 exponential (micro-hold plateau at d≈6);
+  // p = 1 IS the "near hold": hole centered at DIST_NEAR, pre-plunge.
 
   // --- The physics rule: apparent size = pure camera distance --------------
   // apparent height fraction = 2 / (2·tan(FOV/2)·d) = SEQ_APPARENT_K / d.
   DIST_FAR: 16, // ~13.4vh — first read: warped starlight, then the hole
   DIST_MID: 12, // ~17.9vh — HOLD 1 framing
   DIST_HOLD2: 6, // ~35.7vh — the APPROACH micro-hold plateau
-  DIST_NEAR: 2.6, // ~82.5vh — end of APPROACH
-  DIST_FLOOR: 1.9, // ~112.9vh — hard floor (dossier: never cross r≈1.2)
+  DIST_NEAR: 2.6, // ~82.5vh — end of the scrubbed APPROACH (near hold)
+  DIST_FLOOR: 1.9, // ~112.9vh — one-shot swallow floor (dossier: never
+  // cross r≈1.2; >100vh apparent — the veil completes frame coverage)
 
-  // --- Raymarch fade (lensing-first reveal + crossfade mandate) ------------
-  FADE_IN_START: 0.1,
-  FADE_IN_END: 0.3,
-  FADE_OUT_START: 0.74,
-  FADE_OUT_END: 0.8, // group.visible OFF past this — never fullscreen march
-  /** Null-tunnel fallback: longer uFade tail carries a dark plunge. */
-  FADE_OUT_NULL_END: 0.86,
+  // --- Raymarch fade (lensing-first reveal; NO scrub fade-out — owner: "il
+  // buco nero non deve fare fade e sparire, ci dobbiamo entrare dentro").
+  // holeFade only ever drops to 0 INSIDE the one-shot, under the full-black
+  // frame (the swallow), where the swap is invisible. ------------------------
+  FADE_IN_START: 0.08,
+  FADE_IN_END: 0.4,
 
   // --- Lensed-star alpha (graft 1: high through TRACK, falls on APPROACH) --
   STAR_HI: 0.9,
@@ -68,33 +77,60 @@ export const SEQ = {
   // --- High-composition entrance (graft 2) ---------------------------------
   Y_FRAC_ENTER: -0.08, // of view height at the hole plane, easing to 0
 
+  // --- Horizontal DOM track (credibility-strip lineage) --------------------
+  /** Foreground depth rate: the DOM track translates at this multiple of the
+   * world's screen-space pan (world 1.0×, far dust slower via z-spread). */
+  TRACK_RATE_FG: 1.15,
+  /** Panel 05 opacity ramp-out across the tail of the traverse (it has
+   * tracked mostly off-frame by then; fully gone before HOLD 1 settles). */
+  PANEL_FADE_START: 0.4,
+  PANEL_FADE_END: 0.55,
+
   // --- Tunnel lifecycle ----------------------------------------------------
-  TUNNEL_CREATE_P: 0.3, // instance created parked (calm TRACK beat)
-  TUNNEL_WARM_P: 0.6, // first warm renders at alpha 0
-  TUNNEL_PARK_P: 0.55, // reverse-scroll: rAF halts below this
-  TUNNEL_IN_START: 0.72,
-  TUNNEL_IN_END: 0.8,
+  TUNNEL_CREATE_P: 0.4, // instance created parked (calm TRACK beat)
+  TUNNEL_WARM_P: 0.8, // first warm renders at alpha 0 (mid-APPROACH)
+  TUNNEL_PARK_P: 0.72, // reverse-scroll: rAF halts below this
+
+  // --- Virtual-orbit fade (island): the slow swim dies across late APPROACH
+  // so the hole sits exactly centered at the near hold, pre-trigger ---------
+  ORBIT_FADE_START: 0.8,
+  ORBIT_FADE_END: 0.95,
+
+  // --- One-shot plunge trigger (hysteresis) --------------------------------
+  /** Forward crossing of this p (approach complete) fires the one-shot. */
+  TRIGGER_P: 0.985,
+  /** After a played plunge, the trigger re-arms only once the user has
+   * scrolled back ABOVE the approach zone (p < REARM_P). */
+  REARM_P: 0.6,
+  /** Cumulative reverse-wheel px during the one-shot that skips it. */
+  SKIP_REVERSE_PX: 120,
+
+  // --- One-shot plunge timeline (seconds; total ≈ 3.2s) --------------------
+  /** SWALLOW: dist NEAR→FLOOR accelerating (power2.in) while the black veil
+   * closes to full frame; march hidden only once the screen is black. */
+  PLUNGE_SWALLOW_S: 1.1,
+  /** PURE SPEED: inside the black — warp → 100 accelerating, streaks at
+   * full; the covert scrollTo(divario) happens under this cover. */
+  PLUNGE_SPEED_S: 1.0,
+  /** EMERGENCE: the black opens, streaks die, the divario ZOOMS IN. */
+  PLUNGE_EMERGE_S: 1.1,
 
   // --- Warp drive (timeCoef target; module lerps 0.02/frame) ---------------
-  WARP_START_P: 0.72,
-  WARP_END_P: 0.9,
   WARP_MIN: 2,
-  WARP_MAX: 100,
-  WARP_SEAM: 8, // seam scrubs 100→8 as the streaks die into the divario
+  WARP_SWALLOW: 30, // reached across the swallow (already accelerating)
+  WARP_MAX: 100, // pure speed
+  WARP_EMERGE: 8, // the streaks die toward this as the black opens
 
-  // --- Camera pan unwind (hidden under the tunnel + veil) ------------------
-  PAN_UNWIND_START: 0.8,
-  PAN_UNWIND_END: 0.92,
+  // --- Island center-lock ramp (fraction of plungeT) -----------------------
+  PLUNGE_LOCK_T: 0.25,
 
-  // --- Closing black-core veil ---------------------------------------------
-  VEIL_START: 0.78,
-  VEIL_END: 0.9,
-  VEIL_NULL_START: 0.7, // graft 5: the veil carries the plunge alone
-  VEIL_NULL_END: 0.86,
+  // --- Divario zoom-in landing (transform/opacity only) --------------------
+  ZOOM_SCALE_START: 0.8, // [data-emerge] scale at black-open start
+  ZOOM_PULL: 0.1, // translate toward the vanishing point (fraction)
 
-  // --- DPR cap during the plunge (with hysteresis) -------------------------
-  DPR_CAP_ON: 0.7,
-  DPR_CAP_OFF: 0.68,
+  // --- DPR cap during the heavy near-hold + one-shot (hysteresis) ----------
+  DPR_CAP_ON: 0.85,
+  DPR_CAP_OFF: 0.82,
   DPR_CAP: 1.5,
 
   // --- Scripted march quality step (graft 4; path ≈ 1.82 preserved) --------
@@ -138,36 +174,41 @@ interface SeqState {
    * armed matchMedia context is live). Every WebGL consumer no-ops at false. */
   active: boolean;
   /** True while inside the approach band (section −1 viewport → +250vh past
-   * the seam): the island keeps its march build alive only inside it. */
+   * the passage): the island keeps its march build alive only inside it. */
   armed: boolean;
   /** True once the island's raymarch build is live — suppresses the DOM CSS
    * hole imposter on the non-WebGPU/fallback path. */
   marchLive: boolean;
-  /** True when createPreloaderTunnel returned null (no WebGL1): the closing
-   * veil rises earlier and the uFade tail lengthens (graft 5). */
+  /** True when createPreloaderTunnel returned null (no WebGL1): the veil
+   * carries the plunge alone — a dark swallow, never a dead cut (graft 5). */
   tunnelNull: boolean;
-  /** Main passage scrub progress 0..1. */
+  /** Main passage scrub progress 0..1 (traverse → near hold). */
   p: number;
-  /** Seam trigger scrub progress 0..1 (sequence p 0.92 → divario+40vh). */
-  seamT: number;
-  /** Eased camera-pan progress 0..1 (includes the 2% SETTLE pre-drift and
-   * the hidden 1→0 unwind under the tunnel). SignatureLine multiplies by
-   * SEQ_PAN_FRAC × worldViewWidth. */
+  /** One-shot plunge timeline progress 0..1 (0 while idle/reversible). */
+  plungeT: number;
+  /** Eased camera-pan progress 0..1 (includes the 2% SETTLE pre-drift; the
+   * one-shot unwinds it 1→0 under the black frame). SignatureLine multiplies
+   * by SEQ_PAN_FRAC × worldViewWidth. */
   pan01: number;
   /** Camera→hole distance, world units (the ONLY size driver — the island
-   * never scales the proxy sphere). */
+   * never scales the proxy sphere). Scrub: 16→2.6. One-shot: 2.6→1.9. */
   dist: number;
   /** Vertical hole offset as a fraction of view height at the hole plane
    * (graft 2: −0.08 entering, 0 by HOLD 1). */
   holeYFrac: number;
-  /** Raymarch uFade 0..1 (lensing-first in, crossfade out). */
+  /** Raymarch uFade 0..1. Lensing-first ramp-in on the traverse; NEVER fades
+   * out on scroll — dropped to 0 only under the one-shot's full-black frame. */
   holeFade: number;
   /** uEnvStarAlpha 0.9→0.4 (graft 1 falloff across APPROACH). */
   starAlpha: number;
-  /** Tunnel canvas opacity 0..1 = rise(p) × (1 − seam). */
+  /** Tunnel canvas opacity 0..1 — one-shot timeline territory only. */
   tunnelAlpha: number;
+  /** Tunnel warp target (timeCoef; the module lerps toward it 0.02/frame).
+   * WARP_MIN at rest; the one-shot rides it to WARP_MAX and back down. */
+  warp: number;
   /** Hole apparent-center in canvas UV space (0..1, y-up — the zoom-blur
-   * uCenter convention). Island-written; eased to exact 0.5/0.5 by p 0.80. */
+   * uCenter convention). Island-written; eased to exact 0.5/0.5 across the
+   * one-shot's first PLUNGE_LOCK_T. */
   holeNdcX: number;
   holeNdcY: number;
 }
@@ -178,13 +219,14 @@ const SEQ_DEFAULTS: SeqState = {
   marchLive: false,
   tunnelNull: false,
   p: 0,
-  seamT: 0,
+  plungeT: 0,
   pan01: 0,
   dist: SEQ.DIST_FAR,
   holeYFrac: SEQ.Y_FRAC_ENTER,
   holeFade: 0,
   starAlpha: SEQ.STAR_HI,
   tunnelAlpha: 0,
+  warp: SEQ.WARP_MIN,
   holeNdcX: 0.5,
   holeNdcY: 0.5,
 };

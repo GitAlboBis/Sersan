@@ -201,11 +201,12 @@ export default function ProblemSection() {
         {/* items-start here too: when a card expands, the FailureLattice column grows; with items-center the outer row re-centered it, nudging the %-anchored node markers ~9px out from under a still cursor (residual hover oscillation). Pinning the row top removes that residual. */}
         <div className="grid grid-cols-1 lg:grid-cols-[0.9fr_1.1fr] gap-10 lg:gap-16 items-start">
           {/* Left — headline + paragraph. The [data-emerge] wrapper is the
-              singularity passage's seam target: its scrubbed emergence
-              trigger drives this div transform-only (scale 0.96 + a 6%
-              offset toward the tunnel's vanishing point → identity) so the
-              heading condenses out of the dying light-speed streaks. Inert
-              on every path where the passage never arms. */}
+              singularity passage's zoom-in landing target: the one-shot
+              plunge timeline drives this div transform-only (scale 0.8 + a
+              10% offset toward the tunnel's vanishing point → identity) so
+              the section materializes as a ZOOM as the black opens and the
+              light-speed streaks die. Inert on every path where the passage
+              never arms. */}
           <div data-emerge style={{ willChange: "transform" }}>
           <SectionHeading
             eyebrow={isEn ? "The demo-to-production gap" : "Il divario tra demo e produzione"}

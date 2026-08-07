@@ -9,11 +9,14 @@
  */
 
 /**
- * Outer height of the pinned spine section, in vh. 390vh is the compressed
- * 4-group layout (restyle step 4, merge option A: hero · signals∪audit ·
- * build∪operate · handover — was 520vh with 6 single-stage panels).
+ * Outer height of the pinned spine section, in vh. 315vh is the 3-group
+ * layout (2026-08-07: stage 05 "handover" moved OUT of the spine — it now
+ * lives ONCE as panel 1 of the singularity passage's horizontal track, so
+ * the spine runs 01→04: hero · signals∪audit · build∪operate. Was 390vh
+ * with the 4th "handover" group; each surviving group keeps its exact
+ * pre-move scroll length: 58vh · 81.7vh · 75.3vh over a 215vh scrub).
  */
-export const SPINE_HEIGHT_VH = 390;
+export const SPINE_HEIGHT_VH = 315;
 
 /**
  * Scrub travel of the spine's ScrollTrigger, in vh: the outer height minus

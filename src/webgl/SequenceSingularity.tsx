@@ -10,10 +10,10 @@
  * instantiable factories + the build/orbit/uCamWorld-uCamLocal grammar with
  * AuditSingularity / HomeSingularity (one build per island, never a live
  * shared instance), but the lifecycle is again structurally different — this
- * one is SCRUB-DRIVEN: every input (camera distance, fade, star alpha,
- * vertical framing) arrives from seqStore as a pure function of the
- * singularity passage's scroll progress, written by the DOM component
- * (singularity-passage.tsx) per scrubbed tick. A fix to the shared grammar
+ * one is STORE-DRIVEN: every input (camera distance, fade, star alpha,
+ * vertical framing) arrives from seqStore, written by the DOM component
+ * (singularity-passage.tsx) — per scrubbed tick on the traverse/approach,
+ * per timeline tick during the one-shot plunge. A fix to the shared grammar
  * likely applies to ALL THREE files.
  *
  * PLACEMENT MODEL (hybrid anchor — deliberate):
@@ -21,7 +21,7 @@
  *       TRACK-RIGHT pan (SignatureLine's seqPan term, same product) sweeps
  *       the hole in from frame-right and lands it dead-center at pan end.
  *   Y — CAMERA-LOCKED (+ holeYFrac, graft 2's −0.08 → 0 high-composition
- *       entrance): the passage spans 360vh of real scroll, and a distant
+ *       entrance): the passage spans ~270vh of real scroll, and a distant
  *       hole must not parallax a full frame while the sticky stage holds —
  *       camera-locking Y approximates the ~infinite-distance parallax of a
  *       deep-space object; the lateral move IS the deliberate camera verb.
@@ -39,13 +39,16 @@
  * LIFECYCLE: build DEFERRED until seqStore.armed (the passage arms one
  * viewport before its section — during SpineExitGate's locked beat, a calm
  * compile window) and disposed when the viewer leaves the armed band
- * (>~250vh past the seam, or back above the spine end) — init on approach,
- * destroy on leave, per the heavy-layer mandate. The march pipeline is
- * WARMED via renderer.compileAsync before the mesh mounts (HomeSingularity /
- * pavel-mazhuga precedent) so the first lensed frame never hitches the
- * scrub. group.visible tracks holeFade: OFF past p 0.80 — the march NEVER
- * renders fullscreen at full fade (the crossfade mandate); the perceived
- * continuing plunge is carried entirely by the tunnel.
+ * (>~250vh past the passage, or back above the spine end) — init on
+ * approach, destroy on leave, per the heavy-layer mandate. The march
+ * pipeline is WARMED via renderer.compileAsync before the mesh mounts
+ * (HomeSingularity / pavel-mazhuga precedent) so the first lensed frame
+ * never hitches the scrub. group.visible tracks holeFade — which NEVER
+ * fades out on scroll (owner 2026-08-07: "non deve fare fade e sparire, ci
+ * dobbiamo entrare dentro"): the one-shot plunge drops it to 0 only once
+ * the frame is FULLY BLACK (veil closed over the swallowed viewport), so
+ * the viewer never sees the march disappear — it swallows them, and the
+ * tunnel streaks take over inside the black.
  *
  * LAYERING: same instance-level overrides as HomeSingularity (renderOrder −1
  * + depthWrite OFF + FrontSide) — the backdrop convention. With depth writes
@@ -82,9 +85,10 @@ const TAN_HALF_FOV = Math.tan(THREE.MathUtils.degToRad(CAMERA_FOV) / 2);
 const DIST_HARD_FLOOR = 1.3;
 
 /** Slow virtual-camera orbit (the audit/home grammar): angular-constant by
- * scaling the radius with distance, and FADED OUT across [0.60, 0.72] so the
- * marched center sits exactly on the group anchor when the tunnel's center
- * lock engages. */
+ * scaling the radius with distance, and FADED OUT across
+ * [SEQ.ORBIT_FADE_START, SEQ.ORBIT_FADE_END] (late APPROACH) so the marched
+ * center sits exactly on the group anchor at the near hold, before the
+ * one-shot's center lock engages. */
 const ORBIT_PERIOD = 26;
 const ORBIT_RADIUS_PER_DIST = 0.12; // ≈7° apparent swim, capped below
 const ORBIT_RADIUS_MAX = 1.0;
@@ -227,9 +231,15 @@ export function SequenceSingularity() {
     // constants and the uCamLocal shortcut both depend on it. Never scale:
     // apparent size is camera distance, and ONLY camera distance.
 
-    // --- Slow virtual-camera orbit, faded out before the center lock --------
+    // --- Slow virtual-camera orbit, faded out before the near hold ----------
     clockRef.current += delta;
-    const orbitEnv = 1 - THREE.MathUtils.smoothstep(seq.p, 0.6, 0.72);
+    const orbitEnv =
+      1 -
+      THREE.MathUtils.smoothstep(
+        seq.p,
+        SEQ.ORBIT_FADE_START,
+        SEQ.ORBIT_FADE_END,
+      );
     const radius =
       Math.min(ORBIT_RADIUS_PER_DIST * dist, ORBIT_RADIUS_MAX) * orbitEnv;
     const bob = Math.min(ORBIT_BOB_PER_DIST * dist, ORBIT_BOB_MAX) * orbitEnv;
@@ -254,7 +264,8 @@ export function SequenceSingularity() {
     // Apparent center = group − orbit offset (the orbit swims the rays; the
     // content the eye tracks translates by −offset). Projection uses the
     // camera's last-committed matrices — up to one frame stale, invisible at
-    // scrub speeds, and the lock lerps to exact center by p 0.80 anyway.
+    // scrub speeds, and the lock lerps to exact center across the one-shot's
+    // first PLUNGE_LOCK_T anyway (the orbit is already dead by then).
     const v = projScratch.current;
     v.set(
       group.position.x - ox,
@@ -262,9 +273,9 @@ export function SequenceSingularity() {
       group.position.z - oz,
     ).project(camera);
     const lock = THREE.MathUtils.smoothstep(
-      seq.p,
-      SEQ.TUNNEL_IN_START,
-      SEQ.TUNNEL_IN_END,
+      seq.plungeT,
+      0,
+      SEQ.PLUNGE_LOCK_T,
     );
     const ux = THREE.MathUtils.lerp((v.x + 1) / 2, 0.5, lock);
     const uy = THREE.MathUtils.lerp((v.y + 1) / 2, 0.5, lock);

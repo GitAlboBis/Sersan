@@ -1,13 +1,20 @@
 "use client";
 
 /**
- * CinematicSystemScroll — pinned 390vh cinematic spine of the homepage.
+ * CinematicSystemScroll — pinned 315vh cinematic spine of the homepage.
  *
- * One ScrollTrigger scrubs the CSS-sticky pin across 4 GROUPED panels
- * (hero · map · ship · handover — the 6 canonical STAGE_CONTENT copy blocks
- * compressed via DESKTOP_GROUPS, restyle step 4 / merge option A). Scroll
- * progress (0..1) is written into progressRef on every ScrollTrigger update.
- * The 3D scene reads from progressRef each frame; no React state churn.
+ * One ScrollTrigger scrubs the CSS-sticky pin across 3 GROUPED panels
+ * (hero · map · ship — the 5 canonical STAGE_CONTENT copy blocks compressed
+ * via DESKTOP_GROUPS, restyle step 4 / merge option A). Scroll progress
+ * (0..1) is written into progressRef on every ScrollTrigger update. The 3D
+ * scene reads from progressRef each frame; no React state churn.
+ *
+ * STAGE 05 ("handover") IS NOT HERE (owner 2026-08-07: "hai duplicato la
+ * sezione 05" — it rendered twice, spine + passage echo). Its full copy
+ * block (eyebrow · title · body · proof chips · CTA cluster) now lives ONCE
+ * as panel 1 of the singularity passage's horizontal track
+ * (singularity-passage.tsx), which directly follows this section. The spine
+ * runs 01→04 and hands the visitor to the passage at the pin end.
  *
  * Text panels are absolutely positioned over the scene and fade in/out
  * across their group range, with a small lead-in/lead-out. The site-wide
@@ -16,7 +23,7 @@
  * end and a barrier vetoes settles crossing it.
  *
  * Mobile (≤768px) returns to a normal stacked layout — no pin, no Canvas —
- * iterating the UNGROUPED 6 copy blocks (compression is desktop-only).
+ * iterating the UNGROUPED 5 copy blocks (compression is desktop-only).
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -52,10 +59,10 @@ type Stage = {
   eyebrow: string;
   title: React.ReactNode;
   body: React.ReactNode;
-  // Optional extra content rendered under the body — used on the final
-  // handover stage to surface a proof bullet (categorical commit) and a
-  // small credentials strip drawn from real founders.ts / case-studies.ts
-  // data, right where the morph releases into the page.
+  // Optional extra content rendered under the body. (Currently unused: the
+  // handover stage that carried the proof-chip extras moved into the
+  // singularity passage. The plumbing stays — it is generic panel
+  // machinery any future block can use.)
   extras?: React.ReactNode;
 };
 
@@ -66,91 +73,6 @@ type LocalizedStage = {
   body: { en: React.ReactNode; it: React.ReactNode };
   extras?: { en: React.ReactNode; it: React.ReactNode };
 };
-
-// === Proof-chip count-up ===================================================
-// The handover stage's 13 / 5 / 1 proof chips count up ONCE, the first time
-// their panel actually lights. Inside the pinned spine an IntersectionObserver
-// or ScrollTrigger would be the WRONG trigger — the panel sits in the viewport
-// for the whole pin and only *lights* via the rAF-driven panelOpacity —
-// so the desktop trigger is the same `visible` threshold crossing that flips
-// the panel's inert state. The mobile fallback is normal document flow and
-// uses a standard one-shot IO instead.
-//
-// A11y contract mirrors CountUp (ui/count-up.tsx): sr-only static final value,
-// aria-hidden animated span, direct textContent writes (no React state per
-// frame), and reduced-motion never animates (the animated span ships with the
-// final value in the SSR HTML, so "do nothing" = render the final value).
-function ProofChip({ value, label }: { value: string; label: string }) {
-  return (
-    <li className="flex items-center gap-1.5">
-      <span className="text-ink tabular-nums">
-        <span className="sr-only">{value}</span>
-        <span data-chip-count={value} aria-hidden="true">
-          {value}
-        </span>
-      </span>
-      <span>{label}</span>
-    </li>
-  );
-}
-
-function animateChipCount(node: HTMLElement) {
-  // One-shot per DOM node. A language toggle remounts the chips (fresh nodes,
-  // no flag), so a re-light after EN↔IT replays once — same re-arm semantics
-  // as the site's other text engines.
-  if (node.dataset.chipCounted === "1") return;
-  node.dataset.chipCounted = "1";
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const final = node.dataset.chipCount ?? "";
-  const target = Number.parseInt(final, 10);
-  if (!Number.isFinite(target)) return;
-  const obj = { n: 0 };
-  node.textContent = "0";
-  gsap.to(obj, {
-    n: target,
-    duration: 0.8,
-    ease: "expo.out",
-    onUpdate: () => {
-      if (!node.isConnected) return; // remounted mid-tween (language toggle)
-      node.textContent = String(Math.round(obj.n));
-    },
-    onComplete: () => {
-      if (node.isConnected) node.textContent = final;
-    },
-  });
-}
-
-function animateChipCounts(root: HTMLElement) {
-  root
-    .querySelectorAll<HTMLElement>("[data-chip-count]")
-    .forEach((node) => animateChipCount(node));
-}
-
-// Stage 05 (handover) eyebrow + title, extracted as a shared constant: the
-// singularity passage (singularity-passage.tsx) re-frames this EXACT beat as
-// the opening frame of the plunge sequence — one source keeps the two renders
-// byte-identical (copy freeze: zero new copy, zero drift).
-export const HANDOVER_ECHO = {
-  eyebrow: { en: "05 / Handover", it: "05 / Consegna" },
-  title: {
-    en: (
-      <>
-        We hand over something you can{" "}
-        <span className="text-[hsl(var(--accent))] font-display font-medium">
-          run.
-        </span>
-      </>
-    ),
-    it: (
-      <>
-        Consegniamo un sistema che potete{" "}
-        <span className="text-[hsl(var(--accent))] font-display font-medium">
-          gestire.
-        </span>
-      </>
-    ),
-  },
-} as const;
 
 const STAGE_CONTENT: LocalizedStage[] = [
   {
@@ -248,64 +170,9 @@ const STAGE_CONTENT: LocalizedStage[] = [
       it: "Monitoring, eval, revisione umana, percorsi di rollback e handover sono integrati dal primo giorno. Il sistema che rilasciate e il sistema in produzione sono lo stesso sistema.",
     },
   },
-  {
-    id: "handover",
-    // Shared with the singularity passage's echo frame — see HANDOVER_ECHO.
-    eyebrow: HANDOVER_ECHO.eyebrow,
-    title: HANDOVER_ECHO.title,
-    body: {
-      en: "A production system with its evals, traces, and boundaries documented. Your team owns it from day one, and you talk to one of us, not an account manager.",
-      it: "Un sistema in produzione con eval, trace e limiti documentati. Il vostro team lo gestisce dal primo giorno, e parlate con uno di noi, non con un account manager.",
-    },
-    // Closing proof (user decision 2026-06-10: rewired here from the hero,
-    // where the {!isHero} render gates kept it dead code): categorical commit
-    // + real counts pulled from the actual case-studies.ts data and
-    // founders.ts credentials. No invented metrics.
-    extras: {
-      en: (
-        <div className="mt-5 flex flex-col gap-3">
-          <p className="text-[13px] sm:text-[14px] font-mono uppercase tracking-[0.14em] text-ink/85 leading-relaxed">
-            Custom Software <span aria-hidden="true">·</span> AI Agents{" "}
-            <span aria-hidden="true">·</span> Automation{" "}
-            <span aria-hidden="true">·</span> MLOps{" "}
-            <span aria-hidden="true">·</span> Audits
-            <br />
-            <span className="text-ink-mute/80">
-              For SaaS, fintech &amp; regulated teams
-            </span>
-          </p>
-          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-mono uppercase tracking-[0.14em] text-ink/75 list-none">
-            <ProofChip value="13" label="named engagements" />
-            <li aria-hidden="true" className="text-ink-mute/55">/</li>
-            <ProofChip value="5" label="tier-1 institutions" />
-            <li aria-hidden="true" className="text-ink-mute/55">/</li>
-            <ProofChip value="1" label="PhD, applied maths" />
-          </ul>
-        </div>
-      ),
-      it: (
-        <div className="mt-5 flex flex-col gap-3">
-          <p className="text-[13px] sm:text-[14px] font-mono uppercase tracking-[0.14em] text-ink/85 leading-relaxed">
-            Software su misura <span aria-hidden="true">·</span> Agenti AI{" "}
-            <span aria-hidden="true">·</span> Automazione{" "}
-            <span aria-hidden="true">·</span> MLOps{" "}
-            <span aria-hidden="true">·</span> Audit
-            <br />
-            <span className="text-ink-mute/80">
-              Per SaaS, fintech e team regolamentati
-            </span>
-          </p>
-          <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-mono uppercase tracking-[0.14em] text-ink/75 list-none">
-            <ProofChip value="13" label="progetti nominali" />
-            <li aria-hidden="true" className="text-ink-mute/55">/</li>
-            <ProofChip value="5" label="istituzioni tier-1" />
-            <li aria-hidden="true" className="text-ink-mute/55">/</li>
-            <ProofChip value="1" label="PhD, matematica applicata" />
-          </ul>
-        </div>
-      ),
-    },
-  },
+  // NOTE: the 6th canonical block ("handover", 05) moved WHOLESALE into
+  // singularity-passage.tsx (HANDOVER_STAGE there) — panel 1 of the
+  // horizontal track. One source, one render (owner 2026-08-07).
 ];
 
 function localizeStages(language: Language): Stage[] {
@@ -319,16 +186,18 @@ function localizeStages(language: Language): Stage[] {
 }
 
 // === Desktop grouping layer (restyle step 4 — merge option A) =============
-// STAGE_CONTENT stays the canonical, byte-identical 6 copy blocks (the
+// STAGE_CONTENT stays the canonical, byte-identical 5 copy blocks (the
 // mobile fallback and the IT localisation iterate it UNGROUPED). The desktop
-// pin renders them as 4 grouped panels: hero · map (signals+audit) · ship
-// (build+operate) · handover. Ranges are fractions of the spine's own
-// ScrollTrigger progress; the scrub travel is SPINE_HEIGHT_VH − 100vh =
-// 290vh, so: hero 58vh (the 2026-06-10 hero-widening decision set a ~60vh
-// readability floor — after the intro gate releases, "We build..." must
-// survive real scrolling), map 81vh, ship 75vh, handover 75vh. The handover
-// group MUST stay final: the proof-chip count-up and the CTA cluster key off
-// the final panel's lit state.
+// pin renders them as 3 grouped panels: hero · map (signals+audit) · ship
+// (build+operate). Ranges are fractions of the spine's own ScrollTrigger
+// progress; the scrub travel is SPINE_HEIGHT_VH − 100vh = 215vh, so: hero
+// 58vh (the 2026-06-10 hero-widening decision set a ~60vh readability floor
+// — after the intro gate releases, "We build..." must survive real
+// scrolling), map 81.7vh, ship 75.3vh — each group's REAL scroll length is
+// unchanged from the 4-group layout; only the handover share was removed
+// with its panel. The ship group is final: it stays lit at the pin end so
+// SpineExitGate's camera-descent dives on a composed frame, and the visitor
+// lands on section 05 (the passage's panel 1) right after.
 type StageGroup = {
   id: string;
   /** Spine-ScrollTrigger progress where this panel's lit window starts. */
@@ -340,10 +209,9 @@ type StageGroup = {
 };
 
 const DESKTOP_GROUPS: StageGroup[] = [
-  { id: "hero", start: 0, end: 0.2, blockIds: ["dormant"] },
-  { id: "map", start: 0.2, end: 0.48, blockIds: ["signals", "audit"] },
-  { id: "ship", start: 0.48, end: 0.74, blockIds: ["build", "operate"] },
-  { id: "handover", start: 0.74, end: 1, blockIds: ["handover"] },
+  { id: "hero", start: 0, end: 0.27, blockIds: ["dormant"] },
+  { id: "map", start: 0.27, end: 0.65, blockIds: ["signals", "audit"] },
+  { id: "ship", start: 0.65, end: 1, blockIds: ["build", "operate"] },
 ];
 
 // Snap stations (2026-07-23 hardening — client: every scroll must come to
@@ -356,8 +224,11 @@ const DESKTOP_GROUPS: StageGroup[] = [
 // on a further UP-wheel at y≈0, never on the settle itself).
 const SNAP_STATION_PROGRESS = DESKTOP_GROUPS.map((g) => (g.start + g.end) / 2);
 
-// CTA + hint labels used in both the desktop spine and the mobile fallback.
-const SPINE_COPY = {
+// CTA + hint labels used in the desktop spine, the mobile fallback, AND the
+// singularity passage's panel 05 (exported: the passage renders the same
+// ctaPrimary / seeSelectedWork strings on section 05's CTA cluster — one
+// source, zero copy drift).
+export const SPINE_COPY = {
   en: {
     ctaPrimary: "Book a 30-min scoping call",
     seeSelectedWork: "See selected work",
@@ -401,7 +272,7 @@ function panelOpacity(
 }
 
 // === Stage panel ==========================================================
-// Renders one DESKTOP_GROUPS entry. Single-block groups (hero, handover)
+// Renders one DESKTOP_GROUPS entry. Single-block groups (the hero)
 // look exactly like the pre-compression panels; merged groups render BOTH
 // copy blocks inside one lit window — the first block as a compact companion
 // (its own eyebrow + smaller heading + body), the second as the lead with
@@ -516,11 +387,8 @@ function StagePanel({
           (el as HTMLElement & { inert: boolean }).inert = !visible;
           if (visible) el.removeAttribute("aria-hidden");
           else el.setAttribute("aria-hidden", "true");
-          // First light of the handover panel → run the one-shot proof-chip
-          // count-up (13/5/1). This lit-threshold crossing is the panel's only
-          // honest "entered view" signal inside the pin; the per-node
-          // data-chip-counted flag guards replays on later re-lights.
-          if (visible && isFinal) animateChipCounts(el);
+          // (The proof-chip count-up moved with stage 05 into the
+          // singularity passage — no chips render inside the spine now.)
         }
         lastActive = active;
       }
@@ -697,23 +565,9 @@ function StagePanel({
               );
             })()
           )}
-          {isFinal ? (
-            <div className="mt-7 flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
-              <Magnetic>
-                <Link href={START_HREF} className="block">
-                  <Button variant="hero" size="xl" className="group">
-                    {copy.ctaPrimary}
-                    <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
-                  </Button>
-                </Link>
-              </Magnetic>
-              <Link href="#work" className="block">
-                <Button variant="heroOutline" size="xl">
-                  {copy.seeSelectedWork}
-                </Button>
-              </Link>
-            </div>
-          ) : null}
+          {/* No closing CTA cluster here anymore: it belongs to stage 05,
+              which renders once inside the singularity passage (panel 1 of
+              the horizontal track) with the proof chips + both CTAs. */}
         </div>
       </div>
     </div>
@@ -784,41 +638,12 @@ function MobileFallback({
   stages: Stage[];
   copy: (typeof SPINE_COPY)[Language];
 }) {
-  const rootRef = useRef<HTMLElement | null>(null);
-
-  // Proof chips (13/5/1) sit in NORMAL document flow here (no pin), so the
-  // standard one-shot IO trigger applies. Re-runs when `stages` changes
-  // (language toggle remounts the chips) to observe the fresh nodes;
-  // animateChipCount itself bails under reduced motion, but skipping the
-  // observer entirely keeps this path zero-cost for those users.
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const targets = Array.from(
-      root.querySelectorAll<HTMLElement>("[data-chip-count]"),
-    );
-    if (targets.length === 0) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            io.unobserve(entry.target);
-            animateChipCount(entry.target as HTMLElement);
-          }
-        }
-      },
-      { rootMargin: "0px 0px -10% 0px", threshold: 0.4 },
-    );
-    targets.forEach((t) => io.observe(t));
-    return () => io.disconnect();
-  }, [stages]);
-
+  // (The proof-chip IO trigger moved with stage 05 into the singularity
+  // passage — no chips render in this stacked path anymore.)
   return (
-    <section ref={rootRef} className="relative">
+    <section className="relative">
       {stages.map((stage, i) => {
         const isHero = i === 0;
-        const isFinal = i === stages.length - 1;
         return (
           <div
             key={stage.id}
@@ -881,15 +706,9 @@ function MobileFallback({
                   </Link>
                 </div>
               ) : null}
-              {isFinal ? (
-                <div className="mt-6 flex flex-col gap-3">
-                  <Link href={START_HREF}>
-                    <Button variant="hero" size="xl" className="w-full">
-                      {copy.ctaPrimary}
-                    </Button>
-                  </Link>
-                </div>
-              ) : null}
+              {/* The closing scoping CTA moved with stage 05 into the
+                  singularity passage (fully readable vertical section on
+                  this same viewport class, directly below). */}
             </div>
           </div>
         );
@@ -1088,11 +907,11 @@ export default function CinematicSystemScroll() {
       ref={outerRef}
       id="top"
       className="relative"
-      // 390vh (restyle step 4 — merge option A): four grouped panels over a
-      // 290vh scrub. Each merged stage keeps 75-81vh of scroll (above the
-      // ~60vh readability floor from the 2026-06-10 hero-widening decision)
-      // while releasing the visitor into the page ~130vh sooner than the
-      // previous 520vh six-panel spine.
+      // 315vh (2026-08-07: stage 05 moved into the singularity passage):
+      // three grouped panels over a 215vh scrub. Each stage keeps 58-82vh of
+      // scroll (above the ~60vh readability floor from the 2026-06-10
+      // hero-widening decision); the pin releases straight into section 05 —
+      // panel 1 of the passage's horizontal track.
       style={{ height: `${SPINE_HEIGHT_VH}vh` }}
     >
       {/* Pinned viewport. The text panels render immediately (so the H1 is in
@@ -1202,8 +1021,9 @@ export default function CinematicSystemScroll() {
         <StageRail progressRef={progressRef} groups={DESKTOP_GROUPS} />
 
         {/* Grouped stage panels stacked, each fades in during its range.
-            The hero group (index 0) is the page H1; the final (handover)
-            group carries the proof chips + scoping CTA cluster. */}
+            The hero group (index 0) is the page H1; the final (ship) group
+            stays lit at the pin end so SpineExitGate dives on a composed
+            frame into section 05 (the passage's panel 1). */}
         {DESKTOP_GROUPS.map((group, i) => (
           <StagePanel
             key={group.id}
@@ -1240,8 +1060,8 @@ export default function CinematicSystemScroll() {
         <HeroIntroGate skipLabel={copy.skipIntro} />
 
         {/* The 3D camera-descent hand-off at the END of the spine (after
-            stage 05) — locks the page once more and dives the WebGL camera
-            AND the pinned DOM stage into the rest of the site. */}
+            stage 04) — locks the page once more and dives the WebGL camera
+            AND the pinned DOM stage into section 05 (the passage). */}
         <SpineExitGate outerRef={outerRef} stageRef={stageRef} />
       </div>
     </section>
@@ -1249,7 +1069,7 @@ export default function CinematicSystemScroll() {
 }
 
 // === Spine exit gate: the 3D camera-descent beat ==========================
-// At the END of the pinned spine (stage 05 "handover" fully read), one more
+// At the END of the pinned spine (stage 04 "operate" fully read), one more
 // scroll hijacks the page a final time: the WebGL camera plays the immersive
 // "head looks down" descent (textMorphStore.camTilt clock, applied by
 // SignatureLine: monotonic ~1-viewport dive, pitch follows velocity) that
