@@ -37,7 +37,9 @@ import { sampleTextPoints, type TextSpec } from "./text/sampleTextPoints";
 import { webgpuEnabled } from "./renderer/createRenderer";
 import { useIntroStore } from "./store/introStore";
 import { useTextMorphStore } from "./store/textMorphStore";
+import { useFxStore } from "./store/fxStore";
 import type { SceneTier } from "./store/tierStore";
+import { holeField } from "./HomeSingularity";
 
 interface HeroTextParticlesProps {
   tier: Exclude<SceneTier, "off">;
@@ -48,6 +50,24 @@ interface HeroTextParticlesProps {
 // the ICS-media reference's 4s tween; the per-particle stagger + easing live
 // in the sim (uAssemble + delay buffer).
 const ENTRY_DURATION = 3.6;
+
+/**
+ * ENTRY-CLOCK SHARED REF (P0 hotfix 2026-08-07) — the wordmark entry's
+ * normalized progress 0..1, published as a module-scope mutable ref (the
+ * pointerStore / holeField pattern: ONE writer — this component's useFrame —
+ * and plain property reads inside consumers' useFrame; no React, no zustand).
+ * Deliberately NOT a textMorphStore field: the value changes EVERY frame for
+ * the whole 3.6s entry, and each zustand setState notifies every store
+ * listener unconditionally (smooth-scroll-provider's gate-hold sync +
+ * HomeSingularity's arm subscription) — for a value nothing reads reactively.
+ * 1 after the entry completes (and pinned 1 by a skip); reset to 0 when a
+ * fresh intro replays. Reader: HeroLogo's ANTICIPATED crust AUTO-BURST
+ * (fires when this crosses fx.sporeAutoBurstAt). Both writer and reader live
+ * in the same lazy WebGL island chunk, so the module instance is single by
+ * construction — the textMorphStore globalThis pin exists for the
+ * route↔island bundle split, which this ref never crosses.
+ */
+export const entryProgressRef = { value: 0 };
 
 // Gate-progress timeline (g = textMorphStore.gateProgress, smoothed locally).
 // gateProgress only advances AFTER the entry assemble completes (the gate
@@ -94,6 +114,12 @@ interface MorphBuild {
   uPointSize: { value: number };
   uPixelRatio: { value: number };
   uViewport: { value: THREE.Vector2 };
+  /** Flyby attractor (owner 2026-08-07): LOCAL-space center, world-unit
+   * displacement amplitude, world-unit falloff radius. Displacement only —
+   * see the vertex-stage note in gpgpuNodeSim.createTextMorphComputeBuild. */
+  uHole: { value: THREE.Vector3 };
+  uHoleStrength: { value: number };
+  uHoleRadius: { value: number };
   tick: (p: { dt: number; time: number }) => void;
   dispose: () => void;
 }
@@ -104,6 +130,11 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
   const brandRef = useRef<HTMLElement | null>(null);
   const timeRef = useRef(0);
   const gSmoothRef = useRef(0);
+  // Damped flyby envelope (0..1) — follows holeField.strength (clamped-dt
+  // damp) so the eclipse's activation/retirement edges never step the text:
+  // unlike the crust's spring-integrated force, the text displacement is
+  // ANALYTIC in the vertex stage — an un-damped strength step would pop it.
+  const holeAmpRef = useRef(0);
   // Entry-assemble clock 0..1. Persists across rebuilds (resize re-runs the
   // build effect but never unmounts the component), and is pre-completed when
   // a previous mount already played the entrance (store.assembleDone is
@@ -294,6 +325,7 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       // also resets these, but this makes the replay self-contained.)
       if (replayDone) {
         entryRef.current = 1;
+        entryProgressRef.value = 1;
       } else {
         // A mid-entry rebuild (resize during the 3.6s assemble) lands here
         // too: the seed is a fresh scatter cloud, so the entry clock must
@@ -302,6 +334,7 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
         // clump. The gate holds the page either way, so a replayed entrance
         // costs nothing but its own choreography.
         entryRef.current = 0;
+        entryProgressRef.value = 0;
         useTextMorphStore.setState({
           assembleDone: false,
           gateProgress: 0,
@@ -398,6 +431,11 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
         useTextMorphStore.setState({ assembleDone: true });
       }
     }
+    // Publish the entry clock through the SHARED REF, never the store (P0
+    // hotfix — see entryProgressRef): a plain property write, zero listener
+    // notifications. Unconditional so the skip pin (entryRef = 1 above) and
+    // the completed state stay visible to HeroLogo's burst trigger.
+    entryProgressRef.value = entryRef.current;
 
     // The gate accumulates in discrete wheel ticks — smooth it here so the
     // whole transition glides (frame-rate independent damp).
@@ -433,6 +471,9 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
     // DOM cascade: H1 crossfade + hero cluster ([data-hero-stagger]:
     // eyebrow → sub → CTAs) stagger in as the brand melts — StagePanel
     // consumes this. Pure in g, so the reverse replay mirrors it.
+    // (The entry clock is deliberately NOT published here — it goes through
+    // entryProgressRef, the module-scope shared ref, so the per-frame store
+    // notification rate stays exactly what it was before the burst retiming.)
     const reveal = THREE.MathUtils.smoothstep(g, REVEAL_START, REVEAL_END);
     useTextMorphStore.setState({ domReveal: reveal });
 
@@ -478,6 +519,39 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
         );
         group.position.copy(scratch);
       }
+
+      // --- GRAVITATIONAL FLYBY (owner 2026-08-07): the wordmark leans a few
+      // px toward the eclipse's APPARENT center (holeField — the module-
+      // scope shared ref HomeSingularity publishes each frame). Displacement
+      // only, ≈15–25% of the crust's amplitude, deliberately NO colour
+      // change. The hole's true center floats ≈1.76 units from the camera —
+      // ~10 world units in FRONT of this z=0 plane — so it is PROJECTED
+      // onto the content plane along the camera ray first; the group is
+      // translation-only, so world→local is a plain subtraction. Uniform
+      // writes only (see the gpgpuNodeSim binding-budget note).
+      const fxs = useFxStore.getState();
+      holeAmpRef.current = THREE.MathUtils.damp(
+        holeAmpRef.current,
+        holeField.active ? holeField.strength : 0,
+        6,
+        delta,
+      );
+      if (holeField.active) {
+        const camToHole = Math.max(camera.position.z - holeField.z, 1e-3);
+        const sProj = camera.position.z / camToHole; // content plane z = 0
+        build.uHole.value.set(
+          camera.position.x +
+            (holeField.x - camera.position.x) * sProj -
+            group.position.x,
+          camera.position.y +
+            (holeField.y - camera.position.y) * sProj -
+            group.position.y,
+          0,
+        );
+      }
+      build.uHoleRadius.value = fxs.holePullRadius;
+      build.uHoleStrength.value = holeAmpRef.current * fxs.holePullText;
+
       timeRef.current += delta;
       build.tick({ dt: delta, time: timeRef.current });
     }

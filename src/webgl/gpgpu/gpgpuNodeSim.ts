@@ -346,6 +346,15 @@ export function unifiedForceStep(
 // (not `.element()`) in the render stage per three #31221. Spore radius is in
 // MODEL space (DDD: diameter ≈ letterHeight/47) so the packing survives
 // zoom/scale.
+//
+// GRAVITATIONAL FLYBY (owner 2026-08-07): a second, ATTRACTIVE interaction
+// term (uHole / uHoleStrength / uHolePull / uHoleRadius) rides the same
+// unified integration beside the cursor repulsion, plus a matching
+// hover-style glow term in the render. UNIFORMS ONLY, by design: storage
+// buffers are a hard device budget (the text-morph compute kernel is already
+// at its 8-of-8 wall, and every render-stage buffer costs a vertex-buffer or
+// storage-binding slot — see the RENDER BINDING BUDGET block below), while
+// uniforms live in a SEPARATE, roomy budget. Nothing bufferlike was added.
 export interface SporeNodeBuild {
   rig: GpgpuSimRig;
   geometry: InstancedGeoLike;
@@ -372,6 +381,21 @@ export interface SporeNodeBuild {
    * the intro materialise for a much slower first-reveal bloom, then restores
    * it to 1 so the hover / scroll-back regrow keep the preset's own rate. */
   uRegrowScale: UniformNode<number>;
+  /** Flyby attractor center in MODEL space (park at 1e9 = off). Written per
+   * frame by HeroLogo from holeField (HomeSingularity), projected onto the
+   * mark's content plane along the camera ray and converted world→model. */
+  uHole: UniformNode<Vec3Like>;
+  /** Normalized flyby envelope 0..1 (eclipse fade × orbit proximity, damped
+   * upstream). Gates BOTH the attraction force and the hover-style cyan
+   * glow. CRUST-role layers only — HeroLogo writes 0 on the core, the same
+   * selectivity as the auto-burst. */
+  uHoleStrength: UniformNode<number>;
+  /** Attraction gain — model-space acceleration at full falloff × envelope
+   * (fx.holePullCrust). Equilibrium lean ≈ pull/SPRING model units. */
+  uHolePull: UniformNode<number>;
+  /** Flyby falloff radius in MODEL space (fx.holePullRadius world units ÷
+   * the mark group's world scale, written per frame by HeroLogo). */
+  uHoleRadius: UniformNode<number>;
   dispose: () => void;
 }
 
@@ -432,6 +456,7 @@ export function createSporeComputeNodeBuild(
     fract,
     dot,
     mix,
+    smoothstep,
     pow,
     abs,
     hash,
@@ -469,6 +494,22 @@ export function createSporeComputeNodeBuild(
   // its falloff exponent. Live-driven from fxStore by HeroLogo per frame.
   const uOrbit = uniform(config.ORBIT) as UniformNode<number>;
   const uOrbitFalloff = uniform(config.ORBIT_FALLOFF) as UniformNode<number>;
+  // GRAVITATIONAL FLYBY attractor (owner 2026-08-07) — see the kernel and
+  // glow notes below. Written per frame by HeroLogo (crust-role layers only;
+  // the core gets envelope 0). UNIFORMS ONLY: no storage buffers, no
+  // attribute slots — a separate device budget from both binding tables.
+  const uHole = uniform(new Vector3(1e9, 1e9, 1e9)) as UniformNode<Vec3Like>;
+  const uHoleStrength = uniform(0) as UniformNode<number>;
+  const uHolePull = uniform(0) as UniformNode<number>;
+  // Default nods to the brief's "~1.5× the mouse radius"; the LIVE value is
+  // driven each frame from fx.holePullRadius (world units → model units in
+  // HeroLogo — the projected hole center sits several units below the mark,
+  // so the shipping well is much wider; see the fxStore knob doc).
+  const uHoleRadius = uniform(config.RADIUS * 1.5) as UniformNode<number>;
+  const holeN = uHole as unknown as AnyNode;
+  const holeStrengthN = uHoleStrength as unknown as AnyNode;
+  const holePullN = uHolePull as unknown as AnyNode;
+  const holeRadiusN = uHoleRadius as unknown as AnyNode;
   const SPRING = uSpring as unknown as AnyNode;
   const PUSH = uPush as unknown as AnyNode;
   const RADIUS = uRadiusN as unknown as AnyNode;
@@ -559,6 +600,24 @@ export function createSporeComputeNodeBuild(
               .add(1e-5)
               .normalize()
               .mul(burstN.mul(7.0).mul(float(0.6).add(rndI.mul(0.8)))),
+          );
+
+          // GRAVITATIONAL FLYBY (owner 2026-08-07): ATTRACTION toward the
+          // black hole's apparent center — the mouse lift's exact falloff
+          // family (smoothstep radius→0, the static build's liftExpr shape)
+          // on a wider, softer well, pointing TOWARD the attractor instead
+          // of away. The force rides the same spring/damping integration as
+          // the cursor, so the crust LEANS and eases back with the hover
+          // aesthetic; the quasi-static approach (26s orbit, damped
+          // envelope) builds no kill-curve speed, so the lean displaces
+          // without eroding. Parked at 1e9 / envelope 0 → exactly zero, so
+          // every rest state is unchanged by construction.
+          const toHole = holeN.sub(pos);
+          const fHole = smoothstep(holeRadiusN, 0.0, length(toHole)).mul(
+            holeStrengthN,
+          );
+          acc.addAssign(
+            toHole.add(1e-5).normalize().mul(fHole).mul(holePullN),
           );
         },
       });
@@ -679,8 +738,21 @@ export function createSporeComputeNodeBuild(
     // so `.toAttribute()` is 4-component — `length()` must see the true vec3.
     const speed = length(velocityBuffer.toAttribute().xyz);
     const regrowFlash = clamp(lifeAttr.sub(1.0), 0.0, 1.0); // max(0, life−1)
+    // GRAVITATIONAL FLYBY glow — the hovered-spore cyan lift, driven by the
+    // ATTRACTION magnitude instead of speed: the flyby lean is quasi-static
+    // (no kill-curve velocity), so without this the crust would displace
+    // WITHOUT the brightening the owner asked to mirror. Same falloff ×
+    // envelope product as the kernel's force term. Self-contained expression
+    // (frozen-varying discipline); positionBuffer is already bound for
+    // positionNode, so this read costs no new binding — uniforms only.
+    // `.xyz` mandatory on the padded `"vec3"` storage read.
+    const holeGlow = smoothstep(
+      holeRadiusN,
+      0.0,
+      length(holeN.sub(positionBuffer.toAttribute().xyz)),
+    ).mul(holeStrengthN);
     const t = clamp(
-      max(speed.mul(spore.SPEED_COLOR_K), regrowFlash),
+      max(max(speed.mul(spore.SPEED_COLOR_K), regrowFlash), holeGlow),
       0.0,
       1.0,
     ).toVar();
@@ -755,6 +827,10 @@ export function createSporeComputeNodeBuild(
     uOrbitFalloff,
     uBurst,
     uRegrowScale,
+    uHole,
+    uHoleStrength,
+    uHolePull,
+    uHoleRadius,
     dispose() {
       rig.dispose();
     },
@@ -823,6 +899,17 @@ export interface TextMorphNodeBuild {
    * the hero text path (which bakes params.EMISSIVE), so the hero graph is
    * byte-identical. */
   uEmissive?: UniformNode<number>;
+  /** Flyby attractor center in the build's LOCAL space (park at 1e9 = off) —
+   * the black-hole lean, owner 2026-08-07. Applied in the VERTEX stage as
+   * displacement ONLY (no colour term — vSpeedF is untouched); never touches
+   * the compute kernel, which sits at its 8-of-8 storage wall. */
+  uHole: UniformNode<Vec3Like>;
+  /** Flyby displacement amplitude in world units at full falloff (HeroLogo's
+   * crust gets ~5×; the text is "si distorce un minimo"). 0 = off — the
+   * portrait callers never write it, so their graphs behave identically. */
+  uHoleStrength: UniformNode<number>;
+  /** Flyby falloff radius in world units (the text sim is world-scaled). */
+  uHoleRadius: UniformNode<number>;
   tick: (p: { dt: number; time: number }) => void;
   dispose: () => void;
 }
@@ -953,6 +1040,7 @@ export function createTextMorphComputeBuild(
     MeshBasicNodeMaterial,
     Color,
     Vector2,
+    Vector3,
     AdditiveBlending,
     NormalBlending,
     DoubleSide,
@@ -1083,6 +1171,18 @@ export function createTextMorphComputeBuild(
   const uSizeComp = uniform(1) as UniformNode<number>;
   const uSizeComp2 = uniform(1) as UniformNode<number>;
   const uSizeComp3 = uniform(1) as UniformNode<number>;
+  // GRAVITATIONAL FLYBY attractor (owner 2026-08-07) — displacement-only
+  // lean toward the black hole's apparent center, applied in the VERTEX
+  // stage (see the note inside material.vertexNode). UNIFORMS ONLY: zero
+  // storage buffers, zero binding slots (see the RENDER BINDING BUDGET).
+  // Defaults are dead (strength 0, center parked at 1e9) — only
+  // HeroTextParticles ever writes them, so portraits are untouched.
+  const uHole = uniform(new Vector3(1e9, 1e9, 1e9)) as UniformNode<Vec3Like>;
+  const uHoleStrength = uniform(0) as UniformNode<number>;
+  const uHoleRadius = uniform(9) as UniformNode<number>;
+  const holeN = uHole as unknown as AnyNode;
+  const holeStrengthN = uHoleStrength as unknown as AnyNode;
+  const holeRadiusN = uHoleRadius as unknown as AnyNode;
   const uDelta = uniform(1 / 60) as UniformNode<number>;
   const uTime = uniform(0) as UniformNode<number>;
   const morphN = uMorph as unknown as AnyNode;
@@ -1425,6 +1525,12 @@ export function createTextMorphComputeBuild(
   // storage buffers (position, velocity, homeA–homeD, start, delay) — it is at
   // 8 of 8 on maxStorageBuffersPerShaderStage. A fifth home target breaks the
   // COMPUTE pipeline before the render budget above is anywhere near spent.
+  //
+  // UNIFORMS ARE A SEPARATE BUDGET from both tables above (and from the
+  // compute kernel's storage wall): the 2026-08-07 flyby attractor — uHole /
+  // uHoleStrength / uHoleRadius here, + uHolePull on the spore build — costs
+  // ZERO vertex-buffer slots, ZERO storage bindings and ZERO kernel buffers.
+  // Any future hole/interaction work must stay uniform-shaped the same way.
   // ===========================================================================
   const material = new MeshBasicNodeMaterial();
   material.vertexNode = Fn(() => {
@@ -1438,6 +1544,24 @@ export function createTextMorphComputeBuild(
     // The read-only PORTRAIT buffers deliberately do NOT use `.toAttribute()`
     // — see the binding budget above.
     const p = positionBuffer.toAttribute().xyz.toVar();
+    // GRAVITATIONAL FLYBY (owner 2026-08-07) — displacement-only lean toward
+    // the black hole's apparent center (uHole, LOCAL space; parked at 1e9 =
+    // off, reversed-edge smoothstep resolves to 0 there). Same falloff
+    // family as the crust's attraction at the wordmark's much smaller
+    // amplitude; deliberately NO colour term — vSpeedF/vRandF are untouched,
+    // so affected glyph particles shift a few px without any cyan lift
+    // (owner: "si distorcesse un minimo"). No new varying is introduced;
+    // p is displaced BEFORE mv/clip so all four quad corners move together.
+    // NOTE: portraitDistExpr/portraitSizePxExpr (outer expressions) read the
+    // UNDISPLACED buffer — exact on every shipping path, because the
+    // portrait callers never write uHoleStrength (it defaults to 0).
+    const toHoleV = holeN.sub(p);
+    p.addAssign(
+      toHoleV
+        .add(1e-5)
+        .normalize()
+        .mul(smoothstep(holeRadiusN, 0.0, length(toHoleV)).mul(holeStrengthN)),
+    );
     // NOTE: speed / rand / assemble are NOT computed here any more. They are
     // outer expression nodes (`heroSpeedExpr` / `heroRandExpr` /
     // `heroAssembleExpr`) fed straight into `varying(...)` — assigning them into
@@ -1694,6 +1818,9 @@ export function createTextMorphComputeBuild(
     uPixelRatio,
     uViewport,
     uEmissive: uPortraitEmissive ?? undefined,
+    uHole,
+    uHoleStrength,
+    uHoleRadius,
     tick,
     dispose() {
       geometry.dispose();
@@ -1705,6 +1832,13 @@ export function createTextMorphComputeBuild(
 // ===========================================================================
 // STATIC fallback — analytic billboard (TSL / flag-ON, non-WebGPU backends)
 // ===========================================================================
+// FLYBY NOTE (owner 2026-08-07): the black-hole flyby attractor (uHole /
+// uHoleStrength on the spore + text-morph builds above) is deliberately NOT
+// mirrored here or in the GLSL twin (gpgpuRenderShader.ts): holeField's only
+// writer — HomeSingularity — is gated to the TRUE-WebGPU compute backend,
+// the exact same gate that routes the hero AWAY from these static builds, so
+// the pathway can never be live on a frame this material draws. Adding it to
+// one twin only would break the documented GLSL/TSL lockstep for dead code.
 export interface GpgpuStaticNodeBuild {
   geometry: InstancedGeoLike;
   material: NodeMaterialLike;

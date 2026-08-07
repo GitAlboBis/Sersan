@@ -92,6 +92,8 @@ import { useTierStore, type SceneTier } from "./store/tierStore";
 import { useFxStore } from "./store/fxStore";
 import { useHeroHoverStore } from "./store/heroHoverStore";
 import { usePointerStore } from "./store/pointerStore";
+import { holeField } from "./HomeSingularity";
+import { entryProgressRef } from "./HeroTextParticles";
 import type { SectionAnchors } from "./hooks/useSectionAnchors";
 
 interface HeroLogoProps {
@@ -176,8 +178,9 @@ const FLIGHT_BULGE = 0.7;
  * respawn AT HOME and regrow from nothing into the solid logo. The EXPLODE is
  * the OTHER half of the arc — the scroll dissolve as you reach the end of the
  * hero (the `burst` window in the frame loop). All the burst beats (intro
- * reform, scroll explode, scroll-back regrow, and the one-shot crust
- * AUTO-BURST at intro completion — see the frame loop) ride the SAME `uBurst`
+ * reform, scroll explode, scroll-back regrow, and the one-shot ANTICIPATED
+ * crust AUTO-BURST as the wordmark entry settles — see the frame loop and
+ * fx.sporeAutoBurstAt) ride the SAME `uBurst`
  * mechanism (gpgpuNodeSim "disappear and regrow on top"), so they stay one
  * coherent system. Driven by a wall-clock (delta), NOT scroll, and composed with the
  * scroll burst via max(). Plays on HARD load only; a soft route re-entry just
@@ -186,22 +189,36 @@ const FLIGHT_BULGE = 0.7;
  * for a slower materialise). The core's stiffer spring + slower regrow
  * reassembles a beat behind the crust — a natural inside-out reform.
  */
+// RETIMED (owner 2026-08-07: "il logo si genera troppo in ritardo rispetto
+// alla scritta") — the mark's reform must complete BEFORE the wordmark
+// finishes assembling, target ≈ fully formed at ~60–70% of the entry. The
+// wordmark entry clock (HeroTextParticles ENTRY_DURATION 3.6s) is UNTOUCHED;
+// only the mark's pace changed. Arithmetic behind the new values:
+//   release = HOLD 0.12 + RAMP 0.25 + BLOOM 1.9 = 2.27s ≈ 63% of 3.6s ✓
+//   the respawn threshold (burst < 0.05) clears ≈0.33s in; the visible
+//   regrow (default "explosive" crust LIFE_REGROW 0.7 × REGROW_SLOW 0.75)
+//   then takes ≈1.9s ⇒ bloom completes ≈2.23s — the BLOOM window is sized
+//   to the regrow it paces, exactly as the old 5.5s was to 0.7 × 0.3.
+// Old → new: HOLD 0.35→0.12 · RAMP 0.4→0.25 · BLOOM 5.5→1.9 ·
+// REGROW_SLOW 0.3→0.75 · BODY_REVEAL 2.2→0.8 (same ~35% tail proportion).
 const INTRO_REFORM_PEAK = 0.92; // burst that holds the mark as NOTHING (1 = gone)
-const INTRO_REFORM_HOLD = 0.35; // s held as nothing after the curtain lifts
-const INTRO_REFORM_RAMP = 0.4; // s to drop burst→0, releasing the regrow bloom
-const INTRO_REFORM_BLOOM = 5.5; // s the SLOW materialise bloom is given to finish
-/** Regrow-rate multiplier during the materialise — small ⇒ a MUCH slower bloom
- * than the preset's hover/scroll-back regrow (client 2026-06-29: "molto più
- * lento"). Lower this for an even slower first reveal. */
-const INTRO_REFORM_REGROW_SLOW = 0.3;
+const INTRO_REFORM_HOLD = 0.12; // s held as nothing after the curtain lifts (was 0.35)
+const INTRO_REFORM_RAMP = 0.25; // s to drop burst→0, releasing the regrow bloom (was 0.4)
+const INTRO_REFORM_BLOOM = 1.9; // s the materialise bloom is given to finish (was 5.5)
+/** Regrow-rate multiplier during the materialise — still slower than the
+ * preset's hover/scroll-back regrow (the client's "molto più lento" beat),
+ * but paced up 0.3 → 0.75 so the mark is whole while the wordmark is still
+ * settling (owner retiming 2026-08-07). Lower for a slower first reveal. */
+const INTRO_REFORM_REGROW_SLOW = 0.75;
 /** Clock value past which the intro is fully over (burst 0 + regrow restored). */
 const INTRO_REFORM_RELEASE =
   INTRO_REFORM_HOLD + INTRO_REFORM_RAMP + INTRO_REFORM_BLOOM;
 /** Seconds (at the END of the intro) over which the dark occluder body fades
  * back in. Kept LATE so it never shows as a dim "spento" logo under the slowly-
  * blooming particles — the reform reads as forming from nothing/particles (core
- * already lit), with the dark body filling in behind only at the very end. */
-const INTRO_REFORM_BODY_REVEAL = 2.2;
+ * already lit), with the dark body filling in behind only at the very end.
+ * 2.2 → 0.8 with the retiming (same ~35% of the total arc). */
+const INTRO_REFORM_BODY_REVEAL = 0.8;
 
 // EXPLODE (scroll-out) — STAGGERED so the OUTER crust expands BEFORE the inner
 // core (client: "lo strato di sopra inizia ad espandersi prima di quello di
@@ -322,6 +339,10 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // target 1 while hovering, 0 otherwise; damped so the lift fades in/out and
   // the particles settle back softly when the cursor leaves.
   const hoverRef = useRef(0);
+  // Damped flyby envelope (0..1) — follows holeField.strength with a clamped-
+  // dt damp so the eclipse's activation/retirement edges never step the
+  // crust's lean (the publication itself is smooth; this covers the edges).
+  const holeEnvRef = useRef(0);
 
   // Render mode (fxStore). Subscribed REACTIVELY so toggling it live
   // (window.__sersanFx.getState().set({ heroRenderMode: "..." })) re-renders
@@ -612,6 +633,10 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     uOrbitFalloff: { value: number };
     uBurst: { value: number };
     uRegrowScale: { value: number };
+    uHole: { value: THREE.Vector3 };
+    uHoleStrength: { value: number };
+    uHolePull: { value: number };
+    uHoleRadius: { value: number };
     dispose: () => void;
   }
   const [tslSpore, setTslSpore] = useState<TslSpore[] | null>(null);
@@ -678,6 +703,10 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
           uOrbitFalloff: b.uOrbitFalloff,
           uBurst: b.uBurst,
           uRegrowScale: b.uRegrowScale,
+          uHole: b.uHole as unknown as { value: THREE.Vector3 },
+          uHoleStrength: b.uHoleStrength,
+          uHolePull: b.uHolePull,
+          uHoleRadius: b.uHoleRadius,
           dispose: b.dispose,
         };
       });
@@ -716,6 +745,10 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   const plane = useMemo(() => new THREE.Plane(), []);
   const ndc = useMemo(() => new THREE.Vector2(), []);
   const modelMouse = useMemo(() => new THREE.Vector3(), []);
+  // Flyby attractor in the mark's MODEL space (parked far away until the
+  // eclipse actually publishes — with the envelope at 0 both shader terms
+  // are exactly zero regardless).
+  const holeLocal = useMemo(() => new THREE.Vector3(1e9, 1e9, 1e9), []);
   const tickParams = useMemo<GpgpuTickParams>(
     () => ({ dt: 1 / 60, time: 0, mouse: new THREE.Vector3() }),
     [],
@@ -1076,36 +1109,46 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       sporeOccluderMaterial.visible = occBurst < 0.97;
       if (!tslSpore) return; // occluder-only until the lazy build resolves
 
-      // --- ONE-SHOT CRUST AUTO-BURST on intro completion (owner 2026-08-07) --
-      // The moment the intro assembly is GENUINELY complete — the mark's
-      // materialise released (introReformClock past INTRO_REFORM_RELEASE: burst
-      // 0, regrow restored, and the dark body finishes fading in at exactly
-      // that instant) AND the "Sersan AI" wordmark fully formed
-      // (textMorphStore.assembleDone, flipped by HeroTextParticles only when
-      // its entry clock actually finishes — a completion signal, never a fixed
-      // timer from mount) — the OUTER CRUST explodes from the mark's center
-      // and regrows. It rides the SAME uBurst mechanism as the scroll explode
-      // and the intro reform (radial-from-center push + staggered kill +
-      // parked respawn → LIFE_REGROW regrowth once the envelope drops under
-      // the 0.05 respawn threshold): no new sim path, and uMouse/uRadius (the
-      // pointer-hover semantics) are never touched. SELECTIVITY IS STRUCTURAL:
-      // every preset layer is its own compute build with its own uBurst
-      // uniform, and the envelope is composed (max(), like the other beats)
-      // into CRUST-role layers ONLY — the core layer and the wordmark
+      // --- ONE-SHOT CRUST AUTO-BURST, ANTICIPATED (owner 2026-08-07 v2) ------
+      // RETIMED the same day it landed ("l'esplosione avviene troppo in
+      // ritardo"): the burst no longer waits for assembleDone — it fires when
+      // the mark's materialise has released (introReformClock past
+      // INTRO_REFORM_RELEASE: burst 0, regrow restored, dark body in — with
+      // the retimed reform this now clears at ≈2.27s) AND the wordmark's
+      // entry has reached fx.sporeAutoBurstAt (default 0.75 ⇒ ≈2.7s of the
+      // 3.6s entry), so the explosion overlaps the wordmark's FINAL SETTLING
+      // instead of trailing it. entryProgressRef is HeroTextParticles' entry
+      // clock, published per frame as a MODULE-SCOPE SHARED REF (the
+      // pointerStore/holeField pattern — P0 hotfix 2026-08-07: a per-frame
+      // zustand setState notifies every store listener unconditionally,
+      // 60×/s, for a value nothing reads reactively; a ref write notifies
+      // no one).
+      // It rides the SAME uBurst mechanism as the scroll explode and the
+      // intro reform (radial-from-center push + staggered kill + parked
+      // respawn → LIFE_REGROW regrowth once the envelope drops under the
+      // 0.05 respawn threshold): no new sim path, and uMouse/uRadius (the
+      // pointer-hover semantics) are never touched. SELECTIVITY IS
+      // STRUCTURAL: every preset layer is its own compute build with its own
+      // uBurst uniform, and the envelope is composed (max(), like the other
+      // beats) into CRUST-role layers ONLY — the core layer and the wordmark
       // particles are untouched by construction. One-shot per hard load
       // (clock never re-arms); softEntryRef keeps soft route re-entries from
       // ever arming it; reduced-motion tiers never mount this component.
-      // Wordmark-clause guards against a dead latch: introSkipped pins the
-      // wordmark at its end state WITHOUT flipping assembleDone (the skip
-      // sets entryRef=1 before the <1 branch), so the skip satisfies the
-      // clause; an inactive morph system (text build absent/failed) waives it.
+      // DEAD-LATCH GUARDS (all preserved, only the completion edge moved):
+      // introSkipped pins entryRef at 1 — the ref publishes 1, so a skip
+      // satisfies the clause immediately (the explicit check keeps it
+      // airtight even before the next ref write); an inactive morph system
+      // (text build absent/failed → the ref never advances past 0) waives
+      // the clause entirely; soft entry never arms the clock at all.
       if (autoBurstClock.current < 0) {
-        const wordmarkFormed =
-          !morph.active || morph.assembleDone || morph.introSkipped;
+        const wordmarkNearlyFormed =
+          !morph.active ||
+          morph.introSkipped ||
+          entryProgressRef.value >= fx.sporeAutoBurstAt;
         if (
           !softEntryRef.current &&
           introReformClock.current >= INTRO_REFORM_RELEASE &&
-          wordmarkFormed
+          wordmarkNearlyFormed
         ) {
           autoBurstClock.current = 0;
         }
@@ -1137,6 +1180,42 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       tickParams.time = simTimeRef.current;
       tickParams.mouse.copy(modelMouse);
 
+      // --- GRAVITATIONAL FLYBY feed (owner 2026-08-07) ----------------------
+      // The eclipse publishes its APPARENT center + 0..1 envelope via
+      // holeField (module-scope shared ref, HomeSingularity — the
+      // pointerStore pattern); the CRUST leans toward it with the exact
+      // hover aesthetic (the attraction force rides the same spring
+      // integration, and the render's cyan lift keys off the same falloff).
+      // Envelope is damped with the clamped delta so edges never step.
+      holeEnvRef.current = THREE.MathUtils.damp(
+        holeEnvRef.current,
+        holeField.active ? holeField.strength : 0,
+        6,
+        delta,
+      );
+      if (holeField.active) {
+        // Project the hole's apparent center onto the MARK's content plane
+        // along the camera ray: the hole floats ≈1.76 units from the camera
+        // — ~10 world units in FRONT of the mark plane — so the lean must
+        // key off where it APPEARS below the lockup, not its true 3D
+        // position (whose camera-axis offset would swamp any falloff).
+        const camToHole = Math.max(camera.position.z - holeField.z, 1e-3);
+        const sProj = (camera.position.z - group.position.z) / camToHole;
+        holeLocal.set(
+          camera.position.x + (holeField.x - camera.position.x) * sProj,
+          camera.position.y + (holeField.y - camera.position.y) * sProj,
+          group.position.z,
+        );
+        // World → model through the live transform stack (inherits the
+        // group's uniform scale + the parallax tilt), same discipline as
+        // the raycast cursor projection above.
+        spin.worldToLocal(holeLocal);
+      }
+      // Radius knob is WORLD units at the content plane → model units via
+      // the group's uniform world scale (assembly/spin scales are 1).
+      const holeRadiusModel =
+        fx.holePullRadius / Math.max(group.scale.x, 1e-4);
+
       for (let i = 0; i < tslSpore.length; i++) {
         const layer = tslSpore[i];
         layer.rig.tick(tickParams);
@@ -1157,11 +1236,18 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         // before the rig rebuilds); solo presets have no crust layer, so they
         // simply never auto-burst rather than bursting their only shell.
         const scrollBurst = i === 0 ? burstCrust : burstCore;
-        const autoLayerBurst =
-          preset.layers[i]?.role === "crust" ? autoBurst : 0;
+        const isCrust = preset.layers[i]?.role === "crust";
+        const autoLayerBurst = isCrust ? autoBurst : 0;
         layer.uBurst.value = Math.max(scrollBurst, introBurst, autoLayerBurst);
         // Slow ONLY the intro materialise bloom; 1 the rest of the time.
         layer.uRegrowScale.value = introRegrowScale;
+        // Flyby attractor — CRUST-role layers only (same selectivity as the
+        // auto-burst): envelope 0 on the core zeroes both the force and the
+        // glow by construction. Uniform writes only, per the budget notes.
+        layer.uHole.value.copy(holeLocal);
+        layer.uHoleStrength.value = isCrust ? holeEnvRef.current : 0;
+        layer.uHolePull.value = fx.holePullCrust;
+        layer.uHoleRadius.value = holeRadiusModel;
       }
       return;
     }

@@ -158,6 +158,47 @@ const ORBIT_BOB = 0.14; // vertical bob amplitude, world units (half rate)
 const MELT_START = 0.05;
 const MELT_END = 0.9;
 
+/**
+ * GRAVITATIONAL FLYBY FIELD (owner 2026-08-07) — module-scope shared ref,
+ * the pointerStore pattern: mutated per frame by THIS island (the single
+ * writer), read via plain property access inside the consumers' useFrame
+ * (HeroLogo's crust layers, HeroTextParticles) — never React state, never a
+ * store subscription. Published at the END of this island's frame loop;
+ * consumers registered earlier in the same priority-0 pass therefore read
+ * the PREVIOUS frame's value — a one-frame phase lag on a 26s orbit,
+ * imperceptible, and every consumer damps its response anyway.
+ *
+ *   x/y/z    world position of the hole's APPARENT center. The orbit
+ *            displaces the VIRTUAL march camera by +o, which translates the
+ *            marched hole content by −o at the sphere plane (holding the
+ *            camera and moving the hole by −o is the equivalent transform) —
+ *            so the point the eye tracks is group.position − orbitOffset,
+ *            NOT the group anchor itself.
+ *   strength 0..1 envelope = uFade × proximity (apparent center ↔ the fixed
+ *            lockup anchor, in view-height fractions at the group plane).
+ *   active   false whenever the island is faded out / gated off / unmounted.
+ *
+ * Consumers must treat activation edges as steps and damp with clamped dt.
+ */
+export const holeField = {
+  active: false,
+  x: 0,
+  y: 0,
+  z: 0,
+  strength: 0,
+};
+
+/** Flyby proximity envelope — distance (view-height fractions at the group
+ * plane) between the hole's apparent center and the fixed lockup anchor,
+ * mapped 1→0 over [NEAR, FAR]. Derived from the shipped geometry (yFrac
+ * −0.42, orbit radius 0.275 / bob 0.14, anchor +0.06 ≈ the wordmark's ~44vh
+ * optical center): nearest approach d≈0.40 (bob up, orbit centered — the
+ * hole sits dead-center under the lockup there) → 1; far phase d≈0.59 → 0;
+ * the t=0 rest pose d≈0.48 → ~0.58. No rect reads — pure orbit arithmetic. */
+const HOLE_ANCHOR_Y_FRAC = 0.06;
+const HOLE_NEAR_FRAC = 0.4;
+const HOLE_FAR_FRAC = 0.58;
+
 /** Ignite ease-in (seconds): with the build deferred until the brand has
  * assembled, the horizon rises behind the formed wordmark over this window
  * instead of popping in on its first frame. Smoothstep-eased, composed
@@ -264,6 +305,16 @@ export function HomeSingularity() {
   // coarse pointers / reduced-motion — parallax simply stays centered there).
   useEffect(() => installPointerTracking(), []);
 
+  // Flyby field lifecycle: dead the moment this island unmounts (route
+  // change, tier drop) so no consumer ever leans toward a stale center.
+  useEffect(
+    () => () => {
+      holeField.active = false;
+      holeField.strength = 0;
+    },
+    [],
+  );
+
   // --- Live placement knobs (lead fine-tunes the eclipse framing) -----------
   const placeRef = useRef({
     /** Camera→group distance (world units). Smaller = bigger on screen.
@@ -319,6 +370,8 @@ export function HomeSingularity() {
       !useIntroStore.getState().introComplete
     ) {
       group.visible = false;
+      holeField.active = false;
+      holeField.strength = 0;
       return;
     }
 
@@ -348,7 +401,11 @@ export function HomeSingularity() {
     fadeRef.current = opacity;
     build.u.uFade.value = opacity;
     group.visible = opacity > 0.005;
-    if (!group.visible) return;
+    if (!group.visible) {
+      holeField.active = false;
+      holeField.strength = 0;
+      return;
+    }
 
     // --- Pointer parallax: TRANSLATION ONLY (±PARALLAX_MAX, damped). The
     // group counter-moves (near-layer depth parallax); uCamLocal keeps the
@@ -409,6 +466,26 @@ export function HomeSingularity() {
       camY - group.position.y,
       camZ - group.position.z,
     );
+
+    // --- Publish the flyby field (see the holeField doc above) --------------
+    // Apparent center = group anchor MINUS the virtual-camera orbit offset
+    // (the orbit swims the rays, not the silhouette — the content the eye
+    // tracks translates by −offset). Proximity is the view-height-fraction
+    // distance to the fixed lockup anchor at the group plane — pure
+    // arithmetic on values already in hand, no rect reads.
+    const ax = group.position.x - ox;
+    const ay = group.position.y - oy;
+    const az = group.position.z - oz;
+    const hnx = (ax - camera.position.x) / viewHAtGroup;
+    const hny = (ay - camera.position.y) / viewHAtGroup - HOLE_ANCHOR_Y_FRAC;
+    const holeDist = Math.sqrt(hnx * hnx + hny * hny);
+    const prox =
+      1 - THREE.MathUtils.smoothstep(holeDist, HOLE_NEAR_FRAC, HOLE_FAR_FRAC);
+    holeField.active = true;
+    holeField.x = ax;
+    holeField.y = ay;
+    holeField.z = az;
+    holeField.strength = opacity * prox;
   });
 
   // Dev-only debug handle: live eclipse-framing knobs + uniform handles + a
@@ -417,6 +494,8 @@ export function HomeSingularity() {
     (window as unknown as Record<string, unknown>).__sersanHomeSingularity = {
       place: placeRef.current,
       orbit: orbitRef.current,
+      /** Live flyby publication (apparent center + envelope). */
+      hole: holeField,
       get uniforms() {
         return build?.u ?? null;
       },

@@ -133,6 +133,34 @@ interface FxState {
    *   window.__sersanFx.getState().set({ sporeAutoBurstFire: Date.now() })
    * (bypasses the one-shot / soft-entry latches — it is a tuning handle). */
   sporeAutoBurstFire: number;
+  /** Wordmark-entry fraction 0..1 at which the auto-burst FIRES (owner
+   * 2026-08-07: anticipated — was the assembleDone edge, i.e. effectively
+   * 1.0). entryProgressRef (HeroTextParticles' module-scope shared ref)
+   * crossing this releases the envelope, so the explosion overlaps the
+   * wordmark's final settling. The mark-side guard (introReformClock ≥
+   * INTRO_REFORM_RELEASE) still applies. */
+  sporeAutoBurstAt: number;
+  // GRAVITATIONAL FLYBY (owner 2026-08-07) — the home eclipse publishes its
+  // apparent center + a 0..1 envelope (holeField in HomeSingularity.tsx);
+  // the mark's CRUST layers and the wordmark particles lean toward it with
+  // the mouse-lift aesthetic (crust: displacement + cyan glow; text:
+  // displacement only). These knobs scale the pull; all responses are
+  // damped (clamped dt) at the consumers.
+  /** Crust flyby pull — MODEL-space acceleration at full falloff × envelope
+   * (same force family as the layer's PUSH, through the same spring
+   * integration; equilibrium lean ≈ pull/SPRING model units). 0 disables. */
+  holePullCrust: number;
+  /** Wordmark flyby pull — WORLD-unit displacement at full falloff ×
+   * envelope. Displacement only, NO colour change; sized to ≈15–25% of the
+   * crust's apparent lean ("si distorcesse un minimo"). 0 disables. */
+  holePullText: number;
+  /** Flyby falloff radius in WORLD units at the consumer's content plane
+   * (HeroLogo converts to model units via the group scale). NOTE: the
+   * brief's "~1.5× the mouse radius" does not survive the real geometry —
+   * the hole's APPARENT center sits ~4.5–6.5 world units below the lockup
+   * even at nearest approach (camera-ray projection ≈ ×6.8), so the well
+   * must span that gap to produce any lean at all. */
+  holePullRadius: number;
   // Particle field
   particleOpacity: number;
   // GPGPU hero STATIC fallback (HeroLogo "particles-static") — the few
@@ -255,6 +283,15 @@ export const useFxStore = create<FxState>((set) => ({
   sporeAutoBurstHold: 0.18,
   sporeAutoBurstFall: 0.35,
   sporeAutoBurstFire: 0,
+  sporeAutoBurstAt: 0.75, // owner spec: fire at ~75% of the wordmark entry
+  // Flyby defaults: crust lean ≈ 12/22 ≈ 0.55 model units × falloff(~0.5 at
+  // the mark's lower half) × envelope ≤ 1 → a visible hover-like lean at
+  // nearest approach; text ≈ 0.14 × falloff(~0.35) ≈ 0.05 world ≈ 4–5 px on
+  // a 1080p frame — "a few px at most". Radius 9 ≈ 80vh: the well spans the
+  // horizon→lockup gap (see the holePullRadius doc).
+  holePullCrust: 12,
+  holePullText: 0.14,
+  holePullRadius: 9,
   particleOpacity: 0.35,
   gpgpuPush: DEFAULT_GPGPU_CONFIG.PUSH,
   gpgpuRadius: DEFAULT_GPGPU_CONFIG.RADIUS,
