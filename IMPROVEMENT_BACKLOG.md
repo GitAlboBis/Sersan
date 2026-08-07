@@ -141,10 +141,13 @@ key files before implementing — §1.4):
 - [ ] **C10 · P2/L — /case-studies index (noise-scale + pavel dossiers):** card wall →
   full-viewport inertial deck with contour-band hover, click-activate → [slug]
   transition. Big build; decide vs keeping the (good) existing FLIP grid.
-- [ ] **C11 · P2/L — /audit hero (CONFLICT to resolve):** singularity black hole vs
-  three-skull fluid X-ray — both dossiers claim this slot. Lean singularity (space
-  mood, no GLB dependency, exact stack match); if so, skull's fluid mask gets an
-  alternate home or a documented pass.
+- [x] **C11 · P2/L — /audit hero = the raymarched black hole.** (this commit; owner
+  delegated the call) License-clean re-implementation of the singularity dossier with
+  lead-verified locked math, uCamLocal generalization of the identity-only camera
+  shortcut, runtime-generated textures (tileable value-noise + deterministic equirect
+  starfield), cyan/navy ramp, PostFXNodes bloom contract confirmed (peak luminance
+  ~3.3 > 1.0). yLift 0.15 live-calibrated. The skull fluid X-ray takes the documented
+  pass (dossier retains the technique).
 - [ ] **C12 · P3/M — /contact typing particles (typing-tutorial dossier):** intake
   message field condenses the visitor's words out of cyan spores.
 - [ ] **C13 · P3/M — [slug] imagery reveal (r3f-image-reveal dossier, MIT):** one

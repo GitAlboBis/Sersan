@@ -35,6 +35,7 @@ import { RailPlanes } from "./RailPlanes";
 import { FounderPortraitMorph } from "./FounderPortraitMorph";
 import { ResourcePreviewPlane } from "./ResourcePreviewPlane";
 import { NeuralLattice } from "./NeuralLattice";
+import { AuditSingularity } from "./AuditSingularity";
 import { AdaptiveResolution } from "./AdaptiveResolution";
 import { PipelineWarmup } from "./PipelineWarmup";
 import { PostFX } from "./PostFX";
@@ -351,6 +352,22 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           same priority-0 frame pass. */}
       {pathname === "/resources" && tier === "full" && webgpu && (
         <ResourcePreviewPlane />
+      )}
+      {/* /audit hero singularity (ITERATION 17): a TSL raymarched black hole —
+          a gravitationally-lensed accretion disc, world-anchored behind the
+          audit H1. The gravity metaphor for the page: six surfaces of the
+          business pulled into one scored map with an unblinking center. Same
+          decorative-island gates as RailPlanes — route + full tier + the WebGPU
+          flag (TSL-only, no GLSL twin; on the classic flag-OFF path or
+          lite/off/reduced-motion the DOM hero in audit-client.tsx is the whole
+          visual, untouched). MUST stay mounted AFTER SignatureLine: the
+          per-frame world anchor, scroll fade and uCamLocal write are
+          camera-relative and rely on the single camera authority having
+          written camera.position earlier in the same priority-0 frame pass.
+          Its emissive raymarch output rides the SAME >1.0 threshold bloom in
+          PostFXNodes — no second post chain. */}
+      {pathname === "/audit" && tier === "full" && webgpu && (
+        <AuditSingularity anchors={anchors} />
       )}
       {/* The old /trust CompliancePipeline3D centerpiece is RETIRED (the 3D
           "models" were replaced by the SERSAN logo). It lived BEHIND the SVG
