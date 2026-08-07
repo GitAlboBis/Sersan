@@ -43,6 +43,16 @@ interface TierState {
   dprInitial: number;
   dprMin: number;
   dprMax: number;
+  /**
+   * Temporary hard cap layered over the adaptive DPR range (null = no cap).
+   * Written by the home singularity passage while the plunge approaches
+   * fullscreen raymarch coverage (p > ~0.70 → 1.5, cleared with hysteresis
+   * on the way out) — the mandated close-range fill-rate lever. Consumed by
+   * AdaptiveResolution as `min(dprMax, dprCap)`; a set cap that is below the
+   * current DPR drops it immediately (drops are always allowed), and clearing
+   * it lets the monitor climb back under its normal hysteresis.
+   */
+  dprCap: number | null;
   /** True once the WebGL hero (the procedural Saturn) has rendered its first
    *  frame. Gates the hero drag-to-rotate capture layer so dragging only
    *  arms once the planet is live. */
@@ -51,6 +61,7 @@ interface TierState {
   degrade: () => void;
   setHeroReady: (ready: boolean) => void;
   setBackend: (backend: Backend) => void;
+  setDprCap: (cap: number | null) => void;
 }
 
 function detectTier(): SceneTier {
@@ -126,6 +137,7 @@ export const useTierStore = create<TierState>((set, get) => ({
   dprInitial: 2,
   dprMin: 1,
   dprMax: 2,
+  dprCap: null,
   heroReady: false,
   resolve: () => {
     const dpr = detectDprRange();
@@ -148,5 +160,11 @@ export const useTierStore = create<TierState>((set, get) => ({
   // re-renders subscribers.
   setBackend: (backend) => {
     if (get().backend !== backend) set({ backend });
+  },
+  // Guarded like setBackend: unchanged writes never re-render subscribers
+  // (the passage re-asserts on scrub-band hysteresis edges only, but stay
+  // defensive anyway).
+  setDprCap: (dprCap) => {
+    if (get().dprCap !== dprCap) set({ dprCap });
   },
 }));

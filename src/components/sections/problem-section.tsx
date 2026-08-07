@@ -200,7 +200,13 @@ export default function ProblemSection() {
       <div className="container-px relative">
         {/* items-start here too: when a card expands, the FailureLattice column grows; with items-center the outer row re-centered it, nudging the %-anchored node markers ~9px out from under a still cursor (residual hover oscillation). Pinning the row top removes that residual. */}
         <div className="grid grid-cols-1 lg:grid-cols-[0.9fr_1.1fr] gap-10 lg:gap-16 items-start">
-          {/* Left — headline + paragraph */}
+          {/* Left — headline + paragraph. The [data-emerge] wrapper is the
+              singularity passage's seam target: its scrubbed emergence
+              trigger drives this div transform-only (scale 0.96 + a 6%
+              offset toward the tunnel's vanishing point → identity) so the
+              heading condenses out of the dying light-speed streaks. Inert
+              on every path where the passage never arms. */}
+          <div data-emerge style={{ willChange: "transform" }}>
           <SectionHeading
             eyebrow={isEn ? "The demo-to-production gap" : "Il divario tra demo e produzione"}
             title={
@@ -223,11 +229,13 @@ export default function ProblemSection() {
             }
             className="max-w-xl"
             // POSITIVE bottom margin: the cascade is already mid-composition
-            // while the credibility reel's sticky screen releases, so the
-            // incoming viewport is never an empty dark slab (the rejected
-            // "slide-up" was this section mounting at opacity:0).
+            // while the singularity passage's sticky stage releases (behind
+            // the tunnel/veil overlay), so the incoming viewport is never an
+            // empty dark slab — exactly the pre-compose hook the plunge's
+            // emergence beat relies on.
             ioRootMargin="0px 0px 15% 0px"
           />
+          </div>
 
           {/* Right — the network centerpiece + the three failure cards */}
           <Reveal delay={120} ioRootMargin="0px 0px 15% 0px">

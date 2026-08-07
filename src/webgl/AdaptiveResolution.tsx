@@ -25,9 +25,10 @@
  * if a backend quirk ever stops the callbacks the GPU-aware INITIAL dpr (set on
  * the Canvas from tierStore) still stands as the floor — the scene stays usable.
  */
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { useThree } from "@react-three/fiber";
 import { PerformanceMonitor } from "@react-three/drei";
+import { useTierStore } from "./store/tierStore";
 
 export function AdaptiveResolution({
   initial,
@@ -44,8 +45,31 @@ export function AdaptiveResolution({
   const dpr = useRef(initial);
   const lastChange = useRef(0);
 
+  // Temporary hard cap (tierStore.dprCap) — the singularity passage clamps
+  // the plunge phase to ≤1.5 while the raymarch approaches fullscreen
+  // coverage. Effective ceiling = min(max, cap); restored (cap → null) on
+  // leave, after which the monitor may climb back under its own hysteresis.
+  const cap = useTierStore((s) => s.dprCap);
+  const effMax = Math.min(max, cap ?? max);
+
+  // A newly-set cap below the current DPR drops it IMMEDIATELY (drops are
+  // always allowed — the plunge is about to be fill-bound NOW); the swapchain
+  // realloc hitch lands during a calm beat by construction (the passage sets
+  // the cap at p≈0.70, well before ignition).
+  useEffect(() => {
+    if (dpr.current > effMax) {
+      const clamped = Math.max(min, effMax);
+      lastChange.current = performance.now();
+      dpr.current = clamped;
+      setDpr(clamped);
+    }
+  }, [effMax, min, setDpr]);
+
   const apply = (next: number) => {
-    const clamped = Math.min(max, Math.max(min, Math.round(next * 100) / 100));
+    const clamped = Math.min(
+      effMax,
+      Math.max(min, Math.round(next * 100) / 100),
+    );
     if (clamped === dpr.current) return;
     // Asymmetric hysteresis — drop instantly, climb slowly. Each real setDpr
     // reallocates the WebGPU swapchain + the PostFX render targets, so two

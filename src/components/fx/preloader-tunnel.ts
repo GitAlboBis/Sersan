@@ -52,9 +52,29 @@ export interface PreloaderTunnel {
   resize(): void;
   /** Set the warp drive; the actual timeCoef lerps toward it at 0.02/frame. */
   setTargetTimeCoef(v: number): void;
+  /**
+   * Aim the convergence point at canvas UV (u, v), 0..1, y-up (the zoom-blur
+   * uCenter convention). Default 0.5/0.5 = screen center (the preloader's
+   * hardcoded behavior, unchanged). Drives BOTH the zoom-blur center uniform
+   * and — when constructed with `{ tilt: false }` — a matching group tilt so
+   * the PARTICLE vanishing point converges on the same spot (the singularity
+   * passage locks it onto the marched hole during the crossfade). With the
+   * pointer tilt active (preloader default) only the blur center moves.
+   */
+  setCenter(u: number, v: number): void;
   /** Delete every GL resource (buffers, textures, programs, FBO), remove the
    *  pointer listener, and lose the context. */
   dispose(): void;
+}
+
+export interface PreloaderTunnelOptions {
+  /**
+   * `false` skips the pointermove listener entirely and derives the group
+   * tilt from setCenter() instead — the preloader's ±0.05 pointer tilt would
+   * fight the passage's NDC center-lock during the crossfade window.
+   * Default `true` (preloader behavior, byte-identical).
+   */
+  tilt?: boolean;
 }
 
 // ---- Reference parameters (see header — do not tune these) ------------------
@@ -289,6 +309,7 @@ function makeSpriteTexture(gl: WebGLRenderingContext): WebGLTexture {
  */
 export function createPreloaderTunnel(
   canvas: HTMLCanvasElement,
+  options?: PreloaderTunnelOptions,
 ): PreloaderTunnel | null {
   let gl: WebGLRenderingContext | null = null;
   try {
@@ -307,7 +328,7 @@ export function createPreloaderTunnel(
   if (!gl) return null;
 
   try {
-    return initTunnel(gl, canvas);
+    return initTunnel(gl, canvas, options);
   } catch {
     // Unreachable in practice (trivial GLSL 100 on a live context). Drop the
     // context so nothing leaks; the canvas is already in "webgl" mode so the
@@ -320,7 +341,10 @@ export function createPreloaderTunnel(
 function initTunnel(
   gl: WebGLRenderingContext,
   canvas: HTMLCanvasElement,
+  options?: PreloaderTunnelOptions,
 ): PreloaderTunnel {
+  const pointerTilt = options?.tilt !== false;
+
   // ---- Point count tier (SERSAN adaptation) ----
   const small =
     window.innerWidth < 768 || (navigator.hardwareConcurrency || 8) <= 4;
@@ -401,15 +425,23 @@ function initTunnel(
   let rotY = 0;
   let pointerNX = 0;
   let pointerNY = 0;
+  // Convergence point in canvas UV (0..1, y-up). 0.5/0.5 = screen center —
+  // the preloader's original hardcoded zoom-blur center.
+  let centerU = 0.5;
+  let centerV = 0.5;
   let disposed = false;
 
   // Pointer normalized to [-1, 1] from the window centre, y up (three.js
-  // pointer convention, matching the reference's positionN).
+  // pointer convention, matching the reference's positionN). Skipped
+  // entirely under `{ tilt: false }` (the passage's center lock owns the
+  // tilt there — no listener, no fight).
   const onPointerMove = (e: PointerEvent) => {
     pointerNX = (e.clientX / window.innerWidth) * 2 - 1;
     pointerNY = -((e.clientY / window.innerHeight) * 2 - 1);
   };
-  window.addEventListener("pointermove", onPointerMove, { passive: true });
+  if (pointerTilt) {
+    window.addEventListener("pointermove", onPointerMove, { passive: true });
+  }
 
   function allocFbo(): void {
     if (!fbo || !fboTex) {
@@ -468,8 +500,26 @@ function initTunnel(
     timeCoef = lerp(timeCoef, targetTimeCoef, TIME_COEF_LERP);
     uTime += deltaSec * timeCoef * TIME_SCALE;
     const zoomStrength = timeCoef * ZOOM_STRENGTH_COEF;
-    rotX = lerp(rotX, pointerNY * TILT_AMOUNT, TILT_LERP);
-    rotY = lerp(rotY, -pointerNX * TILT_AMOUNT, TILT_LERP);
+    if (pointerTilt) {
+      rotX = lerp(rotX, pointerNY * TILT_AMOUNT, TILT_LERP);
+      rotY = lerp(rotY, -pointerNX * TILT_AMOUNT, TILT_LERP);
+    } else {
+      // Center-lock tilt: aim the PARTICLE convergence at the same UV the
+      // zoom blur converges on. A true point at infinity along the group's
+      // −z axis lands at ndc.x ≈ −(f/aspect)·tiltY, ndc.y ≈ f·tiltX
+      // (f = 1/tan(fov/2)), but this tunnel's finite z-loop clusters its far
+      // points at view-z ≈ 2·|GROUP_Z| with lateral GROUP_Z·tilt — HALF the
+      // infinite displacement — so the aim carries a ×2 to land the visible
+      // cluster on target. The blur center is exact regardless; the tilt is
+      // the matching heuristic. Reference's 0.02 lerp keeps the chase smooth
+      // in both scrub directions.
+      const f = 1 / Math.tan(FOV_RAD / 2);
+      const nx = centerU * 2 - 1;
+      const ny = centerV * 2 - 1;
+      const aspect = height > 0 ? width / height : 1;
+      rotX = lerp(rotX, (2 * ny) / f, TILT_LERP);
+      rotY = lerp(rotY, (-2 * nx * aspect) / f, TILT_LERP);
+    }
     setModelView(modelView, rotX, rotY);
 
     // Pass 1 — points into the FBO (or straight to canvas if the FBO failed).
@@ -516,7 +566,7 @@ function initTunnel(
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, fboTex);
       gl.uniform1i(zTexLoc, 0);
-      gl.uniform2f(zCenterLoc, 0.5, 0.5);
+      gl.uniform2f(zCenterLoc, centerU, centerV);
       gl.uniform1f(zStrengthLoc, zoomStrength);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
@@ -525,7 +575,7 @@ function initTunnel(
   function dispose(): void {
     if (disposed) return;
     disposed = true;
-    window.removeEventListener("pointermove", onPointerMove);
+    if (pointerTilt) window.removeEventListener("pointermove", onPointerMove);
     gl.deleteBuffer(pointBuffer);
     gl.deleteBuffer(quadBuffer);
     gl.deleteTexture(sprite);
@@ -544,6 +594,10 @@ function initTunnel(
     resize,
     setTargetTimeCoef(v: number) {
       targetTimeCoef = v;
+    },
+    setCenter(u: number, v: number) {
+      centerU = Math.min(1, Math.max(0, u));
+      centerV = Math.min(1, Math.max(0, v));
     },
     dispose,
   };

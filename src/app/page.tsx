@@ -1,5 +1,5 @@
 import CinematicSystemScroll from "@/components/sections/cinematic-system-scroll";
-import CredibilityStrip from "@/components/sections/credibility-strip";
+import SingularityPassage from "@/components/sections/singularity-passage";
 import ProblemSection from "@/components/sections/problem-section";
 import CaseStudiesRail from "@/components/sections/case-studies-rail";
 import ServicesSection from "@/components/sections/services-section";
@@ -17,7 +17,9 @@ import FinalCTA from "@/components/sections/final-cta";
  * plan supersedes it. The flow front-loads credibility and named work:
  *
  *   01  Cinematic spine      — who/what/why-now (the wedge + H1)
- *   02  Credibility strip    — tier-1 names immediately after the spine
+ *   02  Singularity passage  — THE LONG TAKE: beat 05 → black-hole plunge
+ *                              (replaced the credibility reel, 2026-08-07;
+ *                              institution-marks.tsx stays parked for reuse)
  *   03  Problem              — name the demo → production gap
  *   04  Work                 — sticky horizontal rail (13 engagements + WIP)
  *   05  Services             — what we build (pains surfaced per card)
@@ -46,8 +48,12 @@ export default function Home() {
       <div data-line-anchor="hero">
         <CinematicSystemScroll />
       </div>
+      {/* The passage claims the "credibility" anchor slot so the signature
+          line's route-curve waypoint (routeCurves.ts) keeps resolving — a
+          missing anchor with no `at` fallback collapses that waypoint to
+          document fraction 0 and deforms the whole home curve. */}
       <div data-line-anchor="credibility">
-        <CredibilityStrip />
+        <SingularityPassage />
       </div>
       <div data-line-anchor="problem">
         <ProblemSection />

@@ -37,6 +37,7 @@ import { ResourcePreviewPlane } from "./ResourcePreviewPlane";
 import { NeuralLattice } from "./NeuralLattice";
 import { AuditSingularity } from "./AuditSingularity";
 import { HomeSingularity } from "./HomeSingularity";
+import { SequenceSingularity } from "./SequenceSingularity";
 import { AdaptiveResolution } from "./AdaptiveResolution";
 import { PipelineWarmup } from "./PipelineWarmup";
 import { PostFX } from "./PostFX";
@@ -395,6 +396,25 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           nothing once the hero has cascaded in. Its emissive output rides the
           SAME >1.0 threshold bloom in PostFXNodes — no second post chain. */}
       {pathname === "/" && tier === "full" && webgpu && <HomeSingularity />}
+      {/* HOME mid-page plunge singularity (THE LONG TAKE): the third framing
+          of the raymarch factory — a world-anchored-X / camera-locked-Y hole
+          revealed by the passage's TRACK-RIGHT camera pan after spine beat
+          05, approached on the pure 1/distance law, and crossfaded into the
+          preloader's point tunnel before it can fill the frame. Same
+          decorative-island gates as the siblings (route + full tier + the
+          WebGPU flag; TSL-only, no GLSL twin — the DOM passage runs its CSS
+          hole imposter on the classic flag-OFF path). Scrub inputs arrive
+          via seqStore (written by singularity-passage.tsx); build DEFERRED
+          to the approach band + compileAsync-warmed, disposed on far leave —
+          init-on-approach per the heavy-layer mandate. MUST stay mounted
+          AFTER SignatureLine: placement + the uCamWorld/uCamLocal writes are
+          camera-relative and rely on the single camera authority (which also
+          applies the passage's seqPan term earlier in the same priority-0
+          pass). Its emissive march rides the SAME >1.0 threshold bloom in
+          PostFXNodes — no second post chain. */}
+      {pathname === "/" && tier === "full" && webgpu && (
+        <SequenceSingularity />
+      )}
       {/* The old /trust CompliancePipeline3D centerpiece is RETIRED (the 3D
           "models" were replaced by the SERSAN logo). It lived BEHIND the SVG
           compliance diagram, so a logo at the "pipeline" anchor would be occluded

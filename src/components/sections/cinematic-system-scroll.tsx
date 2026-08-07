@@ -126,6 +126,32 @@ function animateChipCounts(root: HTMLElement) {
     .forEach((node) => animateChipCount(node));
 }
 
+// Stage 05 (handover) eyebrow + title, extracted as a shared constant: the
+// singularity passage (singularity-passage.tsx) re-frames this EXACT beat as
+// the opening frame of the plunge sequence — one source keeps the two renders
+// byte-identical (copy freeze: zero new copy, zero drift).
+export const HANDOVER_ECHO = {
+  eyebrow: { en: "05 / Handover", it: "05 / Consegna" },
+  title: {
+    en: (
+      <>
+        We hand over something you can{" "}
+        <span className="text-[hsl(var(--accent))] font-display font-medium">
+          run.
+        </span>
+      </>
+    ),
+    it: (
+      <>
+        Consegniamo un sistema che potete{" "}
+        <span className="text-[hsl(var(--accent))] font-display font-medium">
+          gestire.
+        </span>
+      </>
+    ),
+  },
+} as const;
+
 const STAGE_CONTENT: LocalizedStage[] = [
   {
     id: "dormant",
@@ -224,25 +250,9 @@ const STAGE_CONTENT: LocalizedStage[] = [
   },
   {
     id: "handover",
-    eyebrow: { en: "05 / Handover", it: "05 / Consegna" },
-    title: {
-      en: (
-        <>
-          We hand over something you can{" "}
-          <span className="text-[hsl(var(--accent))] font-display font-medium">
-            run.
-          </span>
-        </>
-      ),
-      it: (
-        <>
-          Consegniamo un sistema che potete{" "}
-          <span className="text-[hsl(var(--accent))] font-display font-medium">
-            gestire.
-          </span>
-        </>
-      ),
-    },
+    // Shared with the singularity passage's echo frame — see HANDOVER_ECHO.
+    eyebrow: HANDOVER_ECHO.eyebrow,
+    title: HANDOVER_ECHO.title,
     body: {
       en: "A production system with its evals, traces, and boundaries documented. Your team owns it from day one, and you talk to one of us, not an account manager.",
       it: "Un sistema in produzione con eval, trace e limiti documentati. Il vostro team lo gestisce dal primo giorno, e parlate con uno di noi, non con un account manager.",

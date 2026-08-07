@@ -38,6 +38,7 @@ import { useSectionStore, sectionProgress } from "./store/sectionStore";
 import { useProductionPulseStore } from "./store/productionPulseStore";
 import { useAuditTimelineStore } from "./store/auditTimelineStore";
 import { useTextMorphStore } from "./store/textMorphStore";
+import { useSeqStore, SEQ_PAN_FRAC } from "./store/seqStore";
 import { useIntroStore } from "./store/introStore";
 import { useFxStore } from "./store/fxStore";
 import { usePointerStore } from "./store/pointerStore";
@@ -334,6 +335,11 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   const dollyCurrent = useRef(0);
   const orbitCurrent = useRef(0);
   const parCurrent = useRef({ x: 0, y: 0 });
+  // Singularity-passage lateral pan (seqStore.pan01 — the passage's scrubbed
+  // ScrollTrigger owns the clock, this file stays the single camera
+  // authority; exact camTilt precedent). Lightly damped so a passage
+  // teardown mid-scrub (language toggle) relaxes instead of snapping.
+  const seqPanCurrent = useRef(0);
   // Cached `window.innerHeight` — the viewport height Lenis derives its scroll
   // limit from, and therefore the only correct denominator for the doc→scroll
   // mapping below (see the file header). A REF, not state: it is read inside
@@ -805,9 +811,31 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       parCurrent.current.x = 0;
       parCurrent.current.y = 0;
     }
+    // Singularity-passage pan: THE TRACK-RIGHT camera move of the home plunge
+    // sequence (beat 05 → the divario). pan01 is a pure function of the
+    // passage's scrub progress (already eased + scrub-smoothed; includes the
+    // 2% SETTLE pre-drift and the hidden 1→0 unwind under the tunnel), so the
+    // move is reversible at every point. Home-only, like the descent beat —
+    // seqStore is reset by the passage on teardown, and the damp below eases
+    // any reset step out instead of snapping the world sideways. Applied
+    // OUTSIDE rigGate: this is a scripted dolly move, not the velocity rig.
+    const seqPanTarget =
+      pathname === "/"
+        ? useSeqStore.getState().pan01 * SEQ_PAN_FRAC * worldViewWidth
+        : 0;
+    seqPanCurrent.current = THREE.MathUtils.damp(
+      seqPanCurrent.current,
+      seqPanTarget,
+      10,
+      delta,
+    );
+    if (Math.abs(seqPanCurrent.current) < 1e-4 && seqPanTarget === 0) {
+      seqPanCurrent.current = 0;
+    }
     camera.position.z = CAMERA_Z + dollyCurrent.current * rigGate;
     camera.position.x =
-      (orbitCurrent.current + parCurrent.current.x) * rigGate;
+      (orbitCurrent.current + parCurrent.current.x) * rigGate +
+      seqPanCurrent.current;
     camera.position.y += parCurrent.current.y * rigGate;
 
     // Camera-descent beat STATE (textMorphStore.camTilt 0..1) — read EARLY so
@@ -1022,7 +1050,14 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       // and keep the target's y near the camera's y plane (the curve's own y is
       // the full page strip — using it directly would over-pitch).
       const tilt = fx.lookTiltScale;
-      const targetX = aheadPoint.current.x * tilt;
+      // + seqPanCurrent: during the passage's TRACK-RIGHT move the look
+      // target rides laterally WITH the camera, so the pan reads as a
+      // straight-ahead tracking shot (without this the lookAt would counter-
+      // yaw back toward the world strip and drag the revealed hole
+      // off-center). The damped lookTarget chase (λ 3.5) lags the pan
+      // slightly — a subtle, filmic lead that settles to dead-ahead at every
+      // hold. Zero whenever the passage is inactive.
+      const targetX = aheadPoint.current.x * tilt + seqPanCurrent.current;
       const targetZ = aheadPoint.current.z * tilt;
       // Camera-descent pitch (FIX 1b): bias the look TARGET downward by the
       // descent pitch instead of composing a second camera.rotateX after the
