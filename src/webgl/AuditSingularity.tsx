@@ -15,6 +15,16 @@
  * DOM hero untouched. The heavy three/webgpu + three/tsl namespaces are
  * lazy-imported inside the build effect (NeuralLattice's discipline).
  *
+ * TWIN NOTE: HomeSingularity.tsx re-frames this same material as the HOME
+ * intro's low-center "eclipse" (camera-locked, domReveal-faded, renderOrder
+ * −1 backdrop with instance-level depthWrite/side overrides). The two share
+ * the factories (blackHoleMaterial.ts + proceduralTextures.ts) and the
+ * build/orbit/parallax grammar but their anchor + lifecycle models differ
+ * structurally, so the frame loops are deliberately duplicated, not
+ * extracted — a fix to the shared grammar (orbit composition, the
+ * uCamWorld/uCamLocal write, the dev-handle shape) likely applies to BOTH
+ * files.
+ *
  * PLACEMENT ARITHMETIC (the ~50vh apparent diameter)
  * --------------------------------------------------
  * The proxy sphere is radius 1 (diameter D = 2 world units) and MUST stay

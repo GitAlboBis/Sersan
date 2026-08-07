@@ -36,6 +36,7 @@ import { FounderPortraitMorph } from "./FounderPortraitMorph";
 import { ResourcePreviewPlane } from "./ResourcePreviewPlane";
 import { NeuralLattice } from "./NeuralLattice";
 import { AuditSingularity } from "./AuditSingularity";
+import { HomeSingularity } from "./HomeSingularity";
 import { AdaptiveResolution } from "./AdaptiveResolution";
 import { PipelineWarmup } from "./PipelineWarmup";
 import { PostFX } from "./PostFX";
@@ -369,6 +370,31 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
       {pathname === "/audit" && tier === "full" && webgpu && (
         <AuditSingularity anchors={anchors} />
       )}
+      {/* HOME eclipse singularity (owner experiment 2/3): the same raymarched
+          black hole re-framed HUGE and low-center behind the "Sersan AI"
+          brand intro — only the lensed ring's upper arc crowns the lower
+          frame, and the hole fades out fully as the brand melts into the DOM
+          hero (uFade ← ignite × eased(1 − domReveal); it never competes with
+          the spore mark's rest pose). Same decorative-island gates as the
+          siblings — route + full tier + the WebGPU flag (TSL-only, no GLSL
+          twin); inside the island a textMorphStore.active + introSkipped
+          check keeps a skipped/absent intro showing nothing, and the build
+          requires the true compute backend (no intro there → no eclipse).
+          BUILD IS DEFERRED until textMorphStore.assembleDone (regression fix,
+          2026-08-07): its compile/build co-resident with HeroTextParticles'
+          compute build at the entry moment silently starved the text
+          pipeline and the wordmark never assembled — the entry beat owns the
+          GPU compile window; the island then warms via compileAsync and
+          rises in over ~1.2s behind the formed brand. MUST stay mounted
+          AFTER SignatureLine: the camera-locked placement and the
+          uCamWorld/uCamLocal writes rely on the single camera authority
+          having written camera.position earlier in the same priority-0 frame
+          pass. GPU: the march is heavy and home already carries the spore
+          hero + the text sim — AdaptiveResolution owns the framerate, and
+          group.visible flips off outside the intro beat so the march costs
+          nothing once the hero has cascaded in. Its emissive output rides the
+          SAME >1.0 threshold bloom in PostFXNodes — no second post chain. */}
+      {pathname === "/" && tier === "full" && webgpu && <HomeSingularity />}
       {/* The old /trust CompliancePipeline3D centerpiece is RETIRED (the 3D
           "models" were replaced by the SERSAN logo). It lived BEHIND the SVG
           compliance diagram, so a logo at the "pipeline" anchor would be occluded
