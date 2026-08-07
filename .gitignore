@@ -48,3 +48,4 @@ f_*.png
 
 # Cloned reference repos (codrops demos etc.) — analysis only, not shipped
 /.refs/
+/_refs/
