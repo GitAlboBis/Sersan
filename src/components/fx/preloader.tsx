@@ -13,8 +13,8 @@
  * navy→black radial base, pointer-tilted, zoom-blurred, in brand off-white/
  * cyan/blue. The tunnel's time coefficient breathes with load progress
  * (1 + eased·2) and slams to 100 inside the reveal (THE WARP) so tunnel
- * streak + zoom blur + mark zoom + curtain wipe read as one jump into the
- * hero. If WebGL is unavailable, the previous 2D-canvas starfield (drifting +
+ * streak + zoom blur + mark zoom-through + overlay fade read as one jump into
+ * the hero. If WebGL is unavailable, the previous 2D-canvas starfield (drifting +
  * twinkling stars + faint cyan/blue nebula glows) draws on the same canvas as
  * the fallback backdrop.
  *
@@ -43,15 +43,19 @@
  * counter toward that target. A MIN visible time (~700ms) prevents a flash; a
  * MAX watchdog (~30s) guarantees a stuck GPU never traps the user.
  *
- * Hand-off (close → zoom → streak): at 100% the mark folds CLOSED (the two
- * rotated S's animate back from the OPEN horizontal pose to the UPRIGHT compact
- * mark — the SymbolMark layout, two vertical S's flanking the centered divider),
- * fully lit. The compact mark then ZOOMS toward the viewer (scale-up + slight
- * blur/opacity fade). Through that beat introStore.complete() flips (SignatureLine
- * listens for the false→true edge and re-kicks its uReveal 0→1 draw-in), the
- * vertical DIVIDER brightens to accent cyan and streaks/elongates downward into
- * the signature line, and the navy curtain wipes UP (clip-path) as the final
- * uncover — the eye reads the logo's signal-bar becoming the scroll line.
+ * Hand-off (close → zoom-through → fade): at 100% the mark folds CLOSED (the
+ * two rotated S's animate back from the OPEN horizontal pose to the UPRIGHT
+ * compact mark — the SymbolMark layout, two vertical S's flanking the centered
+ * divider), fully lit. The compact mark then ZOOMS toward the viewer and never
+ * stops — one continuous power2.in acceleration (scale 1 → ~4, slight blur)
+ * that flies PAST the camera while the ENTIRE overlay crossfades to
+ * transparent, the tunnel still warping beneath the fade. The exit reads as
+ * flying THROUGH the mark into the site: warp + zoom + crossfade, no wipe, no
+ * hard edge. Through that beat introStore.complete() flips (SignatureLine
+ * listens for the false→true edge and re-kicks its uReveal 0→1 draw-in), and
+ * the vertical DIVIDER brightens to accent cyan and streaks/elongates downward
+ * into the signature line, dissolving with the overlay — the eye reads the
+ * logo's signal-bar becoming the scroll line.
  *
  * SSR-safe: the overlay only renders AFTER mount (a client effect sets `mounted`),
  * so the server HTML never contains it → no hydration mismatch, no layout shift.
@@ -100,10 +104,12 @@ const WATCHDOG_MS = 14000;
 // Counter easing toward its target each frame (fraction per ~16ms frame). Low
 // enough to read as a smooth tick-up, high enough to feel responsive.
 const COUNTER_EASE = 0.12;
-// Curtain wipe duration (s) — close to template.tsx's 0.62s so first-load and
-// route-change wipes feel like one motion language. The close+zoom choreography
-// runs ~1.0–1.2s total, ending with this curtain wipe.
-const WIPE_DURATION = 0.7;
+// Exit fade duration (s) — the overlay's opacity 1→0 crossfade that uncovers
+// the page while the mark keeps zooming through. Sized near template.tsx's
+// 0.62s curtain beat so first-load and route-change hand-offs still share one
+// motion tempo, even though this exit dissolves rather than wipes. The
+// close+zoom choreography runs ~1.4s total, ending under this fade.
+const FADE_DURATION = 0.7;
 
 // The exact left-S outline from src/components/sersan-logo.tsx (SymbolMark).
 // Inlined so the two S `<path>`s and the divider `<rect>` can be animated
@@ -582,17 +588,17 @@ export function Preloader() {
       setActive(false); // unmount the overlay immediately (no wipe)
     }, WATCHDOG_MS);
 
-    // ----- Hand-off: close → zoom → divider streak → curtain wipe up ---------
+    // ----- Hand-off: close → zoom-through → divider streak → overlay fade ----
     function reveal() {
       // Flip the shared flag FIRST so SignatureLine re-kicks its uReveal 0→1 on
-      // this exact beat — the wipe below uncovers the line as it draws in.
+      // this exact beat — the fade below uncovers the line as it draws in.
       useIntroStore.getState().complete();
 
       const finish = () => {
         if (revealed && overlayRef.current) {
           // Belt-and-suspenders: never leave the overlay covering or capturing.
           gsap.set(overlayRef.current, {
-            clipPath: "inset(0% 0 100% 0)",
+            opacity: 0,
             pointerEvents: "none",
           });
         }
@@ -612,7 +618,7 @@ export function Preloader() {
       }
 
       // The choreography master timeline. Each piece is null-guarded; if a ref
-      // is missing the timeline still runs the curtain wipe via the final tween.
+      // is missing the timeline still runs the overlay fade via the final tween.
       const tl = gsap.timeline();
 
       // (a) CLOSE — fold the OPEN bar UP into the upright mark. ONE proxy drives
@@ -664,7 +670,8 @@ export function Preloader() {
       // 0.62, the moment the mark has folded closed and starts its zoom, the
       // tunnel's targetTimeCoef slams to 100. timeCoef lerps up at 0.02/frame,
       // so particle streaks + zoom blur (strength = timeCoef · 0.004) explode
-      // together with the mark zoom + curtain wipe — one "jump into the hero".
+      // together with the mark's zoom-through + overlay fade — one "jump into
+      // the hero".
       tl.call(
         () => {
           tunnel?.setTargetTimeCoef(100);
@@ -673,19 +680,22 @@ export function Preloader() {
         0.62,
       );
 
-      // (b) ZOOM — once closed, scale the whole compact mark UP toward the
-      //     viewer (scale + slight blur on the wrapper). The OPACITY fade is
-      //     applied to the lit glyphs + readout only (NOT the wrapper), so the
-      //     divider streak — a sibling inside the same SVG — survives the zoom
-      //     and stays visible into the curtain wipe (preserving the brand bridge
-      //     into the scroll line).
+      // (b) ZOOM-THROUGH — once closed, the compact mark accelerates toward
+      //     the viewer in ONE continuous power2.in push (scale 1 → 4 + blur on
+      //     the wrapper): it never settles on a landing scale, it flies PAST
+      //     the camera while the overlay fade below dissolves everything — the
+      //     exit is "flying through the mark into the site". The OPACITY fade
+      //     here is applied to the lit glyphs + readout only (NOT the wrapper),
+      //     so the divider streak — a sibling inside the same SVG — survives
+      //     the zoom and stays visible into the overlay fade (preserving the
+      //     brand bridge into the scroll line).
       if (logoRef.current) {
         tl.to(
           logoRef.current,
           {
-            scale: 2.4,
-            filter: "blur(6px)",
-            duration: 0.62,
+            scale: 4,
+            filter: "blur(10px)",
+            duration: 0.78,
             ease: "power2.in",
             transformOrigin: "50% 50%",
           },
@@ -704,8 +714,9 @@ export function Preloader() {
       }
 
       // (c) DIVIDER → signature line: brighten to accent cyan and streak/elongate
-      //     downward as the curtain lifts — the eye reads the logo's signal-bar
-      //     becoming the scroll line. Fires during/after the zoom.
+      //     downward as the overlay dissolves — the eye reads the logo's
+      //     signal-bar becoming the scroll line. Fires during/after the zoom
+      //     and fades out WITH the overlay (it is part of the sheet).
       if (dividerRef.current) {
         tl.to(
           dividerRef.current,
@@ -713,7 +724,7 @@ export function Preloader() {
             scaleY: 6,
             y: 120,
             fill: "hsl(189 100% 62%)", // --accent cyan head of the signature line
-            duration: WIPE_DURATION,
+            duration: FADE_DURATION,
             ease: "expo.in",
             transformOrigin: "50% 50%",
             transformBox: "fill-box",
@@ -722,15 +733,17 @@ export function Preloader() {
         );
       }
 
-      // Curtain wipe UP: the navy sheet lifts from the bottom, uncovering the
-      // page (and the freshly-drawing line) — same motion as the route curtain.
-      tl.fromTo(
+      // EXIT FADE: the whole overlay (tunnel, mark, streak) crossfades to
+      // transparent while the zoom keeps accelerating — no wipe, no hard edge.
+      // The rAF loop keeps rendering the tunnel underneath this fade, so the
+      // exit reads as warp + zoom + crossfade into the hero (and the
+      // freshly-drawing line beneath).
+      tl.to(
         node,
-        { clipPath: "inset(0% 0 0% 0)" },
         {
-          clipPath: "inset(0% 0 100% 0)",
-          duration: WIPE_DURATION,
-          ease: "expo.inOut",
+          opacity: 0,
+          duration: FADE_DURATION,
+          ease: "power2.inOut",
           onComplete: finish,
         },
         0.74,
@@ -778,7 +791,6 @@ export function Preloader() {
       ref={overlayRef}
       aria-hidden="true"
       className="fixed inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden bg-bg"
-      style={{ clipPath: "inset(0% 0 0% 0)" }}
     >
       {/* BACKDROP — WebGL particle tunnel (2D starfield fallback) drawn into a
           DPR-capped canvas by the component's single rAF loop. The CSS radial
@@ -876,7 +888,7 @@ export function Preloader() {
           {/* LIT layer — same letters, cyan→blue gradient + glow, clipped by
               the L→R reveal so the fill sweeps with progress. Wrapped (litWrapRef)
               so it fades on the zoom while the divider streak — a SIBLING below —
-              stays visible into the curtain wipe. */}
+              stays visible into the exit fade. */}
           <g
             ref={litWrapRef}
             clipPath="url(#preloader-reveal)"
@@ -918,7 +930,7 @@ export function Preloader() {
 
         {/* Subordinate readout: mono % counter + label beneath the mark. Wrapped
             (readoutRef) so it fades out on the zoom alongside the lit glyphs,
-            leaving only the divider streak + curtain wipe. */}
+            leaving only the divider streak dissolving in the exit fade. */}
         <div ref={readoutRef} className="flex flex-col items-center">
           <div
             className="mt-9 flex items-baseline tabular-nums leading-none text-ink-mute"
