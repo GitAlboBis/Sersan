@@ -104,8 +104,10 @@ key files before implementing — §1.4):
   commit) One-shot entrance timelines (rule draw → number+tick → masked title →
   deliverable cascade), two-column hairline tables, act 02 offset on xl. Note: the old
   cards carried NO CTAs (audit claim corrected) — conversion path unchanged (#intake).
-- [ ] **C3 · P2/M — /consulting process map (ProcessSection):** 4 static card columns →
-  scroll-scrub narrative (reuse AuditWeekTimeline pattern).
+- [x] **C3 · P2/M — /consulting process map → scrubbed drawn spine.** (this commit)
+  Horizontal accent spine draws with scroll, stations ignite at their fraction along
+  it (reversible); vertical static variant below lg/coarse/RM. The /consulting trio
+  (C1+C2+C3) is complete — the route went from zero GSAP to three coherent moments.
 - [ ] **C4 · P2/M — /audit six surfaces:** 2×3 card grid → big-type numbered ledger
   (01-06 full-width split-text rows, per-row signature-line tick via auditTimelineStore).
   Secondary dossier fit: era-residence horizontal scroller; video-projection numerals.
