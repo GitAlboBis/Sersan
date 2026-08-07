@@ -140,19 +140,26 @@ interface FxState {
    * wordmark's final settling. The mark-side guard (introReformClock ≥
    * INTRO_REFORM_RELEASE) still applies. */
   sporeAutoBurstAt: number;
-  // GRAVITATIONAL FLYBY (owner 2026-08-07) — the home eclipse publishes its
-  // apparent center + a 0..1 envelope (holeField in HomeSingularity.tsx);
-  // the mark's CRUST layers and the wordmark particles lean toward it with
-  // the mouse-lift aesthetic (crust: displacement + cyan glow; text:
-  // displacement only). These knobs scale the pull; all responses are
-  // damped (clamped dt) at the consumers.
+  // GRAVITATIONAL FLYBY / ACCRETION (owner 2026-08-07, v2 the same day) —
+  // the home eclipse publishes its apparent center + a 0..1 envelope
+  // (holeField in HomeSingularity.tsx). CRUST spores caught in the well
+  // DETACH, travel to the hole, flash and DIE there (respawning at home on
+  // the LIFE_REGROW cycle); the wordmark WARPS visibly toward the hole's
+  // live position (displacement only, no colour). These knobs scale it;
+  // all responses are damped (clamped dt) at the consumers.
   /** Crust flyby pull — MODEL-space acceleration at full falloff × envelope
    * (same force family as the layer's PUSH, through the same spring
-   * integration; equilibrium lean ≈ pull/SPRING model units). 0 disables. */
+   * integration; far-field lean ≈ pull/SPRING model units). The ACCRETION
+   * capture boost (holeCapture) multiplies this inside the capture band.
+   * 0 disables the whole crust interaction. */
   holePullCrust: number;
-  /** Wordmark flyby pull — WORLD-unit displacement at full falloff ×
-   * envelope. Displacement only, NO colour change; sized to ≈15–25% of the
-   * crust's apparent lean ("si distorcesse un minimo"). 0 disables. */
+  /** Wordmark flyby warp — WORLD-unit displacement at full falloff ×
+   * envelope. Displacement only, NO colour change. Owner v2 ("la scritta
+   * non si distorce"): raised 0.14 → 0.9 so the warp is unmistakable —
+   * ≈0.6 world ≈ 55–60px on the glyph edges nearest the hole at peak,
+   * ≈30px on the far edge (a visible bend gradient), breathing 0→peak
+   * with the orbit's proximity envelope and relaxing to exactly 0 at far
+   * phase. 0 disables. */
   holePullText: number;
   /** Flyby falloff radius in WORLD units at the consumer's content plane
    * (HeroLogo converts to model units via the group scale). NOTE: the
@@ -161,6 +168,23 @@ interface FxState {
    * even at nearest approach (camera-ray projection ≈ ×6.8), so the well
    * must span that gap to produce any lean at all. */
   holePullRadius: number;
+  /** ACCRETION capture boost (owner v2: "le spore vanno verso il buco nero
+   * ed esplodono"). Inside the capture band (distance < holePullRadius×0.6,
+   * envelope past the kernel's 0.15→0.35 gate) the attraction is multiplied
+   * by 1 + holeCapture·(1−d/band)² — a quadratic runaway that beats the
+   * home spring, so near-edge spores detach and genuinely fall in. At 30
+   * (default) the pull at the horizon ≈ 250 model-units/s² vs the spring's
+   * ≈ 79 at that stretch — gravity wins the whole descent. 0 restores the
+   * v1 pull-only lean. */
+  holeCapture: number;
+  /** ACCRETION horizon (kill) radius in WORLD units at the mark's content
+   * plane — spores inside it die burst-style (flash → shrink → respawn at
+   * home at LIFE_REGROW pace). Default 0.9 ≈ the black core's PROJECTED
+   * apparent scale: march radius 0.13 on the unit sphere → apparent radius
+   * ≈ 7.9vh → × the ≈11.47-world view height at the mark plane ≈ 0.91
+   * world. Never set 0 (HeroLogo floors it — equal smoothstep edges would
+   * NaN the life buffer). */
+  holeKillRadius: number;
   // Particle field
   particleOpacity: number;
   // GPGPU hero STATIC fallback (HeroLogo "particles-static") — the few
@@ -284,14 +308,19 @@ export const useFxStore = create<FxState>((set) => ({
   sporeAutoBurstFall: 0.35,
   sporeAutoBurstFire: 0,
   sporeAutoBurstAt: 0.75, // owner spec: fire at ~75% of the wordmark entry
-  // Flyby defaults: crust lean ≈ 12/22 ≈ 0.55 model units × falloff(~0.5 at
-  // the mark's lower half) × envelope ≤ 1 → a visible hover-like lean at
-  // nearest approach; text ≈ 0.14 × falloff(~0.35) ≈ 0.05 world ≈ 4–5 px on
-  // a 1080p frame — "a few px at most". Radius 9 ≈ 80vh: the well spans the
-  // horizon→lockup gap (see the holePullRadius doc).
+  // Flyby/accretion defaults (owner v2). Crust: far-field lean ≈ 12/22 ≈
+  // 0.55 model units × falloff × envelope; inside the capture band the
+  // ×(1+30·capT²) boost takes over and near-edge spores fall in and die at
+  // the 0.9-world horizon (derivations on the interface docs above). Text:
+  // 0.9 × falloff(0.36–0.68 across the wordmark at nearest approach) ≈
+  // 0.32–0.61 world ≈ 31–59 px @1080 — an unmistakable, gradient bend that
+  // breathes with the orbit (envelope: rest ≈ 0.58, near 1, far 0). Radius
+  // 9 ≈ 80vh: the well spans the horizon→lockup gap (holePullRadius doc).
   holePullCrust: 12,
-  holePullText: 0.14,
+  holePullText: 0.9, // was 0.14 (v1 "a few px") — owner v2: visible warp
   holePullRadius: 9,
+  holeCapture: 30,
+  holeKillRadius: 0.9,
   particleOpacity: 0.35,
   gpgpuPush: DEFAULT_GPGPU_CONFIG.PUSH,
   gpgpuRadius: DEFAULT_GPGPU_CONFIG.RADIUS,

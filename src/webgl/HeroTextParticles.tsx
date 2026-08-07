@@ -520,13 +520,17 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
         group.position.copy(scratch);
       }
 
-      // --- GRAVITATIONAL FLYBY (owner 2026-08-07): the wordmark leans a few
-      // px toward the eclipse's APPARENT center (holeField — the module-
-      // scope shared ref HomeSingularity publishes each frame). Displacement
-      // only, ≈15–25% of the crust's amplitude, deliberately NO colour
-      // change. The hole's true center floats ≈1.76 units from the camera —
-      // ~10 world units in FRONT of this z=0 plane — so it is PROJECTED
-      // onto the content plane along the camera ray first; the group is
+      // --- GRAVITATIONAL FLYBY (owner 2026-08-07, v2 amplitude: "la
+      // scritta non si distorce" → the warp must be UNMISTAKABLE): the
+      // wordmark bends toward the eclipse's live APPARENT center (holeField
+      // — the module-scope shared ref HomeSingularity publishes each frame)
+      // by tens of px at near approach, the glyph edges nearest the hole
+      // bending ~2× the far ones (per-particle falloff), breathing 0→peak
+      // with the orbit's proximity envelope and relaxing to exactly 0 at
+      // far phase. Displacement only, deliberately NO colour change. The
+      // hole's true center floats ≈1.76 units from the camera — ~10 world
+      // units in FRONT of this z=0 plane — so it is PROJECTED onto the
+      // content plane along the camera ray first; the group is
       // translation-only, so world→local is a plain subtraction. Uniform
       // writes only (see the gpgpuNodeSim binding-budget note).
       const fxs = useFxStore.getState();

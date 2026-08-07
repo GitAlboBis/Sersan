@@ -637,6 +637,8 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     uHoleStrength: { value: number };
     uHolePull: { value: number };
     uHoleRadius: { value: number };
+    uHoleCapture: { value: number };
+    uHoleKillRadius: { value: number };
     dispose: () => void;
   }
   const [tslSpore, setTslSpore] = useState<TslSpore[] | null>(null);
@@ -707,6 +709,8 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
           uHoleStrength: b.uHoleStrength,
           uHolePull: b.uHolePull,
           uHoleRadius: b.uHoleRadius,
+          uHoleCapture: b.uHoleCapture,
+          uHoleKillRadius: b.uHoleKillRadius,
           dispose: b.dispose,
         };
       });
@@ -1180,12 +1184,13 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       tickParams.time = simTimeRef.current;
       tickParams.mouse.copy(modelMouse);
 
-      // --- GRAVITATIONAL FLYBY feed (owner 2026-08-07) ----------------------
+      // --- GRAVITATIONAL FLYBY / ACCRETION feed (owner 2026-08-07 v2) -------
       // The eclipse publishes its APPARENT center + 0..1 envelope via
       // holeField (module-scope shared ref, HomeSingularity — the
-      // pointerStore pattern); the CRUST leans toward it with the exact
-      // hover aesthetic (the attraction force rides the same spring
-      // integration, and the render's cyan lift keys off the same falloff).
+      // pointerStore pattern). The CRUST leans in the far field and, inside
+      // the capture band at near approach, spores DETACH, fall to the hole,
+      // flash and die at the horizon, respawning at home (the kernel's
+      // capture/horizon terms — all envelope-gated, so far phase = nothing).
       // Envelope is damped with the clamped delta so edges never step.
       holeEnvRef.current = THREE.MathUtils.damp(
         holeEnvRef.current,
@@ -1211,10 +1216,15 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         // the raycast cursor projection above.
         spin.worldToLocal(holeLocal);
       }
-      // Radius knob is WORLD units at the content plane → model units via
-      // the group's uniform world scale (assembly/spin scales are 1).
+      // Radius knobs are WORLD units at the content plane → model units via
+      // the group's uniform world scale (assembly/spin scales are 1). The
+      // kill radius is FLOORED strictly positive: at 0 the kernel's horizon
+      // smoothstep gets equal edges (divide-by-zero → NaN into the life
+      // buffer, which would silently erase the crust).
       const holeRadiusModel =
         fx.holePullRadius / Math.max(group.scale.x, 1e-4);
+      const holeKillModel =
+        Math.max(fx.holeKillRadius, 1e-3) / Math.max(group.scale.x, 1e-4);
 
       for (let i = 0; i < tslSpore.length; i++) {
         const layer = tslSpore[i];
@@ -1241,13 +1251,17 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         layer.uBurst.value = Math.max(scrollBurst, introBurst, autoLayerBurst);
         // Slow ONLY the intro materialise bloom; 1 the rest of the time.
         layer.uRegrowScale.value = introRegrowScale;
-        // Flyby attractor — CRUST-role layers only (same selectivity as the
-        // auto-burst): envelope 0 on the core zeroes both the force and the
-        // glow by construction. Uniform writes only, per the budget notes.
+        // Flyby/accretion attractor — CRUST-role layers only (same
+        // selectivity as the auto-burst): envelope 0 on the core zeroes the
+        // force, the glow, the capture boost AND the horizon kill by
+        // construction (the kernel's capGate is a pure function of the
+        // envelope). Uniform writes only, per the budget notes.
         layer.uHole.value.copy(holeLocal);
         layer.uHoleStrength.value = isCrust ? holeEnvRef.current : 0;
         layer.uHolePull.value = fx.holePullCrust;
         layer.uHoleRadius.value = holeRadiusModel;
+        layer.uHoleCapture.value = fx.holeCapture;
+        layer.uHoleKillRadius.value = holeKillModel;
       }
       return;
     }

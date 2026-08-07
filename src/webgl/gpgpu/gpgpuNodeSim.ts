@@ -347,10 +347,14 @@ export function unifiedForceStep(
 // MODEL space (DDD: diameter ≈ letterHeight/47) so the packing survives
 // zoom/scale.
 //
-// GRAVITATIONAL FLYBY (owner 2026-08-07): a second, ATTRACTIVE interaction
-// term (uHole / uHoleStrength / uHolePull / uHoleRadius) rides the same
-// unified integration beside the cursor repulsion, plus a matching
-// hover-style glow term in the render. UNIFORMS ONLY, by design: storage
+// GRAVITATIONAL FLYBY → ACCRETION (owner 2026-08-07, v2 the same day): a
+// second, ATTRACTIVE interaction (uHole / uHoleStrength / uHolePull /
+// uHoleRadius + the v2 uHoleCapture / uHoleKillRadius) rides the same
+// unified integration beside the cursor repulsion. Far field: a subtle
+// lean + hover-style glow. Near approach: spores inside the capture band
+// are boosted into a runaway fall, flash via the infall term in the
+// render, die at the horizon like the burst kill, and respawn at home on
+// the standard LIFE_REGROW cycle. UNIFORMS ONLY, by design: storage
 // buffers are a hard device budget (the text-morph compute kernel is already
 // at its 8-of-8 wall, and every render-stage buffer costs a vertex-buffer or
 // storage-binding slot — see the RENDER BINDING BUDGET block below), while
@@ -396,6 +400,17 @@ export interface SporeNodeBuild {
   /** Flyby falloff radius in MODEL space (fx.holePullRadius world units ÷
    * the mark group's world scale, written per frame by HeroLogo). */
   uHoleRadius: UniformNode<number>;
+  /** ACCRETION capture boost (fx.holeCapture): inside the capture band
+   * (d < radius·0.6) the attraction is multiplied by
+   * 1 + capture·(1−d/band)²·gate — quadratic runaway so gravity WINS against
+   * the home spring and captured spores detach and travel to the hole.
+   * 0 = pull-only lean (the v1 behavior). */
+  uHoleCapture: UniformNode<number>;
+  /** ACCRETION horizon radius in MODEL space (fx.holeKillRadius world units
+   * ÷ group scale, floored > 0 by HeroLogo — 0 would make the kill
+   * smoothstep's edges equal → NaN into the life buffer). Spores crossing it
+   * die burst-style and respawn at home on the LIFE_REGROW cycle. */
+  uHoleKillRadius: UniformNode<number>;
   dispose: () => void;
 }
 
@@ -506,10 +521,20 @@ export function createSporeComputeNodeBuild(
   // HeroLogo — the projected hole center sits several units below the mark,
   // so the shipping well is much wider; see the fxStore knob doc).
   const uHoleRadius = uniform(config.RADIUS * 1.5) as UniformNode<number>;
+  // ACCRETION extension (owner 2026-08-07 v2 — capture + horizon kill; the
+  // pull-only lean was rejected: "vorrei che le spore andassero verso il buco
+  // nero ed esplodessero"). Still uniforms only. Capture defaults DEAD (0 =
+  // no boost); the kill radius default is a safe positive placeholder —
+  // NEVER 0 (equal smoothstep edges divide by zero → NaN would eat the life
+  // buffer). HeroLogo drives both per frame, kill radius floored there too.
+  const uHoleCapture = uniform(0) as UniformNode<number>;
+  const uHoleKillRadius = uniform(0.5) as UniformNode<number>;
   const holeN = uHole as unknown as AnyNode;
   const holeStrengthN = uHoleStrength as unknown as AnyNode;
   const holePullN = uHolePull as unknown as AnyNode;
   const holeRadiusN = uHoleRadius as unknown as AnyNode;
+  const holeCaptureN = uHoleCapture as unknown as AnyNode;
+  const holeKillRadiusN = uHoleKillRadius as unknown as AnyNode;
   const SPRING = uSpring as unknown as AnyNode;
   const PUSH = uPush as unknown as AnyNode;
   const RADIUS = uRadiusN as unknown as AnyNode;
@@ -561,6 +586,13 @@ export function createSporeComputeNodeBuild(
       // turbulence + the scroll-out burst).
       const vel = velH.toVar();
       const rndI = hash(instanceIndex).toVar();
+      // ACCRETION gate (owner 2026-08-07 v2): the capture/kill regime only
+      // engages once the flyby envelope clears a floor — smoothstep 0.15→0.35
+      // so it fades in/out with the orbit instead of switching. Shared by the
+      // capture boost (extraAcc) and the horizon kill (decay) below; also the
+      // structural core-safety: HeroLogo writes envelope 0 on non-crust
+      // layers, so gate = 0 there and neither term can ever fire.
+      const capGate = smoothstep(0.15, 0.35, holeStrengthN).toVar();
       const step = unifiedForceStep(tsl, {
         pos,
         vel,
@@ -602,22 +634,40 @@ export function createSporeComputeNodeBuild(
               .mul(burstN.mul(7.0).mul(float(0.6).add(rndI.mul(0.8)))),
           );
 
-          // GRAVITATIONAL FLYBY (owner 2026-08-07): ATTRACTION toward the
-          // black hole's apparent center — the mouse lift's exact falloff
-          // family (smoothstep radius→0, the static build's liftExpr shape)
-          // on a wider, softer well, pointing TOWARD the attractor instead
-          // of away. The force rides the same spring/damping integration as
-          // the cursor, so the crust LEANS and eases back with the hover
-          // aesthetic; the quasi-static approach (26s orbit, damped
-          // envelope) builds no kill-curve speed, so the lean displaces
-          // without eroding. Parked at 1e9 / envelope 0 → exactly zero, so
-          // every rest state is unchanged by construction.
-          const toHole = holeN.sub(pos);
-          const fHole = smoothstep(holeRadiusN, 0.0, length(toHole)).mul(
+          // GRAVITATIONAL ACCRETION (owner 2026-08-07 v2 — supersedes the
+          // pull-only lean: "vorrei che le spore andassero verso il buco
+          // nero ed esplodessero"). OUTSIDE the capture band this is the
+          // original subtle lean — the mouse lift's smoothstep falloff
+          // family, attraction instead of repulsion, riding the same
+          // spring/damping integration. INSIDE the band (d < radius×0.6,
+          // envelope past the capGate floor) gravity WINS against the home
+          // spring: the force is boosted quadratically toward the hole —
+          //   acc += n̂(toHole) · fHole · pull · (1 + capture·capT²·gate)
+          //   fHole = smoothstep(radius, 0, d) · envelope
+          //   capT  = clamp(1 − d / (radius·0.6), 0, 1)
+          // A runaway by construction: the boost grows quadratically as d
+          // shrinks while the home spring only grows linearly with home
+          // distance, so captured spores DETACH and genuinely TRAVEL to the
+          // hole (race at the shipping defaults, model units: at d=2 the
+          // pull ≈ 97 vs spring ≈ 53; at the horizon ≈ 250 vs ≈ 79 — with
+          // MAX_SPEED clamping the fall to a visible ~0.5s streak). The
+          // horizon kill in the decay below finishes them. Parked at 1e9 /
+          // envelope 0 → exactly zero at any rest state.
+          const toHole = holeN.sub(pos).toVar();
+          const dHole = length(toHole).toVar();
+          const fHole = smoothstep(holeRadiusN, 0.0, dHole).mul(
             holeStrengthN,
           );
+          const capT = clamp(
+            float(1.0).sub(dHole.div(holeRadiusN.mul(0.6))),
+            0.0,
+            1.0,
+          );
+          const boost = float(1.0).add(
+            holeCaptureN.mul(capT.mul(capT)).mul(capGate),
+          );
           acc.addAssign(
-            toHole.add(1e-5).normalize().mul(fHole).mul(holePullN),
+            toHole.add(1e-5).normalize().mul(fHole).mul(holePullN).mul(boost),
           );
         },
       });
@@ -630,9 +680,29 @@ export function createSporeComputeNodeBuild(
       // off the PRE-CLAMP speed exactly as the previous inline kernel did.
       // The burst adds a direct staggered kill so the scroll dissolve
       // completes even for spores the radial push barely moves (pinned core).
+      //
+      // ACCRETION HORIZON KILL (owner 2026-08-07 v2): inside uHoleKillRadius
+      // (≈ the black core's projected scale) the spore dies exactly like the
+      // burst kill — a large per-spore-staggered decay spike (10–18 life/s ⇒
+      // death within ~0.06–0.1s of crossing), soft-edged over
+      // [killR, killR·0.5] and capGate-gated so an inert hole can never
+      // kill. burstN is untouched, so the DYING → respawn machinery takes
+      // its STANDARD path: the force-free ghost flight carries the spore's
+      // infall momentum INTO the hole while it shrinks, then it respawns AT
+      // HOME on the LIFE_REGROW cycle — a continuous detach → fall → flash →
+      // die → regrow erosion stream during near approach, nothing at far
+      // phase. Distance reads the POST-integration pos (the spore's actual
+      // rendered position this frame).
+      const dHoleKill = length(holeN.sub(pos));
+      const horizon = smoothstep(
+        holeKillRadiusN,
+        holeKillRadiusN.mul(0.5),
+        dHoleKill,
+      ).mul(capGate);
       const decay = pow(min(step.speed.mul(0.35), 1.0), 5.0)
         .mul(LIFE_DECAY)
-        .add(burstN.mul(float(2.0).add(rndI.mul(2.5))));
+        .add(burstN.mul(float(2.0).add(rndI.mul(2.5))))
+        .add(horizon.mul(float(10.0).add(rndI.mul(8.0))));
       lifeH.assign(min(lifeH.add(LIFE_HEAL.sub(decay).mul(dtN)), 1.0));
     }).Else(() => {
       // DYING (−1,0] — free ghost flight (DDD-style, no forces); the render
@@ -738,18 +808,24 @@ export function createSporeComputeNodeBuild(
     // so `.toAttribute()` is 4-component — `length()` must see the true vec3.
     const speed = length(velocityBuffer.toAttribute().xyz);
     const regrowFlash = clamp(lifeAttr.sub(1.0), 0.0, 1.0); // max(0, life−1)
-    // GRAVITATIONAL FLYBY glow — the hovered-spore cyan lift, driven by the
-    // ATTRACTION magnitude instead of speed: the flyby lean is quasi-static
-    // (no kill-curve velocity), so without this the crust would displace
-    // WITHOUT the brightening the owner asked to mirror. Same falloff ×
-    // envelope product as the kernel's force term. Self-contained expression
-    // (frozen-varying discipline); positionBuffer is already bound for
-    // positionNode, so this read costs no new binding — uniforms only.
-    // `.xyz` mandatory on the padded `"vec3"` storage read.
-    const holeGlow = smoothstep(
-      holeRadiusN,
-      0.0,
-      length(holeN.sub(positionBuffer.toAttribute().xyz)),
+    // GRAVITATIONAL FLYBY glow + ACCRETION INFALL FLASH — the hovered-spore
+    // cyan lift, driven by proximity instead of speed. Two terms, max()ed:
+    //   (1) the wide-well glow (falloff × envelope, as the v1 lean shipped)
+    //       — the resting near-edge warms up;
+    //   (2) the INFALL FLASH: heats to FULL over the last stretch into the
+    //       horizon (4·killR → killR), so captured spores streak bright and
+    //       vanish in a flash (owner: "esplodessero"). At terminal infall
+    //       the SPEED excitement already saturates t on its own (MAX_SPEED ×
+    //       SPEED_COLOR_K ≫ 1) and the DYING ghost flight keeps this term
+    //       lit as the shrinking spore crosses the horizon — the flash needs
+    //       no life-machine plumbing here.
+    // Self-contained expression (frozen-varying discipline); positionBuffer
+    // is already bound for positionNode, so these reads cost no new binding
+    // — uniforms only. `.xyz` mandatory on the padded `"vec3"` storage read.
+    const dHoleF = length(holeN.sub(positionBuffer.toAttribute().xyz));
+    const holeGlow = max(
+      smoothstep(holeRadiusN, 0.0, dHoleF),
+      smoothstep(holeKillRadiusN.mul(4.0), holeKillRadiusN, dHoleF),
     ).mul(holeStrengthN);
     const t = clamp(
       max(max(speed.mul(spore.SPEED_COLOR_K), regrowFlash), holeGlow),
@@ -831,6 +907,8 @@ export function createSporeComputeNodeBuild(
     uHoleStrength,
     uHolePull,
     uHoleRadius,
+    uHoleCapture,
+    uHoleKillRadius,
     dispose() {
       rig.dispose();
     },
@@ -904,9 +982,12 @@ export interface TextMorphNodeBuild {
    * displacement ONLY (no colour term — vSpeedF is untouched); never touches
    * the compute kernel, which sits at its 8-of-8 storage wall. */
   uHole: UniformNode<Vec3Like>;
-  /** Flyby displacement amplitude in world units at full falloff (HeroLogo's
-   * crust gets ~5×; the text is "si distorce un minimo"). 0 = off — the
-   * portrait callers never write it, so their graphs behave identically. */
+  /** Flyby displacement amplitude in world units at full falloff. Owner
+   * 2026-08-07 v2 ("la scritta non si distorce"): sized for a VISIBLE warp —
+   * tens of px at near approach, breathing 0→peak with the orbit's
+   * proximity envelope (fx.holePullText × the damped holeField.strength).
+   * 0 = off — the portrait callers never write it, so their graphs behave
+   * identically. */
   uHoleStrength: UniformNode<number>;
   /** Flyby falloff radius in world units (the text sim is world-scaled). */
   uHoleRadius: UniformNode<number>;
@@ -1544,13 +1625,17 @@ export function createTextMorphComputeBuild(
     // The read-only PORTRAIT buffers deliberately do NOT use `.toAttribute()`
     // — see the binding budget above.
     const p = positionBuffer.toAttribute().xyz.toVar();
-    // GRAVITATIONAL FLYBY (owner 2026-08-07) — displacement-only lean toward
+    // GRAVITATIONAL FLYBY (owner 2026-08-07, amplitude raised in v2: "la
+    // scritta non si distorce... dovrebbe distorcere in direzione
+    // dell'attuale posizione del buco nero") — displacement-only warp toward
     // the black hole's apparent center (uHole, LOCAL space; parked at 1e9 =
     // off, reversed-edge smoothstep resolves to 0 there). Same falloff
-    // family as the crust's attraction at the wordmark's much smaller
-    // amplitude; deliberately NO colour term — vSpeedF/vRandF are untouched,
-    // so affected glyph particles shift a few px without any cyan lift
-    // (owner: "si distorcesse un minimo"). No new varying is introduced;
+    // family as the crust's attraction; the per-particle falloff makes
+    // glyphs NEAREST the hole bend visibly more (tens of px at peak, ~2×
+    // bottom-vs-top gradient at the shipping defaults), swinging with the
+    // hole's live position as it orbits. Deliberately NO colour term —
+    // vSpeedF/vRandF are untouched, warp without any cyan lift. No new
+    // varying is introduced;
     // p is displaced BEFORE mv/clip so all four quad corners move together.
     // NOTE: portraitDistExpr/portraitSizePxExpr (outer expressions) read the
     // UNDISPLACED buffer — exact on every shipping path, because the

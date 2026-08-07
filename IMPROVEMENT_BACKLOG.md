@@ -181,6 +181,7 @@ key files before implementing — §1.4):
 | 9-16 | C1-C8 route redesigns + B-fixes | a2e2602…4cf91ad | all browser-verified per rows above — PUSHED |
 | 17 | C11 black hole hero + owner fix round | d9c2e33 + d735253 | shader compiles live · halo killed (true transparency) · 3D orbit · 2 live calibration rounds |
 | 18 | C1b ledger links + trust AI controls | 4e55d1b | browser ✓ (Approfondisci in the clip; accent rows) |
+| — | owner: hero package — bigger lockup + auto-burst (333e936), home eclipse (2697581), horizontal credibility passage (9990e58), intro retiming + flyby base (e485e20), accretion upgrade: infall + horizon kill + wordmark warp | (this commit) | tsc ✓ · full orbit verified live at real speed (foreground tab): early mark formation, auto-burst at 0.75, eclipse ignite, near-phase shredding toward the live hole, far-phase full recovery, console clean |
 | 19 | B4 self-audit quiz (+ interrupt-safety fix after live repro) | (this commit) | tsc ✓ · full flow verified: intro→5Q→top-3, click+scroll repro passes, IT verified |
 | 9 | C1 consulting practice ledger | a2e2602 | tsc ✓ · browser ✓ (scroll-active row migrates, tick+underline, desc expands) |
 | 10 | C2 engagement acts | (this commit) | tsc ✓ · browser ✓ (entrance caught mid-play, alternating offset, hairline tables) |
