@@ -58,8 +58,9 @@ progress `[x]` done (commit).
 - [x] **B2 · P1/S — Footer links to unowned socials** (this commit; end state LinkedIn · Instagram · Email) (twitter.com/sersan_io,
   github.com/sersan — footer.tsx:382,392). Replace with LinkedIn/Instagram per brand
   data, or drop.
-- [ ] **B3 · P1/M — /start is English-only** (primary CTA destination; server component
-  with hardcoded EN — start/page.tsx:26-181). Client-wrap or isEn pattern. Fold B11 in.
+- [x] **B3 · P1/M — /start is English-only.** (this commit; split page/start-client with
+  isEn, IT in the site's voi register, SplitText key={language} contract, Reveal stagger
+  on the step cards — B11's full typographic redesign still open)
 - [ ] **B4 · P1/L — 60-second self-audit engine built and never rendered**
   (data/audit-questions.ts — 226 lines, bilingual, zero importers). Exactly the
   interactive non-card moment the owner wants. Build the choreographed quiz UI (big-type
@@ -149,4 +150,5 @@ key files before implementing — §1.4):
 | — | owner: preloader zoom+fade exit | dbd72e9 | browser ✓ (clean handoff, no wipe artifacts) — PUSHED |
 | — | owner: hero lockup inversion (2 rounds, empirical calibration) | b246372 | browser ✓ (mark top in-frame, wordmark below, ~4vh gap) — PUSHED |
 | 6 | B1+B2 booking copy truth + owned socials | b8eab6f | tsc ✓ · browser ✓ (/audit CTA + footer icons) |
-| 7 | B7+B8+B9 dead-code purge (−2,181 lines, 2 files correctly SKIPPED on post-merge re-verify) | (this commit) | tsc ✓ · npm run build ✓ (40 pages) · browser ✓ (/trust + home on clean server; the LOCKUP_BELOW console burst was a stale Turbopack HMR chunk from the pre-rename graph — source grep clean, prod build unaffected) |
+| 7 | B7+B8+B9 dead-code purge (−2,181 lines, 2 files correctly SKIPPED on post-merge re-verify) | c5d4737 | tsc ✓ · npm run build ✓ (40 pages) · browser ✓ (/trust + home on clean server; the LOCKUP_BELOW console burst was a stale Turbopack HMR chunk from the pre-rename graph — source grep clean, prod build unaffected) |
+| 8 | B3 /start bilingual | (this commit) | tsc ✓ · browser ✓ (EN intact, IT toggle full-page, split-reveal remounts clean) |
