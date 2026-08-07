@@ -10,7 +10,7 @@ import { useLanguage } from "@/components/language-provider";
 import AuditWeekTimeline from "@/components/sections/audit-week-timeline";
 import { SurfacesLedger } from "./surfaces-ledger";
 import { DoorBeats } from "./door-beats";
-import { HonestFaq } from "./honest-faq";
+import { HonestFaq } from "@/components/ui/honest-faq";
 
 export function AuditClient() {
   const { language } = useLanguage();

@@ -118,9 +118,13 @@ key files before implementing — §1.4):
   subordinate scale); FAQ on Radix primitives with forceMount + grid-rows clip
   (ui/accordion wrapper unsuitable: unmounts closed content, no keyframes). Note:
   fx/displacement-wipe.tsx is now consumer-less → future cleanup batch.
-- [ ] **C6 · P2/L — /trust:** four consecutive card grids around the stranded
-  CompliancePipeline → extend the pipeline's stage-by-stage motion language to absorb
-  Standards/Controls; FAQ → plain typographic Q/A.
+- [x] **C6 · P2/L — /trust card walls retired.** (this commit) Standards → sober mono
+  ledger (derived status labels); GDPR roles → paired beats; controls → hairline
+  table; FAQ → shared HonestFaq (promoted to components/ui, audit import updated);
+  retention/contact stripped to hairlines. CompliancePipeline untouched; all six
+  data-line-anchor waypoints preserved (the spec's side-index never existed in this
+  build). Finding logged: AGENTS.md's AI-specific controls (kill switch/eval gates/
+  output review) are NOT in the page copy → owner content decision.
 - [x] **C7 · P2/S — /about "Three rules" → numeral-hero beats.** (this commit)
   Door-beats grammar with the 01/02/03 numerals as serif heroes (accent-dimmed,
   em-scaled tick), title subordinated, desc at reading width. OurWhy's 2×2

@@ -1,41 +1,47 @@
 "use client";
 
 import Link from "next/link";
-import { Shield, Lock, Globe, FileText, Mail, Clock } from "lucide-react";
+import { Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import CompliancePipeline from "@/components/sections/compliance-pipeline";
 import { Reveal } from "@/components/ui/reveal";
+import { HonestFaq } from "@/components/ui/honest-faq";
 import { useLanguage } from "@/components/language-provider";
 
 export function TrustClient() {
   const { language } = useLanguage();
   const isEn = language === "en";
 
+  // Ledger anatomy: the regulation NAME is the display element (mono,
+  // accent), the STATUS line is derived from each retired card title's own
+  // wording ("ISO 27001 (in progress)" → "In progress", "DORA-aligned" →
+  // "Aligned", …) — the engagement-acts precedent of rail labels derived
+  // from existing scope lines. Descriptions carry over byte-identical.
   const standards = [
     {
-      icon: Shield,
-      title: isEn ? "ISO 27001 (in progress)" : "ISO 27001 (in corso)",
+      name: "ISO 27001",
+      status: isEn ? "In progress" : "In corso",
       desc: isEn
         ? "Information security management system in active certification. Policies, controls, and audit trail aligned to the 2022 standard."
         : "Sistema di gestione della sicurezza delle informazioni in fase di certificazione. Policy, controlli e audit trail allineati allo standard 2022.",
     },
     {
-      icon: Lock,
-      title: isEn ? "DORA-aligned" : "Allineato a DORA",
+      name: "DORA",
+      status: isEn ? "Aligned" : "Allineato",
       desc: isEn
         ? "Operational resilience controls aligned with the EU Digital Operational Resilience Act for financial-services clients."
         : "Controlli di resilienza operativa allineati al Digital Operational Resilience Act (DORA) per clienti del settore finanziario.",
     },
     {
-      icon: FileText,
-      title: isEn ? "EU AI Act-ready" : "Pronti per l'EU AI Act",
+      name: "EU AI Act",
+      status: isEn ? "Ready" : "Pronti",
       desc: isEn
         ? "Risk classification, technical documentation, and human-oversight controls built into every AI engagement."
         : "Classificazione del rischio, documentazione tecnica e controlli di supervisione umana integrati in ogni ingaggio AI.",
     },
     {
-      icon: Globe,
-      title: isEn ? "GDPR-compliant" : "Conformi al GDPR",
+      name: "GDPR",
+      status: isEn ? "Compliant" : "Conformi",
       desc: isEn
         ? "DPA on file, data minimisation by default, EU-only data residency unless explicitly agreed otherwise."
         : "DPA in archivio, minimizzazione dei dati di default, data residency esclusivamente nell'UE salvo diverso accordo esplicito.",
@@ -196,19 +202,40 @@ export function TrustClient() {
           <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
             {isEn ? "Standards" : "Standard"}
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Hairline ledger (service-detail "what we build" grammar):
+              STATIC-OPEN rows, hover/focus brighten is the only interaction —
+              all paint-only (color + a scaleY tick sweep on constant-space
+              elements, zero layout shift). These are compliance claims, so
+              the typography stays sober: the regulation NAME is the display
+              element, set in MONO (not oversized serif) at
+              clamp(1.35rem,2.2vw,1.9rem), accent; the status line sits under
+              it in mono micro-caps; the description holds reading width in
+              the right column. Rows are non-link (no fake affordance);
+              focus-within variants cover any future focusable content.
+              Entrances via the site's Reveal/IO contract (RM-gated, SSR
+              paints everything). */}
+          <ul role="list" className="list-none border-y border-rule/70 divide-y divide-rule/70">
             {standards.map((s, i) => (
-              <Reveal key={s.title} delay={i * 70}>
-                <div className="card-steel p-6">
-                  <div className="mb-4" style={{ color: "hsl(var(--accent))" }}>
-                    <s.icon className="w-5 h-5" />
+              <Reveal as="li" key={s.name} delay={i * 60} className="group py-6 sm:py-7">
+                <div className="grid grid-cols-1 gap-y-2.5 sm:grid-cols-[minmax(11rem,15rem)_1fr] sm:items-baseline sm:gap-x-10">
+                  <div className="relative pl-3 sm:pl-4">
+                    {/* Side tick — sweeps in (scaleY) on hover/focus. */}
+                    <span
+                      aria-hidden="true"
+                      className="absolute left-0 top-[0.12em] h-[1.1em] w-[2px] origin-top scale-y-0 bg-accent transition-transform duration-300 ease-[var(--ease-entrance)] group-hover:scale-y-100 group-focus-within:scale-y-100 motion-reduce:transition-none"
+                    />
+                    <h3 className="font-mono text-[clamp(1.35rem,2.2vw,1.9rem)] leading-[1.1] tracking-[-0.01em] text-accent/80 transition-colors duration-300 group-hover:text-accent group-focus-within:text-accent">
+                      {s.name}
+                    </h3>
+                    <p className="mt-1.5 font-mono text-[11px] uppercase tracking-[0.2em] text-ink-mute transition-colors duration-300 group-hover:text-ink/80 group-focus-within:text-ink/80">
+                      {s.status}
+                    </p>
                   </div>
-                  <h3 className="font-display text-lg text-ink mb-2 leading-tight">{s.title}</h3>
-                  <p className="text-sm text-ink-mute leading-[1.55]">{s.desc}</p>
+                  <p className="max-w-2xl text-sm leading-[1.55] text-ink-mute">{s.desc}</p>
                 </div>
               </Reveal>
             ))}
-          </div>
+          </ul>
         </section>
 
         {/* GDPR Roles */}
@@ -223,28 +250,43 @@ export function TrustClient() {
                 : "Ai sensi del GDPR, le responsabilità variano a seconda che l'organizzazione sia Titolare o Responsabile del trattamento. Sersan può agire in entrambi i ruoli a seconda dell'ingaggio."}
             </p>
           </Reveal>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Two full-width beats, NOT cards: no borders around them — a
+              single hairline divider between the pair (vertical on lg where
+              they sit side by side, horizontal where they stack). Mono role
+              eyebrow + display title + the same item list, all strings
+              byte-identical; only the card chrome is retired. */}
+          <div className="grid grid-cols-1 lg:grid-cols-2">
+            {/* Stable index keys: an EN↔IT toggle swaps text in place
+                (elements never remount, entrances never replay). */}
             {gdprRoles.map((r, i) => (
-              <Reveal key={r.title} delay={i * 80}>
-                <div className="card-steel p-6">
-                  <p
-                    className="text-[10px] font-mono uppercase tracking-[0.18em] mb-2"
-                    style={{ color: "hsl(var(--accent))" }}
-                  >
-                    {r.label}
-                  </p>
-                  <h3 className="font-display text-lg text-ink mb-4 leading-tight">{r.title}</h3>
-                  <ul className="space-y-2">
-                    {r.items.map((it) => (
-                      <li key={it} className="text-sm text-ink-mute flex items-start gap-2 leading-[1.5]">
-                        <span style={{ color: "hsl(var(--accent))" }} aria-hidden="true">
-                          ·
-                        </span>
-                        <span>{it}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+              <Reveal
+                key={`role-${i}`}
+                delay={i * 80}
+                className={
+                  i === 1
+                    ? "mt-10 border-t border-rule/70 pt-10 lg:mt-0 lg:border-t-0 lg:pt-0 lg:border-l lg:pl-12"
+                    : "lg:pr-12"
+                }
+              >
+                <p
+                  className="text-[10px] font-mono uppercase tracking-[0.18em] mb-3"
+                  style={{ color: "hsl(var(--accent))" }}
+                >
+                  {r.label}
+                </p>
+                <h3 className="font-display text-[clamp(1.5rem,2.4vw,2rem)] leading-[1.15] tracking-[-0.02em] text-ink mb-5">
+                  {r.title}
+                </h3>
+                <ul className="space-y-2.5">
+                  {r.items.map((it) => (
+                    <li key={it} className="text-sm text-ink-mute flex items-start gap-2 leading-[1.5]">
+                      <span style={{ color: "hsl(var(--accent))" }} aria-hidden="true">
+                        ·
+                      </span>
+                      <span>{it}</span>
+                    </li>
+                  ))}
+                </ul>
               </Reveal>
             ))}
           </div>
@@ -266,16 +308,23 @@ export function TrustClient() {
           <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
             {isEn ? "Technical controls" : "Controlli tecnici"}
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Two-column hairline table (engagement-acts deliverables
+              grammar): each control is a border-t row with a mono micro-caps
+              label (uppercase is CSS-only — DOM strings stay byte-identical)
+              and its description at reading size. No card fills, no outer
+              box. This page's controls carry no AI-specific accent rows
+              (kill switch / eval gates live on the pipeline diagram), so
+              every row gets the same sober treatment. */}
+          <ul role="list" className="grid grid-cols-1 gap-x-12 sm:grid-cols-2">
             {controls.map((c, i) => (
-              <Reveal key={c.title} delay={i * 70}>
-                <div className="card-steel p-6">
-                  <h3 className="font-display text-lg text-ink mb-2 leading-tight">{c.title}</h3>
-                  <p className="text-sm text-ink-mute leading-[1.55]">{c.desc}</p>
-                </div>
+              <Reveal as="li" key={`control-${i}`} delay={i * 60} className="border-t border-rule/60 py-5">
+                <h3 className="font-mono text-[11px] uppercase tracking-[0.16em] text-ink/80 mb-2.5">
+                  {c.title}
+                </h3>
+                <p className="text-sm text-ink-mute leading-[1.55]">{c.desc}</p>
               </Reveal>
             ))}
-          </div>
+          </ul>
         </section>
 
         {/* Data & privacy FAQ — absorbed from the retired /faq page */}
@@ -283,16 +332,15 @@ export function TrustClient() {
           <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
             {isEn ? "Frequently asked questions" : "Domande frequenti"}
           </h2>
-          <div className="grid grid-cols-1 gap-4">
-            {privacyFaqs.map((f, i) => (
-              <Reveal key={f.q} delay={i * 70}>
-                <div className="card-steel p-6">
-                  <h3 className="font-display text-lg text-ink mb-2 leading-tight">{f.q}</h3>
-                  <p className="text-sm text-ink-mute leading-[1.55]">{f.a}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
+          {/* Hairline-divider accordion — the SAME component /audit's
+              "Honest answers" uses (@/components/ui/honest-faq, promoted
+              from src/app/audit for shared use). Every Q+A string EN+IT
+              byte-identical, all answers SSR'd into the DOM (forceMount +
+              height-clip). One Reveal wraps the whole list — RM gets no
+              entrance animation. */}
+          <Reveal className="max-w-3xl">
+            <HonestFaq faqs={privacyFaqs} />
+          </Reveal>
         </section>
 
         {/* Retention */}
@@ -300,22 +348,13 @@ export function TrustClient() {
           <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-6">
             {isEn ? "Retention" : "Conservazione"}
           </h2>
-          <div className="card-steel p-7">
-            <div className="flex items-start gap-4 mb-4">
-              <div
-                className="p-2.5 rounded-lg border border-rule/60 bg-surface"
-                style={{ color: "hsl(var(--accent))" }}
-              >
-                <Clock className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-sm text-ink/85 leading-[1.6]">
-                  {isEn
-                    ? "Engagement data is deleted within 30 days of contract end, unless the DPA specifies a longer regulatory hold. Lead data is retained for 24 months from last contact, then purged. Hiring data is retained for 6 months unless the candidate consents to a longer hold."
-                    : "I dati di ingaggio vengono cancellati entro 30 giorni dalla fine del contratto, salvo che il DPA preveda un periodo di conservazione più lungo per ragioni normative. I dati dei lead vengono conservati per 24 mesi dall'ultimo contatto e poi eliminati. I dati di selezione del personale vengono conservati per 6 mesi, salvo che il candidato acconsenta a un periodo più lungo."}
-                </p>
-              </div>
-            </div>
+          {/* Card chrome stripped to hairlines — content untouched. */}
+          <div className="border-y border-rule/70 py-6">
+            <p className="max-w-3xl text-sm text-ink/85 leading-[1.6]">
+              {isEn
+                ? "Engagement data is deleted within 30 days of contract end, unless the DPA specifies a longer regulatory hold. Lead data is retained for 24 months from last contact, then purged. Hiring data is retained for 6 months unless the candidate consents to a longer hold."
+                : "I dati di ingaggio vengono cancellati entro 30 giorni dalla fine del contratto, salvo che il DPA preveda un periodo di conservazione più lungo per ragioni normative. I dati dei lead vengono conservati per 24 mesi dall'ultimo contatto e poi eliminati. I dati di selezione del personale vengono conservati per 6 mesi, salvo che il candidato acconsenta a un periodo più lungo."}
+            </p>
           </div>
         </section>
 
@@ -329,8 +368,9 @@ export function TrustClient() {
           <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-6">
             {isEn ? "Contact" : "Contatti"}
           </h2>
-          <div className="card-steel p-7">
-            <p className="text-sm text-ink/85 mb-4 leading-[1.6]">
+          {/* Card chrome stripped to hairlines — content and CTAs untouched. */}
+          <div className="border-y border-rule/70 py-7">
+            <p className="max-w-3xl text-sm text-ink/85 mb-4 leading-[1.6]">
               {isEn
                 ? "For DPA requests, security questionnaires, or data subject requests, contact us directly. Founders answer the trust inbox personally."
                 : "Per richieste di DPA, questionari di sicurezza o richieste degli interessati, contattateci direttamente. I founder rispondono personalmente alla casella trust."}

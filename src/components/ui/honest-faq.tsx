@@ -3,9 +3,12 @@
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
 
 /**
- * HonestFaq — the /audit "Honest answers" FAQ as a hairline-divider
- * accordion, replacing the stack of seven card-steel boxes. Every Q+A
- * string is passed in from audit-client byte-identical (EN and IT).
+ * HonestFaq — hairline-divider FAQ accordion, SHARED by two routes:
+ *   - /audit  "Honest answers" (its original home, src/app/audit)
+ *   - /trust  data & privacy FAQ (replaced that page's card-steel stack)
+ * Every Q+A string is passed in from the route client byte-identical (EN and
+ * IT). Promoted from src/app/audit/honest-faq.tsx unchanged — one component,
+ * no duplication (the ≤30-lines shared-extraction path).
  *
  * MACHINERY — the same Radix accordion the site already ships
  * (@radix-ui/react-accordion, wrapped by src/components/ui/accordion.tsx and
@@ -13,7 +16,7 @@ import * as AccordionPrimitive from "@radix-ui/react-accordion";
  * pattern, same semantics — because the shared wrapper can't express two
  * things this redesign needs:
  *   1. `forceMount` on Content: the wrapper unmounts closed answers, so
- *      SSR/no-JS would ship a DOM with six of seven answers missing. With
+ *      SSR/no-JS would ship a DOM with most answers missing. With
  *      forceMount every answer is in the SSR HTML, height-clipped closed —
  *      the SurfacesLedger contract (clipped, never display:none, so screen
  *      readers and crawlers always get the full content).
