@@ -222,10 +222,15 @@ export default function ProblemSection() {
                 : "La demo funzionava. Il consiglio ha annuito. Poi è arrivato il volume reale e l'agente ha iniziato a inventare, il retrieval è andato in deriva, il costo per esecuzione è triplicato e nessuno nel team sapeva quale delle sette cose cambiate la settimana scorsa l'avesse rotto."
             }
             className="max-w-xl"
+            // POSITIVE bottom margin: the cascade is already mid-composition
+            // while the credibility reel's sticky screen releases, so the
+            // incoming viewport is never an empty dark slab (the rejected
+            // "slide-up" was this section mounting at opacity:0).
+            ioRootMargin="0px 0px 15% 0px"
           />
 
           {/* Right — the network centerpiece + the three failure cards */}
-          <Reveal delay={120}>
+          <Reveal delay={120} ioRootMargin="0px 0px 15% 0px">
             <FailureLattice failures={failures} />
           </Reveal>
         </div>

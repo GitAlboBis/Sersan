@@ -48,6 +48,14 @@ interface SectionHeadingProps {
    * reverted on complete/cleanup, reduced-motion => instantly final.
    */
   reveal?: HeadingReveal;
+  /**
+   * IO rootMargin for the play trigger. Default reproduces the historical
+   * "top 85%" start. A POSITIVE bottom margin expands the root so the cascade
+   * pre-composes before the heading is on screen — used by ProblemSection so
+   * the credibility reel's sticky release never lands on an empty dark slab.
+   * Back-compatible: omitting it renders exactly as before.
+   */
+  ioRootMargin?: string;
 }
 
 export function SectionHeading({
@@ -59,6 +67,7 @@ export function SectionHeading({
   titleClassName,
   cta,
   reveal = "lines",
+  ioRootMargin = "0px 0px -15% 0px",
 }: SectionHeadingProps) {
   const ref = useRef<HTMLDivElement | null>(null);
   const { language } = useLanguage();
@@ -237,7 +246,7 @@ export function SectionHeading({
             io = null;
           }
         },
-        { rootMargin: "0px 0px -15% 0px", threshold: 0 },
+        { rootMargin: ioRootMargin, threshold: 0 },
       );
       io.observe(el);
     });
@@ -254,7 +263,7 @@ export function SectionHeading({
       split = null;
       tl?.kill();
     };
-  }, [language, reveal]);
+  }, [language, reveal, ioRootMargin]);
 
   return (
     <div

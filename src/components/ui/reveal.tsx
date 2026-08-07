@@ -19,6 +19,13 @@ interface RevealProps {
   variant?: "fade" | "construct" | "rise";
   /** Entrance direction. Default "up" = today's vertical reveal (unchanged). */
   from?: RevealFrom;
+  /**
+   * IO rootMargin for the play trigger. Default reproduces the historical
+   * "top 82%" start. A POSITIVE bottom margin expands the root so the reveal
+   * pre-composes before the element is on screen (used by ProblemSection after
+   * the credibility reel's sticky release). Back-compatible default.
+   */
+  ioRootMargin?: string;
   className?: string;
   as?: "div" | "section" | "article" | "li" | "span";
 }
@@ -28,6 +35,7 @@ export function Reveal({
   delay = 0,
   variant = "fade",
   from = "up",
+  ioRootMargin = "0px 0px -18% 0px",
   className = "",
   as: Tag = "div",
 }: RevealProps) {
@@ -101,12 +109,12 @@ export function Reveal({
           }
         }
       },
-      { rootMargin: "0px 0px -18% 0px", threshold: 0 },
+      { rootMargin: ioRootMargin, threshold: 0 },
     );
     io.observe(el);
 
     return () => io.disconnect();
-  }, [delay, variant, from]);
+  }, [delay, variant, from, ioRootMargin]);
 
   return (
     // @ts-expect-error — Tag is a union of HTML tag names
