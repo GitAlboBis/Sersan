@@ -121,18 +121,41 @@ const TILT = THREE.MathUtils.degToRad(4);
  */
 const TILT_DAMP = 3.5; // damp lambda — soft ease toward the pointer target
 
-// --- Intro brand lockup (2026-07-23 v2, client direction) -------------------
+// --- Intro brand lockup (2026-08-07 v3, owner direction: mark ON TOP) -------
 // While the particle "Sersan AI" wordmark owns the hero, the mark sits
-// centered UNDER it as a proper lockup, then FLIES to its hero-right rest as
-// the brand melts into the DOM hero (a pure function of domReveal, so the
-// reverse replay brings it back beneath the re-forming wordmark for free).
-/** Mark center offset below the viewport center, as a fraction of
- * WORLD_VIEW_HEIGHT. Clears the 13vw wordmark line with a breath of gap on
- * wide desktops; the wordmark is width-clamped, so narrower windows only
- * gain clearance. */
-const LOCKUP_BELOW = 0.3;
-/** Mark scale at the lockup vs its hero rest — wordmark-dominant. */
-const LOCKUP_SCALE = 0.42;
+// centered ABOVE it — mark leading, wordmark beneath, a classic vertical
+// lockup — then FLIES to its hero-right rest as the brand melts into the DOM
+// hero (a pure function of domReveal, so the reverse replay brings it back
+// on top of the re-forming wordmark for free).
+//
+// Geometry behind the numbers (1440×810 reference desktop; WORLD_VIEW_HEIGHT
+// ≡ 100vh at the z=0 content plane):
+//   mark height = 2 (normalized) × WORLD_VIEW_HEIGHT·fx.heroScale(0.17)
+//     × LOCKUP_SCALE(0.58) ≈ 2.21 world ≈ 19.7vh (~2% smaller apparent at
+//     the lockup's z = heroPosZ −0.3), width ≈ 2.91 world.
+// PLACEMENT IS CALIBRATED EMPIRICALLY, not from rect math: on the reference
+// desktop the whole WebGL lockup renders ~19vh ABOVE the DOM-center mapping
+// (browser-verified 2026-08-07 — the old flex-centered wordmark's particle
+// render sat at ~31vh optical center, not 50vh), so a "pure" DOM-derived
+// offset lands the mark clipped behind the header. The numbers below come
+// from measuring the LIVE render: at −0.09 the mark's observed center is
+// ≈22vh from the frame top, top edge ≈12vh (clear of the ~7vh header band),
+// bottom ≈32vh; the wordmark span (clamp(3.25rem, 9.5vw, 10rem), translated
+// +13vh in cinematic-system-scroll) renders its text center ≈44vh, top
+// ≈35.5vh ⇒ a ~4vh visible gap under the mark, bottom ≈52.5vh — an upper-
+// half-weighted lockup, both elements in frame with margin. The wordmark is
+// width-clamped, so narrower windows only gain clearance.
+/** Mark center offset from the viewport (camera) center, as a fraction of
+ * WORLD_VIEW_HEIGHT — same screen-down-positive sign convention as
+ * fx.heroOffsetY (the use site SUBTRACTS it), so NEGATIVE parks the mark
+ * ABOVE center. −0.09 ⇒ observed mark center ≈22vh from the frame top
+ * (empirical calibration above — the naive DOM-math value was −0.22 and
+ * clipped the mark's top half behind the header). */
+const LOCKUP_OFFSET_Y = -0.09;
+/** Mark scale at the lockup vs its hero rest — the mark leads the lockup
+ * (owner 2026-08-07: mark on top, a bit bigger; wordmark a bit smaller):
+ * ≈19.7vh tall against the wordmark's ≈16.9vh line. */
+const LOCKUP_SCALE = 0.58;
 /** Toward-camera z bulge (world units) at mid-flight of the lockup→hero
  * move, so it reads as the camera carrying the mark, not a flat slide. */
 const FLIGHT_BULGE = 0.7;
@@ -742,8 +765,8 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     // Hold through the pin; recede + fade over the last quarter (identical to
     // the previous HeroLogo so the handoff is unchanged).
     let fade = 1 - THREE.MathUtils.smoothstep(hp, 0.74, 0.97);
-    // Intro brand lockup (2026-07-23 v2, supersedes the full-hide yield): the
-    // mark stays VISIBLE through the brand beat, parked centered below the
+    // Intro brand lockup (2026-08-07 v3, supersedes the full-hide yield): the
+    // mark stays VISIBLE through the brand beat, parked centered ABOVE the
     // wordmark (see the LOCKUP_* constants), and `flight` carries it to the
     // hero-right rest as the brand dissolves. Inactive morph (fallback tiers,
     // skipped intro) → flight = 1 → the framing below is byte-identical to
@@ -788,7 +811,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       WORLD_VIEW_HEIGHT * (fx.heroOffsetY + hp * 0.04);
     const heroZ = fx.heroPosZ - hp * 2.2;
     const lockY =
-      camera.position.y + camDescend - WORLD_VIEW_HEIGHT * LOCKUP_BELOW;
+      camera.position.y + camDescend - WORLD_VIEW_HEIGHT * LOCKUP_OFFSET_Y;
     group.position.set(
       heroX * flight,
       THREE.MathUtils.lerp(lockY, heroY, flight),

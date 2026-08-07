@@ -1148,10 +1148,11 @@ export default function CinematicSystemScroll() {
         {/* Brand intro headline — "Sersan AI", the monumental opening beat.
             The WebGL text-particle intro (HeroTextParticles) assembles it out
             of a particle field on entry and melts it back out on the first
-            scroll while the DOM hero cascades in. Restyled 2026-07-23 (client):
-            Switzer semibold instead of the display serif, ~16vw and dead
-            center — the brand must OWN the frame, not read as a background
-            layer. The span is the PARTICLE ANCHOR + typography source
+            scroll while the DOM hero cascades in. Restacked 2026-08-07
+            (owner): the spore MARK now leads the lockup, parked centered
+            ABOVE the viewport center (HeroLogo's LOCKUP_* constants, with the
+            full derivation), and this wordmark sits BELOW it, smaller than
+            before. The span is the PARTICLE ANCHOR + typography source
             (opacity 0 forever — the particles are the only visible render);
             hidden by default so every fallback path (no JS, mobile,
             non-WebGPU, reduced motion) never shows it — the H1 owns the hero
@@ -1162,12 +1163,23 @@ export default function CinematicSystemScroll() {
         >
           <span
             data-hero-brand
-            // 13vw (was 16vw): the client flagged the 16vw cut overlapping the
-            // spore mark behind it — this width clears the mark's silhouette
-            // while still owning the frame (the mark also fully yields via
-            // HeroLogo's domReveal duck during the brand beat).
-            className="font-sans font-semibold text-[clamp(4rem,13vw,13.5rem)] leading-none tracking-[-0.045em] text-ink inline-block whitespace-nowrap"
-            style={{ opacity: 0, willChange: "opacity" }}
+            // 9.5vw (was 13vw) + a +13vh push below the flex center: the mark
+            // sits ABOVE this line now (see HeroLogo's LOCKUP_* block). The
+            // translate is calibrated against the LIVE particle render, not
+            // rect math — the WebGL lockup renders ~19vh above the DOM-center
+            // mapping on a 1440×810 desktop (browser-verified 2026-08-07), so
+            // +13vh lands the observed text center at ≈44vh from the frame
+            // top, top ≈35.5vh (a ~4vh visible gap under the mark's ≈32vh
+            // bottom), bottom ≈52.5vh — upper-half-weighted composition.
+            // HeroTextParticles samples this rect + computed style (transforms
+            // included), so the size/translate here IS the particle wordmark's
+            // frame; the wrapper keeps X flex-centered.
+            className="font-sans font-semibold text-[clamp(3.25rem,9.5vw,10rem)] leading-none tracking-[-0.045em] text-ink inline-block whitespace-nowrap"
+            style={{
+              opacity: 0,
+              transform: "translateY(13vh)",
+              willChange: "opacity",
+            }}
           >
             Sersan AI
           </span>
