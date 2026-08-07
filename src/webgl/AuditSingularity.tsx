@@ -42,10 +42,14 @@
  *
  * FRAME LOOP: single useFrame at default priority, and the component MUST
  * stay mounted AFTER SignatureLine in Scene.tsx — the world anchor, fade and
- * uCamLocal write are camera-relative and rely on the single camera authority
- * having written camera.position earlier in the same priority-0 frame pass
- * (same contract as RailPlanes / NeuralLattice). No per-frame allocations;
- * pointer damp uses the conventional clamped dt (1/30).
+ * the virtual-camera writes (uCamWorld/uCamLocal) are camera-relative and
+ * rely on the single camera authority having written camera.position earlier
+ * in the same priority-0 frame pass (same contract as RailPlanes /
+ * NeuralLattice). A slow continuous orbit (period/radius/bob in `orbitRef`,
+ * live-tunable via the dev handle) drifts the VIRTUAL march camera around
+ * the hole — genuine 3D motion (the disc's inclination, lensed stars and
+ * core all shift) with the anchored silhouette unmoved. No per-frame
+ * allocations; damps + the orbit clock use the conventional clamped dt (1/30).
  *
  * SCROLL FADE: mirrors HeroLogo's recede+fade convention, adapted to a short
  * unpinned hero — hp is the fraction of the hero scrolled past the viewport
@@ -83,6 +87,16 @@ const PARALLAX_DAMP = 4;
 /** Route-transition reveal damp (fade-in with the route beat). */
 const REVEAL_DAMP = 4;
 
+/** Slow continuous orbit defaults (FIX 2, owner 2026-08-07: "it doesn't look
+ * animated in 3D"). The orbit offsets the VIRTUAL march camera (uCamWorld) —
+ * the anchored silhouette never moves; the ray origins/directions do. */
+const ORBIT_PERIOD = 26; // seconds per lateral revolution
+const ORBIT_RADIUS = 0.5; // lateral (x/z) drift radius, world units
+/** Vertical bob amplitude, world units (half rate). 0.45, not the originally
+ * specced 0.22 — live-calibrated 2026-08-07: the wider inclination breathing
+ * keeps the disc ellipse open through more of the 26s cycle. */
+const ORBIT_BOB = 0.45;
+
 export function AuditSingularity({ anchors }: { anchors: SectionAnchors }) {
   const { camera, size } = useThree();
   const groupRef = useRef<THREE.Group>(null);
@@ -117,8 +131,12 @@ export function AuditSingularity({ anchors }: { anchors: SectionAnchors }) {
 
   // --- Live placement knobs (lead fine-tunes via the dev handle) ------------
   const placeRef = useRef({
-    /** Camera→group distance (world units). Smaller = bigger on screen. */
-    dist: DEFAULT_DIST,
+    /** Camera→group distance (world units). Smaller = bigger on screen.
+     * CALIBRATED EMPIRICALLY: the header's 50vh arithmetic gives 4.289
+     * (DEFAULT_DIST — kept above as the documented derivation), but once the
+     * true-transparency fix removed the env silhouette the presence read too
+     * small; 3.2 (~65vh apparent, browser-verified live 2026-08-07) governs. */
+    dist: 3.2,
     /** Horizontal offset as a fraction of the view width at the group plane. */
     xFrac: DEFAULT_X_FRAC,
     /** Vertical lift as a fraction of the ON-SCREEN viewport height
@@ -132,10 +150,22 @@ export function AuditSingularity({ anchors }: { anchors: SectionAnchors }) {
     yLift: 0.15,
   });
 
+  // --- Live orbit knobs (lead fine-tunes via the dev handle) ----------------
+  const orbitRef = useRef({
+    /** Seconds per full lateral revolution. */
+    period: ORBIT_PERIOD,
+    /** Lateral (x/z) orbit radius, world units. */
+    radius: ORBIT_RADIUS,
+    /** Vertical bob amplitude, world units — runs at HALF the orbit rate. */
+    bob: ORBIT_BOB,
+  });
+
   // --- Per-frame scratch (no allocations in the loop) -----------------------
   const parallax = useRef({ x: 0, y: 0 });
   const revealDamped = useRef(0);
   const fadeRef = useRef(0);
+  /** Orbit clock — accumulated clamped delta (sibling convention; no Date.now). */
+  const clockRef = useRef(0);
 
   useFrame((_, rawDelta) => {
     const group = groupRef.current;
@@ -220,14 +250,35 @@ export function AuditSingularity({ anchors }: { anchors: SectionAnchors }) {
     // ROTATION/SCALE STAY IDENTITY FOREVER (translation only) — the raymarch
     // constants and the uCamLocal shortcut both depend on it. Never scale.
 
-    // --- uCamLocal: camera world position in the group's local frame. The
-    // group is a scene-root child with identity rotation/scale, so
-    // worldToLocal degenerates to an exact subtraction (and needs no
-    // matrixWorld refresh — position IS the world position this frame). ------
+    // --- Slow continuous orbit (FIX 2, owner: "make it breathe in 3D"). A
+    // circular x/z drift around the hole + a half-rate vertical bob, composed
+    // into the VIRTUAL march camera — the disc's ellipse slowly changes
+    // inclination, the lensed stars swim, the core shifts, while the anchored
+    // silhouette (real camera raster) stays put. (cos − 1) keeps the offset
+    // zero at t=0 so the rest framing matches the tuned placement. Composed
+    // WITH the pointer parallax: the group translation and this camera offset
+    // simply sum inside uCamLocal below. ------------------------------------
+    clockRef.current += delta;
+    const orbit = orbitRef.current;
+    const oa = clockRef.current * ((Math.PI * 2) / orbit.period);
+    const ox = Math.sin(oa) * orbit.radius;
+    const oz = (Math.cos(oa) - 1) * orbit.radius;
+    const oy = Math.sin(oa * 0.5) * orbit.bob;
+
+    // --- Virtual march camera: real camera + orbit. uCamWorld drives the
+    // per-fragment view direction in the shader; uCamLocal is the same point
+    // in the group's local frame (backface ray origin). The group is a
+    // scene-root child with identity rotation/scale, so worldToLocal
+    // degenerates to an exact subtraction (no matrixWorld refresh needed —
+    // position IS the world position this frame). ---------------------------
+    const camX = camera.position.x + ox;
+    const camY = camera.position.y + oy;
+    const camZ = camera.position.z + oz;
+    build.u.uCamWorld.value.set(camX, camY, camZ);
     build.u.uCamLocal.value.set(
-      camera.position.x - group.position.x,
-      camera.position.y - group.position.y,
-      camera.position.z - group.position.z,
+      camX - group.position.x,
+      camY - group.position.y,
+      camZ - group.position.z,
     );
   });
 
@@ -236,6 +287,7 @@ export function AuditSingularity({ anchors }: { anchors: SectionAnchors }) {
   if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
     (window as unknown as Record<string, unknown>).__sersanSingularity = {
       place: placeRef.current,
+      orbit: orbitRef.current,
       get uniforms() {
         return build?.u ?? null;
       },

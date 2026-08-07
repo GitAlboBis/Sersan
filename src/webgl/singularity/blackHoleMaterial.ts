@@ -13,22 +13,42 @@
  * _refs/dossiers/singularity.md) — our own code, our own runtime-generated
  * textures (proceduralTextures.ts), the same locked math.
  *
- * THE ONE DELIBERATE GENERALIZATION (uCamLocal)
- * ---------------------------------------------
+ * THE DELIBERATE GENERALIZATION (uCamLocal + uCamWorld, the virtual camera)
+ * -------------------------------------------------------------------------
  * The reference computes the object-space camera as
  * `cameraPosition.mul(modelWorldMatrix)`, which is only valid with the mesh at
  * the IDENTITY transform (it's not even the inverse — it just happens to be a
  * no-op at identity). We world-anchor the group to the /audit hero instead, so
- * the object-space camera arrives as a uniform `uCamLocal` (vec3), written per
- * frame CPU-side as the camera's world position expressed in the group's local
- * frame, with the SAME `vec3(1,1,-1).xzy` swizzle applied in the shader. At
- * identity this equals the reference exactly. IT ONLY STAYS CORRECT BECAUSE
- * THE GROUP IS TRANSLATION-ONLY: group scale and rotation must stay 1/identity
- * forever — apparent size is set by the group's distance from the camera,
- * never by scaling (every constant below — core radius 0.13, steering fade
- * 1.0→0.5, disc half-width 0.03, alpha falloffs — is calibrated to the unit
- * sphere). The view direction (`cameraPosition − positionWorld`) is likewise
- * translation-invariant, so it needs no correction.
+ * the march camera arrives as TWO uniforms written per frame CPU-side:
+ *   uCamWorld — the EFFECTIVE camera world position (the real camera plus the
+ *     island's slow orbit drift). It replaces the built-in `cameraPosition`
+ *     node in the view-direction math, making the march camera VIRTUAL: the
+ *     rasterized silhouette stays put (real camera) while the ray
+ *     origins/directions swim — the owner's "breathe in 3D" (2026-08-07).
+ *   uCamLocal — the same effective camera expressed in the group's local
+ *     frame (backface ray origin), with the SAME `vec3(1,1,-1).xzy` swizzle
+ *     applied in the shader.
+ * With a zero orbit offset and the mesh at identity both reduce to the
+ * reference exactly. IT ONLY STAYS CORRECT BECAUSE THE GROUP IS
+ * TRANSLATION-ONLY: group scale and rotation must stay 1/identity forever —
+ * apparent size is set by the group's distance from the camera, never by
+ * scaling (every constant below — core radius 0.13, steering fade 1.0→0.5,
+ * disc half-width 0.03, alpha falloffs — is calibrated to the unit sphere).
+ * The view direction (`uCamWorld − positionWorld`) is translation-invariant,
+ * so the group anchor/parallax need no further correction.
+ *
+ * TRUE-TRANSPARENCY TAIL (owner fix, 2026-08-07)
+ * ----------------------------------------------
+ * The reference lived inside a skybox scene and flooded the residual march
+ * transparency with its env map — composited over OUR transparent canvas that
+ * painted the whole proxy sphere as a pale ball with a light-blue halo. Here
+ * the page's navy DOM *is* the space: the march returns vec4(rgb, alpha) with
+ * alpha = clamp(alphaAcc + envLuminance·uEnvStarAlpha, 0, 1), so the ray
+ * terminates fully transparent wherever the disc deposited nothing and ONLY
+ * the bright lensed stars register faintly (uEnvIntensity dropped 2.0 → 0.6).
+ * The disc compositing math is untouched; the black core stays opaque
+ * (inside-core local alpha = 1 ⇒ alphaAcc = 1). uFade multiplies in the
+ * material's opacityNode.
  *
  * MARCH SEMANTICS (locked — lead-verified against the source)
  * -----------------------------------------------------------
@@ -78,7 +98,11 @@ import {
 type Any = any;
 
 export interface SingularityUniforms {
-  /** Camera world position in the group's local frame (translation-only). */
+  /** EFFECTIVE (virtual) march-camera world position: real camera + the
+   * island's orbit drift. Drives the per-fragment view direction. */
+  uCamWorld: { value: THREE.Vector3 };
+  /** The same effective camera in the group's local frame (translation-only;
+   * backface ray origin). */
   uCamLocal: { value: THREE.Vector3 };
   /** Scroll/route fade 0..1 → material opacity. */
   uFade: { value: number };
@@ -104,8 +128,13 @@ export interface SingularityUniforms {
   uRampEmission: { value: number };
   /** Additive emissive floor. */
   uEmissionColor: { value: THREE.Color };
-  /** Starfield sample multiplier (reference backgroundIntensity ≈ 2). */
+  /** Starfield sample multiplier. The reference used ≈2 inside a skybox
+   * scene; over the transparent canvas it ships at 0.6 so only the stars
+   * register (owner fix 2026-08-07 — the halo killer, with uEnvStarAlpha). */
   uEnvIntensity: { value: number };
+  /** Env-luminance → alpha gain for the lensed stars (~0.9): the ONLY way
+   * the environment reaches the page — empty space stays transparent. */
+  uEnvStarAlpha: { value: number };
 }
 
 export interface SingularityBuild {
@@ -135,7 +164,6 @@ export function createBlackHoleBuild(webgpu: Any, tsl: Any): SingularityBuild {
     normalize,
     positionGeometry,
     positionWorld,
-    cameraPosition,
     pow,
     remapClamp,
     sin,
@@ -305,7 +333,18 @@ export function createBlackHoleBuild(webgpu: Any, tsl: Any): SingularityBuild {
     return mix(low, high, step(0.0031308, lin));
   };
 
+  /**
+   * Disc rotation speed (the `time` coefficient in the rotation phase). The
+   * dossier LOCKS the reference's 0.1 ("the slow, inevitable feel — do not
+   * speed it up"); 0.22 is an OWNER-DIRECTED deviation (2026-08-07 screenshot
+   * review: "it doesn't look animated in 3D") — documented here as the one
+   * sanctioned departure from the locked disc kinematics. The 4.270 shear and
+   * the ×2 UV scale remain locked.
+   */
+  const DISC_TIME_RATE = 0.22;
+
   // === Uniforms (locked constants + the SERSAN palette) =====================
+  const uCamWorld = uniform(new THREE.Vector3(0, 0, 12));
   const uCamLocal = uniform(new THREE.Vector3(0, 0, 12));
   const uFade = uniform(0);
   const uIterations = uniform(128);
@@ -327,7 +366,9 @@ export function createBlackHoleBuild(webgpu: Any, tsl: Any): SingularityBuild {
 
   const uRampEmission = uniform(2.0);
   const uEmissionColor = uniform(new THREE.Color(0.02, 0.06, 0.08));
-  const uEnvIntensity = uniform(2.0);
+  // 0.6, NOT the reference's 2.0 — see the true-transparency header note.
+  const uEnvIntensity = uniform(0.6);
+  const uEnvStarAlpha = uniform(0.9);
 
   // === The raymarch =========================================================
   const marchNode = Fn(() => {
@@ -345,8 +386,10 @@ export function createBlackHoleBuild(webgpu: Any, tsl: Any): SingularityBuild {
     // march from the camera itself.
     const origin = mix(surf, camObj, isBackface);
 
-    // Incoming view direction (world == local under translation-only).
-    const viewDir = normalize(sub(cameraPosition, positionWorld))
+    // Incoming view direction (world == local under translation-only), from
+    // the VIRTUAL march camera — uCamWorld, not the built-in cameraPosition —
+    // so the island's orbit drift genuinely re-aims every ray (owner FIX 2).
+    const viewDir = normalize(sub(uCamWorld, positionWorld))
       .mul(vec3(1, 1, -1))
       .xzy;
     const rayDir = viewDir.negate().toVar();
@@ -372,10 +415,10 @@ export function createBlackHoleBuild(webgpu: Any, tsl: Any): SingularityBuild {
       rayPos.addAssign(advance);
 
       // Cylindrical radius in the disc plane; radius-dependent rotation phase
-      // gives the differential (spiral-sheared) rotation. 0.1 is the slow,
-      // inevitable rotation speed; 4.270 the shear — both locked.
+      // gives the differential (spiral-sheared) rotation. 4.270 is the locked
+      // shear; the time rate is DISC_TIME_RATE (owner-tuned — see its note).
       const xyLen = lengthSqrt(rayPos.mul(vec3(1, 1, 0))).toVar();
-      const rotPhase = xyLen.mul(4.27).sub(time.mul(0.1));
+      const rotPhase = xyLen.mul(4.27).sub(time.mul(DISC_TIME_RATE));
       const spun = rayPos.mul(rotateAxis(vec3(0, 0, 1), rotPhase));
       const discUv = spun.mul(2).toVar();
 
@@ -435,31 +478,46 @@ export function createBlackHoleBuild(webgpu: Any, tsl: Any): SingularityBuild {
       rayDir.assign(steeredDir);
     });
 
-    // Environment on the residual transparency, sampled with the BENT final
-    // ray direction — this IS the lensing (no screen-space substitute).
+    // ==== True-transparency tail (owner fix, 2026-08-07 — header note) ======
+    // Environment sampled with the BENT final ray direction — this IS the
+    // lensing (no screen-space substitute) — but unlike the reference the env
+    // never floods the residual transparency: the page's navy DOM is the
+    // space. Only the bright lensed stars register, via the alpha term below.
     const bentDir = rayDir.mul(vec3(1, -1, 1)).xzy;
-    const env = linearToSrgb(
+    const envSrgb = linearToSrgb(
       texture(starTex, equirectUV(bentDir)).xyz.mul(uEnvIntensity),
     );
-    const trans = float(1.0).sub(alphaAcc);
-    const finalRGB = mix(colorAcc, env, trans);
+    const envLum = vecToFac(envSrgb).toVar();
+
+    // Where the disc/core own the pixel → colorAcc; where they don't → the
+    // lensed star colour (its visibility is carried by the alpha, so this is
+    // a premultiplied-look star contribution, never a flat env wash).
+    const finalRGB = mix(envSrgb, colorAcc, alphaAcc);
+
+    // Alpha: disc/core coverage + the faint star term. The black core is
+    // already opaque (inside-core local alpha = 1 ⇒ alphaAcc = 1); everywhere
+    // the march deposited nothing and no star lands, the ray terminates fully
+    // transparent — no sphere silhouette. uFade multiplies in opacityNode.
+    const alphaOut = alphaAcc.add(envLum.mul(uEnvStarAlpha)).clamp(0.0, 1.0);
 
     // The whole chain above runs in sRGB space (Blender parity) — convert to
     // linear exactly once on the way out.
-    return srgbToLinear(finalRGB);
+    return vec4(srgbToLinear(finalRGB), alphaOut);
   })();
 
   // === Material =============================================================
   const material = new MeshStandardNodeMaterial({ side: THREE.DoubleSide });
-  material.colorNode = marchNode;
-  // Same node INSTANCE — the graph compiles once; the emissive slot is what
-  // carries the >1.0 signal into the scene pass for the threshold bloom.
-  material.emissiveNode = marchNode;
-  // Scroll/route fade. transparent + depthWrite:true keeps the reference's
-  // opaque-at-rest behaviour at uFade=1 (front faces overwrite the useless
-  // outside-view backface march exactly as depth did in the source); the
-  // brief fade window tolerates the per-triangle blend order.
-  material.opacityNode = uFade;
+  // The march returns vec4(rgb, alpha); the SAME node instance feeds all
+  // three slots (one compile, three swizzles). The emissive slot is what
+  // carries the >1.0 disc signal into the scene pass for the threshold bloom.
+  const marchRGB = marchNode.xyz;
+  material.colorNode = marchRGB;
+  material.emissiveNode = marchRGB;
+  // Marched alpha (disc + core + faint lensed stars) × the scroll/route fade.
+  material.opacityNode = marchNode.w.mul(uFade);
+  // transparent + depthWrite:true: front faces overwrite the useless
+  // outside-view backface march exactly as depth did in the (opaque)
+  // reference; the low-alpha star regions tolerate the per-triangle order.
   material.transparent = true;
   material.depthWrite = true;
   // HDR out — tone mapping happens once at the PostFXNodes pipeline output.
@@ -468,6 +526,7 @@ export function createBlackHoleBuild(webgpu: Any, tsl: Any): SingularityBuild {
   const geometry = new THREE.SphereGeometry(1, 16, 16);
 
   const u: SingularityUniforms = {
+    uCamWorld,
     uCamLocal,
     uFade,
     uIterations,
@@ -485,6 +544,7 @@ export function createBlackHoleBuild(webgpu: Any, tsl: Any): SingularityBuild {
     uRampEmission,
     uEmissionColor,
     uEnvIntensity,
+    uEnvStarAlpha,
   };
 
   return {
