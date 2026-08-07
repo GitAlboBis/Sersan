@@ -347,7 +347,8 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // thread (and the shared Lenis/R3F loop with it) right across the preloader
   // handoff. The rAF defers the work past the commit so the frame that flips the
   // fallback still paints. Consumers already tolerate `null` (it is null for the
-  // whole spores path), so the one-frame delay is safe.
+  // whole spores path), so the one-frame delay is safe. The spore home fields
+  // below defer through this SAME mechanism — see sporeHomes.
   const [homeField, setHomeField] = useState<MarkHomeField | null>(null);
   useEffect(() => {
     if (!showStaticBuild) {
@@ -372,15 +373,36 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   const sporeGridSize = SPORE_SIZE_BY_TIER[tier] ?? SPORE_SIZE_BY_TIER.lite;
   // One home field per ACTIVE-PRESET layer (1 or 2). Variant switch → `preset`
   // changes → new array reference → the build effect below rebuilds the rig.
-  const sporeHomes = useMemo(
-    () =>
-      showSpores && !sporeStaticFallback
-        ? preset.layers.map((l) =>
-            sampleMarkHomePositions(bodyGeometry, sporeGridSize, l.sampling),
-          )
-        : null,
-    [bodyGeometry, sporeGridSize, showSpores, sporeStaticFallback, preset],
-  );
+  // NOT a useMemo, for the SAME reason as homeField above: the sampling is a
+  // rejection loop over layers × sporeGridSize² surface samples, and a memo
+  // body ran it synchronously INSIDE a React commit — on first mount (exactly
+  // the preloader-handoff beat) and again on every Logo Lab preset switch —
+  // freezing the main thread (and the shared Lenis/R3F loop with it). The rAF
+  // defers the work past the commit; the build effect below already tolerates
+  // the gap (it bails on `!sporeHomes` and re-fires when the fields land, with
+  // the occluder mark rendering meanwhile). Same cancellation guard as
+  // homeField: a re-run/unmount cancels the pending rAF so a superseded
+  // sampling run can never land.
+  const [sporeHomes, setSporeHomes] = useState<MarkHomeField[] | null>(null);
+  useEffect(() => {
+    if (!showSpores || sporeStaticFallback) {
+      setSporeHomes(null);
+      return;
+    }
+    let cancelled = false;
+    const id = requestAnimationFrame(() => {
+      if (cancelled) return;
+      setSporeHomes(
+        preset.layers.map((l) =>
+          sampleMarkHomePositions(bodyGeometry, sporeGridSize, l.sampling),
+        ),
+      );
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(id);
+    };
+  }, [bodyGeometry, sporeGridSize, showSpores, sporeStaticFallback, preset]);
 
   // Base spore radius in MODEL space: DDD's diameter ≈ markHeight/47, scaled up
   // on lite (fewer but bigger, like DDD mobile). fx.sporeSize multiplies live.
@@ -527,6 +549,17 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   const [tslSpore, setTslSpore] = useState<TslSpore[] | null>(null);
   useEffect(() => {
     if (!webgpuEnabled() || !showSpores || !sporeHomes) return;
+    // Deferred-pair gate: on a preset/tier switch this effect re-runs one
+    // commit BEFORE the rAF-deferred re-sampling above lands, still holding the
+    // PREVIOUS inputs' fields. Never build from a mismatched SHAPE — a 1↔2
+    // layer switch would index past the array, and a grid change would seed
+    // SIZE²-sized buffers from the old grid's homeRGBA. Bail; the effect
+    // re-fires when the matching sporeHomes state lands.
+    if (
+      sporeHomes.length !== preset.layers.length ||
+      sporeHomes[0].size !== sporeGridSize
+    )
+      return;
     let cancelled = false;
     let built: TslSpore[] | null = null;
     void Promise.all([

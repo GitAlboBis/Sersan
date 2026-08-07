@@ -34,7 +34,7 @@ progress `[x]` done (commit).
   the Lenis pump latched → scroll freezes permanently (violates its own header
   contract); (2) `webglcontextlost` handler lacks `event.preventDefault()` so
   `webglcontextrestored` can never fire.
-- [ ] **A4 · P2/S — HeroLogo sporeHomes sync stall.** `HeroLogo.tsx:354`: ~74k rejection
+- [x] **A4 · P2/S — HeroLogo sporeHomes sync stall.** (this commit) `HeroLogo.tsx:354`: ~74k rejection
   samples synchronously in useMemo during the preloader handoff — the exact stall the
   file avoids for homeField 10 lines earlier. Same rAF/effect deferral.
 - [ ] **A5 · P3/S — Portrait coverage threshold mixes device DPR with render DPR.**
@@ -146,4 +146,5 @@ key files before implementing — §1.4):
 | 2 | C14 preloader particle tunnel | 2715953 | tsc ✓ · browser ✓ (tunnel + fill + handoff; warp beat lands with mark zoom) |
 | — | merge origin/main (6 commits, other-PC work) | b8e542c | no conflicts · tsc ✓ · browser ✓ (tunnel→warp→one-beat intro→hero composes) |
 | 3 | A2 frame-loop dt hygiene | f59151c | tsc ✓ · 60Hz bit-identity proven · browser ✓ (loop alive, console clean) |
-| 4 | A3 GPU-loss resilience | (this commit) | tsc ✓ · guard analysis (WebGL/fallback/WebGPU) · browser ✓ happy path inert |
+| 4 | A3 GPU-loss resilience | af75419 | tsc ✓ · guard analysis (WebGL/fallback/WebGPU) · browser ✓ happy path inert |
+| 5 | A4 sporeHomes rAF deferral | (this commit) | tsc ✓ · single consumer null-gated + new shape gate · browser check rides the next reload |
