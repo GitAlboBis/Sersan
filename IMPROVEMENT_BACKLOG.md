@@ -29,7 +29,7 @@ progress `[x]` done (commit).
   `fluid/PointerFlowmap.ts:242` dissipation+splat are per-frame not per-second (2.4×
   faster decay at 144Hz — only frame-rate-dependent integrator left; fix
   `pow(dissipation, dt*60)` + splat×dt·60).
-- [ ] **A3 · P1/M — GPU-loss resilience.** `FrameDriver.tsx:31`: (1) no
+- [x] **A3 · P1/M — GPU-loss resilience.** (this commit) `FrameDriver.tsx:31`: (1) no
   `device.lost` handling on the true-WebGPU backend — after TDR the R3F loop dies with
   the Lenis pump latched → scroll freezes permanently (violates its own header
   contract); (2) `webglcontextlost` handler lacks `event.preventDefault()` so
@@ -145,4 +145,5 @@ key files before implementing — §1.4):
 | 1 | A1 frozen-varying family | aa707d4 | tsc ✓ · adversarial check CLEAN · browser ✓ (signal beams travel the Problem-lattice arcs) |
 | 2 | C14 preloader particle tunnel | 2715953 | tsc ✓ · browser ✓ (tunnel + fill + handoff; warp beat lands with mark zoom) |
 | — | merge origin/main (6 commits, other-PC work) | b8e542c | no conflicts · tsc ✓ · browser ✓ (tunnel→warp→one-beat intro→hero composes) |
-| 3 | A2 frame-loop dt hygiene | (this commit) | tsc ✓ · 60Hz bit-identity proven · browser ✓ (loop alive, console clean) |
+| 3 | A2 frame-loop dt hygiene | f59151c | tsc ✓ · 60Hz bit-identity proven · browser ✓ (loop alive, console clean) |
+| 4 | A3 GPU-loss resilience | (this commit) | tsc ✓ · guard analysis (WebGL/fallback/WebGPU) · browser ✓ happy path inert |
