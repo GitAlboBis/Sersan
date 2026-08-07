@@ -6,9 +6,17 @@
  * Shown ONCE per hard page load (it lives in the persistent root layout, which
  * App Router never remounts on soft navigations — so route changes keep using
  * the template.tsx curtain and never see this again). It is a deep-space load-in
- * for a regulated AI brand: a self-contained animated STARFIELD background
- * (drifting + twinkling stars over a near-black navy→black radial, with faint
- * cyan/blue nebula glows from the brand tokens) sits behind the SERSAN MARK.
+ * for a regulated AI brand: a raw-WebGL PARTICLE TUNNEL backdrop (GreenSock
+ * YzbPYMx TroisJS tunnel, ported raw-WebGL — see ./preloader-tunnel.ts; NO
+ * three import, three stays in the lazy Scene chunk) sits behind the SERSAN
+ * MARK: 50k additive soft-sprite points looping infinitely through z over a
+ * navy→black radial base, pointer-tilted, zoom-blurred, in brand off-white/
+ * cyan/blue. The tunnel's time coefficient breathes with load progress
+ * (1 + eased·2) and slams to 100 inside the reveal (THE WARP) so tunnel
+ * streak + zoom blur + mark zoom + curtain wipe read as one jump into the
+ * hero. If WebGL is unavailable, the previous 2D-canvas starfield (drifting +
+ * twinkling stars + faint cyan/blue nebula glows) draws on the same canvas as
+ * the fallback backdrop.
  *
  * THE MARK IS THE PROGRESS BAR. During load the two stencil S's are shown in an
  * OPEN, ~90°-rotated horizontal pose (laid wide and flat, side by side — the
@@ -50,9 +58,9 @@
  * Body scroll is locked while visible (Lenis is stopped + html overflow hidden)
  * and released on reveal.
  *
- * prefers-reduced-motion: NO counter animation / no morph / no starfield. The
- * overlay never mounts; introStore is completed immediately so the line draws in
- * normally and scroll is never locked. The page just appears.
+ * prefers-reduced-motion: NO counter animation / no morph / no tunnel or
+ * starfield. The overlay never mounts; introStore is completed immediately so
+ * the line draws in normally and scroll is never locked. The page just appears.
  *
  * Removable: delete this file + its <Preloader /> mount in layout.tsx and its
  * store subscriber in SignatureLine; the site loads exactly as before (the
@@ -63,6 +71,10 @@ import gsap from "gsap";
 import { useTierStore } from "@/webgl/store/tierStore";
 import { useIntroStore } from "@/webgl/store/introStore";
 import { getLenis } from "@/lib/lenis-singleton";
+import {
+  createPreloaderTunnel,
+  type PreloaderTunnel,
+} from "./preloader-tunnel";
 
 // Timing envelope (ms). MIN keeps the loader from flashing on a warm cache.
 const MIN_VISIBLE_MS = 700;
@@ -135,7 +147,7 @@ const glyphTF = (cx: number, angle: number) =>
 const LEFT_OPEN_TF = glyphTF(LEFT_OPEN_CX, OPEN_ANGLE);
 const RIGHT_OPEN_TF = glyphTF(RIGHT_OPEN_CX, OPEN_ANGLE);
 
-// ---- Starfield --------------------------------------------------------------
+// ---- Starfield (2D fallback backdrop — WebGL-unavailable path only) ---------
 interface Star {
   x: number; // 0..1 normalized
   y: number; // 0..1 normalized
@@ -158,8 +170,9 @@ export function Preloader() {
   const [display, setDisplay] = useState(0);
 
   const overlayRef = useRef<HTMLDivElement>(null);
-  // Starfield canvas (sibling layer behind the logo, driven by the same rAF).
-  const starCanvasRef = useRef<HTMLCanvasElement>(null);
+  // Backdrop canvas (sibling layer behind the logo, driven by the same rAF):
+  // WebGL particle tunnel, or the 2D starfield when WebGL is unavailable.
+  const backdropCanvasRef = useRef<HTMLCanvasElement>(null);
   // The horizontal reveal rect inside the clipPath: its width is the bar fill.
   const fillRectRef = useRef<SVGRectElement>(null);
   // Logo pieces — animated independently across the open→closed→zoom beats.
@@ -208,10 +221,19 @@ export function Preloader() {
       "(prefers-reduced-motion: reduce)",
     ).matches;
 
-    // ----- Starfield setup (drawn by the SAME single rAF loop below) ---------
-    // Precompute star positions ONCE; the draw loop only advances cheap phases.
+    // ----- Backdrop setup (drawn by the SAME single rAF loop below) ----------
+    // Primary: raw-WebGL particle tunnel, a faithful port of the GreenSock
+    // TroisJS pen (see ./preloader-tunnel.ts — no three import; three stays in
+    // the lazy Scene chunk). Fallback: if `getContext("webgl")` is null, the
+    // original 2D starfield draws on the same canvas element instead.
+    const tunnel: PreloaderTunnel | null = backdropCanvasRef.current
+      ? createPreloaderTunnel(backdropCanvasRef.current)
+      : null;
+
+    // 2D starfield fallback — precompute star positions ONCE; the draw loop
+    // only advances cheap phases. Skipped entirely while the tunnel is live.
     const stars: Star[] = [];
-    {
+    if (!tunnel) {
       const count = 320;
       // Deterministic-ish PRNG so the field is stable across the frame loop but
       // varied; Math.random is fine here (positions computed once).
@@ -236,7 +258,7 @@ export function Preloader() {
     let starH = 0;
     let starDpr = 1;
     const sizeStarCanvas = () => {
-      const cv = starCanvasRef.current;
+      const cv = backdropCanvasRef.current;
       if (!cv) return;
       starDpr = Math.min(window.devicePixelRatio || 1, 2);
       starW = window.innerWidth;
@@ -248,8 +270,10 @@ export function Preloader() {
       starCtx = cv.getContext("2d");
       if (starCtx) starCtx.scale(starDpr, starDpr);
     };
-    sizeStarCanvas();
-    const onResize = () => sizeStarCanvas();
+    if (!tunnel) sizeStarCanvas();
+    // One resize handler for both backdrop paths: the tunnel refits its
+    // drawing buffer + projection + FBO; the starfield re-sizes its 2d canvas.
+    const onResize = () => (tunnel ? tunnel.resize() : sizeStarCanvas());
     window.addEventListener("resize", onResize);
 
     const drawStarfield = (tSec: number) => {
@@ -472,51 +496,72 @@ export function Preloader() {
       if (s.resolved) signals.tier = true;
     });
 
-    // ----- Counter ease + reveal trigger (single rAF) -----
+    // ----- Counter ease + reveal trigger + backdrop render (single rAF) -----
     let current = 0; // 0..1
+    // Delta clock for the tunnel, clamped to 1/30s max (repo convention) so a
+    // background-tab return never teleports the tunnel forward.
+    let lastFrameT = performance.now();
     const frame = () => {
       if (cancelled) return;
       // Keep parking Lenis until the provider has created it (effect-order
       // safety, see the lock note above) — no-op once stopped.
       lenisStop();
 
-      // Draw the starfield each frame from this single loop (no second rAF).
-      drawStarfield((performance.now() - startedAt) / 1000);
+      const now = performance.now();
+      const delta = Math.min((now - lastFrameT) / 1000, 1 / 30);
+      lastFrameT = now;
 
-      // Truthful target: driven ONLY by real readiness signals (incl. `warm`),
-      // never a fixed timer — the counter genuinely waits for shader compilation.
-      const target = targetFraction();
-      current += (target - current) * COUNTER_EASE;
-      // Snap the last sliver so we land cleanly on 100 (otherwise the ease
-      // asymptotes at 99 forever). Relaxed from 0.999 → 0.99 so the readout
-      // lands on 100 fast once the target is fully resolved.
-      if (target >= 1 && current > 0.99) current = 1;
+      if (!revealed) {
+        // Truthful target: driven ONLY by real readiness signals (incl. `warm`),
+        // never a fixed timer — the counter genuinely waits for shader compilation.
+        const target = targetFraction();
+        current += (target - current) * COUNTER_EASE;
+        // Snap the last sliver so we land cleanly on 100 (otherwise the ease
+        // asymptotes at 99 forever). Relaxed from 0.999 → 0.99 so the readout
+        // lands on 100 fast once the target is fully resolved.
+        if (target >= 1 && current > 0.99) current = 1;
 
-      const pct = Math.round(current * 100);
-      setDisplay(pct);
-      // Drive the LIT-layer reveal: the clipPath rect grows L→R across the wide
-      // rotated mark, so the cyan→blue fill sweeps over the letters with %.
-      if (fillRectRef.current) {
-        fillRectRef.current.setAttribute("width", String(VB_W * current));
+        const pct = Math.round(current * 100);
+        setDisplay(pct);
+        // Drive the LIT-layer reveal: the clipPath rect grows L→R across the wide
+        // rotated mark, so the cyan→blue fill sweeps over the letters with %.
+        if (fillRectRef.current) {
+          fillRectRef.current.setAttribute("width", String(VB_W * current));
+        }
+
+        // Reveal as soon as the readout reads 100 AND the target is genuinely 1
+        // (all readiness signals — fonts/load/tier/warm — plus min time satisfied).
+        // We do NOT wait for the asymptotic `current >= 1` tail: under rAF
+        // throttling (backgrounded tab, slow device, automation), rAF drops toward
+        // ~1fps and the ease (`current += (target - current) * 0.12`) crawls across
+        // the last sliver — so "100" would display while the overlay stayed up for
+        // seconds (or until refocus). Triggering on `target >= 1` + rounded-100
+        // makes the reveal fire the instant "100" shows, frame-rate-independent,
+        // and never before genuine readiness (target < 1 ⇒ no reveal).
+        if (target >= 1 && Math.round(current * 100) >= 100) {
+          current = 1;
+          if (fillRectRef.current) {
+            fillRectRef.current.setAttribute("width", String(VB_W));
+          }
+          revealed = true;
+          reveal();
+          // NOTE: the loop deliberately KEEPS RUNNING (no return) so the
+          // tunnel renders through the close/zoom/warp/curtain beats. Once
+          // `revealed`, this branch never re-enters — no setDisplay, no fill
+          // writes — so GSAP's setAttribute choreography in reveal() is never
+          // clobbered by the counter.
+        }
       }
 
-      // Reveal as soon as the readout reads 100 AND the target is genuinely 1
-      // (all readiness signals — fonts/load/tier/warm — plus min time satisfied).
-      // We do NOT wait for the asymptotic `current >= 1` tail: under rAF
-      // throttling (backgrounded tab, slow device, automation), rAF drops toward
-      // ~1fps and the ease (`current += (target - current) * 0.12`) crawls across
-      // the last sliver — so "100" would display while the overlay stayed up for
-      // seconds (or until refocus). Triggering on `target >= 1` + rounded-100
-      // makes the reveal fire the instant "100" shows, frame-rate-independent,
-      // and never before genuine readiness (target < 1 ⇒ no reveal).
-      if (target >= 1 && Math.round(current * 100) >= 100 && !revealed) {
-        current = 1;
-        if (fillRectRef.current) {
-          fillRectRef.current.setAttribute("width", String(VB_W));
-        }
-        revealed = true;
-        reveal();
-        return;
+      // Backdrop — SAME single loop, never a second rAF. During load the
+      // tunnel breathes faster as the counter climbs (targetTimeCoef =
+      // 1 + eased·2, subtle kinetic progress); reveal() slams the target to
+      // 100 (THE WARP) on its own beat, so post-reveal frames only render.
+      if (tunnel) {
+        if (!revealed) tunnel.setTargetTimeCoef(1 + current * 2);
+        tunnel.render(delta);
+      } else {
+        drawStarfield((now - startedAt) / 1000);
       }
       rafId = requestAnimationFrame(frame);
     };
@@ -575,7 +620,8 @@ export function Preloader() {
       //     rotates OPEN_ANGLE→0, so the pair "stands up" together (verso l'alto),
       //     stays level, and lands on the exact SERSAN mark (left S, divider,
       //     mirrored right S). No re-render fires during the close (the rAF
-      //     counter has stopped), so these setAttribute writes are not clobbered.
+      //     loop keeps rendering the tunnel but, once `revealed`, never writes
+      //     counter/fill state), so these setAttribute writes are not clobbered.
       const fold = { t: 0 };
       const applyFold = () => {
         const t = fold.t;
@@ -613,6 +659,19 @@ export function Preloader() {
           0.42,
         );
       }
+
+      // THE WARP — the reference's hover behavior repurposed as the exit: at
+      // 0.62, the moment the mark has folded closed and starts its zoom, the
+      // tunnel's targetTimeCoef slams to 100. timeCoef lerps up at 0.02/frame,
+      // so particle streaks + zoom blur (strength = timeCoef · 0.004) explode
+      // together with the mark zoom + curtain wipe — one "jump into the hero".
+      tl.call(
+        () => {
+          tunnel?.setTargetTimeCoef(100);
+        },
+        undefined,
+        0.62,
+      );
 
       // (b) ZOOM — once closed, scale the whole compact mark UP toward the
       //     viewer (scale + slight blur on the wrapper). The OPACITY fade is
@@ -694,6 +753,10 @@ export function Preloader() {
       clearTimeout(revealTimer);
       fallbackTimers.forEach((t) => clearTimeout(t));
       window.removeEventListener("resize", onResize);
+      // Free every GL resource (buffers/textures/programs/FBO), remove the
+      // pointer listener and lose the context — the tunnel never outlives the
+      // overlay.
+      tunnel?.dispose();
       unsubTier();
       introTweens.forEach((t) => t.kill());
       // If we tear down before revealing (e.g. fast HMR in dev), restore scroll
@@ -717,12 +780,19 @@ export function Preloader() {
       className="fixed inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden bg-bg"
       style={{ clipPath: "inset(0% 0 0% 0)" }}
     >
-      {/* STARFIELD — deep-space background drawn into a DPR-aware canvas by the
-          component's single rAF loop. Sits behind the logo content. */}
+      {/* BACKDROP — WebGL particle tunnel (2D starfield fallback) drawn into a
+          DPR-capped canvas by the component's single rAF loop. The CSS radial
+          beneath is the deep-space base the additive points composite over
+          (the WebGL path clears transparent; the 2D fallback paints its own
+          opaque base). Sits behind the logo content. */}
       <canvas
-        ref={starCanvasRef}
+        ref={backdropCanvasRef}
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 -z-10 h-full w-full"
+        style={{
+          background:
+            "radial-gradient(circle at 50% 42%, #0B1422 0%, #070d18 55%, #02040a 100%)",
+        }}
       />
 
       {/* Corner index mark — the sober "52." / SERSAN tag, mono, dim. */}
