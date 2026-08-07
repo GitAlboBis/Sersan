@@ -125,8 +125,10 @@ key files before implementing — §1.4):
   Door-beats grammar with the 01/02/03 numerals as serif heroes (accent-dimmed,
   em-scaled tick), title subordinated, desc at reading width. OurWhy's 2×2
   operating-principles grid remains (the audit's "acceptable" quieter offender).
-- [ ] **C8 · P2/M — /services/* template:** three Reveal-only card sections ×4 routes →
-  one template redesign.
+- [x] **C8 · P2/M — /services/* template redesigned.** (this commit) What-we-build →
+  compact static-open ledger (hover brighten only); use cases → reduced-amplitude
+  beats (new use-case-beats.tsx); deliverables → hairline table; related case
+  studies → typographic link list (links preserved). One fix, four routes.
 - [ ] **C9 · P2/L — Home section-cut grammar (era-residence dossier):** first boundary
   (pinned hero → credibility) gets the bottom-rising limb / aperture dive; propagate to
   every hard cut. THE "immersive continuity" item.

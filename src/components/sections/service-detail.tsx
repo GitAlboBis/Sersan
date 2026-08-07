@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
-import { ArrowRight, ArrowUpRight, Check } from "lucide-react";
+import { ArrowRight, ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { SectionGlow } from "@/components/ui/section-glow";
 import { Reveal } from "@/components/ui/reveal";
+import { UseCaseBeats } from "@/components/sections/use-case-beats";
 import { useLanguage } from "@/components/language-provider";
 import { caseStudies } from "@/data/case-studies";
 import type { ServiceContent } from "@/data/services";
@@ -19,11 +19,17 @@ import { START_HREF } from "@/lib/site";
  *
  *   01 Hero          number badge · service name · positioning · subhead · CTAs
  *   02 Problem       eyebrow / H2 / body — names the pain
- *   03 What we build "Typical build includes" list with detail per item
- *   04 Use cases     three tiles describing where this lands
- *   05 Deliverables  ticked list of artefacts handed over
- *   06 Selected work filtered case-studies grid (only entries listed in
- *                    service.caseStudyIds)
+ *   03 What we build compact numbered ledger rows (practice-ledger grammar,
+ *                    static-open: NO scroll-scrub on a secondary page —
+ *                    hover/focus brighten is the only interaction)
+ *   04 Use cases     one-shot staggered typographic beats at small scale
+ *                    (door-beats grammar, reduced amplitude — see
+ *                    use-case-beats.tsx)
+ *   05 Deliverables  two-column hairline table (engagement-acts grammar)
+ *   06 Selected work typographic link list (title + sector tag + arrow,
+ *                    hairline rows) — only entries listed in
+ *                    service.caseStudyIds; rows still navigate to
+ *                    /case-studies/[slug]
  *   07 FAQs          accordion-style stack
  *   08 Final CTA     primary → /start, secondary → /#process
  *
@@ -159,28 +165,47 @@ export default function ServiceDetail({
               className="mb-12 sm:mb-16 max-w-3xl"
             />
 
-            <ul className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 list-none">
+            {/* Compact numbered ledger (practice-ledger grammar, subordinate
+                scale): mono number + cyan side tick + display title + hairline
+                rows. STATIC-OPEN — every detail is always visible; unlike
+                /consulting there is NO scroll-scrub on this secondary page.
+                Hover/focus brighten is the only interaction, all paint-only
+                (color + transform sweeps on constant-space elements — zero
+                layout shift). Rows are non-link (no fake affordance, the
+                ledger's rationale), so no tab stops are added; the
+                focus-within variants cover any future focusable content.
+                Entrances via the site's Reveal/IO contract (RM-gated, SSR
+                paints everything); stable index keys so an EN↔IT toggle
+                swaps text in place without replaying the entrance. */}
+            <ul role="list" className="list-none border-y border-rule/70 divide-y divide-rule/70">
               {service.builds.map((b, i) => (
-                <Reveal key={b.title} delay={i * 80}>
-                  <li className="card-steel group h-full p-6 sm:p-7 overflow-hidden">
-                    <div className="relative">
-                      <div className="flex items-center gap-3 mb-3">
-                        <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-[hsl(var(--accent)/0.9)]">
-                          {String(i + 1).padStart(2, "0")}
-                        </span>
-                        <span
-                          aria-hidden="true"
-                          className="block h-px flex-1 bg-[hsl(var(--rule))] group-hover:bg-[hsl(var(--accent)/0.5)] transition-colors duration-300"
-                        />
-                      </div>
-                      <h3 className="font-display text-lg sm:text-xl leading-[1.15] tracking-[-0.018em] text-ink mb-2.5">
+                <Reveal as="li" key={i} delay={i * 60} className="group py-6 sm:py-7">
+                  <div className="grid grid-cols-[2.75rem_1fr] items-baseline gap-x-2 sm:grid-cols-[4.25rem_1fr]">
+                    <span className="relative pl-3 font-mono text-[11px] tracking-[0.22em] text-accent/50 transition-colors duration-300 group-hover:text-accent group-focus-within:text-accent sm:pl-4">
+                      {/* Side tick — sweeps in (scaleY) on hover/focus. */}
+                      <span
+                        aria-hidden="true"
+                        className="absolute left-0 top-[0.05em] h-[1.15em] w-[2px] origin-top scale-y-0 bg-accent transition-transform duration-300 ease-[var(--ease-entrance)] group-hover:scale-y-100 group-focus-within:scale-y-100 motion-reduce:transition-none"
+                      />
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    <div className="min-w-0">
+                      <h3 className="font-display text-[clamp(1.35rem,2.4vw,2rem)] leading-[1.15] tracking-[-0.018em] text-ink/75 transition-colors duration-300 group-hover:text-ink group-focus-within:text-ink text-balance">
                         {isEn ? b.title : b.titleIt}
                       </h3>
-                      <p className="text-[14px] text-ink-mute leading-relaxed">
+                      {/* Underline — sweeps open (scaleX, origin left) on
+                          hover/focus. Occupies constant space: zero layout
+                          shift. */}
+                      <span
+                        aria-hidden="true"
+                        className="mt-2.5 block h-px w-20 origin-left scale-x-0 bg-accent/80 transition-transform duration-500 ease-[var(--ease-entrance)] group-hover:scale-x-100 group-focus-within:scale-x-100 motion-reduce:transition-none sm:w-28"
+                      />
+                      {/* Detail — static-open, never height-clipped. */}
+                      <p className="mt-2.5 max-w-2xl text-[14px] leading-relaxed text-ink-mute">
                         {isEn ? b.detail : b.detailIt}
                       </p>
                     </div>
-                  </li>
+                  </div>
                 </Reveal>
               ))}
             </ul>
@@ -213,26 +238,19 @@ export default function ServiceDetail({
               className="mb-12 sm:mb-16 max-w-3xl"
             />
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
-              {service.useCases.map((uc, i) => (
-                <Reveal key={uc.title} delay={i * 90}>
-                  <article className="card-steel group h-full p-6 sm:p-7 overflow-hidden">
-                    <div className="relative">
-                      <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-[hsl(var(--accent)/0.9)]">
-                        {String(i + 1).padStart(2, "0")} ·{" "}
-                        {isEn ? "Use case" : "Caso d'uso"}
-                      </span>
-                      <h3 className="mt-3 font-display text-lg sm:text-xl leading-[1.15] tracking-[-0.018em] text-ink mb-2.5">
-                        {isEn ? uc.title : uc.titleIt}
-                      </h3>
-                      <p className="text-[14px] text-ink-mute leading-relaxed">
-                        {isEn ? uc.detail : uc.detailIt}
-                      </p>
-                    </div>
-                  </article>
-                </Reveal>
-              ))}
-            </div>
+            {/* One-shot staggered beats (door-beats grammar at reduced
+                amplitude — see use-case-beats.tsx). The eyebrow strings are
+                the retired card's exact "NN · Use case / Caso d'uso" labels,
+                composed here so the beats component stays copy-free. */}
+            <UseCaseBeats
+              items={service.useCases.map((uc, i) => ({
+                eyebrow: `${String(i + 1).padStart(2, "0")} · ${
+                  isEn ? "Use case" : "Caso d'uso"
+                }`,
+                title: isEn ? uc.title : uc.titleIt,
+                desc: isEn ? uc.detail : uc.detailIt,
+              }))}
+            />
           </div>
         </section>
 
@@ -271,25 +289,25 @@ export default function ServiceDetail({
                 />
               </div>
               <div className="lg:col-span-7">
-                <ul className="card-steel p-6 sm:p-8 list-none divide-y divide-[hsl(var(--rule)/0.7)]">
-                  {service.deliverables.map((d) => (
-                    <li
-                      key={d.text}
-                      className="flex items-start gap-3 py-3.5 first:pt-0 last:pb-0"
+                {/* Two-column hairline table (engagement-acts grammar): mono
+                    micro-labels over per-row hairlines, no card fill, no tick
+                    icons (uppercase is CSS-only; DOM strings stay
+                    byte-identical). Entrances via the site's Reveal/IO
+                    contract; stable index keys so an EN↔IT toggle swaps text
+                    in place without replaying the entrance. */}
+                <ul
+                  role="list"
+                  className="list-none grid grid-cols-1 gap-x-12 border-b border-rule/60 sm:grid-cols-2 lg:pt-2"
+                >
+                  {service.deliverables.map((d, i) => (
+                    <Reveal
+                      as="li"
+                      key={i}
+                      delay={i * 50}
+                      className="border-t border-rule/60 py-3 font-mono text-[11px] uppercase leading-relaxed tracking-[0.16em] text-ink/80"
                     >
-                      <span
-                        aria-hidden="true"
-                        className="mt-0.5 flex items-center justify-center w-5 h-5 rounded-full bg-[hsl(var(--accent)/0.15)] border border-[hsl(var(--accent)/0.5)] shrink-0"
-                      >
-                        <Check
-                          className="w-3 h-3 text-[hsl(var(--accent))]"
-                          aria-hidden="true"
-                        />
-                      </span>
-                      <span className="text-[14px] sm:text-[15px] text-ink leading-relaxed">
-                        {isEn ? d.text : d.textIt}
-                      </span>
-                    </li>
+                      {isEn ? d.text : d.textIt}
+                    </Reveal>
                   ))}
                 </ul>
               </div>
@@ -337,45 +355,48 @@ export default function ServiceDetail({
                   className="mb-12 sm:mb-16 max-w-3xl"
                 />
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 sm:gap-6">
+                {/* Typographic link list (no cards, no images): hairline
+                    rows, mono sector tag + display title + arrow. Each row is
+                    the SAME Link the cards carried — /case-studies/[slug]
+                    navigation survives the redesign. Hover: underline sweep
+                    under the title (absolute, paint-only — zero layout
+                    shift) + the arrow's existing nudge. */}
+                <ul role="list" className="list-none border-t border-rule/70">
                   {relevantCases.map((c, i) => (
-                    <Reveal key={c.id} delay={i * 80}>
+                    <Reveal
+                      as="li"
+                      key={c.id}
+                      delay={i * 60}
+                      className="border-b border-rule/70"
+                    >
                       <Link
                         href={`/case-studies/${c.id}`}
-                        className="card-steel group flex flex-col h-full overflow-hidden"
+                        className="group grid grid-cols-[1fr_auto] items-baseline gap-x-6 rounded-sm py-5 outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--accent)/0.45)] sm:py-6"
                       >
-                        {c.previewImage ? (
-                          <div className="relative aspect-[16/9] w-full overflow-hidden bg-[hsl(var(--bg))]">
-                            <Image
-                              src={c.previewImage}
-                              alt={`${c.client} — ${c.engagement}`}
-                              fill
-                              sizes="(min-width: 1024px) 30vw, (min-width: 768px) 50vw, 100vw"
-                              className="object-cover object-top transition-transform duration-500 group-hover:scale-[1.02]"
-                            />
-                          </div>
-                        ) : null}
-                        <div className="flex flex-col flex-1 p-5 sm:p-6">
-                          <div className="flex items-center justify-between gap-3 mb-3">
-                            <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-[hsl(var(--accent)/0.85)]">
-                              {c.industry}
+                        <span className="min-w-0">
+                          <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-[hsl(var(--accent)/0.85)]">
+                            {c.industry}
+                          </span>
+                          <span className="mt-1.5 block">
+                            <span className="relative inline-block font-display text-xl leading-[1.15] tracking-[-0.018em] text-ink sm:text-2xl">
+                              {c.client}
+                              {/* Underline sweep — scaleX from the left on
+                                  hover/focus; absolute, so no layout shift. */}
+                              <span
+                                aria-hidden="true"
+                                className="absolute inset-x-0 -bottom-0.5 block h-px origin-left scale-x-0 bg-accent/80 transition-transform duration-500 ease-[var(--ease-entrance)] group-hover:scale-x-100 group-focus-visible:scale-x-100 motion-reduce:transition-none"
+                              />
                             </span>
-                            <ArrowUpRight
-                              className="w-3.5 h-3.5 text-ink-mute transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-                              aria-hidden="true"
-                            />
-                          </div>
-                          <h3 className="font-display text-lg leading-[1.15] tracking-[-0.018em] text-ink mb-2">
-                            {c.client}
-                          </h3>
-                          <p className="text-[13px] text-ink-mute leading-relaxed line-clamp-3">
-                            {c.engagement}
-                          </p>
-                        </div>
+                          </span>
+                        </span>
+                        <ArrowUpRight
+                          className="h-4 w-4 shrink-0 self-center text-ink-mute transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+                          aria-hidden="true"
+                        />
                       </Link>
                     </Reveal>
                   ))}
-                </div>
+                </ul>
 
                 <div className="mt-10 flex justify-end">
                   <Link
