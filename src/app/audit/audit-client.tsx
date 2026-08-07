@@ -9,6 +9,8 @@ import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
 import AuditWeekTimeline from "@/components/sections/audit-week-timeline";
 import { SurfacesLedger } from "./surfaces-ledger";
+import { DoorBeats } from "./door-beats";
+import { HonestFaq } from "./honest-faq";
 
 export function AuditClient() {
   const { language } = useLanguage();
@@ -289,24 +291,12 @@ export function AuditClient() {
               )
             }
           />
-          <div className="max-w-5xl mx-auto">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5">
-              {after.map((item, i) => (
-                <Reveal key={i} delay={i * 80}>
-                  <div className="card-steel h-full p-7 backdrop-blur-[1px]">
-                    <div
-                      className="font-mono text-[10px] uppercase tracking-[0.2em] mb-4"
-                      style={{ color: "hsl(var(--accent))" }}
-                    >
-                      {String(i + 1).padStart(2, "0")}
-                    </div>
-                    <h3 className="font-display text-lg text-ink mb-3 leading-tight">{item.title}</h3>
-                    <p className="text-sm text-ink-mute leading-[1.55]">{item.desc}</p>
-                  </div>
-                </Reveal>
-              ))}
-            </div>
-          </div>
+          {/* Three sequential full-width typographic beats (./door-beats.tsx)
+              — the engagement-acts grammar at a smaller scale. Replaced the
+              md:grid-cols-3 card grid; titles/descriptions carried over
+              byte-identical, all three doors at equal typographic weight
+              (the honesty arc of doors 02 and 03 is the point). */}
+          <DoorBeats doors={after} isEn={isEn} />
         </div>
       </section>
 
@@ -318,16 +308,14 @@ export function AuditClient() {
             className="mx-auto mb-16"
             title={isEn ? "Honest answers." : "Risposte oneste."}
           />
-          <div className="max-w-3xl mx-auto space-y-6">
-            {faqs.map((f, i) => (
-              <Reveal key={i} delay={i * 60}>
-                <div className="card-steel p-7">
-                  <h3 className="font-display text-lg font-semibold mb-3 text-foreground">{f.q}</h3>
-                  <p className="text-sm sm:text-base text-muted-foreground/75 leading-relaxed">{f.a}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
+          {/* Hairline-divider accordion (./honest-faq.tsx, Radix — the same
+              machinery consulting's FAQ uses). Replaced the stacked
+              card-steel boxes; every Q+A string EN+IT byte-identical, all
+              answers SSR'd into the DOM (forceMount + height-clip). One
+              Reveal wraps the whole list — RM gets no entrance animation. */}
+          <Reveal className="max-w-3xl mx-auto">
+            <HonestFaq faqs={faqs} />
+          </Reveal>
         </div>
       </section>
 

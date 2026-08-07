@@ -113,8 +113,11 @@ key files before implementing — §1.4):
   refactor deferred); DisplacementWipeReveal usage removed (component kept,
   now consumer-less → future cleanup); micro-tag idea skipped (no per-surface
   source data — refusing to invent claims).
-- [ ] **C5 · P2/M — /audit second half (three doors + FAQ):** card stacks → three
-  sequential full-width typographic beats + hairline accordion.
+- [x] **C5 · P2/M — /audit second half → door beats + hairline accordion.** (this
+  commit) Doors as three equal-dignity typographic beats (engagement-acts grammar,
+  subordinate scale); FAQ on Radix primitives with forceMount + grid-rows clip
+  (ui/accordion wrapper unsuitable: unmounts closed content, no keyframes). Note:
+  fx/displacement-wipe.tsx is now consumer-less → future cleanup batch.
 - [ ] **C6 · P2/L — /trust:** four consecutive card grids around the stranded
   CompliancePipeline → extend the pipeline's stage-by-stage motion language to absorb
   Standards/Controls; FAQ → plain typographic Q/A.
