@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { MultiStepIntake } from "@/components/multi-step-intake";
 import ProcessSection from "@/components/sections/process-section";
 import { PracticeLedger } from "./practice-ledger";
+import { EngagementActs } from "./engagement-acts";
 import { SectionHeading } from "@/components/ui/section-heading";
-import { Reveal } from "@/components/ui/reveal";
 import {
   Accordion,
   AccordionContent,
@@ -24,64 +24,12 @@ export function ConsultingClient() {
   // numbered index that replaced the 4×2 icon-card grid). The per-card
   // /services/* links were retired with the cards — those detail pages stay
   // reachable from the home ServicesSection cards, /audit from the hero CTA
-  // above, and #engage from the packages section below.
+  // above, and #engage from the engagement-formats section below.
 
-  const packages = [
-    {
-      name: isEn ? "Tech Audit" : "Tech Audit",
-      timing: isEn ? "1–2 weeks" : "1–2 settimane",
-      desc: isEn
-        ? "Fixed-scope architecture review ending in a prioritised backlog and written report."
-        : "Review architetturale a scope fisso che si chiude con un backlog prioritizzato e un report scritto.",
-      includes: isEn
-        ? [
-            "Architecture review",
-            "Data/ML readiness check",
-            "Performance & reliability scan",
-            "Workflow bottleneck map",
-            "Prioritised backlog",
-          ]
-        : [
-            "Review architetturale",
-            "Check di readiness dati/ML",
-            "Scan di performance e affidabilità",
-            "Mappa dei colli di bottiglia nei workflow",
-            "Backlog prioritizzato",
-          ],
-    },
-    {
-      name: isEn ? "Delivery Sprint" : "Delivery Sprint",
-      timing: isEn ? "4–8 weeks" : "4–8 settimane",
-      desc: isEn
-        ? "Hands-on build: design, implementation, testing, handover."
-        : "Build operativo: design, implementazione, test, handover.",
-      includes: isEn
-        ? ["Design + implementation", "Testing + QA", "Handover docs", "Team walkthrough"]
-        : ["Design + implementazione", "Testing + QA", "Documenti di handover", "Walkthrough con il team"],
-    },
-    {
-      name: "Fractional CTO",
-      timing: isEn ? "3–12 months" : "3–12 mesi",
-      desc: isEn
-        ? "We own the roadmap, architecture governance, and delivery leadership."
-        : "Ci prendiamo carico di roadmap, governance architetturale e leadership di delivery.",
-      includes: isEn
-        ? [
-            "Roadmap ownership",
-            "Architecture governance",
-            "Delivery rituals",
-            "Vendor alignment",
-            "Hiring support",
-          ]
-        : [
-            "Ownership della roadmap",
-            "Governance dell'architettura",
-            "Riti di delivery",
-            "Allineamento dei fornitori",
-            "Supporto al hiring",
-          ],
-    },
-  ];
+  // Engagement-format content lives in ./engagement-acts.tsx (the sequential
+  // big-type step-through that replaced the three card-steel pricing columns
+  // — second application of the ledger's "less cards, big text" direction).
+  // All EN+IT strings carried over byte-identical; the cards held no links.
 
   // Engagement FAQ — absorbed verbatim from the retired /faq page (which
   // now 308-redirects to /consulting#faq). The pilot/trial answer moved to
@@ -201,7 +149,8 @@ export function ConsultingClient() {
       </section>
       </div>
 
-      {/* Packages */}
+      {/* Engagement formats — sequential big-type step-through (the acts
+          replaced the three card-steel columns; see ./engagement-acts.tsx). */}
       <div data-line-anchor="engage">
       <section id="engage" data-snap className="section-lg scroll-mt-24">
         <div className="container-px">
@@ -228,30 +177,7 @@ export function ConsultingClient() {
               )
             }
           />
-          <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-5">
-            {packages.map((p, i) => (
-              <Reveal key={p.name} delay={i * 80}>
-                <div className="card-steel h-full p-7">
-                  <p
-                    className="text-[10px] font-mono uppercase tracking-[0.2em] mb-2"
-                    style={{ color: "hsl(var(--accent))" }}
-                  >
-                    {p.timing}
-                  </p>
-                  <h3 className="font-display text-xl text-ink mb-3 leading-tight">{p.name}</h3>
-                  <p className="text-sm text-ink-mute mb-5 leading-[1.55]">{p.desc}</p>
-                  <ul className="space-y-1.5">
-                    {p.includes.map((inc) => (
-                      <li key={inc} className="text-xs text-ink/80 flex items-start gap-2">
-                        <span style={{ color: "hsl(var(--accent))" }}>·</span>
-                        <span>{inc}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </Reveal>
-            ))}
-          </div>
+          <EngagementActs />
         </div>
       </section>
       </div>

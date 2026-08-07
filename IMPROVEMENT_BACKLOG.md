@@ -100,8 +100,10 @@ key files before implementing — §1.4):
   static-open, RM/mobile ledger. OPEN FOLLOW-UP C1b: the old cards linked 5 rows to
   /services/* — links removed per spec (no orphaned routes; home cards still link);
   consider a small "Explore →" inside the expanded description. OWNER TO CONFIRM.
-- [ ] **C2 · P2/M — /consulting engagement formats:** 3-card pricing grid → choreographed
-  sequential big-type reveal / pinned step-through.
+- [x] **C2 · P2/M — /consulting engagement formats → three big-type acts.** (this
+  commit) One-shot entrance timelines (rule draw → number+tick → masked title →
+  deliverable cascade), two-column hairline tables, act 02 offset on xl. Note: the old
+  cards carried NO CTAs (audit claim corrected) — conversion path unchanged (#intake).
 - [ ] **C3 · P2/M — /consulting process map (ProcessSection):** 4 static card columns →
   scroll-scrub narrative (reuse AuditWeekTimeline pattern).
 - [ ] **C4 · P2/M — /audit six surfaces:** 2×3 card grid → big-type numbered ledger
@@ -153,4 +155,6 @@ key files before implementing — §1.4):
 | — | owner: hero lockup inversion (2 rounds, empirical calibration) | b246372 | browser ✓ (mark top in-frame, wordmark below, ~4vh gap) — PUSHED |
 | 6 | B1+B2 booking copy truth + owned socials | b8eab6f | tsc ✓ · browser ✓ (/audit CTA + footer icons) |
 | 7 | B7+B8+B9 dead-code purge (−2,181 lines, 2 files correctly SKIPPED on post-merge re-verify) | c5d4737 | tsc ✓ · npm run build ✓ (40 pages) · browser ✓ (/trust + home on clean server; the LOCKUP_BELOW console burst was a stale Turbopack HMR chunk from the pre-rename graph — source grep clean, prod build unaffected) |
-| 8 | B3 /start bilingual | (this commit) | tsc ✓ · browser ✓ (EN intact, IT toggle full-page, split-reveal remounts clean) |
+| 8 | B3 /start bilingual | d40911a | tsc ✓ · browser ✓ (EN intact, IT toggle full-page, split-reveal remounts clean) |
+| 9 | C1 consulting practice ledger | a2e2602 | tsc ✓ · browser ✓ (scroll-active row migrates, tick+underline, desc expands) |
+| 10 | C2 engagement acts | (this commit) | tsc ✓ · browser ✓ (entrance caught mid-play, alternating offset, hairline tables) |
