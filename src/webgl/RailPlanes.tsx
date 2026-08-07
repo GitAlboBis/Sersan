@@ -48,10 +48,10 @@
  * rects stay untransformed; this component applies the SAME railCardMotion()
  * to its scale + cy so the planes track the DOM cards through the falloff
  * pixel-exactly. t/f also feed the material's uParallax/uFocus (procedural
- * interior parallax + defocus). The rail's velocity SKEW (a damped, transient
- * shear on the track wrapper) is deliberately NOT mirrored: it is only ever
- * non-zero during fast scrub, ≤4°, and vanishes at rest — invisible behind
- * the 0.96 inset + edge feather.
+ * interior parallax + defocus). The rail's velocity STRETCH (a damped,
+ * transient skewX ≤2.2° + scaleY compress ≤1.5% on the track wrapper) is
+ * deliberately NOT mirrored: it is only ever non-zero during fast scrub and
+ * vanishes at rest — invisible behind the 0.96 inset + edge feather.
  *
  * Rects are measured ONLY on railStore.measureVersion bumps (the rail's
  * measure() runs on mount + every ScrollTrigger.refresh via onRefreshInit +

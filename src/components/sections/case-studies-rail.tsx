@@ -11,12 +11,15 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { caseStudies, type CaseStudy } from "@/data/case-studies";
 import { useLanguage } from "@/components/language-provider";
 import { useRailStore } from "@/webgl/store/railStore";
+import { useTierStore } from "@/webgl/store/tierStore";
 import {
   railCardMotion,
+  railCardFilter,
   RAIL_SWEEP_PX,
   RAIL_MEDIA_SHIFT,
 } from "@/webgl/store/railMotion";
 import { getLenis } from "@/lib/lenis-singleton";
+import { snapPoint, suspendSnap } from "@/lib/scroll-snap";
 import { CardImageDistort } from "@/components/fx/card-image-distort";
 import { CardLogoReveal } from "@/components/fx/card-logo-reveal";
 import { SeeMorePortal } from "@/components/fx/see-more-portal";
@@ -56,13 +59,22 @@ if (typeof window !== "undefined") {
  *   - windowed counter-sweep: the metric block ([data-rail-sweep]) slides
  *     x = −t·60px against travel; the 112%-bleed media layer
  *     ([data-rail-media], preview cards) counter-parallaxes by −t·5 xPercent.
+ *   - center-focus DoF: the same falloff drives a QUANTISED filter on the
+ *     inner wrapper (blur 0→2.5px in 0.25px steps + brightness/saturate dim —
+ *     railCardFilter), FULL tier only, written only on step crossings so the
+ *     filter property never churns. The centred card carries no filter at
+ *     all; the WebGL planes mirror the defocus procedurally via uFocus.
  *   - NO extra smoothing on any of the above: the input (trackX) is already
  *     Lenis-smoothed, and a second lerp on the DOM side only would lag the
  *     cards behind the analytically-placed WebGL planes (documented
  *     double-smoothing gotcha in the parallax-gallery research).
- *   - velocity skew: the track wrapper shears skewX = clamp(v·k, ±4°),
- *     damped to 0 at rest by a gsap.ticker writer that early-returns once
- *     parked. Velocity-derived → damped; position-derived → direct.
+ *   - velocity stretch: the track wrapper shears skewX = clamp(v·k, ±2.2°)
+ *     with a coupled scaleY compress (≤1.5%, derived from the same damped
+ *     signal so both die together), damped to 0 at rest by a gsap.ticker
+ *     writer that early-returns once parked. Velocity-derived → damped;
+ *     position-derived → direct. Flattened synchronously in the rail's
+ *     click-capture handler so a flip-flight snapshot (use-flip-source reads
+ *     rects in the SAME click's bubble phase) never seeds from a sheared box.
  *
  * DRAG (pinned mode only): a gsap Draggable on the track with InertiaPlugin.
  * Drag is never a second source of truth — onDrag/onThrowUpdate convert
@@ -113,9 +125,12 @@ const CARD_CLASS =
 /** Home rail shows only the marquee studies (SphereNode → Apple UK). */
 const RAIL_LIMIT = 6;
 
-/** Velocity skew: max shear in degrees and deg per (px/s) of scrub velocity. */
-const SKEW_MAX_DEG = 4;
+/** Velocity stretch: max shear in degrees and deg per (px/s) of scrub
+ *  velocity, plus the scaleY compress at full shear (one damped signal drives
+ *  both — see writeStretch). */
+const SKEW_MAX_DEG = 2.2;
 const SKEW_DEG_PER_PXS = 0.002;
+const SKEW_STRETCH = 0.015;
 
 function StudyCard({
   study,
@@ -319,13 +334,22 @@ export default function CaseStudiesRail() {
 
     const store = useRailStore.getState();
     const setX = gsap.quickSetter(rail, "x", "px");
-    const setSkew = gsap.quickSetter(skewWrap, "skewX", "deg");
+    const setStretch = gsap.quickSetter(skewWrap, "css");
     let travel = 0;
     let vw = window.innerWidth;
     let drag: Draggable | null = null;
-    // Velocity-skew state (ticker-damped; onUpdate feeds velTarget).
+    // Velocity-stretch state (ticker-damped; onUpdate feeds velTarget).
     let skewValue = 0;
     let velTarget = 0;
+    // Reused across writes — quickSetter reads synchronously, no retention.
+    // scaleY is DERIVED from the shear so one damped signal drives both and
+    // they reach exactly {0°, 1} together at rest.
+    const stretchProps = { skewX: 0, scaleY: 1 };
+    const writeStretch = (deg: number) => {
+      stretchProps.skewX = deg;
+      stretchProps.scaleY = 1 - SKEW_STRETCH * (Math.abs(deg) / SKEW_MAX_DEG);
+      setStretch(stretchProps);
+    };
 
     // ---- Analytic per-card motion (railMotion.ts — shared with RailPlanes).
     // Element handles + un-translated centers are cached at measure() time;
@@ -333,9 +357,12 @@ export default function CaseStudiesRail() {
     // extra smoothing (trackX is already Lenis-smoothed — see header).
     interface CardMotionTarget {
       baseCenter: number;
+      inner: HTMLElement | null;
       setInner: ReturnType<typeof gsap.quickSetter> | null;
       setSweep: ReturnType<typeof gsap.quickSetter> | null;
       setMedia: ReturnType<typeof gsap.quickSetter> | null;
+      /** Last filter string written (DoF change-guard) — "" = no filter. */
+      lastFilter: string;
     }
     let cardTargets: CardMotionTarget[] = [];
     // Reused across writes — quickSetter reads synchronously, no retention.
@@ -355,14 +382,23 @@ export default function CaseStudiesRail() {
         const media = el.querySelector<HTMLElement>("[data-rail-media]");
         return {
           baseCenter: r.left + trackX + r.width / 2,
+          inner,
           setInner: inner ? gsap.quickSetter(inner, "css") : null,
           setSweep: sweep ? gsap.quickSetter(sweep, "x", "px") : null,
           setMedia: media ? gsap.quickSetter(media, "xPercent") : null,
+          // Seed the change-guard from the LIVE style, not "": a re-measure
+          // mid-rail must not leave a stale blur unclearable.
+          lastFilter: inner?.style.filter ?? "",
         };
       });
     };
 
     const applyMotion = (trackX: number) => {
+      // DOM depth-of-field is FULL tier only (lite/off: zero filter writes).
+      // Transient getState read per pass — a runtime degrade self-heals via
+      // the change-guard: the next scroll frame computes "" and clears each
+      // card's filter exactly once.
+      const dof = useTierStore.getState().tier === "full";
       for (let i = 0; i < cardTargets.length; i++) {
         const c = cardTargets[i];
         const m = railCardMotion(c.baseCenter - trackX, vw);
@@ -374,12 +410,21 @@ export default function CaseStudiesRail() {
         }
         if (c.setSweep) c.setSweep(-m.t * RAIL_SWEEP_PX);
         if (c.setMedia) c.setMedia(-m.t * RAIL_MEDIA_SHIFT);
+        // Center-focus DoF (railCardFilter — quantised): the string is
+        // byte-stable between blur steps, so style.filter is only touched on
+        // a step crossing (~10 states per card, no per-frame churn).
+        const filter = dof ? railCardFilter(m.f) : "";
+        if (c.inner && filter !== c.lastFilter) {
+          c.inner.style.filter = filter;
+          c.lastFilter = filter;
+        }
       }
     };
 
     const measure = () => {
-      // A live skew would shear every rect read below — flatten it first.
-      setSkew(0);
+      // A live shear/compress would distort every rect read below — flatten
+      // both first (writeStretch(0) restores {skewX: 0, scaleY: 1}).
+      writeStretch(0);
       skewValue = 0;
       velTarget = 0;
       // Faure's limit formula; the rail is w-max so scrollWidth == full width.
@@ -430,9 +475,25 @@ export default function CaseStudiesRail() {
     applyMotion(travel * st.progress);
     store.setPinned(true);
 
-    // ---- Velocity skew writer (gsap.ticker, DOM-only, transform-only).
-    // Damps skew toward the decaying target and EARLY-RETURNS once parked —
-    // zero writes at rest (repo invariant for DOM style writers).
+    // Site-wide snap stations (lib/scroll-snap): one per rail card — the
+    // vertical scrollY at which card i sits horizontally CENTERED (the same
+    // formula the focusin handler uses; 1 scrolled px = 1 translated px).
+    // Card 0 clamps to the runway start and the SeeMorePortal clamps to the
+    // release edge, so the rail's entry/exit are covered by the same set.
+    // Lazy getters over the live measure() caches — no re-registration.
+    const clearSnapPoints: Array<() => void> = cardTargets.map((_, i) =>
+      snapPoint(() => {
+        const c = cardTargets[i];
+        if (!c || travel <= 0) return Number.NaN;
+        const { secTop } = useRailStore.getState();
+        return secTop + Math.min(Math.max(c.baseCenter - vw / 2, 0), travel);
+      }),
+    );
+
+    // ---- Velocity stretch writer (gsap.ticker, DOM-only, transform-only).
+    // Damps the shear toward the decaying target (scaleY rides the same
+    // signal inside writeStretch) and EARLY-RETURNS once parked — zero writes
+    // at rest (repo invariant for DOM style writers).
     const skewTick = (_time: number, deltaTime: number) => {
       const dt = Math.min(0.05, deltaTime / 1000);
       // Decay the raw target: onUpdate re-feeds it while Lenis is moving, so
@@ -443,12 +504,12 @@ export default function CaseStudiesRail() {
       if (Math.abs(next) < 0.005 && Math.abs(velTarget) < 0.005) {
         if (skewValue !== 0) {
           skewValue = 0;
-          setSkew(0); // snap to exactly 0 once, then stop writing
+          writeStretch(0); // snap to exactly {0°, 1} once, then stop writing
         }
         return;
       }
       skewValue = next;
-      setSkew(skewValue);
+      writeStretch(skewValue);
     };
     gsap.ticker.add(skewTick);
 
@@ -475,6 +536,28 @@ export default function CaseStudiesRail() {
       if (suppressClick) {
         e.preventDefault();
         e.stopPropagation();
+        return;
+      }
+      // Flip-snapshot neutrality: use-flip-source reads the card/media rects
+      // in this SAME click's bubble phase (React delegates at the root, which
+      // bubbles after this capture listener), so a live velocity shear would
+      // seed the flight clone from a sheared rect — flatten it synchronously
+      // first (≤2.2° mid-scrub only; imperceptible under the click).
+      if (skewValue !== 0 || velTarget !== 0) {
+        skewValue = 0;
+        velTarget = 0;
+        writeStretch(0);
+      }
+      // And drop the clicked card's DoF filter: filters never move rects, but
+      // the flight clone is unfiltered — a blurred card under a crisp clone
+      // would pop at frame 0. Cache stays truthful for later applyMotion runs.
+      const inner = (e.target as HTMLElement | null)
+        ?.closest<HTMLElement>("[data-rail-card]")
+        ?.querySelector<HTMLElement>("[data-rail-inner]");
+      if (inner && inner.style.filter) {
+        inner.style.filter = "";
+        const t = cardTargets.find((c) => c.inner === inner);
+        if (t) t.lastFilter = "";
       }
     };
     rail.addEventListener("click", onRailClickCapture, true);
@@ -502,6 +585,14 @@ export default function CaseStudiesRail() {
       else window.scrollTo({ top: target, behavior: inPin ? "auto" : "smooth" });
     };
 
+    // Snap-engine hold while the hand owns the rail: a debounced settle from
+    // a pre-drag wheel must never fire into the drag/throw scrub. Release is
+    // idempotent (fires from both onDragEnd and onThrowComplete).
+    let releaseDragHold: (() => void) | null = null;
+    const endDragHold = () => {
+      releaseDragHold?.();
+      releaseDragHold = null;
+    };
     drag = Draggable.create(rail, {
       type: "x",
       bounds: { minX: -travel, maxX: 0 },
@@ -514,10 +605,13 @@ export default function CaseStudiesRail() {
       activeCursor: "grabbing",
       onDragStart: () => {
         suppressClick = false;
+        releaseDragHold ??= suspendSnap();
       },
       onDrag: dragToScroll,
       onThrowUpdate: dragToScroll,
+      onThrowComplete: endDragHold,
       onDragEnd: () => {
+        endDragHold();
         // Belt + braces over Draggable's own small-movement click pass-through:
         // a real drag arms the capture handler above for the click that
         // follows pointerup, then disarms on the next macrotask.
@@ -580,16 +674,18 @@ export default function CaseStudiesRail() {
       rail.removeEventListener("focusin", onFocusIn);
       rail.removeEventListener("click", onRailClickCapture, true);
       gsap.ticker.remove(skewTick);
+      endDragHold();
+      clearSnapPoints.forEach((off) => off());
       drag?.kill();
       st.kill();
       gsap.set(rail, { x: 0 });
-      gsap.set(skewWrap, { skewX: 0 });
+      gsap.set(skewWrap, { skewX: 0, scaleY: 1 });
       // Clear every per-card motion write so a later re-mount starts clean.
       rail
         .querySelectorAll<HTMLElement>(
           "[data-rail-inner], [data-rail-sweep], [data-rail-media]",
         )
-        .forEach((el) => gsap.set(el, { clearProps: "transform,opacity" }));
+        .forEach((el) => gsap.set(el, { clearProps: "transform,opacity,filter" }));
       section.style.height = "";
       // WebGL layer must never read a stale rail after unmount (store
       // survives route changes).
@@ -650,7 +746,7 @@ export default function CaseStudiesRail() {
               (scale/opacity/y-arc) so the card box above stays untransformed
               for RailPlanes' rect cache and the focus-scroll handler. Inert
               in native mode. */}
-          <div data-rail-inner className="h-full will-change-transform">
+          <div data-rail-inner className="h-full will-change-transform [transition:filter_240ms_ease-out]">
             <StudyCard
               study={study}
               index={i}
@@ -668,7 +764,7 @@ export default function CaseStudiesRail() {
         data-rail-index={RAIL_LIMIT}
         className={liClass}
       >
-        <div data-rail-inner className="h-full will-change-transform">
+        <div data-rail-inner className="h-full will-change-transform [transition:filter_240ms_ease-out]">
           <SeeMorePortal
             total={caseStudies.length}
             shown={RAIL_LIMIT}
@@ -751,10 +847,10 @@ export default function CaseStudiesRail() {
           className="sticky top-0 flex h-screen flex-col justify-center overflow-hidden"
         >
           <div className="mb-8 shrink-0 sm:mb-10">{heading}</div>
-          {/* Velocity-skew wrapper: the transient shear lives here, NEVER on
-              the track itself, so the ScrollTrigger x writer and the
-              Draggable stay the only transform owners of the <ul>. Flattened
-              to 0 before every measure. */}
+          {/* Velocity-stretch wrapper: the transient shear + scaleY compress
+              live here, NEVER on the track itself, so the ScrollTrigger x
+              writer and the Draggable stay the only transform owners of the
+              <ul>. Flattened to {0°, 1} before every measure. */}
           <div ref={skewRef} className="will-change-transform">
             <ul
               ref={railRef}

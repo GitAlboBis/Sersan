@@ -152,7 +152,7 @@ export function AuditClient() {
     <div className="min-h-screen pt-24 relative">
       {/* Hero */}
       <div data-line-anchor="hero">
-      <section className="relative section-lg overflow-hidden">
+      <section data-snap className="relative section-lg overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-background/40 via-background/20 to-background pointer-events-none" />
         <div
           aria-hidden="true"
@@ -214,7 +214,7 @@ export function AuditClient() {
 
       {/* What we look at */}
       <div data-line-anchor="surfaces">
-      <section className="section-lg relative">
+      <section data-snap className="section-lg relative">
         <div className="container-px relative">
           <SectionHeading
             align="center"
@@ -338,7 +338,7 @@ export function AuditClient() {
       </div>
 
       {/* What happens after */}
-      <section className="section-lg relative">
+      <section data-snap className="section-lg relative">
         <div className="container-px relative">
           <SectionHeading
             align="center"
@@ -457,7 +457,7 @@ export function AuditClient() {
 
       {/* Closing CTA — Cal.com booking */}
       <div data-line-anchor="final-cta">
-      <section id="book-call" className="section-lg relative overflow-hidden">
+      <section id="book-call" data-snap className="section-lg relative overflow-hidden">
         <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] opacity-25 pointer-events-none"
           aria-hidden="true"

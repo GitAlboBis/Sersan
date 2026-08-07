@@ -28,10 +28,10 @@
  *     (each Day fades in/out STRICTLY inside its range; exactly one Day owns
  *     the screen) + its inert/aria/pointer-events discipline so hidden cards
  *     leave the focus order and a11y tree.
- *   - SNAP: lenis/snap (NEVER ScrollTrigger snap), proximity type, registering
- *     ONLY the five interior Day boundaries (never 0 / never 1 — the top and
- *     bottom of the pin stay free-scroll so the reader can leave in either
- *     direction). snap.stop() during a drag, snap.start() after.
+ *   - SNAP: the site-wide engine (lib/scroll-snap — NEVER ScrollTrigger
+ *     snap), registering one station at each Day's progress MIDPOINT (never
+ *     1 — the pin release edge stays free so the reader can leave). The
+ *     engine is suspended for the duration of a drag.
  *   - DRAG: GSAP Draggable + InertiaPlugin on an invisible proxy (type "x",
  *     horizontal hand-feel → vertical scrub). onDrag maps -x/DRAG_SPAN → a
  *     document Y and drives getLenis().scrollTo(y, {immediate}).
@@ -54,10 +54,10 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Draggable } from "gsap/Draggable";
 import { InertiaPlugin } from "gsap/InertiaPlugin";
-import Snap from "lenis/snap";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Reveal } from "@/components/ui/reveal";
 import { getLenis } from "@/lib/lenis-singleton";
+import { snapPoint, suspendSnap } from "@/lib/scroll-snap";
 import { useAuditTimelineStore } from "@/webgl/store/auditTimelineStore";
 
 if (typeof window !== "undefined") {
@@ -187,9 +187,12 @@ export default function AuditWeekTimeline({ week, isEn }: AuditWeekTimelineProps
           const r = railRefs.current[i];
           if (!r) continue;
           const on = i === active;
-          r.style.background = on
+          // The rail entries are TEXT digits (01..06) styled + transitioned
+          // via `color` — writing `background` painted a box behind them
+          // instead of lighting the digit.
+          r.style.color = on
             ? "hsl(var(--accent) / 0.85)"
-            : "hsl(var(--rule) / 0.5)";
+            : "hsl(var(--ink-mute))";
           r.style.opacity = on ? "1" : "0.5";
         }
         useAuditTimelineStore.getState().setDayIndex(active);
@@ -200,7 +203,7 @@ export default function AuditWeekTimeline({ week, isEn }: AuditWeekTimelineProps
     return () => cancelAnimationFrame(raf);
   }, [detected, mode, count]);
 
-  // ScrollTrigger (progress reader) + lenis/snap + Draggable↔Lenis sync —
+  // ScrollTrigger (progress reader) + snap stations + Draggable↔Lenis sync —
   // pinned mode only, after viewport detection settles.
   useEffect(() => {
     if (!detected || mode !== "pinned") return;
@@ -239,37 +242,21 @@ export default function AuditWeekTimeline({ week, isEn }: AuditWeekTimelineProps
     store.setProgress(st.progress);
     store.setActive(true);
 
-    // --- lenis/snap: interior Day boundaries only (never 0, never 1) --------
-    // The five boundaries between Day i and Day i+1, each placed one fade-inset
-    // PAST the boundary so the settle lands on the incoming Day at full
-    // opacity (the exact boundary is a blank crossfade frame). Targets are
-    // absolute document px, re-registered on the same refresh cadence as the
-    // measure. Reduced-motion / no-Lenis never reaches here (native mode).
-    const fadeInset = Math.min(0.04, (1 / count) * 0.35);
-    const interiorProgress: number[] = [];
-    for (let i = 1; i < count; i++) {
-      interiorProgress.push(i / count + fadeInset);
+    // --- Snap stations (site-wide engine, lib/scroll-snap) ------------------
+    // One station at the MIDPOINT of every Day's progress window — a settle
+    // always rests on a fully-lit Day card (the crossfade edges are the
+    // blank frames). Value getters close over the live secTop/travel measure
+    // vars, so a refresh/resize needs no re-registration. Never 1 (the pin
+    // release edge). Reduced-motion / no-Lenis never reaches here (native
+    // mode), and the engine itself is inert without Lenis.
+    const clearSnapPoints: Array<() => void> = [];
+    for (let i = 0; i < count; i++) {
+      const p = (i + 0.5) / count;
+      clearSnapPoints.push(
+        snapPoint(() => (travel > 0 ? secTop + p * travel : Number.NaN)),
+      );
     }
-    let snap: Snap | null = null;
-    let clearSnapPoints: Array<() => void> = [];
-    const registerSnapPoints = () => {
-      if (!snap || travel <= 0) return;
-      clearSnapPoints.forEach((off) => off());
-      clearSnapPoints = [];
-      for (const p of interiorProgress) {
-        clearSnapPoints.push(snap.add(Math.round(secTop + p * travel)));
-      }
-    };
     const lenis = getLenis();
-    if (lenis) {
-      snap = new Snap(lenis, {
-        type: "proximity",
-        duration: 0.9,
-        distanceThreshold: "16%",
-        debounce: 400,
-      });
-      registerSnapPoints();
-    }
 
     // --- Draggable ↔ Lenis sync (research §1d) ------------------------------
     // An invisible proxy moves on the x-axis; we map its x to a vertical scroll
@@ -278,6 +265,7 @@ export default function AuditWeekTimeline({ week, isEn }: AuditWeekTimelineProps
     // scroll. DRAG_SPAN maps the full travel to a comfortable hand throw.
     const DRAG_SPAN = Math.max(1, window.innerWidth * 0.9);
     let drag: Draggable | null = null;
+    let releaseDragHold: (() => void) | null = null;
     if (proxy && lenis) {
       const applyScroll = (x: number) => {
         const frac = gsap.utils.clamp(0, 1, -x / DRAG_SPAN);
@@ -286,6 +274,13 @@ export default function AuditWeekTimeline({ week, isEn }: AuditWeekTimelineProps
         // force: move even though Lenis is stopped during the drag.
         getLenis()?.scrollTo(y, { immediate: true, force: true });
       };
+      const endDrag = () => {
+        getLenis()?.start();
+        // Idempotent — fires from onRelease (non-throw release) and
+        // onThrowComplete (inertia settle), and from the effect cleanup.
+        releaseDragHold?.();
+        releaseDragHold = null;
+      };
       drag = Draggable.create(proxy, {
         type: "x",
         trigger: dragSurfaceRef.current ?? undefined,
@@ -293,8 +288,11 @@ export default function AuditWeekTimeline({ week, isEn }: AuditWeekTimelineProps
         dragResistance: 0.35,
         bounds: { minX: -DRAG_SPAN, maxX: 0 },
         onPressInit() {
-          snap?.stop();
-          getLenis()?.stop();
+          // Seeding only — the destructive acquisition (Lenis stop + snap
+          // hold) lives in onDragStart: onPressInit fires on EVERY pointer
+          // press, and a plain click that never drags fires neither
+          // onDragEnd nor onThrowComplete, which left Lenis stopped and the
+          // snap engine suspended for good.
           // Seed the proxy at the current scroll position so the first delta
           // doesn't jump the page.
           const frac =
@@ -303,31 +301,36 @@ export default function AuditWeekTimeline({ week, isEn }: AuditWeekTimelineProps
               : 0;
           gsap.set(proxy, { x: -frac * DRAG_SPAN });
         },
+        onDragStart() {
+          releaseDragHold ??= suspendSnap();
+          getLenis()?.stop();
+        },
         onDrag(this: Draggable) {
           applyScroll(this.x);
         },
         onThrowUpdate(this: Draggable) {
           applyScroll(this.x);
         },
-        onDragEnd() {
-          getLenis()?.start();
-          snap?.start();
+        onRelease(this: Draggable) {
+          // Draggable arms the inertia tween (isThrowing) BEFORE dispatching
+          // onRelease — keep Lenis stopped and the snap held through the
+          // throw so a pending settle can never fight it; onThrowComplete
+          // then hands both back.
+          if (!this.isThrowing) endDrag();
         },
         onThrowComplete() {
-          getLenis()?.start();
-          snap?.start();
+          endDrag();
         },
       })[0];
     }
 
     // One-shot late refresh once webfonts land: the provider deliberately does
     // NOT refresh ScrollTrigger on routes (the spine owns home's bursts), so
-    // this section covers its own font-driven header reflow. Snap points
-    // re-derive on the same cadence (they are absolute px).
+    // this section covers its own font-driven header reflow. Snap stations
+    // read the live secTop/travel closures, so no snap re-registration needed.
     let fontsCancelled = false;
     const refreshAll = () => {
       ScrollTrigger.refresh();
-      registerSnapPoints();
     };
     document.fonts?.ready
       .then(() => {
@@ -348,9 +351,12 @@ export default function AuditWeekTimeline({ week, isEn }: AuditWeekTimelineProps
       window.clearTimeout(resizeId);
       window.removeEventListener("resize", onResize);
       drag?.kill();
+      // kill() mid-press/mid-throw can skip the release callbacks — restore
+      // Lenis and drop the snap hold unconditionally (both idempotent).
+      getLenis()?.start();
+      releaseDragHold?.();
+      releaseDragHold = null;
       clearSnapPoints.forEach((off) => off());
-      snap?.destroy();
-      snap = null;
       st.kill();
       section.style.height = "";
       // The WebGL layer must never read a stale /audit timeline after unmount

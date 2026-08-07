@@ -706,6 +706,15 @@ function startReturnLanding(ref: FlightRef, flight: ZoomFlight) {
           // onComplete — retire the hard timeout so it can never cut the
           // carve mid-flight (its job was the WAITING phases only).
           window.clearTimeout(flight.timeout);
+          // An off-center rail landing card carries the center-focus DoF
+          // filter while the deflating clone is crisp — fade it out under
+          // the shell (the inner's filter-only transition makes this a
+          // 240ms dissolve, not a pop). The rail's writer re-owns the
+          // filter on the next step crossing, through the same transition.
+          const dofInner = card.querySelector<HTMLElement>(
+            "[data-rail-inner]",
+          );
+          if (dofInner?.style.filter) dofInner.style.filter = "";
           const rad = parseRadiusPx(getComputedStyle(card).borderRadius);
           // DEFLATE — same interpolation contract as landOnHero: the clip and
           // the media box share ease + duration, so their rects match at

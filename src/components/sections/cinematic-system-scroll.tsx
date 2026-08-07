@@ -10,9 +10,10 @@
  * The 3D scene reads from progressRef each frame; no React state churn.
  *
  * Text panels are absolutely positioned over the scene and fade in/out
- * across their group range, with a small lead-in/lead-out. lenis/snap softly
- * settles wheel flicks onto the INTERIOR group boundaries only — never 0
- * (HeroIntroGate owns the top) and never 1 (SpineExitGate owns the pin end).
+ * across their group range, with a small lead-in/lead-out. The site-wide
+ * snap engine (lib/scroll-snap) settles wheel flicks onto each grouped
+ * panel's MIDPOINT (plus progress 0), never 1 — SpineExitGate owns the pin
+ * end and a barrier vetoes settles crossing it.
  *
  * Mobile (≤768px) returns to a normal stacked layout — no pin, no Canvas —
  * iterating the UNGROUPED 6 copy blocks (compression is desktop-only).
@@ -23,7 +24,6 @@ import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import Snap from "lenis/snap";
 import { Button } from "@/components/ui/button";
 import { Magnetic } from "@/components/ui/magnetic";
 import { HeroHoverLayer } from "@/components/hero-hover-layer";
@@ -31,6 +31,7 @@ import { HeroIntroGate } from "@/components/fx/hero-intro-gate";
 import { useLanguage } from "@/components/language-provider";
 import { useTextMorphStore } from "@/webgl/store/textMorphStore";
 import { getLenis } from "@/lib/lenis-singleton";
+import { snapPoint, snapBarrier, suspendSnap } from "@/lib/scroll-snap";
 import type { Language } from "@/data/translations/types";
 import { START_HREF } from "@/lib/site";
 import { SPINE_HEIGHT_VH } from "@/lib/spine";
@@ -335,24 +336,21 @@ const DESKTOP_GROUPS: StageGroup[] = [
   { id: "handover", start: 0.74, end: 1, blockIds: ["handover"] },
 ];
 
-// Soft-snap targets: the INTERIOR group boundaries only — never 0 (the
-// HeroIntroGate owns the top of the page) and never 1 (SpineExitGate owns
-// the pin end; snapping there would double-trigger the camera-descent beat).
-// Each target sits one panel-fade PAST its boundary: panelOpacity fades
-// strictly INSIDE [start, end], so the exact boundary is a blank crossfade
-// frame (outgoing panel already 0, incoming still 0) — the inset settles the
-// scroll on the incoming panel at full opacity instead.
-const INTERIOR_SNAP_PROGRESS = DESKTOP_GROUPS.slice(1).map(
-  (g) => g.start + Math.min(0.03, (g.end - g.start) * 0.3),
-);
+// Snap stations (2026-07-23 hardening — client: every scroll must come to
+// rest ON a beat): the MIDPOINT of every grouped panel's range — maximal
+// margin from both crossfade edges, so a settle always rests on a fully-lit
+// panel. Never 1 (SpineExitGate owns the pin end; a station there would
+// double-trigger the camera-descent beat — a barrier below vetoes any settle
+// crossing it). Progress 0 is registered separately as the "back to hero"
+// station: a park at the very top is stable (the intro gate only re-engages
+// on a further UP-wheel at y≈0, never on the settle itself).
+const SNAP_STATION_PROGRESS = DESKTOP_GROUPS.map((g) => (g.start + g.end) / 2);
 
 // CTA + hint labels used in both the desktop spine and the mobile fallback.
 const SPINE_COPY = {
   en: {
     ctaPrimary: "Book a 30-min scoping call",
-    seeWhatWeBuild: "See what we build",
     seeSelectedWork: "See selected work",
-    scroll: "Scroll",
     // Hero cluster — the DOM payoff the intro gate releases onto (the
     // [data-hero-stagger] cascade in StagePanel's isHero branch). Eyebrow is
     // the brand's canonical positioning line (same string as the OG image).
@@ -364,9 +362,7 @@ const SPINE_COPY = {
   },
   it: {
     ctaPrimary: "Prenota una call di scoping di 30 min",
-    seeWhatWeBuild: "Guarda cosa costruiamo",
     seeSelectedWork: "Guarda i nostri lavori",
-    scroll: "Scorri",
     heroEyebrow: "Ingegneria software AI-powered · Londra",
     heroSub:
       "Lo costruiamo. Lo gestiamo. Se si rompe alle 3 di notte, siamo noi a svegliarci.",
@@ -987,64 +983,33 @@ export default function CinematicSystemScroll() {
       },
     });
 
-    // --- Soft snap (lenis/snap, NOT ScrollTrigger snap) -------------------
-    // Proximity-type: the debounced settle rides lenis.scrollTo with no
-    // input lock, so a fresh wheel gesture cancels it naturally — a "soft
-    // settle", never a fight with the Lenis lerp. Snap points are the
-    // interior grouped boundaries only (INTERIOR_SNAP_PROGRESS); the snap
-    // plugin triggers exclusively on Lenis' virtual-scroll (user input), so
-    // its own programmatic scroll never re-triggers it, and the intro/exit
-    // gates — which consume wheel at capture before Lenis sees it — keep it
-    // naturally quiet while engaged. Reduced motion never creates Lenis, so
+    // --- Snap stations (site-wide engine, lib/scroll-snap) ----------------
+    // Value-based getters measured LIVE at snap time, so no re-registration
+    // cadence is needed: one per grouped-panel midpoint + progress 0 (the
+    // "back to hero" park). The engine triggers only on user wheel input, so
+    // the intro/exit gates — which consume wheel at capture before Lenis —
+    // keep it naturally quiet while engaged (the provider also hard-suspends
+    // it on gateEngaged). The barrier at the pin end vetoes any settle that
+    // would animate across SpineExitGate's crossing detector and trigger the
+    // camera-descent beat un-asked. Reduced motion never creates Lenis, so
     // no snap exists on that path by construction.
-    let snap: Snap | null = null;
-    let clearSnapPoints: Array<() => void> = [];
-    const registerSnapPoints = () => {
-      if (!snap) return;
-      clearSnapPoints.forEach((off) => off());
-      clearSnapPoints = [];
+    const stationAt = (p: number) => () => {
       const ih = window.innerHeight;
-      // Header-proof absolute base: the spine is the first section (top ≈ 0)
-      // but measure it instead of assuming.
       const base = outer.getBoundingClientRect().top + window.scrollY;
       const travel = outer.offsetHeight - ih;
-      if (travel <= 0) return;
-      for (const p of INTERIOR_SNAP_PROGRESS) {
-        clearSnapPoints.push(snap.add(Math.round(base + p * travel)));
-      }
+      return travel > 0 ? base + p * travel : Number.NaN;
     };
-    let unsubGate: (() => void) | null = null;
-    const lenis = getLenis();
-    if (lenis) {
-      snap = new Snap(lenis, {
-        type: "proximity",
-        duration: 0.9,
-        // Capture radius ≈ the crossfade neighbourhood of a boundary —
-        // flicks that die mid-transition settle onto the incoming panel;
-        // deliberate reading positions mid-stage are never pulled.
-        distanceThreshold: "16%",
-        debounce: 400,
-      });
-      registerSnapPoints();
-      // Belt + braces: the intro gate already consumes input before Lenis,
-      // but stop the snap outright while it's engaged so a pending debounce
-      // can never land a scroll during the hijack.
-      const syncGate = (engaged: boolean) => {
-        if (!snap) return;
-        if (engaged) snap.stop();
-        else snap.start();
-      };
-      syncGate(useTextMorphStore.getState().gateEngaged);
-      unsubGate = useTextMorphStore.subscribe((s) => syncGate(s.gateEngaged));
-    }
+    const clearSnapPoints: Array<() => void> = [
+      snapPoint(stationAt(0)),
+      ...SNAP_STATION_PROGRESS.map((p) => snapPoint(stationAt(p))),
+      snapBarrier(stationAt(1)),
+    ];
 
     // Force a refresh after layout settles. Multiple short timeouts catch
     // late-arriving font / texture / canvas layout shifts. The final
     // resize listener catches mobile rotation + browser-chrome reveal.
-    // Snap points re-derive on the same cadence (they are absolute px).
     const refresh = () => {
       ScrollTrigger.refresh();
-      registerSnapPoints();
     };
     const ids = [60, 250, 700, 1500].map((ms) => window.setTimeout(refresh, ms));
     // Debounced resize handler — coalesce the event burst from a resize /
@@ -1061,10 +1026,7 @@ export default function CinematicSystemScroll() {
       ids.forEach((id) => window.clearTimeout(id));
       window.clearTimeout(resizeId);
       window.removeEventListener("resize", onResize);
-      unsubGate?.();
       clearSnapPoints.forEach((off) => off());
-      snap?.destroy();
-      snap = null;
     };
   }, [isMobile, reduceMotion, hasDetectedViewport]);
 
@@ -1183,29 +1145,32 @@ export default function CinematicSystemScroll() {
           }}
         />
 
-        {/* Brand intro headline — "Sersan AI", much larger than the H1. The
-            WebGL text-particle intro (HeroTextParticles) reveals it at the top
-            of the page and dissolves it into particles on the first scroll,
-            which then recompose into the real headline. Hidden by default
-            (opacity 0 inline) so every fallback path (no JS, mobile, non-
-            WebGPU, reduced motion) never shows it — the H1 owns the hero as
-            before. Decorative: the accessible heading stays the real H1. */}
+        {/* Brand intro headline — "Sersan AI", the monumental opening beat.
+            The WebGL text-particle intro (HeroTextParticles) assembles it out
+            of a particle field on entry and melts it back out on the first
+            scroll while the DOM hero cascades in. Restyled 2026-07-23 (client):
+            Switzer semibold instead of the display serif, ~16vw and dead
+            center — the brand must OWN the frame, not read as a background
+            layer. The span is the PARTICLE ANCHOR + typography source
+            (opacity 0 forever — the particles are the only visible render);
+            hidden by default so every fallback path (no JS, mobile,
+            non-WebGPU, reduced motion) never shows it — the H1 owns the hero
+            as before. Decorative: the accessible heading stays the real H1. */}
         <div
           aria-hidden="true"
-          className="absolute inset-0 flex items-center pointer-events-none pt-[max(var(--header-h),6rem)]"
+          className="absolute inset-0 flex items-center justify-center pointer-events-none"
         >
-          <div className="container-px w-full">
-            <span
-              data-hero-brand
-              // ml-[114px] ≈ the ~3cm right shift requested live (2026-06-10);
-              // the span is the PARTICLE ANCHOR (opacity 0 forever), so
-              // moving it moves the assembled "Sersan AI" particles.
-              className="font-display text-[clamp(3.75rem,9vw,8.5rem)] leading-none tracking-[-0.03em] text-ink inline-block ml-[114px]"
-              style={{ opacity: 0, willChange: "opacity" }}
-            >
-              Sersan AI
-            </span>
-          </div>
+          <span
+            data-hero-brand
+            // 13vw (was 16vw): the client flagged the 16vw cut overlapping the
+            // spore mark behind it — this width clears the mark's silhouette
+            // while still owning the frame (the mark also fully yields via
+            // HeroLogo's domReveal duck during the brand beat).
+            className="font-sans font-semibold text-[clamp(4rem,13vw,13.5rem)] leading-none tracking-[-0.045em] text-ink inline-block whitespace-nowrap"
+            style={{ opacity: 0, willChange: "opacity" }}
+          >
+            Sersan AI
+          </span>
         </div>
 
         {/* Stage rail (left) — one tick per grouped panel. */}
@@ -1228,9 +1193,10 @@ export default function CinematicSystemScroll() {
           />
         ))}
 
-        {/* The old "Scroll" hint is gone — the particle intro now ends on the
-            "see what we build" cue (third morph stage), which is the closing
-            call to action instead of a scroll label. */}
+        {/* No scroll hint here — the one-beat intro ends on the DOM hero
+            cascade (domReveal), which hands straight into an actionable
+            cluster (eyebrow · sub · CTAs), so a scroll label would be
+            redundant chrome. */}
 
         {/* Hover-sense layer over the mark (right half) — gates the cursor
             erode/dissolve. Mounts only once the WebGL hero is live; wheel
@@ -1282,6 +1248,12 @@ function SpineExitGate({
     let lastTilt = -1;
     let touchY: number | null = null;
     let prev = performance.now();
+    // Snap-engine hold: this gate never sets gateEngaged (the provider's
+    // suspend key), so it manages its own suspension — engage → hold; the
+    // hold outlives release() by ~1.2s so the landing glide (scrollTo below)
+    // can never be retargeted by a settle armed mid-beat.
+    let releaseSnapHold: (() => void) | null = null;
+    let snapHoldTimer = 0;
 
     const release = () => {
       if (!engaged) return;
@@ -1292,10 +1264,17 @@ function SpineExitGate({
       // spring oscillating right over the landing hand-off.
       useTextMorphStore.setState({ gateKick: 0 });
       getLenis()?.start();
+      window.clearTimeout(snapHoldTimer);
+      snapHoldTimer = window.setTimeout(() => {
+        releaseSnapHold?.();
+        releaseSnapHold = null;
+      }, 1200);
     };
     const engage = (dir: 0 | 1) => {
       engaged = true;
       target = dir;
+      window.clearTimeout(snapHoldTimer);
+      releaseSnapHold ??= suspendSnap();
       useTextMorphStore.setState({ tiltAnchorY: window.scrollY });
       getLenis()?.stop();
     };
@@ -1443,6 +1422,9 @@ function SpineExitGate({
         stage.style.opacity = "";
       }
       release();
+      window.clearTimeout(snapHoldTimer);
+      releaseSnapHold?.();
+      releaseSnapHold = null;
     };
   }, [outerRef, stageRef]);
 

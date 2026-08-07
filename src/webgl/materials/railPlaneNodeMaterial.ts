@@ -31,10 +31,12 @@
  *       against travel, the "window-look" the DOM media layer does at 112%
  *       bleed. Procedural domain — no headroom/clamp concerns;
  *   (f) uFocus — center-focus defocus (0 centered → 1 at the viewport edge):
- *       grain frequency + amplitude down, tint contrast down, scan sweep and
- *       trail faded out, and the plane's own opacity dimmed by the SAME
- *       RAIL_FOCUS_FADE factor the DOM card fades by (railMotion.ts), so card
- *       and plane read as ONE surface losing focus together.
+ *       grain frequency + amplitude down, tint contrast down, backdrop dimmed
+ *       by the SAME brightness falloff the DOM card's DoF filter applies
+ *       (railCardFilter, 1→0.82), scan sweep and trail faded out, and the
+ *       plane's own opacity dimmed by the SAME RAIL_FOCUS_FADE factor the DOM
+ *       card fades by (railMotion.ts), so card and plane read as ONE surface
+ *       losing focus together.
  *
  * Accent pair is cyan #3BE1FF → deep blue #2A7FFF (standing directive:
  * cyan/blue only — the former violet #7C5CFF stop is retired).
@@ -134,8 +136,12 @@ export function createRailPlaneMaterial(seed: number): {
   const pu = vec2(u.x.add(uParallax), u.y);
   // Focus attenuators (all 1 at center, reduced toward the edges — restrained).
   const focusScan = uFocus.oneMinus(); // sweep/trail fade fully at the edge
-  const focusTint = uFocus.mul(0.5).oneMinus(); // tint contrast −50% at edge
-  const focusGrain = uFocus.mul(0.6).oneMinus(); // grain amplitude −60% at edge
+  const focusTint = uFocus.mul(0.65).oneMinus(); // tint contrast −65% at edge
+  const focusGrain = uFocus.mul(0.8).oneMinus(); // grain amplitude −80% at edge
+  // Backdrop dim mirrors the DOM card's DoF brightness falloff (railCardFilter
+  // 1→0.82) — CSS filters cannot reach the canvas BEHIND the translucent card,
+  // so the plane darkens itself by the same factor to stay one surface.
+  const focusDim = uFocus.mul(0.18).oneMinus();
 
   // (a) Backdrop: navy vertical gradient + faint seeded accent tint. The tint
   // mix runs on a sine (seamless — no fract() wrap line inside the card) and
@@ -150,10 +156,12 @@ export function createRailPlaneMaterial(seed: number): {
   );
   // Cheap hash grain (same recipe as PostFXNodes), ±0.015 — sub-threshold.
   // Defocus lowers BOTH its frequency (coarser pattern) and its amplitude.
-  const grainFreq = mix(float(120.0), float(64.0), uFocus);
+  const grainFreq = mix(float(120.0), float(44.0), uFocus);
   const seedUv = pu.mul(grainFreq).add(uSeed.mul(31.7));
   const grain = fract(sin(dot(seedUv, vec2(12.9898, 78.233))).mul(43758.5453));
-  const backdrop = grad.add(grain.sub(0.5).mul(float(0.03).mul(focusGrain)));
+  const backdrop = grad
+    .mul(focusDim)
+    .add(grain.sub(0.5).mul(float(0.03).mul(focusGrain)));
 
   // (b/c) Scan sweep: the "depth" of the depth-map scan reference is just an
   // ordering field — with no imagery we use a noise-warped diagonal so the

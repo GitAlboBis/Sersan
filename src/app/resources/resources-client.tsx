@@ -23,6 +23,10 @@ import {
   ResourcePreviewCard,
   type ResourceItemHandlers,
 } from "@/components/resources/resource-preview";
+import {
+  BlueprintLens,
+  BlueprintLensCard,
+} from "@/components/fx/blueprint-lens";
 
 // Flip is already registered by the persistent flip-handoff overlay (root
 // layout), so this adds no bundle weight — registering again is idempotent
@@ -328,7 +332,7 @@ export function ResourcesClient() {
   return (
     <div className="min-h-screen text-foreground relative">
       {/* Hero */}
-      <section data-line-anchor="hero" className="pt-24 pb-16 md:pb-24 relative overflow-hidden">
+      <section data-line-anchor="hero" data-snap className="pt-24 pb-16 md:pb-24 relative overflow-hidden">
         <div aria-hidden="true" className="absolute inset-0 pointer-events-none">
           <div
             className="absolute left-1/2 top-1/3 -translate-x-1/2 -translate-y-1/2 w-[75vw] h-[36vw] max-w-[1000px] max-h-[560px] blur-3xl opacity-25"
@@ -432,9 +436,13 @@ export function ResourcesClient() {
 
             {/* relative: the FLIP re-sort absolutizes rows mid-flight — give
                 them a positioning context that IS the list. flex+gap (not
-                space-y margins) so display:none rows leave no phantom gap. */}
+                space-y margins) so display:none rows leave no phantom gap.
+                data-cursor="view": the particle cursor swells to its VIEW
+                preset over the whole list, cooperating with the blueprint
+                lens (fx/blueprint-lens tracks this same container). */}
             <div
               ref={listRef}
+              data-cursor="view"
               className="relative flex flex-col gap-5"
               onPointerLeave={onListPointerLeave}
             >
@@ -480,7 +488,7 @@ export function ResourcesClient() {
           giving final-cta real height shifts its measured center fraction down
           the document, fixing the curve tail via the existing waypoint (no
           routeCurves edit). */}
-      <section data-line-anchor="final-cta" className="section-lg relative">
+      <section data-line-anchor="final-cta" data-snap className="section-lg relative">
         <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] opacity-20 pointer-events-none"
           aria-hidden="true"
@@ -536,6 +544,12 @@ export function ResourcesClient() {
           desktop WebGPU full path where ResourcePreviewPlane is the preview,
           and on coarse/reduced-motion. */}
       <ResourcePreviewCard />
+
+      {/* Blueprint lens tracker + ring (WOW wave, package 3): one shared
+          pointer follower over the list drives every card's clipped alter-ego
+          overlay. Additive — its listeners sit beside the preview-store
+          handlers on the same container and never touch that store. */}
+      <BlueprintLens listRef={listRef} />
 
       {/* Card lens/wipe styles — see CARD_FX_CSS docs below. Static string,
           so SSR and client markup are identical. */}
@@ -596,6 +610,13 @@ interface ResourceCardProps {
  * preview: on the desktop WebGPU full path the signal plane's uWipe flood is
  * the click confirmation and this layer stays quiet (one flourish per
  * gesture, one owner per tier).
+ *
+ * BLUEPRINT LENS (WOW wave, package 3) — a third, LIST-level layer: the
+ * shared cursor lens (fx/blueprint-lens, mounted once by ResourcesClient)
+ * clips each card's schematic alter ego through a per-frame circle. This
+ * card only hosts the overlay (BlueprintLensCard between the hot duplicate
+ * and the wipe); all tracking lives in the fx module, which never touches
+ * the preview-store handlers composed here.
  */
 function ResourceCard({
   r,
@@ -716,6 +737,13 @@ function ResourceCard({
     <Link
       href={`/resources/${r.slug}`}
       data-resource-index={index}
+      // data-no-tilt (review fix): the blueprint lens computes its clip
+      // circles in untransformed layout space, and the tilt's perspective
+      // projection would slide the schematic disc ~15-25px out of the
+      // viewport-fixed ring at exactly the pointer position that maxes the
+      // tilt. The lens IS this card's hover response — same opt-out the home
+      // rail's media cards use for DOM-synced registration.
+      data-no-tilt=""
       className="resource-card card-steel group block p-7"
       onPointerEnter={onPointerEnter}
       onPointerMove={onPointerMove}
@@ -742,6 +770,25 @@ function ResourceCard({
           hot
         />
       </div>
+      {/* Blueprint alter-ego, clipped per frame by the shared cursor lens
+          (fx/blueprint-lens). Sits ABOVE the hot duplicate — inside the disc
+          the opaque schematic covers it, while the hot mask's wider 260px
+          halo keeps glowing around the ring — and BELOW the click wipe so
+          the flood confirmation stays supreme. Same CardBody, blueprint
+          variant: the schematic overlays the base copy pixel-exact. */}
+      <BlueprintLensCard
+        index={index}
+        typeLabel={categoryLabel[r.category]}
+        readMinutes={r.readMinutes}
+      >
+        <CardBody
+          r={r}
+          isEn={isEn}
+          categoryLabel={categoryLabel}
+          dateLocale={dateLocale}
+          blueprint
+        />
+      </BlueprintLensCard>
       {/* Click-wipe flood layer (clip-path circle written inline on click). */}
       <div ref={wipeRef} aria-hidden="true" className="resource-wipe" />
     </Link>
@@ -749,12 +796,18 @@ function ResourceCard({
 }
 
 /**
- * Card copy, rendered twice per card: once as the real (semantic) content and
- * once as the aria-hidden "hot" duplicate inside the lens mask. Layout classes
- * are IDENTICAL in both variants — `hot` only swaps colors (the inline style
- * wins over the utility color) so the duplicate sits pixel-exact over the
- * base. The hot arrow keeps the same group-hover translate so both copies
- * shift together while hovered.
+ * Card copy, rendered three times per card: once as the real (semantic)
+ * content, once as the aria-hidden "hot" duplicate inside the lens mask, and
+ * once as the "blueprint" alter ego inside the cursor lens's clip circle.
+ * Layout classes are IDENTICAL in all variants — `hot`/`blueprint` only swap
+ * per-element inline styles (which win over the utility color) so every
+ * duplicate sits pixel-exact over the base. The blueprint variant is the
+ * monoline rendition: the display title becomes its own 1px cyan outline
+ * (-webkit-text-stroke over transparent fill — universally supported), and
+ * the excerpt keeps its REAL text transparent with a 1px line-through so each
+ * wrapped line renders as a drafted rule at true text metrics. The arrows are
+ * stroke icons (already monoline) and keep the same group-hover translate so
+ * all copies shift together while hovered.
  */
 function CardBody({
   r,
@@ -762,22 +815,30 @@ function CardBody({
   categoryLabel,
   dateLocale,
   hot = false,
+  blueprint = false,
 }: {
   r: Resource;
   isEn: boolean;
   categoryLabel: Record<string, string>;
   dateLocale: string;
   hot?: boolean;
+  blueprint?: boolean;
 }) {
-  // The real card keeps the semantic <h2>; the decorative duplicate must not
-  // add a second heading to the outline, so it renders a <div> with the same
+  // The real card keeps the semantic <h2>; the decorative duplicates must not
+  // add a second heading to the outline, so they render a <div> with the same
   // classes (preflight zeroes heading margins/font, so layout is identical).
-  const Title = hot ? "div" : "h2";
+  const Title = hot || blueprint ? "div" : "h2";
   return (
     <>
       <div
         className="flex items-center gap-3 mb-3 text-[10px] font-mono uppercase tracking-[0.16em] text-ink-mute"
-        style={hot ? { color: "hsl(var(--accent) / 0.85)" } : undefined}
+        style={
+          blueprint
+            ? { color: "hsl(var(--accent) / 0.9)" }
+            : hot
+              ? { color: "hsl(var(--accent) / 0.85)" }
+              : undefined
+        }
       >
         <span style={{ color: "hsl(var(--accent))" }}>{categoryLabel[r.category]}</span>
         <span aria-hidden="true">·</span>
@@ -795,26 +856,52 @@ function CardBody({
       </div>
       <Title
         className="font-display text-2xl sm:text-[1.75rem] text-ink mb-3 leading-tight"
-        style={hot ? { color: "hsl(var(--accent))" } : undefined}
+        style={
+          blueprint
+            ? {
+                color: "transparent",
+                WebkitTextStroke: "1px hsl(var(--accent) / 0.85)",
+              }
+            : hot
+              ? { color: "hsl(var(--accent))" }
+              : undefined
+        }
       >
         {isEn ? r.title : r.titleIt}
       </Title>
       <p
         className="text-sm sm:text-base text-ink-mute leading-[1.55] mb-4"
-        style={hot ? { color: "hsl(var(--ink))" } : undefined}
+        style={
+          blueprint
+            ? {
+                color: "transparent",
+                textDecorationLine: "line-through",
+                textDecorationColor: "hsl(var(--accent) / 0.38)",
+                textDecorationThickness: "1px",
+              }
+            : hot
+              ? { color: "hsl(var(--ink))" }
+              : undefined
+        }
       >
         {isEn ? r.excerpt : r.excerptIt}
       </p>
       <div className="flex items-center justify-between">
         <p
           className="text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute"
-          style={hot ? { color: "hsl(var(--accent) / 0.8)" } : undefined}
+          style={
+            blueprint
+              ? { color: "hsl(var(--accent) / 0.6)" }
+              : hot
+                ? { color: "hsl(var(--accent) / 0.8)" }
+                : undefined
+          }
         >
           {r.authorName} &middot; {isEn ? r.authorRole : r.authorRoleIt}
         </p>
         <ArrowRight
           className="w-4 h-4 text-ink-mute group-hover:text-[hsl(var(--accent))] group-hover:translate-x-0.5 transition-all"
-          style={hot ? { color: "hsl(var(--accent))" } : undefined}
+          style={hot || blueprint ? { color: "hsl(var(--accent))" } : undefined}
         />
       </div>
     </>

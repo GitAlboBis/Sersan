@@ -51,6 +51,7 @@ export default function FinalCTA() {
   return (
     <section
       id="contact"
+      data-snap
       className="relative section-lg scroll-mt-24 overflow-hidden"
     >
       <div className="container-px relative">

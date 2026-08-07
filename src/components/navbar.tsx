@@ -137,6 +137,11 @@ function AudioToggle({ compact = false }: { compact?: boolean }) {
  *   1. resting label slides right + fades out
  *   2. label + arrow enter from the right, above the blob (z-10)
  *   3. a small cyan dot grows into a full cyan fill behind them
+ * Both labels also micro-open their tracking (0.02em, 180ms ease-out) on an
+ * INNER span — the parents' transition-all would drag letter-spacing to their
+ * 300ms slide tempo. The pill is a fixed-width block (w-full, centered,
+ * overflow-hidden), so the spread re-lays glyphs inside the pill only: zero
+ * nav layout shift.
  * Rest = white pill (`bg-ink`) / navy text (`text-bg`); hover = cyan blob fill,
  * text stays navy for AA contrast on both white and cyan. `motion-reduce`
  * disables the slide so the hover state still reads but doesn't animate.
@@ -166,11 +171,15 @@ function MenuPill({
     >
       {/* resting label: scrolls off to the right and fades */}
       <span className="inline-block translate-x-1 transition-all duration-300 group-hover:translate-x-12 group-hover:opacity-0 motion-reduce:transition-none">
-        {label}
+        <span className="transition-[letter-spacing] duration-[180ms] ease-out group-hover:tracking-[0.02em] motion-reduce:transition-none">
+          {label}
+        </span>
       </span>
       {/* label + arrow: enters from the right ABOVE the blob (z-10) */}
       <span className="absolute inset-0 z-10 flex items-center justify-center gap-2 translate-x-12 text-bg opacity-0 transition-all duration-300 group-hover:-translate-x-1 group-hover:opacity-100 motion-reduce:transition-none">
-        {label}
+        <span className="transition-[letter-spacing] duration-[180ms] ease-out group-hover:tracking-[0.02em] motion-reduce:transition-none">
+          {label}
+        </span>
         <ArrowRight className="h-5 w-5" aria-hidden />
       </span>
       {/* cyan blob: from dot to full fill */}
@@ -786,7 +795,15 @@ export function Navbar() {
                 className="inline-flex text-[13px] tracking-[0.005em] h-10 px-5"
               >
                 <Link href={START_HREF}>
-                  {language === "it" ? "Prenota una call" : "Book a call"}
+                  {/* Magnetic's two-layer hook: the label counter-translates
+                      under the shell. Inner span, NOT the Link — the button's
+                      CSS transform transition would smear per-frame writes. */}
+                  <span
+                    data-magnetic-label
+                    className="inline-block will-change-transform"
+                  >
+                    {language === "it" ? "Prenota una call" : "Book a call"}
+                  </span>
                 </Link>
               </Button>
             </Magnetic>
@@ -899,7 +916,12 @@ export function Navbar() {
                   className="w-full rounded-full"
                 >
                   <Link href={START_HREF} onClick={() => setOpen(false)}>
-                    {language === "it" ? "Prenota una call" : "Book a call"}
+                    <span
+                      data-magnetic-label
+                      className="inline-block will-change-transform"
+                    >
+                      {language === "it" ? "Prenota una call" : "Book a call"}
+                    </span>
                   </Link>
                 </Button>
               </Magnetic>

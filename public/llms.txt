@@ -40,7 +40,7 @@ Sersan is a London-registered, EU-operating engineering consultancy founded by A
 - [Consulting](https://www.sersan.io/consulting) — practice areas + scoping intake
 - [Case studies](https://www.sersan.io/case-studies) — published work, with metrics
 - [Writing](https://www.sersan.io/resources) — field notes
-- [About](https://www.sersan.io/about) — founders, thesis
+- [About](https://www.sersan.io/about) — founders, team, thesis
 - [Trust](https://www.sersan.io/trust) — security, compliance, data handling
 - [Contact](https://www.sersan.io/contact)
 

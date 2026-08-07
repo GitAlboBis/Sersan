@@ -1330,3 +1330,13 @@ html.cursor-none [contenteditable="true"] {
     opacity: 0 !important;
   }
 }
+
+/* Command palette (fx/command-palette.tsx) — entrance only; Radix unmounts on
+   close, so no exit pair is needed. The pop keyframe carries the centering
+   translateX so the animation never fights the layout transform. */
+@keyframes cp-fade {
+  from { opacity: 0; }
+}
+@keyframes cp-pop {
+  from { opacity: 0; transform: translateX(-50%) scale(0.985); }
+}

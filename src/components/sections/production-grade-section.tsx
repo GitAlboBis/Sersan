@@ -327,6 +327,7 @@ export default function ProductionGradeSection() {
   return (
     <section
       id="trust"
+      data-snap
       className="section-accent-tint section-accent-tint--strong relative section-lg scroll-mt-24 overflow-hidden"
     >
       <SectionGlow position="bottom-right" intensity={1.25} size="65rem" />

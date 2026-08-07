@@ -939,6 +939,13 @@ export function createTextMorphComputeBuild(
   /** Optional per-particle colour morph (see PortraitMorphOpts). Absent = the
    * byte-identical hero text look. */
   portrait?: PortraitMorphOpts,
+  /** Optional entry-assemble START field (the scattered cloud uAssemble
+   * interpolates the anchor FROM). Defaults to seedPositions. Callers that
+   * REBUILD an already-formed text pass homes as seedPositions (no spurious
+   * re-flight) but must still pass the scatter cloud here — with the live
+   * uAssemble scrub (2026-07-23 one-beat intro) start==home would pin the
+   * anchor and silently degrade the dissolve to a flat alpha wipe. */
+  startPositions?: Float32Array,
 ): TextMorphNodeBuild {
   const {
     InstancedBufferGeometry,
@@ -1047,7 +1054,10 @@ export function createTextMorphComputeBuild(
   // Entry-assemble fields: the scattered start each particle flies in FROM,
   // and its stagger delay = normalized home-A x (ICS-media: "the normalized X
   // position directly becomes the delay value" → a left→right forming wave).
-  const startBuffer = instancedArray((seedPositions ?? homeA).slice(), "vec3");
+  const startBuffer = instancedArray(
+    (startPositions ?? seedPositions ?? homeA).slice(),
+    "vec3",
+  );
   const delays = new Float32Array(count);
   {
     let minX = Infinity;

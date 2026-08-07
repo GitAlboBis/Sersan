@@ -17,6 +17,14 @@
  *     fires over the element anyway).
  *   - gentle overshoot: a soft 1.03 scale pop with a back ease on engage,
  *     settling to rest on leave — reads as an elastic "lock-on".
+ *   - elastic release: letting go springs the shell home on ONE machined
+ *     elastic.out(1.05, 0.45) — a single ~5% overshoot with fast decay; spring
+ *     tension, not toy bounce (craft floor).
+ *   - two-layer feel: an optional `[data-magnetic-label]` descendant (give it
+ *     `inline-block will-change-transform`; must NOT carry a CSS transform
+ *     transition, which would smear the per-frame writes) counter-translates
+ *     35% of the shell offset, lagging like an inner mass. No hook child →
+ *     single-layer behaviour unchanged.
  *   - `data-cursor="link"`: cooperates with CustomCursor's hover states so the
  *     ring swells consistently over magnetic CTAs.
  */
@@ -57,8 +65,21 @@ export function Magnetic({
         return;
       }
 
-      const xTo = gsap.quickTo(el, "x", { duration: 0.45, ease: "power3.out" });
-      const yTo = gsap.quickTo(el, "y", { duration: 0.45, ease: "power3.out" });
+      // Two-layer hook, queried once: React keeps the span's identity across
+      // language swaps (only its text node changes), and dropdown-hosted
+      // magnets remount with their panel anyway.
+      const label = el.querySelector<HTMLElement>("[data-magnetic-label]");
+
+      // Chase tweens are REBUILT after every release: the elastic settle owns
+      // x/y once the magnet lets go, and a killed quickTo can't be revived by
+      // resetTo — so release kills the pair and mints fresh ones (one paused
+      // tween per axis, pointer-leave cadence: cheap).
+      const makeChase = (target: HTMLElement, prop: "x" | "y") =>
+        gsap.quickTo(target, prop, { duration: 0.45, ease: "power3.out" });
+      let xTo = makeChase(el, "x");
+      let yTo = makeChase(el, "y");
+      let lxTo = label ? makeChase(label, "x") : null;
+      let lyTo = label ? makeChase(label, "y") : null;
 
       // Prime the REAL scale components so GSAP records them; we animate
       // scaleX/scaleY (never the `scale` shorthand, which is not a resettable
@@ -66,18 +87,50 @@ export function Magnetic({
       gsap.set(el, { scaleX: 1, scaleY: 1 });
 
       let engaged = false;
+      let settle: gsap.core.Tween | null = null;
+      let labelSettle: gsap.core.Tween | null = null;
       const engage = () => {
         if (engaged) return;
         engaged = true;
+        // A still-running release settle would fight the chase for x/y/scale.
+        settle?.kill();
+        settle = null;
+        labelSettle?.kill();
+        labelSettle = null;
         // Soft elastic pop on lock-on (uniform 1.03 via both axes).
         gsap.to(el, { scaleX: 1.03, scaleY: 1.03, duration: 0.45, ease: "back.out(2.2)" });
       };
       const release = () => {
         if (!engaged) return;
         engaged = false;
-        xTo(0);
-        yTo(0);
-        gsap.to(el, { scaleX: 1, scaleY: 1, duration: 0.5, ease: "power3.out" });
+        // Machined spring-home: amplitude 1.05 / period 0.45 ≈ one ~5%
+        // overshoot, fast decay. The settle owns x/y/scale from here — the
+        // engage pop may still be mid-flight, so its scale channels die too.
+        xTo.tween.kill();
+        yTo.tween.kill();
+        xTo = makeChase(el, "x");
+        yTo = makeChase(el, "y");
+        gsap.killTweensOf(el, "scaleX,scaleY");
+        settle = gsap.to(el, {
+          x: 0,
+          y: 0,
+          scaleX: 1,
+          scaleY: 1,
+          duration: 0.6,
+          ease: "elastic.out(1.05, 0.45)",
+        });
+        if (label && lxTo && lyTo) {
+          lxTo.tween.kill();
+          lyTo.tween.kill();
+          lxTo = makeChase(label, "x");
+          lyTo = makeChase(label, "y");
+          labelSettle = gsap.to(label, {
+            x: 0,
+            y: 0,
+            duration: 0.6,
+            ease: "elastic.out(1.05, 0.45)",
+          });
+        }
       };
 
       const onMove = (e: PointerEvent) => {
@@ -107,6 +160,12 @@ export function Magnetic({
 
         xTo(dx * strength);
         yTo(dy * strength);
+        // Inner mass: the label counter-translates 35% of the shell offset —
+        // shell and label part ways slightly, a two-layer physical feel.
+        if (lxTo && lyTo) {
+          lxTo(dx * strength * -0.35);
+          lyTo(dy * strength * -0.35);
+        }
       };
       const onLeave = () => {
         release();
@@ -117,6 +176,15 @@ export function Magnetic({
       return () => {
         el.removeEventListener("pointermove", onMove);
         el.removeEventListener("pointerleave", onLeave);
+        // Handler-minted tweens live outside the useGSAP context — revert
+        // can't reach them, so kill by hand (a StrictMode remount would
+        // otherwise leave a stale settle fighting the next instance's chase).
+        settle?.kill();
+        labelSettle?.kill();
+        xTo.tween.kill();
+        yTo.tween.kill();
+        lxTo?.tween.kill();
+        lyTo?.tween.kill();
       };
     },
     { scope: ref, dependencies: [strength, radius] },

@@ -6,6 +6,7 @@ import { LanguageProvider } from "@/components/language-provider";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { SmoothScrollProvider } from "@/components/smooth-scroll-provider";
+import { ScrollSnapSections } from "@/components/scroll-snap-sections";
 import { SectionBus } from "@/components/section-bus";
 import { CanvasHost } from "@/webgl/CanvasHost";
 import { Preloader } from "@/components/fx/preloader";
@@ -14,6 +15,7 @@ import { HeadingChoreographer } from "@/components/fx/heading-choreographer";
 import { LabelScrambler } from "@/components/fx/label-scrambler";
 import { CustomCursor } from "@/components/fx/custom-cursor";
 import { FlipHandoffOverlay } from "@/components/fx/flip-handoff-overlay";
+import { CommandPalette } from "@/components/fx/command-palette";
 import { AudioTriggers } from "@/components/fx/audio-triggers";
 import { Analytics } from "@vercel/analytics/next";
 
@@ -223,6 +225,10 @@ export default function RootLayout({
                 useSectionStore. Lives OUTSIDE the Canvas so the bus works on
                 every tier, including "off". Renders nothing. */}
             <SectionBus />
+            {/* Site-wide scroll snap: registers [data-snap] sections on each
+                route into lib/scroll-snap (client request 2026-07-23 — every
+                section settles centered; hard flicks still lock on). */}
+            <ScrollSnapSections />
             <CardTiltController />
             <HeadingChoreographer />
             {/* Mono eyebrow/label decode-scramble — one delegated observer. */}
@@ -236,6 +242,9 @@ export default function RootLayout({
             {/* Procedural UI sounds (hover/click via delegated listeners +
                 AudioContext autoplay-gesture unlock). Renders nothing. */}
             <AudioTriggers />
+            {/* ⌘K / Ctrl+K quick-nav palette (fx/command-palette). Renders a
+                portal dialog on demand; nothing at rest. */}
+            <CommandPalette />
             <Navbar />
             {/* Content wrapper above the canvas (z-1). The canvas adds
                 light behind this layer; text stays DOM-crisp.

@@ -13,8 +13,10 @@ import { usePathname } from "next/navigation";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { acquireLenis, getLenis, releaseLenis } from "@/lib/lenis-singleton";
+import { attachSnap, detachSnap, suspendSnap } from "@/lib/scroll-snap";
 import { useScrollStore } from "@/webgl/store/scrollStore";
 import { useTextMorphStore } from "@/webgl/store/textMorphStore";
+import { useFoundersMorphStore } from "@/webgl/store/foundersMorphStore";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
@@ -87,6 +89,12 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
     const prev = prevPathRef.current;
     prevPathRef.current = pathname;
 
+    // Route swap: hold the snap engine while the reset scrollTo(0) + late
+    // layout (fonts, reveals, FLIP flights) settle — a pending settle armed
+    // by the outgoing page's last wheel must never fire into the new page.
+    const releaseSnap = suspendSnap();
+    const snapTimer = window.setTimeout(releaseSnap, 900);
+
     if (pathname === "/") {
       // Only on a genuine navigation INTO home (not the very first paint, not a
       // same-route phantom remount) — replay the particle intro from the start.
@@ -105,7 +113,10 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
           domReveal: 1,
         });
       }
-      return;
+      return () => {
+        window.clearTimeout(snapTimer);
+        releaseSnap();
+      };
     }
 
     // New routes start at the top; keep Lenis in sync with App Router's reset.
@@ -115,6 +126,8 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
     return () => {
       cancelAnimationFrame(raf);
       window.clearTimeout(timer);
+      window.clearTimeout(snapTimer);
+      releaseSnap();
     };
   }, [pathname]);
 
@@ -150,6 +163,28 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
     // Expose to window for nav anchor links + debugging.
     (window as unknown as { __lenis?: typeof lenis }).__lenis = lenis;
 
+    // Site-wide snap engine (lib/scroll-snap): sections register themselves
+    // (ScrollSnapSections + the runway components); the provider owns the
+    // lifecycle and holds it while any scroll-hijack gate is engaged — a
+    // debounced settle firing into a stopped/hijacked Lenis is at best lost,
+    // at worst trips a gate's safety valve.
+    attachSnap(lenis);
+    let releaseGateHold: (() => void) | null = null;
+    const syncGateHold = () => {
+      const engaged =
+        useTextMorphStore.getState().gateEngaged ||
+        useFoundersMorphStore.getState().gateEngaged;
+      if (engaged && !releaseGateHold) {
+        releaseGateHold = suspendSnap();
+      } else if (!engaged && releaseGateHold) {
+        releaseGateHold();
+        releaseGateHold = null;
+      }
+    };
+    const offGateA = useTextMorphStore.subscribe(syncGateHold);
+    const offGateB = useFoundersMorphStore.subscribe(syncGateHold);
+    syncGateHold();
+
     // Bridge Lenis → ScrollTrigger AND the WebGL scroll store. One source,
     // every consumer: GSAP reveals and shader uniforms share the exact same
     // smoothed progress. `on` returns an unsubscribe — keep it so the handler
@@ -173,6 +208,14 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
       const dest = document.querySelector(href);
       if (!dest) return;
       e.preventDefault();
+      // Hold the snap engine across the glide: a pending settle armed by the
+      // wheel before the click would otherwise re-pull the page off the
+      // anchor landing (worst on targets with no snap point of their own,
+      // e.g. #faq / #intake). Timeout backstop rather than onComplete alone —
+      // Lenis skips onComplete when the glide is interrupted; release is
+      // idempotent.
+      const releaseSnap = suspendSnap();
+      window.setTimeout(releaseSnap, 1100);
       lenis.scrollTo(dest as HTMLElement, { offset: -72 });
     };
     document.addEventListener("click", onClick);
@@ -195,6 +238,10 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
       window.clearTimeout(resizeId);
       window.removeEventListener("resize", onResize);
       document.removeEventListener("click", onClick);
+      offGateA();
+      offGateB();
+      releaseGateHold?.();
+      detachSnap();
       offScroll();
       delete (window as unknown as { __lenis?: unknown }).__lenis;
       // Exactly one release per acquire above. The singleton is refcounted and
