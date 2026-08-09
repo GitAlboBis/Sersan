@@ -45,56 +45,85 @@ import { useTierStore } from "@/webgl/store/tierStore";
  *      right — the world (tube/dust/hole) travels through frame at 1.0×,
  *      the DOM foreground at TRACK_RATE_FG (1.15×), far dust slower via
  *      DriftParticles' z-spread. You travel RIGHT through space from 05.
+ *      Since 2026-08-09 the traverse PLAYS ITSELF as the one-shot's first
+ *      segment on the forward path — the scrub owns it only on reverse
+ *      entry.
  *   3. The plunge is a triggered ONE-SHOT, not a scrub ("solo con uno
  *      scroll deve fare tutto... andando sempre più veloce da solo"). And
- *      the hole never fades — we ENTER it (see THE SHOT below).
+ *      the hole never fades — we ENTER it (see THE SHOT below). Owner
+ *      2026-08-09: the one-shot fires on the FIRST forward scroll of the
+ *      horizontal regime, the rightward pan plays BEFORE the warp, and the
+ *      hole stays dead-center at near-constant apparent size through the
+ *      whole light-speed effect — entry happens only at the end, slowly.
  *
  * THE SHOT:
  *   SCRUBBED (pure function of p — fully reversible):
  *     SETTLE   p 0–0.08   panel 05 rests frame-left; 2% pan pre-drift.
- *     TRACK    p 0.08–0.52 the horizontal passage: camera pans right
- *                          (SEQ_PAN_FRAC × worldViewWidth), the DOM track
- *                          translates −(1.15 × 55)vw ≈ −63vw carrying panel
- *                          05 off-left (opacity ramp 0.40–0.55 completes the
- *                          exit); a raymarched hole enters frame-right at
- *                          dist 16→12 (13.4→17.9vh) fading in LENSING-FIRST
- *                          (uFade 0→1 across 0.08–0.40) with the −0.08
- *                          yFrac high entrance. Tunnel created PARKED at
- *                          p 0.40.
- *     HOLD 1   p 0.52–0.62 rest at dist 12 — only the disc shimmers.
- *     APPROACH p 0.62–1    dist 12→2.6 exponential in the plungeEase-eased
- *                          sub-progress (apparent = 2.1445/dist, the
- *                          1/distance law; d≈6 micro-hold plateau baked into
- *                          the ease); star alpha 0.9→0.4; orbit swim fades
- *                          0.80–0.95 so p = 1 is the NEAR HOLD: hole
- *                          dead-center at dist 2.6 (~82.5vh), pre-plunge.
- *   ONE-SHOT (triggered timeline ≈ 3.2s, input locked, accelerating):
- *     TRIGGER  forward crossing of p 0.985 (one more scroll past the near
- *              hold) → Lenis stopped, wheel/touch consumed, snap suspended.
- *     SWALLOW  ~1.1s power2.in — dist 2.6→1.9: the hole KEEPS GROWING
- *              (>100vh apparent — no fade, we enter it) while the #000 veil
- *              (same black as the march's uRampCol3) closes to full frame;
- *              tunnel alpha rises, warp 2→30. Only under the FULLY BLACK
- *              frame is the march hidden (holeFade→0 — the swap is
- *              invisible; the viewer never sees the hole disappear).
- *     SPEED    ~1.0s — inside the black: warp →100 accelerating, streaks at
- *              full (tunnel z-40 paints OVER the veil z-38 — light falling
- *              toward the center ahead); the camera pan silently unwinds
- *              1→0 and the COVERT JUMP happens here: scrollTo(#problem,
- *              immediate) under total black — the user never sees a
- *              downward scroll.
- *     EMERGE   ~1.1s power2.out — the black opens, warp 100→8, streaks die,
- *              and the divario lands as a ZOOM-IN: [data-emerge] scales
- *              0.8→1 from the vanishing point to identity (transform-only).
- *              Lenis restarts at timeline end.
+ *                         Tunnel created PARKED at p 0.02 (calm beat).
+ *     TRIGGER  p 0.10     the FIRST forward scroll past SETTLE hands the
+ *                         shot to the one-shot — the forward SCROLL flow
+ *                         never scrubs past this window. p 0.10–1 (traverse
+ *                         → hold → approach, the beat map in seqStore.SEQ)
+ *                         remains pure-scrub territory for REVERSE ENTRY
+ *                         (and for single-tick native jumps past FIRE_MAX_P
+ *                         — see TRIGGER MECHANICS): scrolling UP from the
+ *                         divario lands on the p = 1 NEAR HOLD (hole
+ *                         dead-center at dist 2.6,
+ *                         ~82.5vh — the designed re-entry pose) and scrubs
+ *                         back through the beats from there.
+ *   ONE-SHOT (triggered timeline ≈ 6.9s, input locked, accelerating):
+ *     TRIGGER    forward crossing of p 0.10 (right after SETTLE) → Lenis
+ *                stopped, wheel/touch consumed, snap suspended.
+ *     TRAVERSE   ~1.7s power2.inOut — the pan the scrub used to own plays
+ *                as cinema: pan01 completes launch→1 (DOM track carries
+ *                panel 05 off-left, opacity ramp in segment-t 0.25–0.6),
+ *                the hole rides dist launch→12 (17.9vh) fading in
+ *                lensing-first to full, yFrac →0. Warp stays WARP_MIN,
+ *                veil untouched; the hole is exactly centered as the
+ *                tunnel's center lock completes (PLUNGE_LOCK_T ≈ end of
+ *                TRAVERSE).
+ *     LIGHTSPEED ~1.6s power2.in — the jump: warp 2→100, streaks rise to
+ *                0.85 (tunnel z-40 paints over the veil z-38), stars fall
+ *                0.9→0.4 — and the hole stays FULLY VISIBLE, DEAD-CENTER,
+ *                through the WHOLE warp at near-constant apparent size
+ *                (dist 12→10, 17.9→21.4vh — a barely-perceptible approach:
+ *                it reads as an enormous, distant body). No veil.
+ *     ENTER      ~1.8s power1.in — the viewer actually goes in: dist 10→1.9
+ *                SLOWLY (apparent crosses ~113vh); the #000 veil (same
+ *                black as the march's uRampCol3) completes coverage ONLY
+ *                in the tail (segment-t 0.55–1) — by dist ≈2 the hole's
+ *                own black core exceeds ~107vh, so the completion is
+ *                invisible (the color seam). Then, under the FULLY BLACK
+ *                frame: march hidden (holeFade→0 — the swap is invisible)
+ *                and the COVERT JUMP: scrollTo(#problem, immediate) — the
+ *                user never sees a downward scroll.
+ *     SPEED      ~0.7s — inside the black: streaks at full, warp holds
+ *                WARP_MAX; the camera pan silently unwinds 1→0.
+ *     EMERGE     ~1.1s power2.out — the black opens, warp 100→8, streaks
+ *                die, and the divario lands as a ZOOM-IN: [data-emerge]
+ *                scales 0.8→1 from the vanishing point to identity
+ *                (transform-only). Lenis restarts at timeline end.
  *   TRIGGER MECHANICS: fires only on a genuine forward crossing of
- *   TRIGGER_P (prev < 0.985 ≤ p, direction down — SPA landings prime `p`
- *   without firing). Esc or ≥120px of cumulative reverse-wheel during the
+ *   TRIGGER_P (prev < 0.10 ≤ p, direction down — SPA landings prime `p`
+ *   without firing), and only when the crossing tick lands at
+ *   p ≤ FIRE_MAX_P — a window wide enough to swallow a fast fling's
+ *   one-tick momentum jump through the TRACK band (the captured launch
+ *   state makes a deep launch safe), while a single-tick native jump (End
+ *   key, scrollbar click-jump, p ≈ 1) stays a scrub, never launching the
+ *   locked shot off-stage.
+ *   Esc or ≥120px of cumulative reverse-wheel during the
  *   one-shot SKIPS to the end state (never traps); any un-consumed scroll
- *   drift (keyboard) also skips. Re-arm hysteresis: after a played plunge
- *   the trigger re-arms only once p < REARM_P (0.6 — back above the
- *   approach zone). Re-entering from below lands on the near-hold state
- *   (compose(p≈1)) without ever replaying the one-shot backward.
+ *   drift (keyboard) also skips — after a young-shot GRACE (tl < 0.08)
+ *   that re-bases the drift anchor instead, absorbing the fire fling's
+ *   momentum/settle tail. Re-arm hysteresis: after a played plunge
+ *   the trigger re-arms only once p < REARM_P (0.05 — BELOW the trigger,
+ *   so a re-armed user can always produce the forward crossing again).
+ *   Re-entering from below lands on the near-hold state (compose(p≈1))
+ *   without ever replaying the one-shot backward; a forward exit past the
+ *   container end with NO shot in flight (a reverse entry that turned
+ *   around above REARM_P, or a jump past FIRE_MAX_P) is CLOSED by mainST's
+ *   onLeave — holeFade/pan01/DPR-cap reset, so the camera-locked hole can
+ *   never ride over the divario and the sections below.
  *
  * HOUSE SCROLL GRAMMAR (credibility-strip lineage): CSS sticky stage +
  * explicit container height (NO ScrollTrigger pin — a pin-spacer breaks
@@ -108,10 +137,11 @@ import { useTierStore } from "@/webgl/store/tierStore";
  * FALLBACK MATRIX (no tier loses section 05's content):
  *   desktop + fine + motion-ok            → the full sequence above; when
  *     the WebGPU march never goes live (seqStore.marchLive false) a
- *     pure-CSS hole imposter rides the SAME 1/d curve — including the
- *     one-shot swallow — and the REAL tunnel plunge still runs (raw WebGL1).
+ *     pure-CSS hole imposter rides the SAME 1/d curve — applyHoleVisuals
+ *     runs on every one-shot segment (traverse → lightspeed → enter) — and
+ *     the REAL tunnel plunge still runs (raw WebGL1).
  *   createPreloaderTunnel returns null    → graft 5: the veil carries the
- *     swallow alone — a dark plunge, never a dead cut.
+ *     entry alone — a dark plunge, never a dead cut.
  *   coarse pointer / <1024px + motion-ok  → panel 05 renders as a normal
  *     fully-readable VERTICAL section (CTAs work), then the ~180vh cheap
  *     beat: the CSS imposter scales along the same precomputed 1/d curve
@@ -574,7 +604,7 @@ export default function SingularityPassage() {
             const t = createPreloaderTunnel(cv, { tilt: false });
             if (!t) {
               host.removeChild(cv);
-              // Graft 5: no WebGL1 → the veil carries the swallow alone (a
+              // Graft 5: no WebGL1 → the veil carries the entry alone (a
               // dark plunge, never a dead cut).
               useSeqStore.setState({ tunnelNull: true });
               return;
@@ -666,8 +696,10 @@ export default function SingularityPassage() {
           };
 
           // ── compose(): the single SCRUB evaluator — every visual below is
-          // a pure function of p, so the traverse/approach reverse cleanly.
-          // Never runs while the one-shot owns the frame. ───────────────────
+          // a pure function of p, so the traverse/approach reverse cleanly
+          // (reverse-entry territory past TRIGGER_P). Never runs while the
+          // one-shot owns the frame, nor while parked past the end after a
+          // played plunge (mainST's parked-past-end guard). ─────────────────
           let p = 0;
           const compose = () => {
             const s = useSeqStore.getState();
@@ -702,9 +734,11 @@ export default function SingularityPassage() {
 
             applyHoleVisuals(dist, holeFade);
 
-            // Tunnel lifecycle bands (graft 6): create parked on the calm
-            // TRACK beat; warm renders (alpha 0) through late APPROACH so
-            // the one-shot's first hot frame never hitches; park on reverse.
+            // Tunnel lifecycle bands (graft 6): create parked during SETTLE
+            // (TUNNEL_CREATE_P 0.02 — the forward flow never scrubs past
+            // ~0.10, so this early park is what keeps the one-shot's first
+            // hot frame hitch-free); warm renders (alpha 0) through late
+            // APPROACH on reverse entry; park on reverse.
             if (s.armed && p >= SEQ.TUNNEL_CREATE_P) ensureTunnel();
             const wantRaf =
               !!tunnel && (s.tunnelAlpha > 0.001 || p >= SEQ.TUNNEL_WARM_P);
@@ -716,9 +750,11 @@ export default function SingularityPassage() {
 
           // ══════════════════════════════════════════════════════════════════
           // THE ONE-SHOT PLUNGE (owner 2026-08-07: one scroll triggers
-          // everything, it plays itself accelerating, arrival is a zoom-in).
+          // everything, it plays itself accelerating, arrival is a zoom-in;
+          // owner 2026-08-09: it fires on the FIRST forward scroll after
+          // SETTLE and now owns the traverse + light-speed + slow entry).
           // Deliberate owner-requested exception to the no-hijack rule —
-          // input locked ONLY for the ~3.2s timeline, always skippable.
+          // input locked ONLY for the ~6.9s timeline, always skippable.
           // ══════════════════════════════════════════════════════════════════
           let plungeActive = false;
           let plungePlayed = false;
@@ -767,6 +803,17 @@ export default function SingularityPassage() {
             if (pulseAlpha) pulseAlpha(0);
             if (imposterSet) imposterSet({ opacity: 0 });
             if (emergeSet) emergeSet({ x: 0, y: 0, scale: 1 });
+            // Panel 05's end pose (the traverse's own terminal state): the
+            // shot fires at p ≈ 0.10 with the panel fully LIT, so an early
+            // skip (Esc / reverse wheel / drift before segment-t ≈ 0.43)
+            // would otherwise park the offscreen panel pointer-interactive
+            // and in the a11y tree behind the arrived divario — the
+            // parked-past-end guard blocks the compose tick that used to
+            // repair it, and a Shift-Tab from the divario would focus the
+            // stale CTA and let native focus-scroll yank the page back up.
+            trackX(-SEQ.TRACK_RATE_FG * SEQ_PAN_FRAC * vw);
+            panelAlpha(0);
+            setPanelInteractive(false);
             stopRaf();
             setCap(false);
             removePlungeListeners();
@@ -847,24 +894,32 @@ export default function SingularityPassage() {
             window.clearTimeout(snapHoldTimer);
             releaseSnapHold ??= suspendSnap();
             getLenis()?.stop();
-            // A fast fling can overshoot past p = 1 (sticky release) before
-            // this tick lands — align the frame to the exact release
-            // position so the shot always starts on a full stage.
-            const endY = mainST.end;
-            if (Math.abs(window.scrollY - endY) > 2) {
-              const lenis = getLenis();
-              if (lenis) lenis.scrollTo(endY, { immediate: true, force: true });
-              else window.scrollTo(0, endY);
-            }
-            anchorY = endY;
+            // The shot launches from wherever the trigger tick found the
+            // page (p ≈ 0.10 — the sticky stage holds the frame regardless):
+            // NO scrollTo alignment here. Teleporting to mainST.end would be
+            // a ~270vh jump and SignatureLine's damped camera-Y chase would
+            // visibly slide the whole world down through the traverse. The
+            // current scrollY is simply the drift-guard base.
+            anchorY = window.scrollY;
             addPlungeListeners();
             ensureTunnel();
             startRaf(); // streaks must be alive when their alpha rises
             setCap(true); // the brief fullscreen-march burst (graft 4 pair)
 
+            // Launch state, captured ONCE: the traverse tweens FROM the
+            // exact scrubbed pose at the trigger tick (pan ≈ 0.02-drift,
+            // dist ≈ 16, fade ≈ lensing ramp start, yFrac ≈ −0.08).
+            const s0 = useSeqStore.getState();
+            const pan0 = s0.pan01;
+            const dist0 = s0.dist;
+            const fade0 = s0.holeFade;
+            const y0 = s0.holeYFrac;
+
             // Segment proxies — each tween's ease bakes the acceleration
             // into .t, so the apply functions stay pure in t.
-            const swallow = { t: 0 };
+            const traverse = { t: 0 };
+            const lightspeed = { t: 0 };
+            const enter = { t: 0 };
             const speed = { t: 0 };
             const emerge = { t: 0 };
             const tunnelNull = () => useSeqStore.getState().tunnelNull;
@@ -877,31 +932,95 @@ export default function SingularityPassage() {
 
             // Every tick: publish overall progress (island center-lock ramp)
             // + the un-consumed-drift guard (keyboard scroll etc. → skip,
-            // never fight the user).
+            // never fight the user). While the shot is YOUNG (tl < 0.08,
+            // the first ~0.55s) the guard is a momentum-tail absorber
+            // instead: the fire tick can leave a residual Lenis momentum/
+            // settle tail that lands right after startPlunge captured
+            // anchorY, and skipping there would kill the shot the user just
+            // earned — so drift RE-BASES the anchor. Past the grace, drift
+            // means the USER moved the page → skip, exactly as before. (The
+            // covert jump later re-bases anchorY itself.)
             tl.eventCallback("onUpdate", () => {
-              useSeqStore.setState({ plungeT: tl.progress() });
-              if (Math.abs(window.scrollY - anchorY) > 12) skipPlunge();
+              const prog = tl.progress();
+              useSeqStore.setState({ plungeT: prog });
+              if (Math.abs(window.scrollY - anchorY) > 12) {
+                if (prog < 0.08) anchorY = window.scrollY;
+                else skipPlunge();
+              }
             });
 
-            // A — SWALLOW: we ENTER the hole. dist NEAR→FLOOR accelerating,
-            // apparent size through ~113vh, veil (#000, the march's own
-            // core black) closes to full frame OVER the still-visible march.
-            tl.to(swallow, {
+            // T — TRAVERSE: the horizontal passage plays itself. Pan
+            // completes launch→1 (world + DOM track in the scrub's exact
+            // parallax grammar), the hole rides dist launch→DIST_MID fading
+            // in lensing-first to full, yFrac eases to 0, panel 05 tracks
+            // off-left. Warp stays WARP_MIN, tunnelAlpha 0, veil untouched.
+            tl.to(traverse, {
               t: 1,
-              duration: SEQ.PLUNGE_SWALLOW_S,
+              duration: SEQ.PLUNGE_TRAVERSE_S,
+              ease: "power2.inOut",
+              onUpdate: () => {
+                const t = traverse.t;
+                const pan = pan0 + (1 - pan0) * t;
+                const dist = dist0 * Math.pow(SEQ.DIST_MID / dist0, t);
+                const holeFade = Math.max(fade0, seqRamp(t, 0, 0.7));
+                useSeqStore.setState({
+                  pan01: pan,
+                  dist,
+                  holeFade,
+                  holeYFrac: y0 * (1 - t),
+                  starAlpha: SEQ.STAR_HI, // stars stay HI until the warp
+                });
+                trackX(-SEQ.TRACK_RATE_FG * SEQ_PAN_FRAC * vw * pan);
+                const panelA = 1 - seqSmooth(t, 0.25, 0.6);
+                panelAlpha(panelA);
+                setPanelInteractive(panelA > PANEL_LIT_MIN);
+                applyHoleVisuals(dist, holeFade);
+              },
+            });
+
+            // L — LIGHT-SPEED: the jump. Warp MIN→MAX, streaks rise, stars
+            // fall — and THE HOLE REMAINS FULLY VISIBLE, DEAD-CENTER,
+            // THROUGH THE WHOLE WARP (the core owner note): dist
+            // DIST_MID→DIST_LS_END is a barely-perceptible approach
+            // (17.9→21.4vh) so it reads as an enormous, distant body.
+            // holeFade stays 1; veil stays 0.
+            tl.to(lightspeed, {
+              t: 1,
+              duration: SEQ.PLUNGE_LIGHTSPEED_S,
               ease: "power2.in",
               onUpdate: () => {
-                const t = swallow.t;
+                const t = lightspeed.t;
                 const dist =
-                  SEQ.DIST_NEAR *
-                  Math.pow(SEQ.DIST_FLOOR / SEQ.DIST_NEAR, t);
+                  SEQ.DIST_MID * Math.pow(SEQ.DIST_LS_END / SEQ.DIST_MID, t);
                 useSeqStore.setState({
                   dist,
-                  warp:
-                    SEQ.WARP_MIN + (SEQ.WARP_SWALLOW - SEQ.WARP_MIN) * t,
-                  tunnelAlpha: tunnelNull() ? 0 : 0.55 * t,
+                  warp: SEQ.WARP_MIN + (SEQ.WARP_MAX - SEQ.WARP_MIN) * t,
+                  tunnelAlpha: tunnelNull() ? 0 : 0.85 * t,
+                  starAlpha:
+                    SEQ.STAR_HI + (SEQ.STAR_LO - SEQ.STAR_HI) * t,
                 });
-                veilSet({ opacity: t, scale: 0.5 + 1.8 * t });
+                applyHoleVisuals(dist, 1); // NO fade — full presence
+              },
+            });
+
+            // E — ENTER: the slow final approach — dist DIST_LS_END→FLOOR,
+            // apparent size through ~113vh. The #000 veil (the march's own
+            // core black) completes coverage ONLY in the tail (t 0.55–1):
+            // by dist ≈2 the hole's own black core exceeds ~107vh, so the
+            // completion is invisible (the color-seam trick, unchanged).
+            // Warp holds WARP_MAX, tunnelAlpha holds.
+            tl.to(enter, {
+              t: 1,
+              duration: SEQ.PLUNGE_ENTER_S,
+              ease: "power1.in",
+              onUpdate: () => {
+                const t = enter.t;
+                const dist =
+                  SEQ.DIST_LS_END *
+                  Math.pow(SEQ.DIST_FLOOR / SEQ.DIST_LS_END, t);
+                useSeqStore.setState({ dist });
+                const v = seqRamp(t, 0.55, 1);
+                veilSet({ opacity: v, scale: 0.5 + 1.8 * v });
                 applyHoleVisuals(dist, 1); // NO fade — full presence
               },
             });
@@ -909,7 +1028,10 @@ export default function SingularityPassage() {
             // The frame is now fully black: hide the march invisibly (the
             // viewer must never SEE it disappear — it swallowed them),
             // release the island DPR cap (burst over), and make the covert
-            // jump to the divario under cover.
+            // jump to the divario under cover. ORDERING REQUIRED: this call
+            // runs while plungeActive is still TRUE, so the ScrollTrigger
+            // tick the jump causes (p → 1) can never run compose() and
+            // repaint scrub state over the black frame.
             tl.call(() => {
               useSeqStore.setState({ holeFade: 0 });
               if (imposterSet) imposterSet({ opacity: 0 });
@@ -917,9 +1039,9 @@ export default function SingularityPassage() {
               covertJump();
             });
 
-            // B — PURE SPEED: inside the black, light falling toward the
-            // center ahead. Warp →100 accelerating; the camera pan silently
-            // unwinds beneath the covered frame.
+            // S — PURE SPEED: inside the black, light falling toward the
+            // center ahead. Warp holds WARP_MAX, streaks reach full; the
+            // camera pan silently unwinds beneath the covered frame.
             tl.to(speed, {
               t: 1,
               duration: SEQ.PLUNGE_SPEED_S,
@@ -928,9 +1050,8 @@ export default function SingularityPassage() {
                 const t = speed.t;
                 const e = t * t * (3 - 2 * t);
                 useSeqStore.setState({
-                  warp:
-                    SEQ.WARP_SWALLOW + (SEQ.WARP_MAX - SEQ.WARP_SWALLOW) * t,
-                  tunnelAlpha: tunnelNull() ? 0 : 0.55 + 0.45 * t,
+                  warp: SEQ.WARP_MAX,
+                  tunnelAlpha: tunnelNull() ? 0 : 0.85 + 0.15 * t,
                   pan01: 1 - e,
                 });
                 if (pulseAlpha) {
@@ -939,7 +1060,7 @@ export default function SingularityPassage() {
               },
             });
 
-            // C — EMERGENCE: the black opens, the streaks die, and the
+            // M — EMERGENCE: the black opens, the streaks die, and the
             // divario lands as a ZOOM-IN from the vanishing point
             // (transform-only; doc-position cached on refresh, viewport
             // position derived from scrollY — no rect reads here).
@@ -980,8 +1101,7 @@ export default function SingularityPassage() {
           // the one-shot's arm/trigger/re-arm clock. `primed` gates the
           // trigger logic until the prime block below has latched the real
           // landing progress (create/refresh can fire onUpdate synchronously
-          // — an SPA landing past the trigger must never fire the plunge,
-          // and `mainST` must exist before startPlunge dereferences it). ───
+          // — an SPA landing past the trigger must never fire the plunge). ──
           let primed = false;
           const mainST = ScrollTrigger.create({
             trigger: root,
@@ -992,27 +1112,78 @@ export default function SingularityPassage() {
             onUpdate: (self) => {
               const prev = p;
               p = self.progress;
-              if (!plungeActive) compose();
+              // Parked-past-end guard: the covert jump moves this trigger's
+              // progress from ~0.10 to 1. On the SKIP path that scroll event
+              // lands asynchronously AFTER finishPlunge set plungeActive =
+              // false, and an unguarded compose(p = 1) would rewrite
+              // pan01 = 1 / dist = 2.6 / holeFade = 1 — the hole and the
+              // panned world reappearing behind the arrived divario. Reverse
+              // entry still works: the first genuine up-scroll tick has
+              // p < 0.9995 (and plungePlayed re-arms below REARM_P).
+              if (!plungeActive && !(plungePlayed && p >= 0.9995)) compose();
               if (!primed) return;
-              // Re-arm hysteresis: only after scrolling back ABOVE the
-              // approach zone may the one-shot fire again.
+              // Re-arm hysteresis: only back inside SETTLE (p < REARM_P,
+              // 0.05 — BELOW the trigger, so the forward crossing prev <
+              // TRIGGER ≤ p is always reproducible) may it fire again.
               if (plungePlayed && p < SEQ.REARM_P) plungePlayed = false;
               // Fire on a genuine forward CROSSING of the trigger (never on
-              // SPA-landing primes — `prev` starts at the primed progress).
+              // SPA-landing primes — `prev` starts at the primed progress),
+              // and only when the tick lands inside the launch window
+              // (≤ FIRE_MAX_P — wide enough that a fast fling's one-tick
+              // momentum jump still fires; startPlunge's captured launch
+              // state adapts the TRAVERSE to the deeper pose): a single-tick
+              // native jump — End key, scrollbar click-jump, p ≈ 1 — must
+              // not launch the 6.9s locked shot off-stage (the onLeave
+              // close below tidies the map if the jump overshoots the
+              // container).
               if (
                 !plungeActive &&
                 !plungePlayed &&
                 self.direction === 1 &&
                 prev < SEQ.TRIGGER_P &&
-                p >= SEQ.TRIGGER_P
+                p >= SEQ.TRIGGER_P &&
+                p <= SEQ.FIRE_MAX_P
               ) {
                 startPlunge();
               }
             },
+            onLeave: () => {
+              // Forward exit past the container end with NO shot in flight:
+              // a reverse-entry visitor who turned around above REARM_P (the
+              // trigger never re-armed) scrubs the beat map forward and
+              // walks out the bottom — without this close the near-hold
+              // state (holeFade 1 / dist ≈ 2.6 / pan01 1) would strand: the
+              // camera-locked hole would ride the viewport over the divario
+              // and every section below until bandST disposes the island,
+              // the world would stay panned 0.55× view-width, and the DPR
+              // cap would stay latched. Mirrors finishPlunge's terminal
+              // store write (idempotent with the skip path's async past-end
+              // tick); the one-frame close lands exactly on the section
+              // boundary, with the divario already entering the frame. The
+              // plungeActive guard keeps the mid-shot covert jump (which
+              // crosses this same edge) in the timeline's hands, and the
+              // plungePlayed latch arms the parked-past-end guard against
+              // stray refresh ticks at p = 1 (re-arms below REARM_P).
+              if (plungeActive) return;
+              plungePlayed = true;
+              useSeqStore.setState({
+                plungeT: 0,
+                dist: SEQ.DIST_FLOOR,
+                holeFade: 0,
+                tunnelAlpha: 0,
+                warp: SEQ.WARP_MIN,
+                pan01: 0,
+              });
+              if (imposterSet) imposterSet({ opacity: 0 });
+              stopRaf();
+              setCap(false);
+            },
           });
 
-          // ── Approach/leave band: arms the island build (compileAsync warm
-          // during SpineExitGate's locked beat, one viewport early) and
+          // ── Approach/leave band: arms the island build one viewport early
+          // (the compileAsync warm happens during plain scrolling — the
+          // SpineExitGate locked beat that used to cover this window was
+          // removed 2026-08-09; see the island's late-resolve seeding) and
           // hard-disposes tunnel + build ~250vh past the passage or back
           // above the spine end — init on approach, destroy on leave ───────
           const bandST = ScrollTrigger.create({
@@ -1031,7 +1202,23 @@ export default function SingularityPassage() {
           cache();
           p = mainST.progress;
           primed = true;
-          compose();
+          // Prime the visuals — EXCEPT when the fresh closure lands parked
+          // past the end (language-toggle remount at the divario, scroll-
+          // restored landing): plungePlayed starts false here, so the
+          // parked-past-end guard can't block this pass, and an
+          // unconditional compose(p ≈ 1) would repaint the near-hold hole +
+          // pan + DPR cap behind the arrived divario. Latch plungePlayed
+          // (the fonts-ready refresh re-ticks at p = 1) and park panel 05's
+          // end pose instead; reverse entry composes normally from its
+          // first genuine up-scroll tick.
+          if (p >= 0.9995) {
+            plungePlayed = true;
+            trackX(-SEQ.TRACK_RATE_FG * SEQ_PAN_FRAC * vw);
+            panelAlpha(0);
+            setPanelInteractive(false);
+          } else {
+            compose();
+          }
           let fontsCancelled = false;
           document.fonts?.ready
             .then(() => {

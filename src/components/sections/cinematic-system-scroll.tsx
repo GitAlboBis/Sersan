@@ -19,8 +19,10 @@
  * Text panels are absolutely positioned over the scene and fade in/out
  * across their group range, with a small lead-in/lead-out. The site-wide
  * snap engine (lib/scroll-snap) settles wheel flicks onto each grouped
- * panel's MIDPOINT (plus progress 0), never 1 — SpineExitGate owns the pin
- * end and a barrier vetoes settles crossing it.
+ * panel's MIDPOINT (plus progress 0), never 1 — a barrier at the pin end
+ * vetoes settles crossing into the handoff, so leaving the spine is always
+ * the visitor's own scroll (owner 2026-08-09: no scripted camera descent,
+ * no page lock at the pin end — the passage owns the only camera move).
  *
  * Mobile (≤768px) returns to a normal stacked layout — no pin, no Canvas —
  * iterating the UNGROUPED 5 copy blocks (compression is desktop-only).
@@ -37,8 +39,7 @@ import { HeroHoverLayer } from "@/components/hero-hover-layer";
 import { HeroIntroGate } from "@/components/fx/hero-intro-gate";
 import { useLanguage } from "@/components/language-provider";
 import { useTextMorphStore } from "@/webgl/store/textMorphStore";
-import { getLenis } from "@/lib/lenis-singleton";
-import { snapPoint, snapBarrier, suspendSnap } from "@/lib/scroll-snap";
+import { snapPoint, snapBarrier } from "@/lib/scroll-snap";
 import type { Language } from "@/data/translations/types";
 import { START_HREF } from "@/lib/site";
 import { SPINE_HEIGHT_VH } from "@/lib/spine";
@@ -196,8 +197,8 @@ function localizeStages(language: Language): Stage[] {
 // scrolling), map 81.7vh, ship 75.3vh — each group's REAL scroll length is
 // unchanged from the 4-group layout; only the handover share was removed
 // with its panel. The ship group is final: it stays lit at the pin end so
-// SpineExitGate's camera-descent dives on a composed frame, and the visitor
-// lands on section 05 (the passage's panel 1) right after.
+// the sticky stage scrolls away as a composed frame, and the visitor scrolls
+// naturally into section 05 (the passage's panel 1) right after.
 type StageGroup = {
   id: string;
   /** Spine-ScrollTrigger progress where this panel's lit window starts. */
@@ -217,9 +218,10 @@ const DESKTOP_GROUPS: StageGroup[] = [
 // Snap stations (2026-07-23 hardening — client: every scroll must come to
 // rest ON a beat): the MIDPOINT of every grouped panel's range — maximal
 // margin from both crossfade edges, so a settle always rests on a fully-lit
-// panel. Never 1 (SpineExitGate owns the pin end; a station there would
-// double-trigger the camera-descent beat — a barrier below vetoes any settle
-// crossing it). Progress 0 is registered separately as the "back to hero"
+// panel. Never 1 (the pin end is the handoff into the singularity passage;
+// a station there would park the visitor astride the seam — a barrier below
+// vetoes any settle crossing it, so leaving the spine is always a deliberate
+// user scroll). Progress 0 is registered separately as the "back to hero"
 // station: a park at the very top is stable (the intro gate only re-engages
 // on a further UP-wheel at y≈0, never on the settle itself).
 const SNAP_STATION_PROGRESS = DESKTOP_GROUPS.map((g) => (g.start + g.end) / 2);
@@ -723,7 +725,6 @@ export default function CinematicSystemScroll() {
   const stages = localizeStages(language);
   const copy = SPINE_COPY[language];
   const outerRef = useRef<HTMLDivElement | null>(null);
-  const stageRef = useRef<HTMLDivElement | null>(null);
   const leftScrimRef = useRef<HTMLDivElement | null>(null);
   const radialScrimRef = useRef<HTMLDivElement | null>(null);
   const progressRef = useRef<number>(0);
@@ -816,12 +817,13 @@ export default function CinematicSystemScroll() {
     // Value-based getters measured LIVE at snap time, so no re-registration
     // cadence is needed: one per grouped-panel midpoint + progress 0 (the
     // "back to hero" park). The engine triggers only on user wheel input, so
-    // the intro/exit gates — which consume wheel at capture before Lenis —
-    // keep it naturally quiet while engaged (the provider also hard-suspends
+    // the intro gate — which consumes wheel at capture before Lenis —
+    // keeps it naturally quiet while engaged (the provider also hard-suspends
     // it on gateEngaged). The barrier at the pin end vetoes any settle that
-    // would animate across SpineExitGate's crossing detector and trigger the
-    // camera-descent beat un-asked. Reduced motion never creates Lenis, so
-    // no snap exists on that path by construction.
+    // would auto-glide the page across the handoff into the singularity
+    // passage un-asked — leaving the spine stays the visitor's own scroll.
+    // Reduced motion never creates Lenis, so no snap exists on that path by
+    // construction.
     const stationAt = (p: number) => () => {
       const ih = window.innerHeight;
       const base = outer.getBoundingClientRect().top + window.scrollY;
@@ -920,24 +922,7 @@ export default function CinematicSystemScroll() {
           poster image is rendered here. During the brief cold-load gap before
           the canvas paints its first frame the hero is simply the dark brand
           background + the radial washes below + the SSR'd text. */}
-      <div
-        ref={stageRef}
-        className="sticky top-0 h-screen overflow-hidden"
-      >
-        {/* Vignette gradient at bottom. Kept to the lower ~45% so it darkens
-            the hex pedestal at the base of the orb (it fades into black as an
-            intentional plinth instead of reading as a stray metallic block)
-            WITHOUT swallowing the now-centered orb, whose glow sits above this
-            band. */}
-        <div
-          aria-hidden="true"
-          className="absolute inset-x-0 bottom-0 h-[45%] pointer-events-none"
-          style={{
-            background:
-              "linear-gradient(to top, hsl(var(--bg)) 0%, hsl(var(--bg) / 0.92) 24%, hsl(var(--bg) / 0.5) 58%, transparent 100%)",
-          }}
-        />
-
+      <div className="sticky top-0 h-screen overflow-hidden">
         {/* Left-side horizontal gradient — pushes the text panel's
             readability up by darkening the planet/nebula behind it on
             the left third of the viewport. Strongest near the left edge
@@ -1022,8 +1007,8 @@ export default function CinematicSystemScroll() {
 
         {/* Grouped stage panels stacked, each fades in during its range.
             The hero group (index 0) is the page H1; the final (ship) group
-            stays lit at the pin end so SpineExitGate dives on a composed
-            frame into section 05 (the passage's panel 1). */}
+            stays lit at the pin end so the sticky stage scrolls away as a
+            composed frame into section 05 (the passage's panel 1). */}
         {DESKTOP_GROUPS.map((group, i) => (
           <StagePanel
             key={group.id}
@@ -1059,220 +1044,16 @@ export default function CinematicSystemScroll() {
             they are hidden. */}
         <HeroIntroGate skipLabel={copy.skipIntro} />
 
-        {/* The 3D camera-descent hand-off at the END of the spine (after
-            stage 04) — locks the page once more and dives the WebGL camera
-            AND the pinned DOM stage into section 05 (the passage). */}
-        <SpineExitGate outerRef={outerRef} stageRef={stageRef} />
+        {/* (Removed 2026-08-09, owner: the SpineExitGate camera-descent beat.
+            It locked the page at the pin end and played a scripted one-viewport
+            3D dive + DOM stage sweep-up into section 05, which read as a
+            slide-up. Scrolling past the pin end is now plain scrolling; the
+            SingularityPassage owns the only scripted camera move in the
+            handoff — its rightward pan. The textMorphStore tilt fields
+            (camTilt/tiltDone/tiltAnchorY/camDescend) stay: nothing drives them
+            now, so their consumers degrade to no-ops at 0/false.) */}
       </div>
     </section>
   );
-}
-
-// === Spine exit gate: the 3D camera-descent beat ==========================
-// At the END of the pinned spine (stage 04 "operate" fully read), one more
-// scroll hijacks the page a final time: the WebGL camera plays the immersive
-// "head looks down" descent (textMorphStore.camTilt clock, applied by
-// SignatureLine: monotonic ~1-viewport dive, pitch follows velocity) that
-// carries the visitor into the rest of the site, then the page releases.
-// Scrolling back up to the spine end replays it in reverse (the camera
-// rises, head looks up). Time-driven like the intro beats — scroll only
-// triggers and flips direction.
-function SpineExitGate({
-  outerRef,
-  stageRef,
-}: {
-  outerRef: React.RefObject<HTMLDivElement | null>;
-  stageRef: React.RefObject<HTMLDivElement | null>;
-}) {
-  useEffect(() => {
-    let engaged = false;
-    let target: 0 | 1 = 1;
-    let raf = 0;
-    let lastY = window.scrollY;
-    let lastBottom = Number.NaN;
-    let lastTilt = -1;
-    let touchY: number | null = null;
-    let prev = performance.now();
-    // Snap-engine hold: this gate never sets gateEngaged (the provider's
-    // suspend key), so it manages its own suspension — engage → hold; the
-    // hold outlives release() by ~1.2s so the landing glide (scrollTo below)
-    // can never be retargeted by a settle armed mid-beat.
-    let releaseSnapHold: (() => void) | null = null;
-    let snapHoldTimer = 0;
-
-    const release = () => {
-      if (!engaged) return;
-      engaged = false;
-      // FIX A3: drop any queued shake kicks with the lock — the user is
-      // usually still turning the wheel when the beat completes, and a
-      // pending gateKick would keep SignatureLine's under-damped camera
-      // spring oscillating right over the landing hand-off.
-      useTextMorphStore.setState({ gateKick: 0 });
-      getLenis()?.start();
-      window.clearTimeout(snapHoldTimer);
-      snapHoldTimer = window.setTimeout(() => {
-        releaseSnapHold?.();
-        releaseSnapHold = null;
-      }, 1200);
-    };
-    const engage = (dir: 0 | 1) => {
-      engaged = true;
-      target = dir;
-      window.clearTimeout(snapHoldTimer);
-      releaseSnapHold ??= suspendSnap();
-      useTextMorphStore.setState({ tiltAnchorY: window.scrollY });
-      getLenis()?.stop();
-    };
-
-    // While engaged: consume the gesture (page locked), feed the camera
-    // shake, and let the gesture direction steer the beat (down → dive,
-    // up → rise) so it stays fully reversible mid-flight.
-    const consume = (deltaPx: number, e: Event) => {
-      if (!engaged) return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      target = deltaPx > 0 ? 1 : 0;
-      useTextMorphStore.setState({
-        gateKick: useTextMorphStore.getState().gateKick + deltaPx,
-      });
-    };
-    const onWheel = (e: WheelEvent) => {
-      const s = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 120 : 1;
-      consume(e.deltaY * s, e);
-    };
-    const onTouchStart = (e: TouchEvent) => {
-      touchY = e.touches[0]?.clientY ?? null;
-    };
-    const onTouchMove = (e: TouchEvent) => {
-      if (touchY == null) return;
-      const y = e.touches[0]?.clientY ?? touchY;
-      consume((touchY - y) * 2.2, e);
-      touchY = y;
-    };
-
-    const tick = () => {
-      const now = performance.now();
-      const dt = Math.min((now - prev) / 1000, 1 / 30);
-      prev = now;
-      const outer = outerRef.current;
-      if (outer) {
-        const ih = window.innerHeight;
-        const rect = outer.getBoundingClientRect();
-        const y = window.scrollY;
-        const st = useTextMorphStore.getState();
-        if (!engaged) {
-          // Engage ONLY on a plausible-speed CROSSING of the pin-end
-          // boundary (smooth scrolling, < ~300px/frame) — never on mere
-          // presence past it, and never on anchor-jump teleports, which
-          // would otherwise yank the user back to the spine end.
-          const crossedDown =
-            Number.isFinite(lastBottom) &&
-            lastBottom > ih + 2 &&
-            rect.bottom <= ih + 2 &&
-            lastBottom - rect.bottom < 300;
-          const crossedUp =
-            Number.isFinite(lastBottom) &&
-            lastBottom < ih - 2 &&
-            rect.bottom >= ih - 2 &&
-            rect.bottom - lastBottom < 300;
-          if (!st.tiltDone && y > lastY && crossedDown) {
-            window.scrollBy(0, rect.bottom - ih); // align exactly at pin end
-            engage(1);
-          } else if (st.tiltDone && y < lastY && crossedUp) {
-            window.scrollBy(0, rect.bottom - ih);
-            engage(0);
-          }
-        } else {
-          // Re-assert the Lenis stop every engaged frame (route code or the
-          // intro gate could have restarted it).
-          getLenis()?.stop();
-          const cur = st.camTilt;
-          if (cur !== target) {
-            const dir = target > cur ? 1 : -1;
-            const next = Math.min(1, Math.max(0, cur + (dir * dt) / 1.8));
-            useTextMorphStore.setState({ camTilt: next });
-            if (next >= 1) {
-              useTextMorphStore.setState({ tiltDone: true });
-              release();
-              // Land the dive: glide the page one viewport down so the next
-              // section arrives exactly as the camera move completes — the
-              // beat genuinely CARRIES the visitor into the rest of the
-              // site instead of dropping them on an empty frame.
-              // FIX A3 — the glide must be C1 at BOTH ends of the hand-off:
-              // the camera just eased to ZERO velocity (smoothstep'(1) = 0),
-              // but the singleton's default out-expo easing starts at max
-              // slope — a standstill→max-velocity kick in one frame. An
-              // easeInOutCubic starts AND ends at zero slope, matching the
-              // dive on entry and SignatureLine's one-viewport smoothstep
-              // unwind on exit (desc hits 0 exactly as the glide lands).
-              // lock: true keeps a mid-flight wheel notch from interrupting
-              // or re-targeting the landing (the rubber-band).
-              const lenis = getLenis();
-              const dest = window.scrollY + ih;
-              if (lenis) {
-                lenis.scrollTo(dest, {
-                  duration: 1.05,
-                  lock: true,
-                  easing: (t: number) =>
-                    t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
-                });
-              } else {
-                window.scrollTo({ top: dest, behavior: "smooth" });
-              }
-            } else if (next <= 0) {
-              useTextMorphStore.setState({ tiltDone: false });
-              release();
-            }
-          }
-          // Safety valve: if the page somehow moved while engaged
-          // (keyboard, anchor jump), hand control back immediately.
-          if (Math.abs(window.scrollY - st.tiltAnchorY) > 12) release();
-        }
-        // Immersive DOM sweep: the pinned stage content (stage-05 texts,
-        // rail, scrims) rides the SAME move as the WebGL camera — sweeping
-        // up and softly dimming as the head dives, returning on the reverse
-        // beat. Without this the locked DOM sat still and the dive read as
-        // fake (user 2026-06-10).
-        const tilt = useTextMorphStore.getState().camTilt;
-        if (tilt !== lastTilt) {
-          lastTilt = tilt;
-          const stage = stageRef.current;
-          if (stage) {
-            const e = tilt * tilt * (3 - 2 * tilt);
-            stage.style.transform = `translate3d(0, ${(-e * ih * 0.85).toFixed(1)}px, 0)`;
-            stage.style.opacity = String(1 - 0.45 * e);
-          }
-        }
-        lastY = y;
-        lastBottom = rect.bottom;
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-
-    window.addEventListener("wheel", onWheel, { passive: false, capture: true });
-    window.addEventListener("touchstart", onTouchStart, { passive: true });
-    window.addEventListener("touchmove", onTouchMove, {
-      passive: false,
-      capture: true,
-    });
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("wheel", onWheel, { capture: true });
-      window.removeEventListener("touchstart", onTouchStart);
-      window.removeEventListener("touchmove", onTouchMove, { capture: true });
-      const stage = stageRef.current;
-      if (stage) {
-        stage.style.transform = "";
-        stage.style.opacity = "";
-      }
-      release();
-      window.clearTimeout(snapHoldTimer);
-      releaseSnapHold?.();
-      releaseSnapHold = null;
-    };
-  }, [outerRef, stageRef]);
-
-  return null;
 }
 

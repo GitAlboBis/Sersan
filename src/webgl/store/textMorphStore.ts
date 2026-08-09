@@ -88,9 +88,11 @@ interface TextMorphState {
   camTilt: number;
   /**
    * Document scrollY (px) where the camera-descent beat anchored — the end
-   * of the cinematic spine where SpineExitGate engaged. SignatureLine eases
-   * the descent offset out by |scroll − anchor| so the camera↔document
-   * mapping is restored within ~1.5 viewports on either side of the beat.
+   * of the cinematic spine where the exit gate engaged. The writer
+   * (SpineExitGate) was removed 2026-08-09, so this stays at its 0 default;
+   * SignatureLine keeps the consumer contract: it eases the descent offset
+   * out by |scroll − anchor| so the camera↔document mapping is restored
+   * within ~1.5 viewports on either side of the beat.
    */
   tiltAnchorY: number;
   /**

@@ -113,18 +113,24 @@ interface FxState {
   /** Falloff exponent shaping the orbit term (higher hugs the cursor
    * tighter; the radial push keeps its approved push² shape independently). */
   sporeOrbitFalloff: number;
-  // Spore AUTO-BURST — HeroLogo's one-shot crust explosion the moment the
-  // intro assembly completes (mark reform released + "Sersan AI" wordmark
-  // formed). It rides the layers' existing uBurst mechanism (radial-from-
-  // center push + staggered kill + parked respawn → LIFE_REGROW regrowth),
-  // composed into CRUST-role layers only. These knobs shape its envelope.
+  // Spore AUTO-BURST — HeroLogo's crust explosion the moment the intro
+  // assembly settles (mark reform released + "Sersan AI" wordmark forming).
+  // One-shot per LOCKUP VISIT (owner 2026-08-09 round 2): it also replays
+  // when the intro reverse-replay re-forms the brand lockup. It rides the
+  // layers' existing uBurst mechanism (radial-from-center push + staggered
+  // kill + parked respawn → LIFE_REGROW regrowth), composed into CRUST-role
+  // layers only. These knobs shape its envelope.
   /** Peak uBurst the envelope ramps to (~0.9, next to the intro reform's
    * 0.92 — high enough that the staggered kill clears the whole crust). */
   sporeAutoBurstPeak: number;
   /** Seconds 0 → peak — the visible center-out explosion (owner spec:
    * ~0.5–0.7s). */
   sporeAutoBurstRamp: number;
-  /** Seconds held at peak so the staggered kill completes across the crust. */
+  /** MINIMUM seconds held at peak so the staggered kill completes across the
+   * crust. Owner 2026-08-09: HeroLogo pins the burst clock at the end of this
+   * hold until the mark commits to its flight right (round 2: releases
+   * mid-flight at flightRef ≥ 0.30, no longer at full arrival), so the actual
+   * peak dwell stretches through the lockup (the fall never starts early). */
   sporeAutoBurstHold: number;
   /** Seconds peak → 0. Dropping under the sim's 0.05 respawn threshold is
    * what releases the standard LIFE_REGROW-paced regrowth. */
@@ -135,10 +141,12 @@ interface FxState {
   sporeAutoBurstFire: number;
   /** Wordmark-entry fraction 0..1 at which the auto-burst FIRES (owner
    * 2026-08-07: anticipated — was the assembleDone edge, i.e. effectively
-   * 1.0). entryProgressRef (HeroTextParticles' module-scope shared ref)
-   * crossing this releases the envelope, so the explosion overlaps the
-   * wordmark's final settling. The mark-side guard (introReformClock ≥
-   * INTRO_REFORM_RELEASE) still applies. */
+   * 1.0; owner 2026-08-09 round 2: earlier again, 0.75 → 0.55).
+   * entryProgressRef (HeroTextParticles' module-scope shared ref) crossing
+   * this releases the envelope, so the explosion lands while the wordmark is
+   * still settling. The mark-side guard (introReformClock ≥
+   * INTRO_REFORM_RELEASE ≈ 2.07s) still applies — and at 0.55 (≈1.98s of the
+   * 3.6s entry) it is the binding edge: net fire ≈2.07s. */
   sporeAutoBurstAt: number;
   // GRAVITATIONAL FLYBY / ACCRETION (owner 2026-08-07, v2 the same day) —
   // the home eclipse publishes its apparent center + a 0..1 envelope
@@ -307,7 +315,7 @@ export const useFxStore = create<FxState>((set) => ({
   sporeAutoBurstHold: 0.18,
   sporeAutoBurstFall: 0.35,
   sporeAutoBurstFire: 0,
-  sporeAutoBurstAt: 0.75, // owner spec: fire at ~75% of the wordmark entry
+  sporeAutoBurstAt: 0.55, // round 2: ~55% of the entry (≈1.98s of 3.6s; mark guard ≈2.07s binds)
   // Flyby/accretion defaults (owner v2). Crust: far-field lean ≈ 12/22 ≈
   // 0.55 model units × falloff × envelope; inside the capture band the
   // ×(1+30·capT²) boost takes over and near-edge spores fall in and die at

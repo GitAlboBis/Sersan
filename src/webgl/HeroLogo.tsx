@@ -185,9 +185,9 @@ const FLIGHT_BULGE = 0.7;
  * respawn AT HOME and regrow from nothing into the solid logo. The EXPLODE is
  * the OTHER half of the arc — the scroll dissolve as you reach the end of the
  * hero (the `burst` window in the frame loop). All the burst beats (intro
- * reform, scroll explode, scroll-back regrow, and the one-shot ANTICIPATED
- * crust AUTO-BURST as the wordmark entry settles — see the frame loop and
- * fx.sporeAutoBurstAt) ride the SAME `uBurst`
+ * reform, scroll explode, scroll-back regrow, and the ANTICIPATED crust
+ * AUTO-BURST as the wordmark entry settles — one-shot per LOCKUP VISIT, see
+ * the frame loop and fx.sporeAutoBurstAt) ride the SAME `uBurst`
  * mechanism (gpgpuNodeSim "disappear and regrow on top"), so they stay one
  * coherent system. Driven by a wall-clock (delta), NOT scroll, and composed with the
  * scroll burst via max(). Plays on HARD load only; a soft route re-entry just
@@ -200,23 +200,29 @@ const FLIGHT_BULGE = 0.7;
 // alla scritta") — the mark's reform must complete BEFORE the wordmark
 // finishes assembling, target ≈ fully formed at ~60–70% of the entry. The
 // wordmark entry clock (HeroTextParticles ENTRY_DURATION 3.6s) is UNTOUCHED;
-// only the mark's pace changed. Arithmetic behind the new values:
-//   release = HOLD 0.12 + RAMP 0.25 + BLOOM 1.9 = 2.27s ≈ 63% of 3.6s ✓
+// only the mark's pace changed. RETIGHTENED (owner 2026-08-09 round 2:
+// "l'esplosione delle spore dello strato esterno deve avvenire prima") — the
+// crust auto-burst gates on INTRO_REFORM_RELEASE, so the reform was
+// compressed again; the mark must still be VISUALLY WHOLE before its crust
+// explodes. Arithmetic behind the current values:
+//   release = HOLD 0.12 + RAMP 0.25 + BLOOM 1.7 = 2.07s ≈ 58% of 3.6s ✓
 //   the respawn threshold (burst < 0.05) clears ≈0.33s in; the visible
-//   regrow (default "explosive" crust LIFE_REGROW 0.7 × REGROW_SLOW 0.75)
-//   then takes ≈1.9s ⇒ bloom completes ≈2.23s — the BLOOM window is sized
+//   regrow (default "explosive" crust LIFE_REGROW 0.7 × REGROW_SLOW 0.85)
+//   then takes ≈1.7s ⇒ bloom completes ≈2.0s — the BLOOM window is sized
 //   to the regrow it paces, exactly as the old 5.5s was to 0.7 × 0.3.
-// Old → new: HOLD 0.35→0.12 · RAMP 0.4→0.25 · BLOOM 5.5→1.9 ·
-// REGROW_SLOW 0.3→0.75 · BODY_REVEAL 2.2→0.8 (same ~35% tail proportion).
+// Old → new: HOLD 0.35→0.12 · RAMP 0.4→0.25 · BLOOM 5.5→1.9→1.7 ·
+// REGROW_SLOW 0.3→0.75→0.85 · BODY_REVEAL 2.2→0.8 (tail 35%→~39% of the
+// arc — BODY_REVEAL was not retightened when BLOOM took its second cut).
 const INTRO_REFORM_PEAK = 0.92; // burst that holds the mark as NOTHING (1 = gone)
 const INTRO_REFORM_HOLD = 0.12; // s held as nothing after the curtain lifts (was 0.35)
 const INTRO_REFORM_RAMP = 0.25; // s to drop burst→0, releasing the regrow bloom (was 0.4)
-const INTRO_REFORM_BLOOM = 1.9; // s the materialise bloom is given to finish (was 5.5)
+const INTRO_REFORM_BLOOM = 1.7; // s the materialise bloom is given to finish (was 5.5, then 1.9)
 /** Regrow-rate multiplier during the materialise — still slower than the
  * preset's hover/scroll-back regrow (the client's "molto più lento" beat),
- * but paced up 0.3 → 0.75 so the mark is whole while the wordmark is still
- * settling (owner retiming 2026-08-07). Lower for a slower first reveal. */
-const INTRO_REFORM_REGROW_SLOW = 0.75;
+ * but paced up 0.3 → 0.75 (owner retiming 2026-08-07) → 0.85 (round 2,
+ * 2026-08-09: the whole reform tightened so the earlier crust auto-burst
+ * still meets a whole mark). Lower for a slower first reveal. */
+const INTRO_REFORM_REGROW_SLOW = 0.85;
 /** Clock value past which the intro is fully over (burst 0 + regrow restored). */
 const INTRO_REFORM_RELEASE =
   INTRO_REFORM_HOLD + INTRO_REFORM_RAMP + INTRO_REFORM_BLOOM;
@@ -224,7 +230,8 @@ const INTRO_REFORM_RELEASE =
  * back in. Kept LATE so it never shows as a dim "spento" logo under the slowly-
  * blooming particles — the reform reads as forming from nothing/particles (core
  * already lit), with the dark body filling in behind only at the very end.
- * 2.2 → 0.8 with the retiming (same ~35% of the total arc). */
+ * 2.2 → 0.8 with the retiming (~39% of the 2.07s arc; the original 2.2 was
+ * 35% of 6.25s — BLOOM's second cut nudged the proportion up). */
 const INTRO_REFORM_BODY_REVEAL = 0.8;
 
 // EXPLODE (scroll-out) — STAGGERED so the OUTER crust expands BEFORE the inner
@@ -331,12 +338,13 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // Entry type, snapshotted on the first frame: true ⇒ soft route re-entry
   // (introComplete already true → no intro replay); false ⇒ hard load.
   const softEntryRef = useRef(false);
-  // ONE-SHOT crust auto-burst clock (seconds since the trigger; -1 = armed,
-  // not fired). Fired by the intro-completion edge in the frame loop below,
-  // plays the fxStore-tunable ramp/hold/fall envelope once, then holds spent
-  // (the clock never returns to -1 ⇒ one-shot per hard load, like the intro
-  // reform). Soft route re-entry never arms it; the dev re-fire knob resets
-  // the clock directly.
+  // Crust auto-burst clock (seconds since the trigger; -1 = armed, not
+  // fired). Fired by the intro-completion edge in the frame loop below,
+  // plays the fxStore-tunable ramp/hold/fall envelope, then holds spent —
+  // the clock never returns to -1, but a SPENT clock resets to 0 when the
+  // intro reverse-replay carries the mark back to the centered lockup
+  // (one-shot per LOCKUP VISIT, owner 2026-08-09 round 2). Soft route
+  // re-entry never arms it; the dev re-fire knob resets the clock directly.
   const autoBurstClock = useRef(-1);
   // Last-seen fx.sporeAutoBurstFire (null until the first spores frame, so a
   // pre-bumped store value can never fire spuriously on mount) — any NEW
@@ -1120,16 +1128,18 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       sporeOccluderMaterial.visible = occBurst < 0.97;
       if (!tslSpore) return; // occluder-only until the lazy build resolves
 
-      // --- ONE-SHOT CRUST AUTO-BURST, ANTICIPATED (owner 2026-08-07 v2) ------
+      // --- CRUST AUTO-BURST, ANTICIPATED (owner 2026-08-07 v2) ---------------
       // RETIMED the same day it landed ("l'esplosione avviene troppo in
-      // ritardo"): the burst no longer waits for assembleDone — it fires when
-      // the mark's materialise has released (introReformClock past
-      // INTRO_REFORM_RELEASE: burst 0, regrow restored, dark body in — with
-      // the retimed reform this now clears at ≈2.27s) AND the wordmark's
-      // entry has reached fx.sporeAutoBurstAt (default 0.75 ⇒ ≈2.7s of the
-      // 3.6s entry), so the explosion overlaps the wordmark's FINAL SETTLING
-      // instead of trailing it. entryProgressRef is HeroTextParticles' entry
-      // clock, published per frame as a MODULE-SCOPE SHARED REF (the
+      // ritardo"), and again 2026-08-09 round 2 ("deve avvenire prima"): the
+      // burst no longer waits for assembleDone — it fires when the mark's
+      // materialise has released (introReformClock past INTRO_REFORM_RELEASE:
+      // burst 0, regrow restored, dark body in — with the retightened reform
+      // this now clears at ≈2.07s) AND the wordmark's entry has reached
+      // fx.sporeAutoBurstAt (default 0.55 ⇒ ≈1.98s of the 3.6s entry) — net
+      // fire ≈2.07s, the mark-side guard binding — so the explosion lands
+      // while the wordmark is still settling. entryProgressRef is
+      // HeroTextParticles' entry clock, published per frame as a
+      // MODULE-SCOPE SHARED REF (the
       // pointerStore/holeField pattern — P0 hotfix 2026-08-07: a per-frame
       // zustand setState notifies every store listener unconditionally,
       // 60×/s, for a value nothing reads reactively; a ref write notifies
@@ -1142,9 +1152,13 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       // STRUCTURAL: every preset layer is its own compute build with its own
       // uBurst uniform, and the envelope is composed (max(), like the other
       // beats) into CRUST-role layers ONLY — the core layer and the wordmark
-      // particles are untouched by construction. One-shot per hard load
-      // (clock never re-arms); softEntryRef keeps soft route re-entries from
-      // ever arming it; reduced-motion tiers never mount this component.
+      // particles are untouched by construction. One-shot per LOCKUP VISIT
+      // (owner 2026-08-09 round 2): the SPENT clock re-arms to 0 when the
+      // intro reverse-replay re-forms the brand lockup (the RESET clause in
+      // the else-branch below), so the whole choreography replays on every
+      // re-entry; softEntryRef keeps soft route re-entries from ever arming
+      // the clock (they stay at -1, so the reset clause is unreachable for
+      // them too); reduced-motion tiers never mount this component.
       // DEAD-LATCH GUARDS (all preserved, only the completion edge moved):
       // introSkipped pins entryRef at 1 — the ref publishes 1, so a skip
       // satisfies the clause immediately (the explicit check keeps it
@@ -1164,7 +1178,69 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
           autoBurstClock.current = 0;
         }
       } else {
+        // Owner 2026-08-09: the crust STAYS exploded through the lockup —
+        // regrowth releases once the mark is COMMITTED to its flight right
+        // (round 2: "la generazione dello strato... deve avvenire prima";
+        // was flightRef ≥ 0.97, i.e. only at the hero-right rest). Advance
+        // the clock, then PIN it ahead of the FALL (the equal-envelope remap
+        // below ⇒ envelope parked at PEAK: spores dead, respawn withheld)
+        // until flightRef (the damped follower of morph.domReveal) passes
+        // 0.30 — mid-flight; FALL 0.35s + LIFE_REGROW ≈1.4s (1/0.7, the
+        // "explosive" preset rate at uRegrowScale 1) then completes the
+        // crust shortly after landing. Inactive morph (fallback text
+        // build) and introSkipped pass the gate immediately — old behavior —
+        // and the dev re-fire knob is clamped too (fine: it's a tuning
+        // handle).
         autoBurstClock.current += delta;
+        const atHeroRest =
+          !morph.active || morph.introSkipped || flightRef.current >= 0.3;
+        const fallStart = fx.sporeAutoBurstRamp + fx.sporeAutoBurstHold;
+        // The arrival pin re-arms the clock onto the RAMP at the
+        // EQUAL-ENVELOPE point: smoothstep's symmetry (s(1−u) = 1−s(u))
+        // makes fall time tf and ramp time ramp·(1−tf/fall) carry the exact
+        // same envelope value, so the hand-off is continuous at ANY depth of
+        // the fall. Parked at the release edge (tf ≈ 0) this degenerates to
+        // the old hold-at-PEAK (the clock cycles ramp→hold→remap with the
+        // envelope flat at PEAK); a MID-FALL wheel reversal (routine now the
+        // release gate sits at flightRef 0.30, mid-scrub territory) instead
+        // re-kills the partially-regrown crust through a visible re-ramp —
+        // this was the last path that could step uBurst ~0 → PEAK in one
+        // frame (the old pin snapped the clock straight to fallStart). The
+        // pin stays LATCHED to the burst's own lifetime (the ceiling term):
+        // the intro is reverse-replayable (up-wheel at page top re-forms the
+        // brand → flightRef dips back under the gate), and without the
+        // ceiling that dip would restart a long-expired clock mid-page. The
+        // true replay goes through the RESET below instead: a full fresh
+        // ramp. fall ≤ 0 makes the window empty, so the division below can
+        // never divide by zero.
+        if (
+          !atHeroRest &&
+          autoBurstClock.current > fallStart &&
+          autoBurstClock.current < fallStart + fx.sporeAutoBurstFall
+        ) {
+          const fallT =
+            (autoBurstClock.current - fallStart) / fx.sporeAutoBurstFall;
+          autoBurstClock.current = fx.sporeAutoBurstRamp * (1 - fallT);
+        }
+        // REPLAY on the intro reverse re-entry (owner 2026-08-09 round 2:
+        // "dovrebbe funzionare il tutto anche se torno indietro"): once the
+        // envelope is SPENT and the reverse replay has carried the mark back
+        // to the centered brand lockup (flightRef ≤ 0.15 — the 0.15/0.30
+        // hysteresis gap against the release gate above prevents flapping),
+        // reset the clock so the whole choreography replays: a fresh visible
+        // ramp explosion at the re-formed lockup, the arrival pin holding it
+        // exploded through the lockup, then regrowth on the next flight
+        // right. morph.active && !introSkipped scopes this to the true brand
+        // replay; soft entries never arm the clock, so they never reach this
+        // branch at all.
+        if (
+          autoBurstClock.current >= fallStart + fx.sporeAutoBurstFall &&
+          morph.active &&
+          !morph.introSkipped &&
+          flightRef.current <= 0.15
+        ) {
+          autoBurstClock.current = 0;
+        }
       }
       // Dev re-fire (__sersanFx): any NEW sporeAutoBurstFire value restarts
       // the envelope — bypasses the one-shot/soft-entry latches (tuning only).

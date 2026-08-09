@@ -33,22 +33,28 @@
  *
  * QUALITY (transition-grade, graft 4): uIterations 96 / uStep 0.0095 at
  * build (path 0.0095·96·2 ≈ 1.824 ≈ the factory's 1.82 contract), stepped to
- * 64 / 0.0142 (path ≈ 1.818) while the tunnel overlay is ≥50% opaque — the
- * additive streak field masks the step; fully reversible when alpha drops.
+ * 64 / 0.0142 (path ≈ 1.818) while the tunnel overlay is ≥80% opaque — late
+ * LIGHT-SPEED, streak field at full density: only there does the additive
+ * overlay mask the step. (The hole rides the warp unveiled, dead-center —
+ * the owner's focal frame — so an earlier edge would pop detail in plain
+ * sight.) Fully reversible when alpha drops.
  *
  * LIFECYCLE: build DEFERRED until seqStore.armed (the passage arms one
- * viewport before its section — during SpineExitGate's locked beat, a calm
- * compile window) and disposed when the viewer leaves the armed band
+ * viewport before its section — the compileAsync warm happens during plain
+ * scrolling; the SpineExitGate locked beat that used to cover this window
+ * was removed 2026-08-09) and disposed when the viewer leaves the armed band
  * (>~250vh past the passage, or back above the spine end) — init on
  * approach, destroy on leave, per the heavy-layer mandate. The march
  * pipeline is WARMED via renderer.compileAsync before the mesh mounts
  * (HomeSingularity / pavel-mazhuga precedent) so the first lensed frame
  * never hitches the scrub. group.visible tracks holeFade — which NEVER
  * fades out on scroll (owner 2026-08-07: "non deve fare fade e sparire, ci
- * dobbiamo entrare dentro"): the one-shot plunge drops it to 0 only once
- * the frame is FULLY BLACK (veil closed over the swallowed viewport), so
- * the viewer never sees the march disappear — it swallows them, and the
- * tunnel streaks take over inside the black.
+ * dobbiamo entrare dentro"): the one-shot plunge drops it to 0 only at the
+ * black-frame call AFTER its ENTER beat (the veil completes coverage in
+ * ENTER's tail; the hole stays fully visible, dead-center, through the
+ * whole light-speed warp before it), so the viewer never sees the march
+ * disappear — it swallows them, and the tunnel streaks take over inside
+ * the black.
  *
  * LAYERING: same instance-level overrides as HomeSingularity (renderOrder −1
  * + depthWrite OFF + FrontSide) — the backdrop convention. With depth writes
@@ -85,10 +91,12 @@ const TAN_HALF_FOV = Math.tan(THREE.MathUtils.degToRad(CAMERA_FOV) / 2);
 const DIST_HARD_FLOOR = 1.3;
 
 /** Slow virtual-camera orbit (the audit/home grammar): angular-constant by
- * scaling the radius with distance, and FADED OUT across
- * [SEQ.ORBIT_FADE_START, SEQ.ORBIT_FADE_END] (late APPROACH) so the marched
- * center sits exactly on the group anchor at the near hold, before the
- * one-shot's center lock engages. */
+ * scaling the radius with distance, and FADED OUT twice over: across
+ * [SEQ.ORBIT_FADE_START, SEQ.ORBIT_FADE_END] in p (late APPROACH — the
+ * reverse-entry near hold), AND by the one-shot's center-lock smoothstep in
+ * plungeT — seq.p FREEZES at ~TRIGGER_P when the one-shot fires, so only
+ * the lock can kill the swim there (the hole must sit dead-center through
+ * the warp, owner 2026-08-09). */
 const ORBIT_PERIOD = 26;
 const ORBIT_RADIUS_PER_DIST = 0.12; // ≈7° apparent swim, capped below
 const ORBIT_RADIUS_MAX = 1.0;
@@ -159,6 +167,15 @@ export function SequenceSingularity() {
       })
       .then(() => {
         if (cancelled || !built) return;
+        // Seed the route-reveal damp at its LIVE value: with the trigger at
+        // p ≈ 0.10 a fast flick can outrun this import/compile chain, so the
+        // resolve may land MID-SHOT — from 0 the march would fade in over
+        // ~0.75s while applyHoleVisuals cuts the CSS imposter the same frame
+        // (the hole blinking out and re-fading during TRAVERSE). Seeded, the
+        // swap is a same-frame crossover at full fade; the normal
+        // early-resolve path is unchanged (the group stays invisible until
+        // holeFade ramps in anyway).
+        revealDamped.current = useScrollStore.getState().reveal;
         setBuild(built);
         // Suppress the DOM CSS-imposter: the real march is live.
         useSeqStore.setState({ marchLive: true });
@@ -208,9 +225,13 @@ export function SequenceSingularity() {
     build.u.uEnvStarAlpha.value = seq.starAlpha;
 
     // Scripted iteration step (graft 4): 96→64 while the tunnel overlay is
-    // ≥50% opaque, reversible when it drops back. Uniform writes only on the
-    // band edge. Skipped on the null-tunnel path (nothing masks the step).
-    const low = !seq.tunnelNull && seq.tunnelAlpha >= 0.5;
+    // ≥80% opaque — late LIGHT-SPEED, where the full-density streak field
+    // masks the step (at 50% the edge landed mid-warp on the unveiled,
+    // dead-center hole; the veiled ENTER/SPEED beats hold ≥0.85 so the
+    // heavy fullscreen frames still march LO). Reversible when it drops
+    // back; uniform writes only on the band edge. Skipped on the
+    // null-tunnel path (nothing masks the step).
+    const low = !seq.tunnelNull && seq.tunnelAlpha >= 0.8;
     if (low !== iterLow.current) {
       iterLow.current = low;
       build.u.uIterations.value = low ? SEQ.ITER_LO : SEQ.ITER_HI;
@@ -231,15 +252,29 @@ export function SequenceSingularity() {
     // constants and the uCamLocal shortcut both depend on it. Never scale:
     // apparent size is camera distance, and ONLY camera distance.
 
-    // --- Slow virtual-camera orbit, faded out before the near hold ----------
+    // --- One-shot center lock (shared: orbit kill + the UV publish below) ---
+    // plungeT ramps 0→1 the moment the one-shot fires while seq.p stays
+    // FROZEN at ~TRIGGER_P — an orbitEnv keyed on p alone would keep the
+    // hole swimming through the whole warp.
+    const lock = THREE.MathUtils.smoothstep(
+      seq.plungeT,
+      0,
+      SEQ.PLUNGE_LOCK_T,
+    );
+
+    // --- Slow virtual-camera orbit, faded out before the reverse-entry near
+    // hold (p term) and across the one-shot's first PLUNGE_LOCK_T (lock
+    // term) so the body sits exactly dead-center through the light-speed
+    // warp ------------------------------------------------------------------
     clockRef.current += delta;
     const orbitEnv =
-      1 -
-      THREE.MathUtils.smoothstep(
-        seq.p,
-        SEQ.ORBIT_FADE_START,
-        SEQ.ORBIT_FADE_END,
-      );
+      (1 -
+        THREE.MathUtils.smoothstep(
+          seq.p,
+          SEQ.ORBIT_FADE_START,
+          SEQ.ORBIT_FADE_END,
+        )) *
+      (1 - lock);
     const radius =
       Math.min(ORBIT_RADIUS_PER_DIST * dist, ORBIT_RADIUS_MAX) * orbitEnv;
     const bob = Math.min(ORBIT_BOB_PER_DIST * dist, ORBIT_BOB_MAX) * orbitEnv;
@@ -265,18 +300,14 @@ export function SequenceSingularity() {
     // content the eye tracks translates by −offset). Projection uses the
     // camera's last-committed matrices — up to one frame stale, invisible at
     // scrub speeds, and the lock lerps to exact center across the one-shot's
-    // first PLUNGE_LOCK_T anyway (the orbit is already dead by then).
+    // first PLUNGE_LOCK_T anyway (the same lock kills the orbit swim in
+    // step above).
     const v = projScratch.current;
     v.set(
       group.position.x - ox,
       group.position.y - oy,
       group.position.z - oz,
     ).project(camera);
-    const lock = THREE.MathUtils.smoothstep(
-      seq.plungeT,
-      0,
-      SEQ.PLUNGE_LOCK_T,
-    );
     const ux = THREE.MathUtils.lerp((v.x + 1) / 2, 0.5, lock);
     const uy = THREE.MathUtils.lerp((v.y + 1) / 2, 0.5, lock);
     if (

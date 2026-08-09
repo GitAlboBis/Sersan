@@ -751,6 +751,23 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       DOLLY_DAMP,
       delta,
     );
+    // Passage aim gate — the SAME pan01 driver as the dead-ahead aim blend /
+    // roll kill further below, hoisted here so the velocity rig shares one
+    // per-frame snapshot. The arrival orbit (b) and the pointer parallax (c)
+    // offset camera.position.x, while the hole is WORLD-anchored
+    // (SequenceSingularity parks it at SEQ_PAN_FRAC × world-view-width on the
+    // camera row): at aim = 1 the lookAt aims dead-ahead THROUGH the camera's
+    // own x, so any surviving rig offset drags the hole off screen-center by
+    // exactly that offset (a mouse held off-center ≈ 1% of frame at warp
+    // start). Fading the two TARGETS by (1 − seqAim) lets the existing
+    // PAR/ORBIT damps smooth both the die-off and the reverse-unwind
+    // fade-back; seqAim is 0 outside the home passage, so every other
+    // route/beat is byte-identical.
+    const seqState = useSeqStore.getState();
+    const seqAim =
+      pathname === "/" && seqState.active
+        ? THREE.MathUtils.clamp(seqState.pan01, 0, 1)
+        : 0;
     // (b) Arrival orbit — as the viewport center approaches the route's
     // ritual anchor (home: the gateway; interior routes: "ritual"), the
     // camera sweeps laterally on a sin() bell that is exactly 0 AT the
@@ -772,7 +789,8 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
           0,
           1,
         );
-        orbitTarget = Math.sin(bell * Math.PI) * fx.camOrbitAmp * rigGate;
+        orbitTarget =
+          Math.sin(bell * Math.PI) * fx.camOrbitAmp * rigGate * (1 - seqAim);
       }
     }
     orbitCurrent.current = THREE.MathUtils.damp(
@@ -783,9 +801,13 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     );
     // (c) Pointer micro-parallax — full tier only. pointerStore's own gating
     // (coarse pointer / reduced motion → no listener) leaves smooth parked at
-    // center, so the offset is structurally 0 on those devices.
+    // center, so the offset is structurally 0 on those devices. × (1 − seqAim):
+    // the parallax dies as the passage's dead-ahead aim engages (see the aim
+    // gate comment above) so the hole holds dead-center regardless of where
+    // the mouse rests.
     const ptr = usePointerStore.getState().smooth;
-    const parScale = tier === "full" ? fx.camParallax * rigGate : 0;
+    const parScale =
+      tier === "full" ? fx.camParallax * rigGate * (1 - seqAim) : 0;
     parCurrent.current.x = THREE.MathUtils.damp(
       parCurrent.current.x,
       (ptr.x - 0.5) * 2 * parScale,
@@ -820,9 +842,7 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // any reset step out instead of snapping the world sideways. Applied
     // OUTSIDE rigGate: this is a scripted dolly move, not the velocity rig.
     const seqPanTarget =
-      pathname === "/"
-        ? useSeqStore.getState().pan01 * SEQ_PAN_FRAC * worldViewWidth
-        : 0;
+      pathname === "/" ? seqState.pan01 * SEQ_PAN_FRAC * worldViewWidth : 0;
     seqPanCurrent.current = THREE.MathUtils.damp(
       seqPanCurrent.current,
       seqPanTarget,
@@ -922,11 +942,13 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     const aliveVelocity = Math.abs(velocity) + gateEnergy.current;
 
     // === Camera-descent beat (textMorphStore.camTilt 0..1) ===================
-    // The FINAL hijacked beat at the END of the cinematic spine: while the page
-    // is LOCKED (SpineExitGate stopped Lenis, scroll frozen at tiltAnchorY) the
-    // camera DESCENDS monotonically by ~one viewport on the smooth camTilt
-    // clock, and the lit head TRACKS the descent so the move reads as a genuine
-    // dive instead of the head sliding through a parked frame.
+    // FORMERLY the final hijacked beat at the end of the cinematic spine: the
+    // exit gate locked the page at tiltAnchorY and drove camTilt 0→1 while the
+    // camera descended ~one viewport, the lit head tracking the dive. Its
+    // driver (SpineExitGate) was REMOVED 2026-08-09 (owner: the beat read as a
+    // slide-up) — nothing writes camTilt above 0 anymore, so this block is
+    // provably inert (desc = 0, pitch = 0) and kept as the camTilt CONSUMER
+    // contract should a scripted descent ever return.
     //
     // The beat STATE (camTilt/tiltEase/scrollRamp → descRamp) was read above
     // the gate-shake block so the shake output could fade by it (FIX A3).
@@ -1050,13 +1072,34 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       // and keep the target's y near the camera's y plane (the curve's own y is
       // the full page strip — using it directly would over-pitch).
       const tilt = fx.lookTiltScale;
-      // + seqPanCurrent: during the passage's TRACK-RIGHT move the look
+      // Passage AIM BLEND driver (owner 2026-08-09 round 2: "il buco nero
+      // quando parte il warp non è al centro" — the hole must sit dead-center
+      // from warp start). The hole is WORLD-anchored at x = SEQ_PAN_FRAC ×
+      // worldViewWidth on the camera row, so it projects screen-center ONLY
+      // under a straight -Z aim. The curve-derived target below carries a
+      // residual yaw (aheadPoint.x × tilt) and — worse — a DOWN-pitch (the
+      // look-ahead point rides the descending page curve, many world units
+      // below the camera), which together pushed the hole hundreds of px
+      // up/off-center (verified live: (780, 357) instead of (960, 467) on a
+      // 1920×935 viewport at pan01 = 1). pan01 is the right driver: it eases
+      // 0→1 across the traverse (aim complete BEFORE the warp ramps), holds
+      // 1 through light-speed/enter (hole locked center), unwinds to 0 under
+      // the black frame (the hand-back to the curve is invisible), and the
+      // reverse-entry near hold from the divario sits at pan01 = 1 (hole
+      // centered there too). It is 0 outside the passage on every route.
+      // seqAim is computed ONCE in the rig block above (same frame snapshot),
+      // which also fades the arrival-orbit / pointer-parallax x-offsets by
+      // (1 − aim) — so at aim = 1 camera.x truly equals the world pan and the
+      // hole truly centers (a parallaxed camera would drag it ~1% off-axis).
+      const aim = seqAim;
+      // + seqPanCurrent: during the passage's TRACK-RIGHT move the BASE look
       // target rides laterally WITH the camera, so the pan reads as a
-      // straight-ahead tracking shot (without this the lookAt would counter-
-      // yaw back toward the world strip and drag the revealed hole
-      // off-center). The damped lookTarget chase (λ 3.5) lags the pan
-      // slightly — a subtle, filmic lead that settles to dead-ahead at every
-      // hold. Zero whenever the passage is inactive.
+      // straight-ahead tracking shot even while the aim blend is still
+      // partial (without this the lookAt would counter-yaw back toward the
+      // world strip). The blend then lerps out the residual curve yaw/pitch;
+      // the damped lookTarget chase (λ 3.5) lags both slightly — a subtle,
+      // filmic lead that settles to dead-ahead at every hold. Zero whenever
+      // the passage is inactive.
       const targetX = aheadPoint.current.x * tilt + seqPanCurrent.current;
       const targetZ = aheadPoint.current.z * tilt;
       // Camera-descent pitch (FIX 1b): bias the look TARGET downward by the
@@ -1070,13 +1113,22 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
         camera.position.y +
         (aheadPoint.current.y - camera.position.y) * tilt -
         pitchDrop;
+      // Aim blend (see the pan01 driver note above): lerp the curve-derived
+      // target toward TRUE dead-ahead — the camera's own x/y this frame — as
+      // the passage pan engages. targetZ stays curve-derived: once x/y match
+      // the camera, ANY z in front of it yields the same straight -Z aim, so
+      // there is nothing to blend there. Feeding the lerped values into the
+      // EXISTING damped chase below (λ 3.5) smooths the handover in BOTH
+      // directions for free.
+      const aimX = THREE.MathUtils.lerp(targetX, camera.position.x, aim);
+      const aimY = THREE.MathUtils.lerp(targetY, camera.position.y, aim);
       if (!lookInitialized.current) {
         // First frame at full tier: snap (no swing-in from origin).
-        lookTarget.current.set(targetX, targetY, targetZ);
+        lookTarget.current.set(aimX, aimY, targetZ);
         lookInitialized.current = true;
       } else {
-        lookTarget.current.x = THREE.MathUtils.damp(lookTarget.current.x, targetX, 3.5, delta);
-        lookTarget.current.y = THREE.MathUtils.damp(lookTarget.current.y, targetY, 3.5, delta);
+        lookTarget.current.x = THREE.MathUtils.damp(lookTarget.current.x, aimX, 3.5, delta);
+        lookTarget.current.y = THREE.MathUtils.damp(lookTarget.current.y, aimY, 3.5, delta);
         lookTarget.current.z = THREE.MathUtils.damp(lookTarget.current.z, targetZ, 3.5, delta);
       }
       camera.lookAt(lookTarget.current);
@@ -1113,8 +1165,17 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       // gate still governs dolly/orbit/parallax, which are translations.)
       const rollGateT = THREE.MathUtils.clamp(scrollPxNow / ih, 0, 1);
       const rollGate = rollGateT * rollGateT * (3 - 2 * rollGateT);
+      // × (1 − aim): the cinematic bank dies as the passage's dead-ahead aim
+      // takes over (same pan01 driver as the aim blend above) — a banked
+      // frame would tilt the hole composition even with the yaw/pitch gone.
+      // Multiplies the TARGET, like rollGate, so the damp() + clamp still
+      // govern the transition and the unwind eases back in reverse.
       const rollTarget = THREE.MathUtils.clamp(
-        -aheadTangent.current.x * fx.camRoll * route.cameraRollScale * rollGate,
+        -aheadTangent.current.x *
+          fx.camRoll *
+          route.cameraRollScale *
+          rollGate *
+          (1 - aim),
         -CAM_ROLL_MAX,
         CAM_ROLL_MAX,
       );
