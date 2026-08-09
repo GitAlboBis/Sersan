@@ -196,9 +196,13 @@ function localizeStages(language: Language): Stage[] {
 // — after the intro gate releases, "We build..." must survive real
 // scrolling), map 81.7vh, ship 75.3vh — each group's REAL scroll length is
 // unchanged from the 4-group layout; only the handover share was removed
-// with its panel. The ship group is final: it stays lit at the pin end so
-// the sticky stage scrolls away as a composed frame, and the visitor scrolls
-// naturally into section 05 (the passage's panel 1) right after.
+// with its panel. The ship group gets NO end-of-pin special case (owner
+// 2026-08-09: "da 04 a 05... la stessa animazione che c'è tra 02 e 03"):
+// panelOpacity fades stage 04 out across its final band exactly like the map
+// group's own exit — the 02→03 grammar — so the sticky stage scrolls away
+// EMPTY (black space on black space, the section seam invisible) and section
+// 05 materializes in place on the other side (the passage's PANEL_ENTER band
+// mirrors this crossfade). The 04→05 handoff must never read as a scroll.
 type StageGroup = {
   id: string;
   /** Spine-ScrollTrigger progress where this panel's lit window starts. */
@@ -256,20 +260,23 @@ export const SPINE_COPY = {
 // Opacity for a panel given current progress + its stage range. The fade-in
 // and fade-out happen STRICTLY INSIDE [start, end] so adjacent headlines never
 // overlap — exactly one headline owns the screen at a time. The hero (start 0)
-// stays lit at the very top; the final panel stays lit at the very bottom.
+// stays lit at the very top (it must be visible at progress 0 for SSR); EVERY
+// panel — the ship group included — fades out across its final band, so
+// stage 04 dissolves in place just before the pin releases and the stage
+// scrolls away empty (owner 2026-08-09: the 04→05 handoff reads like 02→03,
+// never like a scroll).
 function panelOpacity(
   progress: number,
   start: number,
   end: number,
   isHero = false,
-  isFinal = false,
 ): number {
   const fade = Math.min(0.03, (end - start) * 0.3);
   if (progress <= start) return isHero ? 1 : 0;
-  if (progress >= end) return isFinal ? 1 : 0;
+  if (progress >= end) return 0;
   let o = 1;
   if (!isHero && progress < start + fade) o = (progress - start) / fade;
-  if (!isFinal && progress > end - fade) o = Math.min(o, (end - progress) / fade);
+  if (progress > end - fade) o = Math.min(o, (end - progress) / fade);
   return Math.max(0, o);
 }
 
@@ -285,14 +292,12 @@ function StagePanel({
   group,
   blocks,
   progressRef,
-  isFinal,
   isHero,
   copy,
 }: {
   group: StageGroup;
   blocks: Stage[];
   progressRef: React.MutableRefObject<number>;
-  isFinal?: boolean;
   isHero?: boolean;
   copy: (typeof SPINE_COPY)[Language];
 }) {
@@ -329,7 +334,7 @@ function StagePanel({
       const morph = isHero ? useTextMorphStore.getState() : null;
       const active = !!(morph && morph.active);
       const reveal = active && morph ? morph.domReveal : 1;
-      const baseO = panelOpacity(p, group.start, group.end, isHero, isFinal);
+      const baseO = panelOpacity(p, group.start, group.end, isHero);
       const o = baseO;
       if (el && (o !== lastO || (active && reveal !== lastReveal) || active !== lastActive)) {
         lastO = o;
@@ -398,13 +403,13 @@ function StagePanel({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [progressRef, group.start, group.end, isHero, isFinal]);
+  }, [progressRef, group.start, group.end, isHero]);
 
   // Initial opacity is computed from progress = 0 so the hero stage (which
   // begins at start=0) is fully visible in the server-rendered HTML. The
   // rAF loop in useEffect takes over once JS hydrates. This makes the H1
   // present and visible without waiting for client hydration.
-  const initialOpacity = panelOpacity(0, group.start, group.end, isHero, isFinal);
+  const initialOpacity = panelOpacity(0, group.start, group.end, isHero);
   const initialY = (1 - initialOpacity) * 16;
   const initiallyHidden = initialOpacity <= 0.6;
 
@@ -1005,10 +1010,12 @@ export default function CinematicSystemScroll() {
         {/* Stage rail (left) — one tick per grouped panel. */}
         <StageRail progressRef={progressRef} groups={DESKTOP_GROUPS} />
 
-        {/* Grouped stage panels stacked, each fades in during its range.
-            The hero group (index 0) is the page H1; the final (ship) group
-            stays lit at the pin end so the sticky stage scrolls away as a
-            composed frame into section 05 (the passage's panel 1). */}
+        {/* Grouped stage panels stacked, each fades in/out strictly inside
+            its range. The hero group (index 0) is the page H1 (lit at
+            progress 0 for SSR); the ship group dissolves in place across its
+            final band, so the sticky stage scrolls away EMPTY and section 05
+            materializes inside the passage on the other side of the seam
+            (the 02→03 crossfade grammar, owner 2026-08-09). */}
         {DESKTOP_GROUPS.map((group, i) => (
           <StagePanel
             key={group.id}
@@ -1018,7 +1025,6 @@ export default function CinematicSystemScroll() {
               .filter((s): s is Stage => s !== undefined)}
             progressRef={progressRef}
             isHero={i === 0}
-            isFinal={i === DESKTOP_GROUPS.length - 1}
             copy={copy}
           />
         ))}

@@ -58,7 +58,16 @@ import { useTierStore } from "@/webgl/store/tierStore";
  *
  * THE SHOT:
  *   SCRUBBED (pure function of p — fully reversible):
- *     SETTLE   p 0–0.08   panel 05 rests frame-left; 2% pan pre-drift.
+ *     SETTLE   p 0–0.08   panel 05 MATERIALIZES in place (opacity ramp
+ *                         PANEL_ENTER 0.015–0.055 + the spine StagePanel's
+ *                         (1−α)·16px rise — the 02→03 crossfade grammar;
+ *                         owner 2026-08-09: the 04→05 handoff must never
+ *                         read as a scroll. The spine's stage 04 dissolves
+ *                         at its own pin end, so the seam crosses as black
+ *                         on black and 05 appears in place) then rests
+ *                         frame-left; 2% pan pre-drift. Scrolling UP out of
+ *                         the passage fades it back out across 0.055→0.015
+ *                         before the section detaches — the symmetric exit.
  *                         Tunnel created PARKED at p 0.02 (calm beat).
  *     TRIGGER  p 0.10     the FIRST forward scroll past SETTLE hands the
  *                         shot to the one-shot — the forward SCROLL flow
@@ -357,9 +366,11 @@ export default function SingularityPassage() {
   const rootRef = useRef<HTMLElement | null>(null);
 
   // Proof chips (13/5/1): standard one-shot IO — honest on every path (the
-  // panel is in the viewport when the section scrolls in, sticky or not).
-  // Re-runs on language toggle (fresh nodes). Reduced motion: zero-cost skip
-  // (chips ship with final values).
+  // panel is in the viewport when the section scrolls in, sticky or not;
+  // opacity never gates intersection, so on the armed path the count may
+  // start under the PANEL_ENTER materialize and land mid-flight — fine, the
+  // sr-only value is always final). Re-runs on language toggle (fresh
+  // nodes). Reduced motion: zero-cost skip (chips ship with final values).
   useEffect(() => {
     const root = rootRef.current;
     if (!root) return;
@@ -549,6 +560,14 @@ export default function SingularityPassage() {
           const panelAlpha = gsap.quickSetter(panel, "opacity") as (
             v: number,
           ) => void;
+          // Panel 05's entry Y (px) — the spine StagePanel's exact
+          // (1-opacity)*16 offset, written by compose() only. The one-shot
+          // TRAVERSE keeps writing panelAlpha alone: its exit verb is the
+          // horizontal track-off, and at fire time (p ≈ 0.10 >
+          // PANEL_ENTER_END) the entry ramp is already 1, so y sits at 0.
+          const panelY = gsap.quickSetter(panel, "y", "px") as (
+            v: number,
+          ) => void;
           const veilSet = gsap.quickSetter(veil, "css") as (
             v: Record<string, number | string>,
           ) => void;
@@ -561,6 +580,11 @@ export default function SingularityPassage() {
               ) => void)
             : null;
           gsap.set(track, { x: 0 });
+          // opacity 1 here is DELIBERATE (never 0 — the fallback layouts this
+          // node can flip into rely on a visible panel, and cleanup restores
+          // that default). No flash on the armed path: the prime compose()
+          // at the bottom of this same synchronous block immediately applies
+          // the p-state (entry ramp 0 at p ≈ 0 → hidden) before any paint.
           gsap.set(panel, { opacity: 1 });
           gsap.set(veil, { opacity: 0, scale: 0.5 });
           if (pulse) gsap.set(pulse, { opacity: 0 });
@@ -727,9 +751,18 @@ export default function SingularityPassage() {
             // foreground plate — TRACK_RATE_FG × the world's screen-space
             // pan (world 1.0× via the camera, far dust slower per-mote).
             trackX(-SEQ.TRACK_RATE_FG * SEQ_PAN_FRAC * vw * pan);
+            // Panel 05 opacity = entry ramp × exit ramp. It MATERIALIZES in
+            // place across PANEL_ENTER during SETTLE (the spine's 02→03
+            // crossfade grammar — owner 2026-08-09: the 04→05 handoff must
+            // never read as a scroll; symmetric on reverse, so up-scrubbing
+            // out of the passage fades it back out in place), then tracks
+            // off-left and fades across PANEL_FADE. The y write is
+            // StagePanel's exact (1-opacity)*16px entry offset.
             const panelA =
-              1 - seqSmooth(p, SEQ.PANEL_FADE_START, SEQ.PANEL_FADE_END);
+              seqSmooth(p, SEQ.PANEL_ENTER_START, SEQ.PANEL_ENTER_END) *
+              (1 - seqSmooth(p, SEQ.PANEL_FADE_START, SEQ.PANEL_FADE_END));
             panelAlpha(panelA);
+            panelY((1 - panelA) * 16);
             setPanelInteractive(panelA > PANEL_LIT_MIN);
 
             applyHoleVisuals(dist, holeFade);
@@ -971,6 +1004,8 @@ export default function SingularityPassage() {
                   starAlpha: SEQ.STAR_HI, // stars stay HI until the warp
                 });
                 trackX(-SEQ.TRACK_RATE_FG * SEQ_PAN_FRAC * vw * pan);
+                // Opacity only — the exit verb is the horizontal track-off;
+                // panelY is compose()'s (entry ramp = 1 at fire, so y = 0).
                 const panelA = 1 - seqSmooth(t, 0.25, 0.6);
                 panelAlpha(panelA);
                 setPanelInteractive(panelA > PANEL_LIT_MIN);
@@ -1250,9 +1285,10 @@ export default function SingularityPassage() {
             releaseSnapHold = null;
             if (emergeEl) gsap.set(emergeEl, { clearProps: "transform" });
             // Panel 05 is REAL content on the static/lite layouts this node
-            // may flip into — clear every armed-path inline pose.
+            // may flip into — clear every armed-path inline pose (opacity +
+            // the compose() entry-Y transform).
             gsap.set(track, { clearProps: "transform" });
-            gsap.set(panel, { clearProps: "opacity" });
+            gsap.set(panel, { clearProps: "opacity,transform" });
             panel.style.pointerEvents = "";
             (panel as HTMLElement & { inert: boolean }).inert = false;
             panel.removeAttribute("aria-hidden");
@@ -1391,9 +1427,10 @@ export default function SingularityPassage() {
         }
         .seq-root[data-on="seq"] .seq-panel {
           /* Interactivity is JS-managed (setPanelInteractive): clickable
-             while on screen, inert once tracked off + faded. */
+             while on screen, inert once tracked off + faded. Transform is
+             the compose() entry-Y ((1-opacity)*16px, spine grammar). */
           pointer-events: auto;
-          will-change: opacity;
+          will-change: opacity, transform;
         }
         .seq-root[data-on="seq"] .seq-decor { display: flex; }
 

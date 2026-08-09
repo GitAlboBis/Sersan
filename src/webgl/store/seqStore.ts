@@ -59,7 +59,8 @@ export const SEQ = {
   // Forward flow hands off to the one-shot at TRIGGER_P (0.10) — everything
   // past it below is the REVERSE-ENTRY scrub map (down-scrub replay after a
   // reverse entry included; the trigger only re-arms below REARM_P).
-  SETTLE_END: 0.08, // panel 05 rests frame-left; 2% pan pre-drift
+  SETTLE_END: 0.08, // panel 05 materializes (PANEL_ENTER band below) then
+  // rests frame-left; 2% pan pre-drift
   TRACK_END: 0.52, // horizontal parallax traverse (the domus-tua grammar)
   HOLD1_END: 0.62, // dead-center rest at dist 12 — restraint beat
   APPROACH_END: 1, // dist 12→2.6 exponential (micro-hold plateau at d≈6);
@@ -96,6 +97,14 @@ export const SEQ = {
   /** Foreground depth rate: the DOM track translates at this multiple of the
    * world's screen-space pan (world 1.0×, far dust slower via z-spread). */
   TRACK_RATE_FG: 1.15,
+  /** The in-place materialize band for panel 05 — the same crossfade grammar
+   * as the spine's grouped panels (owner 2026-08-09: the 04→05 handoff must
+   * read like the 02→03 transition, never like a scroll): the panel is
+   * INVISIBLE while the section rides in (p ≈ 0) and fully lit well before
+   * TRIGGER_P (0.10). Symmetric on reverse — scrubbing back up fades it out
+   * in place across 0.055→0.015 before the section detaches. */
+  PANEL_ENTER_START: 0.015,
+  PANEL_ENTER_END: 0.055,
   /** Panel 05 opacity ramp-out across the tail of the traverse (it has
    * tracked mostly off-frame by then; fully gone before HOLD 1 settles). */
   PANEL_FADE_START: 0.4,
