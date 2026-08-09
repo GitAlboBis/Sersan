@@ -101,10 +101,13 @@ export const SEQ = {
    * as the spine's grouped panels (owner 2026-08-09: the 04→05 handoff must
    * read like the 02→03 transition, never like a scroll): the panel is
    * INVISIBLE while the section rides in (p ≈ 0) and fully lit well before
-   * TRIGGER_P (0.10). Symmetric on reverse — scrubbing back up fades it out
-   * in place across 0.055→0.015 before the section detaches. */
-  PANEL_ENTER_START: 0.015,
-  PANEL_ENTER_END: 0.055,
+   * TRIGGER_P (0.10). Band width chosen to match the spine's crossfade RATE:
+   * the spine's stage bands are 0.03 of a ~215vh scrub (≈ 6.5vh of travel);
+   * this scrub is ~273vh, so 0.044 − 0.02 = 0.024 × 273vh ≈ 6.5vh — the same
+   * scroll distance per crossfade. Symmetric on reverse — scrubbing back up
+   * fades it out in place across 0.044→0.02 before the section detaches. */
+  PANEL_ENTER_START: 0.02,
+  PANEL_ENTER_END: 0.044,
   /** Panel 05 opacity ramp-out across the tail of the traverse (it has
    * tracked mostly off-frame by then; fully gone before HOLD 1 settles). */
   PANEL_FADE_START: 0.4,

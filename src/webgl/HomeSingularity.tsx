@@ -141,12 +141,15 @@ const PARALLAX_DAMP = 4;
 /** Route-transition reveal damp (ignition through the opening curtain). */
 const REVEAL_DAMP = 4;
 
-/** Slow continuous orbit — the audit island's 26s grammar reused. Radius is
- * distance-scaled like the parallax (0.5·1.76/3.2 ≈ 0.275) so the virtual
- * march camera swims the same apparent amount; bob is cut to ~0.3× the
- * audit's 0.45 (owner direction: the framing is fixed-low, the inclination
- * breathing should stay a murmur under the horizon). */
-const ORBIT_PERIOD = 26; // seconds per lateral revolution
+/** Slow continuous orbit — the audit island's orbit grammar reused at HALF
+ * the period: home runs 13s vs /audit's 26s (owner 2026-08-09: the orbital
+ * swim through space — NOT the disc spin — must be faster; a deliberate
+ * divergence, the audit island keeps its 26s). Radius is distance-scaled
+ * like the parallax (0.5·1.76/3.2 ≈ 0.275) so the virtual march camera
+ * swims the same apparent amount; bob is cut to ~0.3× the audit's 0.45
+ * (owner direction: the framing is fixed-low, the inclination breathing
+ * should stay a murmur under the horizon). */
+const ORBIT_PERIOD = 13; // seconds per lateral revolution (half of /audit's 26)
 const ORBIT_RADIUS = 0.275; // lateral (x/z) drift radius, world units
 const ORBIT_BOB = 0.14; // vertical bob amplitude, world units (half rate)
 
@@ -165,7 +168,7 @@ const MELT_END = 0.9;
  * (HeroLogo's crust layers, HeroTextParticles) — never React state, never a
  * store subscription. Published at the END of this island's frame loop;
  * consumers registered earlier in the same priority-0 pass therefore read
- * the PREVIOUS frame's value — a one-frame phase lag on a 26s orbit,
+ * the PREVIOUS frame's value — a one-frame phase lag on a 13s orbit,
  * imperceptible, and every consumer damps its response anyway.
  *
  *   x/y/z    world position of the hole's APPARENT center. The orbit
@@ -195,7 +198,7 @@ export const holeField = {
  * optical center after the owner's 5vh composition nudge — both moved
  * together, so the rest distance is unchanged at ≈0.48): nearest approach
  * d≈0.40 (bob up, orbit centered — the hole sits dead-center under the
- * lockup, first reached at oa=π ≈ 13s with the negated bob) → 1; far phase
+ * lockup, first reached at oa=π ≈ 6.5s with the negated bob) → 1; far phase
  * d≈0.59 → 0; the t=0 rest pose d≈0.48 → ~0.58. No rect reads — pure orbit
  * arithmetic. */
 const HOLE_ANCHOR_Y_FRAC = 0.01;
@@ -461,11 +464,13 @@ export function HomeSingularity() {
     // (oa/2 ∈ 0→π over the WHOLE first lateral orbit) kept oy ≥ 0 — the hole
     // could only sink AWAY from the lockup until the SECOND orbit, so the
     // first true near-approach (proximity → 1, the accretion capGate open)
-    // landed at oa = 3π ≈ 39s and the first orbit never captured. Flipping
-    // the phase (sin(x+π) = −sin(x); still exactly 0 at t=0, rest framing
-    // byte-identical) makes the bob RISE toward the wordmark through orbit 1:
-    // first full-strength near-approach at oa = π ≈ t 13s — bob fully up AND
-    // laterally centered (sin(π) = 0), ignite (1.2s) long complete.
+    // landed at oa = 3π ≈ 19.5s at the 13s period and the first orbit never
+    // captured. Flipping the phase (sin(x+π) = −sin(x); still exactly 0 at
+    // t=0, rest framing byte-identical) makes the bob RISE toward the
+    // wordmark through orbit 1: first full-strength near-approach at
+    // oa = π ≈ t 6.5s — bob fully up AND laterally centered (sin(π) = 0),
+    // ignite (1.2s) long complete. (Phases are keyed on oa, not wall time,
+    // so the owner's 2026-08-09 period halving 26→13 rescaled them intact.)
     // Deliberate divergence from AuditSingularity's orbit grammar (twin
     // note): /audit has no accretion consumers, its bob direction is purely
     // aesthetic and stays as shipped.

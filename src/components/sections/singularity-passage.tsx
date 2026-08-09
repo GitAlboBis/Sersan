@@ -59,14 +59,14 @@ import { useTierStore } from "@/webgl/store/tierStore";
  * THE SHOT:
  *   SCRUBBED (pure function of p — fully reversible):
  *     SETTLE   p 0–0.08   panel 05 MATERIALIZES in place (opacity ramp
- *                         PANEL_ENTER 0.015–0.055 + the spine StagePanel's
+ *                         PANEL_ENTER 0.02–0.044 + the spine StagePanel's
  *                         (1−α)·16px rise — the 02→03 crossfade grammar;
  *                         owner 2026-08-09: the 04→05 handoff must never
  *                         read as a scroll. The spine's stage 04 dissolves
  *                         at its own pin end, so the seam crosses as black
  *                         on black and 05 appears in place) then rests
  *                         frame-left; 2% pan pre-drift. Scrolling UP out of
- *                         the passage fades it back out across 0.055→0.015
+ *                         the passage fades it back out across 0.044→0.02
  *                         before the section detaches — the symmetric exit.
  *                         Tunnel created PARKED at p 0.02 (calm beat).
  *     TRIGGER  p 0.10     the FIRST forward scroll past SETTLE hands the
@@ -1319,7 +1319,12 @@ export default function SingularityPassage() {
                 <span aria-hidden="true" className="status-dot" />
                 <span>{HANDOVER_STAGE.eyebrow[language]}</span>
               </p>
-              <h2 className="font-display leading-[0.98] text-ink mb-5 text-balance text-[clamp(2.25rem,4.5vw,4rem)] tracking-[-0.028em]">
+              {/* Type scale = the spine StagePanel's GROUPED-LEAD scale (what
+                  stage 04 actually renders at), NOT the single-block scale —
+                  owner 2026-08-09: section 05 must read as a sibling of
+                  stages 02–04 in the same seat, so its title matches 04's
+                  visual size exactly. */}
+              <h2 className="font-display leading-[0.98] text-ink mb-5 text-balance text-[clamp(2rem,3.6vw,3.25rem)] tracking-[-0.026em]">
                 {HANDOVER_STAGE.title[language]}
               </h2>
               <p className="text-base sm:text-lg text-foreground/80 leading-[1.55] max-w-[40rem]">

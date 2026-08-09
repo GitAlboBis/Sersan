@@ -90,14 +90,16 @@ const TAN_HALF_FOV = Math.tan(THREE.MathUtils.degToRad(CAMERA_FOV) / 2);
  * and a FrontSide proxy renders nothing from inside). */
 const DIST_HARD_FLOOR = 1.3;
 
-/** Slow virtual-camera orbit (the audit/home grammar): angular-constant by
- * scaling the radius with distance, and FADED OUT twice over: across
+/** Slow virtual-camera orbit (the audit/home grammar, at the home islands'
+ * 13s period — owner 2026-08-09: faster orbital swim through space, NOT the
+ * disc spin; /audit keeps its 26s): angular-constant by scaling the radius
+ * with distance, and FADED OUT twice over: across
  * [SEQ.ORBIT_FADE_START, SEQ.ORBIT_FADE_END] in p (late APPROACH — the
  * reverse-entry near hold), AND by the one-shot's center-lock smoothstep in
  * plungeT — seq.p FREEZES at ~TRIGGER_P when the one-shot fires, so only
  * the lock can kill the swim there (the hole must sit dead-center through
  * the warp, owner 2026-08-09). */
-const ORBIT_PERIOD = 26;
+const ORBIT_PERIOD = 13; // seconds per revolution (half of /audit's 26)
 const ORBIT_RADIUS_PER_DIST = 0.12; // ≈7° apparent swim, capped below
 const ORBIT_RADIUS_MAX = 1.0;
 const ORBIT_BOB_PER_DIST = 0.05;
