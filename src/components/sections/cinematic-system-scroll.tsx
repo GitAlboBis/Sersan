@@ -14,7 +14,14 @@
  * block (eyebrow · title · body · proof chips · CTA cluster) now lives ONCE
  * as panel 1 of the singularity passage's horizontal track
  * (singularity-passage.tsx), which directly follows this section. The spine
- * runs 01→04 and hands the visitor to the passage at the pin end.
+ * runs 01→04 and hands the visitor to the passage at the pin end — and that
+ * handoff is PINNED on both sides (owner round 4, 2026-08-09): the passage
+ * pulls itself up one viewport (marginTop −100vh, armed desktop path only)
+ * so its sticky stage is already stuck at top:0 when this pin releases, and
+ * this stage's final 100vh of travel happens over a motionless frame. Which
+ * means everything still visible HERE at progress 1 would read as motion:
+ * the panels already fade to 0 across their final band, and the StageRail
+ * fades on that same band (see its exit-fade note below).
  *
  * Text panels are absolutely positioned over the scene and fade in/out
  * across their group range, with a small lead-in/lead-out. The site-wide
@@ -201,8 +208,10 @@ function localizeStages(language: Language): Stage[] {
 // panelOpacity fades stage 04 out across its final band exactly like the map
 // group's own exit — the 02→03 grammar — so the sticky stage scrolls away
 // EMPTY (black space on black space, the section seam invisible) and section
-// 05 materializes in place on the other side (the passage's PANEL_ENTER band
-// mirrors this crossfade). The 04→05 handoff must never read as a scroll.
+// 05 materializes in place a short breath later, inside the passage's own
+// stage, which the round-4 overlap has ALREADY pinned at top:0 (its
+// PANEL_ENTER band mirrors this crossfade at the same 6.5vh rate). The 04→05
+// handoff must never read as a scroll — and now nothing moves during it.
 type StageGroup = {
   id: string;
   /** Spine-ScrollTrigger progress where this panel's lit window starts. */
@@ -584,6 +593,23 @@ function StagePanel({
 // === Stage progress indicator (left rail) =================================
 // One tick per GROUPED panel (4 post-compression) — generated from
 // DESKTOP_GROUPS so a range change renumbers it automatically.
+//
+// EXIT FADE (owner round 4, 2026-08-09 — "da 04 a 05 se scrollo la pagina
+// scende giu"): the singularity passage is now pulled up one viewport so its
+// sticky stage is already pinned when this one unpins (THE PINNED HANDOFF in
+// singularity-passage.tsx), and the spine's stage then slides away OVER that
+// pinned frame across its section's final 100vh. Everything still visible in
+// this stage at pin end travels with it — and the rail is the one crisp,
+// clearly-visible element left (the panels are all faded to 0 by then). So
+// the whole rail fades out across the SAME final band the ship group uses
+// (panelOpacity's fade, spine progress 0.97→1): by the time the pin releases
+// the stage is genuinely empty and nothing reads as motion. The fade is
+// written per-frame on the WRAPPER from the existing progressRef rAF (no
+// React state) — the wrapper carries no CSS transition, so a continuous
+// value lands frame-exact, while the per-tick colour/opacity writes below
+// keep their 300ms transition for the discrete active-tick swap. Reverse
+// scrubbing restores it (pure function of progress), and the effect's
+// cleanup neutralises the inline write.
 function StageRail({
   progressRef,
   groups,
@@ -591,15 +617,28 @@ function StageRail({
   progressRef: React.MutableRefObject<number>;
   groups: StageGroup[];
 }) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
   const rail = useRef<Array<HTMLSpanElement | null>>([]);
 
   useEffect(() => {
     let raf = 0;
     let lastP = Number.NaN;
+    // Start of the last group's exit band — computed with panelOpacity's own
+    // expression so a DESKTOP_GROUPS range change can never desync the rail
+    // from the stage-04 dissolve it has to match (today: 1 − 0.03 = 0.97).
+    const last = groups[groups.length - 1];
+    const exitStart = last
+      ? last.end - Math.min(0.03, (last.end - last.start) * 0.3)
+      : 1;
     const tick = () => {
       const p = progressRef.current;
       if (p !== lastP) {
         lastP = p;
+        const wrap = wrapRef.current;
+        if (wrap) {
+          const t = Math.min(1, Math.max(0, (p - exitStart) / (1 - exitStart)));
+          wrap.style.opacity = String(1 - t);
+        }
         groups.forEach((group, i) => {
           const el = rail.current[i];
           if (!el) return;
@@ -615,11 +654,19 @@ function StageRail({
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      // Drop the inline exit fade: the node outlives this effect on a
+      // groups/ref identity change, and it must never be left dimmed.
+      if (wrapRef.current) wrapRef.current.style.opacity = "";
+    };
   }, [progressRef, groups]);
 
   return (
-    <div className="hidden lg:flex absolute left-8 top-1/2 -translate-y-1/2 flex-col gap-3.5 z-20">
+    <div
+      ref={wrapRef}
+      className="hidden lg:flex absolute left-8 top-1/2 -translate-y-1/2 flex-col gap-3.5 z-20"
+    >
       {groups.map((s, i) => (
         <span
           key={s.id}
@@ -1007,15 +1054,17 @@ export default function CinematicSystemScroll() {
           </span>
         </div>
 
-        {/* Stage rail (left) — one tick per grouped panel. */}
+        {/* Stage rail (left) — one tick per grouped panel; fades out across
+            the ship group's final band so the stage is genuinely empty when
+            the pin releases onto the already-pinned passage. */}
         <StageRail progressRef={progressRef} groups={DESKTOP_GROUPS} />
 
         {/* Grouped stage panels stacked, each fades in/out strictly inside
             its range. The hero group (index 0) is the page H1 (lit at
             progress 0 for SSR); the ship group dissolves in place across its
-            final band, so the sticky stage scrolls away EMPTY and section 05
-            materializes inside the passage on the other side of the seam
-            (the 02→03 crossfade grammar, owner 2026-08-09). */}
+            final band, so the sticky stage scrolls away EMPTY over the
+            passage's already-pinned stage and section 05 materializes there a
+            breath later (the 02→03 crossfade grammar, owner 2026-08-09). */}
         {DESKTOP_GROUPS.map((group, i) => (
           <StagePanel
             key={group.id}

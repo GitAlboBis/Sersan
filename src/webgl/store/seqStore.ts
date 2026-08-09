@@ -43,8 +43,12 @@ import { create } from "zustand";
 
 // === Beat map (THE LONG TAKE v2 — horizontal traverse + one-shot plunge) ===
 // Scrub values are fractions of the main passage ScrollTrigger (start
-// "2.5% top" → end "bottom bottom" over the 380vh container ≈ 270vh of scrub
-// travel). The plunge is NOT in this scrub range anymore: it is a triggered
+// "2.5% top" → end "bottom bottom" over the 380vh container ≈ 270.5vh of
+// scrub travel). Since the round-4 PINNED HANDOFF the container is pulled up
+// one viewport (marginTop −100vh, armed desktop path only), so p = 0 sits
+// 9.5vh AFTER the spine's pin end — inside the 100vh window where the spine's
+// empty stage slides away over this one, which is already pinned at top:0.
+// The plunge is NOT in this scrub range anymore: it is a triggered
 // timeline in SECONDS (the *_S constants below) — and since 2026-08-09 it
 // fires right after SETTLE, so the TRACK/HOLD/APPROACH beats below are
 // forward-unreachable: they exist for reverse entry (up from the divario).
@@ -101,13 +105,22 @@ export const SEQ = {
    * as the spine's grouped panels (owner 2026-08-09: the 04→05 handoff must
    * read like the 02→03 transition, never like a scroll): the panel is
    * INVISIBLE while the section rides in (p ≈ 0) and fully lit well before
-   * TRIGGER_P (0.10). Band width chosen to match the spine's crossfade RATE:
-   * the spine's stage bands are 0.03 of a ~215vh scrub (≈ 6.5vh of travel);
-   * this scrub is ~273vh, so 0.044 − 0.02 = 0.024 × 273vh ≈ 6.5vh — the same
-   * scroll distance per crossfade. Symmetric on reverse — scrubbing back up
-   * fades it out in place across 0.044→0.02 before the section detaches. */
-  PANEL_ENTER_START: 0.02,
-  PANEL_ENTER_END: 0.044,
+   * TRIGGER_P (0.10). Band WIDTH matches the spine's crossfade RATE: the
+   * spine's stage bands are 0.03 of a 215vh scrub (≈ 6.5vh of travel); this
+   * scrub is ~270.5vh (380vh container, start "2.5% top" → end "bottom
+   * bottom" = 280 − 9.5), so 0.029 − 0.005 = 0.024 × 270.5vh ≈ 6.5vh — the
+   * same scroll distance per crossfade.
+   * Band START moved 0.02 → 0.005 with the round-4 PINNED HANDOFF (the
+   * passage is pulled up one viewport, see singularity-passage.tsx): the
+   * passage ST now engages right AT the spine's pin end instead of one
+   * viewport later, so the band can start almost immediately — stage 04
+   * dissolves across the spine's own 0.97→1 band, ~10.9vh of pinned black
+   * pass (the 9.5vh ST start offset + 0.005), then 05 materializes over
+   * 6.5vh. A short breath between two crossfades, both under a frame that
+   * never moves. Symmetric on reverse — scrubbing back up fades it out in
+   * place across 0.029→0.005 before the section detaches. */
+  PANEL_ENTER_START: 0.005,
+  PANEL_ENTER_END: 0.029,
   /** Panel 05 opacity ramp-out across the tail of the traverse (it has
    * tracked mostly off-frame by then; fully gone before HOLD 1 settles). */
   PANEL_FADE_START: 0.4,

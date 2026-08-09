@@ -59,15 +59,18 @@ import { useTierStore } from "@/webgl/store/tierStore";
  * THE SHOT:
  *   SCRUBBED (pure function of p — fully reversible):
  *     SETTLE   p 0–0.08   panel 05 MATERIALIZES in place (opacity ramp
- *                         PANEL_ENTER 0.02–0.044 + the spine StagePanel's
+ *                         PANEL_ENTER 0.005–0.029 + the spine StagePanel's
  *                         (1−α)·16px rise — the 02→03 crossfade grammar;
  *                         owner 2026-08-09: the 04→05 handoff must never
  *                         read as a scroll. The spine's stage 04 dissolves
- *                         at its own pin end, so the seam crosses as black
- *                         on black and 05 appears in place) then rests
- *                         frame-left; 2% pan pre-drift. Scrolling UP out of
- *                         the passage fades it back out across 0.044→0.02
- *                         before the section detaches — the symmetric exit.
+ *                         across its own final band and this section is
+ *                         pulled up one viewport (THE PINNED HANDOFF below),
+ *                         so the seam crosses as black on black UNDER A
+ *                         FRAME THAT NEVER MOVES and 05 appears in place a
+ *                         short breath later) then rests frame-left; 2% pan
+ *                         pre-drift. Scrolling UP out of the passage fades
+ *                         it back out across 0.029→0.005 before the section
+ *                         detaches — the symmetric exit.
  *                         Tunnel created PARKED at p 0.02 (calm beat).
  *     TRIGGER  p 0.10     the FIRST forward scroll past SETTLE hands the
  *                         shot to the one-shot — the forward SCROLL flow
@@ -136,7 +139,9 @@ import { useTierStore } from "@/webgl/store/tierStore";
  *
  * HOUSE SCROLL GRAMMAR (credibility-strip lineage): CSS sticky stage +
  * explicit container height (NO ScrollTrigger pin — a pin-spacer breaks
- * every [data-line-anchor] measurement), transform/opacity-only scrub paths
+ * every [data-line-anchor] measurement) + the one-viewport overlap margin
+ * (THE PINNED HANDOFF, in the armed desktop context below),
+ * transform/opacity-only scrub paths
  * via quickSetters, CustomEase, height re-asserted on refreshInit, rect
  * caches refreshed only on ScrollTrigger "refresh" (never in a frame loop),
  * fonts.ready refresh, focusin net (focus inside the overflow-hidden stage
@@ -500,8 +505,53 @@ export default function SingularityPassage() {
           if (!stage || !track || !panel || !veil || !host) return;
 
           root.setAttribute("data-on", "seq");
+
+          // ── THE PINNED HANDOFF ────────────────────────────────────────────
+          // Owner, round 4 (2026-08-09): "da 04 a 05 se scrollo la pagina
+          // scende giu, non e' pinnato come da 01-02 a 03-04."
+          //
+          // Inside the spine every group swap happens while its stage is
+          // PINNED (sticky top:0): the copy crossfades and NOTHING on screen
+          // travels. Between 04 and 05 there are TWO sections, so the seam
+          // used to hand over through ONE VIEWPORT OF UNPINNED TRANSIT — the
+          // spine's sticky stage travels out during the final 100vh of its
+          // section (a sticky stage unpins when its container's BOTTOM reaches
+          // the viewport bottom) while this section's own sticky stage rides
+          // UP with the page until its container top reaches the viewport top.
+          // That transit is exactly what the owner sees "going down".
+          //
+          // The fix is an OVERLAP, not a longer or slower scrub: a slower
+          // transit is still a transit — the handoff has to be PINNED, not
+          // gentler. Pulling this section up by exactly one viewport puts its
+          // container top ON the spine's pin end, so this stage is ALREADY
+          // stuck at top:0 the moment the spine's pin releases, and stays
+          // stuck across the whole 100vh the spine takes to leave. During that
+          // window the exiting spine stage is EMPTY (stage 04's opacity is
+          // faded out across spine progress 0.97→1 — the panelOpacity band —
+          // and the left StageRail fades on that same band, see
+          // cinematic-system-scroll.tsx) and TRANSPARENT, sliding away over an
+          // already-pinned frame: nothing visible moves. This section comes
+          // LATER in the DOM, so it paints above the exiting stage — panel 05
+          // stays clickable while the spine's own (unlit, inert) panels stay
+          // inert.
+          //
+          // WHY A JS WRITE IN THE ARMED CONTEXT AND NOT A CSS RULE: only this
+          // path has a sticky stage waiting to cover the overlap. The lite
+          // (mobile/coarse) and reduced-motion/no-JS layouts render panel 05
+          // as a normal vertical section and MUST keep normal document flow —
+          // a CSS rule would drag their section up over the spine's last
+          // viewport with nothing pinned underneath. It lives INSIDE size(),
+          // next to the height write, so the refreshInit re-assertion can
+          // never clobber it, and it is cleared in the context cleanup
+          // alongside height + data-on.
+          //
+          // Every ScrollTrigger re-measures on refresh, so the shifted layout
+          // propagates on its own: this section's mainST/bandST, every trigger
+          // below it, and the [data-line-anchor] bus (which re-measures on
+          // mount + its two late passes + fonts.ready).
           const size = () => {
             root.style.height = `${SEQ.DESKTOP_HEIGHT_VH}vh`;
+            root.style.marginTop = "-100vh";
           };
           size();
           ScrollTrigger.addEventListener("refreshInit", size);
@@ -754,9 +804,11 @@ export default function SingularityPassage() {
             // Panel 05 opacity = entry ramp × exit ramp. It MATERIALIZES in
             // place across PANEL_ENTER during SETTLE (the spine's 02→03
             // crossfade grammar — owner 2026-08-09: the 04→05 handoff must
-            // never read as a scroll; symmetric on reverse, so up-scrubbing
-            // out of the passage fades it back out in place), then tracks
-            // off-left and fades across PANEL_FADE. The y write is
+            // never read as a scroll, and with the one-viewport overlap the
+            // frame it materializes into is pinned and motionless; symmetric
+            // on reverse, so up-scrubbing out of the passage fades it back
+            // out in place), then tracks off-left and fades across
+            // PANEL_FADE. The y write is
             // StagePanel's exact (1-opacity)*16px entry offset.
             const panelA =
               seqSmooth(p, SEQ.PANEL_ENTER_START, SEQ.PANEL_ENTER_END) *
@@ -1133,10 +1185,20 @@ export default function SingularityPassage() {
           };
 
           // ── Main scrub — ONE trigger, CSS sticky does the pinning. Also
-          // the one-shot's arm/trigger/re-arm clock. `primed` gates the
-          // trigger logic until the prime block below has latched the real
-          // landing progress (create/refresh can fire onUpdate synchronously
-          // — an SPA landing past the trigger must never fire the plunge). ──
+          // the one-shot's arm/trigger/re-arm clock. Its range is measured
+          // against THIS root, so the overlap margin shifts it bodily and
+          // changes none of the fractions: start "2.5% top" is 9.5vh into the
+          // 380vh container (now 9.5vh AFTER the spine's pin end, i.e. inside
+          // the overlap, with this stage already pinned) and "bottom bottom"
+          // is 280vh in — 270.5vh of scrub. Consequence of the overlap worth
+          // knowing: the one-shot's TRIGGER_P (0.10 ≈ 36.5vh past the pin end)
+          // now fires while the spine's stage is still ~63vh from gone, so it
+          // freezes there for the locked shot — empty, transparent, and behind
+          // this section's paint, then covered outright by the veil/tunnel.
+          // `primed` gates the trigger logic until the prime block below has
+          // latched the real landing progress (create/refresh can fire
+          // onUpdate synchronously — an SPA landing past the trigger must
+          // never fire the plunge). ────────────────────────────────────────
           let primed = false;
           const mainST = ScrollTrigger.create({
             trigger: root,
@@ -1295,6 +1357,11 @@ export default function SingularityPassage() {
             resetSeqStore();
             root.removeAttribute("data-on");
             root.style.height = "";
+            // The overlap margin belongs to the armed desktop path ONLY (see
+            // THE PINNED HANDOFF above): the layouts this node flips into on
+            // teardown — lite, reduced-motion, static — must go back to normal
+            // document flow.
+            root.style.marginTop = "";
           };
         },
       );
