@@ -9,6 +9,7 @@ import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
 import { getLenis } from "@/lib/lenis-singleton";
 import { snapPoint } from "@/lib/scroll-snap";
+import { useCentreFocus } from "@/lib/use-centre-focus";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
@@ -74,12 +75,40 @@ if (typeof window !== "undefined") {
  * eyebrow/title/description, column labels, closing line).
  *
  * MODES: pinned (SSR default — desktop, fine pointer, no reduced-motion) /
- * native (≤768px, coarse pointer, prefers-reduced-motion): the v1 static
- * two-column lists — medallions open, no bars, no filters animating, no
- * pinning. Keyboard: focusin inside a beat converts to the beat's lock
- * scroll position through Lenis (null-guarded) — same convention as the
- * rails. The `id="fit"` anchor + page.tsx [data-line-anchor="fit"] wrapper
- * semantics are unchanged.
+ * native (≤768px, coarse pointer, prefers-reduced-motion): no bars, no
+ * filters animating, no pinning — the settled, fully readable state.
+ * Keyboard: focusin inside a beat converts to the beat's lock scroll
+ * position through Lenis (null-guarded) — same convention as the rails. The
+ * `id="fit"` anchor + page.tsx [data-line-anchor="fit"] wrapper semantics
+ * are unchanged.
+ *
+ * NATIVE LAYOUTS (MOBILE_HOME_SPEC §5.3 — the phone reads 1.90 viewports of
+ * Fit and must read 1.30). The native branch serves two, chosen off a
+ * SUBSCRIBED `(min-width: 1024px)` query, never a one-shot sample:
+ *
+ *   - `lg` and above (a coarse 1280px tablet, a reduced-motion desktop):
+ *     the v1 two-column lists, UNCHANGED. This layout is not a mobile
+ *     surface and does not pay for the mobile fix.
+ *
+ *   - below `lg`: SIX PAIRED ROWS. Stacking the two columns at
+ *     `grid-cols-1` does not merely cost ~620px — it destroys the argument:
+ *     the reader gets six good-fit lines, a column header, then the six
+ *     counterparts ~700px later, with nothing to say that NOT_A_FIT[i] is
+ *     the answer to GOOD_FIT[i] (the pairing contract documented at :21).
+ *     Each row carries GOOD_FIT[i] over NOT_A_FIT[i], so the comparison is
+ *     back inside one eyeful AND the section is shorter. A segmented
+ *     control / two-card deck was explicitly rejected (spec §7): making the
+ *     two halves of a comparison mutually exclusive is strictly worse at
+ *     comparison than stacking them.
+ *
+ *     All 12 statements are in the DOM in source order — nothing behind a
+ *     gesture, a toggle or a disclosure. `lib/use-centre-focus` supplies
+ *     the `:hover` a phone cannot perform: the centred pair's ✓ medallion
+ *     ignites and an amber bar sweeps the ✗ line, which settles struck.
+ *     The bar is a 10%-alpha wash + a strike rule, NEVER a cover — under
+ *     the hook's `static` mode (reduced motion) every row is focused at
+ *     once, so a cover would redact all six counterparts permanently.
+ *     Content reachability never depends on motion.
  *
  * The title's italic span keeps the v1 pose transition (invisible centered
  * proxy → real layout slot, measured once per refresh, never per frame): the
@@ -403,6 +432,18 @@ export default function FitSection() {
   // in the initial HTML — same convention as the rails / services pan.
   const [mode, setMode] = useState<"pinned" | "native">("pinned");
   const [detected, setDetected] = useState(false);
+  // Layout axis INSIDE the native branch (see NATIVE LAYOUTS above): paired
+  // rows below `lg`, the v1 two-column lists at `lg`+. Branching in JS rather
+  // than shipping both trees behind `lg:hidden` keeps the ≥1024px markup
+  // byte-identical and the 12 statements un-duplicated. It is a media-query
+  // subscription — it flips at most when the viewport crosses 1024px, never
+  // per scroll frame.
+  const [wide, setWide] = useState(false);
+
+  // The touch answer to `:hover` for the paired rows. Inert on a fine pointer,
+  // `static` (every row focused) under reduced motion — one hook, six rows,
+  // zero re-renders.
+  const pairFocusRef = useCentreFocus();
 
   const headingRef = useRef<HTMLDivElement | null>(null);
   const poseProxyRef = useRef<HTMLSpanElement | null>(null);
@@ -427,13 +468,18 @@ export default function FitSection() {
       window.matchMedia("(pointer: coarse)"),
       window.matchMedia("(prefers-reduced-motion: reduce)"),
     ];
+    // Deliberately NOT part of the OR above: this one picks the native
+    // branch's LAYOUT, it must never move the pinned/native decision.
+    const wideQuery = window.matchMedia("(min-width: 1024px)");
     const sync = () => {
       setMode(queries.some((q) => q.matches) ? "native" : "pinned");
+      setWide(wideQuery.matches);
       setDetected(true);
     };
     sync();
-    queries.forEach((q) => q.addEventListener("change", sync));
-    return () => queries.forEach((q) => q.removeEventListener("change", sync));
+    const watched = [...queries, wideQuery];
+    watched.forEach((q) => q.addEventListener("change", sync));
+    return () => watched.forEach((q) => q.removeEventListener("change", sync));
   }, []);
 
   // Runway release + re-measure on a MODE FLIP ONLY — deliberately NOT in the
@@ -882,8 +928,12 @@ export default function FitSection() {
 
   /* ---- Shared blocks (heading / closing — copy byte-identical) -------- */
 
+  // `mb-6` is the base-only value: the pinned branch never renders below
+  // 769px (its own media gate), so `sm:mb-16` is the only rule it can ever
+  // see and the desktop rhythm is untouched. Below 640px the 48px gap under
+  // the heading is a third of a paired row — chrome the phone cannot afford.
   const headingBlock = (
-    <div ref={headingRef} className="relative mb-12 sm:mb-16">
+    <div ref={headingRef} className="relative mb-6 sm:mb-16">
       <SectionHeading
         eyebrow={isEn ? "Selective on purpose" : "Selettivi per scelta"}
         title={
@@ -945,9 +995,157 @@ export default function FitSection() {
     </p>
   );
 
+  /* ---- Native layout A: the v1 two-column lists (`lg` and above) ------ *
+   * Byte-identical to what shipped before the paired-rows work. A coarse
+   * 1280px tablet and a reduced-motion desktop are not the surface the
+   * mobile spec is fixing, and they do not pay for the fix.               */
+  const twoColumnLists = (
+    <div className="fit-grid grid grid-cols-1 lg:grid-cols-2 gap-px bg-[hsl(var(--rule))] border border-[hsl(var(--rule))] rounded-lg overflow-hidden">
+      {/* Good fit column */}
+      <div className="fit-col fit-col--good bg-[hsl(var(--bg))] p-6 sm:p-8">
+        <div className="flex items-center gap-3 mb-6">
+          <span
+            aria-hidden="true"
+            className="fit-icon flex items-center justify-center w-6 h-6 rounded-full bg-[hsl(var(--accent)/0.15)] border border-[hsl(var(--accent)/0.5)] shadow-[0_0_0_0_hsl(var(--accent)/0)]"
+            style={{ ["--fit-glow" as string]: "var(--accent)" }}
+          >
+            <Check
+              className="w-3 h-3 text-[hsl(var(--accent))]"
+              aria-hidden="true"
+            />
+          </span>
+          <h3 className="font-mono text-[11px] tracking-[0.18em] uppercase text-ink">
+            {isEn ? "Good fit" : "Buon fit"}
+          </h3>
+        </div>
+        <ul className="flex flex-col gap-3.5">
+          {goodFit.map((line, i) => (
+            <li key={i}>
+              <div className="flex items-start gap-3">
+                <FitMedallion kind="good" />
+                <p className="fit-good flex-1 rounded-md px-3 py-2 text-[14px] sm:text-[15px] text-ink leading-relaxed">
+                  {line}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Not a fit column */}
+      <div className="fit-col fit-col--warn bg-[hsl(var(--bg))] p-6 sm:p-8">
+        <div className="flex items-center gap-3 mb-6">
+          <span
+            aria-hidden="true"
+            className="fit-icon flex items-center justify-center w-6 h-6 rounded-full bg-[hsl(36_84%_56%/0.1)] border border-[hsl(36_84%_56%/0.32)]"
+            style={{ ["--fit-glow" as string]: "36 84% 56%" }}
+          >
+            <X className="w-3 h-3 text-[hsl(36_84%_62%)]" aria-hidden="true" />
+          </span>
+          <h3 className="font-mono text-[11px] tracking-[0.18em] uppercase text-ink-mute">
+            {isEn ? "Not a fit" : "Non è un fit"}
+          </h3>
+        </div>
+        <ul className="flex flex-col gap-3.5">
+          {notAFit.map((line, i) => (
+            <li key={i}>
+              <div className="flex items-start gap-3">
+                <FitMedallion kind="warn" />
+                <p className="fit-warn flex-1 rounded-md px-3 py-2 text-[14px] sm:text-[15px] text-ink-mute leading-relaxed">
+                  {line}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+
+  /* ---- Native layout B: six paired rows (below `lg`) ------------------ *
+   * One row per GOOD_FIT[i] / NOT_A_FIT[i] pair — the verdict and its
+   * counterpart in one eyeful, which is the argument the stacked columns
+   * lose (see NATIVE LAYOUTS in the header). Every row is plain, static,
+   * always-painted DOM; the centre-focus treatment is decoration ON TOP of
+   * a fully readable row, never the thing that makes it readable.
+   *
+   * The visible legend is aria-hidden and each statement carries its own
+   * sr-only label instead — reusing the section's existing "Good fit" /
+   * "Not a fit" strings verbatim — so a screen reader hears the PAIRING
+   * ("Good fit: … / Not a fit: …") rather than twelve unattributed
+   * sentences under one header. That is the same information the two
+   * labelled lists carried, delivered per pair.                          */
+  const pairedRows = (
+    <div>
+      <div
+        aria-hidden="true"
+        className="flex items-center gap-2.5 border-b border-[hsl(var(--rule))] pb-2 font-mono text-[11px] tracking-[0.18em] uppercase"
+      >
+        <span className="flex items-center gap-1.5 text-ink">
+          <Check
+            className="h-3 w-3 text-[hsl(var(--accent))]"
+            aria-hidden="true"
+          />
+          {isEn ? "Good fit" : "Buon fit"}
+        </span>
+        <span className="text-ink-dim">/</span>
+        <span className="flex items-center gap-1.5 text-ink-mute">
+          <X className="h-3 w-3 text-[hsl(36_84%_62%)]" aria-hidden="true" />
+          {isEn ? "Not a fit" : "Non è un fit"}
+        </span>
+      </div>
+
+      <ul className="border-b border-[hsl(var(--rule))]">
+        {goodFit.map((line, i) => (
+          <li
+            key={i}
+            ref={pairFocusRef}
+            data-fit-pair={i}
+            className="fit-pair border-t border-[hsl(var(--rule)/0.55)] py-2 first:border-t-0"
+          >
+            <div className="flex items-start gap-2.5">
+              <span
+                aria-hidden="true"
+                className="fit-pair__medal mt-[3px] inline-flex shrink-0 rounded-full"
+                style={{ ["--fit-glow" as string]: "var(--accent)" }}
+              >
+                <FitMedallion
+                  kind="good"
+                  className="h-[18px] w-[18px] shrink-0"
+                />
+              </span>
+              <p className="min-w-0 flex-1 text-[14px] leading-snug text-ink">
+                <span className="sr-only">
+                  {isEn ? "Good fit" : "Buon fit"}:{" "}
+                </span>
+                {line}
+              </p>
+            </div>
+
+            <div className="mt-1.5 flex items-start gap-2.5">
+              <span
+                aria-hidden="true"
+                className="mt-[2px] flex h-[18px] w-[18px] shrink-0 items-center justify-center"
+              >
+                <X className="h-3 w-3 text-[hsl(36_84%_62%/0.85)]" />
+              </span>
+              <p className="fit-pair__bad-text relative min-w-0 flex-1 font-mono text-[12px] leading-tight text-ink-mute">
+                <span className="sr-only">
+                  {isEn ? "Not a fit" : "Non è un fit"}:{" "}
+                </span>
+                {notAFit[i]}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+
   /* ---- Native fallback (≤768px / coarse / reduced-motion) ------------- *
-   * The v1 static two-column lists: medallions open, no bars, no filters
-   * animating, no pinning — the settled, fully readable state.             */
+   * Medallions open, no bars, no filters animating, no pinning — the
+   * settled, fully readable state. Two layouts, see NATIVE LAYOUTS in the
+   * header: paired rows below `lg`, the v1 two-column lists at `lg`+.      */
   if (detected && mode === "native") {
     return (
       <section
@@ -958,71 +1156,9 @@ export default function FitSection() {
         <div className="container-px relative">
           {headingBlock}
 
-          <div className="fit-grid grid grid-cols-1 lg:grid-cols-2 gap-px bg-[hsl(var(--rule))] border border-[hsl(var(--rule))] rounded-lg overflow-hidden">
-            {/* Good fit column */}
-            <div className="fit-col fit-col--good bg-[hsl(var(--bg))] p-6 sm:p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <span
-                  aria-hidden="true"
-                  className="fit-icon flex items-center justify-center w-6 h-6 rounded-full bg-[hsl(var(--accent)/0.15)] border border-[hsl(var(--accent)/0.5)] shadow-[0_0_0_0_hsl(var(--accent)/0)]"
-                  style={{ ["--fit-glow" as string]: "var(--accent)" }}
-                >
-                  <Check
-                    className="w-3 h-3 text-[hsl(var(--accent))]"
-                    aria-hidden="true"
-                  />
-                </span>
-                <h3 className="font-mono text-[11px] tracking-[0.18em] uppercase text-ink">
-                  {isEn ? "Good fit" : "Buon fit"}
-                </h3>
-              </div>
-              <ul className="flex flex-col gap-3.5">
-                {goodFit.map((line, i) => (
-                  <li key={i}>
-                    <div className="flex items-start gap-3">
-                      <FitMedallion kind="good" />
-                      <p className="fit-good flex-1 rounded-md px-3 py-2 text-[14px] sm:text-[15px] text-ink leading-relaxed">
-                        {line}
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
+          {wide ? twoColumnLists : pairedRows}
 
-            {/* Not a fit column */}
-            <div className="fit-col fit-col--warn bg-[hsl(var(--bg))] p-6 sm:p-8">
-              <div className="flex items-center gap-3 mb-6">
-                <span
-                  aria-hidden="true"
-                  className="fit-icon flex items-center justify-center w-6 h-6 rounded-full bg-[hsl(36_84%_56%/0.1)] border border-[hsl(36_84%_56%/0.32)]"
-                  style={{ ["--fit-glow" as string]: "36 84% 56%" }}
-                >
-                  <X
-                    className="w-3 h-3 text-[hsl(36_84%_62%)]"
-                    aria-hidden="true"
-                  />
-                </span>
-                <h3 className="font-mono text-[11px] tracking-[0.18em] uppercase text-ink-mute">
-                  {isEn ? "Not a fit" : "Non è un fit"}
-                </h3>
-              </div>
-              <ul className="flex flex-col gap-3.5">
-                {notAFit.map((line, i) => (
-                  <li key={i}>
-                    <div className="flex items-start gap-3">
-                      <FitMedallion kind="warn" />
-                      <p className="fit-warn flex-1 rounded-md px-3 py-2 text-[14px] sm:text-[15px] text-ink-mute leading-relaxed">
-                        {line}
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          <div className="mt-10 sm:mt-12">{closingBlock}</div>
+          <div className="mt-8 sm:mt-12">{closingBlock}</div>
         </div>
 
         <style>{`
@@ -1047,6 +1183,57 @@ export default function FitSection() {
             }
           }
 
+          /* ---- Paired rows: the centred pair ignites ------------------- *
+           * [data-focus] is written by lib/use-centre-focus on whichever
+           * pair the reader has scrolled to the middle of the viewport.
+           * The ✗ treatment is a 10%-alpha wash plus a strike rule — a
+           * SWEEP, never a cover: under the hook's "static" mode (reduced
+           * motion) every row carries [data-focus] at once, and an opaque
+           * bar would redact all six counterparts permanently.            */
+          .fit-pair__medal {
+            box-shadow: 0 0 0 0 hsl(var(--fit-glow) / 0);
+            transition: box-shadow 420ms cubic-bezier(0.16, 1, 0.3, 1);
+          }
+          .fit-pair__bad-text {
+            text-decoration-line: line-through;
+            text-decoration-color: transparent;
+            text-decoration-thickness: 1px;
+            transition: text-decoration-color 420ms cubic-bezier(0.16, 1, 0.3, 1);
+          }
+          .fit-pair__bad-text::after {
+            content: "";
+            position: absolute;
+            inset: -2px -5px;
+            border-radius: 3px;
+            background: hsl(36 84% 56% / 0.1);
+            border-right: 1px solid hsl(36 84% 62% / 0.45);
+            transform: scaleX(0);
+            transform-origin: 0% 50%;
+            transition: transform 560ms cubic-bezier(0.16, 1, 0.3, 1);
+            pointer-events: none;
+          }
+          .fit-pair[data-focus="true"] .fit-pair__medal {
+            box-shadow: 0 0 14px 1px hsl(var(--fit-glow) / 0.4);
+          }
+          .fit-pair[data-focus="true"] .fit-pair__bad-text {
+            text-decoration-color: hsl(36 84% 56% / 0.6);
+          }
+          .fit-pair[data-focus="true"] .fit-pair__bad-text::after {
+            transform: scaleX(1);
+          }
+          /* Two triggers, one per input class — same grammar as the
+             founders portrait reveal. The hook is inert on a fine pointer,
+             so :hover is the only one that can fire there. */
+          @media (hover: hover) and (pointer: fine) {
+            .fit-pair:hover .fit-pair__medal {
+              box-shadow: 0 0 14px 1px hsl(var(--fit-glow) / 0.4);
+            }
+            .fit-pair:hover .fit-pair__bad-text {
+              text-decoration-color: hsl(36 84% 56% / 0.6);
+            }
+            .fit-pair:hover .fit-pair__bad-text::after { transform: scaleX(1); }
+          }
+
           @media (prefers-reduced-motion: reduce) {
             .fit-icon {
               transform: none;
@@ -1055,6 +1242,11 @@ export default function FitSection() {
               box-shadow: none;
             }
             .fit-col { transition: none; }
+            /* Revealed, not animated: the focused state still paints, it
+               simply arrives without a transition. */
+            .fit-pair__medal,
+            .fit-pair__bad-text,
+            .fit-pair__bad-text::after { transition: none; }
           }
         `}</style>
       </section>
