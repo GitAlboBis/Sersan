@@ -411,7 +411,20 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           camera-relative and rely on the single camera authority (which also
           applies the passage's seqPan term earlier in the same priority-0
           pass). Its emissive march rides the SAME >1.0 threshold bloom in
-          PostFXNodes — no second post chain. */}
+          PostFXNodes — no second post chain.
+
+          PHONES DELIBERATELY DO NOT GET THIS ISLAND (Phase 4, 2026-08-11).
+          The coarse-pointer branch of singularity-passage.tsx now runs a real
+          scrub-linked beat of its own — the CSS hole on the same 1/d law plus
+          the raw-WebGL1 point tunnel the preloader already ships to every
+          phone — instead of the ~180svh of empty scroll it used to be. It was
+          NOT wired to this island because the march is ~96 iterations/pixel
+          over a silhouette that grows to fill the frame (a tile GPU has no
+          budget for it, and no FPS measurement was available to prove
+          otherwise), because the island drags the whole three/webgpu + TSL
+          chunk onto the route with the worst mobile Lighthouse, and because
+          `tier === "full"` has 13 consumers that must not be half-migrated.
+          The full reasoning lives in that file's FALLBACK MATRIX. */}
       {pathname === "/" && tier === "full" && webgpu && (
         <SequenceSingularity />
       )}

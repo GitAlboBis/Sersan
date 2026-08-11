@@ -30,6 +30,14 @@
  *     for the tunnel's zoom-blur center lock and the CSS-imposter
  *     suppressor).
  *
+ * THE PHONE BEAT WRITES NOTHING HERE. The coarse-pointer branch of
+ * singularity-passage.tsx (Phase 4) drives its own DOM layers + its own
+ * raw-WebGL1 tunnel instance directly, and touches only the `SEQ.LITE_*`
+ * CONSTANTS below — never the store state. That is deliberate: `active` /
+ * `pan01` are consumed by SignatureLine on EVERY tier, so a lite branch that
+ * published them would pan the shared camera on phones, and `armed` /
+ * `marchLive` belong to an island that is not mounted there at all.
+ *
  * No React subscribers on the hot fields — everything is read via getState()
  * inside frame loops / rAF ticks, textMorphStore discipline.
  *
@@ -55,13 +63,6 @@ import { create } from "zustand";
 export const SEQ = {
   /** Desktop container height (sticky h-screen stage inside). */
   DESKTOP_HEIGHT_VH: 380,
-  /** Mobile/coarse reduced runway height, in **svh** (small-viewport height —
-   * the address-bar-VISIBLE viewport), which is the unit its single consumer
-   * writes it in (singularity-passage.tsx). Named `_SVH` deliberately: `vh` is
-   * the LARGE viewport, so reading this as `vh` would reintroduce exactly the
-   * address-bar jump the svh unit was chosen to remove (MOBILE_AUDIT.md D-7).
-   * The vertical section-05 panel adds its own flow height above this. */
-  LITE_HEIGHT_SVH: 180,
 
   // --- Scrubbed beat boundaries (p) ----------------------------------------
   // Forward flow hands off to the one-shot at TRIGGER_P (0.10) — everything
@@ -217,9 +218,124 @@ export const SEQ = {
   ITER_LO: 64,
   STEP_LO: 0.0142, // 0.0142·64·2 ≈ 1.818
 
-  // --- Mobile/coarse CSS imposter (same 1/d curve on a div) ----------------
-  LITE_START_VH: 12,
-  LITE_MAX_VH: 160,
+  // --- Desktop CSS hole imposter (the non-WebGPU stand-in for the march) ---
+  /** Base diameter (vh) of the `.seq-imposter` element. `applyHoleVisuals`
+   * scales it by `apparent / IMPOSTER_BASE_VH`, so the RENDERED apparent size
+   * is invariant in this constant — it only sets the layer's rasterisation
+   * base. Desktop-only: the phone beat owns its own `.seq-lite-hole` (below)
+   * so the two paths can be tuned independently. */
+  IMPOSTER_BASE_VH: 12,
+
+  // === PHONE / COARSE BEAT ("the passage, on a phone") =====================
+  // Phase 4 (MOBILE_AUDIT.md §2 + §7 item 4.1). It replaces ~180svh of empty
+  // aria-hidden scroll with ONE continuous, scrub-linked accelerating move:
+  // the hole approaches on the 1/d law while the star field spins up from
+  // drift to light-speed, the black closes over the frame, and the streaks
+  // die inside it. NO input lock, NO covert jump — MOBILE_AUDIT.md §5 already
+  // decided touch keeps native scrolling, and the desktop one-shot's
+  // touchmove/preventDefault hijack is exactly what must not ship here.
+  //
+  // Every value below is a pure function of the ScrollTrigger progress `t`,
+  // so the whole beat reverses cleanly and never needs a state machine.
+  /** Runway height in **svh** (small-viewport height — the address-bar-VISIBLE
+   * viewport). Named `_SVH` deliberately: `vh` is the LARGE viewport, so
+   * reading this as `vh` reintroduces exactly the address-bar jump the unit
+   * was chosen to remove (MOBILE_AUDIT.md D-7), and svh needs no resize
+   * listener to stay frozen (it is defined against the bar-visible viewport,
+   * so a bar collapse cannot rewrite it mid-scroll).
+   *
+   * 130, down from 180. The sticky stage is 100svh by contract, so the SCRUB
+   * TRAVEL is what is left: 30svh ≈ 253px at 390×844 — one deliberate thumb
+   * drag. That is why the beat is ONE move instead of the desktop's five
+   * chapters: below ~120 there is under 20svh of travel and the beat stops
+   * being scrubbable at all; above ~140 the empty-scroll complaint returns.
+   * The vertical section-05 panel adds its own flow height above this. */
+  LITE_RUN_SVH: 130,
+
+  // --- The hole (a CSS layer on the same 1/d divergence law) ---------------
+  /** `.seq-lite-hole` element diameter in svh — the rasterisation base only.
+   * Apparent size = BASE × scale, so this constant is invisible in the
+   * composition; it exists to keep the MAX UPSCALE modest (170/56 ≈ 3.0×),
+   * because a composited layer is rastered once and stretched — the old 12vh
+   * base reached 13× and turned the photon ring to mush. */
+  LITE_HOLE_BASE_VH: 56,
+  /** Apparent diameter at t = 0 — a fifth of the screen. Deliberately NOT the
+   * desktop's 12vh first read: on a phone the beat has 30svh of travel, so it
+   * must arrive already legible instead of spending its first third as a dot
+   * (that dot is precisely what the audit measured as "empty scroll"). */
+  LITE_HOLE_START_VH: 22,
+  /** Apparent diameter at t = 1 — the frame is swallowed. */
+  LITE_HOLE_END_VH: 170,
+  /** Growth ease: apparent = START·(END/START)^(t^POW). POW > 1 keeps the
+   * physical acceleration (1/d diverges); 1.25 rather than the desktop's much
+   * harder back-load because [measured] the whole scrub is 253px at 390×844 —
+   * anything steeper leaves the first half reading as a static disc. */
+  LITE_HOLE_EASE_POW: 1.25,
+  /** Fade-in band for the hole layer. 0.14 ≈ 36px of scroll [measured]: at
+   * 0.08 the trace showed 0 → 1 inside 20px, which is a cut, not a fade. */
+  LITE_HOLE_IN_END: 0.14,
+
+  // --- The star field (the raw-WebGL1 point tunnel, reused verbatim) -------
+  /** Canvas alpha ramp-in band — a touch behind the hole so the field arrives
+   * around it rather than with it. */
+  LITE_TUNNEL_IN_END: 0.16,
+  /** Peak canvas alpha. */
+  LITE_TUNNEL_ALPHA: 0.9,
+  /** The streaks die inside the black across [this, LITE_TUNNEL_OUT_END] —
+   * the frame is left clean before the stage scrolls away. */
+  LITE_TUNNEL_OUT_START: 0.86,
+  LITE_TUNNEL_OUT_END: 0.98,
+  /** Warp (timeCoef) ramp band and peak. 60, not the desktop's 100: the
+   * streak length the eye reads is angular, and a 390px-wide frame reaches
+   * "light speed" at a much lower coefficient.
+   *
+   * The whole band is FRONT-LOADED into the middle of the scrub on purpose.
+   * [measured] the scrub is 253px, i.e. a fraction of one thumb flick, and
+   * the tail of a flick is exactly where momentum is most likely to skip
+   * frames — so the payoff (warp at peak, frame going black) completes by
+   * t ≈ 0.86 and the last 14% is only the arrival normalising. Nothing the
+   * viewer needs to see lives where they are moving fastest. */
+  LITE_WARP_START: 0.22,
+  LITE_WARP_END: 0.72,
+  LITE_WARP_PEAK: 60,
+  /** Ceiling on the *requested* target handed to the tunnel module. The
+   * module lerps its own timeCoef toward the target at a fixed 2%/frame
+   * (~0.8s time constant) — fine for the desktop's 4s timeline, useless for a
+   * scrub — so the passage requests an overshoot to make the warp genuinely
+   * scroll-linked (see TUNNEL_COEF_LERP in singularity-passage.tsx). This cap
+   * bounds that overshoot: it limits the climb to ~2%·(240 − current) per
+   * frame ≈ 0.25s from rest to peak, and bounds the worst case if the
+   * module's lerp constant ever changes underneath us. */
+  LITE_WARP_REQ_MAX: 240,
+
+  // --- The entry (two opacity-only layers; see the JSX) --------------------
+  /** #000 radial veil — "we are inside it". Its centre is the same black as
+   * the hole's core, so the coverage completes on a colour seam. */
+  LITE_VEIL_START: 0.62,
+  LITE_VEIL_END: 0.86,
+  /** Flat page-navy cover — the arrival. It normalises the frame to
+   * `hsl(var(--bg))` before the sticky stage scrolls away, so the handoff to
+   * the divario has no visible edge (a black rectangle sliding up over a navy
+   * page is the artefact this removes). Ends at 0.96, not 1: a momentum tail
+   * that overshoots the last few percent of the runway must still find the
+   * frame normalised. */
+  LITE_COVER_START: 0.84,
+  LITE_COVER_END: 0.96,
+
+  // --- Budget (resolution and overdraw FIRST — MOBILE_AUDIT.md §5.5) -------
+  /** Hard DPR cap asserted on the R3F canvas for the whole approach band.
+   * Mobile GPUs are tile-based and fill-bound (cost ∝ DPR²) and the beat runs
+   * the point tunnel + three composited full-frame layers on top of the
+   * persistent canvas — so the canvas gives up its resolution first. Nothing
+   * on it is legible during the beat (SignatureLine + DriftParticles behind a
+   * closing black frame), which makes this the cheapest lever available. */
+  LITE_DPR_CAP: 1,
+  /** `navigator.hardwareConcurrency` at or below this → the CSS-only beat (no
+   * point tunnel). The narrow, additive capability check for this module: a
+   * phone reporting ≤4 cores in 2026 is genuinely old, and the CSS layers
+   * alone still carry the full 1/d move. Deliberately NOT a tierStore change
+   * — see the FALLBACK MATRIX in singularity-passage.tsx. */
+  LITE_MIN_CORES: 4,
 } as const;
 
 /** Camera pan amplitude as a fraction of worldViewWidth (SignatureLine and

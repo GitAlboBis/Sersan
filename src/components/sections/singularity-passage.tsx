@@ -161,18 +161,47 @@ import { cn } from "@/lib/utils";
  *     the REAL tunnel plunge still runs (raw WebGL1).
  *   createPreloaderTunnel returns null    → graft 5: the veil carries the
  *     entry alone — a dark plunge, never a dead cut.
- *   coarse pointer / <1024px + motion-ok  → panel 05 renders as a normal
- *     fully-readable VERTICAL section (CTAs work), then the ~180svh cheap
- *     beat: the CSS imposter scales along the same precomputed 1/d curve
- *     (transform/opacity only) and crossfades to navy. This branch measures
- *     in svh, NOT vh — its runway and its sticky stage are the only sticky
- *     geometry a touch user reaches, and vh (the large, bar-hidden viewport)
- *     made both jump when the address bar collapsed (D-7). Desktop below
- *     stays on vh: there is no dynamic browser chrome to be immune to, and
- *     the 380vh runway / −100vh handoff / 100vh stage are a matched set.
+ *   coarse pointer / <1024px + motion-ok  → THE PHONE BEAT (Phase 4). Panel
+ *     05 renders as a normal fully-readable VERTICAL section (CTAs work,
+ *     copy identical), then a 130svh runway over a 100svh sticky Stage
+ *     carries one continuous scrub-linked move: the hole approaches on the
+ *     same 1/d law while the raw-WebGL1 point tunnel spins up from drift to
+ *     light speed, a #000 radial veil closes the frame on a colour seam with
+ *     the hole's core, and the streaks die inside the black while a flat
+ *     page-navy cover normalises the frame for the handoff to the divario.
+ *     NO input lock, NO covert jump: touch keeps native scrolling
+ *     (MOBILE_AUDIT.md §5), so the desktop one-shot's wheel/touchmove hijack
+ *     is deliberately absent and every layer stays a pure function of
+ *     progress. This branch measures in svh, NOT vh — its runway and its
+ *     sticky stage are the only sticky geometry a touch user reaches, and vh
+ *     (the large, bar-hidden viewport) made both jump when the address bar
+ *     collapsed (D-7). Desktop below stays on vh: there is no dynamic browser
+ *     chrome to be immune to, and the 380vh runway / −100vh handoff / 100vh
+ *     stage are a matched set.
+ *     ── THE CAPABILITY DECISION ──────────────────────────────────────────
+ *     The TSL raymarch (SequenceSingularity) is deliberately NOT mounted on
+ *     phones and tierStore is deliberately NOT touched. Three reasons, in
+ *     order: (1) COST — ~96 march iterations per pixel over a silhouette that
+ *     grows to fill the frame is ~30M heavy steps/frame at DPR 1 on a 390×844
+ *     screen; a tile GPU has no budget for that and no measurement was
+ *     available to prove otherwise, so the conservative option was taken.
+ *     (2) PAYLOAD — the island pulls the whole three/webgpu + TSL chunk, on
+ *     the one route whose mobile Lighthouse is already 0.61 / LCP 7.6s.
+ *     (3) BLAST RADIUS — 13 call sites read `tier === "full"`; a partial
+ *     migration is worse than none. What the beat DOES mount is the same raw
+ *     WebGL1 tunnel the PRELOADER already builds on every non-reduced-motion
+ *     device (preloader.tsx), at its own COUNT_SMALL tier (14k points below
+ *     768px or ≤4 cores) and its own DPR cap of 1.5 — a workload this site
+ *     already ships to phones, and zero extra bytes. The single additive
+ *     check is SEQ.LITE_MIN_CORES: ≤4 logical cores → CSS-only beat.
+ *     Budget order per MOBILE_AUDIT.md §5.5: resolution first
+ *     (SEQ.LITE_DPR_CAP pins the persistent R3F canvas to DPR 1 for the whole
+ *     approach band), then particle count (the tunnel's own small tier), then
+ *     features (the tunnel itself, dropped on ≤4 cores).
  *   prefers-reduced-motion / no JS        → the static vertical section 05
- *     + a static 60vh deep-navy gradient spacer. No transforms, no tunnel.
- * Decorative layers ONLY (imposter, veil, pulse, tunnel host, lite beat,
+ *     + a static 60vh deep-navy gradient spacer. No transforms, no tunnel,
+ *     no canvas (CanvasHost renders nothing at tier "off"). Untouched.
+ * Decorative layers ONLY (imposter, veil, pulse, tunnel host, phone stage,
  * spacer) are aria-hidden — panel 05 is real content on every path.
  */
 
@@ -208,6 +237,17 @@ const PANEL_LIT_MIN = 0.6;
 const ENABLE_HORIZON_PULSE = false;
 /** Horizon-pulse peak opacity (capped per the graft: 0.15–0.2). */
 const PULSE_PEAK = 0.18;
+/**
+ * MUST match `TIME_COEF_LERP` in components/fx/preloader-tunnel.ts — the rate
+ * at which that module lerps its internal `timeCoef` toward the target on
+ * every render() call. The phone beat shadows and inverts that lerp to make
+ * the warp genuinely scroll-linked (see requestWarp in the coarse branch);
+ * the desktop one-shot has 4s of timeline and just rides the module's own
+ * smoothing, so it does not care. If the module ever changes this, the phone
+ * warp responds faster/slower than asked — bounded by SEQ.LITE_WARP_REQ_MAX,
+ * never unbounded.
+ */
+const TUNNEL_COEF_LERP = 0.02;
 
 // ── Stage 05 — THE single source (moved wholesale from the spine's
 // STAGE_CONTENT "handover" block, owner 2026-08-07: it must exist ONCE).
@@ -428,55 +468,325 @@ export default function SingularityPassage() {
           if (!c.motionOk) return;
 
           // ==================================================================
-          // MOBILE / COARSE — panel 05 stays a normal vertical section in
-          // flow (default CSS, CTAs work), followed by the cheap ~180svh
-          // beat: CSS hole imposter on the SAME 1/d curve, then a navy
-          // crossfade.
+          // PHONE / COARSE — THE PASSAGE, ON A PHONE (Phase 4)
           // ==================================================================
+          // Panel 05 stays a normal vertical section in flow above (default
+          // CSS, CTAs live, copy untouched). What follows it used to be
+          // ~180svh of aria-hidden nothing; it is now a 130svh runway over a
+          // 100svh sticky Stage carrying ONE continuous, scrub-linked,
+          // accelerating move:
+          //
+          //   t 0.00–0.10  the hole arrives already legible (22svh) and the
+          //                star field fades up at drift speed.
+          //   t 0.10–0.72  APPROACH + SPIN-UP — the hole grows on the 1/d
+          //                divergence law while the warp climbs to
+          //                LITE_WARP_PEAK; the streaks stretch to light speed.
+          //   t 0.62–0.86  ENTRY — the #000 radial veil closes over the frame
+          //                on a colour seam with the hole's own core.
+          //   t 0.84–0.98  ARRIVAL — the streaks die inside the black and a
+          //                flat page-navy cover normalises the frame, so the
+          //                sticky stage scrolls away into the divario with no
+          //                visible edge.
+          //
+          // The whole payoff completes by t ≈ 0.86 on purpose: [measured] the
+          // scrub is 253px at 390×844, so the tail is where a flick's momentum
+          // skips frames, and nothing the viewer needs to see may live there.
+          //
+          // NO input lock and NO covert jump. The desktop one-shot hijacks
+          // wheel + touchmove for ~6.9s; on touch that fights iOS momentum,
+          // overscroll and pull-to-refresh, and MOBILE_AUDIT.md §5 already
+          // decided native touch scrolling stays. Everything here is a pure
+          // function of ScrollTrigger progress, so it reverses cleanly and
+          // needs no state machine.
           if (!c.desktop || !c.fine) {
             const liteRun = root.querySelector<HTMLElement>(
               "[data-seq-lite-run]",
             );
-            const imposter = root.querySelector<HTMLElement>(
-              "[data-seq-imposter]",
+            const hole = root.querySelector<HTMLElement>(
+              "[data-seq-lite-hole]",
+            );
+            const veil = root.querySelector<HTMLElement>(
+              "[data-seq-lite-veil]",
             );
             const cover = root.querySelector<HTMLElement>("[data-seq-cover]");
-            if (!liteRun || !imposter || !cover) return;
+            const host = root.querySelector<HTMLElement>(
+              "[data-seq-tunnel-host]",
+            );
+            if (!liteRun || !hole || !veil || !cover || !host) return;
 
             root.setAttribute("data-on", "lite");
-            // ── svh, NOT vh (D-7) ─────────────────────────────────────────
-            // This runway is the ONE sticky stage touch users reach, so it is
-            // the one place the mobile viewport units actually bite. `vh` is
-            // the LARGE viewport (address bar hidden), so a 180vh runway over
-            // a 100vh stage is taller than what the user can see while the
-            // bar is up, and the sticky frame jumps as the bar collapses.
+
+            // ── THE STAGE (M-1 contract), and why the runway is 130svh ─────
+            // `vh` is the LARGE viewport (address bar hidden), so a runway
+            // written in vh over a sticky stage is taller than what the user
+            // can actually see while the bar is up, and the frame jumps the
+            // moment the bar collapses (D-7). `svh` is defined against the
+            // bar-VISIBLE viewport, so it is frozen against that resize for
+            // free — no listener, no px capture at mount (which would have
+            // frozen whichever of the small/large viewport happened to be
+            // live, and would have left a portrait-sized runway in landscape).
+            // The refreshInit re-assertion below is therefore idempotent
+            // rather than a mid-scroll rewrite. Stage height is 100svh for
+            // the same reason.
             //
-            // Chosen over "freeze the height in px at mount": svh is
-            // deterministic (px would capture whichever of the small/large
-            // viewport happened to be live at mount), it still tracks a
-            // genuine orientation change (a frozen px height would leave a
-            // portrait-sized runway in landscape), it needs no resize
-            // listener of its own, and it matches the units already used by
-            // `.seq-track { min-height: 80svh }` and the stage below. The
-            // address-bar immunity we needed from freezing comes for free:
-            // svh is defined against the bar-visible viewport, so it does not
-            // change when the bar collapses. The refreshInit re-assertion
-            // (house grammar) therefore becomes idempotent instead of a
-            // mid-scroll rewrite.
+            // 130svh (was 180): the stage owns 100 of it, so the SCRUB
+            // TRAVEL is 30svh ≈ 253px at 390×844 — one deliberate thumb drag.
+            // That budget is why this is one move and not five chapters.
             const size = () => {
-              liteRun.style.height = `${SEQ.LITE_HEIGHT_SVH}svh`;
+              liteRun.style.height = `${SEQ.LITE_RUN_SVH}svh`;
             };
             size();
             ScrollTrigger.addEventListener("refreshInit", size);
 
-            const impSet = gsap.quickSetter(imposter, "css") as (
+            const holeSet = gsap.quickSetter(hole, "css") as (
               v: Record<string, number | string>,
+            ) => void;
+            const veilSetLite = gsap.quickSetter(veil, "opacity") as (
+              v: number,
             ) => void;
             const coverSet = gsap.quickSetter(cover, "opacity") as (
               v: number,
             ) => void;
-            gsap.set(imposter, { scale: 1, opacity: 0 });
+            gsap.set(hole, {
+              scale: SEQ.LITE_HOLE_START_VH / SEQ.LITE_HOLE_BASE_VH,
+              opacity: 0,
+            });
+            gsap.set(veil, { opacity: 0 });
             gsap.set(cover, { opacity: 0 });
+
+            // ── THE CAPABILITY DECISION (narrow, additive, module-local) ───
+            // The heavy TSL raymarch (SequenceSingularity) is NOT mounted
+            // here and tierStore is NOT touched — see the FALLBACK MATRIX in
+            // this file's header for the full reasoning. The WebGL this beat
+            // does mount is the raw-WebGL1 point tunnel, which is ALREADY a
+            // shipped phone workload: the preloader builds the exact same
+            // instance on every device that is not reduced-motion
+            // (preloader.tsx), at its own COUNT_SMALL tier (14k points below
+            // 768px or ≤4 cores) and its own DPR cap of 1.5. So this adds no
+            // new class of GPU work to a phone and no bytes at all (the
+            // module is already in the route bundle for the desktop path).
+            //
+            // The one additive check: skip the tunnel on a genuinely old
+            // device (≤ LITE_MIN_CORES logical cores). Those get the CSS-only
+            // beat, which still carries the whole 1/d move — a degrade, not a
+            // hole in the composition.
+            const cores = navigator.hardwareConcurrency;
+            let tunnelDead =
+              typeof cores === "number" &&
+              cores > 0 &&
+              cores <= SEQ.LITE_MIN_CORES;
+
+            // ── Star-field state. Everything the frame loop needs lives in
+            // these locals: the scrub writes them, the rAF reads them, and
+            // nothing round-trips through a store (the phone beat publishes
+            // nothing to seqStore — see that module's header). ─────────────
+            let tunnel: PreloaderTunnel | null = null;
+            let tunnelCanvas: HTMLCanvasElement | null = null;
+            let lastAlpha = -1;
+            /** Mirror of the module's internal `timeCoef` — see requestWarp. */
+            let warpShadow = 1;
+            /** Latest scrub-derived targets, read by the rAF (no allocations,
+             * no store round-trip). */
+            let warpWanted = SEQ.WARP_MIN;
+            let alphaWanted = 0;
+
+            const writeAlpha = () => {
+              if (!tunnelCanvas || alphaWanted === lastAlpha) return;
+              lastAlpha = alphaWanted;
+              tunnelCanvas.style.opacity = String(alphaWanted);
+            };
+
+            // ── Warp: making a time-lerped module genuinely scrub-linked ───
+            // preloader-tunnel.ts lerps its own `timeCoef` toward the target
+            // by TUNNEL_COEF_LERP per render() call — a ~0.8s time constant.
+            // That is right for the desktop's ~4s timeline and useless for a
+            // 30svh scrub: a normal flick would end the beat before the field
+            // had spun up, i.e. the payoff would be missed exactly when the
+            // user is moving fastest.
+            //
+            // We own the only rAF that calls render(), and the update rule is
+            // a pure lerp with a known constant, so we shadow it exactly and
+            // INVERT it: request the target that lands the module's own
+            // timeCoef on the scrubbed value this frame. The request is
+            // clamped to LITE_WARP_REQ_MAX, which (a) bounds the climb to
+            // ~0.25s from rest to peak instead of an instant snap, and (b)
+            // bounds the blow-up if that module's constant ever changes
+            // underneath us. The shadow is advanced with the CLAMPED request,
+            // so it stays bit-identical to the module's own state and the
+            // controller is self-limiting: no error, no overshoot.
+            const requestWarp = (t: PreloaderTunnel) => {
+              const req = Math.min(
+                SEQ.LITE_WARP_REQ_MAX,
+                Math.max(
+                  SEQ.WARP_MIN,
+                  warpShadow + (warpWanted - warpShadow) / TUNNEL_COEF_LERP,
+                ),
+              );
+              t.setTargetTimeCoef(req);
+              warpShadow += (req - warpShadow) * TUNNEL_COEF_LERP;
+            };
+
+            // ── rAF (the ONLY frame loop this branch owns; runs only while
+            // the streaks are actually visible) ───────────────────────────
+            let raf = 0;
+            let rafOn = false;
+            let prevT = 0;
+            const rafTick = (now: number) => {
+              if (!rafOn) return;
+              const dt = Math.min((now - prevT) / 1000, 1 / 30);
+              prevT = now;
+              if (tunnel) {
+                writeAlpha();
+                requestWarp(tunnel);
+                tunnel.render(dt);
+              }
+              raf = requestAnimationFrame(rafTick);
+            };
+            const startRaf = () => {
+              if (rafOn || !tunnel) return;
+              rafOn = true;
+              prevT = performance.now();
+              raf = requestAnimationFrame(rafTick);
+            };
+            const stopRaf = () => {
+              if (!rafOn) return;
+              rafOn = false;
+              cancelAnimationFrame(raf);
+            };
+
+            // ── Tunnel instance (created on band approach, disposed on
+            // leave — the heavy-layer mandate, same as the desktop path). A
+            // fresh <canvas> per instance: dispose() loses the GL context
+            // permanently, so a re-entry re-creates the element. ───────────
+            const ensureTunnel = () => {
+              if (tunnel || tunnelDead) return;
+              const cv = document.createElement("canvas");
+              cv.style.opacity = "0";
+              host.appendChild(cv);
+              const t = createPreloaderTunnel(cv, { tilt: false });
+              if (!t) {
+                // No WebGL1 → the CSS layers carry the beat alone. Never a
+                // dead frame.
+                host.removeChild(cv);
+                tunnelDead = true;
+                return;
+              }
+              tunnel = t;
+              tunnelCanvas = cv;
+              lastAlpha = -1;
+              warpShadow = 1; // the module constructs timeCoef = 1
+              // Dead-centre vanishing point: the hole is centred in the
+              // stage, so the particle convergence and the zoom-blur centre
+              // must agree with it. (This is also why the composition is NOT
+              // safe-area-inset — see the JSX note.)
+              t.setCenter(0.5, 0.5);
+              t.resize();
+              // The band can arm AFTER the scrub has already evaluated (SPA
+              // landing / scroll restoration mid-passage), so adopt whatever
+              // state `apply` last computed instead of waiting for the next
+              // tick — otherwise the streaks would be missing until the user
+              // moves.
+              if (alphaWanted > 0.001) startRaf();
+              else writeAlpha();
+            };
+            const disposeTunnel = () => {
+              if (!tunnel) return;
+              stopRaf();
+              tunnel.dispose();
+              tunnel = null;
+              if (tunnelCanvas) {
+                tunnelCanvas.remove();
+                tunnelCanvas = null;
+              }
+              lastAlpha = -1;
+            };
+
+            // ── DPR budget: resolution FIRST (MOBILE_AUDIT.md §5.5) ────────
+            // Asserted once on the approach band (a calm moment — the
+            // swapchain realloc must not land mid-beat) and released on
+            // leave, so the persistent canvas gives up resolution before this
+            // beat asks the GPU for anything else.
+            let capOn = false;
+            const setCap = (on: boolean) => {
+              if (on === capOn) return;
+              capOn = on;
+              useTierStore
+                .getState()
+                .setDprCap(on ? SEQ.LITE_DPR_CAP : null);
+            };
+
+            // ── The single evaluator: every layer is a pure function of t ──
+            const apply = (t: number) => {
+              // The physics rule on a div: apparent = START·(END/START)^u
+              // with u = t^POW — exponential growth in an accelerating clock,
+              // i.e. d ∝ 1/apparent closing on the horizon.
+              const u = Math.pow(t, SEQ.LITE_HOLE_EASE_POW);
+              const apparent =
+                SEQ.LITE_HOLE_START_VH *
+                Math.pow(
+                  SEQ.LITE_HOLE_END_VH / SEQ.LITE_HOLE_START_VH,
+                  u,
+                );
+              holeSet({
+                scale: apparent / SEQ.LITE_HOLE_BASE_VH,
+                opacity: seqRamp(t, 0, SEQ.LITE_HOLE_IN_END),
+              });
+              veilSetLite(
+                seqSmooth(t, SEQ.LITE_VEIL_START, SEQ.LITE_VEIL_END),
+              );
+              coverSet(
+                seqSmooth(t, SEQ.LITE_COVER_START, SEQ.LITE_COVER_END),
+              );
+
+              warpWanted =
+                SEQ.WARP_MIN +
+                (SEQ.LITE_WARP_PEAK - SEQ.WARP_MIN) *
+                  seqSmooth(t, SEQ.LITE_WARP_START, SEQ.LITE_WARP_END);
+              alphaWanted = tunnelDead
+                ? 0
+                : SEQ.LITE_TUNNEL_ALPHA *
+                  seqRamp(t, 0, SEQ.LITE_TUNNEL_IN_END) *
+                  (1 -
+                    seqRamp(
+                      t,
+                      SEQ.LITE_TUNNEL_OUT_START,
+                      SEQ.LITE_TUNNEL_OUT_END,
+                    ));
+
+              if (alphaWanted > 0.001) startRaf();
+              else {
+                stopRaf();
+                // The loop is the only thing that writes the canvas opacity,
+                // so park it explicitly on the way out (both ends of the
+                // scrub land here — t = 0 and t = 1 are both alpha 0).
+                writeAlpha();
+              }
+            };
+
+            // ── Approach band: build the tunnel + assert the DPR cap ONE
+            // VIEWPORT early, tear both down on leave.
+            //
+            // The band is the RUNWAY, not the whole section: panel 05 above
+            // it is real reading content and the persistent canvas still
+            // draws the signature line behind it, so the DPR cap must not
+            // start there. [measured] the R3F backing store goes 780×1688
+            // (DPR 2) → 390×844 (DPR 1) on this edge — a 4× cut in the
+            // canvas's pixel count, taken before the beat asks the GPU for
+            // the point tunnel and three composited full-frame layers.
+            const bandST = ScrollTrigger.create({
+              trigger: liteRun,
+              start: "top bottom",
+              end: "bottom top",
+              onToggle: (self) => {
+                if (self.isActive) {
+                  ensureTunnel();
+                  setCap(true);
+                } else {
+                  disposeTunnel();
+                  setCap(false);
+                }
+              },
+            });
 
             const st = ScrollTrigger.create({
               trigger: liteRun,
@@ -484,22 +794,17 @@ export default function SingularityPassage() {
               end: "bottom bottom",
               scrub: true,
               invalidateOnRefresh: true,
-              onUpdate: (self) => {
-                const t = self.progress;
-                // The physics rule on a div: apparent = 12·(160/12)^(t²) vh —
-                // exponential in a power2.in-eased clock, i.e. d ∝ 1/apparent
-                // shrinking with accelerating growth toward the horizon.
-                const u = t * t;
-                const apparent =
-                  SEQ.LITE_START_VH *
-                  Math.pow(SEQ.LITE_MAX_VH / SEQ.LITE_START_VH, u);
-                impSet({
-                  scale: apparent / SEQ.LITE_START_VH,
-                  opacity: seqRamp(t, 0, 0.15),
-                });
-                coverSet(seqSmooth(t, 0.72, 0.95));
-              },
+              onUpdate: (self) => apply(self.progress),
             });
+
+            // Re-fit the tunnel's drawing buffer on the same edge every other
+            // cached measurement uses (never in a frame loop).
+            const onRefresh = () => tunnel?.resize();
+            ScrollTrigger.addEventListener("refresh", onRefresh);
+
+            // Prime against the current scroll position (SPA nav / scroll
+            // restoration can land mid-passage).
+            apply(st.progress);
 
             let fontsCancelled = false;
             document.fonts?.ready
@@ -510,10 +815,16 @@ export default function SingularityPassage() {
 
             return () => {
               fontsCancelled = true;
+              stopRaf();
+              disposeTunnel();
+              setCap(false);
               st.kill();
+              bandST.kill();
               ScrollTrigger.removeEventListener("refreshInit", size);
+              ScrollTrigger.removeEventListener("refresh", onRefresh);
               root.removeAttribute("data-on");
               liteRun.style.height = "";
+              gsap.set([hole, veil, cover], { clearProps: "opacity,transform" });
             };
           }
 
@@ -792,7 +1103,7 @@ export default function SingularityPassage() {
             } else {
               const apparentVh = (SEQ_APPARENT_K / dist) * 100;
               imposterSet({
-                scale: apparentVh / SEQ.LITE_START_VH,
+                scale: apparentVh / SEQ.IMPOSTER_BASE_VH,
                 opacity: fade,
               });
             }
@@ -1471,17 +1782,37 @@ export default function SingularityPassage() {
           fade-through between section 05 above and the divario. Decorative. */}
       <div aria-hidden="true" className="seq-static" />
 
-      {/* ── Mobile/coarse runway (cheap 1/d beat below the vertical 05).
-          Decorative throughout. ────────────────────────────────────────── */}
+      {/* ── THE PHONE STAGE (Phase 4) — the 130svh runway below the vertical
+          panel 05. Decorative throughout.
+
+          SAFE AREA: the stage is deliberately FULL-BLEED under the display
+          cutout and the home indicator, and carries no safe-area padding.
+          layout.tsx sets viewportFit:"cover", so a decorative frame that
+          stopped at the insets would leave an unpainted strip at the notch
+          exactly when the black is supposed to have sealed the frame — the
+          opposite of what padding buys a readable element. 100svh spans the
+          full layout viewport including the insets, so the seal is complete.
+          The composition is centred on the GEOMETRIC viewport centre rather
+          than the optical centre of the safe area, because the tunnel's
+          particle vanishing point and zoom-blur centre are locked to 0.5/0.5
+          (setCenter, in the branch above) and the two must agree — the
+          residual optical error on a notched phone is (safe-t − safe-b)/2
+          ≈ 6px, an order of magnitude below the beat's own motion.
+          ────────────────────────────────────────────────────────────── */}
       <div data-seq-lite-run aria-hidden="true" className="seq-lite-run">
-        {/* h-[100svh], not h-screen: `h-screen` is `100vh` = the LARGE mobile
-            viewport, which overflows the visible area while the address bar is
-            up and jumps when it collapses. This is the only sticky stage a
-            touch user reaches (D-7). */}
-        <div className="seq-lite sticky top-0 h-[100svh] overflow-hidden">
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div data-seq-imposter className="seq-imposter" />
+        {/* 100svh, never 100vh: `vh` is the LARGE mobile viewport, which
+            overflows the visible area while the address bar is up and jumps
+            when it collapses. This is the only sticky stage a touch user
+            reaches (D-7). */}
+        <div className="seq-lite">
+          <div className="seq-lite-frame">
+            <div data-seq-lite-hole className="seq-lite-hole" />
           </div>
+          {/* ENTRY — #000 radial, the same black as the hole's core, so the
+              coverage completes on a colour seam (the desktop veil's trick). */}
+          <div data-seq-lite-veil className="seq-lite-veil" />
+          {/* ARRIVAL — flat page navy, so the sticky stage can scroll away
+              into the divario with no visible edge. */}
           <div data-seq-cover className="seq-cover" />
         </div>
       </div>
@@ -1549,12 +1880,13 @@ export default function SingularityPassage() {
         }
         .seq-root[data-on="seq"] .seq-decor { display: flex; }
 
-        /* The CSS hole imposter — #000 core, faint cyan #3BE1FF ring over a
-           whisper of blue #2A7FFF (brand palette, no violet). Base diameter
-           ${SEQ.LITE_START_VH}vh; scaled along the 1/d curve. */
+        /* The DESKTOP CSS hole imposter — #000 core, faint cyan #3BE1FF ring
+           over a whisper of blue #2A7FFF (brand palette, no violet). Base
+           diameter ${SEQ.IMPOSTER_BASE_VH}vh; scaled along the 1/d curve.
+           Used only when the WebGPU march never goes live. */
         .seq-imposter {
-          width: ${SEQ.LITE_START_VH}vh;
-          height: ${SEQ.LITE_START_VH}vh;
+          width: ${SEQ.IMPOSTER_BASE_VH}vh;
+          height: ${SEQ.IMPOSTER_BASE_VH}vh;
           border-radius: 9999px;
           background: radial-gradient(
             circle,
@@ -1567,6 +1899,78 @@ export default function SingularityPassage() {
           will-change: transform, opacity;
           opacity: 0;
         }
+
+        /* ── THE PHONE STAGE ─────────────────────────────────────────────
+           Sticky 100svh (small viewport → immune to the address-bar
+           collapse, D-7), full-bleed under the safe-area insets on purpose
+           (see the JSX note). Everything inside animates on transform /
+           opacity ONLY, so the whole beat stays on the compositor.
+
+           Accepted consequence of svh: while the address bar is COLLAPSED
+           the visual viewport is ~lvh, so a (lvh − svh) strip sits below the
+           stage. It is a no-op by construction — what shows through it is
+           hsl(var(--bg)), which is exactly what .seq-cover paints, and the
+           .seq-lite-veil gradient is already transparent that far from
+           centre. Overshooting the layers to cover it is not an option:
+           overflow:hidden is required here (the hole reaches ~3× its base)
+           and dropping it would let an opaque cover spill over the top of
+           the divario at t = 1. */
+        .seq-lite {
+          position: sticky;
+          top: 0;
+          height: 100svh;
+          overflow: hidden;
+          padding: 0;
+          /* Its own stacking context: the three decorative layers below
+             must never interleave with page content. */
+          isolation: isolate;
+        }
+        .seq-lite-frame {
+          position: absolute;
+          inset: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        /* The phone hole. Base diameter ${SEQ.LITE_HOLE_BASE_VH}svh — chosen
+           so the run from ${SEQ.LITE_HOLE_START_VH}svh to
+           ${SEQ.LITE_HOLE_END_VH}svh is only a ~3× upscale of a composited
+           layer (a 12svh base would have needed ~14× and turned the photon
+           ring to mush). Thinner, brighter ring than the desktop imposter:
+           this one is the subject of the shot, not a stand-in. */
+        .seq-lite-hole {
+          width: ${SEQ.LITE_HOLE_BASE_VH}svh;
+          height: ${SEQ.LITE_HOLE_BASE_VH}svh;
+          border-radius: 9999px;
+          background: radial-gradient(
+            circle,
+            #000 0%,
+            #000 55%,
+            rgba(0, 0, 0, 0.9) 58%,
+            rgba(59, 225, 255, 0.55) 61%,
+            rgba(59, 225, 255, 0.16) 68%,
+            rgba(42, 127, 255, 0.07) 80%,
+            transparent 92%
+          );
+          will-change: transform, opacity;
+          opacity: 0;
+        }
+        .seq-lite-veil {
+          position: absolute;
+          inset: 0;
+          background: radial-gradient(
+            circle at 50% 50%,
+            #000 62%,
+            transparent 100%
+          );
+          will-change: opacity;
+          opacity: 0;
+        }
+        /* No will-change here on purpose: it is a flat solid fill that only
+           lives in the last 10% of the beat (while the tunnel is already
+           dying), so an always-promoted viewport-sized layer would cost more
+           phone GPU memory than it saves. The veil and the hole — the two
+           that animate through the busy part — keep theirs. */
         .seq-cover {
           position: absolute;
           inset: 0;
@@ -1587,6 +1991,17 @@ export default function SingularityPassage() {
         .seq-root[data-on="seq"] .seq-veil,
         .seq-root[data-on="seq"] .seq-pulse,
         .seq-root[data-on="seq"] .seq-tunnel-host { display: block; }
+        /* The phone beat reuses the SAME fixed tunnel host (its own instance,
+           its own rAF): fixed/inset-0 is what makes the star field cover the
+           full VISUAL viewport regardless of where the browser chrome sits,
+           which a sticky 100svh box cannot do. It is only ever visible while
+           the stage owns the frame — alpha is 0 at both ends of the scrub and
+           the instance is disposed on band leave — so it can never paint over
+           the sections above or below. The phone branch never enables
+           .seq-veil / .seq-pulse: its entry veil lives INSIDE the stage, so
+           it leaves with the stage instead of stranding a fixed black sheet
+           over the divario. */
+        .seq-root[data-on="lite"] .seq-tunnel-host { display: block; }
         .seq-veil {
           z-index: 38;
           opacity: 0;
