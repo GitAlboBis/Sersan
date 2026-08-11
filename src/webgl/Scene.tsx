@@ -203,6 +203,20 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
   const dprMin = useTierStore((s) => s.dprMin);
   const dprMax = useTierStore((s) => s.dprMax);
 
+  // Capability axis (MOBILE_HOME_SPEC §4.1b/§4.2) — MAY a coarse-pointer device
+  // mount decorative islands. `tier` still selects the DOM layout and is NOT
+  // redefined; this is strictly additive. On a fine pointer `phoneGL` is false
+  // forever (detectPhoneGL returns before touching anything), so `island` is
+  // PROVABLY identical to `tier === "full"` on desktop — no desktop gate moves.
+  // Subscribed here in the Canvas HOST (outside the island tree, exactly like
+  // the dpr reads above), never inside <Canvas> where commits can wedge.
+  //
+  // EXACTLY ONE gate consumes it today: the NeuralLattice pair. Every other
+  // island stays `tier === "full"` on purpose — see MOBILE_HOME_SPEC §4.5 for
+  // why each of the other seven is structurally (not merely budgetarily) off.
+  const phoneGL = useTierStore((s) => s.phoneGL);
+  const island = tier === "full" || phoneGL;
+
   // F0.5 renderer seam: the flag is read once at module/build time. When OFF
   // (default) `gl` stays EXACTLY today's object literal — R3F builds its
   // implicit default WebGLRenderer and nothing here touches `three/webgpu`.
@@ -330,16 +344,28 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
       {pathname === "/" && tier === "full" && webgpu && <FounderPortraitMorph />}
       {/* FIX 3 neural-lattice islands (home only). Two camera-locked lattices:
           the Problem section ("broken" — pathways go dark / packets die) and the
-          ProductionGrade section ("healthy" — clusters pulse in sequence). Same
-          decorative-island gates as RailPlanes (route + full tier + the WebGPU
-          flag; TSL-only, no GLSL twin — on the classic flag-OFF path or
-          lite/off/reduced-motion the DOM SVG fallback in the two sections is the
-          whole visual). MUST stay mounted AFTER SignatureLine: the camera-locked
-          placement relies on the single camera authority having written
-          camera.position/quaternion earlier in the same priority-0 frame pass.
-          Each lattice reads useNeuralLatticeStore (globalThis-pinned) for its
-          per-cluster ignition, bumped by the DOM sections on their in-view edge. */}
-      {pathname === "/" && tier === "full" && webgpu && (
+          ProductionGrade section ("healthy" — clusters pulse in sequence). MUST
+          stay mounted AFTER SignatureLine: the camera-locked placement relies on
+          the single camera authority having written camera.position/quaternion
+          earlier in the same priority-0 frame pass. Each lattice reads
+          useNeuralLatticeStore (globalThis-pinned) for its per-cluster ignition,
+          bumped by the DOM sections on their in-view edge.
+
+          GATE (MOBILE_HOME_SPEC §4.2 — the ONLY island gate that moved): route +
+          `island` + the WebGPU flag. `island` is `tier === "full" || phoneGL`, so
+          a CAPABLE PHONE now gets the real lattice instead of the DOM SVG — the
+          owner's "non ci sono gli effetti del desktop" complaint, answered on the
+          one island that is cheap enough to say yes to. Still TSL-only (no GLSL
+          twin), so the classic flag-OFF path never mounts it; on a non-WebGPU
+          BACKEND the island skips build.compute() and renders a still-but-igniting
+          field (NeuralLattice:427-428), which is why a WebGL2-fallback phone is
+          still worth mounting. Particle count drops to
+          NEURAL_PARTICLE_COUNT_COMPACT on lite (§4.4).
+
+          use-neural-lattice-fallback.ts is DEFINED as the exact complement of
+          this line. The two must never diverge or a capable phone paints the SVG
+          graph AND the WebGL lattice stacked on each other. */}
+      {pathname === "/" && island && webgpu && (
         <>
           <NeuralLattice mode="broken" anchorId="problem" />
           <NeuralLattice mode="healthy" anchorId="production" />

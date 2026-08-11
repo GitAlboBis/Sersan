@@ -183,10 +183,22 @@ export function buildLatticeLayout(): LatticeLayout {
 /** Number of hubs = number of cards per section (1:1). */
 export const HUB_COUNT = 3;
 
-/** Total particles in the field (single full tier that mounts the island).
+/** Total particles in the field on a full-tier desktop.
  * v4: ~9000 across 3 hubs + 3 arcs — dense enough that each hub reads as a
  * distinct bright orb and each arc as a thin travelling-signal stream. */
 export const NEURAL_PARTICLE_COUNT = 9000;
+/**
+ * Compact budget, selected when `tier === "lite"` (MOBILE_HOME_SPEC §4.4) — i.e.
+ * on the capable phones the `phoneGL` axis now lets through. The material is
+ * ADDITIVE, so fill (not vertex work) is the real cost: 3,200 particles at
+ * DPR 1 is roughly one tenth the fill of 9,000 at DPR 2. The topology is
+ * unchanged — same 3 hubs, same 3 arcs, same NODE_FRACTION split — so the phone
+ * gets a thinner version of the same object, never a different one.
+ *
+ * Read via `useTierStore.getState()` in the BUILD path only, never as a
+ * subscription inside the Canvas island (the R3F island commit wedge).
+ */
+export const NEURAL_PARTICLE_COUNT_COMPACT = 3200;
 /** Fraction of particles that are NODE/hub particles (dense glowing orbs); the
  * rest are FLOW particles that ride the arcs. v4: ~0.55 node / ~0.45 flow so the
  * 3 hubs dominate as the structure and the arcs read as thin signal streams. */

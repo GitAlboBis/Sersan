@@ -33,9 +33,18 @@
  * glow (uHubGlow) that flares the hovered hub and dims the rest. The in-view
  * bump/bumpCluster pulse remains the resting animation (additive).
  *
- * GATING: Scene.tsx mounts this only on `pathname === "/" && tier === "full" &&
- * webgpu`. Lazy TSL import is fenced by webgpuEnabled(). The DOM SVG fallback
- * carries the metaphor on every other tier.
+ * GATING: Scene.tsx mounts this on `pathname === "/" && island && webgpu`, where
+ * `island = tier === "full" || phoneGL` — so a full-tier desktop OR a CAPABLE
+ * PHONE (MOBILE_HOME_SPEC §4.2; this is the only island the capability axis
+ * opens). Lazy TSL import is still fenced by webgpuEnabled(). The DOM SVG
+ * fallback (use-neural-lattice-fallback.ts, the exact complement of that gate)
+ * carries the metaphor everywhere else.
+ *
+ * PHONE BUDGET: on `tier === "lite"` the field builds at
+ * NEURAL_PARTICLE_COUNT_COMPACT instead of NEURAL_PARTICLE_COUNT (§4.4) — same
+ * topology, ~1/10th the additive fill at DPR 1. The tier is read with
+ * `getState()` in the build effect and NEVER subscribed: a subscription here
+ * would be a React commit inside the <Canvas> island, which can wedge.
  */
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -46,6 +55,7 @@ import { useSectionStore } from "./store/sectionStore";
 import { useScrollStore } from "./store/scrollStore";
 import { usePointerStore } from "./store/pointerStore";
 import { useNeuralLatticeStore } from "./store/neuralLatticeStore";
+import { useTierStore } from "./store/tierStore";
 import {
   CLUSTER_COUNT,
   HUB_COUNT,
@@ -53,6 +63,7 @@ import {
   HUB_DEFAULT_XY,
   FLOW_SPEED,
   NEURAL_PARTICLE_COUNT,
+  NEURAL_PARTICLE_COUNT_COMPACT,
   NEURAL_Y_OFFSET,
   NEURAL_DEPTH_SCALE_FACTOR,
   NEURAL_PARALLAX,
@@ -99,6 +110,8 @@ export function NeuralLattice({
   // --- Lazy field build (three/webgpu chunk loads ONLY here) ----------------
   const [build, setBuild] = useState<NeuralFieldBuild | null>(null);
   const backendIsWebGPURef = useRef(false);
+  /** The count the CURRENT build was allocated with (dev debug handle only). */
+  const countRef = useRef(NEURAL_PARTICLE_COUNT);
 
   useEffect(() => {
     if (!webgpuEnabled()) return;
@@ -119,13 +132,24 @@ export function NeuralLattice({
         typeof (gl as unknown as { compute?: unknown }).compute === "function";
       backendIsWebGPURef.current = backendIsWebGPU;
 
+      // Phone budget (MOBILE_HOME_SPEC §4.4). `getState()`, never a
+      // subscription: this is inside the <Canvas> island, where depending on a
+      // React commit can wedge. The tier is resolved once before Scene mounts
+      // (CanvasHost's effect) and only ever moves DOWN via degrade(), which
+      // unmounts this island anyway — so a one-shot read is sound.
+      const count =
+        useTierStore.getState().tier === "lite"
+          ? NEURAL_PARTICLE_COUNT_COMPACT
+          : NEURAL_PARTICLE_COUNT;
+      countRef.current = count;
+
       built = mod.createNeuralFieldBuild({
         THREE,
         webgpu: webgpu as never,
         tsl: tslNs as never,
         gl: gl as never,
         backendIsWebGPU,
-        count: NEURAL_PARTICLE_COUNT,
+        count,
       });
       built.uniforms.uBroken.value = broken ? 1 : 0;
       built.uniforms.uFlowSpeed.value = FLOW_SPEED;
@@ -451,7 +475,9 @@ export function NeuralLattice({
       get hubs() {
         return rect?.hubs ?? null;
       },
-      count: NEURAL_PARTICLE_COUNT,
+      get count() {
+        return countRef.current;
+      },
       project: () => {
         const g = groupRef.current;
         if (!g || !g.visible) return null;
