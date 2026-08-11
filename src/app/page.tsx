@@ -85,8 +85,16 @@ export default function Home() {
       </div>
       {/* The gateway gap: the WebGL portal world-anchors here (transparent
           backdrop between sections) and the signature line threads it on
-          its way into the final CTA. */}
-      <div data-line-anchor="gateway" className="py-36 sm:py-52" />
+          its way into the final CTA.
+
+          MOBILE_HOME_SPEC §5.5: `py-36` → `py-24` cuts the phone's gap 288 →
+          192px. Deliberately a third off and NOT the 128px a pure
+          scroll-budget argument would take: GatewayPortal already mounts on
+          lite, it is the one 3D object a phone gets, and the anchor above must
+          stay resolvable (see the :68 warning) — an anchor squeezed to nothing
+          deforms the curve waypoint it feeds. `sm:py-52` is untouched, so
+          every viewport ≥640px is byte-identical. */}
+      <div data-line-anchor="gateway" className="py-24 sm:py-52" />
       <div data-line-anchor="final-cta">
         <FinalCTA />
       </div>

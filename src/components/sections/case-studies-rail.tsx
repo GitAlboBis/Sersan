@@ -25,6 +25,7 @@ import { CardImageDistort } from "@/components/fx/card-image-distort";
 import { CardLogoReveal } from "@/components/fx/card-logo-reveal";
 import { SeeMorePortal } from "@/components/fx/see-more-portal";
 import { useFlipSource } from "@/lib/use-flip-source";
+import { DragRail } from "@/components/ui/drag-rail";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger, Draggable, InertiaPlugin);
@@ -744,7 +745,10 @@ export default function CaseStudiesRail() {
   const total = caseStudies.length;
 
   const heading = (
-    <div className="container-px flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+    /* §2 row 4 chrome trim: the heading-to-archive-link step goes 24 → 16px
+       below `sm`; from 640px up this row is `sm:flex-row` and `sm:gap-6`
+       restores the original value, so no ≥640px render moves. */
+    <div className="container-px flex flex-col gap-4 sm:flex-row sm:gap-6 sm:items-end sm:justify-between">
       <SectionHeading
         eyebrow={isEn ? "Selected work" : "Lavori selezionati"}
         title={
@@ -830,8 +834,15 @@ export default function CaseStudiesRail() {
 
   // Closing row: provenance + the mid-page /start CTA (one of the home's
   // three allowed /start moments — spine release, here, FinalCTA).
+  // MOBILE_HOME_SPEC §5.5: `py-12` → `py-6` below `sm` (48 → 24px per side).
+  // `sm:py-14` already owned 640px up, so this base value was phone-only. The
+  // spec's line says `py-8`; the extra 16px is part of what closes the §2 row-4
+  // target (1276 → 1165) once the <DragRail> affordance's own 22px is paid for.
+  // The section lands at 1174 as: −48 (§5.1 `.section-lg`) −48 here −16
+  // (heading `mb`) −8 (heading row `gap`) −4 (scroller `pb`) +22 (affordance)
+  // = −102.
   const closing = (
-    <div className="container-px flex flex-col gap-5 py-12 sm:flex-row sm:items-center sm:justify-between sm:py-14">
+    <div className="container-px flex flex-col gap-5 py-6 sm:flex-row sm:items-center sm:justify-between sm:py-14">
       <div className="flex max-w-xl flex-col gap-3">
         <p className="text-[13px] text-ink-mute leading-relaxed">
           {isEn
@@ -867,17 +878,41 @@ export default function CaseStudiesRail() {
 
   // Native fallback: normal-flow section, browser-owned horizontal scroll
   // with snap points. No pinning, no transforms, no WebGL planes.
+  //
+  // MOBILE_HOME_SPEC §2 row 4 / §5.5 — <DragRail> adoption. The MECHANIC does
+  // not change and must not: this was already a native `overflow-x-auto snap-x
+  // snap-mandatory` scroller with `data-lenis-prevent`, and <DragRail> is that
+  // exact scroller plus two things it never had — a progress bar that answers
+  // "how much more of this is there", and a masked edge fade that says the
+  // content continues. What is deliberately NOT adopted is the `stations`
+  // variant: this rail is seven homogeneous cards, so the honest question is
+  // "how far along", not "which of the four". Services gets the stepper.
+  //
+  // Two details the primitive brings that the hand-rolled scroller lacked:
+  // `scroll-padding-inline` matched to the 1.5rem gutter (so a snapped card and
+  // a keyboard-focused card land in the same place instead of one gutter
+  // apart), and `overscroll-behavior-x` split by pointer type (`auto` on touch
+  // so the iOS edge-swipe still leaves the page). Both are improvements to the
+  // same mechanic, not a replacement of it.
   if (detected && mode === "native") {
     return (
       <section id="work" className="relative section-lg scroll-mt-24">
-        <div className="mb-8 sm:mb-10">{heading}</div>
-        <ul
-          data-lenis-prevent
-          className="flex gap-4 overflow-x-auto snap-x snap-mandatory px-6 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          aria-label={isEn ? "Selected engagements" : "Incarichi selezionati"}
+        {/* §5.5 chrome trim: 32 → 16px below `sm`; `sm:mb-10` unchanged. */}
+        <div className="mb-4 sm:mb-10">{heading}</div>
+        <DragRail
+          label={isEn ? "Selected engagements" : "Incarichi selezionati"}
+          /* The native branch also renders on a fine pointer below ~768px and
+             under reduced motion at ANY width, so the bar is scoped to a
+             coarse pointer — see `.rail-affordance-touch` in globals.css for
+             the full reasoning and what it costs. */
+          railClassName="rail-affordance-touch"
+          /* `pb-3` not `pb-4`: the progress bar now sits 20px below the
+             scroller and supplies the separation the old bottom padding was
+             carrying on its own. `sm:pb-4` keeps the ≥640px box identical. */
+          className="gap-4 pb-3 sm:pb-4"
         >
           {cards("snap-start shrink-0 w-[88vw] max-w-[34rem]")}
-        </ul>
+        </DragRail>
         {closing}
       </section>
     );

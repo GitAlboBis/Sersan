@@ -1727,6 +1727,73 @@ html.cursor-none [contenteditable="true"] {
   }
 }
 
+/* --- MOBILE_HOME_SPEC §5.1 · the phone stops paying desktop's section rhythm
+   ---------------------------------------------------------------------------
+   `.section-lg` is 5rem of padding-block at base (:480) and 6.5rem from 640px
+   up. On a 390px-wide phone that 5rem is 160px of nothing per section, and the
+   home page stacks SEVEN of them (problem, case-studies, services, production,
+   founders, fit, final-cta) — 1,120px, a viewport and a third of padding alone.
+   3.5rem still reads as air at that width and hands back 48px per section, so
+   −336px on the home page and proportionally on every other route.
+
+   Why it is its own block rather than a line inside the coarse block above:
+   this one needs the WIDTH axis too. `(pointer: coarse)` alone would also
+   shrink a 1024px iPad, where 5rem is correct and the 640px rule has already
+   raised it to 6.5rem anyway. Pairing it with `max-width: 639px` mirrors the
+   existing 640px breakpoint EXACTLY — one boundary, two rules that meet at it —
+   so a tablet and every desktop are untouched by construction rather than by
+   inspection, and a 640px-wide render is byte-identical to before.
+
+   Media queries carry no specificity, so this wins below 640px purely by
+   source order, and cannot reach above it: the `min-width: 640px` rule at :481
+   is the only one that applies there. */
+@media (pointer: coarse) and (max-width: 639px) {
+  .section-lg {
+    padding-block: 3.5rem;
+  }
+}
+
+/* --- MOBILE_HOME_SPEC §2 rows 4 & 7 · the rail affordance is a TOUCH mechanic
+   ---------------------------------------------------------------------------
+   Opt-in hook for a <DragRail> whose progress bar should exist only where the
+   rail is actually swiped. Applied by the two rails that ADOPTED the primitive
+   rather than being built on it (case-studies-rail, founders-rail), via
+   `railClassName`. Services builds on DragRail from scratch and does not use
+   this — its stepper is new UI on a surface that is new UI.
+
+   WHY IT IS NEEDED, precisely. Both rails choose between a pinned desktop
+   branch and a NATIVE snap-scroller branch, and the native branch is NOT
+   "phones only": it also renders on a fine pointer below ~768px, and — the
+   case that decides this rule — on a fine pointer at ANY width under
+   `prefers-reduced-motion`. The affordance is a real 22px box (a 20px lead-in
+   plus the 2px bar), so adopting it unconditionally would have moved a 1440px
+   reduced-motion desktop and a 640px render, both of which this work has to
+   leave byte-identical. It does not, now: outside a coarse pointer none of
+   this exists, which is the same construction the touch-ergonomics block above
+   uses and the same reason it is verifiable rather than merely intended.
+
+   WHAT IS GIVEN UP, honestly. A reduced-motion desktop reader keeps exactly
+   what `main` gives them today — a native scroller with no bar — rather than
+   gaining one. `use-rail-progress.ts` argues (correctly) that the read-out is
+   STATE and that a reduced-motion reader needs it as much as anyone; that
+   argument is why the HOOK stays on under reduced motion, and it is not
+   contradicted here. Nothing is hidden from anyone: every card is in the DOM,
+   in source order, at every width, and the scroller is scrollable by wheel,
+   trackpad, keyboard and touch regardless. What is scoped is a decorative
+   progress bar, on the one input device that already has a cursor, a wheel and
+   a visible scroll gesture to tell it the same thing.
+
+   `display: none` rather than `visibility: hidden` on purpose: the point is to
+   hand the 22px back, not merely to blank it. DragRail's own inert rule uses
+   `visibility` for the opposite reason (a rail that becomes scrollable must not
+   change height), and the two never collide — different property, different
+   condition. */
+@media (pointer: fine) {
+  .rail-affordance-touch .drag-rail-affordance {
+    display: none;
+  }
+}
+
 /* Defensive only: use-press-state.ts never binds a listener under reduced
    motion, so `data-pressed` is never written there. This covers a preference
    flipped mid-hold, and states the rule in CSS as well as in JS — M-4 is pure

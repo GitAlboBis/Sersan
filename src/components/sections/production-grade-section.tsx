@@ -374,7 +374,8 @@ export default function ProductionGradeSection() {
               ? "Not a list of compliance buzzwords. These are artifacts you can ask to see in any scoping call. Open a panel to see why it matters."
               : "Non un elenco di buzzword sulla compliance. Sono artefatti che puoi chiedere di vedere in qualsiasi call di scoping. Apri un pannello per capire perché conta."
           }
-          className="mb-12 sm:mb-16"
+          /* MOBILE_HOME_SPEC §5.4: 48 → 32px below `sm`. `sm:mb-16` unchanged. */
+          className="mb-8 sm:mb-16"
         />
 
         {/* FIX 3 v5 — RECOMPOSE: the healthy network is the clearly-visible
@@ -392,14 +393,23 @@ export default function ProductionGradeSection() {
             Problem section's twin rows already carry. */}
         <div
           ref={rowRef}
-          className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-8 lg:gap-12 items-start"
+          /* MOBILE_HOME_SPEC §2 row 6 — the last 8px of the 1312 → 1114
+             budget. Below `lg` this is a single column, so `gap-8` is the
+             vertical step between the centerpiece and the cards. `sm:gap-8`
+             restores it; `lg:gap-12` never moves. */
+          className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6 sm:gap-8 lg:gap-12 items-start"
         >
           <NeuralCenterpiece
             anchorId="production"
             surface="healthy"
             tone="healthy"
             showFallback={showFallback}
-            className="min-h-[300px] sm:min-h-[360px]"
+            /* MOBILE_HOME_SPEC §5.4: 300 → 190px below `sm` — the twin of the
+               Problem section's centerpiece, same reasoning. The lattice is
+               camera-locked and needs no DOM box; the %-placed node markers
+               (the cards' `aria-controls` triggers) scale with the box and are
+               unaffected. `sm:` restores 360px. */
+            className="min-h-[190px] sm:min-h-[360px]"
             nodes={[
               { label: clusterLabel(0, isEn), controls: bodyId(0) },
               { label: clusterLabel(1, isEn), controls: bodyId(1) },
@@ -427,7 +437,10 @@ export default function ProductionGradeSection() {
           </div>
         </div>
 
-        <p className="mt-14 text-[12px] font-mono uppercase tracking-[0.14em] text-ink-mute max-w-2xl">
+        {/* MOBILE_HOME_SPEC §5.4: the closing disclaimer's lead-in goes 56 →
+            40px below `sm`; `sm:mt-14` restores the desktop value that was
+            previously unprefixed. */}
+        <p className="mt-10 sm:mt-14 text-[12px] font-mono uppercase tracking-[0.14em] text-ink-mute max-w-2xl">
           {isEn ? (
             <>
               We do not claim compliance certifications we don&apos;t hold.

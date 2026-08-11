@@ -18,6 +18,7 @@ import { useLanguage } from "@/components/language-provider";
 import { getLenis } from "@/lib/lenis-singleton";
 import { snapPoint, snapBarrier } from "@/lib/scroll-snap";
 import { useCentreFocus, type CentreFocusRef } from "@/lib/use-centre-focus";
+import { DragRail } from "@/components/ui/drag-rail";
 import {
   useFoundersMorphStore,
   foundersGateApi,
@@ -1831,8 +1832,15 @@ export default function FoundersRail() {
   );
 
   // Closer + CTA — carried over unchanged.
+  // MOBILE_HOME_SPEC §5.5: `py-12` → `py-6` below `sm` (48 → 24px per side).
+  // `sm:py-14` already owned 640px up, so the base value was only ever a phone
+  // value. The section's §2 row-7 budget is 1316 → 1216 at 390px, and it lands
+  // at 1222 as: −48 (§5.1 `.section-lg`) −48 here −16 (heading `mb`) −4
+  // (scroller `pb`) +22 (the <DragRail> affordance's own box) = −94. The spec
+  // budgets −52 for this file because it does not carry the affordance's cost
+  // on this row; that is where the remaining 6px sits.
   const closing = (
-    <div className="container-px flex flex-col gap-5 py-12 sm:flex-row sm:items-center sm:justify-between sm:py-14">
+    <div className="container-px flex flex-col gap-5 py-6 sm:flex-row sm:items-center sm:justify-between sm:py-14">
       <p className="max-w-2xl text-[14px] text-ink-mute leading-relaxed">
         {isEn ? (
           <>
@@ -1874,18 +1882,38 @@ export default function FoundersRail() {
       >
         <SectionGlow position="top-left" intensity={1.2} size="60rem" />
         <SectionGlow position="bottom-right" intensity={0.9} size="45rem" />
-        <div className="container-px relative mb-8 sm:mb-10">{heading()}</div>
-        <ul
-          data-lenis-prevent
-          className="relative flex items-stretch gap-4 overflow-x-auto snap-x snap-mandatory px-6 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          aria-label={eyebrow}
+        {/* §5.5 chrome trim: 32 → 16px below `sm`; `sm:mb-10` unchanged. */}
+        <div className="container-px relative mb-4 sm:mb-10">{heading()}</div>
+        {/* MOBILE_HOME_SPEC §2 row 7 / §5.5 — <DragRail> adoption, AFFORDANCE
+            ONLY. The mechanic is untouched: this was already a native
+            `overflow-x-auto snap-x snap-mandatory` scroller carrying
+            `data-lenis-prevent`, and that is precisely what <DragRail> is. What
+            it adds is the progress bar and the masked edge fade — the same
+            grammar the case-studies rail now speaks, which is the whole point
+            of the primitive existing (three lateral surfaces, one vocabulary).
+            `progress` and not `stations`: two founders is not a set you step
+            through by index. */}
+        <DragRail
+          label={eyebrow}
+          /* The native branch also renders on a fine pointer below ~768px and
+             under reduced motion at ANY width, so the bar is scoped to a
+             coarse pointer — see `.rail-affordance-touch` in globals.css. */
+          railClassName="rail-affordance-touch"
+          /* `relative` is carried over from the original <ul> so any
+             absolutely-positioned descendant of a panel keeps this box as its
+             containing block. */
+          /* `pb-3` not `pb-4`: the progress bar now sits 20px below the
+             scroller and supplies the separation the old bottom padding was
+             carrying alone. `sm:pb-4` keeps the ≥640px box identical. */
+          className="relative items-stretch gap-4 pb-3 sm:pb-4"
         >
           {/* layout="flow": the native card sizes to its own copy, so a long
               bio on a 343px-wide card can never be clipped (D-13). `flex` on
-              the li + the ul's stretch alignment keeps every card the height of
-              the tallest one, so the rail still reads as one filmstrip. */}
+              the li + the scroller's stretch alignment keeps every card the
+              height of the tallest one, so the rail still reads as one
+              filmstrip. */}
           {panels("snap-start shrink-0 flex w-[88vw] max-w-[30rem]", "flow")}
-        </ul>
+        </DragRail>
         {closing}
         {portraitStyle}
       </section>

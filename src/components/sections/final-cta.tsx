@@ -69,8 +69,17 @@ export default function FinalCTA() {
           {/* One glow, behind the single most important element. */}
           <SectionGlow position="top-right" intensity={0.9} size="46rem" />
 
-          <div className="relative grid grid-cols-1 gap-10 px-6 py-14 sm:px-12 sm:py-20 lg:grid-cols-12 lg:gap-12 lg:px-16">
-            <div className="flex flex-col gap-5 lg:col-span-7">
+          {/* MOBILE_HOME_SPEC §5.5: the panel's inner padding goes 56 → 40px
+              per side below `sm`. `sm:py-20` already owned everything from
+              640px up, so the base value was only ever a phone value and this
+              is `sm:`-gated by construction. */}
+          {/* `gap-10` → `gap-7` is the copy-block-to-artifact step while the
+              panel is stacked; `sm:gap-10` restores it. Together with the
+              padding above and the two column gaps below this is the 1035 →
+              923px the §2 table budgets for this section — §5.5's padding line
+              alone only accounts for two thirds of it. */}
+          <div className="relative grid grid-cols-1 gap-7 px-6 py-10 sm:gap-10 sm:px-12 sm:py-20 lg:grid-cols-12 lg:gap-12 lg:px-16">
+            <div className="flex flex-col gap-4 sm:gap-5 lg:col-span-7">
               <p className="eyebrow inline-flex items-center gap-2 text-ink-mute">
                 <span
                   aria-hidden="true"
@@ -147,7 +156,7 @@ export default function FinalCTA() {
             </div>
 
             {/* Right: the refined what_you_get.ts artifact. */}
-            <div className="flex flex-col gap-4 lg:col-span-5">
+            <div className="flex flex-col gap-3 sm:gap-4 lg:col-span-5">
               <div className="cta-code-block overflow-hidden rounded-[var(--radius-lg)] border border-[hsl(var(--rule))] bg-[hsl(var(--bg)/0.7)] backdrop-blur-sm transition-[border-color,box-shadow] duration-500 hover:border-[hsl(var(--accent)/0.45)] hover:shadow-[0_0_40px_-12px_hsl(var(--accent)/0.4)]">
                 <div className="flex items-center justify-between border-b border-[hsl(var(--rule))] px-4 py-2.5">
                   <span className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink-mute">

@@ -150,13 +150,26 @@ function FailureLattice({
             those labels are guaranteed to fit. ≥1024px is unchanged: the outer
             row is already two columns there, so both breakpoints resolved to
             the identical layout. */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-6 lg:gap-8 items-start">
+        {/* MOBILE_HOME_SPEC §2 row 3 — the last 8px of the 1108 → 954 budget.
+            Below `lg` this row is a single column, so `gap-6` is the vertical
+            step between the centerpiece and the cards; 16px is enough at 390px
+            now that the centerpiece is 170px tall. `sm:gap-6` restores it, so
+            the 640px render is unchanged and `lg:gap-8` never moves. */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-4 sm:gap-6 lg:gap-8 items-start">
           <NeuralCenterpiece
             anchorId="problem"
             surface="broken"
             tone="broken"
             showFallback={showFallback}
-            className="min-h-[260px] sm:min-h-[320px]"
+            /* MOBILE_HOME_SPEC §5.4: 260 → 170px below `sm`. The WebGL lattice
+               is camera-locked in the persistent canvas and needs no DOM box at
+               all; this min-height only reserves room, and on a phone it was
+               reserving 90px more than the markers use. The three node markers
+               are placed in PERCENT of this box (MARKER_LAYOUT), so they scale
+               with it and survive intact — which matters because they are the
+               `aria-controls` triggers for the three cards, not decoration.
+               `sm:` restores 320px, so ≥640px does not move. */
+            className="min-h-[170px] sm:min-h-[320px]"
             nodes={[
               { label: failures[0].cause, controls: bodyId("problem", 0) },
               { label: failures[1].cause, controls: bodyId("problem", 1) },
@@ -208,7 +221,9 @@ export default function ProblemSection() {
       <SectionGlow position="bottom-left" intensity={0.8} size="50rem" />
       <div className="container-px relative">
         {/* items-start here too: when a card expands, the FailureLattice column grows; with items-center the outer row re-centered it, nudging the %-anchored node markers ~9px out from under a still cursor (residual hover oscillation). Pinning the row top removes that residual. */}
-        <div className="grid grid-cols-1 lg:grid-cols-[0.9fr_1.1fr] gap-10 lg:gap-16 items-start">
+        {/* §2 row 3: `gap-10` → `gap-8` below `sm` (the heading-to-lattice step
+            when this row is stacked). `sm:gap-10` restores it verbatim. */}
+        <div className="grid grid-cols-1 lg:grid-cols-[0.9fr_1.1fr] gap-8 sm:gap-10 lg:gap-16 items-start">
           {/* Left — headline + paragraph. The [data-emerge] wrapper is the
               singularity passage's zoom-in landing target: the one-shot
               plunge timeline drives this div transform-only (scale 0.8 + a
