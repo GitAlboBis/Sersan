@@ -16,6 +16,7 @@ import { Reveal } from "@/components/ui/reveal";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Button, CTA_FLUID_SM } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { usePressState, type PressStateRef } from "@/lib/use-press-state";
 import { useTierStore } from "@/webgl/store/tierStore";
 import { webgpuEnabled } from "@/webgl/renderer/createRenderer";
 import {
@@ -63,27 +64,42 @@ const prefersReducedMotion = () =>
 /**
  * One mono filter pill. Eyebrow language (JetBrains Mono, uppercase, tracked)
  * with the site's dot idiom: the dot is ALWAYS in the layout (accent when
- * active, rule-grey at rest) so toggling never reflows the rail. h-9 keeps the
- * ≥36px tap height of the navbar's language pill (WCAG 2.5.8 target size);
- * keyboard focus is handled by the global :focus-visible ring.
+ * active, rule-grey at rest) so toggling never reflows the rail. h-9 is the
+ * 36px desktop height, matching the navbar's language pill; keyboard focus is
+ * handled by the global :focus-visible ring.
+ *
+ * TOUCH (D-14) — 36px fails the 44px floor, so `tap-44` raises the pill to
+ * 44×44 on a coarse pointer via min-height/min-width (which win over the `h-9`
+ * used value, so the utility composes rather than being replaced) and desktop
+ * keeps its 36px rail exactly. `press-surface` + pressRef add the M-4 press
+ * pose, since a bare <button> has no `:active` grammar of its own — unlike
+ * ui/button.tsx, which this rail deliberately does not use.
+ *
+ * NOTE FOR THE SWEEP: case-studies-client.tsx carries a byte-identical twin of
+ * this pill and is owned by another agent. Both classes above are shared and
+ * live in globals.css — adopting them there is `tap-44 press-surface` on the
+ * <button> plus a pressRef; nothing else changes.
  */
 function FilterPill({
   active,
   label,
   onClick,
+  pressRef,
 }: {
   active: boolean;
   label: string;
   onClick: () => void;
+  pressRef: PressStateRef;
 }) {
   return (
     <button
+      ref={pressRef}
       type="button"
       onClick={onClick}
       aria-pressed={active}
       data-cursor="link"
       className={cn(
-        "inline-flex h-9 items-center gap-2 rounded-full border px-3.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-300",
+        "tap-44 press-surface inline-flex h-9 items-center gap-2 rounded-full border px-3.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-300",
         active
           ? "border-[hsl(var(--accent)/0.55)] bg-[hsl(var(--accent)/0.08)] text-ink"
           : "border-rule/80 text-ink-mute hover:border-rule hover:text-ink",
@@ -280,6 +296,12 @@ export function ResourcesClient() {
   const { language } = useLanguage();
   const isEn = language === "en";
   const { getItemHandlers, onListPointerLeave } = useResourcePreview();
+  // M-4 press feedback (lib/use-press-state) — the touch answer to a route
+  // whose three card-surface effects and hover preview all bail on a coarse
+  // pointer, leaving taps with no state change at all (D-15). ONE hook for the
+  // rail and the list: the returned callback is stable, so rows survive the
+  // FLIP re-sort and the EN/IT toggle without re-attaching.
+  const pressRef = usePressState();
 
   // Type filter — SSR always renders the full list ("all"); a ?filter= deep
   // link applies after hydration (instant path, under the initial reveal) so
@@ -407,6 +429,7 @@ export function ResourcesClient() {
                   active={category === "all"}
                   label={isEn ? "All" : "Tutte"}
                   onClick={() => selectCategory("all")}
+                  pressRef={pressRef}
                 />
                 {CATEGORIES.map((c) => (
                   <FilterPill
@@ -414,6 +437,7 @@ export function ResourcesClient() {
                     active={category === c}
                     label={categoryLabel[c]}
                     onClick={() => selectCategory(c)}
+                    pressRef={pressRef}
                   />
                 ))}
               </div>
@@ -468,6 +492,7 @@ export function ResourcesClient() {
                       categoryLabel={categoryLabel}
                       dateLocale={dateLocale}
                       preview={getItemHandlers(i)}
+                      pressRef={pressRef}
                     />
                   </div>
                 );
@@ -599,6 +624,9 @@ interface ResourceCardProps {
    *  and wipe live on the card surface itself and COMPOSE with this wiring;
    *  the DOM stays the complete experience when the plane doesn't mount. */
   preview: ResourceItemHandlers;
+  /** M-4 press-state registrar (lib/use-press-state) — the coarse-pointer half
+   *  of the card's feedback, inert on the fine-pointer path below. */
+  pressRef: PressStateRef;
 }
 
 /**
@@ -629,6 +657,14 @@ interface ResourceCardProps {
  * card only hosts the overlay (BlueprintLensCard between the hot duplicate
  * and the wipe); all tracking lives in the fx module, which never touches
  * the preview-store handlers composed here.
+ *
+ * PRESS STATE (M-4, D-15) — every one of the three layers above is
+ * fine-pointer-only, and so is the hover preview, so until now a tap on this
+ * card produced no state change whatsoever. `press-surface` + pressRef are the
+ * coarse-pointer counterpart: hold the card and it compresses 1.5% with an
+ * accent glow blooming from the touch point; release, or start scrolling, and
+ * it settles back (lib/use-press-state). It is the exact mirror image of the
+ * lens — each is dead where the other is alive, so the two can never stack.
  */
 function ResourceCard({
   r,
@@ -637,6 +673,7 @@ function ResourceCard({
   categoryLabel,
   dateLocale,
   preview,
+  pressRef,
 }: ResourceCardProps) {
   const rectRef = useRef<DOMRect | null>(null);
   // window.scrollY as of the cached rect. The rect is viewport-relative, so
@@ -747,6 +784,7 @@ function ResourceCard({
 
   return (
     <Link
+      ref={pressRef}
       href={`/resources/${r.slug}`}
       data-resource-index={index}
       // data-no-tilt (review fix): the blueprint lens computes its clip
@@ -756,7 +794,7 @@ function ResourceCard({
       // tilt. The lens IS this card's hover response — same opt-out the home
       // rail's media cards use for DOM-synced registration.
       data-no-tilt=""
-      className="resource-card card-steel group block p-7"
+      className="resource-card card-steel press-surface group block p-7"
       onPointerEnter={onPointerEnter}
       onPointerMove={onPointerMove}
       onPointerLeave={onPointerLeave}
@@ -932,10 +970,17 @@ function CardBody({
  *     the click handler.
  *
  * Both layers are display:none outside the fine-pointer + motion-OK media
- * block (and the lens additionally behind a mask-image @supports gate), so
- * coarse pointers and reduced-motion users keep today's fully static cards
- * while SSR markup stays identical everywhere. Accent is the signal cyan
- * (#3BE1FF via --accent) — no violet.
+ * block (and the lens additionally behind a mask-image @supports gate). SSR
+ * markup stays identical everywhere. Accent is the signal cyan (#3BE1FF via
+ * --accent) — no violet.
+ *
+ * What a coarse pointer gets INSTEAD is `.press-surface` (globals.css, TOUCH
+ * ERGONOMICS): the M-4 press pose + touch-point glow. The two sets are exact
+ * complements — this block only exists on `(hover: hover) and (pointer: fine)`,
+ * that one only on `(pointer: coarse)` — so no card ever runs both, and the
+ * press glow can safely reuse `.card-steel::after` (the pointer sheen, whose
+ * controller is fine-pointer-only and therefore inert on touch).
+ * Reduced-motion keeps the fully static card on every pointer type.
  */
 const CARD_FX_CSS = `
 @property --lens-r {

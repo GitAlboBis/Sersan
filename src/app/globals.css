@@ -1587,3 +1587,160 @@ html.cursor-none [contenteditable="true"] {
 @keyframes cp-pop {
   from { opacity: 0; transform: translateX(-50%) scale(0.985); }
 }
+
+/* ============================================================================
+ * TOUCH ERGONOMICS — M-4 press feedback + the residual sub-44px targets.
+ * MOBILE_AUDIT.md §4 (primitive M-4), §3 D-14, §3 D-15.
+ *
+ * Every rule in this block is inside `@media (pointer: coarse)`. That is not
+ * timidity, it is the contract: these are answers to problems a fine pointer
+ * does not have (no hover state to give feedback, a finger instead of a 1px
+ * cursor), and desktop already passes on both counts. Gating on the INPUT
+ * DEVICE rather than a width breakpoint follows the house pattern
+ * (`.nav-underline` above, the `(hover: hover) and (pointer: fine)` gates on
+ * the card reveals) and keeps ≥1440px geometrically untouched — verifiably so,
+ * since outside a coarse pointer none of these declarations exist.
+ * ========================================================================== */
+
+@media (pointer: coarse) {
+  /* --- M-4 · the press pose ------------------------------------------------
+     lib/use-press-state.ts writes `data-pressed` plus --press-x/--press-y (the
+     touch point, element-local px); everything visible is here. The pose uses
+     the standalone `scale` property, NOT `transform`, so it composes with
+     whatever transform a consumer already owns (the footer link's 2px hover
+     shift, GSAP's y/opacity entrances) instead of overwriting it.
+
+     Asymmetric on purpose, same grammar as ui/button.tsx: the compression and
+     the glow answer in ~100ms (a press must feel instant), and the release
+     trails at 240/320ms so letting go reads as a settle, not a snap.
+
+     A `transition` shorthand REPLACES the one the consumer already had, so the
+     colour trio is re-declared here rather than silently dropped — the filter
+     pills change border/background/text when they become active, and that is a
+     real state change on touch, not a hover leftover. */
+  .press-surface {
+    position: relative;
+    transition:
+      scale 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      color 300ms cubic-bezier(0.16, 1, 0.3, 1),
+      background-color 300ms cubic-bezier(0.16, 1, 0.3, 1),
+      border-color 300ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  /* .card-steel transitions its own background/box-shadow on the SAME element;
+     same replacement problem, same remedy at its own timing. */
+  .card-steel.press-surface {
+    transition:
+      scale 240ms cubic-bezier(0.16, 1, 0.3, 1),
+      border-color 350ms cubic-bezier(0.215, 0.610, 0.355, 1.000),
+      box-shadow 350ms cubic-bezier(0.215, 0.610, 0.355, 1.000),
+      background 350ms cubic-bezier(0.215, 0.610, 0.355, 1.000);
+  }
+  .press-surface[data-pressed="true"] {
+    scale: 0.985;
+    transition-duration: 110ms;
+  }
+
+  /* The glow. `closest-side` makes the radius the distance to the nearest
+     edge, so ONE declaration scales itself correctly from a 44px link row to a
+     full-width card without a per-consumer size modifier — and a press near an
+     edge produces a tight glow hugging that edge, which is what a fingertip
+     wants to look like.
+
+     On .card-steel this deliberately takes over ::after, the pointer sheen
+     layer: CardTiltController is fine-pointer-only, so on a coarse pointer
+     --sheen-o is pinned at 0 and that pseudo is inert. Reusing it beats
+     stacking a fourth absolutely-positioned layer on every card. */
+  .press-surface::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: radial-gradient(
+      circle closest-side at var(--press-x, 50%) var(--press-y, 50%),
+      hsl(var(--accent) / 0.30) 0%,
+      hsl(var(--accent) / 0.12) 45%,
+      transparent 78%
+    );
+    opacity: 0;
+    transition: opacity 320ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .press-surface[data-pressed="true"]::after {
+    opacity: 1;
+    transition-duration: 100ms;
+  }
+
+  /* --- D-14 · minimum touch target ---------------------------------------
+     Two shapes, two classes, because one declaration cannot serve both without
+     moving something it shouldn't.
+
+     `.tap-44` — for controls whose CONTENT is already centred by their own
+     flex/padding and that simply measure too small: the /resources filter pill
+     (h-9 = 36px) and its untouched twin in case-studies-client.tsx, the footer
+     mailto row (~16.5px). Size only, deliberately: no display, no
+     justify-content. Both axes, because 44×44 is two of them and a mono pill
+     can be narrow. min-height wins over the `h-9` used value, so this composes
+     with the existing utility rather than replacing it.
+
+     `.tap-icon-44` — for icon buttons, where the glyph is centred BY the
+     padding (the footer socials: p-2 around a 16px glyph = 32×32). Growing the
+     padding to 0.875rem gives 44×44 and keeps the glyph dead centre; a
+     min-height on a block box would just leave 12px of dead space below it. */
+  .tap-44 {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .tap-icon-44 {
+    padding: 0.875rem;
+  }
+
+  /* --- D-14 · footer link rows -------------------------------------------
+     MEASURED 20.3px tall at 390px, four columns of them, on EVERY route — the
+     biggest single cluster of failing targets on the site. The fix is padding,
+     not type: 0.75rem top and bottom takes the 20.3px line box to 44.3px, and
+     the anchor goes block so the row is tappable across the whole column
+     rather than only under the glyphs (which is what fixes the WIDTH axis for
+     short labels like "FAQ").
+
+     Some of that is repaid to the layout — `.footer-links` hands back its
+     0.5rem flex gap, which now lives INSIDE the targets — but not all of it
+     can be, and pretending otherwise would be the fake fix: rows cannot be
+     both 44px tall and 32px apart (the MEASURED desktop pitch) without their
+     hit areas overlapping, and an overlapped target is not a target — the
+     browser hands the shared band to whichever element paints last. So the
+     touch footer genuinely grows: pitch 32px → 44.3px, a four-link column
+     120px → 177px, the whole footer 1121px → 1275px at 390px. Desktop, where
+     none of this applies, does not move by a pixel. */
+  .footer-link {
+    display: block;
+    padding-block: 0.75rem;
+  }
+  .footer-links {
+    gap: 0;
+  }
+  /* The hover hairline retires on touch — it can only be triggered by iOS's
+     sticky :hover, and once the anchor is block it would draw across the whole
+     column instead of under its label. Same retirement as .nav-underline::after
+     above; the press glow is the touch feedback now. */
+  .footer-link__rule {
+    display: none;
+  }
+}
+
+/* Defensive only: use-press-state.ts never binds a listener under reduced
+   motion, so `data-pressed` is never written there. This covers a preference
+   flipped mid-hold, and states the rule in CSS as well as in JS — M-4 is pure
+   feedback, so switching it off costs a reduced-motion user no content
+   (unlike M-3 centre-focus, which must stay on). */
+@media (pointer: coarse) and (prefers-reduced-motion: reduce) {
+  .press-surface,
+  .press-surface::after {
+    transition: none;
+  }
+  .press-surface[data-pressed="true"] {
+    scale: 1;
+  }
+  .press-surface[data-pressed="true"]::after {
+    opacity: 0;
+  }
+}

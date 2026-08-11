@@ -23,6 +23,21 @@
  *   coarse / mobile → tier lite → gate off, no card (touch has no hover).
  *   desktop, flag OFF → full tier, no plane → DOM card is the preview.
  *   desktop, flag ON  → full tier + WebGPU plane → card suppressed.
+ *
+ * WHY TOUCH GETS NO PREVIEW PANEL (D-15, decided 2026-08-11). The coarse rung
+ * above is deliberate and stays. This card is a HOVER artefact: it exists to
+ * answer a cursor that lingers, and a finger has no lingering state to answer.
+ * Critically it also carries no information the list is missing — category,
+ * date and read-time are already in every card body (resources-client.tsx,
+ * CardBody) — so returning null here loses a flourish, not content, which is
+ * why the audit ranks D-15 P2 rather than P0 like the case-study imagery.
+ *
+ * The real defect was that a tap produced NO state change at all. That is
+ * answered by M-4 press feedback on the cards themselves (lib/use-press-state
+ * + `.press-surface`), not by porting a cursor-follower onto a device with no
+ * cursor: a tap-to-preview panel would put an extra dismissable layer between
+ * a reader and the article they just asked for, on the one route whose entire
+ * job is getting them into the article.
  */
 import { useEffect, useId, useRef, useState } from "react";
 import gsap from "gsap";

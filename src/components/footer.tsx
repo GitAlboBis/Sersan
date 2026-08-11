@@ -10,6 +10,7 @@ import { SersanLogo } from "@/components/sersan-logo";
 import { useLanguage } from "@/components/language-provider";
 import { NowWidget } from "@/components/fx/now-widget";
 import { CONTACT_EMAIL } from "@/lib/site";
+import { usePressState } from "@/lib/use-press-state";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
@@ -99,6 +100,11 @@ export function Footer() {
   const { language } = useLanguage();
   const isEn = language === "en";
   const footerRef = useRef<HTMLElement | null>(null);
+  // M-4 press feedback (lib/use-press-state). ONE hook for the whole footer;
+  // the returned callback is stable, so the link rows re-attach nothing when
+  // the EN/IT toggle re-renders their labels in place. Inert on fine pointers
+  // and under reduced motion — see the hook's docblock.
+  const pressRef = usePressState();
 
   // Footer closing chord — ONE orchestrated choreography instead of the eight
   // independent <Reveal from="left"> instances that used to fire on their own
@@ -307,9 +313,15 @@ export function Footer() {
             </p>
 
             <div data-footer-brand className="flex flex-col gap-2 pt-3">
+              {/* The page's most direct conversion action, and ~16.5px tall
+                  (D-14). It is already a full-width row inside this column
+                  stack, so it only fails the vertical axis: `tap-44` raises the
+                  row to 44px on touch WITHOUT touching display or alignment —
+                  the label stays exactly where it renders today. */}
               <a
+                ref={pressRef}
                 href={`mailto:${CONTACT_EMAIL}`}
-                className="group inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.14em] uppercase text-ink hover:text-[hsl(var(--accent))] transition-colors"
+                className="tap-44 press-surface group inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.14em] uppercase text-ink hover:text-[hsl(var(--accent))] transition-colors"
               >
                 <span aria-hidden="true" className="status-dot" />
                 {CONTACT_EMAIL}
@@ -341,7 +353,11 @@ export function Footer() {
                     className="absolute inset-x-0 bottom-0 h-px bg-[hsl(var(--rule))]"
                   />
                 </h3>
-                <ul className="flex flex-col gap-2">
+                {/* `footer-links` is inert on a fine pointer; on a coarse one
+                    it hands its 0.5rem gap back to the layout because that gap
+                    now lives inside the padded link targets (globals.css,
+                    TOUCH ERGONOMICS). */}
+                <ul className="footer-links flex flex-col gap-2">
                   {col.links.map((link) => (
                     <li key={link.href}>
                       {/* Hover: 2px x-shift + accent hairline draw — the
@@ -354,15 +370,28 @@ export function Footer() {
                           under reduced motion like the card rules do — it
                           just draws instantly. inline-block because
                           transforms don't apply to inline boxes, and it
-                          shrink-wraps the hairline to the label width. */}
+                          shrink-wraps the hairline to the label width.
+
+                          TOUCH (D-14): these rows MEASURED 20.3px tall, four
+                          columns of them on every route — the largest cluster
+                          of sub-44px targets on the site. `footer-link` pads
+                          them to 44.3px and goes block (so the whole column
+                          width is tappable, which is what carries short labels
+                          like "FAQ" past 44px on the horizontal axis too), and
+                          retires the hairline that a block anchor would draw
+                          across the full column. `press-surface` + pressRef
+                          give the row the tap feedback it has never had. All
+                          of it is coarse-pointer-only: desktop geometry is
+                          untouched, and the type scale never changes. */}
                       <Link
+                        ref={pressRef}
                         href={link.href}
-                        className="group relative inline-block text-[13.5px] text-ink-mute hover:text-ink transition-[color,transform] motion-safe:hover:translate-x-[2px]"
+                        className="footer-link press-surface group relative inline-block text-[13.5px] text-ink-mute hover:text-ink transition-[color,transform] motion-safe:hover:translate-x-[2px]"
                       >
                         {isEn ? link.label : link.labelIt}
                         <span
                           aria-hidden="true"
-                          className="absolute inset-x-0 bottom-0 h-px origin-left scale-x-0 bg-accent transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-x-100"
+                          className="footer-link__rule absolute inset-x-0 bottom-0 h-px origin-left scale-x-0 bg-accent transition-transform duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:scale-x-100"
                         />
                       </Link>
                     </li>
@@ -390,32 +419,39 @@ export function Footer() {
             <span>{isEn ? "Co. No. 16878386" : "N. reg. 16878386"}</span>
           </div>
 
+          {/* Social icons: p-2 around a 16px glyph = 32×32 (D-14). `tap-icon-44`
+              grows the padding to 0.875rem on touch only — 44×44 with the glyph
+              still centred by construction — and desktop keeps its p-2 cluster
+              exactly as it renders today. */}
           <div className="sm:col-span-3 flex items-center gap-2 sm:justify-center">
             <a
+              ref={pressRef}
               data-footer-social
               href="https://www.linkedin.com/company/sersan-limited"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="LinkedIn"
-              className="p-2 rounded-md text-ink-mute hover:text-[hsl(var(--accent))] transition-colors"
+              className="tap-icon-44 press-surface p-2 rounded-md text-ink-mute hover:text-[hsl(var(--accent))] transition-colors"
             >
               <LinkedinIcon className="h-4 w-4" />
             </a>
             <a
+              ref={pressRef}
               data-footer-social
               href="https://www.instagram.com/sersan_ai"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Instagram"
-              className="p-2 rounded-md text-ink-mute hover:text-[hsl(var(--accent))] transition-colors"
+              className="tap-icon-44 press-surface p-2 rounded-md text-ink-mute hover:text-[hsl(var(--accent))] transition-colors"
             >
               <InstagramIcon className="h-4 w-4" />
             </a>
             <a
+              ref={pressRef}
               data-footer-social
               href={`mailto:${CONTACT_EMAIL}`}
               aria-label="Email"
-              className="p-2 rounded-md text-ink-mute hover:text-[hsl(var(--accent))] transition-colors"
+              className="tap-icon-44 press-surface p-2 rounded-md text-ink-mute hover:text-[hsl(var(--accent))] transition-colors"
             >
               <Mail className="h-4 w-4" />
             </a>
