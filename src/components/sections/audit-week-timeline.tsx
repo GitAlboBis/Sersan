@@ -37,11 +37,23 @@
  *     document Y and drives getLenis().scrollTo(y, {immediate}).
  *
  * MODES:
- *   - pinned (SSR default so all six Day cards are in the initial HTML; desktop
- *     fine-pointer, >768px, no reduced-motion): the scrubbed crossfade above.
- *   - native (mobile / coarse pointer / prefers-reduced-motion): today's flat
- *     week.map(...) Reveal cards in normal document flow, byte-identical copy,
- *     focusable, no pin / no Draggable / no snap / no WebGL coupling.
+ *   - native (SSR DEFAULT — the flat week.map(...) Reveal cards in normal
+ *     document flow, byte-identical copy, focusable, no pin / no Draggable /
+ *     no snap / no WebGL coupling). This is what no-JS, crawlers, phones and
+ *     reduced-motion get, and it is what the server HTML contains.
+ *   - pinned (desktop fine-pointer, >768px, no reduced-motion): the scrubbed
+ *     crossfade above, opted into after detection.
+ *
+ * WHY NATIVE IS THE SSR DEFAULT (D-6): the pinned branch's runway is
+ * `100 + 6*80 = 580svh`, and 5 of its 6 Day cards ship `inert` + `aria-hidden`
+ * at opacity 0 — poses that are only ever undone by the rAF crossfade. SSR'ing
+ * that meant a phone's first paint (and every no-JS reader's ONLY paint) was
+ * Day 1 alone inside an empty 580svh frame, which the mount effect then
+ * collapsed — a full-page reflow and a scroll jump, worst on a deep link. The
+ * discipline is use-case-beats.tsx's: SSR renders the mode where ALL content is
+ * visible, and the hidden entrance poses exist only inside the interactive
+ * branch. Detection runs in a LAYOUT effect so desktop's flip to `pinned`
+ * commits before the first paint — the runway is never visibly added.
  *
  * COPY FREEZE: consumes the FROZEN `week` array (EN/IT) passed from
  * audit-client.tsx and reuses the existing SectionHeading verbatim. The only
@@ -49,7 +61,7 @@
  * marketing prose.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Draggable } from "gsap/Draggable";
@@ -80,6 +92,17 @@ interface AuditWeekTimelineProps {
  */
 const TIMELINE_TRAVEL_VH = 80;
 
+/**
+ * Mode detection must commit BEFORE the first paint on desktop: the server
+ * renders `native` (see the MODES note), so a passive effect would let the
+ * browser paint the flat week first and then add a 580svh runway under it.
+ * useLayoutEffect + its setState re-render land inside the same commit, so the
+ * only frame the user ever sees is the settled one. `useEffect` on the server
+ * (the layout variant warns there and there is no layout to read anyway).
+ */
+const useIsoLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
 /** Opacity for a Day given current progress + its [start, end] sub-range.
  * The fade-in and fade-out both happen STRICTLY inside the range, so adjacent
  * Day cards never overlap — exactly one Day owns the screen at a time. Unlike
@@ -98,9 +121,11 @@ function dayOpacity(progress: number, start: number, end: number): number {
 export default function AuditWeekTimeline({ week, isEn }: AuditWeekTimelineProps) {
   const count = week.length;
 
-  // SSR default = pinned so all six Day cards are in the initial HTML — same
-  // convention as case-studies-rail / the cinematic spine.
-  const [mode, setMode] = useState<"pinned" | "native">("pinned");
+  // SSR default = native (D-6): the mode in which ALL SIX Day cards render as
+  // ordinary, focusable, fully-visible document flow. The pinned runway and the
+  // inert/aria-hidden/opacity-0 poses that go with it exist ONLY in the
+  // interactive branch — use-case-beats.tsx's contract, ported.
+  const [mode, setMode] = useState<"pinned" | "native">("native");
   const [detected, setDetected] = useState(false);
 
   const sectionRef = useRef<HTMLDivElement | null>(null);
@@ -118,7 +143,7 @@ export default function AuditWeekTimeline({ week, isEn }: AuditWeekTimelineProps
   // narrow, devtools docked, or an OS reduced-motion toggle must flip the path
   // live. Sampling once on mount kept the pinned path alive with measurements
   // taken against a viewport that no longer exists.
-  useEffect(() => {
+  useIsoLayoutEffect(() => {
     if (typeof window === "undefined") return;
     const queries = [
       window.matchMedia("(max-width: 768px)"),
@@ -137,11 +162,18 @@ export default function AuditWeekTimeline({ week, isEn }: AuditWeekTimelineProps
   // A mode flip sets or clears the px runway height, so document height moves
   // — and an OS reduced-motion toggle fires no resize event, so nothing else
   // would re-measure. Deferred so the refresh reads the committed layout.
+  //
+  // `prev === null` is the FIRST detection. It is NOT a no-op any more: the
+  // server renders `native`, so landing on `pinned` here is what ADDS the
+  // 580svh runway to the document and every downstream [data-line-anchor]
+  // fraction moves with it. Landing on `native` changes nothing versus SSR, so
+  // that case stays quiet.
   useEffect(() => {
     if (!detected) return;
     const prev = prevModeRef.current;
     prevModeRef.current = mode;
-    if (prev === null || prev === mode) return;
+    if (prev === mode) return;
+    if (prev === null && mode === "native") return;
     const raf = requestAnimationFrame(() => ScrollTrigger.refresh());
     return () => cancelAnimationFrame(raf);
   }, [detected, mode]);
@@ -407,9 +439,11 @@ export default function AuditWeekTimeline({ week, isEn }: AuditWeekTimelineProps
     </div>
   );
 
-  // Native fallback: today's flat layout, byte-identical copy, focusable, no
-  // pin / Draggable / snap / WebGL coupling.
-  if (detected && mode === "native") {
+  // Native: the SSR + no-JS + touch + reduced-motion layout. Flat, byte-
+  // identical copy, all six days visible and focusable, no pin / Draggable /
+  // snap / WebGL coupling. Rendered until detection proves the pinned path is
+  // available, so the runway is never in the server HTML (D-6).
+  if (!detected || mode === "native") {
     return (
       <section className="section-lg relative">
         <div className="container-px relative">
@@ -428,17 +462,20 @@ export default function AuditWeekTimeline({ week, isEn }: AuditWeekTimelineProps
 
   // Pinned mode: a tall fixed-height runway (set in px by measure()), a sticky
   // frame holding the heading + the six absolutely-stacked Day cards + the
-  // numeric Day rail. minHeight is the SSR placeholder before JS measures.
+  // numeric Day rail. minHeight is the placeholder for the frame between this
+  // branch committing and measure() writing the px height. svh, not vh: the
+  // rest of the site moved off the dynamic viewport unit in Phase 2 so an
+  // address-bar collapse can never rewrite a runway mid-scroll.
   return (
     <section className="relative">
       <div
         ref={sectionRef}
         className="relative"
-        style={{ minHeight: `${100 + count * TIMELINE_TRAVEL_VH}vh` }}
+        style={{ minHeight: `${100 + count * TIMELINE_TRAVEL_VH}svh` }}
       >
         <div
           ref={dragSurfaceRef}
-          className="sticky top-0 flex h-screen flex-col justify-center overflow-hidden"
+          className="sticky top-0 flex h-[100svh] flex-col justify-center overflow-hidden"
         >
           <div className="mb-10 shrink-0">{heading}</div>
 

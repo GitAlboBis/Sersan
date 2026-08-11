@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FileText } from "lucide-react";
+import { ChevronDown, FileText } from "lucide-react";
 import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
 
@@ -39,7 +39,12 @@ export function PrivacyClient() {
 
   return (
     <div className="min-h-[100svh] bg-background text-foreground pt-24 pb-24">
-      <div className="container mx-auto px-6 max-w-5xl">
+      {/* D-25 — `.container-px`, the site-wide gutter (safe-area aware, and the
+          only thing that keeps copy clear of a display cutout in landscape),
+          replaces the raw `container mx-auto px-6` these three legal routes
+          were the last users of. The reading measure stays max-w-5xl. */}
+      <div className="container-px">
+      <div className="mx-auto max-w-5xl">
         <div className="mb-12 max-w-2xl">
           <div className="mb-5">
             <span className="status-pill">
@@ -58,6 +63,39 @@ export function PrivacyClient() {
               : "Come SERSAN raccoglie, utilizza e protegge i vostri dati personali in conformità al GDPR."}
           </p>
         </div>
+
+        {/* Mobile wayfinding: the sticky index below is `hidden lg:block`, so
+            under lg an eleven-section policy had no way to navigate itself. A
+            native <details> is the whole mechanism — no JS, no dependency, open
+            state owned by the browser, and the links are in the DOM either way.
+            Deliberately collapsed by default: nothing is lost without it, so it
+            must not push the document itself down a screen. */}
+        <details className="group lg:hidden mb-10 rounded-lg border border-rule/40 bg-surface/30">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+            <span className="eyebrow">{isEn ? "Contents" : "Indice"}</span>
+            <ChevronDown
+              aria-hidden="true"
+              className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-open:rotate-180 motion-reduce:transition-none"
+            />
+          </summary>
+          <nav
+            aria-label={isEn ? "Privacy policy sections" : "Sezioni dell'informativa"}
+            className="border-t border-rule/40 px-4 py-1"
+          >
+            {tocSections.map((s, i) => (
+              <a
+                key={s.id}
+                href={`#${s.id}`}
+                className="flex min-h-11 items-center gap-2.5 py-1 text-sm text-muted-foreground"
+              >
+                <span className="font-mono text-[10px] tabular-nums shrink-0">
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <span>{s.label}</span>
+              </a>
+            ))}
+          </nav>
+        </details>
 
         <div className="flex flex-col lg:flex-row gap-10 lg:gap-16 items-start">
           <aside className="hidden lg:block w-52 shrink-0 sticky top-24 self-start">
@@ -82,7 +120,10 @@ export function PrivacyClient() {
           </aside>
 
           <div className="flex-1 min-w-0">
-            <div className="space-y-10 text-foreground/70 leading-[1.72] text-[0.9375rem]">
+            {/* D-26 — text-base (1rem = 16px), not the old 0.9375rem/15px:
+                these are long-form legal pages and 15px sits under the mobile
+                reading floor. Size only; not one string changed. */}
+            <div className="space-y-10 text-foreground/70 leading-[1.72] text-base">
               <Reveal>
               <section id="intro" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
@@ -403,6 +444,7 @@ export function PrivacyClient() {
             </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

@@ -63,7 +63,10 @@ if (typeof window !== "undefined") {
  *      windowed name sweep + portrait parallax). Complete fallback on its own.
  *
  *   3. NATIVE (mobile / coarse pointer / prefers-reduced-motion): a plain
- *      overflow-x snap scroller, no pinning, portraits simply visible.
+ *      overflow-x snap scroller, no pinning, portraits simply visible. Its
+ *      cards use the FLOW panel layout (see FounderPanel) — min-height instead
+ *      of a fixed height, copy in normal flow — so a founder's bio, credential
+ *      chips and LinkedIn link can never be clipped on a narrow phone (D-13).
  *
  * PORTRAIT COLOUR REVEAL (modes 2 and 3, D-1): the duotone→colour clip reveal
  * has two triggers — `:hover` on a fine pointer, and `[data-focus="true"]` on
@@ -331,12 +334,46 @@ function FounderCopy({
   );
 }
 
+/**
+ * D-13 — the card's copy must never be clipped.
+ *
+ * The pinned horizontal rail sizes every panel to a FIXED height so the row
+ * reads as one filmstrip inside its h-[100svh] frame, and its copy is absolutely
+ * positioned on the scrim. That is correct there: the panels are ≤34rem wide on
+ * a ≥769px fine-pointer viewport, where the name + role + bio + credential chips
+ * + "Previously" chips + LinkedIn always fit the bottom half.
+ *
+ * On the native scroller they do not. At the ~343px a `w-[88vw]` card gets on a
+ * 390px phone the same stack is roughly twice as tall, and because the article
+ * was `h-[min(78vh,46rem)] overflow-hidden` with the copy pinned to
+ * `bottom-0`, the block grew UPWARD past the top edge and was cut, with no
+ * scroll able to reach it — the founder's bio and credentials simply did not
+ * exist on a phone. (`78vh` also re-sized under the address bar.)
+ *
+ * So the native cards switch to `layout="flow"`: the article becomes a flex
+ * column with a MIN height instead of a fixed one, and the copy is an ordinary
+ * in-flow child pushed down by `mt-auto`. Short copy still sits on the bottom
+ * edge exactly as before; long copy grows the card instead of being cut. The
+ * media stays `absolute inset-y-0`, so it covers whatever height the card ends
+ * up at. Because a taller card pushes the copy above the full-bleed scrim's
+ * fade zone, the flow variant carries its own gradient behind the text block —
+ * contrast can then never depend on how tall the copy happens to be.
+ */
+type PanelLayout = "fixed" | "flow";
+
+/** The flow variant's own scrim: the card-level gradient is anchored to the
+ *  card's height, this one to the text block's, so AA contrast holds at any
+ *  copy length (and in either language — IT runs longer). */
+const FLOW_COPY_SCRIM =
+  "linear-gradient(to top, rgba(11,20,34,0.95) 0%, rgba(11,20,34,0.9) 55%, rgba(11,20,34,0.62) 82%, rgba(11,20,34,0) 100%)";
+
 function FounderPanel({
   f,
   index,
   total,
   isEn,
   focusRef,
+  layout = "fixed",
 }: {
   f: FounderProfile;
   index: number;
@@ -344,7 +381,11 @@ function FounderPanel({
   isEn: boolean;
   /** Centre-focus registration (touch only; inert on a fine pointer). */
   focusRef: CentreFocusRef;
+  /** "fixed" = the pinned rail's filmstrip panel; "flow" = the native card
+   *  that sizes to its own copy (see the block comment above). */
+  layout?: PanelLayout;
 }) {
+  const flow = layout === "flow";
   // SVG filter/mask ids must be document-unique AND SSR-stable → useId.
   // The delimiter chars (":" / "«»") break unquoted CSS url() references,
   // so strip them.
@@ -379,7 +420,11 @@ function FounderPanel({
       id={`founder-${f.anchor}`}
       ref={focusRef}
       onPointerEnter={onPortraitEnter}
-      className="founder-portrait group relative h-[min(78vh,46rem)] w-full overflow-hidden rounded-lg border border-[hsl(var(--rule))] bg-[hsl(216_28%_10%/0.45)] hover:border-[hsl(var(--accent)/0.45)]"
+      className={`founder-portrait group relative w-full overflow-hidden rounded-lg border border-[hsl(var(--rule))] bg-[hsl(216_28%_10%/0.45)] hover:border-[hsl(var(--accent)/0.45)] ${
+        flow
+          ? "flex min-h-[min(78svh,46rem)] flex-col"
+          : "h-[min(78svh,46rem)]"
+      }`}
     >
       {/* Full-bleed media — covers the ENTIRE panel; the article's
           overflow-hidden clips the 112% bleed. Counter-parallax target:
@@ -483,8 +528,16 @@ function FounderPanel({
       {/* Overlay stack — ALL copy rides the scrim, nothing beside the image.
           The huge display name carries the windowed counter-sweep (transform
           on the inner span, clipped by the article's overflow-hidden).
-          pointer-events-none except LinkedIn, so the article owns hover. */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col gap-3 p-6 sm:p-7">
+          pointer-events-none except LinkedIn, so the article owns hover.
+          FLOW (native/touch): in normal flow, pushed to the bottom by mt-auto,
+          so copy taller than the card's min height GROWS the card rather than
+          overflowing its top edge (D-13). */}
+      <div
+        className={`pointer-events-none z-10 flex flex-col gap-3 p-6 sm:p-7 ${
+          flow ? "relative mt-auto" : "absolute inset-x-0 bottom-0"
+        }`}
+        style={flow ? { background: FLOW_COPY_SCRIM } : undefined}
+      >
         <div className="flex items-end justify-between gap-4">
           <div className="min-w-0">
             <h3 className="font-display text-[clamp(2.2rem,4.5vw,3.4rem)] leading-[0.95] text-ink">
@@ -1760,7 +1813,7 @@ export default function FoundersRail() {
     />
   );
 
-  const panels = (liClass: string) => (
+  const panels = (liClass: string, layout: PanelLayout = "fixed") => (
     <>
       {founders.map((f, i) => (
         <li key={f.anchor} data-founders-panel className={liClass}>
@@ -1770,6 +1823,7 @@ export default function FoundersRail() {
             total={total}
             isEn={isEn}
             focusRef={portraitFocusRef}
+            layout={layout}
           />
         </li>
       ))}
@@ -1823,10 +1877,14 @@ export default function FoundersRail() {
         <div className="container-px relative mb-8 sm:mb-10">{heading()}</div>
         <ul
           data-lenis-prevent
-          className="relative flex gap-4 overflow-x-auto snap-x snap-mandatory px-6 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="relative flex items-stretch gap-4 overflow-x-auto snap-x snap-mandatory px-6 pb-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           aria-label={eyebrow}
         >
-          {panels("snap-start shrink-0 w-[88vw] max-w-[30rem]")}
+          {/* layout="flow": the native card sizes to its own copy, so a long
+              bio on a 343px-wide card can never be clipped (D-13). `flex` on
+              the li + the ul's stretch alignment keeps every card the height of
+              the tallest one, so the rail still reads as one filmstrip. */}
+          {panels("snap-start shrink-0 flex w-[88vw] max-w-[30rem]", "flow")}
         </ul>
         {closing}
         {portraitStyle}

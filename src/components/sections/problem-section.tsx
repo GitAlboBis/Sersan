@@ -141,7 +141,16 @@ function FailureLattice({
             narrow widths (network on top, cards below). The network area is
             unobstructed — nothing overlaps it. */}
         {/* items-start (NOT center): a card expanding must not re-center this row, or the %-anchored node markers would shift out from under a still cursor and the hover would oscillate. */}
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr] gap-6 lg:gap-8 items-start">
+        {/* D-24 — the split is `lg:`, matching production-grade-section's twin
+            row, NOT `sm:`. At `sm` this row halved a ~600px column into two
+            ~285px ones, and the node markers' `whitespace-nowrap` labels —
+            centred at 24% / 78% of the centerpiece — overran both of its edges
+            and were cut by this section's `overflow-hidden`. Below `lg` the
+            centerpiece now takes the full column, which is the only width where
+            those labels are guaranteed to fit. ≥1024px is unchanged: the outer
+            row is already two columns there, so both breakpoints resolved to
+            the identical layout. */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-6 lg:gap-8 items-start">
           <NeuralCenterpiece
             anchorId="problem"
             surface="broken"

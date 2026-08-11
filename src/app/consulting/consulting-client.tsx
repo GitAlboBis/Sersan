@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ChevronDown } from "lucide-react";
+import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import { Button, CTA_FLUID_SM } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { MultiStepIntake } from "@/components/multi-step-intake";
@@ -9,12 +10,6 @@ import ProcessSection from "@/components/sections/process-section";
 import { PracticeLedger } from "./practice-ledger";
 import { EngagementActs } from "./engagement-acts";
 import { SectionHeading } from "@/components/ui/section-heading";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { useLanguage } from "@/components/language-provider";
 
 export function ConsultingClient() {
@@ -218,23 +213,51 @@ export function ConsultingClient() {
               )
             }
           />
+          {/* D-27 — built on the Radix PRIMITIVE, not ui/accordion.tsx, for
+              one reason: `forceMount` on Content. The shared wrapper unmounts
+              closed answers, so this page shipped SSR HTML with two of its
+              three answers missing — a different content contract from
+              /audit's Honest FAQ (ui/honest-faq.tsx), which is the same UI.
+              With forceMount every answer is in the DOM, height-CLIPPED when
+              closed (grid-template-rows 0fr→1fr, the site's entrance ease,
+              animating both directions without measuring) — so no-JS readers,
+              crawlers and assistive tech always get the full text. Chrome,
+              copy and Radix semantics (h3 header, aria-expanded/controls,
+              roving focus, Enter/Space) are unchanged. */}
           <div className="max-w-3xl mx-auto">
-            <Accordion type="single" collapsible className="space-y-3">
+            <AccordionPrimitive.Root
+              type="single"
+              collapsible
+              className="space-y-3"
+            >
               {faqs.map((f, i) => (
-                <AccordionItem
+                <AccordionPrimitive.Item
                   key={f.q}
                   value={`faq-${i}`}
                   className="rounded-xl border border-rule/70 bg-surface/40 backdrop-blur-[1px] px-6 transition-colors data-[state=open]:border-[hsl(var(--accent)/0.5)] data-[state=open]:bg-surface/60"
                 >
-                  <AccordionTrigger className="text-ink hover:text-[hsl(var(--accent))] hover:no-underline font-medium text-left py-5 text-sm">
-                    {f.q}
-                  </AccordionTrigger>
-                  <AccordionContent className="text-ink-mute pb-5 text-sm leading-[1.6]">
-                    {f.a}
-                  </AccordionContent>
-                </AccordionItem>
+                  <AccordionPrimitive.Header className="flex">
+                    <AccordionPrimitive.Trigger className="group flex flex-1 items-center justify-between gap-6 py-5 text-left text-sm font-medium text-ink outline-none transition-colors hover:text-[hsl(var(--accent))] focus-visible:ring-1 focus-visible:ring-[hsl(var(--accent)/0.45)]">
+                      {f.q}
+                      <ChevronDown
+                        aria-hidden="true"
+                        className="h-4 w-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180 motion-reduce:transition-none"
+                      />
+                    </AccordionPrimitive.Trigger>
+                  </AccordionPrimitive.Header>
+                  <AccordionPrimitive.Content
+                    forceMount
+                    className="grid grid-rows-[0fr] transition-[grid-template-rows] duration-500 ease-[var(--ease-entrance)] data-[state=open]:grid-rows-[1fr] motion-reduce:transition-none"
+                  >
+                    <div className="min-h-0 overflow-hidden">
+                      <p className="pb-5 text-sm leading-[1.6] text-ink-mute">
+                        {f.a}
+                      </p>
+                    </div>
+                  </AccordionPrimitive.Content>
+                </AccordionPrimitive.Item>
               ))}
-            </Accordion>
+            </AccordionPrimitive.Root>
           </div>
         </div>
       </section>

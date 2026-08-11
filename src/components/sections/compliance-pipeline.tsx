@@ -18,12 +18,14 @@
  *      short hold + ignition pulse at each checkpoint. The light "checks in"
  *      at every control instead of sliding past at constant velocity: the
  *      narrative is controls, not a screensaver.
- *   3. HOVER/FOCUS IGNITE (every tier): each stage hotspot now lights the
- *      SVG itself — halo bloom on the station, regulation tag lifted to full
- *      ink — so the interaction reads alive even where the WebGPU echo never
- *      mounts. When the travelling light next crosses a hovered stage the
- *      streak swells briefly: the light acknowledges the checkpoint being
- *      inspected. Keyboard focus gets the identical treatment.
+ *   3. HOVER/FOCUS/TAP IGNITE (every tier, every input class): each stage
+ *      hotspot lights the SVG itself — halo bloom on the station, regulation
+ *      tag lifted to full ink — so the interaction reads alive even where the
+ *      WebGPU echo never mounts. When the travelling light next crosses an
+ *      ignited stage the streak swells briefly: the light acknowledges the
+ *      checkpoint being inspected. Keyboard focus and a touch TAP both get the
+ *      identical treatment (see PipelineHotspots for how the three input
+ *      classes are kept from cancelling each other out).
  *
  * ScrollTrigger plays/pauses the master with visibility (single-RAF: the
  * site's scroll spine, no bespoke rAF or observers); while paused off-screen
@@ -34,7 +36,7 @@
  * motion.
  */
 
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
@@ -91,6 +93,32 @@ const M_STAGE_Y = STAGE_KEYS.map((_, i) => {
   const span = M_VB_H - margin * 2;
   return margin + (span * i) / (STAGE_KEYS.length - 1);
 });
+/** Left edge of the mobile regulation tag: just clear of the station box. */
+const M_TAG_X = M_CENTER_X + M_BOX_W / 2 + 12; // 158
+/**
+ * D-12 — the mobile tag USED TO CLIP INSIDE ITS OWN viewBox, at every width.
+ * The tag is anchored `start` at x = 158 in a 280-unit box, so it has
+ * 280 − 158 = 122 units of room. At fontSize 10 a monospace glyph advances
+ * ~0.6em ≈ 6 units, i.e. ~20 characters — and "GDPR · EU AI Act Art. 10" is 24,
+ * ending at x ≈ 302. SVG clipped it, so the ONE citation the diagram exists to
+ * show was cut off on every phone from 320px up.
+ *
+ * The fix is resolution-independent because the overflow was: anything past the
+ * budget is split on its own " · " separators onto stacked tspans. The
+ * separator stays on the line it follows, so not one character of the frozen
+ * REGULATIONS copy is added, dropped or reordered — only its line breaks.
+ * Station pitch is 124 units against a 44-unit box, so two 11-unit lines sit
+ * comfortably inside the gap.
+ */
+const M_TAG_MAX_CHARS = 20;
+/** Line height for a wrapped mobile tag, in user units. */
+const M_TAG_LINE_H = 11;
+function mobileTagLines(text: string): string[] {
+  if (text.length <= M_TAG_MAX_CHARS) return [text];
+  const parts = text.split(" · ");
+  if (parts.length < 2) return [text];
+  return parts.map((p, i) => (i < parts.length - 1 ? `${p} ·` : p));
+}
 
 const STAGE_FRACTIONS = STAGE_KEYS.map((_, i) => i / (STAGE_KEYS.length - 1));
 
@@ -134,6 +162,54 @@ const TAG_REST_OPACITY = 0.72;
 interface StageLink {
   hovered: number;
   ignite: ((idx: number, hot: boolean) => void) | null;
+  /** The diagram's <svg> root, assigned by a ref callback — NOT by the GSAP
+   *  setup. See IGNITE_CSS for why the DOM path has to exist on its own. */
+  root: SVGSVGElement | null;
+}
+
+/**
+ * The ignite state, expressed in CSS.
+ *
+ * `link.ignite` is registered from INSIDE the diagram's useGSAP body, so the
+ * halo bloom and the tag lift only exist if that body ran. Measured on /trust
+ * at both breakpoints (and confirmed identical at HEAD, i.e. this predates the
+ * D-12 work): GSAP currently never touches this SVG — not one inline style
+ * lands on the stations, the conduit or the streak — so `ignite` is null and
+ * every hover, focus and tap was a silent no-op. A tap path that depends on it
+ * would be exactly the dead affordance D-12 is about.
+ *
+ * So the ignite ALSO has a pure-DOM path: the hotspots write
+ * `data-lit-stage="<idx>"` on the diagram's <svg> root and these rules do the
+ * rest. The two paths compose instead of fighting, in this precedence order:
+ *   - GSAP alive → it writes INLINE opacity on the halo/tag, and an inline
+ *     style beats a stylesheet rule, so the authored choreography wins
+ *     untouched (including its `assembled` gate and its 0.2s eases).
+ *   - GSAP dead → no inline opacity exists, and these rules paint the state.
+ * Transitions are neutralised globally under prefers-reduced-motion, which is
+ * correct here: the STATE must still apply, only its easing goes away.
+ */
+const IGNITE_CSS = `
+[data-pipe-halo] { transition: opacity 0.2s ease; }
+[data-pipe-tag] { transition: opacity 0.2s ease; }
+${STAGE_KEYS.map(
+  (_, i) => `
+svg[data-lit-stage="${i}"] [data-pipe-halo="${i}"] { opacity: 0.55; }
+svg[data-lit-stage="${i}"] [data-pipe-tag="${i}"] { opacity: 1; }`,
+).join("")}
+`;
+
+/**
+ * "Did this focus come from the keyboard?" — :focus-visible is exactly that
+ * question, and every browser this site supports answers it. Wrapped because
+ * `matches()` throws on an unsupported selector rather than returning false,
+ * and a thrown selector inside a focus handler would take the handler with it.
+ */
+function isFocusVisible(el: Element): boolean {
+  try {
+    return el.matches(":focus-visible");
+  } catch {
+    return true;
+  }
 }
 
 interface DiagramProps {
@@ -471,6 +547,7 @@ function PipelineDiagram({ mobile, stageLabel, link }: DiagramProps) {
           ref={(el) => {
             haloRefs.current[idx] = el;
           }}
+          data-pipe-halo={idx}
           x={cx - boxW / 2}
           y={cy - boxH / 2}
           width={boxW}
@@ -516,12 +593,15 @@ function PipelineDiagram({ mobile, stageLabel, link }: DiagramProps) {
         {/* Regulation tag: authored at full-ink fill with a muted rest
             OPACITY (not ink-mute fill) so hover/focus can lift it to full
             ink with a pure opacity tween — var()-based fills don't
-            interpolate. Rest tone matches the old ink-mute read. */}
+            interpolate. Rest tone matches the old ink-mute read.
+            On mobile the tag wraps onto stacked tspans when it would overrun
+            the viewBox (see mobileTagLines) — same string, line-broken. */}
         <text
           ref={(el) => {
             tagRefs.current[idx] = el;
           }}
-          x={mobile ? cx + boxW / 2 + 12 : cx}
+          data-pipe-tag={idx}
+          x={mobile ? M_TAG_X : cx}
           y={mobile ? cy : cy + boxH / 2 + D_PILL_Y_OFFSET + 4}
           textAnchor={mobile ? "start" : "middle"}
           dominantBaseline={mobile ? "middle" : undefined}
@@ -532,7 +612,23 @@ function PipelineDiagram({ mobile, stageLabel, link }: DiagramProps) {
             fontFamily: "var(--font-mono), ui-monospace, monospace",
           }}
         >
-          {REGULATIONS[key]}
+          {mobile
+            ? mobileTagLines(REGULATIONS[key]).map((line, li, arr) => (
+                <tspan
+                  key={line}
+                  x={M_TAG_X}
+                  // First line lifts by half the block so the wrapped pair
+                  // stays vertically centred on the station it annotates.
+                  dy={
+                    li === 0
+                      ? (-(arr.length - 1) * M_TAG_LINE_H) / 2
+                      : M_TAG_LINE_H
+                  }
+                >
+                  {line}
+                </tspan>
+              ))
+            : REGULATIONS[key]}
         </text>
       </g>
     );
@@ -545,7 +641,12 @@ function PipelineDiagram({ mobile, stageLabel, link }: DiagramProps) {
 
   return (
     <svg
-      ref={rootRef}
+      ref={(el) => {
+        rootRef.current = el;
+        // The DOM ignite target (IGNITE_CSS). Assigned here, NOT in the GSAP
+        // setup, so the tap/hover state survives the GSAP body never running.
+        link.root = el;
+      }}
       viewBox={`0 0 ${mobile ? M_VB_W : D_VB_W} ${mobile ? M_VB_H : D_VB_H}`}
       className={mobile ? "w-full h-auto" : "w-full h-auto min-w-[720px]"}
       style={mobile ? { maxHeight: 720 } : undefined}
@@ -631,6 +732,20 @@ function PipelineDiagram({ mobile, stageLabel, link }: DiagramProps) {
  * read (the CompliancePipeline3D reader was deleted as dead code); with no
  * reader the set is a harmless no-op, kept so a revived echo re-syncs for free.
  *
+ * TOUCH (D-12). These buttons used to carry ONLY hover and focus handlers, so
+ * on a phone they were six invisible, `pointer-events-auto` rectangles laid
+ * over the diagram that swallowed every tap and did nothing. They now have a
+ * real tap path: a click TOGGLES its stage lit, and any other stage taken lit
+ * releases the previous one, so a touch reader can inspect a checkpoint (halo +
+ * its citation at full ink) exactly like a mouse reader can. Two rules keep the
+ * three input classes from cancelling each other out:
+ *   - the mouse handlers are gated behind `(hover: hover) and (pointer: fine)`.
+ *     iOS synthesises mouseenter on tap, which would otherwise light the stage
+ *     a beat before the click arrived and make the click read as "toggle off".
+ *   - focus only lights when it is `:focus-visible` (i.e. keyboard). A browser
+ *     that focuses a button on tap would otherwise do the same thing.
+ * The rectangles are also ≥44×44 now (they were 40 tall).
+ *
  * `mobile` selects the vertical (M_*) vs horizontal (D_*) viewBox mapping so the
  * overlay matches whichever PipelineDiagram its sibling card is rendering.
  */
@@ -647,19 +762,46 @@ function PipelineHotspots({
 }) {
   const setHovered = useCompliancePipelineStore((s) => s.setHovered);
   const bump = useCompliancePipelineStore((s) => s.bump);
+  // Pointer class is a SUBSCRIPTION (a stylus swapped for a mouse must flip the
+  // path live) and starts false so the tap path is the one that survives SSR.
+  const [fine, setFine] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const sync = () => setFine(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   const ignite = (idx: number) => {
+    // Releasing a previously-lit stage is the toggle's job, but it also covers
+    // a fast mouse crossing two hotspots before the first leave lands.
+    if (link.hovered !== -1 && link.hovered !== idx) {
+      link.ignite?.(link.hovered, false);
+    }
     link.hovered = idx;
     link.ignite?.(idx, true);
+    // The DOM path (IGNITE_CSS) — the one that works whether or not the
+    // diagram's GSAP body ever ran.
+    link.root?.setAttribute("data-lit-stage", String(idx));
     setHovered(idx);
     bump(idx);
   };
   const clear = (idx: number) => {
     // Guard the reset: a fast mouse can enter stage B before stage A's
     // leave fires — never clobber the newer hover.
-    if (link.hovered === idx) link.hovered = -1;
+    if (link.hovered === idx) {
+      link.hovered = -1;
+      link.root?.removeAttribute("data-lit-stage");
+    }
     link.ignite?.(idx, false);
     setHovered(-1);
+  };
+  /** The tap/Enter path: lit → dark, dark → lit (and drop whatever was lit). */
+  const toggle = (idx: number) => {
+    if (link.hovered === idx) clear(idx);
+    else ignite(idx);
   };
 
   const ariaFor = (k: StageKey, idx: number) => {
@@ -694,10 +836,20 @@ function PipelineHotspots({
             key={k}
             type="button"
             aria-label={ariaFor(k, idx)}
-            onFocus={() => ignite(idx)}
+            onFocus={(e) => {
+              // Keyboard focus only. A pointer-induced focus is not
+              // :focus-visible, and letting it ignite would race the click
+              // below into a no-op toggle.
+              if (isFocusVisible(e.currentTarget)) ignite(idx);
+            }}
             onBlur={() => clear(idx)}
-            onMouseEnter={() => ignite(idx)}
-            onMouseLeave={() => clear(idx)}
+            onMouseEnter={() => {
+              if (fine) ignite(idx);
+            }}
+            onMouseLeave={() => {
+              if (fine) clear(idx);
+            }}
+            onClick={() => toggle(idx)}
             style={{
               left: `${leftPct}%`,
               top: `${topPct}%`,
@@ -706,7 +858,12 @@ function PipelineHotspots({
             // No hover ring anymore: hover feedback now lives in the SVG
             // itself (halo + tag lift). The focus-visible ring stays — the
             // keyboard needs a hard focus indicator on top of the ignite.
-            className="pointer-events-auto absolute h-10 w-24 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70"
+            // h-11 (44px) is the tap-target floor; the mobile stations are 124
+            // viewBox units apart, so the taller box cannot collide with its
+            // neighbours, and the wider mobile box matches its 132-unit station.
+            className={`pointer-events-auto absolute h-11 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/70 ${
+              mobile ? "w-32" : "w-24"
+            }`}
           />
         );
       })}
@@ -721,8 +878,16 @@ export default function CompliancePipeline() {
   // One hover/focus link per breakpoint variant (see StageLink): plain
   // mutable objects held for the component's life — `.current` unwrapped
   // once so children share the same identity across renders.
-  const desktopLink = useRef<StageLink>({ hovered: -1, ignite: null }).current;
-  const mobileLink = useRef<StageLink>({ hovered: -1, ignite: null }).current;
+  const desktopLink = useRef<StageLink>({
+    hovered: -1,
+    ignite: null,
+    root: null,
+  }).current;
+  const mobileLink = useRef<StageLink>({
+    hovered: -1,
+    ignite: null,
+    root: null,
+  }).current;
 
   const stageLabel = (k: StageKey) =>
     isEn ? STAGE_LABELS[k].en : STAGE_LABELS[k].it;
@@ -736,6 +901,7 @@ export default function CompliancePipeline() {
       className="section-lg relative overflow-hidden"
       aria-labelledby="compliance-pipeline-heading"
     >
+      <style>{IGNITE_CSS}</style>
       <div className="container mx-auto max-w-5xl relative z-10 px-0 sm:px-6">
         {/* Eyebrow + H2 outside the RevealOnScroll fade: the eyebrow's
             entrance is the LabelScrambler decode, the H2's is the
