@@ -78,6 +78,29 @@ import { QUESTIONS, TOTAL_QUESTIONS, matchFindings } from "@/data/audit-question
  * aria-live="polite" so SRs announce each step; the previously chosen
  * answer carries aria-current on back-nav; the progress counter has an
  * sr-only "Question N of 5" twin.
+ *
+ * TAP TARGETS (D-14) — this beat is the one on the site that gives touch the
+ * full desktop choreography, and its four mono controls used to be the
+ * densest sub-44px cluster on it: bare type with no padding at all, so
+ * "Start →" (the entry point to the entire quiz) measured ~18px tall.
+ * Every one of them now carries HIT_PAD = `py-3.5` (0.875rem), and nothing
+ * else changed — not the type scale, not the copy, not the horizontal
+ * extent (the labels are all wider than 44px on their own, and zero side
+ * padding keeps the `w-full` underline sweeps exactly as long as their
+ * text). Resulting boxes at the 16px root floor: 12px controls 46px tall,
+ * 11px controls 44.5px.
+ *
+ * The padding is then given straight back to the layout, so ≥1440px is
+ * visually unchanged:
+ *   - flex children ("← Back", "Book a scoping call", "Run again") pair it
+ *     with `-my-3.5`; margins count toward a flex item's outer cross size,
+ *     so each line keeps its old height and `items-baseline` still aligns
+ *     "← Back" to the NN / NN counter beside it;
+ *   - "Start →" is a block-flow child, so it repays the space through its
+ *     top margin instead: `mt-8` → `mt-[1.125rem]`, and 1.125 + 0.875 = 2rem.
+ * Underline sweeps move from `-bottom-0.5` to `bottom-3` for the same
+ * reason — 0.875rem − 0.75rem = the original 0.125rem gap under the text.
+ * All of it is rem-based, so it tracks the fluid root instead of fighting it.
  */
 
 type Phase = "intro" | "quiz" | "result";
@@ -361,11 +384,16 @@ export function SelfAudit({ isEn }: { isEn: boolean }) {
                   </>
                 )}
               </h3>
+              {/* Entry point to the whole quiz — HIT_PAD'd to a real target
+                  (see the docblock's TAP TARGETS note). `mt-8` becomes
+                  `mt-[1.125rem]` because 1.125rem + HIT_PAD(0.875rem) === 2rem:
+                  the label lands on exactly the same baseline it always did,
+                  the box around it is just 28px taller. */}
               <button
                 type="button"
                 data-sa-start
                 onClick={start}
-                className="group/start relative mt-8 inline-flex items-center gap-1.5 rounded-sm font-mono text-[12px] uppercase tracking-[0.18em] text-accent outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--accent)/0.45)]"
+                className="group/start relative mt-[1.125rem] inline-flex items-center gap-1.5 rounded-sm py-3.5 font-mono text-[12px] uppercase tracking-[0.18em] text-accent outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--accent)/0.45)]"
               >
                 {isEn ? "Start" : "Inizia"}
                 <span
@@ -374,10 +402,13 @@ export function SelfAudit({ isEn }: { isEn: boolean }) {
                 >
                   →
                 </span>
-                {/* Underline sweep — the ledger's scaleX grammar. */}
+                {/* Underline sweep — the ledger's scaleX grammar. Offset from
+                    the padded box, not the border edge: HIT_PAD(0.875rem) −
+                    bottom-3(0.75rem) = 0.125rem, i.e. the original
+                    `-bottom-0.5`, so the rule still sits 2px under the text. */}
                 <span
                   aria-hidden="true"
-                  className="absolute -bottom-0.5 left-0 h-px w-full origin-left scale-x-0 bg-accent/80 transition-transform duration-300 ease-out group-hover/start:scale-x-100 group-focus-visible/start:scale-x-100 motion-reduce:transition-none"
+                  className="absolute bottom-3 left-0 h-px w-full origin-left scale-x-0 bg-accent/80 transition-transform duration-300 ease-out group-hover/start:scale-x-100 group-focus-visible/start:scale-x-100 motion-reduce:transition-none"
                 />
               </button>
             </div>
@@ -386,10 +417,17 @@ export function SelfAudit({ isEn }: { isEn: boolean }) {
           {phase === "quiz" && q && (
             <div>
               <div className="flex items-baseline justify-between gap-4">
+                {/* HIT_PAD + the matching negative margin: the padding builds
+                    the 44px target, `-my-3.5` hands the space straight back to
+                    the flex line so the row keeps its exact height and the
+                    label keeps its exact baseline against the NN / NN counter
+                    (margins are part of a flex item's outer size, and the
+                    baseline offset is margin-top + padding-top + ascent =
+                    ascent, unchanged). */}
                 <button
                   type="button"
                   onClick={back}
-                  className="rounded-sm font-mono text-[11px] uppercase tracking-[0.18em] text-ink-mute outline-none transition-colors duration-200 hover:text-ink focus-visible:text-ink focus-visible:ring-1 focus-visible:ring-[hsl(var(--accent)/0.45)] motion-reduce:transition-none"
+                  className="-my-3.5 rounded-sm py-3.5 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-mute outline-none transition-colors duration-200 hover:text-ink focus-visible:text-ink focus-visible:ring-1 focus-visible:ring-[hsl(var(--accent)/0.45)] motion-reduce:transition-none"
                 >
                   {isEn ? "← Back" : "← Indietro"}
                 </button>
@@ -522,9 +560,13 @@ export function SelfAudit({ isEn }: { isEn: boolean }) {
 
               <div className="mt-8 flex flex-wrap items-center gap-x-8 gap-y-4">
                 {/* Link to the page's existing CTA target — not a new form. */}
+                {/* Both result actions carry HIT_PAD + `-my-3.5`: the padded
+                    boxes clear 44px while each flex line keeps the cross-size
+                    it had before, so `gap-y-4` between wrapped rows and the
+                    row's own height are untouched. */}
                 <a
                   href="#book-call"
-                  className="group/cta relative inline-flex items-center gap-1.5 rounded-sm font-mono text-[12px] uppercase tracking-[0.18em] text-accent outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--accent)/0.45)]"
+                  className="group/cta relative -my-3.5 inline-flex items-center gap-1.5 rounded-sm py-3.5 font-mono text-[12px] uppercase tracking-[0.18em] text-accent outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--accent)/0.45)]"
                 >
                   {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
                   <span
@@ -533,15 +575,17 @@ export function SelfAudit({ isEn }: { isEn: boolean }) {
                   >
                     →
                   </span>
+                  {/* bottom-3, not -bottom-0.5 — same 0.125rem gap under the
+                      text once HIT_PAD is inside the box. */}
                   <span
                     aria-hidden="true"
-                    className="absolute -bottom-0.5 left-0 h-px w-full origin-left scale-x-0 bg-accent/80 transition-transform duration-300 ease-out group-hover/cta:scale-x-100 group-focus-visible/cta:scale-x-100 motion-reduce:transition-none"
+                    className="absolute bottom-3 left-0 h-px w-full origin-left scale-x-0 bg-accent/80 transition-transform duration-300 ease-out group-hover/cta:scale-x-100 group-focus-visible/cta:scale-x-100 motion-reduce:transition-none"
                   />
                 </a>
                 <button
                   type="button"
                   onClick={reset}
-                  className="rounded-sm font-mono text-[11px] uppercase tracking-[0.18em] text-ink-mute outline-none transition-colors duration-200 hover:text-ink focus-visible:text-ink focus-visible:ring-1 focus-visible:ring-[hsl(var(--accent)/0.45)] motion-reduce:transition-none"
+                  className="-my-3.5 rounded-sm py-3.5 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-mute outline-none transition-colors duration-200 hover:text-ink focus-visible:text-ink focus-visible:ring-1 focus-visible:ring-[hsl(var(--accent)/0.45)] motion-reduce:transition-none"
                 >
                   {isEn ? "Run again" : "Ricomincia"}
                 </button>

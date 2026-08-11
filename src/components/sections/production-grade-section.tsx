@@ -49,6 +49,14 @@ import { NeuralCenterpiece } from "@/components/fx/neural-centerpiece";
  *   - Every system ships with a regression set.   (eval baseline)
  *   - Traceable from input to action.              (trace propagation)
  *   - Boundaries before features.                  (guardrail clamp)
+ *
+ * COPY CONTRACT — the heading description says "Open a panel", not "Hover a
+ * panel" (D-17, owner-approved 2026-08-11). NeuralCard toggles on click
+ * wherever the pointer cannot hover (fx/neural-card.tsx), so the instruction
+ * must name the intent, not the desktop gesture. It is one string per locale
+ * and must NOT be forked by pointer type — the description is SSR'd, and an
+ * instruction that rewrites itself after hydration is a worse defect than the
+ * one it fixes.
  */
 
 // === Shared: run a quiet status pulse only while in view ==================
@@ -355,9 +363,16 @@ export default function ProductionGradeSection() {
             )
           }
           description={
+            /* Device-neutral verb (D-17, owner-approved 2026-08-11): the tap
+               path genuinely works — neural-card toggles a panel on click
+               whenever the pointer can't hover — so the old "Hover a panel" /
+               "Passa sopra un pannello" told every phone user to do something
+               impossible. ONE string per locale, deliberately NOT forked by
+               pointer type: an SSR'd instruction that changes after hydration
+               is its own defect. */
             isEn
-              ? "Not a list of compliance buzzwords. These are artifacts you can ask to see in any scoping call. Hover a panel to see why it matters."
-              : "Non un elenco di buzzword sulla compliance. Sono artefatti che puoi chiedere di vedere in qualsiasi call di scoping. Passa sopra un pannello per capire perché conta."
+              ? "Not a list of compliance buzzwords. These are artifacts you can ask to see in any scoping call. Open a panel to see why it matters."
+              : "Non un elenco di buzzword sulla compliance. Sono artefatti che puoi chiedere di vedere in qualsiasi call di scoping. Apri un pannello per capire perché conta."
           }
           className="mb-12 sm:mb-16"
         />

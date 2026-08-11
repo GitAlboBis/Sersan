@@ -42,6 +42,14 @@ if (typeof window !== "undefined") {
  * motion; same DOM in both modes (only tabIndex differs); descriptions are
  * height-clipped, never display:none, so screen readers always get the
  * full ledger. See practice-ledger.tsx for the long-form rationale.
+ *
+ * HIDDEN POSES ARE GSAP-ONLY (D-10, fixed in lockstep with practice-ledger):
+ * no collapsed pose — side-tick scaleY, underline scaleX, description height —
+ * may be baked into a className. Static mode never runs the interactive
+ * effect, so a CSS `scale-y-0` / `scale-x-0` would leave the accents dead
+ * forever on touch, no-JS and reduced-motion. Every resting pose is imposed by
+ * the gsap.set() prime inside the interactive effect and released by its
+ * clearProps teardown.
  */
 
 type Surface = { num: string; title: string; desc: string };
@@ -416,11 +424,15 @@ export function SurfacesLedger() {
               data-sl-num
               className="relative pl-3 font-mono text-[11px] tracking-[0.22em] text-accent sm:pl-4 sm:text-xs"
             >
-              {/* Side tick — sweeps in (scaleY) on the active row. */}
+              {/* Side tick — sweeps in (scaleY) on the active row. The hidden
+                  pose (scaleY 0) is imposed by GSAP in interactive mode only,
+                  never in CSS: a baked `scale-y-0` would leave the tick dead
+                  forever in static mode (touch / no-JS / reduced-motion),
+                  where nothing ever scales it back up. */}
               <span
                 data-sl-tick
                 aria-hidden="true"
-                className="absolute left-0 top-[0.05em] h-[1.15em] w-[2px] origin-top scale-y-0 bg-accent"
+                className="absolute left-0 top-[0.05em] h-[1.15em] w-[2px] origin-top bg-accent"
               />
               {s.num}
             </span>
@@ -432,11 +444,13 @@ export function SurfacesLedger() {
                 {s.title}
               </h3>
               {/* Underline — sweeps open (scaleX, origin left) on the active
-                  row. Occupies constant space: zero layout shift on hover. */}
+                  row. Occupies constant space: zero layout shift on hover.
+                  Same rule as the tick: the collapsed pose is GSAP-only, so
+                  static mode paints the rule at full width. */}
               <span
                 data-sl-under
                 aria-hidden="true"
-                className="mt-3 block h-px w-24 origin-left scale-x-0 bg-accent/80 sm:w-32"
+                className="mt-3 block h-px w-24 origin-left bg-accent/80 sm:w-32"
               />
             </div>
           </div>

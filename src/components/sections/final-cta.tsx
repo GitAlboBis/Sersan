@@ -27,6 +27,11 @@ const BRIEF_MAILTO = `mailto:${CONTACT_EMAIL}?subject=Technical%20scoping%20brie
  * mailto for the buyer who'd rather write a brief than fill a form. The right
  * panel renders the refined `what_you_get.ts` artifact: the one place on the
  * homepage we use code as the closing promise. Calm, no hype.
+ *
+ * The artifact <pre> is a genuine horizontal scroller on phones (its lines are
+ * `white-space: pre` and the longest overruns a ~340px column), so it carries
+ * `data-lenis-prevent` — the site-wide contract for any overflow-x child, so a
+ * sideways drag inside it is never stolen by the smooth-scroll wrapper.
  */
 export default function FinalCTA() {
   const { language } = useLanguage();
@@ -158,8 +163,15 @@ export default function FinalCTA() {
                     blinking cursor pseudo-element trails the last line. Under
                     reduced-motion every line is fully visible (cta-code class
                     neutralized below). */}
+                {/* data-lenis-prevent (D-21): .cta-code-line is `white-space:
+                    pre`, so the longest line overflows a ~340px phone column
+                    and this <pre> is a real horizontal scroller. Without the
+                    attribute Lenis swallows the drag and the block fights
+                    vertical page scroll — the same guard the two horizontal
+                    rails already carry (case-studies-rail, founders-rail). */}
                 <pre
                   ref={codeRef}
+                  data-lenis-prevent
                   className="cta-code overflow-x-auto px-4 py-4 font-mono text-[12px] leading-[1.65] text-ink/90"
                 >
                   <span className="cta-code-line" style={{ animationDelay: "0ms" }}>

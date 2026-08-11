@@ -125,8 +125,10 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
 
         {/* Hero product image. Rendered only for studies with a previewImage
             (SphereNode, Quantex, Terra Noa). When the study has a live URL the
-            shot becomes a link to the site with a "View site" hover cue (opens
-            in a new tab). data-flip-id / data-flip-hero are inert hooks for a
+            shot carries a "View site" link out to it (new tab) — full-bleed
+            with a hover cue on fine pointers, collapsed to a permanently
+            visible corner pill on coarse ones (see the link's own note).
+            data-flip-id / data-flip-hero are inert hooks for a
             future cross-route Flip transition. Height-capped so the eyebrow +
             h1 stay near the top of the viewport — in `svh`, because this is a
             REAL layout height: in `vh` it would re-size when the iOS URL bar
@@ -152,6 +154,22 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
               className="absolute inset-0"
               style={{ background: "linear-gradient(180deg, transparent 40%, hsl(216 30% 6% / 0.55) 100%)" }}
             />
+            {/* "View site" — the shape of this link is pointer-dependent
+                (D-22). On a FINE pointer it stays exactly as designed: the
+                whole shot is the target, a scrim washes in on hover and the
+                pill rises with it — the hover itself is the affordance, and
+                the custom cursor reads `data-cursor="view"`.
+
+                On a COARSE pointer there is no hover, so a full-bleed
+                `inset-0` anchor is a large invisible trap that throws the
+                reader onto an external site in a new tab with no warning.
+                There the anchor collapses to the pill alone (`inset-auto` +
+                bottom-right offset, min-h-11 so it clears 44×44) and the pill
+                is painted permanently: the tap target and the affordance
+                become the same object, and tapping the image does nothing.
+                The hover-only scrim is dropped on coarse — the figure's own
+                bottom-up navy gradient already seats the pill. The aria-label
+                carries the accessible name in BOTH modes. */}
             {study.liveUrl && (
               <a
                 href={study.liveUrl}
@@ -159,13 +177,13 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
                 rel="noopener noreferrer"
                 data-cursor="view"
                 aria-label={`${isEn ? "View" : "Visita"} ${study.client} — ${isEn ? "live site" : "sito live"}`}
-                className="absolute inset-0 z-10 flex items-center justify-center"
+                className="absolute inset-0 z-10 flex items-center justify-center pointer-coarse:inset-auto pointer-coarse:bottom-3 pointer-coarse:right-3 pointer-coarse:rounded-full"
               >
                 <span
                   aria-hidden="true"
-                  className="absolute inset-0 bg-[hsl(216_30%_6%/0)] transition-colors duration-300 group-hover:bg-[hsl(216_30%_6%/0.5)]"
+                  className="absolute inset-0 bg-[hsl(216_30%_6%/0)] transition-colors duration-300 group-hover:bg-[hsl(216_30%_6%/0.5)] pointer-coarse:hidden"
                 />
-                <span className="relative inline-flex translate-y-1 items-center gap-2 rounded-full border border-[hsl(var(--accent)/0.5)] bg-[hsl(216_30%_8%/0.72)] px-5 py-2.5 font-mono text-[11px] uppercase tracking-[0.16em] text-ink opacity-0 backdrop-blur-sm transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
+                <span className="relative inline-flex translate-y-1 items-center gap-2 rounded-full border border-[hsl(var(--accent)/0.5)] bg-[hsl(216_30%_8%/0.72)] px-5 py-2.5 font-mono text-[11px] uppercase tracking-[0.16em] text-ink opacity-0 backdrop-blur-sm transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100 pointer-coarse:min-h-11 pointer-coarse:translate-y-0 pointer-coarse:opacity-100">
                   {isEn ? "View site" : "Visita il sito"}
                   <ArrowUpRight className="h-3.5 w-3.5" />
                 </span>

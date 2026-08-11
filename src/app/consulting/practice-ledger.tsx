@@ -53,9 +53,19 @@ if (typeof window !== "undefined") {
  * MODES (services-section's split): "interactive" (desktop, fine pointer, no
  * reduced-motion) vs "static" (≤768px, coarse pointer, prefers-reduced-motion).
  * SSR default is "static" — the full ledger (all descriptions open, numbers
- * accent) is what no-JS, crawlers, and reduced-motion get; the interactive
- * effect collapses/dims on mount. Same DOM in both modes (only tabIndex
- * differs), so content is never hostage to motion.
+ * accent, side ticks and underlines at full extent) is what no-JS, crawlers,
+ * and reduced-motion get; the interactive effect collapses/dims on mount.
+ * Same DOM in both modes (only tabIndex differs), so content is never hostage
+ * to motion.
+ *
+ * HIDDEN POSES ARE GSAP-ONLY (the door-beats / rule-beats / engagement-acts
+ * contract). No collapsed pose — scaleY on the side tick, scaleX on the
+ * underline, height on the description wrapper — may be baked into a
+ * className. Baking `scale-y-0` / `scale-x-0` into CSS is exactly the D-10
+ * defect: static mode never runs the effect that would scale them back up, so
+ * touch, no-JS and reduced-motion users got dead pixels forever. Every resting
+ * pose is imposed by the gsap.set() prime inside the interactive effect and
+ * released by its clearProps teardown.
  *
  * A11Y: ul/li list semantics; descriptions stay in the DOM at all times
  * (height-clipped, never display:none / aria-hidden) so screen readers read
@@ -460,11 +470,15 @@ export function PracticeLedger() {
               data-pl-num
               className="relative pl-3 font-mono text-[11px] tracking-[0.22em] text-accent sm:pl-4 sm:text-xs"
             >
-              {/* Side tick — sweeps in (scaleY) on the active row. */}
+              {/* Side tick — sweeps in (scaleY) on the active row. The hidden
+                  pose (scaleY 0) is imposed by GSAP in interactive mode only,
+                  never in CSS: a baked `scale-y-0` would leave the tick dead
+                  forever in static mode (touch / no-JS / reduced-motion),
+                  where nothing ever scales it back up. */}
               <span
                 data-pl-tick
                 aria-hidden="true"
-                className="absolute left-0 top-[0.05em] h-[1.15em] w-[2px] origin-top scale-y-0 bg-accent"
+                className="absolute left-0 top-[0.05em] h-[1.15em] w-[2px] origin-top bg-accent"
               />
               {a.num}
             </span>
@@ -476,11 +490,13 @@ export function PracticeLedger() {
                 {a.title}
               </h3>
               {/* Underline — sweeps open (scaleX, origin left) on the active
-                  row. Occupies constant space: zero layout shift on hover. */}
+                  row. Occupies constant space: zero layout shift on hover.
+                  Same rule as the tick: the collapsed pose is GSAP-only, so
+                  static mode paints the rule at full width. */}
               <span
                 data-pl-under
                 aria-hidden="true"
-                className="mt-3 block h-px w-24 origin-left scale-x-0 bg-accent/80 sm:w-32"
+                className="mt-3 block h-px w-24 origin-left bg-accent/80 sm:w-32"
               />
             </div>
           </div>
