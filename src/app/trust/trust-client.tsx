@@ -167,7 +167,7 @@ export function TrustClient() {
   ];
 
   return (
-    <div className="min-h-screen pt-24 pb-24 relative">
+    <div className="min-h-[100svh] pt-24 pb-24 relative">
       <div className="container-px max-w-5xl">
         {/* Header */}
         <div data-line-anchor="hero" className="mb-14 max-w-3xl">

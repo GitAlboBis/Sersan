@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, CTA_FLUID_SM } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { MultiStepIntake } from "@/components/multi-step-intake";
 import ProcessSection from "@/components/sections/process-section";
 import { PracticeLedger } from "./practice-ledger";
@@ -60,7 +61,7 @@ export function ConsultingClient() {
   ];
 
   return (
-    <div className="min-h-screen pt-24 relative">
+    <div className="min-h-[100svh] pt-24 relative">
       {/* Hero */}
       <div data-line-anchor="hero">
       <section data-snap className="relative section-lg overflow-hidden">
@@ -105,13 +106,13 @@ export function ConsultingClient() {
                 : "Tre formati di ingaggio. Chi definisce il lavoro lo esegue. Da £15K, con scope settimanale. Società con sede a Londra."}
             </p>
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
-              <Button asChild size="lg" className="group">
+              <Button asChild size="lg" className={cn("group", CTA_FLUID_SM)}>
                 <Link href="/audit">
                   {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
                   <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
                 </Link>
               </Button>
-              <Button asChild variant="outline" size="lg">
+              <Button asChild variant="outline" size="lg" className={CTA_FLUID_SM}>
                 <Link href="/case-studies">
                   {isEn ? "See the work" : "Guarda i lavori"}
                 </Link>
@@ -310,13 +311,13 @@ export function ConsultingClient() {
               }
             />
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
-              <Button asChild size="lg" className="group">
+              <Button asChild size="lg" className={cn("group", CTA_FLUID_SM)}>
                 <Link href="/audit">
                   {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
                   <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
                 </Link>
               </Button>
-              <Button asChild variant="outline" size="lg">
+              <Button asChild variant="outline" size="lg" className={CTA_FLUID_SM}>
                 <Link href="/contact">
                   {isEn ? "Contact us" : "Contattaci"}
                 </Link>

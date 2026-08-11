@@ -10,7 +10,8 @@ import { ArrowRight } from "lucide-react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { LinkedinIcon } from "@/components/icons/brand";
-import { Button } from "@/components/ui/button";
+import { Button, CTA_FLUID_SM } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { CountUp } from "@/components/ui/count-up";
 import OurWhy from "@/components/sections/our-why";
 import { Reveal } from "@/components/ui/reveal";
@@ -113,7 +114,7 @@ export function AboutClient() {
   ];
 
   return (
-    <div className="min-h-screen text-foreground">
+    <div className="min-h-[100svh] text-foreground">
       <div className="pt-20 pb-20 relative">
         {/* Hero */}
         <section data-line-anchor="hero" data-snap className="relative overflow-hidden mb-20 sm:mb-24 py-20 md:py-28">
@@ -169,14 +170,16 @@ export function AboutClient() {
                     ? "Deep engineering and deep commercial in the same room. Both founders senior. Both staffed on every engagement. No layer of juniors between you and the people doing the work."
                     : "Ingegneria profonda e dimensione commerciale profonda nella stessa stanza. Entrambi i fondatori senior. Entrambi assegnati a ogni ingaggio. Nessuno strato di junior tra voi e le persone che fanno il lavoro."}
                 </p>
+                {/* CTA_FLUID_SM: the nowrap label is wider than the 256px
+                    column at 320px (see button.tsx). Inert at sm and up. */}
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center mt-10">
-                  <Button asChild size="lg" className="group">
+                  <Button asChild size="lg" className={cn("group", CTA_FLUID_SM)}>
                     <Link href={START_HREF}>
                       {isEn ? "Book a 30-min scoping call" : "Prenota una call di scoping di 30 min"}
                       <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
                     </Link>
                   </Button>
-                  <Button asChild variant="outline" size="lg">
+                  <Button asChild variant="outline" size="lg" className={CTA_FLUID_SM}>
                     <Link href="/consulting">
                       {isEn ? "Practice areas" : "Aree di intervento"}
                     </Link>
@@ -228,7 +231,15 @@ export function AboutClient() {
                 id={f.anchor}
                 className="card-steel rounded-2xl p-8 h-full scroll-mt-32"
               >
-                <div className="flex items-start gap-6 mb-6">
+                {/* Stacks below `sm`. MEASURED at a 16px root: the row's
+                    min-content is portrait 80 + gap 24 + name/role block 140
+                    = 244, and `p-8` adds 64 → a 308px card inside a 256px
+                    column at 320px, which is 22px of document overflow (the
+                    block is a flex item, so `min-width: auto` refuses to
+                    compress it). Stacking drops min-content to max(80, 140) +
+                    64 = 204 with room to spare, and `sm:flex-row sm:gap-6`
+                    restores the original row byte-for-byte from 640px up. */}
+                <div className="flex flex-col items-start gap-4 sm:flex-row sm:gap-6 mb-6">
                   <div
                     className="founder-portrait relative w-20 h-20 rounded-full overflow-hidden shrink-0 ring-2 ring-primary/30"
                     onPointerEnter={onPortraitEnter}
@@ -268,7 +279,12 @@ export function AboutClient() {
                       />
                     </div>
                   </div>
-                  <div className="flex-1">
+                  {/* max-sm:basis-auto: once the header stacks, `flex-1`'s
+                      `flex-basis: 0%` would apply to the COLUMN's main axis
+                      (height) instead of the width. Auto basis keeps the
+                      block at its content height while stacked; from `sm` up
+                      the untouched `flex-1` governs the row as before. */}
+                  <div className="flex-1 max-sm:basis-auto w-full sm:w-auto">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xl font-bold">{f.name}</h3>
                       <a
@@ -435,13 +451,13 @@ export function AboutClient() {
               }
             />
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
-              <Button asChild size="lg" className="group">
+              <Button asChild size="lg" className={cn("group", CTA_FLUID_SM)}>
                 <Link href={START_HREF}>
                   {isEn ? "Book a 30-min scoping call" : "Prenota una call di scoping di 30 min"}
                   <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
                 </Link>
               </Button>
-              <Button asChild variant="outline" size="lg">
+              <Button asChild variant="outline" size="lg" className={CTA_FLUID_SM}>
                 <Link href="/contact">
                   {isEn ? "Or just say hello" : "O semplicemente salutaci"}
                 </Link>

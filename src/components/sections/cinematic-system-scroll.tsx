@@ -40,7 +40,12 @@ import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { Button } from "@/components/ui/button";
+import {
+  Button,
+  CTA_FLUID_SM,
+  CTA_WRAP_SM,
+  CTA_WRAPPER_SM,
+} from "@/components/ui/button";
 import { Magnetic } from "@/components/ui/magnetic";
 import { HeroHoverLayer } from "@/components/hero-hover-layer";
 import { HeroIntroGate } from "@/components/fx/hero-intro-gate";
@@ -504,24 +509,36 @@ function StagePanel({
                   (attribute in the SSR HTML + re-asserted by the rAF), and
                   inert blocks child pointer events regardless, so this can
                   never make an invisible CTA clickable. */}
+              {/* CTA_*_SM: below `sm` the pair fills the 256px content column
+                  and the labels wrap — the nowrap min-content width of
+                  "Book a 30-min scoping call" is what pushed the document past
+                  a 320px viewport (see button.tsx). Inert at sm and up. */}
               <div className="mt-7 flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center pointer-events-auto">
                 {/* The stagger wrappers own the cascade transform; Magnetic
                     owns its own x/y chase on the node inside — separate
                     elements so the two transform writers never clobber each
                     other. */}
-                <div data-hero-stagger>
-                  <Magnetic>
+                <div data-hero-stagger className={CTA_WRAPPER_SM}>
+                  <Magnetic className={CTA_WRAPPER_SM}>
                     <Link href={START_HREF} className="block">
-                      <Button variant="hero" size="xl" className="group">
+                      <Button
+                        variant="hero"
+                        size="xl"
+                        className={cn("group", CTA_FLUID_SM)}
+                      >
                         {copy.ctaPrimary}
                         <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
                       </Button>
                     </Link>
                   </Magnetic>
                 </div>
-                <div data-hero-stagger>
+                <div data-hero-stagger className={CTA_WRAPPER_SM}>
                   <Link href="#work" className="block">
-                    <Button variant="heroOutline" size="xl">
+                    <Button
+                      variant="heroOutline"
+                      size="xl"
+                      className={CTA_FLUID_SM}
+                    >
                       {copy.seeSelectedWork}
                     </Button>
                   </Link>
@@ -748,13 +765,26 @@ function MobileFallback({
               {!isHero && stage.extras}
               {isHero ? (
                 <div className="mt-6 flex flex-col gap-3">
+                  {/* Already full-width here, but `whitespace-nowrap` (cva
+                      base) still made min-content the whole label: at 320px
+                      that both blew the column out AND clipped the label
+                      against the Button's own overflow-hidden. CTA_WRAP_SM
+                      lets it wrap; the width is already owned locally. */}
                   <Link href={START_HREF}>
-                    <Button variant="hero" size="xl" className="w-full">
+                    <Button
+                      variant="hero"
+                      size="xl"
+                      className={cn("w-full", CTA_WRAP_SM)}
+                    >
                       {copy.ctaPrimary}
                     </Button>
                   </Link>
                   <Link href="#work">
-                    <Button variant="heroOutline" size="xl" className="w-full">
+                    <Button
+                      variant="heroOutline"
+                      size="xl"
+                      className={cn("w-full", CTA_WRAP_SM)}
+                    >
                       {copy.seeSelectedWork}
                     </Button>
                   </Link>

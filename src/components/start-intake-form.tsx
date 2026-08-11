@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { ArrowRight, Check, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { Button, CTA_WRAP_SM } from "@/components/ui/button";
 import { useLanguage } from "@/components/language-provider";
 
 /**
@@ -600,7 +600,7 @@ export default function StartIntakeForm() {
           variant="hero"
           size="xl"
           disabled={submitState === "submitting"}
-          className="group w-full sm:w-auto"
+          className={cn("group w-full sm:w-auto", CTA_WRAP_SM)}
         >
           {submitState === "submitting"
             ? isEn

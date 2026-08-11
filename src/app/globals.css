@@ -79,6 +79,25 @@
   --gutter: 1rem;
   --margin: 2rem;
   --header-h: 6.1rem;
+
+  /* === Safe-area insets (display cutout / home indicator) ===
+     layout.tsx sets `viewportFit: "cover"`, which deliberately extends the
+     layout UNDER the notch and the home indicator — so every piece of
+     fixed/sticky chrome has to pad itself back or it gets covered. These four
+     vars are the single source of truth; consumers never write a bare env().
+
+     Usage contract (both forms are safe, pick by whether the element already
+     has padding of its own):
+       - element HAS a design padding →  padding: max(<design>, var(--safe-r))
+       - element has NO padding       →  padding: var(--safe-r)   (additive)
+     Never REPLACE an existing padding with a bare env()/var(--safe-*): they
+     resolve to 0px on every non-notched device, which would collapse the
+     design gutter everywhere for the sake of one phone. The 0px fallback also
+     means every rule below is a literal no-op off iOS. */
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
 }
 
 @media (min-width: 768px) {
@@ -240,8 +259,12 @@ html {
   scroll-behavior: smooth;
   /* Anchor scroll offset — the fixed nav is ~68px on sm+. scroll-padding-top
      pushes anchored navigation past the nav so section headings land
-     clearly below the bar instead of cut behind it. */
-  scroll-padding-top: 84px;
+     clearly below the bar instead of cut behind it. The nav also carries
+     `padding-top: var(--safe-t)` (navbar.tsx) so it clears a display cutout,
+     which makes it that much taller on a notched device in standalone mode —
+     add the same inset here or anchors land under the grown bar. 0px
+     everywhere else. */
+  scroll-padding-top: calc(84px + var(--safe-t));
 }
 
 /* Canonical Lenis CSS — when Lenis drives the scroll (it sets the .lenis
@@ -280,8 +303,28 @@ html.lenis {
 }
 
 html {
-  /* 8bit's fluid root: everything scales with viewport. */
-  font-size: clamp(13px, 0.85vw, 16px);
+  /* Fluid root — but the clamp BOUNDS now start at the browser default.
+     The previous `clamp(13px, 0.85vw, 16px)` only reached 16px at a 1882px
+     viewport and bottomed out at 1529px, so every screen below that — every
+     phone, every tablet AND a 1440px laptop — was pinned to the 13px FLOOR
+     and rendered every rem in the design system at 81.25%. Two hard failures
+     came out of that, both site-wide:
+
+       - iOS Safari force-zooms any form control whose font-size resolves
+         under 16px. The shared <Input> declares `text-base` (= 1rem), which
+         was 13px, so focusing ANY field rescaled the visual viewport and
+         desynchronised every pinned ScrollTrigger on the page.
+       - The button scale collapsed: h-9/h-10/h-11/h-12 → 29.3/32.5/35.8/39px,
+         putting every tap target under the 44px floor (only h-14 cleared it).
+
+     So the floor is 16px and is not negotiable. The same 0.85vw term is kept
+     — the type still breathes with the viewport — but it now scales UP from
+     16px, hitting the 18px ceiling at 2118px, instead of down to 13px.
+     Owner-approved 2026-08-11 (MOBILE_AUDIT.md §7 gate, Q1 → option b): this
+     is a deliberate ~23% scale-up on every screen below 1882px, desktop
+     included, and is the one sanctioned deviation from "desktop stays
+     byte-for-byte equivalent". */
+  font-size: clamp(16px, 0.85vw, 18px);
 }
 
 body {
@@ -899,10 +942,80 @@ img { height: auto; max-width: 100%; }
   .nav-underline::after { display: none; }
 }
 
+/*
+ * .site-menu-panel — geometry for the navbar dropdown (#site-menu).
+ *
+ * Lives here rather than as a pile of Tailwind arbitrary values because all
+ * four numbers below are derived from ONE quantity — the nav bar's height —
+ * and they have to stay in lockstep: the panel hangs off the bottom of the
+ * bar, and its height budget is "whatever the viewport has left underneath".
+ * --menu-top IS "bar height + an 8px lip", so a bar change is a one-line
+ * change here:
+ *   - base  : the bar row is `h-16` = 4rem = 64px  → 72px
+ *   - ≥640px: the bar row is `sm:h-[68px]`, fixed  → 76px
+ * The base used to read 68px, which was tuned when the root font-size was
+ * pinned at 13px and `h-16` therefore rendered 52px (a 16px lip). Repairing
+ * the root to 16px grew the bar to 64px and squeezed that lip to 4px — half
+ * the ≥640px value, so the panel visibly sat closer to the bar on phones than
+ * on tablets. 72px restores one consistent 8px lip at every width. (`h-16` is
+ * rem-based and the root only leaves 16px above 1882px, where the ≥640px
+ * branch and its fixed-px bar are the ones in play — so the base value is
+ * safe to state in px.)
+ *
+ * The bug this fixes (MOBILE_AUDIT.md D-3, P0): the panel used to be a fixed
+ * `overflow: hidden` box with no height cap. MEASURED at 844x390 landscape it
+ * rendered 590px tall inside a 390px viewport — overflowing by 276px with no
+ * way to scroll, so "Book a call", the EN/IT toggle and the audio toggle were
+ * physically unreachable. Capping the height to the space actually available
+ * and letting the overflow scroll is the whole repair.
+ *
+ *   - max-height uses svh (SMALL viewport height), so an expanded mobile URL
+ *     bar can never push the panel's bottom off-screen; and it subtracts the
+ *     safe-area insets so a notched device keeps its cutout + home-indicator
+ *     clearance.
+ *   - overflow-x is pinned hidden, overflow-y auto: setting only overflow-y
+ *     would compute overflow-x from `visible` to `auto` and hand us a stray
+ *     horizontal scrollbar. Keeping x hidden also preserves the rounded-corner
+ *     clip the old `overflow: hidden` provided.
+ *   - overscroll-behavior: contain stops the inner scroll from chaining to the
+ *     locked <body> (the navbar's open effect sets overflow:hidden + Lenis
+ *     stop; chaining would fight both).
+ *   - The vh line is a fallback for engines without svh; the svh line below it
+ *     wins wherever it parses.
+ *
+ * NOTE the panel also carries `data-lenis-prevent` in JSX — the canonical
+ * Lenis opt-out for nested scrollers (globals.css already gives that attribute
+ * overscroll-behavior: contain under .lenis-smooth; this rule makes it
+ * unconditional, since the panel scrolls under reduced motion too).
+ */
+.site-menu-panel {
+  --menu-top: 72px;
+  position: fixed;
+  top: calc(var(--menu-top) + var(--safe-t));
+  right: max(1rem, var(--safe-r));
+  max-height: calc(100vh - var(--menu-top) - var(--safe-t) - var(--safe-b) - 1rem);
+  max-height: calc(100svh - var(--menu-top) - var(--safe-t) - var(--safe-b) - 1rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+@media (min-width: 640px) {
+  .site-menu-panel {
+    --menu-top: 76px;
+    right: max(1.5rem, var(--safe-r));
+  }
+}
+@media (min-width: 1024px) {
+  .site-menu-panel { right: max(2.5rem, var(--safe-r)); }
+}
+
 .skip-to-content {
   position: absolute;
-  left: 1rem;
-  top: 1rem;
+  /* First tab stop on the page — it must not land under a display cutout,
+     so the 1rem design offset is folded into a max() against the insets
+     (0px, and therefore inert, on every non-notched device). */
+  left: max(1rem, var(--safe-l));
+  top: max(1rem, var(--safe-t));
   z-index: 100;
   padding: 0.5rem 1rem;
   border-radius: 0.375rem;
@@ -932,7 +1045,15 @@ img { height: auto; max-width: 100%; }
 .container-px {
   width: 100%;
   margin-inline: auto;
-  padding-inline: var(--margin);
+  /* Safe-area aware page gutter. On a notched phone in LANDSCAPE the cutout
+     inset is ~44-59px, comfortably more than the mobile --margin (2rem =
+     32px), so the design gutter alone would leave copy under the notch.
+     max() keeps --margin wherever it is already the larger value — i.e. every
+     non-notched device and every portrait orientation, where --safe-* is 0px
+     — so this is a no-op off iOS. Physical left/right (not padding-inline) on
+     purpose: env() insets are physical, and the site is LTR-only (en/it). */
+  padding-left: max(var(--margin), var(--safe-l));
+  padding-right: max(var(--margin), var(--safe-r));
   max-width: 1600px;
 }
 
@@ -1190,7 +1311,11 @@ img { height: auto; max-width: 100%; }
 /* v6: the marker <button> is now a ZERO-FOOTPRINT anchor — the DOT sits on the
    % point (and carries data-lattice-node so the WebGL orb pins to it) while the
    LABEL is offset radially out. The button has NO visible chrome, just an
-   enlarged transparent ::before so the keyboard/touch hit-target stays ~40px. */
+   enlarged transparent ::before so the keyboard/touch hit-target stays usable.
+   44px, not the old 40px: these markers are the ONLY way a touch user opens a
+   neural card, and 44 is the WCAG 2.5.5 / platform-HIG target floor. The pad is
+   centred on the dot (translate -50%,-50%), so growing it costs no layout and
+   moves nothing — it just widens the invisible hit box by 2px per side. */
 .neural-node-marker {
   position: absolute;
 }
@@ -1199,8 +1324,8 @@ img { height: auto; max-width: 100%; }
   position: absolute;
   left: 0;
   top: 0;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   transform: translate(-50%, -50%);
 }
 .neural-node-marker:focus-visible {

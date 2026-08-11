@@ -43,7 +43,11 @@ export default function NotFound() {
   ];
 
   return (
-    <div className="min-h-screen bg-background flex flex-col relative">
+    /* min-h-[100svh], not min-h-screen (=100vh): on mobile 100vh is the
+       address-bar-EXPANDED height, so a 100vh root grows the document by the
+       toolbar height and the page jumps when the bar collapses. Every other
+       route root is 100svh (MOBILE_AUDIT.md D-23) — this was the last one. */
+    <div className="min-h-[100svh] bg-background flex flex-col relative">
       <main className="flex-1 flex items-center justify-center section relative">
         <div className="container-px">
           <div className="max-w-2xl mx-auto text-center">

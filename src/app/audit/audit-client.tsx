@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { ArrowRight, Check, Mail } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, CTA_FLUID_SM } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { CalEmbed } from "@/components/cal-embed";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Reveal } from "@/components/ui/reveal";
@@ -98,7 +99,7 @@ export function AuditClient() {
       ];
 
   return (
-    <div className="min-h-screen pt-24 relative">
+    <div className="min-h-[100svh] pt-24 relative">
       {/* Hero */}
       <div data-line-anchor="hero">
       <section data-snap className="relative section-lg overflow-hidden">
@@ -145,8 +146,20 @@ export function AuditClient() {
                 ? "A senior engineer spends a week inside your business: your product, your systems, your data, your workflows. You leave with a written report on what's broken, what's manual, where AI could actually power your product, and what we'd build first if you hired us."
                 : "Un ingegnere senior passa una settimana dentro il vostro business: prodotto, sistemi, dati, workflow. Esci con un report scritto su cosa non funziona, cosa è manuale, dove l'AI può davvero alimentare il prodotto e cosa costruiremmo per primo se ci ingaggiaste."}
             </p>
-            <a href="#book-call">
-              <Button size="lg" className="px-10 py-7 text-base font-semibold rounded-full">
+            {/* `block sm:inline` on the <a>: it is an INLINE box outside any
+                flex row, so the button's `w-full` would resolve against a
+                shrink-to-fit parent and change nothing. `px-10` + the nowrap
+                Italian label ("Prenota una call di scoping") measured ~334px —
+                well past the 256px column at 320px. `sm:inline` puts the
+                wrapper back exactly as it was at every desktop width. */}
+            <a href="#book-call" className="block sm:inline">
+              <Button
+                size="lg"
+                className={cn(
+                  "px-10 py-7 text-base font-semibold rounded-full",
+                  CTA_FLUID_SM,
+                )}
+              >
                 {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
@@ -446,7 +459,7 @@ export function AuditClient() {
           <div className="section-divider max-w-3xl mx-auto mt-10" aria-hidden="true" />
 
           <div className="mt-10 flex flex-col sm:flex-row gap-3 justify-center items-center">
-            <Button asChild variant="outline" size="lg" className="group">
+            <Button asChild variant="outline" size="lg" className={cn("group", CTA_FLUID_SM)}>
               <Link href="/contact">
                 {isEn ? "Or send a written intake" : "Oppure inviate un intake scritto"}
                 <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-0.5 transition-transform" />

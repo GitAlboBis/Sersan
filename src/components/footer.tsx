@@ -240,7 +240,15 @@ export function Footer() {
   return (
     <footer
       ref={footerRef}
-      className="relative border-t border-[hsl(var(--rule))] bg-[hsl(var(--bg))] pt-16 sm:pt-20 pb-10 sm:pb-12 overflow-hidden"
+      // pb folds the safe-area bottom inset into the design padding
+      // (MOBILE_AUDIT.md D-8). viewportFit:"cover" runs the document under the
+      // home indicator, and the footer is the one block that always sits at
+      // the very bottom of it. max() keeps 2.5/3rem wherever that is already
+      // the larger value — i.e. everywhere --safe-b resolves to 0px, which is
+      // every non-notched device — so this is inert off iOS and never
+      // collapses the padding the way a bare env() would. The horizontal
+      // insets are handled once for the whole site by .container-px.
+      className="relative border-t border-[hsl(var(--rule))] bg-[hsl(var(--bg))] pt-16 sm:pt-20 pb-[max(2.5rem,var(--safe-b))] sm:pb-[max(3rem,var(--safe-b))] overflow-hidden"
     >
       {/* Subtle radial accent that anchors the footer. Kept OUTSIDE the
           parallax wrapper on purpose: the glow stays pinned to the footer

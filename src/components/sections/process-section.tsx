@@ -5,11 +5,16 @@ import Link from "next/link";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { ArrowRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  Button,
+  CTA_FLUID_SM,
+  CTA_WRAPPER_SM,
+} from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Reveal } from "@/components/ui/reveal";
 import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
+import { cn } from "@/lib/utils";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
@@ -523,8 +528,12 @@ export default function ProcessSection() {
             )}
           </p>
           <div className="lg:col-span-5 flex flex-col sm:flex-row lg:justify-end gap-3">
-            <Link href="/start">
-              <Button variant="hero" size="lg" className="group">
+            <Link href="/start" className={CTA_WRAPPER_SM}>
+              <Button
+                variant="hero"
+                size="lg"
+                className={cn("group", CTA_FLUID_SM)}
+              >
                 {isEn ? "Start with Diagnose" : "Inizia dalla Diagnosi"}
                 <ArrowRight
                   className="ml-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1"

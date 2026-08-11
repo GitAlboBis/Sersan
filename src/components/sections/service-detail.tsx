@@ -2,7 +2,11 @@
 
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import {
+  Button,
+  CTA_FLUID_SM,
+  CTA_WRAPPER_SM,
+} from "@/components/ui/button";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { SectionGlow } from "@/components/ui/section-glow";
 import { Reveal } from "@/components/ui/reveal";
@@ -11,6 +15,7 @@ import { useLanguage } from "@/components/language-provider";
 import { caseStudies } from "@/data/case-studies";
 import type { ServiceContent } from "@/data/services";
 import { START_HREF } from "@/lib/site";
+import { cn } from "@/lib/utils";
 
 /**
  * ServiceDetail — shared template for every /services/<slug> route.
@@ -95,15 +100,22 @@ export default function ServiceDetail({
               <p className="text-base sm:text-lg text-ink-mute leading-[1.55] max-w-2xl">
                 {description}
               </p>
+              {/* CTA_*_SM: `items-start` makes these shrink-to-fit, and the
+                  nowrap label ("Prenota una call di scoping di 30 min") is far
+                  wider than the 256px column at 320px. Inert at sm and up. */}
               <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
-                <Link href={START_HREF}>
-                  <Button variant="hero" size="xl" className="group">
+                <Link href={START_HREF} className={CTA_WRAPPER_SM}>
+                  <Button
+                    variant="hero"
+                    size="xl"
+                    className={cn("group", CTA_FLUID_SM)}
+                  >
                     {bookCallLabel}
                     <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
                   </Button>
                 </Link>
-                <Link href="#work">
-                  <Button variant="heroOutline" size="xl">
+                <Link href="#work" className={CTA_WRAPPER_SM}>
+                  <Button variant="heroOutline" size="xl" className={CTA_FLUID_SM}>
                     {isEn ? "See related work" : "Vedi lavori correlati"}
                   </Button>
                 </Link>
@@ -521,14 +533,18 @@ export default function ServiceDetail({
                   : "La legge uno dei fondatori. Esaminiamo il contesto e rispondiamo entro un giorno lavorativo con il prossimo step consigliato. A volte è un build, a volte un audit, a volte «non fatelo»."}
               </p>
               <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
-                <Link href={START_HREF}>
-                  <Button variant="hero" size="xl" className="group">
+                <Link href={START_HREF} className={CTA_WRAPPER_SM}>
+                  <Button
+                    variant="hero"
+                    size="xl"
+                    className={cn("group", CTA_FLUID_SM)}
+                  >
                     {bookCallLabel}
                     <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
                   </Button>
                 </Link>
-                <Link href="/#process">
-                  <Button variant="heroOutline" size="xl">
+                <Link href="/#process" className={CTA_WRAPPER_SM}>
+                  <Button variant="heroOutline" size="xl" className={CTA_FLUID_SM}>
                     {isEn
                       ? "See how engagements run"
                       : "Scopri come funzionano gli ingaggi"}

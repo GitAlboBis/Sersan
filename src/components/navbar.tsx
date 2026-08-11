@@ -70,7 +70,13 @@ CustomEase.create("ease-menu-close", "0.7, 0, 0.84, 0");
 // when the swapped copy actually commits — deliberate: the control and the
 // content change state on the same beat, not out of sync. Under reduced
 // motion the swap (and the flip) is instant.
-function LanguageToggle({ compact = false }: { compact?: boolean }) {
+//
+// `touch`: the two places this renders have different ergonomics. In the
+// desktop bar it is a mouse target sitting next to other small chrome, and
+// stays visually compact (h-9 = 36px, already past the WCAG 2.5.8 AA floor of
+// 24px). Inside the mobile dropdown it is a FINGER target, so it takes the
+// full 44px (WCAG 2.5.5 / platform HIG). Same control, two hit boxes.
+function LanguageToggle({ touch = false }: { touch?: boolean }) {
   const { language, setLanguage } = useLanguage();
   return (
     <div
@@ -91,10 +97,9 @@ function LanguageToggle({ compact = false }: { compact?: boolean }) {
             aria-pressed={active}
             aria-label={lang === "en" ? "Switch to English" : "Switch to Italian"}
             className={cn(
-              // ≥36px tap height (WCAG 2.5.8 target size) while staying visually
-              // compact — the pill reads small but the hit area is comfortable.
               "inline-flex items-center justify-center rounded-full font-mono font-medium uppercase tracking-[0.1em] transition-colors",
-              compact ? "px-2.5 h-9 text-[10px]" : "px-3 h-9 text-[11px]",
+              // 44px in the touch context (dropdown), 36px in the desktop bar.
+              touch ? "px-4 h-11 text-[11px]" : "px-3 h-9 text-[11px]",
               active ? "bg-ink/[0.08] text-ink" : "text-ink-mute hover:text-ink",
             )}
           >
@@ -115,8 +120,11 @@ function LanguageToggle({ compact = false }: { compact?: boolean }) {
  * control. Default state is ON; the persisted value hydrates client-side, so
  * before hydration we render the default (on) icon — `suppressHydrationWarning`
  * covers the brief post-hydration swap if a returning user had it off.
+ *
+ * `touch` mirrors LanguageToggle: 44px square inside the mobile dropdown,
+ * 36px square in the desktop bar.
  */
-function AudioToggle({ compact = false }: { compact?: boolean }) {
+function AudioToggle({ touch = false }: { touch?: boolean }) {
   const enabled = useAudioStore((s) => s.enabled);
   const toggle = useAudioStore((s) => s.toggle);
   const Icon = enabled ? Volume2 : VolumeX;
@@ -131,12 +139,11 @@ function AudioToggle({ compact = false }: { compact?: boolean }) {
       title={enabled ? "Sound on" : "Sound off"}
       suppressHydrationWarning
       className={cn(
-        // Mirrors the LanguageToggle pill: rounded, bordered, backdrop-blurred,
-        // ≥36px tap height for WCAG 2.5.8 while staying visually compact.
+        // Mirrors the LanguageToggle pill: rounded, bordered, backdrop-blurred.
         "inline-flex items-center justify-center rounded-full border transition-colors",
         "bg-bg/40 backdrop-blur-md border-rule/60",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--accent))] focus-visible:ring-offset-2 focus-visible:ring-offset-[hsl(var(--bg))]",
-        compact ? "h-9 w-9" : "h-9 w-9",
+        touch ? "h-11 w-11" : "h-9 w-9",
         enabled ? "text-ink" : "text-ink-mute hover:text-ink",
       )}
     >
@@ -636,9 +643,16 @@ export function Navbar() {
 
   // While the dropdown is open: lock the background (freeze Lenis smooth-scroll
   // AND lock body overflow so touch/native scroll can't move the page behind
-  // the panel), close on Esc / outside-pointer, and return focus to the toggle
-  // on dismissal. This is the focus-return + scroll-lock the spec wanted, done
-  // by hand since we're not using a modal Radix primitive.
+  // the panel), and close on Esc / outside-pointer. Done by hand since we're
+  // not using a modal Radix primitive.
+  //
+  // Scope note: this effect owns the BACKGROUND (scroll lock + dismissal). The
+  // panel's own focus behaviour — moving focus in, trapping Tab, returning it
+  // to the trigger — is the [open, render] effect below, because it needs the
+  // mounted panel node and this one runs a commit earlier. The Esc path
+  // restores focus here too so the keystroke resolves in one beat; that is
+  // idempotent with the other effect's cleanup (which skips when focus already
+  // sits on the trigger).
   useEffect(() => {
     if (!open) return;
 
@@ -649,7 +663,9 @@ export function Navbar() {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setOpen(false);
-        triggerRef.current?.focus();
+        // preventScroll: <body> is overflow-locked and Lenis is stopped right
+        // now, so a scroll-into-view from focus() would fight both.
+        triggerRef.current?.focus({ preventScroll: true });
       }
     };
     const onPointerDown = (e: PointerEvent) => {
@@ -676,6 +692,89 @@ export function Navbar() {
       getLenis()?.start();
     };
   }, [open]);
+
+  // Focus containment for the open panel (MOBILE_AUDIT.md D-3, the a11y half).
+  // MEASURED before this: opening the menu left `document.activeElement` on
+  // BODY — the panel announced itself as a dialog to nobody, a screen-reader
+  // user had to hunt for it, and Tab walked straight past it into the page
+  // behind. The panel now behaves like the modal it visually is: focus moves
+  // in on open, Tab/Shift-Tab cycle inside it, and focus returns to the
+  // trigger on close.
+  //
+  // Keyed on [open, render], NOT [open]: `open` flips one commit BEFORE the
+  // panel node exists (the render effect above mounts it on the next commit),
+  // so an [open]-only effect would always read a null panelRef. The scroll
+  // lock above deliberately stays on [open] — it must engage on the very first
+  // commit, and it does not touch the DOM node.
+  useEffect(() => {
+    if (!open || !render) return;
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const FOCUSABLE =
+      'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+    const getFocusable = () =>
+      Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+        // offsetParent is null for display:none subtrees — the dropdown's
+        // footer cluster is `lg:hidden`, so on desktop those controls must not
+        // be part of the cycle.
+        (el) => el.offsetParent !== null,
+      );
+
+    // Two frames, not one. The panel ships `visibility: hidden` inline (see
+    // its JSX) and the open tween's `from` vars re-assert it via autoAlpha:0,
+    // and a visibility:hidden element is NOT focusable. GSAP flips it visible
+    // on its first ticker frame, so we queue behind that frame and focus on
+    // the one after — by which point the panel is painted whichever way the
+    // tween resolved (reduced motion sets autoAlpha:1 outright, so the wait is
+    // simply harmless there).
+    let inner = 0;
+    const outer = requestAnimationFrame(() => {
+      inner = requestAnimationFrame(() => {
+        // preventScroll: the body is overflow-locked and Lenis is stopped;
+        // letting the browser scroll-into-view here would fight both.
+        getFocusable()[0]?.focus({ preventScroll: true });
+      });
+    });
+
+    // Tab trap. Listens on the document (not the panel) so it still catches
+    // the keystroke when focus has somehow escaped — that case is exactly the
+    // one worth recovering from, and it pulls focus back in.
+    const onTab = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+      const items = getFocusable();
+      if (items.length === 0) return;
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      const outside = !active || !panel.contains(active);
+      if (e.shiftKey) {
+        if (outside || active === first) {
+          e.preventDefault();
+          last.focus({ preventScroll: true });
+        }
+      } else if (outside || active === last) {
+        e.preventDefault();
+        first.focus({ preventScroll: true });
+      }
+    };
+    document.addEventListener("keydown", onTab);
+
+    return () => {
+      cancelAnimationFrame(outer);
+      cancelAnimationFrame(inner);
+      document.removeEventListener("keydown", onTab);
+      // Return focus to the trigger — but only if focus is still ours to
+      // move. If the visitor clicked something outside the panel, that
+      // element legitimately owns focus and stealing it back would be worse
+      // than the bug we are fixing. `body` counts as ours: that is where
+      // focus lands when the panel unmounts underneath it.
+      const active = document.activeElement;
+      if (!active || active === document.body || panel.contains(active)) {
+        triggerRef.current?.focus({ preventScroll: true });
+      }
+    };
+  }, [open, render]);
 
   const isActive = (href: string) =>
     pathname === href || (href !== "/" && !!pathname?.startsWith(`${href}/`));
@@ -802,6 +901,16 @@ export function Navbar() {
         boxShadow: scrolled
           ? "inset 0 1px 0 hsl(var(--accent) / 0.16), inset 0 -1px 0 hsl(220 30% 4% / 0.7), 0 1px 0 hsl(var(--accent) / 0.08), 0 16px 40px -18px hsl(var(--bg) / 0.95)"
           : "inset 0 1px 0 hsl(var(--accent) / 0.10), inset 0 -1px 0 hsl(220 30% 4% / 0.55)",
+        // Safe-area clearance (MOBILE_AUDIT.md D-8). viewportFit:"cover"
+        // (layout.tsx) runs this bar edge-to-edge and under any display
+        // cutout, so in landscape the logo sat behind the notch. The <nav>
+        // itself carries NO padding of its own — the gutter lives on the inner
+        // container below — so these are purely ADDITIVE and the inner
+        // px-4/sm:px-6/lg:px-10 survives untouched. All three resolve to 0px
+        // off a notched device, making this inert everywhere else.
+        paddingTop: "var(--safe-t)",
+        paddingLeft: "var(--safe-l)",
+        paddingRight: "var(--safe-r)",
       }}
       role="navigation"
       aria-label="Main navigation"
@@ -840,7 +949,10 @@ export function Navbar() {
                 asChild
                 variant="hero"
                 size="lg"
-                className="inline-flex text-[13px] tracking-[0.005em] h-10 px-5"
+                // h-11 (44px), not h-10: it sits shoulder-to-shoulder with the
+                // Menu pill, which is now 44px for the touch-target floor —
+                // two adjacent pills at different heights read as a mistake.
+                className="inline-flex text-[13px] tracking-[0.005em] h-11 px-5"
               >
                 <Link href={START_HREF}>
                   {/* Magnetic's two-layer hook: the label counter-translates
@@ -863,7 +975,10 @@ export function Navbar() {
               data-cursor="link"
               onClick={() => setOpen((o) => !o)}
               aria-expanded={open}
-              aria-haspopup="true"
+              // "dialog", not "true"(=menu): the panel is role="dialog" +
+              // aria-modal, so the popup type announced here has to match what
+              // actually opens or AT describes the wrong widget.
+              aria-haspopup="dialog"
               aria-controls="site-menu"
               aria-label={
                 open
@@ -875,7 +990,11 @@ export function Navbar() {
                     : "Open menu"
               }
               className={cn(
-                "inline-flex items-center gap-2 rounded-full border h-10 px-4 transition-colors",
+                // h-11 = 44px. This is the ONLY way into the site's navigation
+                // below lg, and at the old h-10 it measured 40px even once the
+                // root font-size was repaired — under the touch-target floor
+                // on the one control that must never be hard to hit.
+                "inline-flex items-center gap-2 rounded-full border h-11 px-4 transition-colors",
                 "bg-bg/40 backdrop-blur-md border-rule/60 text-ink",
                 "hover:text-[hsl(var(--accent))] hover:border-[hsl(var(--accent)/0.6)]",
                 open && "text-[hsl(var(--accent))] border-[hsl(var(--accent)/0.6)]",
@@ -915,15 +1034,33 @@ export function Navbar() {
           unrolls downward. Stays mounted (`render`) while the GSAP close tween
           rolls it back up; the tween's onComplete unmounts it. The opening
           clip-path/stagger and the snappier close both run in the useGSAP
-          block above (interruptible, reduced-motion aware). */}
+          block above (interruptible, reduced-motion aware).
+
+          Geometry (position/top/right/max-height/overflow) lives in
+          `.site-menu-panel` in globals.css — all of it derives from the nav
+          bar height + the safe-area insets, so it belongs in one place rather
+          than as five interdependent arbitrary values here. That class is what
+          repairs D-3: the panel is height-capped to the viewport it actually
+          has and scrolls when it runs out, instead of overflowing 276px off
+          the bottom in landscape with everything below the fold unreachable.
+
+          role="dialog" + aria-modal: the panel already behaved modally (body
+          scroll lock + Lenis stop + Esc-to-close), and now traps focus too, so
+          declaring it is honest rather than aspirational. aria-label gives it
+          the accessible name a dialog is required to have. */}
       {render && (
         <div
           id="site-menu"
           ref={panelRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={language === "it" ? "Menu del sito" : "Site menu"}
+          // Nested scroller: keep Lenis's wheel/touch hijack off the panel so
+          // its own overflow scrolls natively.
+          data-lenis-prevent
           className={cn(
-            "fixed right-4 top-[68px] z-[60] w-[min(86vw,300px)] origin-top overflow-hidden",
+            "site-menu-panel z-[60] w-[min(86vw,300px)] origin-top",
             "rounded-2xl border border-rule/60",
-            "sm:right-6 sm:top-[76px] lg:right-10",
           )}
           style={{
             background:
@@ -973,9 +1110,10 @@ export function Navbar() {
                   </Link>
                 </Button>
               </Magnetic>
+              {/* `touch`: finger-sized (44px) here, unlike the desktop bar. */}
               <div className="flex items-center justify-center gap-3">
-                <LanguageToggle />
-                <AudioToggle />
+                <LanguageToggle touch />
+                <AudioToggle touch />
               </div>
             </div>
           </div>

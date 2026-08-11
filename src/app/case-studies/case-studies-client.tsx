@@ -6,7 +6,7 @@ import { ArrowRight } from "lucide-react";
 import gsap from "gsap";
 import { Flip } from "gsap/Flip";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { Button } from "@/components/ui/button";
+import { Button, CTA_FLUID_SM } from "@/components/ui/button";
 import { caseStudies, type CaseStudy } from "@/data/case-studies";
 import { useLanguage } from "@/components/language-provider";
 import { Reveal } from "@/components/ui/reveal";
@@ -410,7 +410,7 @@ export function CaseStudiesClient() {
       : caseStudies.filter((s) => s.industry === sector).length;
 
   return (
-    <div className="min-h-screen pt-24 relative">
+    <div className="min-h-[100svh] pt-24 relative">
       {/* Hero */}
       <section data-line-anchor="hero" data-snap className="py-20 sm:py-32 relative">
         <div className="container-px relative">
@@ -573,7 +573,16 @@ export function CaseStudiesClient() {
       <div data-line-anchor="ritual" aria-hidden="true" className="py-28 sm:py-40" />
 
       {/* Closing CTA */}
-      <section data-line-anchor="final-cta" data-snap className="section-lg relative">
+      {/* overflow-x-clip: the decorative glow below is a fixed 700px square
+          centred on the section, so on any viewport under 700px it hangs
+          ~(700−vw)/2 past the right edge and drags the DOCUMENT with it —
+          MEASURED at 190px of horizontal overflow at 320px, 135px at 430px.
+          The identical glow on /audit is already inside an `overflow-hidden`
+          section, which is why that route measured clean. `overflow-x-clip`
+          (not `overflow-hidden`) clips the horizontal escape WITHOUT creating
+          a scroll container or clipping vertical glow/shadow, and is inert at
+          every width where the glow already fits. */}
+      <section data-line-anchor="final-cta" data-snap className="section-lg relative overflow-x-clip">
         <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] opacity-20 pointer-events-none"
           aria-hidden="true"
@@ -609,7 +618,14 @@ export function CaseStudiesClient() {
               }
             />
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <Button asChild size="lg" className="px-10 py-7 text-base font-semibold rounded-full">
+              <Button
+                asChild
+                size="lg"
+                className={cn(
+                  "px-10 py-7 text-base font-semibold rounded-full",
+                  CTA_FLUID_SM,
+                )}
+              >
                 <Link href="/audit">
                   {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
                   <ArrowRight className="ml-2 h-5 w-5" />

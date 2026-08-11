@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Clock } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, CTA_FLUID_SM } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/language-provider";
 import type { Resource } from "@/data/resources";
 
@@ -74,7 +75,7 @@ export function ResourceDetailClient({ resource, prev, next }: ResourceDetailCli
   const body = isEn ? resource.body : resource.bodyIt;
 
   return (
-    <div className="min-h-screen pt-24 pb-24 relative">
+    <div className="min-h-[100svh] pt-24 pb-24 relative">
       <article className="container-px max-w-3xl">
         {/* Breadcrumb */}
         <nav aria-label="Breadcrumb" className="mb-10">
@@ -159,13 +160,13 @@ export function ResourceDetailClient({ resource, prev, next }: ResourceDetailCli
             )}
           </h3>
           <div className="flex flex-col sm:flex-row gap-3 mt-5">
-            <Button asChild size="lg" className="group">
+            <Button asChild size="lg" className={cn("group", CTA_FLUID_SM)}>
               <Link href="/audit">
                 {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
                 <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
               </Link>
             </Button>
-            <Button asChild variant="outline" size="lg">
+            <Button asChild variant="outline" size="lg" className={CTA_FLUID_SM}>
               <Link href="/contact">{isEn ? "Or just say hello" : "Oppure scriveteci e basta"}</Link>
             </Button>
           </div>

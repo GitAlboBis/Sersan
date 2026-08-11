@@ -3,10 +3,15 @@
 import { useEffect, useRef } from "react";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import {
+  Button,
+  CTA_FLUID_SM,
+  CTA_WRAPPER_SM,
+} from "@/components/ui/button";
 import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
 import { START_HREF, CONTACT_EMAIL } from "@/lib/site";
+import { cn } from "@/lib/utils";
 
 const BRIEF_MAILTO = `mailto:${CONTACT_EMAIL}?subject=Technical%20scoping%20brief`;
 
@@ -107,11 +112,16 @@ export default function FinalCTA() {
               </p>
 
               <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
-                <Link href={START_HREF}>
+                {/* The pair was already `w-full sm:w-auto`, but the cva base's
+                    `whitespace-nowrap` kept min-content at the full label
+                    width — and a flex item's `min-width: auto` refuses to
+                    compress past that, so at 320px it forced the column open.
+                    CTA_FLUID_SM adds the wrap (see button.tsx). */}
+                <Link href={START_HREF} className={CTA_WRAPPER_SM}>
                   <Button
                     variant="hero"
                     size="xl"
-                    className="group w-full sm:w-auto"
+                    className={cn("group", CTA_FLUID_SM)}
                   >
                     {isEn
                       ? "Book a 30-min scoping call"
@@ -119,11 +129,11 @@ export default function FinalCTA() {
                     <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
                   </Button>
                 </Link>
-                <Link href={BRIEF_MAILTO}>
+                <Link href={BRIEF_MAILTO} className={CTA_WRAPPER_SM}>
                   <Button
                     variant="heroOutline"
                     size="lg"
-                    className="w-full sm:w-auto"
+                    className={CTA_FLUID_SM}
                   >
                     {isEn ? "Send a brief by email" : "Inviate un brief via email"}
                   </Button>

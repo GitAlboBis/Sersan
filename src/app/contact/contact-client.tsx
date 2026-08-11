@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { Mail, MapPin, Clock, Building2, ArrowRight, Phone, MessageCircle } from "lucide-react";
 import { LinkedinIcon } from "@/components/icons/brand";
-import { Button } from "@/components/ui/button";
+import { Button, CTA_WRAP_SM } from "@/components/ui/button";
 import { coFounders } from "@/data/founders";
 import { ContactForm } from "@/components/contact-form";
 import { CalEmbed } from "@/components/cal-embed";
 import { Reveal } from "@/components/ui/reveal";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { useLanguage } from "@/components/language-provider";
+import { cn } from "@/lib/utils";
 
 export function ContactClient() {
   const { language } = useLanguage();
@@ -69,7 +70,7 @@ export function ContactClient() {
       ];
 
   return (
-    <div className="min-h-screen relative">
+    <div className="min-h-[100svh] relative">
       {/* Hero */}
       <section data-line-anchor="hero" data-snap className="pt-24 pb-12 md:pt-32 md:pb-16 relative overflow-hidden">
         <div aria-hidden="true" className="absolute inset-0 pointer-events-none">
@@ -238,7 +239,17 @@ export function ContactClient() {
                     ? "One week, inside your stack. A written report on what's broken, what's manual, and what AI can actually do."
                     : "Una settimana, dentro il vostro stack. Un report scritto su cosa non funziona, cosa è manuale e cosa l'AI può davvero fare."}
                 </p>
-                <Button asChild variant="hero" size="lg" className="w-full">
+                {/* w-full is the DESIGN here (card CTA at every width), so
+                    only the wrap half applies: inside a `p-6` card at 320px
+                    the column is 208px and the nowrap Italian label's
+                    min-content was ~282px, which a flex/block box cannot
+                    compress past. See button.tsx. */}
+                <Button
+                  asChild
+                  variant="hero"
+                  size="lg"
+                  className={cn("w-full", CTA_WRAP_SM)}
+                >
                   <Link href="/audit">
                     {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
                   </Link>

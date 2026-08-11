@@ -75,6 +75,53 @@ const buttonVariants = cva(
   },
 );
 
+/**
+ * SMALL-VIEWPORT CTA ERGONOMICS (MOBILE_AUDIT.md §8 — the acceptance bar is
+ * zero horizontal overflow at 320/360/390/412/430px).
+ *
+ * At 320px the content column is 256px wide (`--margin: 2rem` a side, now
+ * that the root font-size finally renders at its authored 16px). A
+ * `size="lg"`/`size="xl"` CTA is shrink-to-fit and the cva base above bakes
+ * in `whitespace-nowrap`, so its MIN-CONTENT width is the entire label — and
+ * because a flex item's `min-width` is `auto`, it refuses to compress below
+ * that. "Book a 30-min scoping call" measured 298px inside a 256px column and
+ * pushed the DOCUMENT 10px past the viewport; the Italian labels
+ * ("Prenota una call di scoping di 30 min") are ~90px worse again.
+ *
+ * The fix belongs on the button, not on `--margin`: the 2rem gutter was
+ * authored against a 16px root and is only now rendering at its intended
+ * value, so compensating it backwards is explicitly off the table.
+ *
+ * Below `sm` the label wraps — which collapses min-content to the longest
+ * WORD (~90px) — the horizontal padding tightens, and the leading tightens so
+ * a two-line label still clears the fixed `h-12`/`h-14` pill height instead of
+ * meeting the Button's own `overflow-hidden`.
+ *
+ * Every declaration is `max-sm:`-scoped, so ≥640px — every tablet and every
+ * desktop width — is byte-for-byte unchanged.
+ */
+export const CTA_WRAP_SM =
+  "max-sm:whitespace-normal max-sm:px-5 max-sm:leading-tight";
+
+/**
+ * `CTA_WRAP_SM` + the CTA fills its content column below `sm`. Preferred for
+ * hero/section CTA pairs: it is also the better thumb target. `sm:w-auto`
+ * hands the width back to the intrinsic sizing the desktop layout expects.
+ */
+export const CTA_FLUID_SM = `w-full sm:w-auto ${CTA_WRAP_SM}`;
+
+/**
+ * The wrapper half of `CTA_FLUID_SM`. Any element sitting BETWEEN the CTA row
+ * and the Button — a `Magnetic` shell (`inline-block`), a `[data-hero-stagger]`
+ * div, a `<Link className="block">` — has to be full-width too, or the
+ * button's `w-full` resolves against a shrink-to-fit box and nothing changes.
+ * Deliberately width-only: every wrapper this is used on is already
+ * block-level (or blockified as a flex item), so the display stays untouched
+ * and desktop cannot shift. A wrapper that is genuinely INLINE and outside a
+ * flex row needs its own `block sm:inline` alongside this.
+ */
+export const CTA_WRAPPER_SM = "w-full sm:w-auto";
+
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {

@@ -14,7 +14,7 @@ import {
 import { useLanguage } from "@/components/language-provider";
 import { Reveal } from "@/components/ui/reveal";
 import { SectionHeading } from "@/components/ui/section-heading";
-import { Button } from "@/components/ui/button";
+import { Button, CTA_FLUID_SM } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useTierStore } from "@/webgl/store/tierStore";
 import { webgpuEnabled } from "@/webgl/renderer/createRenderer";
@@ -330,7 +330,7 @@ export function ResourcesClient() {
   const dateLocale = isEn ? "en-GB" : "it-IT";
 
   return (
-    <div className="min-h-screen text-foreground relative">
+    <div className="min-h-[100svh] text-foreground relative">
       {/* Hero */}
       <section data-line-anchor="hero" data-snap className="pt-24 pb-16 md:pb-24 relative overflow-hidden">
         <div aria-hidden="true" className="absolute inset-0 pointer-events-none">
@@ -488,7 +488,12 @@ export function ResourcesClient() {
           giving final-cta real height shifts its measured center fraction down
           the document, fixing the curve tail via the existing waypoint (no
           routeCurves edit). */}
-      <section data-line-anchor="final-cta" data-snap className="section-lg relative">
+      {/* overflow-x-clip — same fix as the twin closing CTA on /case-studies:
+          the 700px decorative glow square escapes every sub-700px viewport
+          and drags the document with it (MEASURED 190px of horizontal
+          overflow at 320px, 135px at 430px). Clipping only the X axis leaves
+          vertical glow/shadow and the scroll container untouched. */}
+      <section data-line-anchor="final-cta" data-snap className="section-lg relative overflow-x-clip">
         <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] opacity-20 pointer-events-none"
           aria-hidden="true"
@@ -528,7 +533,14 @@ export function ResourcesClient() {
               }
             />
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <Button asChild size="lg" className="px-10 py-7 text-base font-semibold rounded-full">
+              <Button
+                asChild
+                size="lg"
+                className={cn(
+                  "px-10 py-7 text-base font-semibold rounded-full",
+                  CTA_FLUID_SM,
+                )}
+              >
                 <Link href="/audit">
                   {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
                   <ArrowRight className="ml-2 h-5 w-5" />

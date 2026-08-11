@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ArrowLeft, ArrowUpRight, ArrowRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, CTA_FLUID_SM } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { CountUp } from "@/components/ui/count-up";
 import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
@@ -100,7 +101,7 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
   );
 
   return (
-    <div className="min-h-screen pt-24 relative">
+    <div className="min-h-[100svh] pt-24 relative">
       {/* Hero halo */}
       <div aria-hidden="true" className="absolute inset-x-0 top-0 h-[60vh] pointer-events-none">
         <div
@@ -127,13 +128,15 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
             shot becomes a link to the site with a "View site" hover cue (opens
             in a new tab). data-flip-id / data-flip-hero are inert hooks for a
             future cross-route Flip transition. Height-capped so the eyebrow +
-            h1 stay near the top of the viewport. */}
+            h1 stay near the top of the viewport — in `svh`, because this is a
+            REAL layout height: in `vh` it would re-size when the iOS URL bar
+            collapses and reflow the article under the reader's thumb. */}
         {study.previewImage && (
           <figure
             ref={heroRef}
             data-flip-id={study.id}
             data-flip-hero
-            className="group relative mb-12 overflow-hidden rounded-xl border border-rule/70 h-[min(44vh,24rem)] bg-[hsl(216_28%_10%)]"
+            className="group relative mb-12 overflow-hidden rounded-xl border border-rule/70 h-[min(44svh,24rem)] bg-[hsl(216_28%_10%)]"
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -323,13 +326,13 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
               )}
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
-              <Button asChild size="lg" className="group">
+              <Button asChild size="lg" className={cn("group", CTA_FLUID_SM)}>
                 <Link href="/audit">
                   {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
                   <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
                 </Link>
               </Button>
-              <Button asChild variant="outline" size="lg">
+              <Button asChild variant="outline" size="lg" className={CTA_FLUID_SM}>
                 <Link href="/contact">{isEn ? "Or just say hello" : "Oppure scriveteci e basta"}</Link>
               </Button>
             </div>
