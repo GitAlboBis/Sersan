@@ -15,6 +15,7 @@ import WorkInProgress from "@/components/sections/work-in-progress";
 import { CardImageDistort } from "@/components/fx/card-image-distort";
 import { CardLogoReveal } from "@/components/fx/card-logo-reveal";
 import { useFlipSource } from "@/lib/use-flip-source";
+import { useCentreFocus, type CentreFocusRef } from "@/lib/use-centre-focus";
 import { cn } from "@/lib/utils";
 
 // Flip is already registered by the persistent flip-handoff overlay (root
@@ -301,8 +302,25 @@ function useArchiveResort(
  * Typography + the static STACK chips are aligned to the redesigned home rail
  * cards (visual language only — the grid keeps its layout, media priority and
  * wave entrances untouched).
+ *
+ * TOUCH (D-2): the logo / screenshot is `:hover`-gated, which on a phone means
+ * never — 10 of 13 archive cards shipped media no touch user ever saw, already
+ * downloaded (CardImageDistort force-loads on mobile). `focusRef` registers the
+ * card with lib/use-centre-focus, which stamps `data-focus="true"` on whichever
+ * cards are crossing the middle of the viewport; globals.css carries the
+ * matching reveal rules. Inert on a fine pointer — desktop hover is unchanged —
+ * and the card TEXT deliberately keeps its place on the touch path (the media
+ * reveals behind it, under the full scrim).
  */
-function GridCard({ study, isEn }: { study: CaseStudy; isEn: boolean }) {
+function GridCard({
+  study,
+  isEn,
+  focusRef,
+}: {
+  study: CaseStudy;
+  isEn: boolean;
+  focusRef: CentreFocusRef;
+}) {
   const engagement = isEn ? study.engagement : study.engagementIt;
   const role = isEn ? study.role : study.roleIt;
   const summary = isEn ? study.summary : study.summaryIt;
@@ -316,6 +334,7 @@ function GridCard({ study, isEn }: { study: CaseStudy; isEn: boolean }) {
   return (
     <Link
       href={`/case-studies/${study.id}`}
+      ref={focusRef}
       data-cursor="view"
       className={
         hasMedia
@@ -383,6 +402,12 @@ export function CaseStudiesClient() {
   const [sector, setSector] = useState<SectorFilter>("all");
   const gridRef = useRef<HTMLDivElement | null>(null);
   const armResort = useArchiveResort(gridRef, sector);
+
+  // D-2: one observer for the whole archive. Cards register on mount and
+  // unregister on detach, so the FLIP re-sort (which keeps filtered-out cards
+  // alive but `display: none`) never leaves a stale entry — a hidden card has
+  // no box, so it simply stops intersecting and drops its attribute.
+  const cardFocusRef = useCentreFocus();
 
   useEffect(() => {
     const param = new URLSearchParams(window.location.search).get("filter");
@@ -541,7 +566,7 @@ export function CaseStudiesClient() {
                     data-archive-item=""
                     className={cn("h-full", hidden && "hidden")}
                   >
-                    <GridCard study={study} isEn={isEn} />
+                    <GridCard study={study} isEn={isEn} focusRef={cardFocusRef} />
                   </div>
                 );
               })}

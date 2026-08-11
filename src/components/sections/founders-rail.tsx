@@ -17,6 +17,7 @@ import { founders, type FounderProfile } from "@/data/founders";
 import { useLanguage } from "@/components/language-provider";
 import { getLenis } from "@/lib/lenis-singleton";
 import { snapPoint, snapBarrier } from "@/lib/scroll-snap";
+import { useCentreFocus, type CentreFocusRef } from "@/lib/use-centre-focus";
 import {
   useFoundersMorphStore,
   foundersGateApi,
@@ -63,6 +64,13 @@ if (typeof window !== "undefined") {
  *
  *   3. NATIVE (mobile / coarse pointer / prefers-reduced-motion): a plain
  *      overflow-x snap scroller, no pinning, portraits simply visible.
+ *
+ * PORTRAIT COLOUR REVEAL (modes 2 and 3, D-1): the duotone→colour clip reveal
+ * has two triggers — `:hover` on a fine pointer, and `[data-focus="true"]` on
+ * touch, written by lib/use-centre-focus on whichever card the reader has
+ * scrolled to the middle of the viewport. The hook is inert on a fine pointer,
+ * so desktop hover is untouched; under reduced motion it reveals every card at
+ * once with no transition, because content must never be gated on motion.
  *
  * All three carry every founder's name/role/shortBio/credentials/previouslyAt/
  * LinkedIn as real, keyboard-focusable DOM. SSR renders modes 1/2's pinned
@@ -159,7 +167,7 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
 }
 
 /**
- * Duotone→color hover treatment (shared visual contract with the About-page
+ * Duotone→color reveal treatment (shared visual contract with the About-page
  * portraits — about-client.tsx carries the same block; keep them in sync).
  * `--fr-hr` is a registered custom property so the clip-path radius (color
  * layer) and its +1.5px cyan annulus (ring layer) interpolate together from
@@ -169,6 +177,22 @@ function smoothstep(edge0: number, edge1: number, x: number): number {
  * `.founder-portrait` is the article ROOT (full-bleed card), so border-color
  * joins the transition here — the shorthand would otherwise reset Tailwind's
  * transition-colors longhands.
+ *
+ * TWO TRIGGERS, one per input class (D-1):
+ *   - `:hover`, fine pointer only — unchanged.
+ *   - `[data-focus="true"]`, touch only — written by lib/use-centre-focus on
+ *     the card nearest the viewport centre. Without it `--fr-hr` stayed at 0px
+ *     forever on a phone: the full-colour <img> was downloaded and never
+ *     painted, and every founder read as a permanently grey photograph.
+ * The reveal circle centres itself (`--fr-mx/--fr-my` default to 50%) because
+ * onPortraitEnter deliberately ignores non-mouse pointers — the touch path must
+ * never depend on it.
+ *
+ * The ONE line that is deliberately NOT identical to about-client's copy is the
+ * touch selector: here the `.founder-portrait` article IS the registered card
+ * (78vh — it owns the centre band for as long as it is on screen), while About
+ * registers the surrounding `.card-steel` because its portrait is an 80px
+ * circle that would cross the band in a beat. Do not "resync" them.
  */
 const PORTRAIT_CSS = `
 @property --fr-hr {
@@ -196,6 +220,9 @@ const PORTRAIT_CSS = `
   .founder-portrait:hover { --fr-hr: 150%; }
   .founder-portrait:hover .founder-portrait__ring { opacity: 0.9; }
 }
+/* Touch: centre-focus is the reveal. Same radius, same transition, no pointer. */
+.founder-portrait[data-focus="true"] { --fr-hr: 150%; }
+.founder-portrait[data-focus="true"] .founder-portrait__ring { opacity: 0.9; }
 @media (prefers-reduced-motion: reduce) {
   .founder-portrait,
   .founder-portrait__ring { transition: none; }
@@ -309,11 +336,14 @@ function FounderPanel({
   index,
   total,
   isEn,
+  focusRef,
 }: {
   f: FounderProfile;
   index: number;
   total: number;
   isEn: boolean;
+  /** Centre-focus registration (touch only; inert on a fine pointer). */
+  focusRef: CentreFocusRef;
 }) {
   // SVG filter/mask ids must be document-unique AND SSR-stable → useId.
   // The delimiter chars (":" / "«»") break unquoted CSS url() references,
@@ -326,6 +356,9 @@ function FounderPanel({
 
   // One rect read per pointer ENTRY (event-driven — never in a frame loop):
   // anchors the CSS clip-path circle at the point the cursor came in.
+  // MOUSE ONLY, and the touch reveal deliberately does not depend on it: with
+  // no --fr-mx/--fr-my written, the clip circle falls back to 50%/50% and
+  // expands from the portrait's centre, which is the right gesture-free reveal.
   const onPortraitEnter = (e: ReactPointerEvent<HTMLElement>) => {
     if (e.pointerType && e.pointerType !== "mouse") return;
     const el = e.currentTarget;
@@ -344,6 +377,7 @@ function FounderPanel({
   return (
     <article
       id={`founder-${f.anchor}`}
+      ref={focusRef}
       onPointerEnter={onPortraitEnter}
       className="founder-portrait group relative h-[min(78vh,46rem)] w-full overflow-hidden rounded-lg border border-[hsl(var(--rule))] bg-[hsl(216_28%_10%/0.45)] hover:border-[hsl(var(--accent)/0.45)]"
     >
@@ -614,6 +648,12 @@ export default function FoundersRail() {
     tier === "full" &&
     backend === null;
 
+  // D-1: on touch the duotone→colour portrait reveal has no pointer to fire it,
+  // so the card nearest the viewport centre fires it instead. Inert on a fine
+  // pointer — desktop keeps :hover, unchanged. One hook, every FounderPanel in
+  // whichever mode renders (native scroller AND horizontal rail).
+  const portraitFocusRef = useCentreFocus();
+
   const sectionRef = useRef<HTMLDivElement | null>(null);
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLUListElement | null>(null);
@@ -624,25 +664,40 @@ export default function FoundersRail() {
   const copyRefs = useRef<(HTMLDivElement | null)[]>([]);
   const stageImgRefs = useRef<(HTMLImageElement | null)[]>([]);
 
+  // Mode detection is a SUBSCRIPTION, not a one-shot sample (D-18): a window
+  // snapped narrow, devtools docked, a stylus swapped for a mouse or an OS
+  // reduced-motion toggle must flip the path live. Sampling once on mount kept
+  // the pinned path — and its measurements — alive against a viewport that no
+  // longer existed, while every sibling section (case-studies-rail, the spine)
+  // already subscribed. `roomy` was the only query here that did.
+  //
+  // `roomy` is the viewport floor for the MORPH layout (see canMorph): below it
+  // the two-column stage clips its own copy inside the overflow-hidden sticky
+  // frame, so the horizontal rail takes over. Both queries resolve in this one
+  // client effect alongside `detected`, so SSR markup is unaffected and no
+  // store writes leak.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const mobile = window.matchMedia("(max-width: 768px)").matches;
-    const coarse = window.matchMedia("(pointer: coarse)").matches;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    setMode(mobile || coarse || reduced ? "native" : "pinned");
-    // Viewport floor for the MORPH layout (see canMorph). Tracked live so a
-    // mid-session window snap / devtools open drops to the horizontal rail
-    // instead of clipping the copy inside the overflow-hidden sticky frame.
-    // Resolved in this same client effect as `detected`, so SSR markup is
-    // unaffected and no store writes leak.
+    const modeQs = [
+      window.matchMedia("(max-width: 768px)"),
+      window.matchMedia("(pointer: coarse)"),
+      window.matchMedia("(prefers-reduced-motion: reduce)"),
+    ];
     const roomQ = window.matchMedia(
       "(min-width: 1024px) and (min-height: 780px)",
     );
-    const applyRoom = () => setRoomy(roomQ.matches);
-    applyRoom();
-    setDetected(true);
-    roomQ.addEventListener("change", applyRoom);
-    return () => roomQ.removeEventListener("change", applyRoom);
+    const sync = () => {
+      setMode(modeQs.some((q) => q.matches) ? "native" : "pinned");
+      setRoomy(roomQ.matches);
+      setDetected(true);
+    };
+    sync();
+    modeQs.forEach((q) => q.addEventListener("change", sync));
+    roomQ.addEventListener("change", sync);
+    return () => {
+      modeQs.forEach((q) => q.removeEventListener("change", sync));
+      roomQ.removeEventListener("change", sync);
+    };
   }, []);
 
   // === MORPH mode: pinned stage + GATED, self-playing morph ==================
@@ -1709,7 +1764,13 @@ export default function FoundersRail() {
     <>
       {founders.map((f, i) => (
         <li key={f.anchor} data-founders-panel className={liClass}>
-          <FounderPanel f={f} index={i} total={total} isEn={isEn} />
+          <FounderPanel
+            f={f}
+            index={i}
+            total={total}
+            isEn={isEn}
+            focusRef={portraitFocusRef}
+          />
         </li>
       ))}
     </>

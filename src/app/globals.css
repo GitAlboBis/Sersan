@@ -670,9 +670,14 @@ img { height: auto; max-width: 100%; }
   opacity: var(--glow, 0);
 }
 
-/* CardImageDistort — hover-reveal product imagery on the three case-study cards
-   that ship a preview (SphereNode, Quantex, Terra Noa). At REST the whole layer
-   is invisible, so the card reads as today's clean text card. On hover the base
+/* CardImageDistort — reveal product imagery on the three case-study cards that
+   ship a preview (SphereNode, Quantex, Terra Noa). Two reveal triggers, one per
+   input class: `:hover` on a fine pointer, `[data-focus="true"]` on touch (the
+   card scrolled to the viewport centre — lib/use-centre-focus). Every rule
+   below is paired accordingly; a fine-pointer media query keeps the hover half
+   off touch entirely, so iOS sticky :hover cannot fire the desktop choreography.
+   At REST the whole layer is invisible, so the card reads as today's clean text
+   card. On reveal the base
    <img> fades + scales in BEHIND the text, under a navy scrim that keeps the
    white card text legible; the self-contained WebGL2 canvas (if it spun up)
    composites the RGB-shift / parallax / zoom over the same <img>. The entire
@@ -697,12 +702,27 @@ img { height: auto; max-width: 100%; }
 }
 /* On hover the base image reveals. The WebGL canvas, when live, fades over it;
    its own opacity is toggled imperatively (inline style), so the CSS transition
-   here only governs the scale settle — guarded so the inline opacity wins. */
-.card-steel:hover .card-image-distort__img {
-  opacity: 1;
-  transform: scale(1);
+   here only governs the scale settle — guarded so the inline opacity wins.
+   FINE-POINTER ONLY (D-2): on touch there is no pointer to hover with, so this
+   rule could only ever fire through iOS's sticky :hover — at the wrong moment,
+   and paired with the text fade-out below. The touch path is the
+   [data-focus] block underneath, written by lib/use-centre-focus. */
+@media (hover: hover) and (pointer: fine) {
+  .card-steel:hover .card-image-distort__img {
+    opacity: 1;
+    transform: scale(1);
+  }
+  .card-steel:hover .card-image-distort__canvas {
+    transform: scale(1);
+  }
 }
-.card-steel:hover .card-image-distort__canvas {
+/* TOUCH (D-2): the card scrolled to the viewport centre reveals its imagery.
+   10 of 13 archive cards shipped a logo or screenshot that no touch user ever
+   saw — and CardImageDistort force-loads the file on mobile, so the bytes were
+   already paid for. No canvas twin: the distortion context is never created on
+   a coarse pointer, so the <img> IS the media layer here. */
+.card-steel[data-focus="true"] .card-image-distort__img {
+  opacity: 1;
   transform: scale(1);
 }
 /* When the WebGL canvas is live & rendering (set imperatively via
@@ -729,11 +749,20 @@ img { height: auto; max-width: 100%; }
     );
   transition: opacity 500ms cubic-bezier(0.215, 0.61, 0.355, 1);
 }
-.card-steel:hover .card-image-distort__scrim {
-  /* The card text now fades out on hover (see .card-text-layer below), so the
-     scrim no longer has white text to protect — drop it from a full navy wash
-     to a faint edge/vignette darken so the product shot reads clean. */
-  opacity: 0.25;
+@media (hover: hover) and (pointer: fine) {
+  .card-steel:hover .card-image-distort__scrim {
+    /* The card text now fades out on hover (see .card-text-layer below), so the
+       scrim no longer has white text to protect — drop it from a full navy wash
+       to a faint edge/vignette darken so the product shot reads clean. */
+    opacity: 0.25;
+  }
+}
+/* TOUCH: the text does NOT swap out (see .card-text-layer below), so the scrim
+   keeps the FULL navy wash it was designed as — that is exactly the job it
+   exists for. A centre-focused card shows its shot behind its own title, never
+   instead of it. */
+.card-steel[data-focus="true"] .card-image-distort__scrim {
+  opacity: 1;
 }
 
 /* Hover toggle: at rest the card shows ONLY its text; on hover it shows ONLY
@@ -742,13 +771,25 @@ img { height: auto; max-width: 100%; }
    that actually have the distort effect (`.card-has-distort` on the root). Plain
    text cards never match `.card-has-distort` so their text never hides.
    Accessibility: opacity + pointer-events only (NOT display:none / visibility),
-   so screen readers still read the text. */
+   so screen readers still read the text.
+
+   DELIBERATELY NO [data-focus] TWIN. This is the one hover rule that must not
+   cross to touch: a card that blanks its own title the moment you scroll it to
+   the centre is worse than one that never shows its photo. On touch the media
+   reveals BEHIND the text, under the full scrim above.
+
+   The fine-pointer guard is also the fix for a latent iOS bug: Safari leaves a
+   sticky :hover on the last-tapped element, so tapping a card could blank its
+   text and leave it blank until the next tap elsewhere. A device with no hover
+   can no longer match this selector at all. */
 .card-text-layer {
   transition: opacity 450ms cubic-bezier(0.215, 0.61, 0.355, 1);
 }
-.card-has-distort:hover .card-text-layer {
-  opacity: 0;
-  pointer-events: none;
+@media (hover: hover) and (pointer: fine) {
+  .card-has-distort:hover .card-text-layer {
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   /* Touch/RM: no distortion canvas mounts. Keep a calm static fade only — drop
@@ -756,6 +797,45 @@ img { height: auto; max-width: 100%; }
   .card-image-distort__img,
   .card-image-distort__canvas,
   .card-image-distort__scrim {
+    transition: none;
+    transform: none;
+  }
+}
+
+/* Case-study STACK pills, TOUCH placement (D-16 — case-studies-rail.tsx
+   `stackInFlow`). On desktop the pills are an absolute overlay revealed by
+   `group-hover`; on touch the card text stays put, so the overlay would land on
+   the client name and the pills join the card's flow instead. In flow they
+   reserve their own height, so this fade shifts no layout.
+
+   Written unlayered on purpose: it must beat the Tailwind utilities in
+   @layer utilities that the overlay variant uses. That also means the reveal
+   selectors have to carry the keyboard path themselves — `.group` is the card
+   <Link> (CARD_CLASS), matching the overlay's `group-focus-visible:`. */
+.stack-pills-focus {
+  opacity: 0;
+  transform: translateY(0.5rem);
+  transition:
+    opacity 300ms ease,
+    transform 300ms ease;
+}
+[data-focus="true"] .stack-pills-focus,
+.group:focus-visible .stack-pills-focus {
+  opacity: 1;
+  transform: translateY(0);
+}
+/* A FINE-POINTER reader can still land on this placement: the rail switches to
+   its native layout under `prefers-reduced-motion` on desktop too, and there
+   the centre-focus hook is (correctly) inert. Hover keeps the reveal reachable.
+   Never matches on touch, so it cannot resurrect a sticky-:hover state. */
+@media (hover: hover) and (pointer: fine) {
+  .group:hover .stack-pills-focus {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stack-pills-focus {
     transition: none;
     transform: none;
   }
@@ -798,8 +878,10 @@ img { height: auto; max-width: 100%; }
   content: none;
 }
 
-/* CardLogoReveal — hover-reveal BRAND MARK for case-study cards with no product
-   screenshot. The real, FULL-COLOUR logo (<img>, keeps brand colours: Accenture
+/* CardLogoReveal — reveal the BRAND MARK for case-study cards with no product
+   screenshot. Same two triggers as CardImageDistort above: `:hover` on a fine
+   pointer, `[data-focus="true"]` on touch.
+   The real, FULL-COLOUR logo (<img>, keeps brand colours: Accenture
    purple chevron, Leonardo red, Quantex green, WHO blue, …) sits on top; behind
    it two offset mask-tinted silhouettes (cyan + blue, screen-blended) add a
    visible chromatic-aberration glitch fringe without recolouring the logo. The
@@ -839,17 +921,54 @@ img { height: auto; max-width: 100%; }
 .card-logo-reveal__cyan   { background-color: hsl(var(--accent)); mix-blend-mode: screen; }
 /* class name kept; --accent-2 value is now blue */
 .card-logo-reveal__violet { background-color: hsl(var(--accent-2)); mix-blend-mode: screen; }
-.card-has-distort:hover .card-logo-reveal__img {
+@media (hover: hover) and (pointer: fine) {
+  .card-has-distort:hover .card-logo-reveal__img {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  .card-has-distort:hover .card-logo-reveal__cyan {
+    opacity: 0.7;
+    animation: card-logo-glitch-cyan 3.4s ease-in-out infinite;
+  }
+  .card-has-distort:hover .card-logo-reveal__violet {
+    opacity: 0.7;
+    animation: card-logo-glitch-violet 3.4s ease-in-out infinite;
+  }
+}
+/* TOUCH (D-2): the centre-focused card reveals the real, full-colour brand mark
+   — the content that was lost. The two chromatic-fringe layers stay OUT of this
+   path on purpose: they carry 3.4s infinite keyframe animations, and a phone
+   scrolling a grid can hold several cards in the centre band at once. The mark
+   is the proof; the glitch is decoration a battery does not owe anyone. */
+.card-has-distort[data-focus="true"] .card-logo-reveal__img {
   opacity: 1;
   transform: translate(-50%, -50%) scale(1);
 }
-.card-has-distort:hover .card-logo-reveal__cyan {
-  opacity: 0.7;
-  animation: card-logo-glitch-cyan 3.4s ease-in-out infinite;
+/* …and the readability scrim it never needed before. CardImageDistort ships a
+   scrim element; CardLogoReveal does not, because on the hover path the card
+   text has already faded out by the time the mark appears. On the touch path
+   the text STAYS (see .card-text-layer), and the mark is centred exactly where
+   the big metric sits — so it needs the same navy wash under the copy. A
+   pseudo-element is the only place to put one from CSS: it is the last child of
+   .card-logo-reveal's stacking context, so it paints ABOVE the mark and below
+   the z-10 text layer. Invisible (opacity 0) unless centre-focused, which the
+   hook never writes on a fine pointer — desktop is untouched. */
+.card-logo-reveal::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    155deg,
+    hsl(216 30% 8% / 0.92) 0%,
+    hsl(216 30% 8% / 0.78) 42%,
+    hsl(216 30% 8% / 0.62) 100%
+  );
+  transition: opacity 520ms cubic-bezier(0.215, 0.61, 0.355, 1);
 }
-.card-has-distort:hover .card-logo-reveal__violet {
-  opacity: 0.7;
-  animation: card-logo-glitch-violet 3.4s ease-in-out infinite;
+.card-has-distort[data-focus="true"] .card-logo-reveal::after {
+  opacity: 1;
 }
 @keyframes card-logo-glitch-cyan {
   0%, 100% { transform: translate3d(-3px, 0, 0); }
@@ -871,6 +990,9 @@ img { height: auto; max-width: 100%; }
   .card-logo-reveal__img {
     transition: opacity 300ms ease;
     transform: translate(-50%, -50%);
+  }
+  .card-logo-reveal::after {
+    transition: none;
   }
   .card-logo-reveal__cyan,
   .card-logo-reveal__violet {

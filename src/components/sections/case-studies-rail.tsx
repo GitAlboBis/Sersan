@@ -20,6 +20,7 @@ import {
 } from "@/webgl/store/railMotion";
 import { getLenis } from "@/lib/lenis-singleton";
 import { snapPoint, suspendSnap } from "@/lib/scroll-snap";
+import { useCentreFocus, type CentreFocusRef } from "@/lib/use-centre-focus";
 import { CardImageDistort } from "@/components/fx/card-image-distort";
 import { CardLogoReveal } from "@/components/fx/card-logo-reveal";
 import { SeeMorePortal } from "@/components/fx/see-more-portal";
@@ -94,6 +95,15 @@ if (typeof window !== "undefined") {
  *     a plain overflow-x snap scroller. data-lenis-prevent keeps Lenis off it.
  *     No focus motion, no drag bridge, no skew.
  *
+ * TOUCH REVEALS (D-2, D-16): everything the desktop card gates behind `:hover`
+ * — the product shot / brand mark (globals.css) and the STACK pills — is gated
+ * on `[data-focus="true"]` instead, written by lib/use-centre-focus on the card
+ * nearest the viewport centre. The hook is inert on a fine pointer, so desktop
+ * hover is untouched. Two deliberate differences from the hover choreography:
+ * the card text does NOT fade out (a card that blanks its own title as you
+ * scroll to it is worse than one that never shows its photo), and the pills
+ * therefore move into the card's flow instead of overlaying it.
+ *
  * KEYBOARD: cards are real links in DOM order. In pinned mode, focusing an
  * off-screen card converts to the equivalent VERTICAL scroll position (the
  * browser's auto-scroll of the overflow:hidden frame is undone, then Lenis
@@ -138,12 +148,23 @@ function StudyCard({
   total,
   isEn,
   onHover,
+  focusRef,
+  stackInFlow,
 }: {
   study: CaseStudy;
   index: number;
   total: number;
   isEn: boolean;
   onHover: (index: number, target: number) => void;
+  /** Centre-focus registration (touch only; inert on a fine pointer). */
+  focusRef: CentreFocusRef;
+  /**
+   * Native/touch layout. The STACK pills move from the absolute overlay into
+   * the card's flow: on touch the text layer does NOT fade out (globals.css —
+   * blanking a card's own title as you scroll to it is worse than showing no
+   * pills at all), so an overlay would land straight on the client name.
+   */
+  stackInFlow?: boolean;
 }) {
   const metric = study.metrics[0];
   const engagement = isEn ? study.engagement : study.engagementIt;
@@ -171,9 +192,32 @@ function StudyCard({
   // cross-fade out. The rail's drag click-suppression (capture handler below)
   // stops the event before it reaches this Link, so a real drag never arms.
   const onFlip = useFlipSource(study.id, study.previewImage);
+  // STACK pills (D-16): hover/focus-visible only until now, i.e. visually dead
+  // on touch. The list itself is identical in both placements — only the
+  // wrapper's positioning + reveal trigger differ.
+  const stackPills =
+    study.techStack.length > 0 ? (
+      <ul
+        className={
+          stackInFlow
+            ? "stack-pills-focus mt-1 flex flex-wrap gap-1.5"
+            : "pointer-events-none absolute inset-x-6 bottom-6 sm:inset-x-7 sm:bottom-7 z-10 flex flex-wrap gap-1.5 opacity-0 translate-y-2 transition-[opacity,transform] duration-300 group-hover:opacity-100 group-hover:translate-y-0 group-focus-visible:opacity-100 group-focus-visible:translate-y-0 motion-reduce:transition-none"
+        }
+      >
+        {study.techStack.slice(0, 4).map((tech) => (
+          <li
+            key={tech}
+            className="rounded-full border border-[hsl(var(--rule)/0.8)] bg-[hsl(216_28%_12%/0.72)] px-2.5 py-0.5 font-mono text-[10px] tracking-[0.08em] text-ink-mute backdrop-blur-sm"
+          >
+            {tech}
+          </li>
+        ))}
+      </ul>
+    ) : null;
   return (
     <Link
       href={`/case-studies/${study.id}`}
+      ref={focusRef}
       className={
         hasMedia
           ? `${CARD_CLASS} card-steel rail-card-distort card-has-distort`
@@ -252,24 +296,18 @@ function StudyCard({
           <p className="font-mono text-[11.5px] text-ink-mute leading-relaxed line-clamp-2">
             {engagement}
           </p>
+          {/* TOUCH: the pills live here, in the card's flow under the client
+              name, so they can never cover the copy that stays visible.
+              In flow they also reserve their own height, so the centre-focus
+              fade shifts nothing. */}
+          {stackInFlow ? stackPills : null}
         </div>
       </div>
-      {/* STACK pills — hover/focus overlay OUTSIDE the text layer, so on the
-          media cards they fade IN over the revealed shot exactly as the text
-          fades out (spec-sheet moment). Data only: study.techStack. Animated
-          props are opacity/transform only. */}
-      {study.techStack.length > 0 && (
-        <ul className="pointer-events-none absolute inset-x-6 bottom-6 sm:inset-x-7 sm:bottom-7 z-10 flex flex-wrap gap-1.5 opacity-0 translate-y-2 transition-[opacity,transform] duration-300 group-hover:opacity-100 group-hover:translate-y-0 group-focus-visible:opacity-100 group-focus-visible:translate-y-0 motion-reduce:transition-none">
-          {study.techStack.slice(0, 4).map((tech) => (
-            <li
-              key={tech}
-              className="rounded-full border border-[hsl(var(--rule)/0.8)] bg-[hsl(216_28%_12%/0.72)] px-2.5 py-0.5 font-mono text-[10px] tracking-[0.08em] text-ink-mute backdrop-blur-sm"
-            >
-              {tech}
-            </li>
-          ))}
-        </ul>
-      )}
+      {/* DESKTOP: hover/focus overlay OUTSIDE the text layer, so on the media
+          cards they fade IN over the revealed shot exactly as the text fades
+          out (spec-sheet moment). Data only: study.techStack. Animated props
+          are opacity/transform only. */}
+      {stackInFlow ? null : stackPills}
     </Link>
   );
 }
@@ -282,6 +320,11 @@ export default function CaseStudiesRail() {
   // initial HTML — same convention as the cinematic spine.
   const [mode, setMode] = useState<"pinned" | "native">("pinned");
   const [detected, setDetected] = useState(false);
+
+  // D-2/D-16: on touch there is no pointer to hover a card with, so the card
+  // scrolled to the viewport centre reveals its imagery and its STACK pills
+  // instead. Inert on a fine pointer — desktop keeps :hover, unchanged.
+  const cardFocusRef = useCentreFocus();
 
   const sectionRef = useRef<HTMLDivElement | null>(null);
   const stickyRef = useRef<HTMLDivElement | null>(null);
@@ -733,6 +776,11 @@ export default function CaseStudiesRail() {
     </div>
   );
 
+  // Native (touch) layout moves the STACK pills into the card's flow — see
+  // StudyCard's `stackInFlow`. Before detection resolves, the SSR/desktop
+  // overlay markup is what renders.
+  const stackInFlow = detected && mode === "native";
+
   const cards = (liClass: string) => (
     <>
       {caseStudies.slice(0, RAIL_LIMIT).map((study, i) => (
@@ -753,6 +801,8 @@ export default function CaseStudiesRail() {
               total={total}
               isEn={isEn}
               onHover={onHover}
+              focusRef={cardFocusRef}
+              stackInFlow={stackInFlow}
             />
           </div>
         </li>

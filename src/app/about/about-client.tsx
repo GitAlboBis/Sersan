@@ -19,6 +19,7 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { founders } from "@/data/founders";
 import { useLanguage } from "@/components/language-provider";
 import { START_HREF } from "@/lib/site";
+import { useCentreFocus } from "@/lib/use-centre-focus";
 import { RuleBeats } from "./rule-beats";
 
 if (typeof window !== "undefined") {
@@ -71,9 +72,18 @@ export function AboutClient() {
     };
   }, []);
 
+  // D-1: on touch there is no pointer to hover the portrait with, so the card
+  // scrolled to the viewport centre carries the reveal instead. Inert on a fine
+  // pointer (desktop :hover unchanged); under reduced motion every portrait is
+  // revealed at once, with no transition. Same contract as the home founders
+  // rail — see lib/use-centre-focus.
+  const portraitFocusRef = useCentreFocus();
+
   // One rect read per pointer ENTRY (event-driven — never per frame):
   // anchors the duotone→color clip-path circle at the cursor's entry point.
-  // Same treatment as the home founders rail (founders-rail.tsx).
+  // Same treatment as the home founders rail (founders-rail.tsx). MOUSE ONLY —
+  // the touch reveal must not depend on it, and doesn't: with no --fr-mx/--fr-my
+  // written the clip circle expands from the portrait's centre (50%/50%).
   const onPortraitEnter = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (e.pointerType && e.pointerType !== "mouse") return;
     const el = e.currentTarget;
@@ -227,7 +237,13 @@ export function AboutClient() {
                     : "h-full"
                 }
               >
+              {/* Centre-focus registers the CARD, not the 80px portrait: the
+                  band is ~10vh tall, which a circle that small would cross in
+                  a beat, flashing colour and losing it again while the reader
+                  is still on the bio. The card holds the band for as long as
+                  it is being read. */}
               <div
+                ref={portraitFocusRef}
                 id={f.anchor}
                 className="card-steel rounded-2xl p-8 h-full scroll-mt-32"
               >
@@ -467,12 +483,20 @@ export function AboutClient() {
         </section>
       </div>
 
-      {/* Duotone→color hover for the founder portraits — same visual
+      {/* Duotone→color reveal for the founder portraits — same visual
           contract as the home founders rail (founders-rail.tsx carries the
           identical block; keep them in sync). `--fr-hr` is a registered
           custom property so the color layer's clip circle and its +1.5px
           cyan annulus interpolate from one CSS transition; without
-          @property support the reveal snaps, which is acceptable. */}
+          @property support the reveal snaps, which is acceptable.
+
+          TWO TRIGGERS, one per input class (D-1): `:hover` on a fine pointer,
+          and `[data-focus="true"]` on touch — written by lib/use-centre-focus
+          on the card nearest the viewport centre. Without the second one
+          `--fr-hr` stayed at 0px forever on a phone: the full-colour <img> was
+          downloaded and never painted, so every founder read as a permanently
+          grey photograph. The touch selector hangs off the CARD (that is what
+          the hook registers) and reaches down to the portrait. */}
       <style>{`
         @property --fr-hr {
           syntax: "<length-percentage>";
@@ -499,6 +523,8 @@ export function AboutClient() {
           .founder-portrait:hover { --fr-hr: 150%; }
           .founder-portrait:hover .founder-portrait__ring { opacity: 0.9; }
         }
+        .card-steel[data-focus="true"] .founder-portrait { --fr-hr: 150%; }
+        .card-steel[data-focus="true"] .founder-portrait__ring { opacity: 0.9; }
         @media (prefers-reduced-motion: reduce) {
           .founder-portrait,
           .founder-portrait__ring { transition: none; }
