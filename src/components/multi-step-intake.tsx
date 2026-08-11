@@ -979,6 +979,7 @@ export function MultiStepIntake() {
                         onChange={(e) => update("name", e.target.value)}
                         placeholder={t.namePh}
                         autoComplete="name"
+                        autoCapitalize="words"
                         required
                         aria-invalid={errors.name ? true : undefined}
                         aria-describedby={errors.name ? errId("name") : undefined}
@@ -994,7 +995,11 @@ export function MultiStepIntake() {
                         value={data.email}
                         onChange={(e) => update("email", e.target.value)}
                         placeholder={t.emailPh}
+                        inputMode="email"
                         autoComplete="email"
+                        autoCapitalize="none"
+                        autoCorrect="off"
+                        spellCheck={false}
                         required
                         aria-invalid={errors.email ? true : undefined}
                         aria-describedby={
@@ -1030,7 +1035,14 @@ export function MultiStepIntake() {
               )}
 
               {/* Step 4 — review. Each row is its own cascade unit so the
-                  summary compiles line by line, dossier-style. */}
+                  summary compiles line by line, dossier-style.
+
+                  The rows stack below `sm`: the old fixed `10rem` label
+                  column left ~59px for the value at 375px, and since a grid
+                  `1fr` track has `min-width: auto`, one real email address
+                  pushed the whole grid — and the page — wider than the
+                  viewport (MOBILE_AUDIT D-4). `min-w-0` + `break-words` on
+                  the value keep it contained at every width. */}
               {step === 4 && (
                 <div className="space-y-4">
                   <p data-intake-field className="text-sm text-ink-mute mb-2">
@@ -1067,12 +1079,12 @@ export function MultiStepIntake() {
                       <div
                         key={row.label}
                         data-intake-field
-                        className="px-4 py-3 grid grid-cols-[10rem_1fr] gap-3 items-baseline"
+                        className="px-4 py-3 grid grid-cols-1 gap-1 sm:grid-cols-[10rem_minmax(0,1fr)] sm:gap-3 sm:items-baseline"
                       >
                         <dt className="text-[10px] font-mono uppercase tracking-[0.16em] text-ink-mute">
                           {row.label}
                         </dt>
-                        <dd className="text-sm text-ink leading-[1.5] whitespace-pre-wrap">
+                        <dd className="min-w-0 break-words text-sm text-ink leading-[1.5] whitespace-pre-wrap">
                           {row.value}
                         </dd>
                       </div>

@@ -106,6 +106,9 @@ export function ContactForm() {
           </span>
           <Input
             type="text"
+            name="name"
+            autoComplete="name"
+            autoCapitalize="words"
             value={data.name}
             onChange={(e) => handleChange("name", e.target.value)}
             required
@@ -117,6 +120,12 @@ export function ContactForm() {
           </span>
           <Input
             type="email"
+            name="email"
+            inputMode="email"
+            autoComplete="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             value={data.email}
             onChange={(e) => handleChange("email", e.target.value)}
             required
@@ -130,6 +139,8 @@ export function ContactForm() {
         </span>
         <Input
           type="text"
+          name="company"
+          autoComplete="organization"
           value={data.company}
           onChange={(e) => handleChange("company", e.target.value)}
         />
@@ -142,6 +153,8 @@ export function ContactForm() {
             : "Cosa non funziona, cosa è manuale, cosa volete portare in produzione"}
         </span>
         <Textarea
+          name="message"
+          autoComplete="off"
           value={data.message}
           onChange={(e) => handleChange("message", e.target.value)}
           rows={6}

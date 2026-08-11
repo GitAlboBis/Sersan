@@ -4,7 +4,10 @@ import { useRef, useState } from "react";
 import { ArrowRight, Check, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button, CTA_WRAP_SM } from "@/components/ui/button";
+import { Input, FIELD_CONTROL } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useLanguage } from "@/components/language-provider";
+import { getLenis } from "@/lib/lenis-singleton";
 
 /**
  * StartIntakeForm — the /start page form.
@@ -21,6 +24,14 @@ import { useLanguage } from "@/components/language-provider";
  * Submit posts to /api/intake. We don't surface field-level server errors;
  * client validation catches the common cases and the server is authoritative
  * for the rest.
+ *
+ * Controls come from the shared primitives (`ui/input`, `ui/textarea`). This
+ * form used to carry its own FIELD_BASE constant with a hardcoded
+ * `text-[14px]`, which no root-font change could reach — so every one of its
+ * 12 controls force-zoomed iOS Safari on focus, rescaling the visual
+ * viewport and desynchronising every pinned ScrollTrigger on the page
+ * (MOBILE_AUDIT D-5). `<select>` has no primitive, so it composes
+ * FIELD_CONTROL directly rather than re-forking.
  */
 
 type Situation =
@@ -154,9 +165,25 @@ type SubmitState = "idle" | "submitting" | "success" | "error";
 // when they're the flagged invalid field.
 const ERROR_ID = "intake-form-error";
 
-// Shared input styles — matches the dark surface treatment used elsewhere
-const FIELD_BASE =
-  "w-full rounded-md bg-[hsl(var(--bg))] border border-[hsl(var(--input))] px-3.5 py-2.5 text-[14px] text-ink placeholder:text-ink-mute focus:outline-none focus:border-[hsl(var(--accent)/0.65)] focus:ring-2 focus:ring-[hsl(var(--accent)/0.18)] transition-colors";
+/** `<select>` has no shared primitive, so it composes the same shell as
+ *  `<Input>` (44px tall, 16px on touch) and only adds the select-specific
+ *  bits: native chrome off, room for the chevron drawn in `SELECT_CHEVRON`.
+ *  The `focus:` pair mirrors the shell's `focus-visible:` treatment so a
+ *  pointer-opened select rings the same way it always has here. */
+const SELECT_FIELD = cn(
+  FIELD_CONTROL,
+  "block appearance-none cursor-pointer pr-8",
+  "focus:outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/30 focus:ring-offset-0",
+);
+
+/** Inline because it is a data-URI background-image, not a utility. */
+const SELECT_CHEVRON: React.CSSProperties = {
+  backgroundImage:
+    "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='none' stroke='%239aa3ad' stroke-width='1.5' d='M1 1l4 4 4-4'/></svg>\")",
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "right 12px center",
+};
+
 const LABEL =
   "block font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute mb-1.5";
 const REQ = (
@@ -164,6 +191,33 @@ const REQ = (
     *
   </span>
 );
+
+/**
+ * Move focus to a failed field without letting the browser scroll for us.
+ *
+ * `preventScroll` matters twice on a phone: the browser's own focus-scroll
+ * parks the field under the fixed navbar, and it fights Lenis, which owns
+ * the document scroll position. So we scroll deliberately and centre the
+ * control — through Lenis when it is running, natively when it is not
+ * (reduced motion tears Lenis down entirely). Same contract as
+ * multi-step-intake.tsx.
+ */
+function focusFailedField(el: HTMLElement) {
+  el.focus({ preventScroll: true });
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const lenis = getLenis();
+  if (lenis && !reduced) {
+    // Absolute target, not an element + offset: Lenis resolves element
+    // targets against layout in a way that drifts once the page is deep in
+    // its own scroll, and a number is unambiguous.
+    const rect = el.getBoundingClientRect();
+    const target =
+      window.scrollY + rect.top - (window.innerHeight - rect.height) / 2;
+    lenis.scrollTo(Math.max(0, target));
+    return;
+  }
+  el.scrollIntoView({ block: "center", behavior: "auto" });
+}
 
 export default function StartIntakeForm() {
   const { language } = useLanguage();
@@ -182,7 +236,9 @@ export default function StartIntakeForm() {
   }
 
   // Set the error + the offending field, then move focus to it so keyboard /
-  // screen-reader users are taken straight to what needs fixing.
+  // screen-reader users are taken straight to what needs fixing — and put it
+  // in the middle of the screen rather than wherever the browser drops it
+  // (see focusFailedField).
   function fail(field: keyof FormState, message: string) {
     setError(message);
     setInvalidField(field);
@@ -190,7 +246,7 @@ export default function StartIntakeForm() {
       const el = formRef.current?.elements.namedItem(field) as
         | HTMLElement
         | null;
-      el?.focus();
+      if (el) focusFailedField(el);
     });
   }
 
@@ -309,13 +365,8 @@ export default function StartIntakeForm() {
           name="situation"
           value={form.situation}
           onChange={(e) => update("situation", e.target.value as Situation)}
-          className={cn(FIELD_BASE, "appearance-none cursor-pointer pr-8")}
-          style={{
-            backgroundImage:
-              "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='none' stroke='%239aa3ad' stroke-width='1.5' d='M1 1l4 4 4-4'/></svg>\")",
-            backgroundRepeat: "no-repeat",
-            backgroundPosition: "right 12px center",
-          }}
+          className={SELECT_FIELD}
+          style={SELECT_CHEVRON}
         >
           <option value="">{isEn ? "Select…" : "Seleziona…"}</option>
           {SITUATION_OPTIONS.map((o) => (
@@ -332,43 +383,46 @@ export default function StartIntakeForm() {
           <label htmlFor="name" className={LABEL}>
             {isEn ? "Name" : "Nome"} {REQ}
           </label>
-          <input
+          <Input
             id="name"
             name="name"
             type="text"
             autoComplete="name"
+            autoCapitalize="words"
             required
             aria-invalid={invalidField === "name" || undefined}
             aria-describedby={invalidField === "name" ? ERROR_ID : undefined}
             value={form.name}
             onChange={(e) => update("name", e.target.value)}
             placeholder={isEn ? "Your full name" : "Nome e cognome"}
-            className={FIELD_BASE}
           />
         </div>
         <div>
           <label htmlFor="email" className={LABEL}>
             {isEn ? "Work email" : "Email di lavoro"} {REQ}
           </label>
-          <input
+          <Input
             id="email"
             name="email"
             type="email"
+            inputMode="email"
             autoComplete="email"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
             required
             aria-invalid={invalidField === "email" || undefined}
             aria-describedby={invalidField === "email" ? ERROR_ID : undefined}
             value={form.email}
             onChange={(e) => update("email", e.target.value)}
             placeholder={isEn ? "you@company.com" : "tu@azienda.com"}
-            className={FIELD_BASE}
           />
         </div>
         <div>
           <label htmlFor="company" className={LABEL}>
             {isEn ? "Company" : "Azienda"} {REQ}
           </label>
-          <input
+          <Input
             id="company"
             name="company"
             type="text"
@@ -379,14 +433,13 @@ export default function StartIntakeForm() {
             value={form.company}
             onChange={(e) => update("company", e.target.value)}
             placeholder={isEn ? "Company name" : "Nome dell'azienda"}
-            className={FIELD_BASE}
           />
         </div>
         <div>
           <label htmlFor="role" className={LABEL}>
             {isEn ? "Role" : "Ruolo"} {REQ}
           </label>
-          <input
+          <Input
             id="role"
             name="role"
             type="text"
@@ -397,7 +450,6 @@ export default function StartIntakeForm() {
             value={form.role}
             onChange={(e) => update("role", e.target.value)}
             placeholder={isEn ? "CTO · Head of AI · Founder" : "CTO · Head of AI · Fondatore"}
-            className={FIELD_BASE}
           />
         </div>
       </div>
@@ -410,7 +462,7 @@ export default function StartIntakeForm() {
             : "Cosa state cercando di costruire, automatizzare o sistemare?"}{" "}
           {REQ}
         </label>
-        <textarea
+        <Textarea
           id="objective"
           name="objective"
           required
@@ -424,7 +476,7 @@ export default function StartIntakeForm() {
               ? "Two or three sentences is plenty. We'll dig in on the call."
               : "Due o tre frasi bastano. Approfondiremo in call."
           }
-          className={cn(FIELD_BASE, "resize-y min-h-[8rem]")}
+          className="min-h-[8rem]"
         />
       </div>
 
@@ -442,13 +494,8 @@ export default function StartIntakeForm() {
             aria-describedby={invalidField === "stage" ? ERROR_ID : undefined}
             value={form.stage}
             onChange={(e) => update("stage", e.target.value as Stage)}
-            className={cn(FIELD_BASE, "appearance-none cursor-pointer pr-8")}
-            style={{
-              backgroundImage:
-                "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='none' stroke='%239aa3ad' stroke-width='1.5' d='M1 1l4 4 4-4'/></svg>\")",
-              backgroundRepeat: "no-repeat",
-              backgroundPosition: "right 12px center",
-            }}
+            className={SELECT_FIELD}
+            style={SELECT_CHEVRON}
           >
             <option value="" disabled>
               {isEn ? "Select…" : "Seleziona…"}
@@ -472,13 +519,8 @@ export default function StartIntakeForm() {
             aria-describedby={invalidField === "timeline" ? ERROR_ID : undefined}
             value={form.timeline}
             onChange={(e) => update("timeline", e.target.value as Timeline)}
-            className={cn(FIELD_BASE, "appearance-none cursor-pointer pr-8")}
-            style={{
-              backgroundImage:
-                "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='none' stroke='%239aa3ad' stroke-width='1.5' d='M1 1l4 4 4-4'/></svg>\")",
-              backgroundRepeat: "no-repeat",
-              backgroundPosition: "right 12px center",
-            }}
+            className={SELECT_FIELD}
+            style={SELECT_CHEVRON}
           >
             <option value="" disabled>
               {isEn ? "Select…" : "Seleziona…"}
@@ -502,13 +544,8 @@ export default function StartIntakeForm() {
             aria-describedby={invalidField === "budget" ? ERROR_ID : undefined}
             value={form.budget}
             onChange={(e) => update("budget", e.target.value as Budget)}
-            className={cn(FIELD_BASE, "appearance-none cursor-pointer pr-8")}
-            style={{
-              backgroundImage:
-                "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='none' stroke='%239aa3ad' stroke-width='1.5' d='M1 1l4 4 4-4'/></svg>\")",
-              backgroundRepeat: "no-repeat",
-              backgroundPosition: "right 12px center",
-            }}
+            className={SELECT_FIELD}
+            style={SELECT_CHEVRON}
           >
             <option value="" disabled>
               {isEn ? "Select…" : "Seleziona…"}
@@ -527,9 +564,12 @@ export default function StartIntakeForm() {
         <label htmlFor="stack" className={LABEL}>
           {isEn ? "Existing stack" : "Stack esistente"}
         </label>
-        <input
+        <Input
           id="stack"
+          name="stack"
           type="text"
+          autoComplete="off"
+          autoCapitalize="none"
           value={form.stack}
           onChange={(e) => update("stack", e.target.value)}
           placeholder={
@@ -537,7 +577,6 @@ export default function StartIntakeForm() {
               ? "e.g. Python · Postgres · OpenAI · LangChain · Vercel"
               : "es. Python · Postgres · OpenAI · LangChain · Vercel"
           }
-          className={FIELD_BASE}
         />
       </div>
       <div>
@@ -546,9 +585,11 @@ export default function StartIntakeForm() {
             ? "Compliance / security constraints"
             : "Vincoli di compliance / sicurezza"}
         </label>
-        <input
+        <Input
           id="compliance"
+          name="compliance"
           type="text"
+          autoComplete="off"
           value={form.compliance}
           onChange={(e) => update("compliance", e.target.value)}
           placeholder={
@@ -556,16 +597,23 @@ export default function StartIntakeForm() {
               ? "e.g. EU data residency · SOC2 in flight · HIPAA-adjacent"
               : "es. data residency UE · SOC2 in corso · ambito HIPAA"
           }
-          className={FIELD_BASE}
         />
       </div>
       <div>
         <label htmlFor="links" className={LABEL}>
           {isEn ? "Links or extra context" : "Link o contesto aggiuntivo"}
         </label>
-        <textarea
+        <Textarea
           id="links"
+          name="links"
           rows={3}
+          // A URL keyboard on touch — the field is a list of links, and the
+          // `.`/`/` keys are the ones that matter here.
+          inputMode="url"
+          autoComplete="off"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
           value={form.links}
           onChange={(e) => update("links", e.target.value)}
           placeholder={
@@ -573,7 +621,7 @@ export default function StartIntakeForm() {
               ? "Loom · repo · doc · deck. Anything that helps us read in."
               : "Loom · repo · doc · deck. Qualsiasi cosa ci aiuti a entrare nel contesto."
           }
-          className={cn(FIELD_BASE, "resize-y min-h-[6rem]")}
+          className="min-h-[6rem]"
         />
       </div>
 

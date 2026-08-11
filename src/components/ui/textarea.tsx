@@ -1,15 +1,19 @@
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
+import { FIELD_SHELL } from "@/components/ui/input";
 
+/**
+ * Textarea — the multi-line member of the same shell as `<Input>`
+ * (see FIELD_SHELL in ui/input.tsx for why `text-base md:text-sm` is
+ * load-bearing rather than cosmetic). Height comes from `min-h-[100px]`,
+ * which callers override through `className`.
+ */
 const Textarea = React.forwardRef<HTMLTextAreaElement, React.ComponentProps<"textarea">>(
   ({ className, ...props }, ref) => {
     return (
       <textarea
-        className={cn(
-          "flex min-h-[100px] w-full rounded-lg border border-[hsl(var(--input))] bg-surface px-3.5 py-2.5 text-base ring-offset-background transition-colors placeholder:text-ink-mute hover:border-[hsl(var(--input))] focus-visible:outline-none focus-visible:border-primary/60 focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm resize-y",
-          className,
-        )}
+        className={cn(FIELD_SHELL, "flex min-h-[100px] py-2.5 resize-y", className)}
         ref={ref}
         {...props}
       />
