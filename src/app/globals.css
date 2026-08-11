@@ -791,9 +791,9 @@ img { height: auto; max-width: 100%; }
     pointer-events: none;
   }
 }
+/* Touch/RM: no distortion canvas mounts. Keep a calm static fade only — drop
+   the scale + zoom transitions so the imagery just appears under the scrim. */
 @media (prefers-reduced-motion: reduce) {
-  /* Touch/RM: no distortion canvas mounts. Keep a calm static fade only — drop
-     the scale + zoom transitions so the imagery just appears under the scrim. */
   .card-image-distort__img,
   .card-image-distort__canvas,
   .card-image-distort__scrim {
@@ -1602,22 +1602,22 @@ html.cursor-none [contenteditable="true"] {
  * since outside a coarse pointer none of these declarations exist.
  * ========================================================================== */
 
+/* --- M-4 · the press pose ------------------------------------------------
+   lib/use-press-state.ts writes `data-pressed` plus --press-x/--press-y (the
+   touch point, element-local px); everything visible is here. The pose uses
+   the standalone `scale` property, NOT `transform`, so it composes with
+   whatever transform a consumer already owns (the footer link's 2px hover
+   shift, GSAP's y/opacity entrances) instead of overwriting it.
+
+   Asymmetric on purpose, same grammar as ui/button.tsx: the compression and
+   the glow answer in ~100ms (a press must feel instant), and the release
+   trails at 240/320ms so letting go reads as a settle, not a snap.
+
+   A `transition` shorthand REPLACES the one the consumer already had, so the
+   colour trio is re-declared here rather than silently dropped — the filter
+   pills change border/background/text when they become active, and that is a
+   real state change on touch, not a hover leftover. */
 @media (pointer: coarse) {
-  /* --- M-4 · the press pose ------------------------------------------------
-     lib/use-press-state.ts writes `data-pressed` plus --press-x/--press-y (the
-     touch point, element-local px); everything visible is here. The pose uses
-     the standalone `scale` property, NOT `transform`, so it composes with
-     whatever transform a consumer already owns (the footer link's 2px hover
-     shift, GSAP's y/opacity entrances) instead of overwriting it.
-
-     Asymmetric on purpose, same grammar as ui/button.tsx: the compression and
-     the glow answer in ~100ms (a press must feel instant), and the release
-     trails at 240/320ms so letting go reads as a settle, not a snap.
-
-     A `transition` shorthand REPLACES the one the consumer already had, so the
-     colour trio is re-declared here rather than silently dropped — the filter
-     pills change border/background/text when they become active, and that is a
-     real state change on touch, not a hover leftover. */
   .press-surface {
     position: relative;
     transition:
