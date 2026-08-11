@@ -161,23 +161,36 @@ import { cn } from "@/lib/utils";
  *     the REAL tunnel plunge still runs (raw WebGL1).
  *   createPreloaderTunnel returns null    → graft 5: the veil carries the
  *     entry alone — a dark plunge, never a dead cut.
- *   coarse pointer / <1024px + motion-ok  → THE PHONE BEAT (Phase 4). Panel
- *     05 renders as a normal fully-readable VERTICAL section (CTAs work,
- *     copy identical), then a 130svh runway over a 100svh sticky Stage
- *     carries one continuous scrub-linked move: the hole approaches on the
- *     same 1/d law while the raw-WebGL1 point tunnel spins up from drift to
- *     light speed, a #000 radial veil closes the frame on a colour seam with
- *     the hole's core, and the streaks die inside the black while a flat
- *     page-navy cover normalises the frame for the handoff to the divario.
+ *   coarse pointer / <1024px + motion-ok  → THE PHONE BEAT
+ *     (MOBILE_HOME_SPEC.md §3). Panel 05 is the PINNED FOREGROUND PLATE of
+ *     the beat, not a vertical block sitting above it: `.seq-stage` goes
+ *     sticky 100svh, the three decorative lite layers move INSIDE it (behind
+ *     the copy), and `[data-seq-lite-run]` becomes an empty 80svh spacer. One
+ *     180svh section ⇒ 80svh ≈ 675px of scrub travel (2.67× the 253px the
+ *     beat had when the panel was a separate section above the runway):
+ *       t 0.00–0.20  HOLD — panel 05 legible, motionless and INTERACTIVE;
+ *                    the hole sits behind the type at 15svh / alpha 0.35.
+ *       t 0.20–0.34  HANDOFF — copy fades on the spine's entry-Y grammar run
+ *                    in reverse, the hole's alpha lifts to 1: the copy
+ *                    dissolves and the hole takes the frame it sat in.
+ *       t 0.34–0.80  DIVE — the 1/d law (15→170svh, max upscale 1.77×) while
+ *                    the raw-WebGL1 point tunnel spins up to warp 60.
+ *       t 0.70–0.90  ENTRY — the #000 radial veil closes on a colour seam
+ *                    with the hole's core; `liteSwallow` runs 0→1 here and
+ *                    SignatureLine's filament is extinguished with it.
+ *       t 0.88–0.98  ARRIVAL — streaks die inside the black, the flat
+ *                    page-navy cover normalises the frame so the stage
+ *                    unpins into the divario with no visible edge.
  *     NO input lock, NO covert jump: touch keeps native scrolling
  *     (MOBILE_AUDIT.md §5), so the desktop one-shot's wheel/touchmove hijack
  *     is deliberately absent and every layer stays a pure function of
- *     progress. This branch measures in svh, NOT vh — its runway and its
- *     sticky stage are the only sticky geometry a touch user reaches, and vh
- *     (the large, bar-hidden viewport) made both jump when the address bar
- *     collapsed (D-7). Desktop below stays on vh: there is no dynamic browser
- *     chrome to be immune to, and the 380vh runway / −100vh handoff / 100vh
- *     stage are a matched set.
+ *     progress — the whole beat reverses cleanly and needs no state machine.
+ *     This branch measures in svh, NOT vh — its runway and its sticky stage
+ *     are the only sticky geometry a touch user reaches, and vh (the large,
+ *     bar-hidden viewport) made both jump when the address bar collapsed
+ *     (D-7). Desktop below stays on vh: there is no dynamic browser chrome to
+ *     be immune to, and the 380vh runway / −100vh handoff / 100vh stage are a
+ *     matched set.
  *     ── THE CAPABILITY DECISION ──────────────────────────────────────────
  *     The TSL raymarch (SequenceSingularity) is deliberately NOT mounted on
  *     phones and tierStore is deliberately NOT touched. Three reasons, in
@@ -201,8 +214,48 @@ import { cn } from "@/lib/utils";
  *   prefers-reduced-motion / no JS        → the static vertical section 05
  *     + a static 60vh deep-navy gradient spacer. No transforms, no tunnel,
  *     no canvas (CanvasHost renders nothing at tier "off"). Untouched.
- * Decorative layers ONLY (imposter, veil, pulse, tunnel host, phone stage,
- * spacer) are aria-hidden — panel 05 is real content on every path.
+ * Decorative layers ONLY (imposter, veil, pulse, tunnel host, lite layers,
+ * lite spacer) are aria-hidden — panel 05 is real content on every path.
+ *
+ * ╔═══════════════════════════════════════════════════════════════════════╗
+ * ║ THE ACCESSIBILITY CONTRACT — the pinned phone beat                    ║
+ * ║ (MOBILE_HOME_SPEC.md §3.3; written before the restructure was cut)    ║
+ * ╚═══════════════════════════════════════════════════════════════════════╝
+ * Panel 05 carries the ONLY copy in this section. Pinning it must never make
+ * it unreachable. Five clauses, all enforced below:
+ *
+ *   1. PANEL 05's JSX DOES NOT MOVE. It stays
+ *      `.seq-stage > [data-seq-track] > [data-seq-panel]`, and NO ancestor of
+ *      it is ever aria-hidden or inert. What moved is the decorative trio
+ *      (hole frame / veil / cover), out of the runway wrapper and into a new
+ *      `.seq-lite-layers` sibling INSIDE the stage.
+ *   2. `[data-seq-lite-run]` — the one wrapper that IS aria-hidden — now
+ *      contains nothing at all. It is an empty spacer.
+ *   3. The only new aria-hidden node is `.seq-lite-layers`, which carries no
+ *      text and no focusable descendants.
+ *   4. `setPanelInteractive(on)` is the SAME grammar as the desktop path
+ *      (pointer-events + inert + aria-hidden, flipped together), driven by
+ *      `on = copyOpacity > LITE_PANEL_LIT_MIN` so the aria state always
+ *      MATCHES the visual state and never leads it. Because copyOpacity is a
+ *      pure function of scrub progress, a reverse scrub restores the panel to
+ *      interactive on the identical threshold — no state machine, no latch.
+ *      Through the whole HOLD band (t < 0.20 — 135px of scroll) the H2, body,
+ *      proof chips and BOTH CTAs are in the accessibility tree, focusable,
+ *      and tappable.
+ *   5. OVERFLOW IS NEVER TRUNCATION. The pinned panel must fit
+ *      `100svh − header`. If it ever does not (the measured worst case is
+ *      360×640 in IT), `LITE_PANEL_SCROLL` arms automatically — the track
+ *      becomes `overflow-y:auto; overscroll-behavior:contain` + top-aligned
+ *      and takes `data-lenis-prevent`, so the copy is scrollable inside the
+ *      pinned stage. It is measured, not assumed, and re-measured on every
+ *      ScrollTrigger refresh; it arms ONLY when the content genuinely
+ *      overflows, because `data-lenis-prevent` on a non-scrollable element
+ *      would swallow the wheel on a narrow fine-pointer window (which also
+ *      reaches this branch) and freeze the page.
+ *
+ * Reduced motion never enters this branch at all (the whole block lives
+ * inside `if (!c.motionOk) return`), so an RM screen-reader user reads panel
+ * 05 as a plain vertical section with a static gradient spacer below it.
  */
 
 if (typeof window !== "undefined") {
@@ -228,6 +281,17 @@ const MOTION_OK_MQ = "(prefers-reduced-motion: no-preference)";
 // ── Owner tuning knobs (one-line tuning at review) ──────────────────────────
 /** Panel 05 leaves the focus order / a11y tree below this opacity. */
 const PANEL_LIT_MIN = 0.6;
+/**
+ * The same threshold on the PINNED PHONE BEAT, and deliberately far lower.
+ * On desktop the panel's exit verb is a horizontal track-off: by opacity 0.6
+ * it has already left the frame, so keeping it focusable would put a tab stop
+ * off-screen. On the phone beat the panel never travels — it fades IN PLACE
+ * under the reader's thumb — so the honest rule is "reachable for as long as
+ * it is visible at all" (MOBILE_HOME_SPEC.md §3.3: inert fires when
+ * copyOpacity < 0.05). Anything higher would strip the CTAs from the a11y
+ * tree while they are still legibly on screen.
+ */
+const LITE_PANEL_LIT_MIN = 0.05;
 /**
  * Graft 7 — owner-gated horizon pulse (ship dark by default): a restrained
  * #EAF6FF luminance veil BELOW the tunnel canvas so the additive cyan/white
@@ -468,29 +532,37 @@ export default function SingularityPassage() {
           if (!c.motionOk) return;
 
           // ==================================================================
-          // PHONE / COARSE — THE PASSAGE, ON A PHONE (Phase 4)
+          // PHONE / COARSE — THE PASSAGE, ON A PHONE
           // ==================================================================
-          // Panel 05 stays a normal vertical section in flow above (default
-          // CSS, CTAs live, copy untouched). What follows it used to be
-          // ~180svh of aria-hidden nothing; it is now a 130svh runway over a
-          // 100svh sticky Stage carrying ONE continuous, scrub-linked,
-          // accelerating move:
+          // MOBILE_HOME_SPEC.md §3. Panel 05 is no longer a vertical block
+          // sitting ABOVE an aria-hidden runway — it is the PINNED FOREGROUND
+          // PLATE of the beat. `.seq-stage` goes sticky 100svh, the three
+          // decorative lite layers sit inside it behind the copy, and
+          // `[data-seq-lite-run]` is an empty 80svh spacer. ONE 180svh
+          // section ⇒ 80svh ≈ 675px of scrub travel (2.67× the old 253px):
           //
-          //   t 0.00–0.10  the hole arrives already legible (22svh) and the
-          //                star field fades up at drift speed.
-          //   t 0.10–0.72  APPROACH + SPIN-UP — the hole grows on the 1/d
-          //                divergence law while the warp climbs to
+          //   t 0.00–0.20  HOLD — 135px of scroll where nothing but reading
+          //                happens: copy motionless, both CTAs live, the hole
+          //                a dark 15svh well under the type at alpha 0.35.
+          //   t 0.20–0.34  HANDOFF — copyOpacity 1→0 (the spine's entry-Y
+          //                grammar in reverse) while the hole's alpha lifts to
+          //                1: the copy dissolves and the hole takes the frame
+          //                it was sitting in. The panel goes inert on the same
+          //                pure function (see THE ACCESSIBILITY CONTRACT).
+          //   t 0.34–0.80  DIVE + SPIN-UP — the 1/d divergence law
+          //                (15→170svh) while the warp climbs to
           //                LITE_WARP_PEAK; the streaks stretch to light speed.
-          //   t 0.62–0.86  ENTRY — the #000 radial veil closes over the frame
-          //                on a colour seam with the hole's own core.
-          //   t 0.84–0.98  ARRIVAL — the streaks die inside the black and a
+          //   t 0.70–0.90  ENTRY — the #000 radial veil closes on a colour
+          //                seam with the hole's own core, and `liteSwallow`
+          //                extinguishes the signature line inside it.
+          //   t 0.88–0.98  ARRIVAL — the streaks die inside the black and a
           //                flat page-navy cover normalises the frame, so the
-          //                sticky stage scrolls away into the divario with no
+          //                sticky stage unpins into the divario with no
           //                visible edge.
           //
-          // The whole payoff completes by t ≈ 0.86 on purpose: [measured] the
-          // scrub is 253px at 390×844, so the tail is where a flick's momentum
-          // skips frames, and nothing the viewer needs to see may live there.
+          // The payoff still completes before the tail on purpose: the last
+          // 2% is only the arrival normalising, and the tail of a flick is
+          // where momentum is most likely to skip frames.
           //
           // NO input lock and NO covert jump. The desktop one-shot hijacks
           // wheel + touchmove for ~6.9s; on touch that fights iOS momentum,
@@ -499,6 +571,11 @@ export default function SingularityPassage() {
           // function of ScrollTrigger progress, so it reverses cleanly and
           // needs no state machine.
           if (!c.desktop || !c.fine) {
+            const liteStage = root.querySelector<HTMLElement>(".seq-stage");
+            const liteTrack =
+              root.querySelector<HTMLElement>("[data-seq-track]");
+            const litePanel =
+              root.querySelector<HTMLElement>("[data-seq-panel]");
             const liteRun = root.querySelector<HTMLElement>(
               "[data-seq-lite-run]",
             );
@@ -512,11 +589,22 @@ export default function SingularityPassage() {
             const host = root.querySelector<HTMLElement>(
               "[data-seq-tunnel-host]",
             );
-            if (!liteRun || !hole || !veil || !cover || !host) return;
+            if (
+              !liteStage ||
+              !liteTrack ||
+              !litePanel ||
+              !liteRun ||
+              !hole ||
+              !veil ||
+              !cover ||
+              !host
+            )
+              return;
 
             root.setAttribute("data-on", "lite");
+            useSeqStore.setState({ lite: true, liteSwallow: 0 });
 
-            // ── THE STAGE (M-1 contract), and why the runway is 130svh ─────
+            // ── THE STAGE (M-1 contract), and why the spacer is 80svh ──────
             // `vh` is the LARGE viewport (address bar hidden), so a runway
             // written in vh over a sticky stage is taller than what the user
             // can actually see while the bar is up, and the frame jumps the
@@ -529,11 +617,15 @@ export default function SingularityPassage() {
             // rather than a mid-scroll rewrite. Stage height is 100svh for
             // the same reason.
             //
-            // 130svh (was 180): the stage owns 100 of it, so the SCRUB
-            // TRAVEL is 30svh ≈ 253px at 390×844 — one deliberate thumb drag.
-            // That budget is why this is one move and not five chapters.
+            // LITE_RUN_SVH (180) is the height of the WHOLE section now. The
+            // sticky stage owns 100 of it in CSS — panel 05 rides inside that
+            // stage — so this spacer is exactly the remainder, and the SCRUB
+            // TRAVEL is that remainder: 80svh ≈ 675px at 390×844. Writing it
+            // as `LITE_RUN_SVH - 100` keeps the section total in ONE constant
+            // (a spacer written independently would silently desync from the
+            // 100svh stage the CSS pins).
             const size = () => {
-              liteRun.style.height = `${SEQ.LITE_RUN_SVH}svh`;
+              liteRun.style.height = `${SEQ.LITE_RUN_SVH - 100}svh`;
             };
             size();
             ScrollTrigger.addEventListener("refreshInit", size);
@@ -547,12 +639,79 @@ export default function SingularityPassage() {
             const coverSet = gsap.quickSetter(cover, "opacity") as (
               v: number,
             ) => void;
+            // Panel 05's copy handoff — the SAME two writers the desktop
+            // compose() uses (opacity + the spine StagePanel's (1−α)·16px
+            // entry offset), run in reverse as the copy dissolves in place.
+            const panelAlphaLite = gsap.quickSetter(litePanel, "opacity") as (
+              v: number,
+            ) => void;
+            const panelYLite = gsap.quickSetter(litePanel, "y", "px") as (
+              v: number,
+            ) => void;
             gsap.set(hole, {
               scale: SEQ.LITE_HOLE_START_VH / SEQ.LITE_HOLE_BASE_VH,
               opacity: 0,
             });
             gsap.set(veil, { opacity: 0 });
             gsap.set(cover, { opacity: 0 });
+            // opacity 1 / y 0 is the panel's REST pose (t ≤ HOLD_END). Set it
+            // explicitly so an arm mid-section can never leave a stale
+            // desktop-path pose on a node that is now the reading plate; the
+            // prime apply() below immediately re-applies the true t-state.
+            gsap.set(litePanel, { opacity: 1, y: 0 });
+
+            // ── Panel 05 interactivity — clause 4 of THE ACCESSIBILITY
+            // CONTRACT (file header). Byte-for-byte the desktop helper's
+            // grammar: pointer-events + inert + aria-hidden flipped together,
+            // so the a11y state can never disagree with the visual one. ─────
+            let liteLit: boolean | null = null;
+            const setPanelInteractive = (on: boolean) => {
+              if (on === liteLit) return;
+              liteLit = on;
+              litePanel.style.pointerEvents = on ? "auto" : "none";
+              (litePanel as HTMLElement & { inert: boolean }).inert = !on;
+              if (on) litePanel.removeAttribute("aria-hidden");
+              else litePanel.setAttribute("aria-hidden", "true");
+            };
+
+            // Focusin net (credibility-strip lineage, same as the desktop
+            // stage): the stage is overflow:hidden and now contains the two
+            // real CTAs, so a focus landing inside it could let the browser
+            // shear the whole composition via native scroll-into-view.
+            const onLiteFocusIn = () => {
+              liteStage.scrollLeft = 0;
+              liteStage.scrollTop = 0;
+            };
+            liteStage.addEventListener("focusin", onLiteFocusIn);
+
+            // ── LITE_PANEL_SCROLL — clause 5 of the contract: overflow is
+            // never truncation. Measured, never assumed, and re-measured on
+            // every ScrollTrigger refresh (font swap, EN↔IT, rotation). It
+            // arms ONLY on genuine overflow because `data-lenis-prevent` on a
+            // non-scrollable node would swallow the wheel on the narrow
+            // fine-pointer windows that also reach this branch. ─────────────
+            const measureOverflow = () => {
+              // Measured against the panel's own border box vs the track's
+              // padding box (the track's padding is a constant of the lite
+              // layout, NOT something the guard changes) — so the predicate is
+              // history-independent and can never flap between the armed and
+              // unarmed poses.
+              const cs = getComputedStyle(liteTrack);
+              const pad =
+                (Number.parseFloat(cs.paddingTop) || 0) +
+                (Number.parseFloat(cs.paddingBottom) || 0);
+              const overflows =
+                litePanel.getBoundingClientRect().height >
+                liteTrack.clientHeight - pad + 1;
+              if (overflows === (root.dataset.liteScroll === "1")) return;
+              if (overflows) {
+                root.dataset.liteScroll = "1";
+                liteTrack.setAttribute("data-lenis-prevent", "");
+              } else {
+                delete root.dataset.liteScroll;
+                liteTrack.removeAttribute("data-lenis-prevent");
+              }
+            };
 
             // ── THE CAPABILITY DECISION (narrow, additive, module-local) ───
             // The heavy TSL raymarch (SequenceSingularity) is NOT mounted
@@ -578,8 +737,9 @@ export default function SingularityPassage() {
 
             // ── Star-field state. Everything the frame loop needs lives in
             // these locals: the scrub writes them, the rAF reads them, and
-            // nothing round-trips through a store (the phone beat publishes
-            // nothing to seqStore — see that module's header). ─────────────
+            // nothing round-trips through a store (the beat's only two
+            // published scalars, `lite` and `liteSwallow`, are write-only
+            // outputs for SignatureLine — see seqStore's header). ──────────
             let tunnel: PreloaderTunnel | null = null;
             let tunnelCanvas: HTMLCanvasElement | null = null;
             let lastAlpha = -1;
@@ -715,11 +875,32 @@ export default function SingularityPassage() {
                 .setDprCap(on ? SEQ.LITE_DPR_CAP : null);
             };
 
+            /** Last published `liteSwallow` — the store write is skipped when
+             * the value has not moved (zustand notifies on every setState,
+             * and a scrub ticks at frame rate). */
+            let swallowPublished = -1;
+
             // ── The single evaluator: every layer is a pure function of t ──
             const apply = (t: number) => {
+              // ── THE COPY HANDOFF (t HOLD_END → COPY_OUT_END) ────────────
+              // The panel dissolves IN PLACE — it never travels (the desktop
+              // grammar's horizontal track-off has no meaning on a frame this
+              // narrow) — on the spine StagePanel's exact (1−α)·16px entry
+              // offset, run in reverse. Interactivity follows the same pure
+              // function, so a reverse scrub restores it on the identical
+              // threshold: contract clause 4, no latch, no state machine.
+              const copyOpacity =
+                1 - seqSmooth(t, SEQ.LITE_HOLD_END, SEQ.LITE_COPY_OUT_END);
+              panelAlphaLite(copyOpacity);
+              panelYLite((1 - copyOpacity) * 16);
+              setPanelInteractive(copyOpacity > LITE_PANEL_LIT_MIN);
+
               // The physics rule on a div: apparent = START·(END/START)^u
               // with u = t^POW — exponential growth in an accelerating clock,
-              // i.e. d ∝ 1/apparent closing on the horizon.
+              // i.e. d ∝ 1/apparent closing on the horizon. Max upscale of
+              // the composited layer is 170/96 = 1.77×, and it is scaled DOWN
+              // (sharp) until t ≈ 0.834 — by which point the veil below is
+              // already ~70% closed.
               const u = Math.pow(t, SEQ.LITE_HOLE_EASE_POW);
               const apparent =
                 SEQ.LITE_HOLE_START_VH *
@@ -729,11 +910,26 @@ export default function SingularityPassage() {
                 );
               holeSet({
                 scale: apparent / SEQ.LITE_HOLE_BASE_VH,
-                opacity: seqRamp(t, 0, SEQ.LITE_HOLE_IN_END),
+                // A dark well under live type through the hold, lifting to
+                // full exactly as the copy dissolves.
+                opacity:
+                  SEQ.LITE_HOLE_HOLD_ALPHA * seqRamp(t, 0, SEQ.LITE_HOLE_IN_END) +
+                  (1 - SEQ.LITE_HOLE_HOLD_ALPHA) *
+                    seqSmooth(t, SEQ.LITE_HOLD_END, SEQ.LITE_COPY_OUT_END),
               });
-              veilSetLite(
-                seqSmooth(t, SEQ.LITE_VEIL_START, SEQ.LITE_VEIL_END),
+              // THE SWALLOW: the veil's own curve, published for
+              // SignatureLine (the filament is extinguished inside the hole,
+              // not merely covered by it).
+              const swallow = seqSmooth(
+                t,
+                SEQ.LITE_VEIL_START,
+                SEQ.LITE_VEIL_END,
               );
+              veilSetLite(swallow);
+              if (swallow !== swallowPublished) {
+                swallowPublished = swallow;
+                useSeqStore.setState({ liteSwallow: swallow });
+              }
               coverSet(
                 seqSmooth(t, SEQ.LITE_COVER_START, SEQ.LITE_COVER_END),
               );
@@ -742,10 +938,17 @@ export default function SingularityPassage() {
                 SEQ.WARP_MIN +
                 (SEQ.LITE_WARP_PEAK - SEQ.WARP_MIN) *
                   seqSmooth(t, SEQ.LITE_WARP_START, SEQ.LITE_WARP_END);
+              // The field arrives WITH THE DIVE, not under the copy: the
+              // tunnel host is a fixed z-40 layer (that is what lets the
+              // streaks cover the full VISUAL viewport, and what puts them
+              // INSIDE the veil's black later), so it paints over the pinned
+              // panel and may not be lit while the copy is being read. The
+              // ramp therefore opens at HOLD_END and completes at
+              // TUNNEL_IN_END — the stars rise exactly as the copy dissolves.
               alphaWanted = tunnelDead
                 ? 0
                 : SEQ.LITE_TUNNEL_ALPHA *
-                  seqRamp(t, 0, SEQ.LITE_TUNNEL_IN_END) *
+                  seqRamp(t, SEQ.LITE_HOLD_END, SEQ.LITE_TUNNEL_IN_END) *
                   (1 -
                     seqRamp(
                       t,
@@ -766,15 +969,23 @@ export default function SingularityPassage() {
             // ── Approach band: build the tunnel + assert the DPR cap ONE
             // VIEWPORT early, tear both down on leave.
             //
-            // The band is the RUNWAY, not the whole section: panel 05 above
-            // it is real reading content and the persistent canvas still
-            // draws the signature line behind it, so the DPR cap must not
-            // start there. [measured] the R3F backing store goes 780×1688
-            // (DPR 2) → 390×844 (DPR 1) on this edge — a 4× cut in the
-            // canvas's pixel count, taken before the beat asks the GPU for
-            // the point tunnel and three composited full-frame layers.
+            // Both triggers key off ROOT now, not the spacer. The spacer sits
+            // BELOW the sticky stage, so keying the scrub to it would arm a
+            // viewport late and scrub against the wrong element entirely (the
+            // stage is pinned for the whole of the spacer's travel). Root's
+            // "top top → bottom bottom" is exactly the sticky stage's pinned
+            // window: 180svh section − 100svh stage = 80svh of travel.
+            //
+            // The band edge ("top bottom") is one viewport before the pin
+            // begins — a calm moment, which is the point: [measured] the R3F
+            // backing store goes 780×1688 (DPR 2) → 390×844 (DPR 1) on this
+            // edge, a 4× cut in the canvas's pixel count, and that swapchain
+            // realloc must never land mid-beat. It is taken before the beat
+            // asks the GPU for the point tunnel and three composited
+            // full-frame layers; nothing on the persistent canvas is legible
+            // behind the pinned plate anyway.
             const bandST = ScrollTrigger.create({
-              trigger: liteRun,
+              trigger: root,
               start: "top bottom",
               end: "bottom top",
               onToggle: (self) => {
@@ -789,7 +1000,7 @@ export default function SingularityPassage() {
             });
 
             const st = ScrollTrigger.create({
-              trigger: liteRun,
+              trigger: root,
               start: "top top",
               end: "bottom bottom",
               scrub: true,
@@ -797,10 +1008,15 @@ export default function SingularityPassage() {
               onUpdate: (self) => apply(self.progress),
             });
 
-            // Re-fit the tunnel's drawing buffer on the same edge every other
-            // cached measurement uses (never in a frame loop).
-            const onRefresh = () => tunnel?.resize();
+            // Re-fit the tunnel's drawing buffer — and re-test the panel's
+            // overflow guard — on the same edge every other cached
+            // measurement uses (never in a frame loop).
+            const onRefresh = () => {
+              tunnel?.resize();
+              measureOverflow();
+            };
             ScrollTrigger.addEventListener("refresh", onRefresh);
+            measureOverflow();
 
             // Prime against the current scroll position (SPA nav / scroll
             // restoration can land mid-passage).
@@ -822,9 +1038,21 @@ export default function SingularityPassage() {
               bandST.kill();
               ScrollTrigger.removeEventListener("refreshInit", size);
               ScrollTrigger.removeEventListener("refresh", onRefresh);
+              liteStage.removeEventListener("focusin", onLiteFocusIn);
               root.removeAttribute("data-on");
               liteRun.style.height = "";
               gsap.set([hole, veil, cover], { clearProps: "opacity,transform" });
+              // Panel 05 is REAL content on every layout this node can flip
+              // into (static, reduced-motion, desktop) — hand it back with no
+              // trace of the pinned pose: no inline opacity/transform, no
+              // inert, no aria-hidden, no scroll guard.
+              gsap.set(litePanel, { clearProps: "opacity,transform" });
+              litePanel.style.pointerEvents = "";
+              (litePanel as HTMLElement & { inert: boolean }).inert = false;
+              litePanel.removeAttribute("aria-hidden");
+              delete root.dataset.liteScroll;
+              liteTrack.removeAttribute("data-lenis-prevent");
+              useSeqStore.setState({ lite: false, liteSwallow: 0 });
             };
           }
 
@@ -1713,12 +1941,52 @@ export default function SingularityPassage() {
 
   return (
     <section ref={rootRef} id="singularity-passage" className="seq-root relative">
-      {/* ── The stage. Default (SSR / no-JS / reduced-motion / lite): a
-          normal vertical section — panel 05 fully readable, CTAs live.
-          data-on="seq": CSS-sticky viewport, the track goes horizontal. ── */}
+      {/* ── The stage. Default (SSR / no-JS / reduced-motion): a normal
+          vertical section — panel 05 fully readable, CTAs live.
+          data-on="seq":  CSS-sticky viewport, the track goes horizontal.
+          data-on="lite": CSS-sticky 100svh viewport and panel 05 becomes the
+          PINNED FOREGROUND PLATE, with the decorative lite layers below it
+          inside this same stage. ─────────────────────────────────────────── */}
       <div className="seq-stage">
+        {/* ── THE PHONE BEAT's decorative layers (MOBILE_HOME_SPEC.md §3.2).
+            They live INSIDE the stage — behind [data-seq-track], which is
+            why they are emitted before it — so the hole is the frame panel
+            05 sits in and then dissolves into, instead of a decoration
+            hanging a viewport below the copy.
+
+            This wrapper is the ONLY new aria-hidden node and it carries no
+            text and no focusable descendants (contract clause 3). Panel 05's
+            own JSX below is untouched by the restructure (clause 1).
+
+            SAFE AREA: the stage is deliberately FULL-BLEED under the display
+            cutout and the home indicator, and carries no safe-area padding.
+            layout.tsx sets viewportFit:"cover", so a decorative frame that
+            stopped at the insets would leave an unpainted strip at the notch
+            exactly when the black is supposed to have sealed the frame — the
+            opposite of what padding buys a readable element. 100svh spans the
+            full layout viewport including the insets, so the seal is complete.
+            The composition is centred on the GEOMETRIC viewport centre rather
+            than the optical centre of the safe area, because the tunnel's
+            particle vanishing point and zoom-blur centre are locked to 0.5/0.5
+            (setCenter, in the coarse branch) and the two must agree — the
+            residual optical error on a notched phone is (safe-t − safe-b)/2
+            ≈ 6px, an order of magnitude below the beat's own motion.
+            ───────────────────────────────────────────────────────────── */}
+        <div aria-hidden="true" className="seq-lite-layers">
+          <div className="seq-lite-frame">
+            <div data-seq-lite-hole className="seq-lite-hole" />
+          </div>
+          {/* ENTRY — #000 radial, the same black as the hole's core, so the
+              coverage completes on a colour seam (the desktop veil's trick). */}
+          <div data-seq-lite-veil className="seq-lite-veil" />
+          {/* ARRIVAL — flat page navy, so the sticky stage can scroll away
+              into the divario with no visible edge. */}
+          <div data-seq-cover className="seq-cover" />
+        </div>
+
         {/* The horizontal DOM track — panel 05 is its first (and only)
-            panel: the foreground plate of the lateral tracking shot. */}
+            panel: the foreground plate of the lateral tracking shot on
+            desktop, and the pinned reading plate on the phone beat. */}
         <div data-seq-track className="seq-track">
           <div className="container-px w-full">
             <div data-seq-panel className="seq-panel max-w-[42rem]">
@@ -1782,40 +2050,16 @@ export default function SingularityPassage() {
           fade-through between section 05 above and the divario. Decorative. */}
       <div aria-hidden="true" className="seq-static" />
 
-      {/* ── THE PHONE STAGE (Phase 4) — the 130svh runway below the vertical
-          panel 05. Decorative throughout.
-
-          SAFE AREA: the stage is deliberately FULL-BLEED under the display
-          cutout and the home indicator, and carries no safe-area padding.
-          layout.tsx sets viewportFit:"cover", so a decorative frame that
-          stopped at the insets would leave an unpainted strip at the notch
-          exactly when the black is supposed to have sealed the frame — the
-          opposite of what padding buys a readable element. 100svh spans the
-          full layout viewport including the insets, so the seal is complete.
-          The composition is centred on the GEOMETRIC viewport centre rather
-          than the optical centre of the safe area, because the tunnel's
-          particle vanishing point and zoom-blur centre are locked to 0.5/0.5
-          (setCenter, in the branch above) and the two must agree — the
-          residual optical error on a notched phone is (safe-t − safe-b)/2
-          ≈ 6px, an order of magnitude below the beat's own motion.
-          ────────────────────────────────────────────────────────────── */}
-      <div data-seq-lite-run aria-hidden="true" className="seq-lite-run">
-        {/* 100svh, never 100vh: `vh` is the LARGE mobile viewport, which
-            overflows the visible area while the address bar is up and jumps
-            when it collapses. This is the only sticky stage a touch user
-            reaches (D-7). */}
-        <div className="seq-lite">
-          <div className="seq-lite-frame">
-            <div data-seq-lite-hole className="seq-lite-hole" />
-          </div>
-          {/* ENTRY — #000 radial, the same black as the hole's core, so the
-              coverage completes on a colour seam (the desktop veil's trick). */}
-          <div data-seq-lite-veil className="seq-lite-veil" />
-          {/* ARRIVAL — flat page navy, so the sticky stage can scroll away
-              into the divario with no visible edge. */}
-          <div data-seq-cover className="seq-cover" />
-        </div>
-      </div>
+      {/* ── THE PHONE BEAT's runway: an EMPTY spacer (MOBILE_HOME_SPEC.md
+          §3.2). Its height — LITE_RUN_SVH − 100, written by size() in svh —
+          is the beat's scrub travel: the sticky 100svh stage above stays
+          pinned for exactly this distance. It holds nothing at all, which is
+          what makes the one aria-hidden wrapper in this section harmless:
+          every pixel of copy now lives in the pinned stage (contract clause
+          2). Measured in svh, never vh — `vh` is the LARGE mobile viewport,
+          which overflows the visible area while the address bar is up and
+          jumps when it collapses (D-7). ──────────────────────────────── */}
+      <div data-seq-lite-run aria-hidden="true" className="seq-lite-run" />
 
       {/* ── Fixed overlays (desktop sequence only; below the z-50 navbar).
           Fixed, not in-stage: they must hold the frame THROUGH the covert
@@ -1847,9 +2091,24 @@ export default function SingularityPassage() {
             transparent
           );
         }
-        .seq-lite-run { display: none; position: relative; }
+        /* An empty spacer: it holds no layer, so it needs no positioning —
+           the sticky role it used to carry moved to .seq-stage. */
+        .seq-lite-run { display: none; }
+        /* pointer-events:none is LOAD-BEARING, not hygiene: two of these
+           layers (veil z3, cover z4) paint ABOVE the track that now carries
+           panel 05, so without it the decorative stack swallows every tap on
+           the two CTAs — the exact defect THE ACCESSIBILITY CONTRACT exists
+           to prevent. [measured: elementsFromPoint over the primary CTA
+           returned .seq-cover before the <button>.] */
+        .seq-lite-layers {
+          display: none;
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+        }
         .seq-root[data-on] .seq-static { display: none; }
         .seq-root[data-on="lite"] .seq-lite-run { display: block; }
+        .seq-root[data-on="lite"] .seq-lite-layers { display: block; }
 
         /* ── Full desktop sequence ([data-on="seq"], JS-armed only): sticky
            stage, absolute horizontal track, decor visible. ─────────────── */
@@ -1901,10 +2160,12 @@ export default function SingularityPassage() {
         }
 
         /* ── THE PHONE STAGE ─────────────────────────────────────────────
-           Sticky 100svh (small viewport → immune to the address-bar
-           collapse, D-7), full-bleed under the safe-area insets on purpose
-           (see the JSX note). Everything inside animates on transform /
-           opacity ONLY, so the whole beat stays on the compositor.
+           The SAME .seq-stage the desktop path pins, at 100svh instead of
+           100vh (small viewport → immune to the address-bar collapse, D-7)
+           and full-bleed under the safe-area insets on purpose (see the JSX
+           note). Panel 05 rides inside it as the pinned foreground plate;
+           the decorative layers sit behind. Everything animates on transform
+           / opacity ONLY, so the whole beat stays on the compositor.
 
            Accepted consequence of svh: while the address bar is COLLAPSED
            the visual viewport is ~lvh, so a (lvh − svh) strip sits below the
@@ -1912,19 +2173,67 @@ export default function SingularityPassage() {
            hsl(var(--bg)), which is exactly what .seq-cover paints, and the
            .seq-lite-veil gradient is already transparent that far from
            centre. Overshooting the layers to cover it is not an option:
-           overflow:hidden is required here (the hole reaches ~3× its base)
+           overflow:hidden is required here (the hole reaches 1.77× its base)
            and dropping it would let an opaque cover spill over the top of
            the divario at t = 1. */
-        .seq-lite {
+        .seq-root[data-on="lite"] .seq-stage {
           position: sticky;
           top: 0;
           height: 100svh;
           overflow: hidden;
-          padding: 0;
-          /* Its own stacking context: the three decorative layers below
-             must never interleave with page content. */
+          /* Its own stacking context: the decorative layers must never
+             interleave with page content. */
           isolation: isolate;
         }
+        .seq-root[data-on="lite"] .seq-track {
+          position: absolute;
+          inset: 0;
+          min-height: 0;
+          /* Top clearance for the fixed navbar (h-16 = 64px below 640px,
+             68px above it — 4.25rem clears both), so the pinned plate is
+             centred in the area the reader can actually see rather than
+             behind the bar. THE ACCESSIBILITY CONTRACT measures the panel
+             against exactly this box. */
+          padding-block: 4.25rem 1rem;
+          z-index: 2;
+        }
+        /* LITE_PANEL_SCROLL — armed by measureOverflow() ONLY when the copy
+           genuinely does not fit (worst case: 360×640 in IT). Never
+           truncate: top-align, scroll inside the pinned stage, contain the
+           overscroll so the page behind cannot chain, and let Lenis hand the
+           wheel to the element (the attribute is added by the same
+           measurement, never statically — on a non-scrollable node it would
+           swallow the wheel on the narrow fine-pointer windows that also
+           reach this branch). */
+        .seq-root[data-on="lite"][data-lite-scroll="1"] .seq-track {
+          align-items: flex-start;
+          overflow-y: auto;
+        }
+        /* overscroll-behavior:contain is scoped to COARSE on purpose. This
+           whole block is a template literal — no backticks below this line.
+           On touch the containment is required:
+           it stops the drag from chaining into the page (and into
+           pull-to-refresh) while the reader is inside the copy. On a fine
+           pointer — a narrow (<1024px) or short desktop window also reaches
+           this branch — the same rule would trap the wheel over the panel
+           once the inner scroll bottomed out, forcing the user to move the
+           cursor off the plate to keep scrolling. There, chaining is the
+           correct behaviour. */
+        @media (pointer: coarse) {
+          .seq-root[data-on="lite"][data-lite-scroll="1"] .seq-track {
+            overscroll-behavior: contain;
+          }
+        }
+        .seq-root[data-on="lite"] .seq-panel {
+          /* Interactivity is JS-managed (setPanelInteractive), exactly as on
+             the desktop path. Transform is the (1−opacity)·16px entry offset
+             run in reverse across the copy handoff. */
+          pointer-events: auto;
+          will-change: opacity, transform;
+        }
+        .seq-root[data-on="lite"] .seq-lite-frame { z-index: 1; }
+        .seq-root[data-on="lite"] .seq-lite-veil  { z-index: 3; }
+        .seq-root[data-on="lite"] .seq-cover      { z-index: 4; }
         .seq-lite-frame {
           position: absolute;
           inset: 0;
@@ -1934,13 +2243,27 @@ export default function SingularityPassage() {
         }
         /* The phone hole. Base diameter ${SEQ.LITE_HOLE_BASE_VH}svh — chosen
            so the run from ${SEQ.LITE_HOLE_START_VH}svh to
-           ${SEQ.LITE_HOLE_END_VH}svh is only a ~3× upscale of a composited
-           layer (a 12svh base would have needed ~14× and turned the photon
-           ring to mush). Thinner, brighter ring than the desktop imposter:
-           this one is the subject of the shot, not a stand-in. */
+           ${SEQ.LITE_HOLE_END_VH}svh is at most a
+           ${(SEQ.LITE_HOLE_END_VH / SEQ.LITE_HOLE_BASE_VH).toFixed(2)}×
+           upscale of a composited layer — and it is rastered 1:1 at t ≈ 0.834,
+           i.e. scaled DOWN (sharp) for the first 83% of the beat, with the
+           only stretched frames sitting behind a ~70%-closed veil. A 12svh
+           base would have needed ~14× and turned the photon ring to mush;
+           56 still needed 3.04×. Thinner, brighter ring than the desktop
+           imposter: this one is the subject of the shot, not a stand-in. */
         .seq-lite-hole {
           width: ${SEQ.LITE_HOLE_BASE_VH}svh;
           height: ${SEQ.LITE_HOLE_BASE_VH}svh;
+          /* LOAD-BEARING. The base box (${SEQ.LITE_HOLE_BASE_VH}svh ≈ 810px at
+             390×844) is far WIDER than a phone frame, and it is a flex item of
+             .seq-lite-frame: at the default flex-shrink:1 the browser squashes
+             its main-axis width to the 390px line while the cross-axis height
+             keeps the full svh — so the "hole" rendered as a vertical stadium
+             with straight sides and the photon ring read as an ellipse.
+             [measured at t = 0.70: 260×500 instead of 498×498.] The circle is
+             meant to overflow the frame horizontally and be CLIPPED by the
+             stage's overflow:hidden — that is the whole point of a 1.77× swallow. */
+          flex: 0 0 auto;
           border-radius: 9999px;
           background: radial-gradient(
             circle,

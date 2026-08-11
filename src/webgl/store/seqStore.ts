@@ -30,13 +30,17 @@
  *     for the tunnel's zoom-blur center lock and the CSS-imposter
  *     suppressor).
  *
- * THE PHONE BEAT WRITES NOTHING HERE. The coarse-pointer branch of
- * singularity-passage.tsx (Phase 4) drives its own DOM layers + its own
- * raw-WebGL1 tunnel instance directly, and touches only the `SEQ.LITE_*`
- * CONSTANTS below — never the store state. That is deliberate: `active` /
- * `pan01` are consumed by SignatureLine on EVERY tier, so a lite branch that
- * published them would pan the shared camera on phones, and `armed` /
- * `marchLive` belong to an island that is not mounted there at all.
+ * THE PHONE BEAT PUBLISHES EXACTLY TWO SCALARS — `lite` and `liteSwallow`
+ * (MOBILE_HOME_SPEC.md §3.4; it published NOTHING before, by design). The
+ * coarse-pointer branch of singularity-passage.tsx drives its own DOM layers
+ * + its own raw-WebGL1 tunnel instance directly and otherwise touches only
+ * the `SEQ.LITE_*` CONSTANTS below. It still writes NONE of the desktop
+ * fields, and that stays deliberate: `active` / `pan01` are consumed by
+ * SignatureLine on EVERY tier, so a lite branch that published them would pan
+ * the shared camera on phones, and `armed` / `marchLive` belong to an island
+ * that is not mounted there at all. The two new fields are pure functions of
+ * the passage's own scrub progress `t` and nothing round-trips: the line
+ * reads them, the passage never reads them back.
  *
  * No React subscribers on the hot fields — everything is read via getState()
  * inside frame loops / rAF ticks, textMorphStore discipline.
@@ -227,13 +231,15 @@ export const SEQ = {
   IMPOSTER_BASE_VH: 12,
 
   // === PHONE / COARSE BEAT ("the passage, on a phone") =====================
-  // Phase 4 (MOBILE_AUDIT.md §2 + §7 item 4.1). It replaces ~180svh of empty
-  // aria-hidden scroll with ONE continuous, scrub-linked accelerating move:
-  // the hole approaches on the 1/d law while the star field spins up from
-  // drift to light-speed, the black closes over the frame, and the streaks
-  // die inside it. NO input lock, NO covert jump — MOBILE_AUDIT.md §5 already
-  // decided touch keeps native scrolling, and the desktop one-shot's
-  // touchmove/preventDefault hijack is exactly what must not ship here.
+  // Phase 4 (MOBILE_AUDIT.md §2 + §7 item 4.1), re-cut by MOBILE_HOME_SPEC.md
+  // §3. Panel 05 is the PINNED FOREGROUND PLATE of this beat, not a vertical
+  // section sitting above it: one 100svh sticky stage under a 180svh runway
+  // gives 80svh (675px at 390×844) of scrub travel carrying hold → copy
+  // handoff → the 1/d dive. The star field spins up from drift to light
+  // speed, the black closes over the frame, and the streaks die inside it.
+  // NO input lock, NO covert jump — MOBILE_AUDIT.md §5 already decided touch
+  // keeps native scrolling, and the desktop one-shot's touchmove/preventDefault
+  // hijack is exactly what must not ship here.
   //
   // Every value below is a pure function of the ScrollTrigger progress `t`,
   // so the whole beat reverses cleanly and never needs a state machine.
@@ -244,41 +250,69 @@ export const SEQ = {
    * listener to stay frozen (it is defined against the bar-visible viewport,
    * so a bar collapse cannot rewrite it mid-scroll).
    *
-   * 130, down from 180. The sticky stage is 100svh by contract, so the SCRUB
-   * TRAVEL is what is left: 30svh ≈ 253px at 390×844 — one deliberate thumb
-   * drag. That is why the beat is ONE move instead of the desktop's five
-   * chapters: below ~120 there is under 20svh of travel and the beat stops
-   * being scrubbable at all; above ~140 the empty-scroll complaint returns.
-   * The vertical section-05 panel adds its own flow height above this. */
-  LITE_RUN_SVH: 130,
+   * 180 (MOBILE_HOME_SPEC.md §3.4), and this is now the WHOLE section: the
+   * sticky stage owns 100 of it — panel 05 rides inside that stage — and the
+   * spacer below it is the remaining 80. So the SCRUB TRAVEL is 80svh ≈ 675px
+   * at 390×844, 2.67× the 253px this beat had while the panel was a separate
+   * vertical block above the runway. Below ~140 the beat is a flick (a 1/d
+   * curve compressed into a quarter of a thumb drag reads as a disc that pops,
+   * not as a fall); above ~200 the empty-scroll complaint returns. */
+  LITE_RUN_SVH: 180,
 
   // --- The hole (a CSS layer on the same 1/d divergence law) ---------------
   /** `.seq-lite-hole` element diameter in svh — the rasterisation base only.
    * Apparent size = BASE × scale, so this constant is invisible in the
-   * composition; it exists to keep the MAX UPSCALE modest (170/56 ≈ 3.0×),
-   * because a composited layer is rastered once and stretched — the old 12vh
-   * base reached 13× and turned the photon ring to mush. */
-  LITE_HOLE_BASE_VH: 56,
-  /** Apparent diameter at t = 0 — a fifth of the screen. Deliberately NOT the
-   * desktop's 12vh first read: on a phone the beat has 30svh of travel, so it
-   * must arrive already legible instead of spending its first third as a dot
-   * (that dot is precisely what the audit measured as "empty scroll"). */
-  LITE_HOLE_START_VH: 22,
+   * composition; it exists to keep the MAX UPSCALE modest, because a
+   * composited layer is rastered once and then stretched.
+   *
+   * 96 (was 56, and 12 before that): max upscale 170/96 = **1.77×**, down
+   * from 3.04× and from ~14×. The layer is rastered 1:1 at t ≈ 0.834, i.e. it
+   * is scaled DOWN — sharp — for the first 83% of the beat, and the only
+   * frames where it is stretched at all sit behind a ~70%-closed veil. This
+   * one constant is the ring-mush fix (MOBILE_HOME_SPEC.md §3.9). */
+  LITE_HOLE_BASE_VH: 96,
+  /** Apparent diameter at t = 0. 15, not 22: the hole now sits BEHIND panel
+   * 05's live copy through the hold band, as a dark well under the type, and
+   * must not compete with the H2. It is still an order of magnitude past the
+   * desktop's 12vh first read — nothing here spends its opening as a dot. */
+  LITE_HOLE_START_VH: 15,
   /** Apparent diameter at t = 1 — the frame is swallowed. */
   LITE_HOLE_END_VH: 170,
   /** Growth ease: apparent = START·(END/START)^(t^POW). POW > 1 keeps the
-   * physical acceleration (1/d diverges); 1.25 rather than the desktop's much
-   * harder back-load because [measured] the whole scrub is 253px at 390×844 —
-   * anything steeper leaves the first half reading as a static disc. */
-  LITE_HOLE_EASE_POW: 1.25,
-  /** Fade-in band for the hole layer. 0.14 ≈ 36px of scroll [measured]: at
-   * 0.08 the trace showed 0 → 1 inside 20px, which is a cut, not a fade. */
+   * physical acceleration (1/d diverges); 1.45 rather than 1.25 because with
+   * 2.7× the travel the growth can be back-loaded without the first half
+   * reading as a static disc. Apparent at t 0.20 / 0.34 / 0.70 / 0.90 =
+   * 19 / 25 / 64 / 120 svh. */
+  LITE_HOLE_EASE_POW: 1.45,
+  /** Fade-in band for the hole layer, from 0 to LITE_HOLE_HOLD_ALPHA. 0.14 ≈
+   * 94px of scroll on the 675px runway — it settles well inside the hold band
+   * and then sits still under the copy. (At 0.08 an earlier trace showed
+   * 0 → 1 inside 20px, which is a cut, not a fade.) */
   LITE_HOLE_IN_END: 0.14,
+  /** Hole alpha during the HOLD band: a dark well under live copy, never a
+   * competing subject. It lifts to 1.0 across the copy-handoff band
+   * [LITE_HOLD_END, LITE_COPY_OUT_END] — the copy dissolves and the hole
+   * takes the frame it was sitting in. */
+  LITE_HOLE_HOLD_ALPHA: 0.35,
+
+  // --- The copy handoff (panel 05 IS the foreground plate) ----------------
+  /** Panel 05 is fully legible, motionless and INTERACTIVE up to here —
+   * 0.20 × 675px = 135px of scroll where nothing but reading happens. */
+  LITE_HOLD_END: 0.2,
+  /** Copy fully faded and the panel inert by here. `copyOpacity = 1 −
+   * seqSmooth(t, LITE_HOLD_END, LITE_COPY_OUT_END)`, and the panel's entry-Y
+   * grammar ((1−α)·16px, the spine StagePanel's exact offset) runs in
+   * reverse. `setPanelInteractive` follows the visual state, never leads it —
+   * see THE ACCESSIBILITY CONTRACT in singularity-passage.tsx. */
+  LITE_COPY_OUT_END: 0.34,
 
   // --- The star field (the raw-WebGL1 point tunnel, reused verbatim) -------
-  /** Canvas alpha ramp-in band — a touch behind the hole so the field arrives
-   * around it rather than with it. */
-  LITE_TUNNEL_IN_END: 0.16,
+  /** Canvas alpha ramp-in END. 0.30: the field arrives WITH THE DIVE, not
+   * under the copy (the tunnel host is a fixed z-40 layer — it paints OVER
+   * the pinned panel, so it may not be lit while the copy is being read; the
+   * ramp therefore opens at LITE_HOLD_END and completes here, rising exactly
+   * as the copy dissolves). */
+  LITE_TUNNEL_IN_END: 0.3,
   /** Peak canvas alpha. */
   LITE_TUNNEL_ALPHA: 0.9,
   /** The streaks die inside the black across [this, LITE_TUNNEL_OUT_END] —
@@ -289,14 +323,13 @@ export const SEQ = {
    * streak length the eye reads is angular, and a 390px-wide frame reaches
    * "light speed" at a much lower coefficient.
    *
-   * The whole band is FRONT-LOADED into the middle of the scrub on purpose.
-   * [measured] the scrub is 253px, i.e. a fraction of one thumb flick, and
-   * the tail of a flick is exactly where momentum is most likely to skip
-   * frames — so the payoff (warp at peak, frame going black) completes by
-   * t ≈ 0.86 and the last 14% is only the arrival normalising. Nothing the
-   * viewer needs to see lives where they are moving fastest. */
-  LITE_WARP_START: 0.22,
-  LITE_WARP_END: 0.72,
+   * Re-timed to 0.34 → 0.80 (was 0.22 → 0.72): the spin-up now begins exactly
+   * where the copy handoff ends, so the warp is the dive's own verb rather
+   * than something happening behind live text. The payoff still completes
+   * before the tail — the last 20% is only the arrival normalising, and the
+   * tail of a flick is where momentum is most likely to skip frames. */
+  LITE_WARP_START: 0.34,
+  LITE_WARP_END: 0.8,
   LITE_WARP_PEAK: 60,
   /** Ceiling on the *requested* target handed to the tunnel module. The
    * module lerps its own timeCoef toward the target at a fixed 2%/frame
@@ -310,17 +343,23 @@ export const SEQ = {
 
   // --- The entry (two opacity-only layers; see the JSX) --------------------
   /** #000 radial veil — "we are inside it". Its centre is the same black as
-   * the hole's core, so the coverage completes on a colour seam. */
-  LITE_VEIL_START: 0.62,
-  LITE_VEIL_END: 0.86,
+   * the hole's core, so the coverage completes on a colour seam. It is also
+   * THE SWALLOW window: `liteSwallow` runs 0→1 across this band and
+   * SignatureLine multiplies its `uReveal` by (1 − liteSwallow), so the
+   * filament the reader has followed since the hero is extinguished inside
+   * the hole rather than merely covered by it (MOBILE_HOME_SPEC.md §3.5).
+   * The hole crosses its 1:1 raster size at t ≈ 0.834, i.e. behind a veil
+   * that is already ~70% closed. */
+  LITE_VEIL_START: 0.7,
+  LITE_VEIL_END: 0.9,
   /** Flat page-navy cover — the arrival. It normalises the frame to
    * `hsl(var(--bg))` before the sticky stage scrolls away, so the handoff to
    * the divario has no visible edge (a black rectangle sliding up over a navy
-   * page is the artefact this removes). Ends at 0.96, not 1: a momentum tail
+   * page is the artefact this removes). Ends at 0.98, not 1: a momentum tail
    * that overshoots the last few percent of the runway must still find the
    * frame normalised. */
-  LITE_COVER_START: 0.84,
-  LITE_COVER_END: 0.96,
+  LITE_COVER_START: 0.88,
+  LITE_COVER_END: 0.98,
 
   // --- Budget (resolution and overdraw FIRST — MOBILE_AUDIT.md §5.5) -------
   /** Hard DPR cap asserted on the R3F canvas for the whole approach band.
@@ -408,6 +447,17 @@ interface SeqState {
    * one-shot's first PLUNGE_LOCK_T. */
   holeNdcX: number;
   holeNdcY: number;
+
+  // === The phone beat's ONLY two published scalars (MOBILE_HOME_SPEC §3.4) ==
+  /** True while the coarse-pointer branch owns the section (its matchMedia
+   * context is live). Every reader must gate on this: on a fine pointer it is
+   * false forever, so a `tier === "full"` build can never reach the swallow. */
+  lite: boolean;
+  /** 0→1 across [LITE_VEIL_START, LITE_VEIL_END] — the swallow. A pure
+   * function of the passage's scrub `t` (same easing as the veil, so the line
+   * dies exactly as the black closes), read by SignatureLine's useFrame via
+   * getState() and multiplied into `uReveal`. Nothing round-trips. */
+  liteSwallow: number;
 }
 
 const SEQ_DEFAULTS: SeqState = {
@@ -426,6 +476,8 @@ const SEQ_DEFAULTS: SeqState = {
   warp: SEQ.WARP_MIN,
   holeNdcX: 0.5,
   holeNdcY: 0.5,
+  lite: false,
+  liteSwallow: 0,
 };
 
 const createSeqStore = () => create<SeqState>(() => ({ ...SEQ_DEFAULTS }));
