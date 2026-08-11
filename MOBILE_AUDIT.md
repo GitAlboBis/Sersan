@@ -406,8 +406,8 @@ need smoothing to be correct.
 **Measured live this session** (dev server, 390×844 and 320×568):
 
 - **Horizontal overflow: 0px** on `/`, `/trust`, `/contact`, `/start` at both 320px and
-  390px — genuinely clean, and better than the brief assumed. D-4 is the one real overflow
-  and it is data-dependent (triggers on a long email in the intake review step).
+  390px. ⚠️ **Do not generalise this** — see §8.6: routes I did not probe (`/case-studies`,
+  `/resources`, `/about`) turned out to carry up to **190px** of pre-existing overflow.
 - **Console: zero errors, zero warnings** on `/` load at 390px.
 - **Tap targets: 18/18 failing** at the top of `/`; resolved size table in §0.
 - **iOS zoom: 4/4 controls on `/contact` at 13px; 12/12 on `/start` at 14px.**
@@ -487,8 +487,14 @@ The brief invited verification rather than trust. Findings:
 5. **The mobile menu is more designed than described** — GSAP clip-path unroll with a
    staggered reveal, body scroll lock and Lenis stop all present. It is *landscape* and
    *a11y* that are broken, not the animation.
-6. **Horizontal overflow is not a general problem.** **[measured]** 0px at 320/390 across
-   four routes. One real, data-dependent case (D-4).
+6. ~~**Horizontal overflow is not a general problem.**~~ **← THIS AUDIT WAS WRONG.**
+   I measured 0px at 320/390 on `/`, `/trust`, `/contact` and `/start` and generalised
+   from four routes to the whole site. Phase 2 measured the rest and found overflow that
+   **pre-dates all of this work**: a decorative `w-[700px]` glow escaping its section on
+   `/case-studies` and `/resources` — **190px of overflow at 320px and 135px at 430px, on
+   every mobile width** — and the `/about` founder-card header needing 308px in a 256px
+   column (**22px**). Both are now fixed. The lesson stands on the record: four routes is
+   not a sample, and "clean where I looked" is not "clean".
 7. **The brief's premise that mobile is uniformly "a fallback path" is too pessimistic in
    three places** worth preserving as-is: the `/audit` self-audit runs the full desktop
    choreography on touch; `fit-section` and `use-case-beats` have genuinely correct static
@@ -536,3 +542,59 @@ forbids me from making unilaterally. Approve, or leave it?
 > owner's eye in a real browser. Everything mechanically checkable — computed token sizes,
 > horizontal overflow, tap-target pass rate, console cleanliness — will be reported as
 > numbers.
+
+---
+
+## 10 · PHASE 2 OUTCOME — measured after the change
+
+Commits `69e1b1b` (scroll substrate) and `96336d7` (typography + ergonomics), on top of
+`abf1bd9` (this audit). Nothing pushed.
+
+| Defect | Before **[measured]** | After **[measured]** | |
+|---|---|---|---|
+| **D-0** root font @390px | 13px | **16px** | ✅ |
+| **D-0** `<Input>` height | 35.8px | **44px** | ✅ |
+| **D-0** `size="lg"` CTA | 39px | **48px** | ✅ |
+| **D-5** `/contact` iOS-zoom controls | 4 of 4 | **0 of 4** | ✅ |
+| **D-5** `/start` iOS-zoom controls | 12 of 12 | **12 of 12** | ❌ **still open** |
+| **D-3** menu overflow @844×390 | 276px, unscrollable | **0px, scrollable** | ✅ |
+| **D-3** menu items under 44px | — | **0 of 12** | ✅ |
+| **D-3** `role`/`aria-modal`/`overscroll` | absent | present | ✅ |
+| **D-14** Menu button | 32.5px | **44px** | ✅ |
+| **D-7** `.seq-lite` sticky stage | `100vh` | `100svh` | ✅ |
+| **D-23** `min-h-screen` in `src/` | 13 files | **0** | ✅ |
+| **D-9** address-bar resize | full refresh | guarded, GSAP-matched | ✅ |
+| Overflow @320px `/` | 0px → *10px regression* | **0px** | ✅ |
+| Overflow @320px `/case-studies` | **190px** (pre-existing) | **0px** | ✅ |
+| Overflow @320px `/about` | **22px** (pre-existing) | **0px** | ✅ |
+| Overflow @1440px `/` | 0px | **0px** | ✅ desktop safe |
+| Typecheck | — | `tsc --noEmit` clean | ✅ |
+
+### Still open after Phase 2
+
+- **D-5 on `/start` — P0, not fixed.** `start-intake-form.tsx` bypasses the shared
+  `<Input>` with a hardcoded `text-[14px]` in its `FIELD_BASE` constant. A hardcoded `px`
+  value is immune to the root-font fix, so all **12 controls still measure 14px and
+  10 of 12 are 43px tall**. Needs the raw `<input>`s migrated onto `ui/input.tsx`, or
+  `FIELD_BASE` moved to `text-base`. First item of Phase 3.5.
+- **`inputmode` / `autocomplete`** still absent on every control on both forms
+  (`/contact`: 4 of 4 missing both). No email keyboard, no autofill.
+- **D-14 residual** — 17 of 20 interactive elements on `/case-studies` are still under
+  44px. These are the footer link lists and the `h-9` filter pills, which need
+  restructuring rather than a token change. Phase 3.
+- **Focus-into-menu unverified.** GSAP's open tween does not run in a non-compositing
+  pane, and a `visibility: hidden` element cannot take focus, so the assertion is
+  inconclusive — not failing. The Tab trap fires (`defaultPrevented: true`) and Escape
+  restores focus to the trigger. Needs a visible browser.
+- **Everything in Phases 3–6.** No touch motion grammar exists yet; the primitives in §4
+  are designed, not built.
+
+### Two notes for whoever picks this up
+
+- **There is no cookie banner in this codebase.** `AGENTS.md` §5 specifies one; it was
+  never built. Any audit item referencing it has no target.
+- **`--header-h` grew 79.3px → 97.6px** with the root change, shifting hero top padding by
+  ~18px. Intended scale-up, not breakage, but it is a visual delta worth a look.
+- **Turbopack serves stale CSS across edits.** A `globals.css` change can keep reporting
+  the OLD computed value through several dev-server restarts. `rm -rf .next` and restart
+  before trusting any measurement, or you will chase a phantom.
