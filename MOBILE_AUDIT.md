@@ -589,6 +589,59 @@ Commits `69e1b1b` (scroll substrate) and `96336d7` (typography + ergonomics), on
 - **Everything in Phases 3–6.** No touch motion grammar exists yet; the primitives in §4
   are designed, not built.
 
+---
+
+## 11 · PHASE 3 OUTCOME — the touch reveal, the forms, the dead accents
+
+Commits `991a8df` (centre-focus), `22c95ec` (forms), `53a1b47` (accents + targets).
+All numbers **[measured]** live at 390×844 with `(pointer: coarse)` confirmed true, on a
+cold `rm -rf .next` build, with `getComputedStyle(document.body).boxSizing` asserted so no
+reading came from an unstyled page.
+
+| Defect | Before | After | |
+|---|---|---|---|
+| **D-1** founder portraits on touch | `--fr-hr: 0px`, grayscale forever | **`150%`, `circle(150%)`** | ✅ |
+| **D-2** case-study logo/screenshot | `opacity: 0` forever | **`opacity: 1`** | ✅ |
+| **D-2** card text during reveal | (risk: blanked) | **`opacity: 1`, `pointer-events: auto`** | ✅ |
+| **D-5** `/start` controls under 16px | 12 of 12 | **0 of 12** | ✅ |
+| **D-5** `/start` controls under 44px | 10 of 12 | **0 of 12** | ✅ |
+| **D-10** ledger ticks painting | 0 of 8 / 0 of 6 | **8 of 8 / 6 of 6** | ✅ |
+| **D-10** ledger underlines | 0 painted | **8 × 96px / 6 × 96px** | ✅ |
+| **D-4** intake review overflow | overflowed on a real email | **0px** at 320/375/1440 | ✅ |
+| **D-14** self-audit controls | ~15–18px tall | **44–46px**, desktop geometry unchanged | ✅ |
+| **D-16 / D-17 / D-21 / D-22** | — | fixed | ✅ |
+| **D-18** founders one-shot sample | one-shot | subscribed | ✅ |
+| **Desktop @1440 `[data-focus]`** | — | **0 elements, ever**; `--fr-hr: 0px` at rest | ✅ |
+| Console errors | — | **none** | ✅ |
+
+### A verification trap worth recording
+
+Mid-verification `/about` reported `focusedCount: 0` across a 14-point full-page scroll,
+which read exactly like "the primitive was never wired here". It was wired, and it works —
+**IntersectionObserver callbacks are delivered during the rendering steps, which are
+throttled in a non-compositing pane**, so the callback simply had not been delivered yet.
+An identical hand-built observer on the same element fired, and the hook's attribute
+appeared immediately after. Same family as the rAF traps already documented: in this
+environment, *absence* of an IO/rAF effect is not evidence of a defect. Re-test before
+reporting a regression.
+
+Separately, the three parallel agents share one `.next`, and their rebuilds clobbered each
+other's chunk manifests mid-measurement — producing runs where every element measured
+13.33px and `display: grid` did not exist. Always assert the page is styled before trusting
+a number.
+
+### Still open after Phase 3
+
+- **Phase 4 (WebGL)** — the 180svh empty void on home is untouched; the passage beat is the
+  approved "wow" payload and is not built.
+- **`M-4 usePressState`, `M-5 <DragRail>`, `M-8` route transition** — designed in §4, not built.
+  `/resources` cards still have zero tap feedback (D-15).
+- **D-14 residual** — footer link lists (~20px) and `h-9` filter pills (36px) still under 44.
+  These need restructuring, not a token change.
+- **D-6** audit week timeline still SSRs a 580vh runway on phones then collapses it.
+- **Focus-into-menu** still unverified for the reason in §10.
+- **Scroll FPS and screenshots** still unmeasured — §6 gaps stand.
+
 ### Two notes for whoever picks this up
 
 - **There is no cookie banner in this codebase.** `AGENTS.md` §5 specifies one; it was
