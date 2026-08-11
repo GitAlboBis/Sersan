@@ -24,7 +24,11 @@
  *     marker is the primary trigger; the card is the secondary one.
  *   - COMPACT by default (eyebrow + title); EXPAND the body when open. Copy stays
  *     in the DOM at all times (collapsed via grid-rows / opacity, never
- *     unmounted) so SEO/AT read it. `prefers-reduced-motion` → no transition.
+ *     unmounted) so SEO/AT read it. `prefers-reduced-motion` → no transition,
+ *     expressed purely in CSS (`motion-reduce:` + the globals.css RM block), NEVER
+ *     as a JS branch: reading `matchMedia` during render makes the markup differ
+ *     between the server (always false) and a reduced-motion client, which is a
+ *     hydration mismatch. Every motion opt-out in this file is CSS-only.
  *   - The card NO LONGER carries `data-lattice-node` (that hook moved to the node
  *     marker). It exposes a stable body id via `bodyId` (aria-controls target of
  *     the marker) — passed down from the section.
@@ -50,13 +54,6 @@ interface NeuralCardProps {
   body: React.ReactNode;
   /** broken cards get a faint desaturated fracture cue at rest. */
   tone?: NeuralSurface;
-}
-
-function prefersReducedMotion(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true
-  );
 }
 
 function useHoverCapable() {
@@ -141,7 +138,6 @@ export function NeuralCard({
     return () => setHovered(surface, null);
   }, [setHovered, surface]);
 
-  const reduce = prefersReducedMotion();
   const broken = tone === "broken";
 
   return (
@@ -200,12 +196,18 @@ export function NeuralCard({
 
       {/* Body — collapsed by default via a grid-rows trick (0fr → 1fr) so the
           copy stays in the DOM (SEO/AT) but reflows to zero height when closed.
-          reduced-motion: no transition, but still toggles. */}
+          reduced-motion: no transition, but still toggles — opted out in CSS
+          (`motion-reduce:transition-none`, same pattern as the card root above,
+          plus the `!important` RM block in globals.css) so the emitted markup is
+          identical on the server and on every client. The inline
+          `transitionTimingFunction` is a static string, so it hydrates cleanly
+          too; `transition-property: none` under RM makes it inert. */}
       <div
         id={bodyId}
         className={cn(
           "neural-card__body relative grid",
-          !reduce && "transition-[grid-template-rows,opacity] duration-300 ease-out",
+          "transition-[grid-template-rows,opacity] duration-300 ease-out",
+          "motion-reduce:transition-none",
           open
             ? "grid-rows-[1fr] opacity-100 mt-3"
             : "grid-rows-[0fr] opacity-0 mt-0",
