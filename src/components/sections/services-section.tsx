@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -67,6 +67,52 @@ if (typeof window !== "undefined") {
  * KEYBOARD: focusin on a card converts to the equivalent vertical scroll
  * (segment lock position) through Lenis — same convention as the work rail.
  * The data-line-anchor="services" wrapper lives in page.tsx and is untouched.
+ *
+ * ---------------------------------------------------------------------------
+ * MOBILE (MOBILE_HOME_SPEC §5.2 — chunk E). "Le card enormi": the stacked
+ * native grid measured 2550px / 3.02 viewports at 390×844, of which 2011px was
+ * the card grid alone. Below 640px that grid becomes a LATERAL RAIL of four
+ * stations plus a discrete `01 / 04` stepper, and `ServiceCard` gains a
+ * `compact` pose. Budget: ≤1013px / 1.20vh.
+ *
+ * THE ≥640px CONTRACT (non-negotiable, and enforced by construction, not by
+ * review): a 640px-wide viewport must render this file byte-for-byte as it did
+ * before. Two mechanisms, and nothing else:
+ *   - `ServiceCard`'s compact pose follows the spec table literally — every
+ *     condensed class ships its `sm:` restoration on the same element
+ *     (`text-[2rem] sm:text-[4rem]`, …), so ≥640px resolves to today's value.
+ *   - The rail is purely ADDITIVE `max-sm:` utilities layered over the ORIGINAL
+ *     grid class string, which is left untouched. Above 639px the media query
+ *     simply does not match and the element is the grid it always was. Nothing
+ *     needs to be "reset back"; there is nothing to get wrong.
+ * The stepper is `sm:hidden` for the same reason.
+ *
+ * THE RAIL IS A NATIVE SCROLLER — `overflow-x-auto snap-x snap-mandatory`, and
+ * that is the whole mechanism. No drag translator, no pointer capture, no
+ * `preventDefault`: a custom translator cannot be written without contesting
+ * iOS momentum and the OS edge-swipe, and a horizontal drag must never be able
+ * to swallow vertical intent (MOBILE_HOME_SPEC §7). `data-lenis-prevent` keeps
+ * smooth-scroll off the axis.
+ *
+ * WHY THIS IS NOT `<DragRail variant="stations">` YET. Chunk H's primitive
+ * (`components/ui/drag-rail`) did not exist when this was written, and when it
+ * landed it turned out to be structurally unconditional — correctly so for the
+ * two rails it was designed for, which are rails at EVERY width on their native
+ * branch. Services is the one rail that must become a GRID again at ≥640px, and
+ * `DragRail` writes `paddingInline` + `scrollPaddingInline` as INLINE STYLES,
+ * which no `sm:` class can override: adopting it would inset the ≥640px grid by
+ * its gutter and break the byte-identity contract above. Its affordance row
+ * also always occupies space, and its children must be `<li>`.
+ * So the scroller is inline here, deliberately shaped as `[scroller] +
+ * [stepper]` over the same native primitive: once `DragRail` can scope its
+ * scroller/affordance to a breakpoint (and expresses the gutter as a class
+ * rather than an inline style), adopting it is a swap of two elements.
+ *
+ * CONTENT IS NEVER GATED BEHIND THE SWIPE. Every card's full text — all four
+ * `includes`, both `solves` lines, the CTA — is in the DOM at all times. Three
+ * of four cards sit behind a swipe VISUALLY (spec §8.2 records and accepts
+ * that); no disclosure widget, nothing hidden from a screen reader, and the
+ * stepper dots give direct keyboard/AT access to each station.
  */
 
 type Service = {
@@ -233,15 +279,40 @@ const STAGE_POS: { left: string; top: string }[] = [
 
 const smoothstep = (t: number) => t * t * (3 - 2 * t);
 
-function ServiceCard({ service, isEn }: { service: Service; isEn: boolean }) {
+function ServiceCard({
+  service,
+  isEn,
+  compact = false,
+}: {
+  service: Service;
+  isEn: boolean;
+  /**
+   * The rail-station pose (<640px only). Every class it switches on ships its
+   * own `sm:` restoration, so a ≥640px viewport renders the pinned card
+   * byte-for-byte whether this is true or false. Passing it is therefore safe
+   * on the native branch, which a coarse 1024px tablet also reaches.
+   */
+  compact?: boolean;
+}) {
   return (
     <article className="group relative flex h-full flex-col overflow-hidden rounded-lg border border-[hsl(var(--rule))] bg-[hsl(216_30%_8%/0.92)] p-6 sm:p-8 backdrop-blur-sm transition-colors duration-300 hover:border-[hsl(var(--accent)/0.45)]">
       {/* POV focus ring — opacity is driven to the card's focus value by a
-          quickTo writer in pinned mode; inert (opacity 0) in the native grid. */}
+          quickTo writer in pinned mode; inert (opacity 0) in the native grid.
+          On the rail it is lit by `data-focus` on the CENTRED station (written
+          by the stepper sync below): the touch answer to `:hover`, which on a
+          phone is a gesture that does not exist. Scoped `max-sm:` so the
+          ≥640px native branch (coarse tablet) stays inert — GSAP owns this
+          opacity as an inline style in pinned mode and must never race a CSS
+          transition. */}
       <span
         data-pov-focus
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 rounded-[inherit] border border-[hsl(var(--accent)/0.6)] opacity-0 shadow-[inset_0_1px_0_hsl(var(--accent)/0.4),0_0_48px_-12px_hsl(var(--accent)/0.55)]"
+        className={
+          "pointer-events-none absolute inset-0 rounded-[inherit] border border-[hsl(var(--accent)/0.6)] opacity-0 shadow-[inset_0_1px_0_hsl(var(--accent)/0.4),0_0_48px_-12px_hsl(var(--accent)/0.55)]" +
+          (compact
+            ? " max-sm:transition-opacity max-sm:duration-500 max-sm:group-data-[focus=true]:opacity-100 motion-reduce:transition-none"
+            : "")
+        }
       />
       {/* Top-edge accent line — fades in on hover */}
       <span
@@ -267,9 +338,21 @@ function ServiceCard({ service, isEn }: { service: Service; isEn: boolean }) {
         }}
       />
       {/* Header — editorial num + mono eyebrow + technical icon */}
-      <div className="mb-6 flex items-start justify-between gap-4">
+      <div
+        className={
+          compact
+            ? "mb-4 sm:mb-6 flex items-start justify-between gap-4"
+            : "mb-6 flex items-start justify-between gap-4"
+        }
+      >
         <div className="flex items-baseline gap-3">
-          <span className="font-display text-[3.25rem] sm:text-[4rem] leading-[0.9] tracking-[-0.03em] text-[hsl(var(--accent)/0.9)]">
+          <span
+            className={
+              compact
+                ? "font-display text-[2rem] sm:text-[4rem] leading-[0.9] tracking-[-0.03em] text-[hsl(var(--accent)/0.9)]"
+                : "font-display text-[3.25rem] sm:text-[4rem] leading-[0.9] tracking-[-0.03em] text-[hsl(var(--accent)/0.9)]"
+            }
+          >
             {service.num}
           </span>
           <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute">
@@ -290,7 +373,13 @@ function ServiceCard({ service, isEn }: { service: Service; isEn: boolean }) {
       <h3 className="font-display text-2xl sm:text-[28px] leading-[1.05] tracking-[-0.025em] text-ink mb-2">
         {service.title}
       </h3>
-      <p className="text-[15px] text-ink leading-snug mb-6">
+      <p
+        className={
+          compact
+            ? "text-[15px] text-ink leading-snug mb-4 sm:mb-6"
+            : "text-[15px] text-ink leading-snug mb-6"
+        }
+      >
         {service.positioning}
       </p>
 
@@ -298,7 +387,13 @@ function ServiceCard({ service, isEn }: { service: Service; isEn: boolean }) {
       <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute mb-3">
         {isEn ? "Typical build includes" : "Un progetto tipico include"}
       </p>
-      <ul className="flex flex-col gap-2 mb-7">
+      <ul
+        className={
+          compact
+            ? "flex flex-col gap-1.5 mb-5 sm:gap-2 sm:mb-7"
+            : "flex flex-col gap-2 mb-7"
+        }
+      >
         {service.includes.map((line) => (
           <li
             key={line}
@@ -315,7 +410,16 @@ function ServiceCard({ service, isEn }: { service: Service; isEn: boolean }) {
 
       {/* Solves — highlighted bottom strip. */}
       <div className="mt-auto -mx-6 sm:-mx-8 -mb-6 sm:-mb-8 px-6 sm:px-8 py-4 border-t border-[hsl(var(--rule))] bg-[hsl(var(--accent)/0.04)] transition-shadow duration-300 group-hover:shadow-[inset_0_1px_0_hsl(var(--accent)/0.45),0_-8px_24px_-16px_hsl(var(--accent)/0.4)] motion-reduce:transition-none">
-        <div className="flex items-baseline justify-between gap-4">
+        {/* The measured epicentre: a `shrink-0` CTA sharing a 326px row with
+            two ~55-character sentences made this strip 253px — 42% of card 04.
+            Stacking the CTA under the copy below 640px is the whole fix. */}
+        <div
+          className={
+            compact
+              ? "flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
+              : "flex items-baseline justify-between gap-4"
+          }
+        >
           <div className="min-w-0">
             <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-[hsl(var(--accent))] mb-1">
               {isEn ? "Solves" : "Risolve"}
@@ -333,7 +437,11 @@ function ServiceCard({ service, isEn }: { service: Service; isEn: boolean }) {
           </div>
           <Link
             href={service.ctaHref}
-            className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-ink hover:text-[hsl(var(--accent))] transition-colors duration-200 shrink-0 self-center"
+            className={
+              compact
+                ? "inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-ink hover:text-[hsl(var(--accent))] transition-colors duration-200 sm:shrink-0 sm:self-center"
+                : "inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-ink hover:text-[hsl(var(--accent))] transition-colors duration-200 shrink-0 self-center"
+            }
           >
             {service.ctaLabel}
             <ArrowRight
@@ -361,6 +469,107 @@ export default function ServicesSection() {
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const scaleRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
+
+  // ---- Rail (native branch, <640px) ------------------------------------
+  const railRef = useRef<HTMLDivElement | null>(null);
+  const readoutRef = useRef<HTMLSpanElement | null>(null);
+  const stepperRef = useRef<HTMLDivElement | null>(null);
+
+  /** Centre the i-th station. Native `scrollTo` — never a transform. */
+  const scrollToStation = useCallback((index: number) => {
+    const rail = railRef.current;
+    const station = rail?.children[index] as HTMLElement | undefined;
+    if (!rail || !station) return;
+    const railBox = rail.getBoundingClientRect();
+    const box = station.getBoundingClientRect();
+    const left =
+      rail.scrollLeft +
+      (box.left - railBox.left) -
+      (rail.clientWidth - box.width) / 2;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    rail.scrollTo({ left, behavior: reduced ? "auto" : "smooth" });
+  }, []);
+
+  // Stepper sync. ONE passive scroll listener, rAF-coalesced, and the paint is
+  // written straight to the DOM: a per-frame React state would re-render four
+  // cards mid-swipe on the device class that can least afford it. All rect
+  // reads happen before any write, so the frame never thrashes layout.
+  // `isEn` is a dep because a language toggle re-renders the readout's text
+  // node — re-running resets `last` and re-asserts the live value.
+  //
+  // It also writes `data-focus` on the centred station — the same attribute
+  // and the same `[data-pov-focus]` contract `useCentreFocus` (lib/use-centre-
+  // focus) uses everywhere else, so adopting the shared hook later is a
+  // substitution. It is deliberately NOT the shared hook HERE: that hook's
+  // centre band is a full-viewport-width horizontal strip, and MEASURED at
+  // 390×844 a centred 86vw station leaves both neighbours peeking, so all
+  // three intersect and three of four rings light at once — which says
+  // nothing. The rail already knows exactly which station is centred; using
+  // that answer lights exactly one, and costs no second IntersectionObserver.
+  useEffect(() => {
+    if (!detected || mode !== "native") return;
+    const rail = railRef.current;
+    const stepper = stepperRef.current;
+    if (!rail || !stepper) return;
+
+    const dots = Array.from(
+      stepper.querySelectorAll<HTMLElement>("[data-station-dot]"),
+    );
+    let raf = 0;
+    let last = -1;
+
+    const sync = () => {
+      raf = 0;
+      const stations = Array.from(rail.children) as HTMLElement[];
+      if (stations.length === 0) return;
+      const railBox = rail.getBoundingClientRect();
+      const mid = railBox.left + railBox.width / 2;
+      let best = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < stations.length; i++) {
+        const box = stations[i].getBoundingClientRect();
+        const dist = Math.abs(box.left + box.width / 2 - mid);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = i;
+        }
+      }
+      if (best === last) return;
+      last = best;
+      if (readoutRef.current) {
+        readoutRef.current.textContent = dots[best]?.dataset.num ?? "";
+      }
+      for (let i = 0; i < dots.length; i++) {
+        if (i === best) {
+          dots[i].setAttribute("data-active", "true");
+          dots[i].setAttribute("aria-current", "true");
+        } else {
+          dots[i].removeAttribute("data-active");
+          dots[i].removeAttribute("aria-current");
+        }
+      }
+      for (let i = 0; i < stations.length; i++) {
+        const card = stations[i].querySelector("article");
+        if (!card) continue;
+        if (i === best) card.setAttribute("data-focus", "true");
+        else card.removeAttribute("data-focus");
+      }
+    };
+
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(sync);
+    };
+
+    rail.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    sync();
+
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      rail.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [detected, mode, isEn]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -644,7 +853,7 @@ export default function ServicesSection() {
           ? "Every engagement is delivered by senior engineers from scoping to handover. No account layer, no junior bench, no roadmap that quietly becomes a multi-year retainer."
           : "Ogni ingaggio è seguito da ingegneri senior, dallo scoping al passaggio di consegne. Nessun livello di account management, nessuna panchina di junior, nessuna roadmap che si trasforma silenziosamente in un retainer pluriennale."
       }
-      className="mb-12 sm:mb-16 max-w-3xl"
+      className="mb-8 sm:mb-16 max-w-3xl"
     />
   );
 
@@ -671,14 +880,82 @@ export default function ServicesSection() {
         <SectionGlow position="bottom-right" intensity={1} size="55rem" />
         <div className="container-px relative">
           {heading}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6">
+          {/* Below 640px this is a lateral rail; at 640px and above it is the
+              ORIGINAL grid, untouched — every rail utility is `max-sm:`, so
+              above the breakpoint none of them exist. The negative inline
+              margin cancels container-px's gutter and the padding pays it
+              straight back, so station 01 lines up with the heading while the
+              rail itself bleeds to the viewport edge and station 02 peeks. */}
+          <div
+            ref={railRef}
+            data-lenis-prevent
+            className="
+              grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6
+              max-sm:flex max-sm:snap-x max-sm:snap-mandatory
+              max-sm:overflow-x-auto max-sm:overscroll-x-contain
+              max-sm:mx-[calc(var(--margin)*-1)] max-sm:px-[var(--margin)]
+              max-sm:pb-2 max-sm:[scrollbar-width:none]
+              max-sm:[&::-webkit-scrollbar]:hidden
+            "
+          >
             {services.map((s, i) => (
-              <Reveal key={s.num} delay={i * 80}>
-                <ServiceCard service={s} isEn={isEn} />
+              <Reveal
+                key={s.num}
+                delay={i * 80}
+                className="max-sm:w-[86vw] max-sm:max-w-[30rem] max-sm:shrink-0 max-sm:snap-center"
+              >
+                <ServiceCard service={s} isEn={isEn} compact />
               </Reveal>
             ))}
           </div>
-          <div className="mt-12 sm:mt-14">{closing}</div>
+          {/* Station stepper — a DISCRETE `01 / 04` readout, deliberately a
+              different register from the continuous progress bar the two other
+              rails carry. `sm:hidden`: above the breakpoint there is no rail to
+              step. The dots are the keyboard/AT route to each station (the card
+              CTAs are the other: focusing one scrolls it into view natively).
+              44×44 hit area, pulled back to a 28px row with `-my-2` so the
+              affordance costs the page almost nothing; focus ring comes from
+              the global `:focus-visible` rule. */}
+          <div
+            ref={stepperRef}
+            className="mt-3 flex items-center justify-between sm:hidden"
+          >
+            <p
+              aria-hidden="true"
+              className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute"
+            >
+              <span ref={readoutRef} className="text-ink">
+                {services[0].num}
+              </span>
+              {" / "}
+              {services[services.length - 1].num}
+            </p>
+            <div className="flex items-center">
+              {services.map((s, i) => (
+                <button
+                  key={s.num}
+                  type="button"
+                  data-station-dot
+                  data-num={s.num}
+                  data-active={i === 0 ? "true" : undefined}
+                  aria-current={i === 0 ? "true" : undefined}
+                  onClick={() => scrollToStation(i)}
+                  className="group/dot -my-2 grid h-11 w-11 place-items-center rounded-full"
+                >
+                  <span className="sr-only">{s.title}</span>
+                  <span
+                    aria-hidden="true"
+                    className="
+                      block h-[3px] w-5 rounded-full bg-[hsl(var(--rule))]
+                      transition-colors duration-300 motion-reduce:transition-none
+                      group-data-[active=true]/dot:bg-[hsl(var(--accent))]
+                    "
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="mt-8 sm:mt-14">{closing}</div>
         </div>
       </section>
     );
