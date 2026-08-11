@@ -6,6 +6,11 @@
  * GSAP's ScrollTrigger natively listens to the browser's scroll event, but
  * Lenis takes that over. We have to feed Lenis ticks into ScrollTrigger so
  * scroll-linked animations stay in sync with the smoothed scroll position.
+ *
+ * RESIZE CONTRACT (D-9): the provider owns a debounced `resize` →
+ * ScrollTrigger.refresh() bridge. On a phone the address bar collapsing IS a
+ * resize, so that bridge is gated — see `onResize` below. Desktop behaviour
+ * (150ms debounce, refresh on every resize) is unchanged.
  */
 
 import { useEffect, useRef, useState } from "react";
@@ -49,6 +54,21 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
   // and falls back to native scrolling when there is none.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // Assert GSAP's own mobile-resize guard explicitly. Verified against the
+    // installed gsap 3.15 source rather than docs: ScrollTrigger.js sets
+    // `_ignoreMobileResize = Observer.isTouch === 1` at register time, and
+    // `ScrollTrigger.config` re-applies it as
+    // `ScrollTrigger.isTouch === 1 && vars.ignoreMobileResize` — so this is a
+    // no-op re-assert on a touch-only device and correctly inert on a hybrid
+    // touch laptop, never a behaviour change for desktop. It guards
+    // ScrollTrigger's INTERNAL resize listener only (`_onResize`: skip unless
+    // the width changed or |Δheight| > 25% of innerHeight); our own listener
+    // below has to repeat the rule for itself, which is exactly the hole D-9
+    // reported. Stated here so a future `autoRefreshEvents` change cannot
+    // silently drop it.
+    // NOTE: ScrollTrigger.normalizeScroll() is deliberately NOT enabled — it
+    // takes over touch scrolling and fights Lenis / the scrollerProxy.
+    ScrollTrigger.config({ ignoreMobileResize: true });
     ScrollTrigger.scrollerProxy(document.documentElement, {
       scrollTop(value) {
         if (arguments.length && typeof value === "number") {
@@ -226,17 +246,58 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
     // Re-sync on resize. Debounced — a resize/orientation change fires a
     // burst of events, and ScrollTrigger.refresh() re-measures every trigger
     // on the page, so we coalesce to one refresh after the burst settles.
+    //
+    // D-9: on a phone the URL bar collapsing/expanding fires `resize` and
+    // changes innerHeight — mid-scroll, under the user's thumb. Re-measuring
+    // every trigger on the page there makes pins jump. So a resize only
+    // counts when it is a real LAYOUT event:
+    //   - width changed                              → always refresh
+    //   - fine pointer (desktop)                     → always refresh (unchanged)
+    //   - coarse pointer, height-only, small delta   → skip (browser chrome)
+    //   - coarse pointer, height-only, > 25% delta   → refresh (split view,
+    //     keyboard dismissal, a rotation on a square-ish screen)
+    // The 25% threshold and the compare-against-a-base (rather than against
+    // the previous event, so a slow multi-step bar collapse cannot creep past
+    // it a few pixels at a time) both mirror ScrollTrigger's own `_onResize`
+    // in gsap 3.15, so our bridge and GSAP's internal one agree.
+    const coarseMq = window.matchMedia("(pointer: coarse)");
+    let baseW = window.innerWidth;
+    let baseH = window.innerHeight;
     let resizeId = 0;
-    const onResize = () => {
+    const scheduleRefresh = (delay: number) => {
       window.clearTimeout(resizeId);
-      resizeId = window.setTimeout(() => ScrollTrigger.refresh(), 150);
+      resizeId = window.setTimeout(() => ScrollTrigger.refresh(), delay);
+    };
+    const onResize = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const heightOnly = w === baseW;
+      const chromeSized = Math.abs(h - baseH) <= h * 0.25;
+      if (heightOnly && chromeSized && coarseMq.matches) return;
+      // A resize we act on becomes the new baseline; a bar collapse we
+      // ignored must NOT, or the next one measures from the collapsed height.
+      baseW = w;
+      baseH = h;
+      scheduleRefresh(150);
     };
     window.addEventListener("resize", onResize);
+
+    // Orientation change is always a genuine layout event, and on some
+    // devices it lands as a height-only resize (square-ish tablets) that the
+    // guard above would swallow. Re-base and refresh unconditionally, on a
+    // longer debounce so the new viewport has settled before we measure.
+    const onOrientation = () => {
+      baseW = window.innerWidth;
+      baseH = window.innerHeight;
+      scheduleRefresh(250);
+    };
+    window.addEventListener("orientationchange", onOrientation);
     ScrollTrigger.refresh();
 
     return () => {
       window.clearTimeout(resizeId);
       window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onOrientation);
       document.removeEventListener("click", onClick);
       offGateA();
       offGateB();

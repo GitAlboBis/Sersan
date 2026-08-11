@@ -7,7 +7,11 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { CustomEase } from "gsap/CustomEase";
 import { useGSAP } from "@gsap/react";
-import { Button } from "@/components/ui/button";
+import {
+  Button,
+  CTA_FLUID_SM,
+  CTA_WRAPPER_SM,
+} from "@/components/ui/button";
 import { Magnetic } from "@/components/ui/magnetic";
 import { useLanguage } from "@/components/language-provider";
 import {
@@ -28,6 +32,7 @@ import {
   resetSeqStore,
 } from "@/webgl/store/seqStore";
 import { useTierStore } from "@/webgl/store/tierStore";
+import { cn } from "@/lib/utils";
 
 /**
  * SingularityPassage — "THE LONG TAKE" v2: section 05 ("handover") IS this
@@ -157,9 +162,14 @@ import { useTierStore } from "@/webgl/store/tierStore";
  *   createPreloaderTunnel returns null    → graft 5: the veil carries the
  *     entry alone — a dark plunge, never a dead cut.
  *   coarse pointer / <1024px + motion-ok  → panel 05 renders as a normal
- *     fully-readable VERTICAL section (CTAs work), then the ~180vh cheap
+ *     fully-readable VERTICAL section (CTAs work), then the ~180svh cheap
  *     beat: the CSS imposter scales along the same precomputed 1/d curve
- *     (transform/opacity only) and crossfades to navy.
+ *     (transform/opacity only) and crossfades to navy. This branch measures
+ *     in svh, NOT vh — its runway and its sticky stage are the only sticky
+ *     geometry a touch user reaches, and vh (the large, bar-hidden viewport)
+ *     made both jump when the address bar collapsed (D-7). Desktop below
+ *     stays on vh: there is no dynamic browser chrome to be immune to, and
+ *     the 380vh runway / −100vh handoff / 100vh stage are a matched set.
  *   prefers-reduced-motion / no JS        → the static vertical section 05
  *     + a static 60vh deep-navy gradient spacer. No transforms, no tunnel.
  * Decorative layers ONLY (imposter, veil, pulse, tunnel host, lite beat,
@@ -419,7 +429,7 @@ export default function SingularityPassage() {
 
           // ==================================================================
           // MOBILE / COARSE — panel 05 stays a normal vertical section in
-          // flow (default CSS, CTAs work), followed by the cheap ~180vh
+          // flow (default CSS, CTAs work), followed by the cheap ~180svh
           // beat: CSS hole imposter on the SAME 1/d curve, then a navy
           // crossfade.
           // ==================================================================
@@ -434,8 +444,27 @@ export default function SingularityPassage() {
             if (!liteRun || !imposter || !cover) return;
 
             root.setAttribute("data-on", "lite");
+            // ── svh, NOT vh (D-7) ─────────────────────────────────────────
+            // This runway is the ONE sticky stage touch users reach, so it is
+            // the one place the mobile viewport units actually bite. `vh` is
+            // the LARGE viewport (address bar hidden), so a 180vh runway over
+            // a 100vh stage is taller than what the user can see while the
+            // bar is up, and the sticky frame jumps as the bar collapses.
+            //
+            // Chosen over "freeze the height in px at mount": svh is
+            // deterministic (px would capture whichever of the small/large
+            // viewport happened to be live at mount), it still tracks a
+            // genuine orientation change (a frozen px height would leave a
+            // portrait-sized runway in landscape), it needs no resize
+            // listener of its own, and it matches the units already used by
+            // `.seq-track { min-height: 80svh }` and the stage below. The
+            // address-bar immunity we needed from freezing comes for free:
+            // svh is defined against the bar-visible viewport, so it does not
+            // change when the bar collapses. The refreshInit re-assertion
+            // (house grammar) therefore becomes idempotent instead of a
+            // mid-scroll rewrite.
             const size = () => {
-              liteRun.style.height = `${SEQ.LITE_HEIGHT_VH}vh`;
+              liteRun.style.height = `${SEQ.LITE_HEIGHT_SVH}svh`;
             };
             size();
             ScrollTrigger.addEventListener("refreshInit", size);
@@ -1398,17 +1427,27 @@ export default function SingularityPassage() {
                 {HANDOVER_STAGE.body[language]}
               </p>
               {HANDOVER_STAGE.extras[language]}
+              {/* CTA_*_SM: this pair is the one MEASURED offender behind the
+                  10px horizontal overflow at 320px — `whitespace-nowrap` made
+                  "Book a 30-min scoping call" a 298px min-content block inside
+                  a 256px column, and a flex item's `min-width: auto` refused
+                  to compress it. Below `sm` it now fills the column and wraps;
+                  ≥sm is untouched (see button.tsx). */}
               <div className="mt-7 flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
-                <Magnetic>
+                <Magnetic className={CTA_WRAPPER_SM}>
                   <Link href={START_HREF} className="block">
-                    <Button variant="hero" size="xl" className="group">
+                    <Button
+                      variant="hero"
+                      size="xl"
+                      className={cn("group", CTA_FLUID_SM)}
+                    >
                       {copy.ctaPrimary}
                       <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
                     </Button>
                   </Link>
                 </Magnetic>
-                <Link href="#work" className="block">
-                  <Button variant="heroOutline" size="xl">
+                <Link href="#work" className={cn("block", CTA_WRAPPER_SM)}>
+                  <Button variant="heroOutline" size="xl" className={CTA_FLUID_SM}>
                     {copy.seeSelectedWork}
                   </Button>
                 </Link>
@@ -1435,7 +1474,11 @@ export default function SingularityPassage() {
       {/* ── Mobile/coarse runway (cheap 1/d beat below the vertical 05).
           Decorative throughout. ────────────────────────────────────────── */}
       <div data-seq-lite-run aria-hidden="true" className="seq-lite-run">
-        <div className="seq-lite sticky top-0 h-screen overflow-hidden">
+        {/* h-[100svh], not h-screen: `h-screen` is `100vh` = the LARGE mobile
+            viewport, which overflows the visible area while the address bar is
+            up and jumps when it collapses. This is the only sticky stage a
+            touch user reaches (D-7). */}
+        <div className="seq-lite sticky top-0 h-[100svh] overflow-hidden">
           <div className="absolute inset-0 flex items-center justify-center">
             <div data-seq-imposter className="seq-imposter" />
           </div>

@@ -10,6 +10,9 @@
  * subsequent callers share it, and a refcount tears it down when the
  * last consumer unmounts (e.g. when the homepage scene unmounts on
  * navigation away).
+ *
+ * TOUCH: smoothing is WHEEL-ONLY. `syncTouch` is deliberately off — see the
+ * note on `smoothWheel` below. This is a decision, not an omission.
  */
 import Lenis from "lenis";
 
@@ -55,8 +58,28 @@ export function acquireLenis(): Lenis {
       duration: 0.9,
       // Default smooth easing curve (out-expo-ish).
       easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
-      // Let the camera path read scroll directly; no touch smoothing
-      // on mobile where we don't run the scene anyway.
+      // Wheel smoothing only — `syncTouch` stays OFF, on purpose.
+      //
+      // (The old reason here, "we don't run the scene on mobile anyway", is
+      // no longer true and was never the real one: mobile is actively being
+      // built out. The real reasons:)
+      //
+      //  1. syncTouch re-implements momentum in JS on top of the platform's
+      //     own. On iOS the two fight: flings decelerate wrong, rubber-band
+      //     overscroll and pull-to-refresh stop working, and the bounce at
+      //     the document ends is lost.
+      //  2. We do not need it to be CORRECT. Every choreographed beat on the
+      //     site is driven by ScrollTrigger progress, which is a pure
+      //     function of the scroll POSITION — it resolves identically
+      //     against a native touch scroll and a smoothed one. Smoothing
+      //     would only change how the input feels, and native touch inertia
+      //     already feels better than anything we would synthesise.
+      //  3. Touch scrolling stays on the compositor. syncTouch moves it onto
+      //     the main thread, where it competes with the same rAF budget the
+      //     WebGL beats need.
+      //
+      // So: native touch scrolling is the deliberate choice. Do not "fix"
+      // this by adding syncTouch.
       smoothWheel: true,
     });
     if (!externallyPumped) {

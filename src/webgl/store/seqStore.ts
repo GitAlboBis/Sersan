@@ -55,9 +55,13 @@ import { create } from "zustand";
 export const SEQ = {
   /** Desktop container height (sticky h-screen stage inside). */
   DESKTOP_HEIGHT_VH: 380,
-  /** Mobile/coarse reduced runway height (short fade-through beat) — the
-   * vertical section-05 panel adds its own flow height above this. */
-  LITE_HEIGHT_VH: 180,
+  /** Mobile/coarse reduced runway height, in **svh** (small-viewport height —
+   * the address-bar-VISIBLE viewport), which is the unit its single consumer
+   * writes it in (singularity-passage.tsx). Named `_SVH` deliberately: `vh` is
+   * the LARGE viewport, so reading this as `vh` would reintroduce exactly the
+   * address-bar jump the svh unit was chosen to remove (MOBILE_AUDIT.md D-7).
+   * The vertical section-05 panel adds its own flow height above this. */
+  LITE_HEIGHT_SVH: 180,
 
   // --- Scrubbed beat boundaries (p) ----------------------------------------
   // Forward flow hands off to the one-shot at TRIGGER_P (0.10) — everything
