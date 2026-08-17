@@ -229,8 +229,16 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
   // EXACTLY ONE gate consumes it today: the NeuralLattice pair. Every other
   // island stays `tier === "full"` on purpose — see MOBILE_HOME_SPEC §4.5 for
   // why each of the other seven is structurally (not merely budgetarily) off.
-  const phoneGL = useTierStore((s) => s.phoneGL);
-  const island = tier === "full" || phoneGL;
+  //
+  // Mobile-parity plan Phase 4a: the gate now reads the budget axis —
+  // `fxBudget.level >= 2` — which is BY CONSTRUCTION identical to the old
+  // `tier === "full" || phoneGL` (tierStore.resolveFxBudget: tier full ⇒ 3,
+  // lite+coarse+phoneGL ⇒ 2, everything else ≤ 1; phoneGL is false on a fine
+  // pointer, so no desktop gate moves). It additionally follows
+  // stepDownBudget() (2 → 1 unmounts the lattices on a device that cannot
+  // hold frame). use-neural-lattice-fallback.ts is the exact complement.
+  const budgetLevel = useTierStore((s) => s.fxBudget.level);
+  const island = budgetLevel >= 2;
 
   // Post-FX budget axis (mobile-parity plan Phase 2). `fxBudget.postFx` is
   // written in the SAME set() as `tier` (tierStore.resolve), so it is atomic
@@ -384,7 +392,9 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           bumped by the DOM sections on their in-view edge.
 
           GATE (MOBILE_HOME_SPEC §4.2 — the ONLY island gate that moved): route +
-          `island` + the WebGPU flag. `island` is `tier === "full" || phoneGL`, so
+          `island` + the WebGPU flag. `island` is `fxBudget.level >= 2` (Phase 4a
+          of the mobile-parity plan; identical to the former
+          `tier === "full" || phoneGL` and it follows stepDownBudget), so
           a CAPABLE PHONE now gets the real lattice instead of the DOM SVG — the
           owner's "non ci sono gli effetti del desktop" complaint, answered on the
           one island that is cheap enough to say yes to. Still TSL-only (no GLSL

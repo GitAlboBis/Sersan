@@ -316,7 +316,9 @@ Tutte le cifre finora sono **aritmetica o emulazione** (`MOBILE_TODO §3`, `MOBI
 | 2 PostFX lite | ✅ (codice) | `7860390` | gate `fxBudget.postFx`; WebGL `levels 4`+no Noise; WebGPU stessa catena a DPR 1, grain/fluid off. **Render live NON ancora osservato** (pane nascosto non avvia il Canvas; Chrome reale non raggiunge il dev server) → Phase 6 |
 | 3.1 (1,2,4) · 3.2 · 3.4 | ✅ | `7860390` | 3.1.3 copy IT → Decisione 8; 3.3 manifest **rimandato**; SESSION_SHORT=true (Decisione 3, raccomandazione applicata, un flag per tornare indietro) |
 | 6.1 HUD `?perf=1` | ✅ | (questo commit) | `PerfProbe` in-Canvas (fps da delta EMA, `renderer.info` per-frame su entrambi i backend, ≤4 write/s) + `PerfHud` DOM; solo con `devOverridesAllowed()` |
-| 4a-4e, 4c/4d, 5, 6.2-6.5, 3.3, Final | ⏳ | — | 4b/4c/4d dietro decisioni owner + gate di misura |
+| 4a NeuralLattice gate → `fxBudget.level ≥ 2` | ✅ | (commit 4a) | refactor equivalente + segue `stepDownBudget`; complemento in `use-neural-lattice-fallback.ts` aggiornato nella stessa commit |
+| **Gate di misura reale (6.2-6.3)** | ⏳ owner | — | branch remoto `mobile-parity` → preview Vercel → telefono con `?perf=1&fx=2` |
+| 4e, 4b, 4c, 4d, 5, 6.4-6.5, 3.3, Final | ⏳ | — | 4e dopo la misura; 4b/4c/4d dietro decisioni owner + gate |
 
 ## Ordine consigliato e stima grossolana
 Phase 1 (1 g) → Phase 3.1-3.2 (1 g) → Phase 2 (1 g) → Phase 6.1-6.2 harness (0.5 g) → **prima misura reale** → Phase 4a/4e (1 g) → Phase 4b (2 g: include navbar/StagePanel/beat auto-play) → Phase 3.3-3.4 (0.5 g) → Phase 4c (1 g, gate-dipendente) → Phase 4d (≥ 1 g, stretch, gate-dipendente) → Phase 5 (0.5 g) → Final. Ogni fase è eseguibile in una sessione nuova leggendo solo questo file + i dossier citati.
