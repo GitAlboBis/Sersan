@@ -40,6 +40,7 @@ import { HomeSingularity } from "./HomeSingularity";
 import { SequenceSingularity } from "./SequenceSingularity";
 import { AdaptiveResolution } from "./AdaptiveResolution";
 import { PipelineWarmup } from "./PipelineWarmup";
+import { PerfProbe } from "./PerfProbe";
 import { PostFX } from "./PostFX";
 import { PostFXNodes } from "./PostFXNodes";
 import { useSectionAnchors } from "./hooks/useSectionAnchors";
@@ -240,6 +241,13 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
   // single kill-switch for the whole post chain: `stepDownBudget()` (level
   // 2 → 1) or `?postfx=off` flips it to "off" and both rigs unmount.
   const postFx = useTierStore((s) => s.fxBudget.postFx);
+
+  // `?perf=1` HUD probe (plan Phase 6.1). Dev/preview only — `perfHud` is
+  // written by tierStore.resolve() through devOverridesAllowed(), so it is
+  // false on the real domain and the probe is NOT in the tree there (no
+  // useFrame, no after-effect, no store write). Read here in the Canvas host
+  // like postFx/dpr, never inside <Canvas>.
+  const perfHud = useTierStore((s) => s.perfHud);
 
   // F0.5 renderer seam: the flag is read once at module/build time. When OFF
   // (default) `gl` stays EXACTLY today's object literal — R3F builds its
@@ -525,6 +533,13 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
         ) : (
           <PostFX pathname={pathname} level={postFx} />
         ))}
+      {/* `?perf=1` probe (Phase 6.1): the in-Canvas measurer for the DOM
+          PerfHud (layout.tsx). Priority-0 useFrame (a positive priority would
+          suppress R3F's default render on the postFx-off WebGL path) + one
+          R3F after-effect that samples renderer.info once per frame and writes
+          perfStore 4×/s. Mounted LAST and only behind the flag — with it off
+          the desktop render path is untouched (see PerfProbe header). */}
+      {perfHud && <PerfProbe />}
     </Canvas>
   );
 }

@@ -10,6 +10,7 @@ import { ScrollSnapSections } from "@/components/scroll-snap-sections";
 import { SectionBus } from "@/components/section-bus";
 import { CanvasHost } from "@/webgl/CanvasHost";
 import { Preloader } from "@/components/fx/preloader";
+import { PerfHud } from "@/components/fx/perf-hud";
 import { CardTiltController } from "@/components/fx/card-tilt-controller";
 import { HeadingChoreographer } from "@/components/fx/heading-choreographer";
 import { LabelScrambler } from "@/components/fx/label-scrambler";
@@ -220,6 +221,12 @@ export default function RootLayout({
                 changes. Decorative only: aria-hidden + pointer-events:none
                 live inside CanvasHost. */}
             <CanvasHost />
+            {/* Dev/preview `?perf=1` overlay (mobile-parity plan Phase 6.1):
+                fps / dpr / draw calls / fxBudget / renderer readout fed by the
+                in-Canvas PerfProbe. Self-gated on tierStore.perfHud (only ever
+                true after resolve() on the client, behind devOverridesAllowed)
+                → renders null on the server and in production. */}
+            <PerfHud />
             {/* Section-state bus writer — measures [data-line-anchor] spans,
                 publishes the active section + scroll direction to
                 useSectionStore. Lives OUTSIDE the Canvas so the bus works on

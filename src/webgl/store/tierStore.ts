@@ -32,6 +32,18 @@
  * is driven by AdaptiveResolution once the DPR floor is reached; nothing ever
  * steps UP automatically. Dev/preview URL overrides `?fx= ?postfx= ?dpr=` are
  * read there too (`dprOverride` lands on the store and clamps the DPR range).
+ *
+ * PERF HUD (mobile-parity plan Phase 6.1): `?perf=1` on any dev build or
+ * Vercel preview host (same `devOverridesAllowed()` gate as the overrides
+ * above — never on the real domain, never during SSR) sets `perfHud: true` in
+ * `resolve()`. That single flag mounts TWO things and nothing else: `PerfProbe`
+ * inside the Canvas (Scene.tsx — one priority-0 useFrame + one R3F
+ * after-effect, writes `perfStore` at most 4×/s) and the DOM overlay `PerfHud`
+ * (components/fx/perf-hud.tsx — bottom-left mono panel: fps / frame ms, dpr,
+ * per-frame draw calls + triangles, texture MB, backend, renderer string,
+ * fxBudget, tier/phoneGL, cores/deviceMemory, viewport). With the flag absent
+ * neither component mounts (the HUD returns null, the probe is not in the
+ * tree) — zero cost, desktop render path byte-identical.
  */
 import { create } from "zustand";
 import type { Backend } from "../renderer/createRenderer";
@@ -143,6 +155,15 @@ interface TierState {
    * `backend === "webgpu"` at the consumption site.
    */
   fxBudget: FxBudget;
+  /**
+   * Dev/preview-only `?perf=1` (plan Phase 6.1): mounts the in-Canvas
+   * `PerfProbe` + the DOM `PerfHud` overlay. Read by `resolve()` through the
+   * same `devOverridesAllowed()` gate as `?fx=`/`?dpr=`, so it is false in
+   * production hosts and during SSR (server HTML never changes). Untouched by
+   * `degrade()`/`stepDownBudget()` — the HUD is exactly what you want to keep
+   * watching while the budget steps down.
+   */
+  perfHud: boolean;
   /** True once the WebGL hero (the procedural Saturn) has rendered its first
    *  frame. Gates the hero drag-to-rotate capture layer so dragging only
    *  arms once the planet is live. */
@@ -386,16 +407,18 @@ export function devOverridesAllowed(): boolean {
 
 /**
  * Dev + Vercel-preview ONLY QA overrides (copied from Lusion's `Settings`
- * URL flags): `?fx=0|1|2|3`, `?postfx=off|lite|full`, `?dpr=<n>`. Every field
- * is null when absent/invalid or in production, so the production derivation
- * never even parses the query string.
+ * URL flags): `?fx=0|1|2|3`, `?postfx=off|lite|full`, `?dpr=<n>`, `?perf=1`
+ * (the perf HUD, plan Phase 6.1). Every field is null/false when
+ * absent/invalid or in production, so the production derivation never even
+ * parses the query string.
  */
 function readDevOverrides(): {
   fx: FxBudget["level"] | null;
   postfx: FxBudget["postFx"] | null;
   dpr: number | null;
+  perf: boolean;
 } {
-  const none = { fx: null, postfx: null, dpr: null };
+  const none = { fx: null, postfx: null, dpr: null, perf: false };
   if (!devOverridesAllowed()) return none;
   let params: URLSearchParams;
   try {
@@ -415,7 +438,8 @@ function readDevOverrides(): {
   const dprRaw = params.get("dpr");
   const dprNum = dprRaw === null ? NaN : Number(dprRaw);
   const dpr = Number.isFinite(dprNum) && dprNum > 0 ? dprNum : null;
-  return { fx, postfx, dpr };
+  const perf = params.get("perf") === "1";
+  return { fx, postfx, dpr, perf };
 }
 
 /**
@@ -494,6 +518,7 @@ export const useTierStore = create<TierState>((set, get) => ({
   dprCap: null,
   dprOverride: null,
   fxBudget: budgetProfile(0),
+  perfHud: false,
   heroReady: false,
   resolve: () => {
     const tier = detectTier();
@@ -501,7 +526,9 @@ export const useTierStore = create<TierState>((set, get) => ({
     let dpr = detectDprRange();
     // Dev/preview `?dpr=<n>`: pin the whole adaptive range to min(n, device)
     // so QA can hold a DPR steady. Null in production and when absent.
-    const dprOverride = readDevOverrides().dpr;
+    // `?perf=1` (same gate) mounts the perf probe + HUD; false in production.
+    const ov = readDevOverrides();
+    const dprOverride = ov.dpr;
     if (dprOverride !== null) {
       const pinned = Math.min(dprOverride, window.devicePixelRatio || 1);
       dpr = { initial: pinned, min: pinned, max: pinned };
@@ -520,6 +547,7 @@ export const useTierStore = create<TierState>((set, get) => ({
       dprMax: dpr.max,
       dprOverride,
       fxBudget: resolveFxBudget({ tier, phoneGL }),
+      perfHud: ov.perf,
     });
   },
   // Level 2 → 1 only; never up; a no-op otherwise. Does NOT touch `tier`,
