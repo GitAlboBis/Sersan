@@ -1,0 +1,75 @@
+/assets/fonts/Aeonik-Regular.woff2                                31164   HTTP/1.1 200 OK
+/assets/fonts/Aeonik-Medium.woff2                                 44632   HTTP/1.1 200 OK
+/assets/fonts/IBMPlexMono-Regular.woff2                           38988   HTTP/1.1 200 OK
+/assets/fonts/LusionMono.woff2                                     1600   HTTP/1.1 200 OK
+/assets/textures/LDR_RGB1_0.png                                   48759   HTTP/1.1 200 OK
+/assets/textures/smaa-area.png                                    33203   HTTP/1.1 200 OK
+/assets/textures/smaa-search.png                                    113   HTTP/1.1 200 OK
+/assets/models/home/cross.buf                                             HTTP/1.1 200 OK
+/assets/models/home/cross_ld.buf                                          HTTP/1.1 200 OK
+/assets/textures/home/matcap.exr                                          HTTP/1.1 200 OK
+/assets/textures/home/matcap_ld.exr                                       HTTP/1.1 200 OK
+/assets/models/lines/line_reel.buf                                        HTTP/1.1 200 OK
+/assets/models/lines/line_goal.buf                                        HTTP/1.1 200 OK
+/assets/models/lines/line_capability.buf                                  HTTP/1.1 200 OK
+/assets/models/lines/line_office.buf                                      HTTP/1.1 200 OK
+/assets/textures/reel/desktop.mp4                               4980580   HTTP/1.1 200 OK
+/assets/textures/reel/mobile.mp4                                2267388   HTTP/1.1 200 OK
+/assets/projects/oryzo_ai/home.webp                               53092   HTTP/1.1 200 OK
+/assets/projects/oryzo_ai/home_depth.webp                          6048   HTTP/1.1 200 OK
+/assets/projects/devin_ai/home.webp                              108360   HTTP/1.1 200 OK
+/assets/projects/porsche_dream_machine/home.webp                 268054   HTTP/1.1 200 OK
+/assets/models/tunnels/grid_structure_ld.buf                              HTTP/1.1 200 OK
+/assets/models/tunnels/grid_structure_hd.buf                              HTTP/1.1 200 OK
+/assets/models/tunnels/grid_base_ld.buf                                   HTTP/1.1 200 OK
+/assets/models/tunnels/grid_base_hd.buf                                   HTTP/1.1 200 OK
+/assets/textures/tunnels/grids/greeble_arm.webp                  354148   HTTP/1.1 200 OK
+/assets/textures/tunnels/grids/greeble_base.webp                 276006   HTTP/1.1 200 OK
+/assets/textures/tunnels/grids/greeble_nor.webp                  198056   HTTP/1.1 200 OK
+/assets/models/tunnels/astronaut_animations.buf                           HTTP/1.1 200 OK
+/assets/models/tunnels/astronaut_in_animation.buf                         HTTP/1.1 200 OK
+/assets/models/tunnels/astronaut_out_animation.buf                        HTTP/1.1 200 OK
+/assets/models/tunnels/broken_glass.buf                                   HTTP/1.1 200 OK
+/assets/models/tunnels/broken_glass_animation.buf                         HTTP/1.1 200 OK
+/assets/models/tunnels/diamond.buf                                        HTTP/1.1 200 OK
+/assets/models/tunnels/earth_card.buf                                     HTTP/1.1 200 OK
+/assets/models/tunnels/tunnel_block_base.buf                              HTTP/1.1 200 OK
+/assets/models/tunnels/tunnel_block_wall.buf                              HTTP/1.1 200 OK
+/assets/textures/tunnels/earth.webp                                1634   HTTP/1.1 200 OK
+/assets/textures/tunnels/earth_landscape.jpg                     245092   HTTP/1.1 200 OK
+/assets/textures/tunnels/white_block.webp                        189362   HTTP/1.1 200 OK
+/assets/textures/tunnels/white_matcap.jpg                         69851   HTTP/1.1 200 OK
+/assets/textures/tunnels/stickers.png                            409573   HTTP/1.1 200 OK
+/assets/textures/tunnels/stickers_low.png                        258457   HTTP/1.1 200 OK
+/assets/textures/tunnels/astronaut/face.png                         771   HTTP/1.1 200 OK
+/assets/textures/tunnels/tablet.png                               73188   HTTP/1.1 200 OK
+/assets/textures/tunnels/desktop.png                              67412   HTTP/1.1 200 OK
+/assets/models/plant.buf                                                  HTTP/1.1 200 OK
+/assets/textures/flip_texture.png                                  8696   HTTP/1.1 200 OK
+/assets/textures/font.png                                           200   HTTP/1.1 200 OK
+/assets/audios/hover_0.ogg                                         6130   HTTP/1.1 200 OK
+/assets/audios/page_0.ogg                                         21202   HTTP/1.1 200 OK
+/assets/audios/generic.ogg                                       236668   HTTP/1.1 200 OK
+/assets/audios/cinematic_2.ogg                                   102857   HTTP/1.1 200 OK
+/assets/models/home/cross.buf                              wire=282676 200 raw=282676   
+/assets/models/home/cross_ld.buf                           wire=123984 200 raw=123984   
+/assets/textures/home/matcap.exr                           wire=602702 200 raw=602702   
+/assets/textures/home/matcap_ld.exr                        wire=172380 200 raw=172380   
+/assets/models/lines/line_reel.buf                         wire=12840 200 raw=12840    
+/assets/models/lines/line_goal.buf                         wire=12840 200 raw=12840    
+/assets/models/lines/line_capability.buf                   wire=12844 200 raw=12844    
+/assets/models/lines/line_office.buf                       wire=12832 200 raw=12832    
+/assets/models/tunnels/grid_structure_ld.buf               wire=12632 200 raw=12632    
+/assets/models/tunnels/grid_structure_hd.buf               wire=2912 200  raw=2912     
+/assets/models/tunnels/grid_base_ld.buf                    wire=1636 200  raw=1636     
+/assets/models/tunnels/grid_base_hd.buf                    wire=90628 200 raw=90628    
+/assets/models/tunnels/astronaut_animations.buf            wire=336188 200 raw=336188   
+/assets/models/tunnels/astronaut_in_animation.buf          wire=1960 200  raw=1960     
+/assets/models/tunnels/astronaut_out_animation.buf         wire=2564 200  raw=2564     
+/assets/models/tunnels/broken_glass.buf                    wire=135904 200 raw=135904   
+/assets/models/tunnels/broken_glass_animation.buf          wire=312576 200 raw=312576   
+/assets/models/tunnels/diamond.buf                         wire=5104 200  raw=5104     
+/assets/models/tunnels/earth_card.buf                      wire=14156 200 raw=14156    
+/assets/models/tunnels/tunnel_block_base.buf               wire=8760 200  raw=8760     
+/assets/models/tunnels/tunnel_block_wall.buf               wire=363860 200 raw=363860   
+/assets/models/plant.buf                                   wire=177002 200 raw=177002   
