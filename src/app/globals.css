@@ -1676,8 +1676,8 @@ html.cursor-none [contenteditable="true"] {
 
      `.tap-44` — for controls whose CONTENT is already centred by their own
      flex/padding and that simply measure too small: the /resources filter pill
-     (h-9 = 36px) and its untouched twin in case-studies-client.tsx, the footer
-     mailto row (~16.5px). Size only, deliberately: no display, no
+     (h-9 = 36px) and its twin in case-studies-client.tsx, the footer mailto
+     row (~16.5px). Size only, deliberately: no display, no
      justify-content. Both axes, because 44×44 is two of them and a mono pill
      can be narrow. min-height wins over the `h-9` used value, so this composes
      with the existing utility rather than replacing it.
@@ -1772,16 +1772,32 @@ html.cursor-none [contenteditable="true"] {
    this exists, which is the same construction the touch-ergonomics block above
    uses and the same reason it is verifiable rather than merely intended.
 
+   THE BAR IS NOT THE WHOLE STORY (MOBILE_REVIEW.md A2). This rule scopes what
+   the consumer opts into. Three things DragRail carries unconditionally — the
+   masked edge fade, `scroll-padding-inline`, and the inline
+   `overscroll-behavior-x` write — reached a reduced-motion desktop at any width
+   through this same native branch, and none of them is a "bar". They are now
+   gated INSIDE `components/ui/drag-rail.tsx`: its own stylesheet wraps the
+   fade and the snapport inset in `@media (pointer: coarse)`, and its effect
+   writes `overscroll-behavior-x` through `lib/rail-overscroll.ts` — coarse ⇒
+   `auto` (OS edge-swipe), fine pointer with motion ⇒ `contain` inline (blocks
+   trackpad back-nav; `.lenis-smooth` exists only mid-animation, so the cascade
+   cannot be relied on), fine pointer under reduced motion ⇒ cleared so the
+   cascade decides (`auto` where Lenis never runs — exactly as before). This
+   file and that one together are the guarantee; neither is sufficient alone.
+
    WHAT IS GIVEN UP, honestly. A reduced-motion desktop reader keeps exactly
-   what `main` gives them today — a native scroller with no bar — rather than
-   gaining one. `use-rail-progress.ts` argues (correctly) that the read-out is
-   STATE and that a reduced-motion reader needs it as much as anyone; that
-   argument is why the HOOK stays on under reduced motion, and it is not
-   contradicted here. Nothing is hidden from anyone: every card is in the DOM,
-   in source order, at every width, and the scroller is scrollable by wheel,
-   trackpad, keyboard and touch regardless. What is scoped is a decorative
-   progress bar, on the one input device that already has a cursor, a wheel and
-   a visible scroll gesture to tell it the same thing.
+   what `main` gives them today — a native scroller with no bar, no fade, no
+   scroll padding, and the overscroll behaviour the cascade already gave them —
+   rather than gaining any of it. `use-rail-progress.ts` argues (correctly)
+   that the read-out is STATE and that a reduced-motion reader needs it as much
+   as anyone; that argument is why the HOOK stays on under reduced motion, and
+   it is not contradicted here. Nothing is hidden from anyone: every card is in
+   the DOM, in source order, at every width, and the scroller is scrollable by
+   wheel, trackpad, keyboard and touch regardless. What is scoped is a
+   decorative progress bar (and its edge treatment), on the one input device
+   that already has a cursor, a wheel and a visible scroll gesture to tell it
+   the same thing.
 
    `display: none` rather than `visibility: hidden` on purpose: the point is to
    hand the 22px back, not merely to blank it. DragRail's own inert rule uses

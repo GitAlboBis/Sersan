@@ -17,6 +17,7 @@ import { Reveal } from "@/components/ui/reveal";
 import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
 import { getLenis } from "@/lib/lenis-singleton";
+import { applyRailOverscroll } from "@/lib/rail-overscroll";
 import { snapPoint } from "@/lib/scroll-snap";
 
 if (typeof window !== "undefined") {
@@ -92,7 +93,11 @@ if (typeof window !== "undefined") {
  * `preventDefault`: a custom translator cannot be written without contesting
  * iOS momentum and the OS edge-swipe, and a horizontal drag must never be able
  * to swallow vertical intent (MOBILE_HOME_SPEC §7). `data-lenis-prevent` keeps
- * smooth-scroll off the axis.
+ * smooth-scroll off the axis. `overscroll-behavior-x` is written inline by an
+ * effect below — same rule as DragRail via `applyRailOverscroll`
+ * (`lib/rail-overscroll`: auto on coarse, contain on fine with motion, cleared
+ * on fine under reduced motion) — so all three rails on the home page chain
+ * (or not) the same way.
  *
  * WHY THIS IS NOT `<DragRail variant="stations">` YET. Chunk H's primitive
  * (`components/ui/drag-rail`) did not exist when this was written, and when it
@@ -464,6 +469,7 @@ export default function ServicesSection() {
   // same convention as the work rail / cinematic spine.
   const [mode, setMode] = useState<"pinned" | "native">("pinned");
   const [detected, setDetected] = useState(false);
+  const prevModeRef = useRef<"pinned" | "native" | null>(null);
 
   const runwayRef = useRef<HTMLDivElement | null>(null);
   const stickyRef = useRef<HTMLDivElement | null>(null);
@@ -579,6 +585,62 @@ export default function ServicesSection() {
     setMode(mobile || coarse || reduced ? "native" : "pinned");
     setDetected(true);
   }, []);
+
+  // A mode flip swaps the pinned runway (vh + travel px) for the unpinned
+  // stacked grid, so document height moves — and nothing else re-measures on
+  // this path (the provider deliberately never refreshes on "/"). Deferred so
+  // the refresh reads the committed layout. Same form as the work rail /
+  // fit-section / audit-week-timeline.
+  //
+  // `prev === null` is the FIRST detection. It is NOT a no-op: the server
+  // renders `pinned`, so a phone landing on `native` here is what REMOVES the
+  // runway from the document and every trigger below moves with it. Landing
+  // on `pinned` changes nothing versus SSR (and the scrub effect below arms
+  // right after and measures its own fresh height), so only that case stays
+  // quiet.
+  useEffect(() => {
+    if (!detected) return;
+    const prev = prevModeRef.current;
+    prevModeRef.current = mode;
+    if (prev === mode) return;
+    if (prev === null && mode === "pinned") return;
+    const raf = requestAnimationFrame(() => ScrollTrigger.refresh());
+    return () => cancelAnimationFrame(raf);
+  }, [detected, mode]);
+
+  // Overscroll chaining on the native rail — same rule as DragRail via
+  // `applyRailOverscroll` (lib/rail-overscroll; decision (2) in DragRail's
+  // header), so the three rails on this page agree: `auto` on a coarse pointer
+  // (`contain` would also block the OS edge-swipe a reader uses to leave the
+  // page), `contain` on a fine pointer with motion (a trackpad flick past the
+  // end must not chain into the browser's back navigation), cleared on a fine
+  // pointer under reduced motion (cascade `auto`, MOBILE_REVIEW A2). Written
+  // inline because globals.css's `.lenis.lenis-smooth [data-lenis-prevent]`
+  // gives every prevent-marked scroller a blunt `contain` — but only WHILE a
+  // smooth wheel scroll animates — and inline is the only origin that beats
+  // that selector deterministically; a `max-sm:` utility could not. Both
+  // queries subscribed, never sampled once (a mouse plugged into a tablet, a
+  // devtools emulation flip, an OS motion-setting change must re-resolve
+  // without a reload). At ≥640px the element is the plain grid, not a scroll
+  // container, so the write is inert.
+  useEffect(() => {
+    if (!detected || mode !== "native") return;
+    const el = railRef.current;
+    if (!el || typeof window === "undefined") return;
+    const coarseQuery = window.matchMedia("(pointer: coarse)");
+    const reducedQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const apply = () => {
+      applyRailOverscroll(el, coarseQuery.matches, reducedQuery.matches);
+    };
+    apply();
+    coarseQuery.addEventListener("change", apply);
+    reducedQuery.addEventListener("change", apply);
+    return () => {
+      coarseQuery.removeEventListener("change", apply);
+      reducedQuery.removeEventListener("change", apply);
+      el.style.overscrollBehaviorX = "";
+    };
+  }, [detected, mode]);
 
   // POV-pan scrub — pinned mode only, after viewport detection settles.
   // isEn is a dep on purpose: an EN↔IT toggle changes card heights → the
@@ -885,14 +947,18 @@ export default function ServicesSection() {
               above the breakpoint none of them exist. The negative inline
               margin cancels container-px's gutter and the padding pays it
               straight back, so station 01 lines up with the heading while the
-              rail itself bleeds to the viewport edge and station 02 peeks. */}
+              rail itself bleeds to the viewport edge and station 02 peeks.
+              No `overscroll-x-*` utility here: `overscroll-behavior-x` is
+              written by the inline effect above — same rule as DragRail via
+              `applyRailOverscroll` (auto on coarse so the OS edge-swipe
+              survives, contain on fine with motion, cleared under RM). */}
           <div
             ref={railRef}
             data-lenis-prevent
             className="
               grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6
               max-sm:flex max-sm:snap-x max-sm:snap-mandatory
-              max-sm:overflow-x-auto max-sm:overscroll-x-contain
+              max-sm:overflow-x-auto
               max-sm:mx-[calc(var(--margin)*-1)] max-sm:px-[var(--margin)]
               max-sm:pb-2 max-sm:[scrollbar-width:none]
               max-sm:[&::-webkit-scrollbar]:hidden

@@ -17,11 +17,61 @@
  * capability-model migration (MOBILE_AUDIT §5) is NOT done — it has 13 `tier`
  * call sites and must be atomic — so the only thing guarding this split is the
  * invariant written on `detectPhoneGL()` below. Read it before adding a gate.
+ *
+ * `fxBudget` (mobile-parity plan 2026-08-17, Phase 1.2) is the ADDITIVE budget
+ * axis that pays that debt without touching the 13 `tier` call sites: effects
+ * are meant to read `fxBudget.level / postFx / particleScale …` instead of
+ * `tier`. `level 3` ⇔ tier `"full"` (fine pointer AND ≥768 px — exactly the
+ * devices that mount everything today), `level 1` == today's `lite` (frozen:
+ * postFx off, current particle constants, no islands), `level 2` = capable
+ * phone (`tier lite` + coarse + `phoneGL`), `level 0` = `tier off`.
+ * `resolveFxBudget()` is PURE (no store write, never reads `backend`) and
+ * callable BEFORE `resolve()` — the preloader-tunnel mounts before CanvasHost
+ * and may call it directly. Runtime step-down (`stepDownBudget`, level 2→1 only)
+ * is driven by AdaptiveResolution once the DPR floor is reached; nothing ever
+ * steps UP automatically. Dev/preview URL overrides `?fx= ?postfx= ?dpr=` are
+ * read there too (`dprOverride` lands on the store and clamps the DPR range).
  */
 import { create } from "zustand";
 import type { Backend } from "../renderer/createRenderer";
 
 export type SceneTier = "full" | "lite" | "off";
+
+/**
+ * Additive per-axis effects budget (plan Phase 1.2). Derived from DEVICE facts
+ * only (`tier`, pointer, `phoneGL`) — never from `backend`, never from the UA.
+ *
+ *   level 0 — off: reduced-motion / no WebGL2 (`tier off`)
+ *   level 1 — "today": legacy lite (weak phone OR narrow desktop <768 px). Its
+ *             consumers MUST keep today's constants (postFx off, no islands,
+ *             the current lite counts); `particleScale 0.25` is documentary,
+ *             not a multiplier to apply.
+ *   level 2 — capable phone (`tier lite` + coarse pointer + `phoneGL`)
+ *   level 3 — desktop tier `"full"` (fine pointer AND ≥768 px)
+ */
+export interface FxBudget {
+  level: 0 | 1 | 2 | 3;
+  postFx: "off" | "lite" | "full";
+  /** Multiplies the EXISTING desktop counts on level 2/3 (0.5 · 1). Level 1
+   *  keeps today's lite constants as-is (documented above); level 0 = 0. */
+  particleScale: number;
+  /**
+   * WISH for the reduced-iteration/step raymarch twin. It is device-only and
+   * says nothing about the renderer: `backend` is written AFTER `resolve()`
+   * (Scene.tsx `onCreated` → `setBackend`), so every TSL-only consumer MUST
+   * gate as `fxBudget.raymarchLite && backend === "webgpu"` AT THE CONSUMPTION
+   * SITE. Never treat this flag alone as "the twin may mount".
+   */
+  raymarchLite: boolean;
+  /** Backing-store ceiling in device pixels. Levels 2 and 3 carry Lusion's
+   *  MAX_PIXEL_COUNT (2560×1440 = 3.69 MP); levels 0 and 1 carry `+Infinity`
+   *  (no cap — level 1 is today's lite, frozen). Consumed by AdaptiveResolution
+   *  as an extra cap on the DPR range ONLY at `level === 2`; at level 3 it is
+   *  informative (desktop has no cap today and AdaptiveResolution ignores it). */
+  maxPixels: number;
+  /** Coarse pointer AND `DeviceOrientationEvent` present (level 2 only). */
+  gyroParallax: boolean;
+}
 
 interface TierState {
   tier: SceneTier;
@@ -74,12 +124,38 @@ interface TierState {
    * it lets the monitor climb back under its normal hysteresis.
    */
   dprCap: number | null;
+  /**
+   * Dev/preview-only `?dpr=<n>` QA override (null = none). Read by `resolve()`
+   * from the URL and applied there as `dprInitial = dprMin = dprMax =
+   * min(n, device dpr)`, so AdaptiveResolution has nothing to adapt and the
+   * whole session renders at exactly that DPR. Never set in production.
+   */
+  dprOverride: number | null;
+  /**
+   * The additive effects budget (see `FxBudget`). Default is the level 0
+   * profile until `resolve()` runs; then written INSIDE the same single set()
+   * as `tier`/`phoneGL`, so no consumer can observe a frame where the layout
+   * tier resolved but the budget has not. `level/postFx/particleScale/
+   * maxPixels/gyroParallax` are device-only, hence genuinely atomic with the
+   * tier. `raymarchLite` is only a wish: `backend` is written later
+   * (Scene.tsx `onCreated`), so every TSL-only consumer must AND it with
+   * `backend === "webgpu"` at the consumption site.
+   */
+  fxBudget: FxBudget;
   /** True once the WebGL hero (the procedural Saturn) has rendered its first
    *  frame. Gates the hero drag-to-rotate capture layer so dragging only
    *  arms once the planet is live. */
   heroReady: boolean;
   resolve: () => void;
   degrade: () => void;
+  /**
+   * Runtime budget step-down, level 2 → 1 ONLY (capable phone that cannot
+   * hold the fps band even at `dprMin`): postFx off, today's lite counts,
+   * raymarch twin off. Never steps up automatically (Lusion never climbs back
+   * either); a no-op at any other level. Deliberately does NOT call
+   * `degrade()` — `lite → off` would unmount the Canvas.
+   */
+  stepDownBudget: () => void;
   setHeroReady: (ready: boolean) => void;
   setBackend: (backend: Backend) => void;
   setDprCap: (cap: number | null) => void;
@@ -212,6 +288,160 @@ function detectDprRange(): { initial: number; min: number; max: number } {
   }
 }
 
+/** Lusion MAX_PIXEL_COUNT (plan Phase 1.3) — carried by levels 2 and 3 only. */
+const MAX_PIXELS = 2560 * 1440;
+
+/**
+ * The four budget profiles. `level 1` is TODAY's lite, frozen: its consumers
+ * keep today's constants (postFx off, no islands, current lite counts) — the
+ * `particleScale 0.25` here documents that ratio, it is not a multiplier any
+ * level-1 path applies. Levels 0/1 carry NO pixel cap (`+Infinity`) so the
+ * frozen paths cannot be moved by it; level 3's cap is informative only
+ * (AdaptiveResolution enforces it at level 2 alone). `gyroParallax` is decided
+ * by the caller (level 2 only).
+ */
+function budgetProfile(level: FxBudget["level"], gyro = false): FxBudget {
+  switch (level) {
+    case 3:
+      return {
+        level: 3,
+        postFx: "full",
+        particleScale: 1,
+        raymarchLite: false,
+        maxPixels: MAX_PIXELS,
+        gyroParallax: false,
+      };
+    case 2:
+      return {
+        level: 2,
+        postFx: "lite",
+        particleScale: 0.5,
+        raymarchLite: true,
+        maxPixels: MAX_PIXELS,
+        gyroParallax: gyro,
+      };
+    case 1:
+      return {
+        level: 1,
+        postFx: "off",
+        particleScale: 0.25,
+        raymarchLite: false,
+        maxPixels: Number.POSITIVE_INFINITY,
+        gyroParallax: false,
+      };
+    default:
+      return {
+        level: 0,
+        postFx: "off",
+        particleScale: 0,
+        raymarchLite: false,
+        maxPixels: Number.POSITIVE_INFINITY,
+        gyroParallax: false,
+      };
+  }
+}
+
+/**
+ * Where the dev/preview QA surface is allowed to exist: any non-production
+ * build, or a production build served from a Vercel preview host. The SAME
+ * predicate gates the URL overrides below and the `__sersanTier` window handle
+ * (Scene.tsx), so what preview QA can set it can also inspect. False during
+ * SSR (no window) and on the real domain.
+ */
+export function devOverridesAllowed(): boolean {
+  if (typeof window === "undefined") return false;
+  return (
+    process.env.NODE_ENV !== "production" ||
+    window.location.hostname.endsWith(".vercel.app")
+  );
+}
+
+/**
+ * Dev + Vercel-preview ONLY QA overrides (copied from Lusion's `Settings`
+ * URL flags): `?fx=0|1|2|3`, `?postfx=off|lite|full`, `?dpr=<n>`. Every field
+ * is null when absent/invalid or in production, so the production derivation
+ * never even parses the query string.
+ */
+function readDevOverrides(): {
+  fx: FxBudget["level"] | null;
+  postfx: FxBudget["postFx"] | null;
+  dpr: number | null;
+} {
+  const none = { fx: null, postfx: null, dpr: null };
+  if (!devOverridesAllowed()) return none;
+  let params: URLSearchParams;
+  try {
+    params = new URLSearchParams(window.location.search);
+  } catch {
+    return none;
+  }
+  const fxRaw = params.get("fx");
+  const fxNum = fxRaw === null ? NaN : Number(fxRaw);
+  const fx: FxBudget["level"] | null =
+    fxNum === 0 || fxNum === 1 || fxNum === 2 || fxNum === 3 ? fxNum : null;
+  const postRaw = params.get("postfx");
+  const postfx: FxBudget["postFx"] | null =
+    postRaw === "off" || postRaw === "lite" || postRaw === "full"
+      ? postRaw
+      : null;
+  const dprRaw = params.get("dpr");
+  const dprNum = dprRaw === null ? NaN : Number(dprRaw);
+  const dpr = Number.isFinite(dprNum) && dprNum > 0 ? dprNum : null;
+  return { fx, postfx, dpr };
+}
+
+/**
+ * PURE budget derivation (plan Phase 1.2, step 1 — device only). Never reads
+ * `backend`, never writes the store, never reads the UA string.
+ *
+ *   tier "full"                  ⇒ level 3 (fine pointer AND ≥768 px — exactly
+ *                                  the devices that mount everything today;
+ *                                  NOT "fine pointer ⇒ 3": a narrow desktop
+ *                                  window is `lite` today and must stay so)
+ *   tier "lite" + fine pointer   ⇒ level 1 (frozen = today)
+ *   tier "lite" + coarse pointer ⇒ phoneGL ? level 2 : level 1
+ *   tier "off"                   ⇒ level 0
+ *
+ * Without `input` it runs the same internal detectors `resolve()` uses
+ * (`detectTier()` / `detectPhoneGL()`), so it can be called BEFORE the store
+ * has resolved (the preloader-tunnel mounts before CanvasHost). With `input`
+ * (how `resolve()` calls it) both derivations are identical by construction.
+ *
+ * Dev/preview URL overrides are applied last: `?fx=` clamps the level and
+ * re-derives the whole profile; `?postfx=` then overrides `postFx` alone.
+ * In production none of it is read.
+ */
+export function resolveFxBudget(input?: {
+  tier: SceneTier;
+  phoneGL: boolean;
+}): FxBudget {
+  const tier = input ? input.tier : detectTier();
+  const phoneGL = input ? input.phoneGL : detectPhoneGL();
+  const coarse =
+    typeof window !== "undefined" &&
+    window.matchMedia("(pointer: coarse)").matches;
+  // `coarse` already implies a window; the gyro wish is coarse-only.
+  const gyro = coarse && "DeviceOrientationEvent" in window;
+
+  let level: FxBudget["level"];
+  switch (tier) {
+    case "full":
+      level = 3;
+      break;
+    case "lite":
+      level = coarse && phoneGL ? 2 : 1;
+      break;
+    default:
+      level = 0;
+  }
+
+  const ov = readDevOverrides();
+  if (ov.fx !== null) level = ov.fx;
+  const budget = budgetProfile(level, level === 2 && gyro);
+  if (ov.postfx !== null) return { ...budget, postFx: ov.postfx };
+  return budget;
+}
+
 export const useTierStore = create<TierState>((set, get) => ({
   tier: "off",
   phoneGL: false,
@@ -221,20 +451,41 @@ export const useTierStore = create<TierState>((set, get) => ({
   dprMin: 1,
   dprMax: 2,
   dprCap: null,
+  dprOverride: null,
+  fxBudget: budgetProfile(0),
   heroReady: false,
   resolve: () => {
-    const dpr = detectDprRange();
+    const tier = detectTier();
+    const phoneGL = detectPhoneGL();
+    let dpr = detectDprRange();
+    // Dev/preview `?dpr=<n>`: pin the whole adaptive range to min(n, device)
+    // so QA can hold a DPR steady. Null in production and when absent.
+    const dprOverride = readDevOverrides().dpr;
+    if (dprOverride !== null) {
+      const pinned = Math.min(dprOverride, window.devicePixelRatio || 1);
+      dpr = { initial: pinned, min: pinned, max: pinned };
+    }
     // tier and phoneGL land in ONE set() so no consumer can ever observe a
     // frame where the layout tier has resolved but the capability axis has not
     // (that half-state would flash the SVG neural fallback under the island).
+    // fxBudget rides the same set(): its device-only fields are atomic with the
+    // tier; `raymarchLite` still needs `backend` AND-ed at the consumption site.
     set({
-      tier: detectTier(),
-      phoneGL: detectPhoneGL(),
+      tier,
+      phoneGL,
       resolved: true,
       dprInitial: dpr.initial,
       dprMin: dpr.min,
       dprMax: dpr.max,
+      dprOverride,
+      fxBudget: resolveFxBudget({ tier, phoneGL }),
     });
+  },
+  // Level 2 → 1 only; never up; a no-op otherwise. Does NOT touch `tier`,
+  // `phoneGL` or `degrade()` (lite → off would unmount the Canvas).
+  stepDownBudget: () => {
+    if (get().fxBudget.level !== 2) return;
+    set({ fxBudget: budgetProfile(1) });
   },
   degrade: () => {
     const { tier } = get();

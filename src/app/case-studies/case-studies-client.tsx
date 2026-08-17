@@ -16,6 +16,7 @@ import { CardImageDistort } from "@/components/fx/card-image-distort";
 import { CardLogoReveal } from "@/components/fx/card-logo-reveal";
 import { useFlipSource } from "@/lib/use-flip-source";
 import { useCentreFocus, type CentreFocusRef } from "@/lib/use-centre-focus";
+import { usePressState, type PressStateRef } from "@/lib/use-press-state";
 import { cn } from "@/lib/utils";
 
 // Flip is already registered by the persistent flip-handoff overlay (root
@@ -79,24 +80,35 @@ const prefersReducedMotion = () =>
  * active, rule-grey at rest) so toggling never reflows the rail. h-9 keeps the
  * ≥36px tap height of the navbar's language pill (WCAG 2.5.8 target size);
  * keyboard focus is handled by the global :focus-visible ring.
+ *
+ * TOUCH (D-14) — 36px fails the 44px floor, so `tap-44` raises the pill to
+ * 44×44 on a coarse pointer via min-height/min-width (which win over the `h-9`
+ * used value, so the utility composes rather than being replaced) and desktop
+ * keeps its 36px rail exactly. `press-surface` + pressRef add the M-4 press
+ * pose, since a bare <button> has no `:active` grammar of its own — unlike
+ * ui/button.tsx, which this rail deliberately does not use. Byte-identical
+ * twin of the pill in resources/resources-client.tsx (MOBILE_REVIEW.md B2).
  */
 function FilterPill({
   active,
   label,
   onClick,
+  pressRef,
 }: {
   active: boolean;
   label: string;
   onClick: () => void;
+  pressRef: PressStateRef;
 }) {
   return (
     <button
+      ref={pressRef}
       type="button"
       onClick={onClick}
       aria-pressed={active}
       data-cursor="link"
       className={cn(
-        "inline-flex h-9 items-center gap-2 rounded-full border px-3.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-300",
+        "tap-44 press-surface inline-flex h-9 items-center gap-2 rounded-full border px-3.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-300",
         active
           ? "border-[hsl(var(--accent)/0.55)] bg-[hsl(var(--accent)/0.08)] text-ink"
           : "border-rule/80 text-ink-mute hover:border-rule hover:text-ink",
@@ -403,6 +415,12 @@ export function CaseStudiesClient() {
   const gridRef = useRef<HTMLDivElement | null>(null);
   const armResort = useArchiveResort(gridRef, sector);
 
+  // M-4 press feedback for the filter pills (lib/use-press-state) — same wiring
+  // as the /resources twin: ONE hook, a stable ref callback, so the pills
+  // survive the EN/IT toggle without re-attaching. Inert on a fine pointer and
+  // under reduced motion; the CSS half lives in globals.css `.press-surface`.
+  const pressRef = usePressState();
+
   // D-2: one observer for the whole archive. Cards register on mount and
   // unregister on detach, so the FLIP re-sort (which keeps filtered-out cards
   // alive but `display: none`) never leaves a stale entry — a hidden card has
@@ -518,6 +536,7 @@ export function CaseStudiesClient() {
                   active={sector === "all"}
                   label={isEn ? "All" : "Tutti"}
                   onClick={() => selectSector("all")}
+                  pressRef={pressRef}
                 />
                 {SECTORS.map((s) => (
                   <FilterPill
@@ -525,6 +544,7 @@ export function CaseStudiesClient() {
                     active={sector === s}
                     label={s}
                     onClick={() => selectSector(s)}
+                    pressRef={pressRef}
                   />
                 ))}
               </div>

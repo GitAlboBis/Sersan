@@ -160,10 +160,14 @@ function StudyCard({
   /** Centre-focus registration (touch only; inert on a fine pointer). */
   focusRef: CentreFocusRef;
   /**
-   * Native/touch layout. The STACK pills move from the absolute overlay into
-   * the card's flow: on touch the text layer does NOT fade out (globals.css —
-   * blanking a card's own title as you scroll to it is worse than showing no
-   * pills at all), so an overlay would land straight on the client name.
+   * Coarse-pointer (touch) layout — keyed on the pointer, not on the rail's
+   * `mode`. The STACK pills move from the absolute overlay into the card's
+   * flow: on touch the text layer does NOT fade out (globals.css — blanking a
+   * card's own title as you scroll to it is worse than showing no pills at
+   * all), so an overlay would land straight on the client name. On a FINE
+   * pointer (incl. reduced-motion desktop, where the rail is native) the
+   * overlay stays: hover fades the text layer, so in-flow pills there would
+   * be invisible.
    */
   stackInFlow?: boolean;
 }) {
@@ -321,6 +325,12 @@ export default function CaseStudiesRail() {
   // initial HTML — same convention as the cinematic spine.
   const [mode, setMode] = useState<"pinned" | "native">("pinned");
   const [detected, setDetected] = useState(false);
+  // The pointer axis on its own, NOT folded into `mode`: `mode` also goes
+  // `native` for a narrow window and for reduced motion, and a FINE pointer
+  // on either of those still has :hover — which is the only reveal that
+  // reaches the STACK pills there. Only a coarse pointer needs the pills moved
+  // into the card's flow (see `stackInFlow` below).
+  const [coarse, setCoarse] = useState(false);
 
   // D-2/D-16: on touch there is no pointer to hover a card with, so the card
   // scrolled to the viewport centre reveals its imagery and its STACK pills
@@ -340,13 +350,15 @@ export default function CaseStudiesRail() {
   // taken against a viewport that no longer exists.
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const coarseQuery = window.matchMedia("(pointer: coarse)");
     const queries = [
       window.matchMedia("(max-width: 768px)"),
-      window.matchMedia("(pointer: coarse)"),
+      coarseQuery,
       window.matchMedia("(prefers-reduced-motion: reduce)"),
     ];
     const sync = () => {
       setMode(queries.some((q) => q.matches) ? "native" : "pinned");
+      setCoarse(coarseQuery.matches);
       setDetected(true);
     };
     sync();
@@ -357,11 +369,19 @@ export default function CaseStudiesRail() {
   // A mode flip sets or clears the px runway height, so document height moves
   // — and an OS reduced-motion toggle fires no resize event, so nothing else
   // would re-measure. Deferred so the refresh reads the committed layout.
+  //
+  // `prev === null` is the FIRST detection. It is NOT a no-op: the server
+  // renders `pinned`, so a phone landing on `native` here swaps the pinned
+  // runway for the DragRail and the document height moves — every trigger
+  // below must re-measure. Landing on `pinned` changes nothing versus SSR
+  // (and the scrub effect below arms right after and measures its own fresh
+  // height), so only that case stays quiet.
   useEffect(() => {
     if (!detected) return;
     const prev = prevModeRef.current;
     prevModeRef.current = mode;
-    if (prev === null || prev === mode) return;
+    if (prev === mode) return;
+    if (prev === null && mode === "pinned") return;
     const raf = requestAnimationFrame(() => ScrollTrigger.refresh());
     return () => cancelAnimationFrame(raf);
   }, [detected, mode]);
@@ -780,10 +800,17 @@ export default function CaseStudiesRail() {
     </div>
   );
 
-  // Native (touch) layout moves the STACK pills into the card's flow — see
-  // StudyCard's `stackInFlow`. Before detection resolves, the SSR/desktop
-  // overlay markup is what renders.
-  const stackInFlow = detected && mode === "native";
+  // COARSE pointer moves the STACK pills into the card's flow — see
+  // StudyCard's `stackInFlow`. Keyed on the pointer, NOT on `mode`: `mode`
+  // is also `native` for a fine pointer under reduced motion (or in a narrow
+  // window), and there `:hover` is the only reveal that reaches the pills —
+  // but every media card is `card-has-distort`, whose hover fades the whole
+  // `.card-text-layer` (globals.css) that the in-flow pills would sit inside,
+  // so they could never be seen. The overlay placement outside the text layer
+  // is the one that works on a fine pointer; touch is unaffected (coarse ⇒
+  // native, always). Before detection resolves, the SSR/desktop overlay
+  // markup is what renders.
+  const stackInFlow = detected && coarse;
 
   const cards = (liClass: string) => (
     <>

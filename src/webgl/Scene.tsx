@@ -47,7 +47,11 @@ import { CAMERA_FOV, CAMERA_Z } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
 import { onLiftOnce } from "@/lib/route-transition-store";
 import type { SectionAnchors } from "./hooks/useSectionAnchors";
-import { useTierStore, type SceneTier } from "./store/tierStore";
+import {
+  devOverridesAllowed,
+  useTierStore,
+  type SceneTier,
+} from "./store/tierStore";
 
 // NOTE: the leva tuning panel (debug/LineDebug) and drei's
 // PerformanceMonitor are intentionally NOT mounted for now — while
@@ -76,6 +80,16 @@ if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
     (window as unknown as Record<string, unknown>).__sersanFoundersMorph =
       m.useFoundersMorphStore;
   });
+}
+
+// Tier/budget handle — dev AND Vercel preview (same predicate that admits the
+// `?fx= ?postfx= ?dpr=` overrides), so preview QA can inspect the fxBudget it
+// just set. Never on the real domain.
+if (
+  typeof window !== "undefined" &&
+  (process.env.NODE_ENV !== "production" || devOverridesAllowed())
+) {
+  (window as unknown as Record<string, unknown>).__sersanTier = useTierStore;
 }
 
 /**

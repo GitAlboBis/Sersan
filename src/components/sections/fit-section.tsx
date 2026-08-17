@@ -489,11 +489,19 @@ export default function FitSection() {
   // the pinned section entirely. Here the height is released BEFORE a deferred
   // ScrollTrigger.refresh() measures the committed layout. An OS
   // reduced-motion toggle fires no resize event, so nothing else re-measures.
+  //
+  // `prev === null` is the FIRST detection. It is NOT a no-op: the server
+  // renders `pinned`, so a phone landing on `native` here swaps the pinned
+  // markup for the stacked lists and the document height moves — every
+  // trigger below must re-measure. Landing on `pinned` changes nothing versus
+  // SSR (and the scrub effect below arms right after and measures its own
+  // fresh height), so only that case stays quiet.
   useEffect(() => {
     if (!detected) return;
     const prev = prevModeRef.current;
     prevModeRef.current = mode;
-    if (prev === null || prev === mode) return;
+    if (prev === mode) return;
+    if (prev === null && mode === "pinned") return;
     // Only on the way OUT of pinned: entering pinned, the scrub effect below
     // arms right after this one and measures a fresh height of its own.
     if (mode === "native" && runwayNodeRef.current) {

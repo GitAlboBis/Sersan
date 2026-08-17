@@ -1,7 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
+import { applyRailOverscroll } from "@/lib/rail-overscroll";
 import { cn } from "@/lib/utils";
 import { useRailProgress, type RailMetrics } from "@/lib/use-rail-progress";
 
@@ -37,15 +45,24 @@ import { useRailProgress, type RailMetrics } from "@/lib/use-rail-progress";
  *      compositor, before we could have had an opinion. A horizontal drag never
  *      swallows vertical intent because we never ask for it.
  *
- *   2. `overscroll-behavior-x` is pointer-split, in an effect below, and the
- *      coarse value is `auto` ON PURPOSE. `contain` is the right answer for a
- *      trackpad (a horizontal flick past the end of a rail should not chain out
- *      and trigger the browser's back navigation), and the WRONG answer for a
- *      phone: blocking the chain also blocks the OS edge-swipe that a reader
- *      uses to leave the page. globals.css gives `[data-lenis-prevent]` a blunt
- *      `overscroll-behavior: contain` under `.lenis-smooth`; the inline write
- *      here is what splits it by input device, and inline is the only origin
- *      that beats that selector deterministically.
+ *   2. `overscroll-behavior-x` is written inline by a THREE-WAY rule
+ *      (`lib/rail-overscroll`, shared with the services rail), with both media
+ *      queries subscribed:
+ *        coarse pointer               ⇒ `auto`    — ON PURPOSE. `contain` is
+ *          the WRONG answer for a phone: blocking the chain also blocks the OS
+ *          edge-swipe a reader uses to leave the page.
+ *        fine pointer, motion OK      ⇒ `contain` — today's narrow-desktop
+ *          behaviour: a trackpad flick past the end of a rail must not chain
+ *          out into the browser's back navigation.
+ *        fine pointer, reduced motion ⇒ cleared   — the cascade gives `auto`,
+ *          exactly what a reduced-motion desktop had before this primitive
+ *          existed (MOBILE_REVIEW.md A2: this file may not move that surface).
+ *      Why inline, and why the fine/motion-OK branch cannot lean on the
+ *      cascade: globals.css gives `[data-lenis-prevent]` a blunt
+ *      `overscroll-behavior: contain` under `.lenis-smooth`, and in Lenis
+ *      1.3.23 that class exists only WHILE a smooth wheel scroll is animating —
+ *      a horizontal flick on an idle page never sees it. Inline is the only
+ *      origin that beats that selector deterministically in either direction.
  *
  *   3. `data-lenis-prevent` by default. Lenis smooths the WHEEL; without the
  *      opt-out a wheel over a rail scrolls the page instead of the rail. It is
@@ -84,6 +101,34 @@ import { useRailProgress, type RailMetrics } from "@/lib/use-rail-progress";
  *     extra tab stop on the container would only add a keyboard dead end.
  *   - The edge fade is 1.25rem, under the 1.5rem `scroll-padding-inline`, so a
  *     card scrolled into view by focus lands with its ring clear of the fade.
+ *     Both are coarse-only (next section), so they always agree.
+ *
+ * COARSE POINTER ONLY — THE THINGS THAT ARE NOT "JUST STATE"
+ *
+ * The scroller itself is unconditional. Two things around it live behind
+ * `(pointer: coarse)` in the stylesheet below:
+ *
+ *   - the masked edge fade,
+ *   - `scroll-padding-inline` (it moves where a focus-scrolled card lands).
+ *
+ * The third — the inline `overscroll-behavior-x` write — is NOT coarse-only:
+ * it is the three-way rule of decision (2), and its fine-pointer branches are
+ * split by `prefers-reduced-motion` (`contain` with motion, cleared under RM).
+ *
+ * Why: the adopting rails render their native branch on a fine pointer below
+ * ~768px AND under `prefers-reduced-motion` at any width, and the site-wide
+ * contract (globals.css, `.rail-affordance-touch`) is that a reduced-motion
+ * desktop keeps exactly what it had before this primitive existed — a native
+ * scroller with no bar, no fade, no scroll padding, overscroll from the
+ * cascade. Gating the fade and padding on the input device rather than on
+ * reduced-motion is the house construction (see the touch-ergonomics block in
+ * globals.css): outside a coarse pointer neither declaration exists, which is
+ * verifiable rather than merely intended. Overscroll needs the extra RM split
+ * precisely because a fine-pointer rail with motion enabled DOES want
+ * `contain` (the trackpad back-nav case) and the cascade cannot supply it.
+ * The bar's own visibility is still the consumer's opt-in via
+ * `.rail-affordance-touch`; this file scopes only what a consumer cannot opt
+ * out of.
  *
  * REDUCED MOTION
  *
@@ -97,8 +142,8 @@ import { useRailProgress, type RailMetrics } from "@/lib/use-rail-progress";
  *
  * One shared scroll listener and one scheduled rAF for the whole page, however
  * many rails mount — see `lib/use-rail-progress.ts`, which owns all of it. This
- * component contributes no listener of its own beyond one subscribed media
- * query and the stepper's click handlers.
+ * component contributes no listener of its own beyond two subscribed media
+ * queries (pointer, reduced motion) and the stepper's click handlers.
  */
 
 /**
@@ -112,29 +157,43 @@ import { useRailProgress, type RailMetrics } from "@/lib/use-rail-progress";
 const DRAG_RAIL_CSS = `
 .drag-rail { position: relative; }
 
-/* The edge treatment. --rail-start/--rail-end are published on the rail root
-   by useRailProgress and inherit down here; each ramps over 24px, so the fade
-   grows as the rail leaves a limit and collapses back to nothing as it returns
-   to one. That collapse is what the eye reads as the rail giving at its ends —
-   the native bounce underneath it is the platform's, untouched.
-   Gated on :not([data-rail-state="inert"]) so a rail whose content fits never
-   pays for the compositing layer a mask forces. */
-.drag-rail[data-rail-fade="true"]:not([data-rail-state="inert"]) > .drag-rail-scroller {
-  --drag-rail-fade: 1.25rem;
-  -webkit-mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    #000 calc(var(--rail-start, 0) * var(--drag-rail-fade)),
-    #000 calc(100% - var(--rail-end, 0) * var(--drag-rail-fade)),
-    transparent 100%
-  );
-  mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    #000 calc(var(--rail-start, 0) * var(--drag-rail-fade)),
-    #000 calc(100% - var(--rail-end, 0) * var(--drag-rail-fade)),
-    transparent 100%
-  );
+/* Coarse pointer only — see "COARSE POINTER ONLY" in the header. Outside this
+   block a fine pointer (a narrow desktop window, a reduced-motion desktop at
+   any width) gets a bare native scroller: no fade, no scroll padding. */
+@media (pointer: coarse) {
+  /* The edge treatment. --rail-start/--rail-end are published on the rail
+     root by useRailProgress and inherit down here; each ramps over 24px, so
+     the fade grows as the rail leaves a limit and collapses back to nothing
+     as it returns to one. That collapse is what the eye reads as the rail
+     giving at its ends — the native bounce underneath it is the platform's,
+     untouched. Gated on :not([data-rail-state="inert"]) so a rail whose
+     content fits never pays for the compositing layer a mask forces. */
+  .drag-rail[data-rail-fade="true"]:not([data-rail-state="inert"]) > .drag-rail-scroller {
+    --drag-rail-fade: 1.25rem;
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 calc(var(--rail-start, 0) * var(--drag-rail-fade)),
+      #000 calc(100% - var(--rail-end, 0) * var(--drag-rail-fade)),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 calc(var(--rail-start, 0) * var(--drag-rail-fade)),
+      #000 calc(100% - var(--rail-end, 0) * var(--drag-rail-fade)),
+      transparent 100%
+    );
+  }
+
+  /* The snapport inset. --drag-rail-gutter is the same value the scroller
+     already carries as inline padding-inline, published inline as a custom
+     property so ONE prop still drives both — a snapped card and a
+     focus-scrolled card land in the same place. Declared here rather than
+     inline so it exists only where the fade it is sized against exists. */
+  .drag-rail-scroller {
+    scroll-padding-inline: var(--drag-rail-gutter, 1.5rem);
+  }
 }
 
 /* Nothing to say about a rail that fits. visibility rather than display so the
@@ -183,10 +242,11 @@ type DragRailCommon = {
   /** Merged onto the rail ROOT. */
   railClassName?: string;
   /**
-   * Inline gutter, applied as BOTH `padding-inline` and
-   * `scroll-padding-inline`. One value, so a snapped card and a
-   * focus-scrolled card land in the same place. Default 1.5rem = the `px-6`
-   * the two existing rails already use.
+   * Inline gutter, applied as `padding-inline` (inline, everywhere) and — on a
+   * coarse pointer only, via the `--drag-rail-gutter` custom property and the
+   * stylesheet above — as `scroll-padding-inline`. One value, so a snapped
+   * card and a focus-scrolled card land in the same place. Default 1.5rem =
+   * the `px-6` the two existing rails already use.
    */
   gutter?: string;
   /** `data-lenis-prevent` on the scroller. Off only if a consumer WANTS Lenis. */
@@ -234,22 +294,29 @@ export function DragRail(props: DragRailProps) {
     variant === "stations" ? paintReadout : undefined,
   );
 
-  // Pointer-split overscroll chaining — see decision (2) in the header. Written
-  // inline because globals.css's `.lenis.lenis-smooth [data-lenis-prevent]`
-  // rule outweighs any class we could add. Subscribed, never sampled once: a
-  // mouse plugged into a tablet, or a devtools device-emulation flip, has to
-  // re-resolve without a reload (the D-18 bug).
+  // Three-way overscroll chaining — see decision (2) in the header; the rule
+  // itself lives in `lib/rail-overscroll` so the services rail writes the
+  // identical value. Written inline because globals.css's
+  // `.lenis.lenis-smooth [data-lenis-prevent]` rule outweighs any class we
+  // could add — and `.lenis-smooth` is only present WHILE a smooth wheel
+  // scroll animates, so a fine pointer cannot lean on the cascade for
+  // `contain`. Both queries are subscribed, never sampled once: a mouse
+  // plugged into a tablet, a devtools emulation flip, or an OS motion-setting
+  // change has to re-resolve without a reload (the D-18 bug).
   useEffect(() => {
     const el = scrollerRef.current;
     if (!el || typeof window === "undefined") return;
     const coarse = window.matchMedia("(pointer: coarse)");
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     const apply = () => {
-      el.style.overscrollBehaviorX = coarse.matches ? "auto" : "contain";
+      applyRailOverscroll(el, coarse.matches, reduced.matches);
     };
     apply();
     coarse.addEventListener("change", apply);
+    reduced.addEventListener("change", apply);
     return () => {
       coarse.removeEventListener("change", apply);
+      reduced.removeEventListener("change", apply);
       el.style.overscrollBehaviorX = "";
     };
   }, []);
@@ -338,7 +405,15 @@ export function DragRail(props: DragRailProps) {
         }}
         aria-label={label}
         className={cn(SCROLLER_CLASS, "drag-rail-scroller", className)}
-        style={{ paddingInline: gutter, scrollPaddingInline: gutter }}
+        /* padding-inline is unconditional; scroll-padding-inline is NOT
+           written here — it is read from --drag-rail-gutter by the coarse-only
+           rule in DRAG_RAIL_CSS, so a fine pointer never gets it. */
+        style={
+          {
+            paddingInline: gutter,
+            ["--drag-rail-gutter"]: gutter,
+          } as CSSProperties
+        }
       >
         {children}
       </Scroller>

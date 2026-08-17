@@ -1147,11 +1147,22 @@ export default function CinematicSystemScroll() {
   // layout. Keyed on the mode STRING, not a boolean: desktop→compact is a
   // height change of the same order as either → stacked, and a boolean
   // `usesFallback` would have missed it entirely.
+  //
+  // `prev === null` is the FIRST detection. It is NOT a no-op: the server
+  // renders `desktop` (315vh), so a phone landing on `compact` (180svh) or
+  // `stacked` here is the collapse of ~1.35 viewports that every trigger
+  // below the hero was armed against — and nothing else re-measures on this
+  // path (the provider skips its cadence on "/", the desktop cadence below is
+  // gated on `mode === "desktop"`, CompactSpine's trigger is pin-less). Only
+  // landing on `desktop` changes nothing versus SSR, so only that case stays
+  // quiet (and its own effect below runs the [60,250,700,1500] cadence).
+  // Same form as audit-week-timeline / fit-section / the rails.
   useEffect(() => {
     if (!hasDetectedViewport) return;
     const prev = prevModeRef.current;
     prevModeRef.current = mode;
-    if (prev === null || prev === mode) return;
+    if (prev === mode) return;
+    if (prev === null && mode === "desktop") return;
     const raf = requestAnimationFrame(() => ScrollTrigger.refresh());
     return () => cancelAnimationFrame(raf);
   }, [hasDetectedViewport, mode]);
