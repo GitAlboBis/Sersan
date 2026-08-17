@@ -36,10 +36,12 @@
  * --------------------
  * No requestAnimationFrame here — `tick()` is called from PostFXNodes' existing
  * priority-1 useFrame. The whole module is constructed ONLY on the WebGPU path
- * (PostFXNodes is mounted only when `webgpuEnabled()`), and PostFXNodes itself
- * only mounts at tier "full" (reduced-motion → tier "off" → no canvas). When the
- * pointer is idle (velocity ≈ 0) we still fade the field but skip stamping —
- * an idle cursor costs only the cheap fade.
+ * (PostFXNodes is mounted only when `webgpuEnabled()`). PostFXNodes mounts
+ * whenever `fxBudget.postFx !== "off"` (capable phones too); the fluid is
+ * additionally gated to level "full" + fine pointer + no reduced motion
+ * (reduced-motion → tier "off" → no canvas at all). When the pointer is idle
+ * (velocity ≈ 0) we still fade the field but skip stamping — an idle cursor
+ * costs only the cheap fade.
  *
  * All `three/webgpu` + `three/tsl` symbols are passed IN (already lazy-imported
  * by PostFXNodes), so this module never statically imports the heavy build and

@@ -61,7 +61,7 @@
  * runs inside R3F's existing loop, alongside `FrameDriver`'s priority-0 Lenis
  * pump. On unmount, fiber's `useFrame` cleanup decrements `internal.priority`
  * back to 0, so the default scene render resumes automatically (matters if the
- * tier degrades full → lite and this component unmounts).
+ * budget steps down to `postFx "off"` and this component unmounts).
  *
  * TONE MAPPING (no double-tonemap, no double-AA)
  * ----------------------------------------------
@@ -85,23 +85,61 @@
  * touches only `react`, `@react-three/fiber` and local stores, so even importing
  * the component never drags the heavy node-material build into the OFF bundle.
  *
- * TIER / REDUCED-MOTION GATING
- * ----------------------------
- * Mounted ONLY at `tier === "full"` (identical to how `PostFX.tsx` is gated in
- * `Scene.tsx`) — `lite` gets no postprocessing, matching the WebGL2 path exactly.
- * `prefers-reduced-motion` resolves to tier `"off"`, so `CanvasHost` renders
- * nothing and this never mounts: the reduced-motion site is fully static with no
- * animated grain by construction. The premium base is Bloom + Vignette +
- * ToneMapping (always on at full tier); a whisper of hand-rolled film grain is
- * layered on top, mapped off the existing `noiseOpacity` knob, and is the only
- * "extra" — it is omitted automatically when that knob is 0.
+ * BUDGET / REDUCED-MOTION GATING (mobile-parity plan, Phase 2)
+ * ------------------------------------------------------------
+ * Mounted whenever `fxBudget.postFx !== "off"` (identical to how `PostFX.tsx`
+ * is gated in `Scene.tsx`) and told which profile to build via the `level` prop:
+ *
+ *   level "full" — desktop tier "full" (budget level 3): exactly the chain
+ *                  described above, unchanged.
+ *   level "lite" — capable phone (budget level 2, `tier lite` + coarse +
+ *                  `phoneGL`): the SAME graph — scenePass → selective bloom →
+ *                  vignette → tonemap — with the two optional layers omitted:
+ *                  no film grain (the `noiseOpacity` knob is masked to 0 for the
+ *                  build, so the grain node is never added; fxStore itself is
+ *                  NOT mutated) and no pointer fluid (already fine-pointer-only,
+ *                  and additionally forced off by the level so a dev
+ *                  `?postfx=lite` on a desktop is honest about the profile).
+ *                  Bloom uniforms (strength/radius/threshold) and the vignette
+ *                  are byte-identical to "full".
+ *
+ * WHY "lite" IS NOT A CHEAPER BLOOM: three's `BloomNode` (`three/addons/tsl/
+ * display/BloomNode.js`) has NO cost knob — `_nMips = 5` is private and fixed,
+ * and its render targets are re-derived every frame from
+ * `renderer.getDrawingBufferSize()`. `strength/radius/threshold` are compositing
+ * uniforms, not fill levers. So the ONLY fill lever on this rig is the DPR:
+ * coarse pointers already run at DPR 1.0 (tierStore.detectDprRange), which
+ * shrinks every bloom mip with the drawing buffer. Do NOT reach for
+ * `PassNode.setResolutionScale` here (it would soften the whole scene) and do
+ * not touch the bloom threshold (it is the selective-bloom contract). A true
+ * 3–4-mip bloom would be a BloomNode subclass — new work, tracked in the plan,
+ * only if the Phase 6 device gate fails.
+ *
+ * `prefers-reduced-motion` resolves to tier `"off"` (budget level 0, postFx
+ * "off"), so `CanvasHost` renders nothing and this never mounts: the
+ * reduced-motion site is fully static with no animated grain by construction.
+ * The premium base is Bloom + Vignette + ToneMapping (always on whenever this
+ * mounts); a whisper of hand-rolled film grain is layered on top at level
+ * "full" only, mapped off the existing `noiseOpacity` knob, and is the only
+ * "extra" — it is omitted automatically when that knob is 0 or the level is
+ * "lite". The level is DECIDED AT MOUNT (the graph is built once per renderer);
+ * a budget step-down flips `postFx` to "off" and unmounts the rig instead.
+ *
+ * DEV / PREVIEW HANDLE: while mounted, `window.__sersanPostFx = { rig: "nodes",
+ * level }` (same predicate as the `?fx= ?postfx=` overrides — dev builds or a
+ * Vercel preview host), removed on unmount. Lets QA assert which rig/profile is
+ * live without reading the frame.
  */
 import { useEffect, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useFxStore } from "./store/fxStore";
 import { routeFx, HOME_FX } from "./store/routeFxStore";
 import { usePointerStore } from "./store/pointerStore";
+import { devOverridesAllowed, type FxBudget } from "./store/tierStore";
 import { createPointerFlowmap, type PointerFlowmap } from "./fluid/PointerFlowmap";
+
+/** The two profiles this rig can build — `fxBudget.postFx` minus "off". */
+type PostFxLevel = Exclude<FxBudget["postFx"], "off">;
 
 /**
  * Minimal structural shapes for the lazily-imported TSL objects. We never import
@@ -142,7 +180,15 @@ function resolveBloom(pathname: string) {
   return { intensity, threshold, radius };
 }
 
-export function PostFXNodes({ pathname = "/" }: { pathname?: string }) {
+export function PostFXNodes({
+  pathname = "/",
+  level,
+}: {
+  pathname?: string;
+  /** Budget profile to build — see the header ("BUDGET / REDUCED-MOTION
+   *  GATING"). Decided at mount: the graph is built once per renderer. */
+  level: PostFxLevel;
+}) {
   const gl = useThree((state) => state.gl);
   const scene = useThree((state) => state.scene);
   const camera = useThree((state) => state.camera);
@@ -153,12 +199,34 @@ export function PostFXNodes({ pathname = "/" }: { pathname?: string }) {
   const postRef = useRef<PostProcessingLike | null>(null);
   const bloomRef = useRef<BloomNodeLike | null>(null);
   // The pointer fluid flowmap (WebGPU-only). Null when disabled (coarse pointer
-  // / reduced-motion) or before the lazy build lands.
+  // / reduced-motion / level "lite") or before the lazy build lands.
   const flowRef = useRef<PointerFlowmap | null>(null);
   // Resolve the fluid gate ONCE (matches custom-cursor.tsx / pointerStore): no
-  // fluid on coarse pointers or under prefers-reduced-motion. PostFXNodes only
-  // mounts at tier "full" already, so this just excludes touch/RM desktops.
+  // fluid on coarse pointers, under prefers-reduced-motion, or at level "lite".
+  // On a real phone the coarse-pointer clause already excludes it; the level
+  // clause only matters for a dev `?postfx=lite` on a fine pointer.
   const fluidEnabledRef = useRef(false);
+  // The level the graph was BUILT with (mount-time). Read by the build effect,
+  // whose deps are [gl, scene, camera] on purpose (see below).
+  const levelRef = useRef(level);
+  levelRef.current = level;
+
+  // Dev/preview-only QA handle (same predicate as the `?fx= ?postfx=` URL
+  // overrides and `window.__sersanTier`): announces which rig + profile is
+  // live, removed on unmount. Never on the real domain.
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      !(process.env.NODE_ENV !== "production" || devOverridesAllowed())
+    ) {
+      return;
+    }
+    const w = window as unknown as Record<string, unknown>;
+    w.__sersanPostFx = { rig: "nodes", level };
+    return () => {
+      delete w.__sersanPostFx;
+    };
+  }, [level]);
   // The LIVE pathname, reachable from the async build. Assigned during render
   // (no effect): it is only ever read from async/frame callbacks, never during
   // render, so there is no tearing concern. The build effect's deps are
@@ -173,9 +241,14 @@ export function PostFXNodes({ pathname = "/" }: { pathname?: string }) {
     let cancelled = false;
     let built: PostProcessingLike | null = null;
 
+    // The profile is decided at mount (graph built once per renderer).
+    const lite = levelRef.current === "lite";
+
     // Resolve the fluid gate once (no listener; the pointer listener lives in
-    // FrameDriver/pointerStore). Coarse-pointer + reduced-motion → no fluid.
+    // FrameDriver/pointerStore). Coarse-pointer + reduced-motion + level "lite"
+    // → no fluid. At level "full" this is byte-identical to before.
     fluidEnabledRef.current =
+      !lite &&
       typeof window !== "undefined" &&
       !window.matchMedia("(prefers-reduced-motion: reduce)").matches &&
       !window.matchMedia("(pointer: coarse)").matches;
@@ -244,6 +317,11 @@ export function PostFXNodes({ pathname = "/" }: { pathname?: string }) {
 
       const { intensity, threshold, radius } = resolveBloom(pathname);
       const fx = useFxStore.getState();
+      // Level "lite" masks the grain knob to 0 for THIS BUILD ONLY (the grain
+      // node below is omitted when it is 0). fxStore is deliberately NOT
+      // mutated: the knob keeps its value for the leva/console panel and for a
+      // future "full" mount. Level "full" reads the live knob, as before.
+      const noiseOpacity = lite ? 0 : fx.noiseOpacity;
 
       // --- Scene render → color target ---------------------------------------
       const scenePass = pass(scene, camera);
@@ -253,8 +331,9 @@ export function PostFXNodes({ pathname = "/" }: { pathname?: string }) {
       //    flowmap rig (offscreen ping-pong RT + splat/fade quad) and offset the
       //    SCENE SAMPLE UV by `flow.rg * uStrength` BEFORE bloom, so the disturbed
       //    line still blooms. uStrength is TINY (~0.006) → a premium breath, not a
-      //    warp. Gated: only when the fluid is enabled (fine pointer, no RM). When
-      //    disabled we sample the scene at the unmodified UV (identical to before).
+      //    warp. Gated: only when the fluid is enabled (fine pointer, no RM, level
+      //    "full"). When disabled we sample the scene at the unmodified UV
+      //    (identical to before).
       let colorForBloom: ScenePassTextureNode = color;
       if (fluidEnabledRef.current) {
         const flow = createPointerFlowmap(
@@ -310,11 +389,12 @@ export function PostFXNodes({ pathname = "/" }: { pathname?: string }) {
       //    `noiseOpacity` knob (so it tracks the WebGL2 grain amount), added to the
       //    color as a tiny luminance jitter. NO texture sampling, NO pass/texture
       //    node — only plain TSL math — so it cannot reproduce the null-input
-      //    crash. Omitted automatically when `noiseOpacity` is 0 (e.g. grain off).
-      if (fx.noiseOpacity > 0) {
+      //    crash. Omitted automatically when `noiseOpacity` is 0 (grain off, or
+      //    level "lite" — see the mask above).
+      if (noiseOpacity > 0) {
         const seed = screenUV.add(vec2(1, 1).mul(time));
         const grain = fract(sin(dot(seed, vec2(12.9898, 78.233))).mul(43758.5453));
-        const jitter = grain.sub(0.5).mul(float(fx.noiseOpacity));
+        const jitter = grain.sub(0.5).mul(float(noiseOpacity));
         // vec4 with 0 alpha so the jitter adds to rgb only and matches the
         // composited vec4 color's component count (no vec3+vec4 mismatch).
         node = node.add(vec4(jitter, jitter, jitter, 0));

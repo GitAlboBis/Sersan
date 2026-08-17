@@ -30,7 +30,12 @@
  *   - The additive soft sprites carry the glow (replaces UnrealBloom); the
  *     soft radial sprite is a generated 64×64 canvas texture standing in for
  *     the pen's sprite.png.
- *   - 50k points on desktop, ~14k on small/weak devices; canvas DPR cap 1.5.
+ *   - 50k points on desktop, ~14k on small/weak devices, and — mobile-parity
+ *     plan Phase 3.1.2 — `round(50k × fxBudget.particleScale)` (= 25k) on a
+ *     CAPABLE phone (`fxBudget.level 2`), read from the tierStore once it is
+ *     resolved, else from the pure `resolveFxBudget()` fallback (tierStore has
+ *     no value import from three, so the "no three import" contract above
+ *     holds); canvas DPR cap 1.5.
  *
  * The CALLER owns the rAF: render(deltaSec) is invoked from the preloader's
  * single frame() loop — this module never schedules a frame of its own. All
@@ -43,6 +48,14 @@
  * FBO for the zoom-blur pass can't be completed, the pass alone is skipped
  * and points render straight to the canvas.
  */
+
+// Budget source: the tierStore is AUTHORITATIVE once resolved (it honours
+// `stepDownBudget()` and costs no probe context); the PURE `resolveFxBudget()`
+// (device facts + dev `?fx=` override; never `backend`) is the fallback ONLY
+// for the preloader, which mounts before CanvasHost has resolved the tier.
+// tierStore's only value import is zustand (its three import is type-only),
+// so three stays out of this chunk.
+import { resolveFxBudget, useTierStore } from "@/webgl/store/tierStore";
 
 export interface PreloaderTunnel {
   /** Advance + draw one frame. `deltaSec` comes from the caller's single rAF
@@ -346,9 +359,27 @@ function initTunnel(
   const pointerTilt = options?.tilt !== false;
 
   // ---- Point count tier (SERSAN adaptation) ----
+  // Mobile-parity plan Phase 3.1.2: a CAPABLE phone (`fxBudget.level 2`) is
+  // sized by BUDGET, not by viewport width — `round(COUNT_DESKTOP ×
+  // particleScale)` = 25k (a coarse tablet ≥768 px no longer takes the full
+  // 50k). Every other level keeps the ORIGINAL heuristic unchanged (14k on
+  // narrow/≤4-core, 50k otherwise) so desktop `level 3` and today's lite
+  // `level 1` are byte-identical. The store is authoritative once resolved
+  // (it honours `stepDownBudget()` and costs no probe context); the pure
+  // `resolveFxBudget()` fallback exists only for the preloader, which mounts
+  // BEFORE CanvasHost resolves (it reads the dev `?fx=` override itself). The
+  // singularity passage's tunnels mount after resolve, so they read the store
+  // and share this rule automatically (level 2 only when the phone is capable).
+  const ts = useTierStore.getState();
+  const budget = ts.resolved ? ts.fxBudget : resolveFxBudget();
   const small =
     window.innerWidth < 768 || (navigator.hardwareConcurrency || 8) <= 4;
-  const count = small ? COUNT_SMALL : COUNT_DESKTOP;
+  const count =
+    budget.level === 2
+      ? Math.round(COUNT_DESKTOP * budget.particleScale)
+      : small
+        ? COUNT_SMALL
+        : COUNT_DESKTOP;
 
   // ---- Programs ----
   const pointProgram = buildProgram(gl, POINT_VERT, POINT_FRAG);

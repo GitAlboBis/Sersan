@@ -203,8 +203,9 @@ import { cn } from "@/lib/utils";
  *     (3) BLAST RADIUS — 13 call sites read `tier === "full"`; a partial
  *     migration is worse than none. What the beat DOES mount is the same raw
  *     WebGL1 tunnel the PRELOADER already builds on every non-reduced-motion
- *     device (preloader.tsx), at its own COUNT_SMALL tier (14k points below
- *     768px or ≤4 cores) and its own DPR cap of 1.5 — a workload this site
+ *     device (preloader.tsx), at a point count that follows fxBudget (25k at
+ *     level 2, else the tunnel's own 14k/50k heuristic — see
+ *     preloader-tunnel.ts) and its own DPR cap of 1.5 — a workload this site
  *     already ships to phones, and zero extra bytes. The single additive
  *     check is SEQ.LITE_MIN_CORES: ≤4 logical cores → CSS-only beat.
  *     Budget order per MOBILE_AUDIT.md §5.5: resolution first
@@ -720,8 +721,9 @@ export default function SingularityPassage() {
             // does mount is the raw-WebGL1 point tunnel, which is ALREADY a
             // shipped phone workload: the preloader builds the exact same
             // instance on every device that is not reduced-motion
-            // (preloader.tsx), at its own COUNT_SMALL tier (14k points below
-            // 768px or ≤4 cores) and its own DPR cap of 1.5. So this adds no
+            // (preloader.tsx), at a point count that follows fxBudget (25k at
+            // level 2, else the tunnel's own 14k/50k heuristic — see
+            // preloader-tunnel.ts) and its own DPR cap of 1.5. So this adds no
             // new class of GPU work to a phone and no bytes at all (the
             // module is already in the route bundle for the desktop path).
             //

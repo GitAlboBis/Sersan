@@ -231,6 +231,16 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
   const phoneGL = useTierStore((s) => s.phoneGL);
   const island = tier === "full" || phoneGL;
 
+  // Post-FX budget axis (mobile-parity plan Phase 2). `fxBudget.postFx` is
+  // written in the SAME set() as `tier` (tierStore.resolve), so it is atomic
+  // with the layout tier: `tier === "full"` ⇒ level 3 ⇒ `"full"` (desktop
+  // byte-identical), level 1 (weak phone / narrow desktop) ⇒ `"off"` (exactly
+  // today), level 2 (capable phone) ⇒ `"lite"`. Subscribed HERE in the Canvas
+  // host, alongside the dpr/phoneGL reads — never inside <Canvas>. It is the
+  // single kill-switch for the whole post chain: `stepDownBudget()` (level
+  // 2 → 1) or `?postfx=off` flips it to "off" and both rigs unmount.
+  const postFx = useTierStore((s) => s.fxBudget.postFx);
+
   // F0.5 renderer seam: the flag is read once at module/build time. When OFF
   // (default) `gl` stays EXACTLY today's object literal — R3F builds its
   // implicit default WebGLRenderer and nothing here touches `three/webgpu`.
@@ -476,9 +486,20 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           stays the accessible pipeline layer. CompliancePipeline3D.tsx and its
           TSL sim were deleted in the dead-code cleanup; only the signal store
           survives (the DOM diagram still writes it — compliancePipelineStore). */}
-      {/* Postprocessing — desktop ("full") only, exactly as before. Which rig
-          mounts is a BUILD-TIME split on `webgpuEnabled()`, not a runtime backend
-          check:
+      {/* Postprocessing — gated on the BUDGET axis `fxBudget.postFx` (Phase 2
+          of the mobile-parity plan), no longer on `tier === "full"`:
+
+          • "full"  → desktop tier "full" (level 3). Exactly today's chain on
+                      both rigs — no prop, uniform or pass changes.
+          • "lite"  → capable phone (level 2). The SAME chain, cheaper: WebGL
+                      rig `<Bloom levels={4}>` + no `<Noise>`; WebGPU rig same
+                      graph at DPR 1 with grain + fluid off (BloomNode has NO
+                      cost knob — DPR is the lever, see PostFXNodes header).
+          • "off"   → level 1 (today's lite: weak phone / narrow desktop) and
+                      level 0. Nothing mounts — byte-identical to before.
+
+          Which rig mounts is a BUILD-TIME split on `webgpuEnabled()`, not a
+          runtime backend check:
 
           • Flag OFF → PostFX (@react-three/postprocessing EffectComposer). This
             lib is WebGL-only — it calls renderer.getContext().getContextAttributes(),
@@ -498,11 +519,11 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
             single priority-1 useFrame (no second RAF; R3F's default render is
             suppressed). It imports three/webgpu + three/tsl LAZILY, so the OFF
             bundle never pulls the heavy node-material build. */}
-      {tier === "full" &&
+      {postFx !== "off" &&
         (webgpuEnabled() ? (
-          <PostFXNodes pathname={pathname} />
+          <PostFXNodes pathname={pathname} level={postFx} />
         ) : (
-          <PostFX pathname={pathname} />
+          <PostFX pathname={pathname} level={postFx} />
         ))}
     </Canvas>
   );

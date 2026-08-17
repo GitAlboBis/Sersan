@@ -6,7 +6,8 @@
  * when sustained fps dips are detected.
  *
  *   full — desktop, capable GPU: tube line + postprocessing + extras
- *   lite — mobile / weak GPU: simplified line, no postprocessing
+ *   lite — mobile / weak GPU / narrow desktop: simplified line; postprocessing
+ *          decided by fxBudget.postFx (off at level 1, lite at level 2)
  *   off  — prefers-reduced-motion or no WebGL: no canvas at all
  *
  * SEMANTIC DEBT, recorded deliberately (MOBILE_HOME_SPEC §4.1b, §7):
@@ -161,17 +162,36 @@ interface TierState {
   setDprCap: (cap: number | null) => void;
 }
 
+/**
+ * Release a PROBE context (one we created on a throw-away canvas) as soon as
+ * it has been read: browsers cap live WebGL contexts per page (~16) and evict
+ * the oldest — including the REAL Canvas — when the cap is hit. Guarded: the
+ * extension may be absent, and a lost/failed context must never throw here.
+ * Only ever called on our own probe canvases, never on a real canvas.
+ */
+function releaseProbe(gl: WebGLRenderingContext | null | undefined): void {
+  try {
+    gl?.getExtension("WEBGL_lose_context")?.loseContext();
+  } catch {
+    // Best effort — nothing else to do.
+  }
+}
+
 function detectTier(): SceneTier {
   if (typeof window === "undefined") return "off";
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     return "off";
   }
+  let gl: WebGLRenderingContext | null = null;
   try {
     const probe = document.createElement("canvas");
-    const gl = probe.getContext("webgl2") ?? probe.getContext("webgl");
+    gl = (probe.getContext("webgl2") ??
+      probe.getContext("webgl")) as WebGLRenderingContext | null;
     if (!gl) return "off";
   } catch {
     return "off";
+  } finally {
+    releaseProbe(gl);
   }
   const coarse = window.matchMedia("(pointer: coarse)").matches;
   if (coarse || window.innerWidth < 768) return "lite";
@@ -210,9 +230,10 @@ function detectPhoneGL(): boolean {
   if (typeof cores === "number" && cores > 0 && cores <= 4) return false; // = SEQ.LITE_MIN_CORES
   const mem = (navigator as { deviceMemory?: number }).deviceMemory;
   if (typeof mem === "number" && mem > 0 && mem < 4) return false; // absent on iOS → passes
+  let gl: WebGL2RenderingContext | null = null;
   try {
     const probe = document.createElement("canvas");
-    const gl = probe.getContext("webgl2") as WebGL2RenderingContext | null;
+    gl = probe.getContext("webgl2") as WebGL2RenderingContext | null;
     if (!gl) return false;
     const dbg = gl.getExtension("WEBGL_debug_renderer_info");
     const r = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : "";
@@ -222,6 +243,9 @@ function detectPhoneGL(): boolean {
     return true;
   } catch {
     return false;
+  } finally {
+    // Release the probe context after reading it (see releaseProbe).
+    releaseProbe(gl);
   }
 }
 
@@ -238,9 +262,10 @@ type GpuClass = "weak" | "mid" | "strong";
  */
 function detectGpuClass(): GpuClass {
   if (typeof window === "undefined") return "strong";
+  let gl: WebGLRenderingContext | null = null;
   try {
     const probe = document.createElement("canvas");
-    const gl = (probe.getContext("webgl2") ??
+    gl = (probe.getContext("webgl2") ??
       probe.getContext("webgl")) as WebGLRenderingContext | null;
     if (!gl) return "mid";
     const dbg = gl.getExtension("WEBGL_debug_renderer_info");
@@ -252,6 +277,9 @@ function detectGpuClass(): GpuClass {
     return "strong";
   } catch {
     return "mid";
+  } finally {
+    // Release the probe context after reading it (see releaseProbe).
+    releaseProbe(gl);
   }
 }
 
@@ -404,19 +432,32 @@ function readDevOverrides(): {
  *
  * Without `input` it runs the same internal detectors `resolve()` uses
  * (`detectTier()` / `detectPhoneGL()`), so it can be called BEFORE the store
- * has resolved (the preloader-tunnel mounts before CanvasHost). With `input`
- * (how `resolve()` calls it) both derivations are identical by construction.
+ * has resolved (the preloader-tunnel mounts before CanvasHost). That no-input
+ * device detection is MEMOISED at module level (`pureDeviceFacts`): the
+ * detectors each open a probe WebGL context, so repeated pure calls must never
+ * open new probes — the facts are computed once and reused; only the dev URL
+ * overrides are re-read per call. With `input` (how `resolve()` calls it)
+ * both derivations are identical by construction.
  *
  * Dev/preview URL overrides are applied last: `?fx=` clamps the level and
  * re-derives the whole profile; `?postfx=` then overrides `postFx` alone.
  * In production none of it is read.
  */
+let pureDeviceFacts: { tier: SceneTier; phoneGL: boolean } | null = null;
+
 export function resolveFxBudget(input?: {
   tier: SceneTier;
   phoneGL: boolean;
 }): FxBudget {
-  const tier = input ? input.tier : detectTier();
-  const phoneGL = input ? input.phoneGL : detectPhoneGL();
+  let facts = input;
+  if (!facts) {
+    // Once per module lifetime — see the docblock (probe contexts are not free).
+    if (pureDeviceFacts === null) {
+      pureDeviceFacts = { tier: detectTier(), phoneGL: detectPhoneGL() };
+    }
+    facts = pureDeviceFacts;
+  }
+  const { tier, phoneGL } = facts;
   const coarse =
     typeof window !== "undefined" &&
     window.matchMedia("(pointer: coarse)").matches;
@@ -487,15 +528,33 @@ export const useTierStore = create<TierState>((set, get) => ({
     if (get().fxBudget.level !== 2) return;
     set({ fxBudget: budgetProfile(1) });
   },
+  // The budget is RE-DERIVED in the SAME set() as the tier so no consumer can
+  // observe a frame where the layout tier degraded but `fxBudget` still says
+  // level 3 / postFx "full" (the post rigs gate on `fxBudget.postFx`, not on
+  // `tier`, so a stale budget would keep them mounted on a degraded device).
   degrade: () => {
-    const { tier } = get();
-    if (tier === "full") set({ tier: "lite", heroReady: false });
+    const { tier, phoneGL } = get();
+    if (tier === "full")
+      set({
+        tier: "lite",
+        heroReady: false,
+        // full → lite: same pure derivation `resolve()` uses (fine pointer ⇒
+        // level 1; a coarse capable pointer could only be here via a dev
+        // override, and stays level 2 by the same rule).
+        fxBudget: resolveFxBudget({ tier: "lite", phoneGL }),
+      });
     // lite → off must ALSO drop the capability axis: a degraded phone that
     // kept phoneGL would unmount the canvas and still suppress the DOM SVG
     // fallback (use-neural-lattice-fallback reads `tier === "full" || phoneGL`),
     // leaving the two neural sections with an empty centerpiece.
     else if (tier === "lite")
-      set({ tier: "off", phoneGL: false, heroReady: false });
+      set({
+        tier: "off",
+        phoneGL: false,
+        heroReady: false,
+        // lite → off ⇒ the level 0 profile (postFx off, particleScale 0).
+        fxBudget: budgetProfile(0),
+      });
   },
   setHeroReady: (heroReady) => set({ heroReady }),
   // One-shot, written from Scene.tsx `onCreated`. Guarded so a repeat write

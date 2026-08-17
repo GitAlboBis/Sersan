@@ -38,11 +38,33 @@ interface IntroState {
    */
   warmReady: boolean;
   setWarmReady: () => void;
+  /**
+   * Fractional warm-up progress, 0..1, MONOTONIC (never lowers). Published by
+   * PipelineWarmup in two steps — 0.5 once `gl.compileAsync(scene, camera)`
+   * has resolved (the scene's render objects are compiled), 1 once the
+   * smooth-frame heuristic declares the scene warm (`setWarmReady`, which
+   * also writes 1 here). READ by the preloader as the `warm` slice of its
+   * counter (mobile-parity plan Phase 3.2: assets 0.70 + warm 0.30) so the
+   * readout breathes through the last stretch instead of parking at one
+   * value while the pipelines compile. `warmReady` stays the boolean truth
+   * gate — `warmProgress === 1` alone is never read as "warm".
+   */
+  warmProgress: number;
+  setWarmProgress: (p: number) => void;
 }
 
-export const useIntroStore = create<IntroState>((set) => ({
+export const useIntroStore = create<IntroState>((set, get) => ({
   introComplete: false,
   complete: () => set({ introComplete: true }),
   warmReady: false,
-  setWarmReady: () => set({ warmReady: true }),
+  // Ready ⇒ progress is 1 by definition (monotonic: never lowered afterwards).
+  setWarmReady: () => set({ warmReady: true, warmProgress: 1 }),
+  warmProgress: 0,
+  // Clamped to [0,1] and monotonic: a late compileAsync resolution (0.5) after
+  // the heuristic already set 1 must not pull the counter back.
+  setWarmProgress: (p) => {
+    const next = Math.min(1, Math.max(0, p));
+    if (Number.isNaN(next) || next <= get().warmProgress) return;
+    set({ warmProgress: next });
+  },
 }));

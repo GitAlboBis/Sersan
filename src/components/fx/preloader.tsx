@@ -33,15 +33,31 @@
  * src/components/sersan-logo.tsx — SymbolMark) so the two S `<path>`s and the
  * divider `<rect>` can be animated independently with GSAP.
  *
- * Progress is driven by REAL readiness, not a fake timer:
- *   - document.fonts.ready        (brand type swapped in — no FOUT flash)
- *   - window "load"               (the static SSR'd page + LCP poster painted)
- *   - tierStore.resolved          (WebGL tier decided; on "off" there's no scene
- *                                  to wait on, on full/lite the canvas mounts)
- *   - introStore.warmReady        (WebGL pipelines compiled — keeps 100% honest)
+ * Progress is driven by REAL readiness, not a fake timer (mobile-parity plan
+ * Phase 3.2 — "assets 0.70 + warm 0.30", Lusion's 70/30 split):
+ *   - document.fonts.ready   0.25  (brand type swapped in — no FOUT flash)
+ *   - window "load"          0.20  (the static SSR'd page + LCP poster painted)
+ *   - tierStore.resolved     0.25  (WebGL tier decided; on full/lite the canvas
+ *                                   mounts. On "off" WITHOUT reduced motion —
+ *                                   no WebGL — there is no scene to wait on, so
+ *                                   a RESOLVED "off" tier also counts as warm,
+ *                                   Phase 3.1.1; the `resolved` flag is
+ *                                   mandatory because tier defaults to "off"
+ *                                   before resolve() runs)
+ *   - introStore.warmProgress 0.30 × progress (0.5 once the scene's render
+ *                                   objects are compiled via gl.compileAsync,
+ *                                   1 once the smooth-frame heuristic flips
+ *                                   introStore.warmReady — the TRUTH gate that
+ *                                   keeps 100% honest)
  * Each resolved signal advances a target; a per-frame rAF eases the displayed
- * counter toward that target. A MIN visible time (~700ms) prevents a flash; a
- * MAX watchdog (~30s) guarantees a stuck GPU never traps the user.
+ * counter toward that target. The counter therefore climbs to ~70% on
+ * assets/tier and BREATHES 70→100 with the warm-up instead of parking at one
+ * value. NOTE: this changes the counter's RHYTHM on desktop too — the preloader
+ * window is the one declared cross-device exception to "desktop byte-identical"
+ * (plans/2026-08-17-mobile-parity.md, head + Phase 3.2); the render path after
+ * the lift is untouched. A MIN visible time (~700ms; 350ms on a repeat visit in
+ * the same tab session, see SESSION_SHORT) prevents a flash; a MAX watchdog
+ * (~14s) guarantees a stuck GPU never traps the user.
  *
  * Hand-off (close → zoom-through → fade): at 100% the mark folds CLOSED (the
  * two rotated S's animate back from the OPEN horizontal pose to the UPRIGHT
@@ -82,6 +98,17 @@ import {
 
 // Timing envelope (ms). MIN keeps the loader from flashing on a warm cache.
 const MIN_VISIBLE_MS = 700;
+// Session-short (ERA's `sessionStorage.hasVisited`): a REPEAT hard load in the
+// same tab session lowers the minimum visible time to MIN_VISIBLE_SHORT_MS —
+// the readiness signals still gate 100% truthfully and the exit choreography
+// (fold → zoom-through → divider streak → fade) is IDENTICAL; only the floor
+// shrinks. Applies on desktop too (declared preloader-window exception).
+// Owner decision 3 in plans/2026-08-17-mobile-parity.md — flip SESSION_SHORT to
+// false to always play the full minimum. The key is separate from
+// `sersan_skip_intro` (src/lib/intro-skip.ts), which has another purpose.
+const SESSION_SHORT = true;
+const SESSION_KEY = "sersan_seen";
+const MIN_VISIBLE_SHORT_MS = 350;
 // Bounded fallbacks for the two NETWORK-DEPENDENT polish signals. `fonts`
 // (document.fonts.ready) and `load` (window "load") each depend on sub-resources
 // that can stay PENDING forever on a single stuck request — a font woff2 the dev
@@ -425,30 +452,59 @@ export function Preloader() {
     };
     lenisStop();
 
+    // ----- Session-short floor (see SESSION_SHORT) -----
+    // Read ONCE on arm, try/catch-guarded for privacy mode / disabled storage
+    // (treated as a first visit). The key is written inside reveal() below.
+    let minVisibleMs = MIN_VISIBLE_MS;
+    if (SESSION_SHORT) {
+      try {
+        if (window.sessionStorage.getItem(SESSION_KEY) === "1") {
+          minVisibleMs = MIN_VISIBLE_SHORT_MS;
+        }
+      } catch {
+        // Storage unavailable — full minimum.
+      }
+    }
+
     // ----- Real-readiness target (0..1) -----
-    // Three independent signals; each contributes a weighted slice. The counter
-    // never EXCEEDS the resolved fraction (capped at 90% until all resolve), so
-    // it can't show 100 before the page is genuinely ready — then it eases home.
+    // Four independent signals; each contributes a weighted slice — assets 0.70
+    // (fonts .25 + load .20 + tier .25) + warm 0.30 × warmProgress (plan Phase
+    // 3.2, Lusion's 70/30). The counter never EXCEEDS the resolved fraction
+    // (capped at 90% until all resolve), so it can't show 100 before the page
+    // is genuinely ready — then it eases home. This is the declared
+    // preloader-window rhythm change on desktop too.
     const signals = { fonts: false, load: false, tier: false, warm: false };
     const targetFraction = () => {
+      // Phase 3.1.1: a RESOLVED `tier === "off"` without reduced motion (WebGL
+      // unavailable — RM never mounts this overlay) has no Canvas, so
+      // PipelineWarmup never runs and nothing would ever set warm: treat it as
+      // warm. `resolved` is MANDATORY — tier defaults to "off" BEFORE resolve()
+      // runs, and without the flag the counter would complete instantly on
+      // every device.
+      const ts = useTierStore.getState();
+      const tierOff = ts.resolved && ts.tier === "off";
       // `warm` = the WebGL scene is actually rendering smoothly (WebGPU pipelines
       // compiled) — read live from introStore (set by PipelineWarmup). This is
-      // what makes 100% TRUTHFUL: the counter rises to the high-80s on
-      // fonts/load/tier, then HOLDS there while the shaders compile, and only
-      // completes to 100 once they are genuinely warm.
-      signals.warm = useIntroStore.getState().warmReady;
+      // what makes 100% TRUTHFUL: the counter rises to ~70% on fonts/load/tier,
+      // BREATHES 70→100 with warmProgress (0.5 once gl.compileAsync resolved,
+      // 1 once the smooth-frame heuristic fires) while the shaders compile, and
+      // only completes to 100 once they are genuinely warm (warmReady).
+      const intro = useIntroStore.getState();
+      signals.warm = tierOff || intro.warmReady;
+      const warmProgress = tierOff ? 1 : intro.warmProgress;
       const resolved =
-        (signals.fonts ? 0.3 : 0) +
-        (signals.load ? 0.29 : 0) +
-        (signals.tier ? 0.29 : 0) +
-        (signals.warm ? 0.12 : 0);
+        (signals.fonts ? 0.25 : 0) +
+        (signals.load ? 0.2 : 0) +
+        (signals.tier ? 0.25 : 0) +
+        0.3 * warmProgress;
       const allReady =
         signals.fonts && signals.load && signals.tier && signals.warm;
       const elapsed = performance.now() - startedAt;
-      const minElapsed = Math.min(elapsed / MIN_VISIBLE_MS, 1);
+      const minElapsed = Math.min(elapsed / minVisibleMs, 1);
       if (allReady && minElapsed >= 1) return 1;
       // Never exceed ~90% until the shaders are genuinely warm — the counter
-      // holds at the fonts/load/tier ceiling (~0.88) during compilation.
+      // tops out at the assets ceiling (0.70) + the partial warm slice (0.85
+      // once compileAsync resolved) during compilation.
       return Math.min(resolved, 0.9);
     };
 
@@ -593,6 +649,16 @@ export function Preloader() {
       // Flip the shared flag FIRST so SignatureLine re-kicks its uReveal 0→1 on
       // this exact beat — the fade below uncovers the line as it draws in.
       useIntroStore.getState().complete();
+
+      // Session-short: remember that this tab session has seen the full
+      // preloader once, so a repeat hard load uses the shorter minimum floor
+      // (SESSION_SHORT). Best effort — privacy mode / disabled storage just
+      // means the next load plays the full minimum again.
+      try {
+        window.sessionStorage.setItem(SESSION_KEY, "1");
+      } catch {
+        // Storage unavailable — nothing to remember.
+      }
 
       const finish = () => {
         if (revealed && overlayRef.current) {
