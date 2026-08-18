@@ -133,7 +133,9 @@
 
   /* Brand type stack (self-hosted via next/font). Fraunces is the editorial
      display serif for big headings; Switzer drives body; JetBrains Mono
-     handles eyebrows/labels/tabular numerics. */
+     handles eyebrows/labels/tabular numerics; Sersan Display (font-brand) is
+     the custom logotype face — the SERSAN wordmark only, weights 200/300. */
+  --font-brand: var(--font-sersan-display), var(--font-switzer), system-ui, sans-serif;
   --font-sans: var(--font-switzer), system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-serif: var(--font-fraunces), Georgia, 'Times New Roman', serif;
   --font-display: var(--font-fraunces), Georgia, 'Times New Roman', serif;

@@ -21,6 +21,10 @@ import { AudioTriggers } from "@/components/fx/audio-triggers";
 import { Analytics } from "@vercel/analytics/next";
 
 // Brand type stack (self-hosted via next/font, no runtime CDN requests):
+// - Brand: Sersan Display — the custom logotype face (Jost, SIL OFL, see
+//   ../fonts/LICENSE-Jost.txt) with two glyph amputations baked in: the A has
+//   no crossbar and the R's bowl stops short of the stem. Weights 200/300
+//   only; used for the SERSAN wordmark, nothing else.
 // - Display: Fraunces (variable, optical sizing + italic) — the editorial
 //   serif for big headings. Editorial New is no longer distributed by
 //   Fontshare; Fraunces is what the live site already resolves to.
@@ -31,6 +35,15 @@ const fraunces = Fraunces({
   subsets: ["latin"],
   axes: ["opsz"],
   style: ["normal", "italic"],
+  display: "swap",
+});
+
+const sersanDisplay = localFont({
+  variable: "--font-sersan-display",
+  src: [
+    { path: "../fonts/sersan-display-200.woff2", weight: "200", style: "normal" },
+    { path: "../fonts/sersan-display-300.woff2", weight: "300", style: "normal" },
+  ],
   display: "swap",
 });
 
@@ -192,7 +205,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${fraunces.variable} ${switzer.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      className={`${fraunces.variable} ${switzer.variable} ${jetbrainsMono.variable} ${sersanDisplay.variable} h-full antialiased`}
     >
       <head>
         {/* Must run BEFORE first paint — a plain blocking inline script, the

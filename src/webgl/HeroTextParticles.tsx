@@ -373,7 +373,7 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
         fontSizePx: brandSizePx,
         lineHeightPx: brandSizePx,
         letterSpacingPx: Number.isFinite(bls) ? bls : 0,
-        lines: [(brand.textContent ?? "Sersan AI").trim()],
+        lines: [(brand.textContent ?? "SERSAN").trim()],
       };
       const a = sampleTextPoints(brandSpec, count);
 

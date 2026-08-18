@@ -1006,7 +1006,7 @@ function StackedFallback({
 // and the WebGL side reads scroll through its own store, exactly as on desktop.
 
 /**
- * CompactHeroBrand — the compact "Sersan AI" particle ANCHOR (mobile-parity
+ * CompactHeroBrand — the compact SERSAN particle ANCHOR (mobile-parity
  * Phase 4b). Rendered inside CompactSpine's sticky stage ONLY while
  * `brandArmed` (HERO_BRAND_COMPACT && fxBudget.level ≥ 2 && backend
  * "webgpu"); CompactSpine itself is client-only (never in the SSR HTML), so
@@ -1014,9 +1014,10 @@ function StackedFallback({
  *
  * SCOPE — this component provides exactly four things and nothing else:
  *   1. the anchor: the same decorative `[data-hero-brand]` span the desktop
- *      stage renders (same text "Sersan AI", same Switzer semibold, opacity 0
- *      forever — HeroTextParticles samples its rect + computed style and the
- *      particles are the only visible render), plus `data-hero-brand-compact`
+ *      stage renders (same text "SERSAN", same Sersan Display 200 at 0.3em
+ *      tracking, opacity 0 forever — HeroTextParticles samples its rect +
+ *      computed style and the particles are the only visible render), plus
+ *      `data-hero-brand-compact`
  *      so HeroTextParticles picks the AUTO-PLAY (time-driven) beat and navbar
  *      picks the compact travel;
  *   2. the session-skip seed (`isIntroSkipped()` → `introSkipped: true`),
@@ -1152,14 +1153,19 @@ function CompactHeroBrand({ skipLabel }: { skipLabel: string }) {
   return (
     <>
       {/* The compact particle anchor — same content and typography source as
-          the desktop [data-hero-brand] span (see the desktop stage): "Sersan
-          AI", Switzer semibold, decorative, opacity 0 forever. 13vw per the
-          intro one-beat (≈50.7px cap at 390px, ≈60vw wide). translateY in svh
-          (the stage's own unit): 16svh puts the wordmark centre ≈66svh —
-          below the mark's lockup (spans ≈35–57vh on 390×844) and above the
-          eclipse arc (≈76–85vh). START value: tune live against the render,
-          exactly as desktop's 18vh was. Absolute → zero height contribution
-          (home stays ≤14.5vp). */}
+          the desktop [data-hero-brand] span (see the desktop stage): "SERSAN",
+          Sersan Display 200 at 0.3em tracking, decorative, opacity 0 forever.
+          13vw → 10vw (2026-08-18 logotype restyle): the lockup's width per unit
+          of font-size went 4.014em ("Sersan AI", Switzer 600, −0.045em) to
+          5.187em ("SERSAN", Sersan Display 200, +0.3em — browser-measured, the
+          trailing letter-spacing advance included, exactly as canvas
+          measureText counts it), so the size scales by 4.014/5.187 = 0.774 to
+          hold the SAME share of viewport width: 10vw ⇒ ≈51.9vw wide, matching
+          the old 13vw ⇒ ≈52.2vw. (≈39px cap at 390px.) translateY in svh (the
+          stage's own unit): 16svh puts the wordmark centre ≈66svh — below the
+          mark's lockup (spans ≈35–57vh on 390×844) and above the eclipse arc
+          (≈76–85vh) — UNCHANGED by the restyle. Absolute → zero height
+          contribution (home stays ≤14.5vp). */}
       <div
         aria-hidden="true"
         className="absolute inset-0 flex items-center justify-center pointer-events-none"
@@ -1167,14 +1173,14 @@ function CompactHeroBrand({ skipLabel }: { skipLabel: string }) {
         <span
           data-hero-brand
           data-hero-brand-compact
-          className="font-sans font-semibold text-[13vw] leading-none tracking-[-0.045em] text-ink inline-block whitespace-nowrap"
+          className="font-brand font-extralight text-[10vw] leading-none tracking-[0.3em] text-ink inline-block whitespace-nowrap"
           style={{
             opacity: 0,
             transform: "translateY(16svh)",
             willChange: "opacity",
           }}
         >
-          Sersan AI
+          SERSAN
         </span>
       </div>
       {/* Skip affordance — bottom-right mono label, ships neutral (opacity 0,
@@ -1665,7 +1671,7 @@ export default function CinematicSystemScroll() {
           }}
         />
 
-        {/* Brand intro headline — "Sersan AI", the monumental opening beat.
+        {/* Brand intro headline — "SERSAN", the monumental opening beat.
             The WebGL text-particle intro (HeroTextParticles) assembles it out
             of a particle field on entry and melts it back out on the first
             scroll while the DOM hero cascades in. Restacked 2026-08-07
@@ -1683,28 +1689,40 @@ export default function CinematicSystemScroll() {
         >
           <span
             data-hero-brand
-            // 9.5vw (was 13vw) + an +18vh push below the flex center: the mark
-            // sits ABOVE this line now (see HeroLogo's LOCKUP_* block). The
-            // translate is calibrated against the LIVE particle render, not
-            // rect math — the WebGL lockup renders ~19vh above the DOM-center
-            // mapping on a 1440×810 desktop (browser-verified 2026-08-07), so
-            // +13vh landed the observed text center at ≈44vh from the frame
-            // top; 13→18vh is the owner's 2026-08-07 5vh composition nudge
-            // (taller viewports left dead space below) — center ≈49vh, top
-            // ≈40.5vh, bottom ≈57.5vh, moved IN LOCKSTEP with HeroLogo's
-            // LOCKUP_OFFSET_Y (−0.09→−0.04) and the eclipse yFrac
-            // (−0.42→−0.47) so the whole hero drops coherently.
+            // SIZE — recalibrated 2026-08-18 for the logotype restyle
+            // ("Sersan AI" Switzer 600 / −0.045em → "SERSAN" Sersan Display 200
+            // / +0.3em). The lockup's width per unit of font-size went 4.014em
+            // to 5.187em (browser-measured on the live page, trailing
+            // letter-spacing advance included — that is also how canvas
+            // measureText counts it, so the DOM rect and the raster agree to
+            // <0.01px). Holding the SAME share of viewport width therefore
+            // scales every term of the clamp by 4.014/5.187 = 0.774:
+            // 3.25rem→2.5rem, 9.5vw→7.35vw, 10rem→7.75rem. That keeps the
+            // clamp's own breakpoints put (min below ≈544px vw, max above
+            // ≈1687px vw — was 547/1684) and lands 549px wide at 1440×900,
+            // i.e. 38.1% of the viewport, against the old 549px / 38.1%.
+            // POSITION — unchanged by the restyle. The +18vh push below the
+            // flex center puts the mark ABOVE this line (see HeroLogo's
+            // LOCKUP_* block). The translate is calibrated against the LIVE
+            // particle render, not rect math — the WebGL lockup renders ~19vh
+            // above the DOM-center mapping on a 1440×810 desktop
+            // (browser-verified 2026-08-07), so +13vh landed the observed text
+            // center at ≈44vh from the frame top; 13→18vh is the owner's
+            // 2026-08-07 5vh composition nudge (taller viewports left dead
+            // space below) — center ≈49vh, top ≈40.5vh, bottom ≈57.5vh, moved
+            // IN LOCKSTEP with HeroLogo's LOCKUP_OFFSET_Y (−0.09→−0.04) and the
+            // eclipse yFrac (−0.42→−0.47) so the whole hero drops coherently.
             // HeroTextParticles samples this rect + computed style (transforms
             // included), so the size/translate here IS the particle wordmark's
             // frame; the wrapper keeps X flex-centered.
-            className="font-sans font-semibold text-[clamp(3.25rem,9.5vw,10rem)] leading-none tracking-[-0.045em] text-ink inline-block whitespace-nowrap"
+            className="font-brand font-extralight text-[clamp(2.5rem,7.35vw,7.75rem)] leading-none tracking-[0.3em] text-ink inline-block whitespace-nowrap"
             style={{
               opacity: 0,
               transform: "translateY(18vh)",
               willChange: "opacity",
             }}
           >
-            Sersan AI
+            SERSAN
           </span>
         </div>
 
