@@ -72,6 +72,30 @@
  * Island conventions honored: single useFrame at default priority, mounted
  * AFTER SignatureLine (camera authority), getState() reads only, no rect
  * reads, no per-frame allocations, clamped-dt damps, uniforms-only writes.
+ *
+ * LITE (mobile-parity plan Phase 4c — capable phones, DEFAULT OFF behind
+ * `SEQ.LITE_RAYMARCH`): Scene.tsx mounts `<SequenceSingularity lite />` when
+ * `SEQ.LITE_RAYMARCH && fxBudget.raymarchLite && backend === "webgpu"`
+ * (level 2 only; level 3 ⇒ raymarchLite false ⇒ the desktop mount is
+ * byte-identical with lite=false). The HomeSingularity Phase 4b pattern,
+ * copied: in lite the march is PINNED at the SEQ low step from build —
+ * `uIterations = SEQ.ITER_LO (64)`, `uStep = SEQ.STEP_LO (0.0142)`, path
+ * product 1.818 ≈ 1.82 (iterations and step MUST move inversely, the
+ * blackHoleMaterial contract) — and the desktop's scripted HI↔LO band step
+ * (tunnelAlpha ≥ 0.8) is skipped, since the coarse beat mounts no tunnel and
+ * there is nothing to step up TO. The DPR lever is NOT written here: the
+ * coarse branch of singularity-passage.tsx already asserts
+ * `tierStore.dprCap = SEQ.LITE_DPR_CAP (1)` for the whole approach band and
+ * clears it on leave — one writer, never doubled. Two things differ from the
+ * desktop feed and both are decided in the passage's coarse branch: `pan01`
+ * stays 0 (the shared camera is never panned on a phone — seqStore's
+ * contract), so in lite the hole is CAMERA-LOCKED in X (`camera.position.x`,
+ * dead-centre like the CSS hole it replaces) instead of world-anchored at
+ * SEQ_PAN_FRAC × worldViewWidth; and `dist`/`holeFade` are derived from the
+ * coarse beat's own 1/d curve (LITE_HOLE_*), floored at SEQ.DIST_FLOOR. Y
+ * (`holeYFrac`, 0 on the phone), Z (pure distance), fade, orbit, the
+ * compileAsync warm, the armed build/dispose lifecycle and the holeNdc
+ * back-channel are unchanged.
  */
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -108,7 +132,7 @@ const ORBIT_BOB_MAX = 0.45;
 /** Route-transition reveal damp (sibling grammar). */
 const REVEAL_DAMP = 4;
 
-export function SequenceSingularity() {
+export function SequenceSingularity({ lite = false }: { lite?: boolean }) {
   const { camera, size, gl, scene } = useThree();
   const groupRef = useRef<THREE.Group>(null);
 
@@ -141,9 +165,13 @@ export function SequenceSingularity() {
         if (cancelled) return null;
         built = mod.createBlackHoleBuild(webgpu as never, tslNs as never);
         // Transition-grade march quality (graft 4 baseline) — keep the
-        // ≈1.82 path product per the factory contract.
-        built.u.uIterations.value = SEQ.ITER_HI;
-        built.u.uStep.value = SEQ.STEP_HI;
+        // ≈1.82 path product per the factory contract. LITE (plan Phase 4c,
+        // capable phones only): pinned at the LOW step from build —
+        // iterations and step move INVERSELY (64 × 0.0142 × 2 = 1.818); the
+        // frame loop's HI↔LO band is skipped in lite (see below). Desktop
+        // (lite=false) is the exact HI pair it always was.
+        built.u.uIterations.value = lite ? SEQ.ITER_LO : SEQ.ITER_HI;
+        built.u.uStep.value = lite ? SEQ.STEP_LO : SEQ.STEP_HI;
         // Backdrop overrides (HomeSingularity's LAYERING note) — the shared
         // factory stays untouched, /audit keeps its exact behavior.
         built.material.depthWrite = false;
@@ -189,7 +217,7 @@ export function SequenceSingularity() {
       setBuild(null);
       useSeqStore.setState({ marchLive: false });
     };
-  }, [armed, gl, camera, scene]);
+  }, [armed, gl, camera, scene, lite]);
 
   // --- Per-frame scratch (no allocations in the loop) -----------------------
   const revealDamped = useRef(0);
@@ -232,19 +260,31 @@ export function SequenceSingularity() {
     // dead-center hole; the veiled ENTER/SPEED beats hold ≥0.85 so the
     // heavy fullscreen frames still march LO). Reversible when it drops
     // back; uniform writes only on the band edge. Skipped on the
-    // null-tunnel path (nothing masks the step).
-    const low = !seq.tunnelNull && seq.tunnelAlpha >= 0.8;
-    if (low !== iterLow.current) {
-      iterLow.current = low;
-      build.u.uIterations.value = low ? SEQ.ITER_LO : SEQ.ITER_HI;
-      build.u.uStep.value = low ? SEQ.STEP_LO : SEQ.STEP_HI;
+    // null-tunnel path (nothing masks the step). LITE (plan Phase 4c) skips
+    // the whole band: the march is pinned LO from build and the coarse beat
+    // mounts no tunnel — there is nothing to step up to. Desktop
+    // (lite=false) runs exactly the band it always did.
+    if (!lite) {
+      const low = !seq.tunnelNull && seq.tunnelAlpha >= 0.8;
+      if (low !== iterLow.current) {
+        iterLow.current = low;
+        build.u.uIterations.value = low ? SEQ.ITER_LO : SEQ.ITER_HI;
+        build.u.uStep.value = low ? SEQ.STEP_LO : SEQ.STEP_HI;
+      }
     }
 
     // --- Placement (see the header's hybrid-anchor model) -------------------
+    // LITE: X is CAMERA-LOCKED (the phone beat never pans the shared camera —
+    // pan01 stays 0 — and its hole sits dead-centre in the stage), so the
+    // world anchor at SEQ_PAN_FRAC × worldViewWidth, which only centres at
+    // pan end, is replaced by the camera's own x. Desktop keeps the world
+    // anchor byte-identical.
     const dist = Math.max(seq.dist, DIST_HARD_FLOOR);
     const aspect = size.width / size.height;
     const viewHAtHole = 2 * TAN_HALF_FOV * dist;
-    const holeX = SEQ_PAN_FRAC * WORLD_VIEW_HEIGHT * aspect;
+    const holeX = lite
+      ? camera.position.x
+      : SEQ_PAN_FRAC * WORLD_VIEW_HEIGHT * aspect;
     group.position.set(
       holeX,
       camera.position.y + seq.holeYFrac * viewHAtHole,
@@ -334,6 +374,8 @@ export function SequenceSingularity() {
       },
       armed,
       hasBuild: !!build,
+      /** Plan Phase 4c: low march step pinned + camera-locked X. */
+      lite,
       project: () => {
         const g = groupRef.current;
         if (!g || !g.visible) return null;

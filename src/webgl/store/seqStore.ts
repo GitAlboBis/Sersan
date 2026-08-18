@@ -42,6 +42,19 @@
  * the passage's own scrub progress `t` and nothing round-trips: the line
  * reads them, the passage never reads them back.
  *
+ * THE ONE EXCEPTION IS BEHIND `SEQ.LITE_RAYMARCH` (mobile-parity plan Phase
+ * 4c, DEFAULT OFF): when that flag is on AND `fxBudget.raymarchLite &&
+ * backend === "webgpu"` (a capable WebGPU phone), Scene.tsx mounts
+ * `<SequenceSingularity lite />` and the coarse branch of the passage feeds
+ * it the island's scrub inputs (`active`, `armed`, `p`, `dist`, `holeYFrac`,
+ * `holeFade`, `starAlpha`) as pure functions of its own `t`, demoting its
+ * CSS hole to the desktop's imposter role (painted until `marchLive`, then
+ * opacity 0) and dropping its point tunnel (island and fallback are mutually
+ * exclusive). It
+ * STILL never publishes `pan01` (stays 0 — the shared camera is never panned
+ * on a phone; the lite island is camera-locked in X instead), and with the
+ * flag off the branch is byte-identical to the paragraph above.
+ *
  * No React subscribers on the hot fields — everything is read via getState()
  * inside frame loops / rAF ticks, textMorphStore discipline.
  *
@@ -375,6 +388,25 @@ export const SEQ = {
    * alone still carry the full 1/d move. Deliberately NOT a tierStore change
    * — see the FALLBACK MATRIX in singularity-passage.tsx. */
   LITE_MIN_CORES: 4,
+
+  // --- Phase 4c kill-switch: the raymarch TWIN on capable phones -----------
+  /** mobile-parity plan Phase 4c (plans/2026-08-17-mobile-parity.md): when
+   * TRUE, a capable WebGPU phone (`fxBudget.raymarchLite && backend ===
+   * "webgpu"`) mounts `<SequenceSingularity lite />` — the real TSL march at
+   * the low step (ITER_LO / STEP_LO, path ≈ 1.82 preserved) under the
+   * LITE_DPR_CAP the coarse branch already asserts — and the coarse branch of
+   * singularity-passage.tsx feeds it the scrub inputs, keeps its CSS hole as
+   * the imposter until `marchLive` and drops its point tunnel (island and
+   * fallback are mutually exclusive). Scene.tsx additionally ANDs `tier !==
+   * "full"` into the `lite` prop, so a dev `?fx=2` on a fine-pointer desktop
+   * keeps the desktop grammar.
+   * DEFAULT OFF until the real-device gate passes (plan Phase 4c / Phase 6:
+   * at 390 px the lensed ring with bloom lite must read like the desktop in a
+   * side-by-side screenshot AND hold ≥ 50 fps; either failing ⇒ this stays
+   * false and the CSS composite beat remains the shipped phone path). Typed
+   * `boolean` on purpose so the flip is a one-character change with no type
+   * ripple; desktop (`tier full` ⇒ raymarchLite false) never consults it. */
+  LITE_RAYMARCH: false as boolean,
 } as const;
 
 /** Camera pan amplitude as a fraction of worldViewWidth (SignatureLine and

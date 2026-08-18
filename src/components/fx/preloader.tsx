@@ -37,13 +37,31 @@
  * Phase 3.2 — "assets 0.70 + warm 0.30", Lusion's 70/30 split):
  *   - document.fonts.ready   0.25  (brand type swapped in — no FOUT flash)
  *   - window "load"          0.20  (the static SSR'd page + LCP poster painted)
- *   - tierStore.resolved     0.25  (WebGL tier decided; on full/lite the canvas
- *                                   mounts. On "off" WITHOUT reduced motion —
- *                                   no WebGL — there is no scene to wait on, so
- *                                   a RESOLVED "off" tier also counts as warm,
- *                                   Phase 3.1.1; the `resolved` flag is
- *                                   mandatory because tier defaults to "off"
- *                                   before resolve() runs)
+ *   - asset manifest         0.25 × byte progress (Phase 3.3, Lusion's
+ *                                   quick-loader — src/webgl/loading/
+ *                                   preloadManifest.ts). The manifest STARTS
+ *                                   the moment tierStore.resolved flips (the
+ *                                   old "tier" slice is folded in here: its
+ *                                   URL list is decided by the resolved
+ *                                   fxBudget) and counts fetched bytes against
+ *                                   Content-Length. Today it holds ONLY the
+ *                                   three founder headshots the WebGL morph
+ *                                   force-loads, and only at fxBudget.level 3
+ *                                   on the WebGPU build landing on `/` (the
+ *                                   morph's only route); on every phone /
+ *                                   level ≤ 2 / WebGL build / other route the
+ *                                   list is EMPTY and the slice is 1 the
+ *                                   instant the tier resolves — exactly the
+ *                                   old tier signal.
+ *                                   Bounded like fonts/load (MANIFEST_MAX_MS):
+ *                                   a slow fetch, or a tier that never
+ *                                   resolves, self-completes the slice. On a
+ *                                   RESOLVED "off" tier WITHOUT reduced motion
+ *                                   — no WebGL — there is no scene to wait on,
+ *                                   so that tier also counts as warm, Phase
+ *                                   3.1.1; the `resolved` flag is mandatory
+ *                                   because tier defaults to "off" before
+ *                                   resolve() runs)
  *   - introStore.warmProgress 0.30 × progress (0.5 once the scene's render
  *                                   objects are compiled via gl.compileAsync,
  *                                   1 once the smooth-frame heuristic flips
@@ -51,7 +69,7 @@
  *                                   keeps 100% honest)
  * Each resolved signal advances a target; a per-frame rAF eases the displayed
  * counter toward that target. The counter therefore climbs to ~70% on
- * assets/tier and BREATHES 70→100 with the warm-up instead of parking at one
+ * fonts/load/manifest and BREATHES 70→100 with the warm-up instead of parking at one
  * value. NOTE: this changes the counter's RHYTHM on desktop too — the preloader
  * window is the one declared cross-device exception to "desktop byte-identical"
  * (plans/2026-08-17-mobile-parity.md, head + Phase 3.2); the render path after
@@ -95,6 +113,11 @@ import {
   createPreloaderTunnel,
   type PreloaderTunnel,
 } from "./preloader-tunnel";
+import {
+  manifestUrlsForBudget,
+  startPreloadManifest,
+  type PreloadManifestHandle,
+} from "@/webgl/loading/preloadManifest";
 
 // Timing envelope (ms). MIN keeps the loader from flashing on a warm cache.
 const MIN_VISIBLE_MS = 700;
@@ -120,6 +143,12 @@ const MIN_VISIBLE_SHORT_MS = 350;
 // on reaching 100%, so this does not reintroduce a fake 100%.
 const FONTS_MAX_MS = 3000;
 const LOAD_MAX_MS = 3500;
+// Same treatment for the asset MANIFEST slice (Phase 3.3): measured from arm,
+// it self-completes whether the fetches are slow (a cold cache on a bad
+// connection) or the tier never resolves at all (so the manifest never even
+// starts — treated as empty). The manifest is a cache warm-up + honest byte
+// readout, not a correctness gate; `warm` stays the only truthful gate on 100%.
+const MANIFEST_MAX_MS = 4000;
 // LAST-RESORT safety only: if the scene never reports `warm` (a truly stuck GPU),
 // reveal anyway so the visitor is never trapped. This is NOT the normal reveal
 // path — the truthful `warm` signal completes the counter well before this. Now
@@ -468,12 +497,22 @@ export function Preloader() {
 
     // ----- Real-readiness target (0..1) -----
     // Four independent signals; each contributes a weighted slice — assets 0.70
-    // (fonts .25 + load .20 + tier .25) + warm 0.30 × warmProgress (plan Phase
-    // 3.2, Lusion's 70/30). The counter never EXCEEDS the resolved fraction
-    // (capped at 90% until all resolve), so it can't show 100 before the page
-    // is genuinely ready — then it eases home. This is the declared
-    // preloader-window rhythm change on desktop too.
-    const signals = { fonts: false, load: false, tier: false, warm: false };
+    // (fonts .25 + load .20 + manifest .25 × byte progress) + warm 0.30 ×
+    // warmProgress (plan Phase 3.2/3.3, Lusion's 70/30). The counter never
+    // EXCEEDS the resolved fraction (capped at 90% until all resolve), so it
+    // can't show 100 before the page is genuinely ready — then it eases home.
+    // This is the declared preloader-window rhythm change on desktop too.
+    const signals = { fonts: false, load: false, manifest: false, warm: false };
+    // Asset manifest (Phase 3.3): `null` until the tier resolves — the URL list
+    // depends on the resolved fxBudget — then a live handle whose progress()
+    // is byte-weighted. `manifestForced` is the MANIFEST_MAX_MS bound.
+    let manifest: PreloadManifestHandle | null = null;
+    let manifestForced = false;
+    const manifestProgress = () => {
+      if (manifestForced) return 1;
+      if (!manifest) return 0; // tier not resolved yet ⇒ manifest not started
+      return manifest.progress();
+    };
     const targetFraction = () => {
       // Phase 3.1.1: a RESOLVED `tier === "off"` without reduced motion (WebGL
       // unavailable — RM never mounts this overlay) has no Canvas, so
@@ -485,20 +524,26 @@ export function Preloader() {
       const tierOff = ts.resolved && ts.tier === "off";
       // `warm` = the WebGL scene is actually rendering smoothly (WebGPU pipelines
       // compiled) — read live from introStore (set by PipelineWarmup). This is
-      // what makes 100% TRUTHFUL: the counter rises to ~70% on fonts/load/tier,
+      // what makes 100% TRUTHFUL: the counter rises to ~70% on fonts/load/manifest,
       // BREATHES 70→100 with warmProgress (0.5 once gl.compileAsync resolved,
       // 1 once the smooth-frame heuristic fires) while the shaders compile, and
       // only completes to 100 once they are genuinely warm (warmReady).
       const intro = useIntroStore.getState();
       signals.warm = tierOff || intro.warmReady;
       const warmProgress = tierOff ? 1 : intro.warmProgress;
+      // Manifest slice: 0 until the tier resolves and the manifest starts,
+      // then byte progress (1 immediately for an EMPTY manifest — every
+      // phone / level ≤ 2 — which is exactly the old "tier resolved" signal),
+      // 1 once every item settled or the MANIFEST_MAX_MS bound fired.
+      const mp = manifestProgress();
+      signals.manifest = mp >= 1;
       const resolved =
         (signals.fonts ? 0.25 : 0) +
         (signals.load ? 0.2 : 0) +
-        (signals.tier ? 0.25 : 0) +
+        0.25 * mp +
         0.3 * warmProgress;
       const allReady =
-        signals.fonts && signals.load && signals.tier && signals.warm;
+        signals.fonts && signals.load && signals.manifest && signals.warm;
       const elapsed = performance.now() - startedAt;
       const minElapsed = Math.min(elapsed / minVisibleMs, 1);
       if (allReady && minElapsed >= 1) return 1;
@@ -546,17 +591,34 @@ export function Preloader() {
       );
     }
 
-    // WebGL tier resolved (CanvasHost's effect runs detectTier). On "off" there
-    // is no scene to wait for; on full/lite the canvas has mounted. We treat
-    // `resolved` as the signal — heroReady is NOT required (it would couple the
-    // loader to a planet that may legitimately take longer, and lite/off never
-    // set it).
+    // WebGL tier resolved (CanvasHost's effect runs detectTier) ⇒ START THE
+    // ASSET MANIFEST (Phase 3.3). The tier is what decides the URL list (the
+    // resolved fxBudget: level 3 on the WebGPU build, landing on `/` ⇒ the
+    // three founder headshots the morph force-loads; anything else ⇒ empty ⇒
+    // progress 1 at once, i.e. the old "tier resolved" signal). heroReady is
+    // NOT required (it
+    // would couple the loader to a planet that may legitimately take longer,
+    // and lite/off never set it). Started at most once (idempotent guard; the
+    // subscription is released in teardown like before). If resolve() never
+    // happens the manifest never starts and the MANIFEST_MAX_MS bound below
+    // treats it as empty.
+    const startManifest = () => {
+      if (manifest !== null || cancelled) return;
+      manifest = startPreloadManifest(
+        manifestUrlsForBudget(useTierStore.getState().fxBudget),
+      );
+    };
     if (useTierStore.getState().resolved) {
-      signals.tier = true;
+      startManifest();
     }
     const unsubTier = useTierStore.subscribe((s) => {
-      if (s.resolved) signals.tier = true;
+      if (s.resolved) startManifest();
     });
+    fallbackTimers.push(
+      window.setTimeout(() => {
+        manifestForced = true;
+      }, MANIFEST_MAX_MS),
+    );
 
     // ----- Counter ease + reveal trigger + backdrop render (single rAF) -----
     let current = 0; // 0..1
@@ -592,7 +654,7 @@ export function Preloader() {
         }
 
         // Reveal as soon as the readout reads 100 AND the target is genuinely 1
-        // (all readiness signals — fonts/load/tier/warm — plus min time satisfied).
+        // (all readiness signals — fonts/load/manifest/warm — plus min time satisfied).
         // We do NOT wait for the asymptotic `current >= 1` tail: under rAF
         // throttling (backgrounded tab, slow device, automation), rAF drops toward
         // ~1fps and the ease (`current += (target - current) * 0.12`) crawls across
@@ -848,8 +910,16 @@ export function Preloader() {
       unsubTier();
       introTweens.forEach((t) => t.kill());
       // If we tear down before revealing (e.g. fast HMR in dev), restore scroll
-      // and complete the intro so the line is never left hidden.
+      // and complete the intro so the line is never left hidden. The manifest
+      // is aborted ONLY on this path: an aborted fetch is NOT stored in the
+      // HTTP cache (a truncated body is discarded, not kept), so cancelling
+      // after a reveal would throw away the cache warm-up the manifest exists
+      // for. After a reveal the handle is simply dropped — the in-flight
+      // fetches run to completion in the background (a few webp files at
+      // most; MANIFEST_MAX_MS already bounded what the COUNTER waited on) and
+      // land in the cache for the morph's later `new Image()` load.
       if (!revealed) {
+        manifest?.cancel();
         restoreScroll();
         useIntroStore.getState().complete();
       }

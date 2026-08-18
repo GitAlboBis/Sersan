@@ -46,6 +46,7 @@ import { PostFXNodes } from "./PostFXNodes";
 import { useSectionAnchors } from "./hooks/useSectionAnchors";
 import { CAMERA_FOV, CAMERA_Z } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
+import { SEQ } from "./store/seqStore";
 import { onLiftOnce } from "@/lib/route-transition-store";
 import { HERO_BRAND_COMPACT } from "@/lib/spine";
 import type { SectionAnchors } from "./hooks/useSectionAnchors";
@@ -271,6 +272,22 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
   const homeSingularityLite = useTierStore(
     (s) =>
       HERO_BRAND_COMPACT && s.fxBudget.raymarchLite && s.backend === "webgpu",
+  );
+
+  // Phase 4c twin of the selector above for the mid-page plunge island —
+  // the SAME two-term predicate (raymarchLite AND-ed with the runtime backend
+  // at the consumption site) behind the SEQ.LITE_RAYMARCH kill-switch
+  // (seqStore.ts — DEFAULT OFF until the real-device gate passes). With the
+  // flag off the selector short-circuits to `false` before reading a single
+  // store field: no re-render on any store write, desktop and phone
+  // byte-identical. At level 3 (tier full) raymarchLite is false forever, so
+  // even with the flag on this is false on desktop and the backend flip at
+  // onCreated never re-renders this host. singularity-passage.tsx reads the
+  // identical predicate to switch its coarse branch from the CSS-composite
+  // beat to feeding this island — the two flip on the same store write.
+  const seqSingularityLite = useTierStore(
+    (s) =>
+      SEQ.LITE_RAYMARCH && s.fxBudget.raymarchLite && s.backend === "webgpu",
   );
 
   // `?perf=1` HUD probe (plan Phase 6.1). Dev/preview only — `perfHud` is
@@ -530,9 +547,31 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           otherwise), because the island drags the whole three/webgpu + TSL
           chunk onto the route with the worst mobile Lighthouse, and because
           `tier === "full"` has 13 consumers that must not be half-migrated.
-          The full reasoning lives in that file's FALLBACK MATRIX. */}
-      {pathname === "/" && tier === "full" && webgpu && (
-        <SequenceSingularity />
+          The full reasoning lives in that file's FALLBACK MATRIX.
+
+          LITE GATE (mobile-parity plan Phase 4c — DEFAULT OFF behind
+          `SEQ.LITE_RAYMARCH` in seqStore.ts): the measured TWIN of the phone
+          beat. When the flag is on, a CAPABLE PHONE (`fxBudget.raymarchLite`,
+          level 2) with a TRUE WebGPU backend also mounts it, as
+          `<SequenceSingularity lite />` — the same island pinned at the SEQ
+          low march step (ITER_LO 64 / STEP_LO, path ≈ 1.82 preserved),
+          camera-locked in X, under the LITE_DPR_CAP 1 the passage's coarse
+          branch already asserts. That coarse branch then feeds it the scrub
+          inputs from its own 1/d curve and suppresses its CSS hole + point
+          tunnel except as the marchLive imposter (island and fallback are
+          mutually exclusive — the composite beat is the rung-1 fallback and
+          stays the shipped default). On a WebGL2-fallback phone, at level ≤
+          1, or with the flag off nothing mounts, exactly as today. Desktop:
+          tier full ⇒ level 3 ⇒ raymarchLite false ⇒ lite=false, the
+          identical mount. `lite` is AND-ed with `tier !== "full"` on purpose:
+          a dev `?fx=2` on a fine-pointer desktop lowers the budget (so
+          raymarchLite flips true) while the tier stays "full" — that desktop
+          must keep the DESKTOP grammar (HI march + the tunnelAlpha band, the
+          world-anchored X, pan01 written by the fine-pointer branch), not the
+          camera-locked lite pin the coarse beat feeds. Only a real
+          coarse-pointer tier ("lite") with the predicate true gets lite. */}
+      {pathname === "/" && webgpu && (tier === "full" || seqSingularityLite) && (
+        <SequenceSingularity lite={tier !== "full" && seqSingularityLite} />
       )}
       {/* The old /trust CompliancePipeline3D centerpiece is RETIRED (the 3D
           "models" were replaced by the SERSAN logo). It lived BEHIND the SVG

@@ -214,6 +214,25 @@ import { cn } from "@/lib/utils";
  *     (SEQ.LITE_DPR_CAP pins the persistent R3F canvas to DPR 1 for the whole
  *     approach band), then particle count (the tunnel's own small tier), then
  *     features (the tunnel itself, dropped on ≤4 cores).
+ *     ── THE MEASURED TWIN (mobile-parity plan Phase 4c, DEFAULT OFF) ─────
+ *     `SEQ.LITE_RAYMARCH` (seqStore.ts) revisits reason (1) with a real
+ *     device gate instead of a veto: when it is TRUE and the phone is a
+ *     capable WebGPU one (`fxBudget.raymarchLite && backend === "webgpu"` —
+ *     the same predicate Scene.tsx uses to mount `<SequenceSingularity
+ *     lite />`), this coarse branch switches to ISLAND MODE: it feeds the
+ *     island the scrub inputs (active / armed / p / dist / holeYFrac /
+ *     holeFade / starAlpha, all pure functions of its own t on the CSS
+ *     hole's 1/d curve, up to the svh/lvh delta), demotes its CSS hole to
+ *     the desktop's IMPOSTER role (painted until seqStore.marchLive, then
+ *     opacity 0 — never "no hole" between arm and the live march) and
+ *     treats the point tunnel as dead — island and fallback are mutually
+ *     exclusive. pan01 is
+ *     never written (the shared camera never pans on a phone; the lite
+ *     island is camera-locked in X). Veil / cover / copy handoff / swallow /
+ *     DPR cap are the same beat. Reasons (2) and (3) are unchanged facts;
+ *     the flag stays FALSE until the Phase 6 gate passes (side-by-side
+ *     screenshot AND ≥ 50 fps at 390 px), and with it false this branch is
+ *     byte-identical to the composite beat above.
  *   prefers-reduced-motion / no JS        → the static vertical section 05
  *     + a static 60vh deep-navy gradient spacer. No transforms, no tunnel,
  *     no canvas (CanvasHost renders nothing at tier "off"). Untouched.
@@ -499,6 +518,25 @@ export default function SingularityPassage() {
   const copy = SPINE_COPY[language];
   const rootRef = useRef<HTMLElement | null>(null);
 
+  // Phase 4c (mobile-parity plan) — the raymarch TWIN gate, the IDENTICAL
+  // predicate Scene.tsx uses to mount `<SequenceSingularity lite />`
+  // (`seqSingularityLite`), so the island and this branch flip on the same
+  // store write. Behind `SEQ.LITE_RAYMARCH` (DEFAULT OFF): with the flag off
+  // the selector short-circuits to `false` before reading a store field — a
+  // constant, so it never re-renders this component and never re-runs the
+  // useGSAP below (its dependency array gains a value that cannot change).
+  // With the flag on, `backend` is written LATER than this component mounts
+  // (Scene.tsx onCreated), so it must be a live subscription (the CompactSpine
+  // `brandArmed` precedent, cinematic-system-scroll.tsx): the coarse branch
+  // first builds the CSS-composite beat, then — once on a capable WebGPU
+  // phone — reverts + rebuilds in island-feeding mode via revertOnUpdate,
+  // exactly the language-toggle rebuild path. stepDownBudget() (2 → 1) flips
+  // it back the same way, in lockstep with the island unmounting.
+  const seqLiteMarch = useTierStore(
+    (s) =>
+      SEQ.LITE_RAYMARCH && s.fxBudget.raymarchLite && s.backend === "webgpu",
+  );
+
   // Proof chips (13/5/1): standard one-shot IO — honest on every path (the
   // panel is in the viewport when the section scrolls in, sticky or not;
   // opacity never gates intersection, so on the armed path the count may
@@ -624,6 +662,26 @@ export default function SingularityPassage() {
 
             root.setAttribute("data-on", "lite");
             useSeqStore.setState({ lite: true, liteSwallow: 0 });
+            // ── Phase 4c ISLAND MODE (SEQ.LITE_RAYMARCH, default OFF) ──────
+            // `seqLiteMarch` ⇒ Scene.tsx has `<SequenceSingularity lite />`
+            // mounted for this same predicate, and THIS branch becomes its
+            // scrub-input writer: `active` here (the island's frame loop
+            // no-ops at false), `armed` on the band edge below, and per tick
+            // in apply() the same fields the desktop compose() feeds — p /
+            // dist / holeYFrac / holeFade / starAlpha — as pure functions of
+            // this beat's own t. `pan01` is DELIBERATELY never written (stays
+            // 0): SignatureLine applies it to the shared camera on every
+            // tier, and the phone plate does not track — the lite island is
+            // camera-locked in X instead. The CSS hole becomes the desktop
+            // IMPOSTER (applyHoleVisuals' rule): painted on its own curve
+            // until the island's march is live (`marchLive`), then dropped to
+            // 0 — so the beat never shows "no hole" between arm and
+            // marchLive. The point tunnel is treated as dead (island and
+            // fallback are mutually exclusive: one march, one workload). Veil
+            // / cover / copy handoff / swallow / DPR cap are untouched — the
+            // beat's timing is the same beat. With the flag off none of this
+            // runs and the branch is byte-identical to the composite beat.
+            if (seqLiteMarch) useSeqStore.setState({ active: true });
 
             // ── THE STAGE (M-1 contract), and why the spacer is 80svh ──────
             // `vh` is the LARGE viewport (address bar hidden), so a runway
@@ -753,9 +811,15 @@ export default function SingularityPassage() {
             // hole in the composition. The landscape PHONE (Phase 5,
             // LANDSCAPE_PHONE_MQ — a matchMedia condition, so a rotation
             // rebuilds this branch with the fresh value) takes the same
-            // CSS-only road: composite beat, no point tunnel.
+            // CSS-only road: composite beat, no point tunnel. Phase 4c
+            // ISLAND MODE (`seqLiteMarch`, flag-gated) also treats the tunnel
+            // as dead: the raymarch island IS the beat's hole and its
+            // workload; a second star-field on top of a fullscreen march is
+            // exactly the fill the tile GPU cannot afford (the plan's twin is
+            // "64 iter accoppiati, DPR cap 1", nothing else).
             const cores = navigator.hardwareConcurrency;
             let tunnelDead =
+              seqLiteMarch ||
               c.landscapePhone ||
               (typeof cores === "number" &&
                 cores > 0 &&
@@ -934,15 +998,81 @@ export default function SingularityPassage() {
                   SEQ.LITE_HOLE_END_VH / SEQ.LITE_HOLE_START_VH,
                   u,
                 );
-              holeSet({
-                scale: apparent / SEQ.LITE_HOLE_BASE_VH,
-                // A dark well under live type through the hold, lifting to
-                // full exactly as the copy dissolves.
-                opacity:
-                  SEQ.LITE_HOLE_HOLD_ALPHA * seqRamp(t, 0, SEQ.LITE_HOLE_IN_END) +
-                  (1 - SEQ.LITE_HOLE_HOLD_ALPHA) *
-                    seqSmooth(t, SEQ.LITE_HOLD_END, SEQ.LITE_COPY_OUT_END),
-              });
+              // A dark well under live type through the hold, lifting to
+              // full exactly as the copy dissolves.
+              const holeAlpha =
+                SEQ.LITE_HOLE_HOLD_ALPHA * seqRamp(t, 0, SEQ.LITE_HOLE_IN_END) +
+                (1 - SEQ.LITE_HOLE_HOLD_ALPHA) *
+                  seqSmooth(t, SEQ.LITE_HOLD_END, SEQ.LITE_COPY_OUT_END);
+              if (seqLiteMarch) {
+                // ── Phase 4c ISLAND FEED (SEQ.LITE_RAYMARCH, default OFF) ──
+                // The raymarch island takes the CSS hole's place ON THE SAME
+                // CURVES:
+                //   dist      — the owner's 1/d law inverted: apparent
+                //               fraction = SEQ_APPARENT_K / dist, so the march
+                //               silhouette rides the same 1/d curve the CSS
+                //               hole would have at this t (15→170svh — up to
+                //               the svh/lvh delta: the CSS hole is sized in
+                //               svh, the island against the canvas' lvh
+                //               viewport, so the two differ by the address-bar
+                //               band while it is shown), floored at
+                //               SEQ.DIST_FLOOR (the dossier's never-enter
+                //               contract; the floor bites only from t ≈ 0.88,
+                //               under a ≥97%-closed veil).
+                //   holeFade  — the same hold-well → lift alpha as the CSS
+                //               hole, retired under the page-navy cover
+                //               (LITE_COVER band) so the march never rides the
+                //               persistent canvas past the unpinning stage —
+                //               the desktop rule "holeFade drops to 0 only
+                //               under the covered frame", transposed.
+                //   starAlpha — STAR_HI → STAR_LO across the dive band (the
+                //               desktop's fall across APPROACH).
+                //   holeYFrac — 0: centred in the stage, like the CSS hole.
+                //   p         — t: the island's orbit swim fades across
+                //               [ORBIT_FADE_START, ORBIT_FADE_END] = under
+                //               the closing veil.
+                // pan01 is NOT written (see the arm note): the island is
+                // camera-locked in X, the shared camera never pans here.
+                useSeqStore.setState({
+                  p: t,
+                  dist: Math.max(
+                    SEQ.DIST_FLOOR,
+                    (SEQ_APPARENT_K * 100) / apparent,
+                  ),
+                  holeYFrac: 0,
+                  holeFade:
+                    holeAlpha *
+                    (1 -
+                      seqSmooth(t, SEQ.LITE_COVER_START, SEQ.LITE_COVER_END)),
+                  starAlpha:
+                    SEQ.STAR_HI +
+                    (SEQ.STAR_LO - SEQ.STAR_HI) *
+                      seqSmooth(t, SEQ.LITE_WARP_START, SEQ.LITE_WARP_END),
+                });
+                // THE IMPOSTER RULE — the desktop applyHoleVisuals grammar,
+                // transposed: the CSS hole is the STAND-IN until the island's
+                // march is actually live (`marchLive`, written by the island
+                // once its build + compileAsync warm settle), then it drops
+                // to 0 and the march owns the silhouette. Between the arm
+                // edge and marchLive (the lazy three/webgpu chunk, the build,
+                // the warm — or a phone where the island never goes live at
+                // all) the beat therefore never has "no hole": the CSS hole
+                // rides the same scale/alpha it does with the flag off, and
+                // the two swap on the very same 1/d curve.
+                if (useSeqStore.getState().marchLive) {
+                  holeSet({ opacity: 0 });
+                } else {
+                  holeSet({
+                    scale: apparent / SEQ.LITE_HOLE_BASE_VH,
+                    opacity: holeAlpha,
+                  });
+                }
+              } else {
+                holeSet({
+                  scale: apparent / SEQ.LITE_HOLE_BASE_VH,
+                  opacity: holeAlpha,
+                });
+              }
               // THE SWALLOW: the veil's own curve, published for
               // SignatureLine (the filament is extinguished inside the hole,
               // not merely covered by it).
@@ -1022,6 +1152,12 @@ export default function SingularityPassage() {
                   disposeTunnel();
                   setCap(false);
                 }
+                // Phase 4c ISLAND MODE: the island's build/dispose edge — its
+                // three/webgpu + march build + compileAsync warm happen on
+                // this same calm one-viewport-early edge (the desktop bandST
+                // grammar), disposed as the stage unpins. No-op with the
+                // flag off (nothing subscribes to `armed` on a phone then).
+                if (seqLiteMarch) useSeqStore.setState({ armed: self.isActive });
               },
             });
 
@@ -1078,7 +1214,12 @@ export default function SingularityPassage() {
               litePanel.removeAttribute("aria-hidden");
               delete root.dataset.liteScroll;
               liteTrack.removeAttribute("data-lenis-prevent");
-              useSeqStore.setState({ lite: false, liteSwallow: 0 });
+              // Phase 4c ISLAND MODE hands the whole store back (active /
+              // armed / the fed scrub fields, plus lite + liteSwallow) —
+              // resetSeqStore preserves marchLive, which the island's own
+              // `armed` edge retires. Flag off: exactly the two-scalar reset.
+              if (seqLiteMarch) resetSeqStore();
+              else useSeqStore.setState({ lite: false, liteSwallow: 0 });
             };
           }
 
@@ -1962,7 +2103,15 @@ export default function SingularityPassage() {
     },
     // EN↔IT swaps panel 05's copy in place → widths change → revert +
     // recreate everything against the fresh layout (credibility lineage).
-    { scope: rootRef, dependencies: [language], revertOnUpdate: true },
+    // `seqLiteMarch` (Phase 4c): a constant `false` while SEQ.LITE_RAYMARCH is
+    // off — the array never changes on it; with the flag on it flips once
+    // per store edge (backend resolve / stepDownBudget) and rebuilds the
+    // coarse branch in the other mode, the same revert path.
+    {
+      scope: rootRef,
+      dependencies: [language, seqLiteMarch],
+      revertOnUpdate: true,
+    },
   );
 
   return (
