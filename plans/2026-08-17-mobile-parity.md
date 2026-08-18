@@ -284,15 +284,16 @@ Tutte le cifre finora sono **aritmetica o emulazione** (`MOBILE_TODO §3`, `MOBI
 
 ## Final Phase · Verifica complessiva (prima di dichiarare "fatto")
 
-- [ ] `tsc --noEmit` e `bun run build` puliti; `grep -rn "navigator.userAgent" src/webgl src/components/fx` ⇒ 0 (nessuna capacità decisa da UA); `grep -rn "preventDefault" src/components/sections/cinematic-system-scroll.tsx src/components/fx/hero-intro-gate.tsx` invariato rispetto a `main` (nessun nuovo scroll-hijack).
-- [ ] Desktop 1440×900 cold load: hero 2835 px, passage 3420 px, `data-on="seq"`, `[data-hero-brand]` ×1, 7 canvas, `fxBudget.level 3`, PostFX full, screenshot before/after pixel-diff sotto soglia **dopo il lift del preloader**. **Diff ammesso (solo finestra preloader, dichiarato in testa)**: pesi del contatore (`assets .70 / warm .30`), manifest asset, min-visible di sessione 350 ms alla 2ª visita.
-- [ ] Desktop stretto 700×900 fine pointer e desktop `hardwareConcurrency=4`: `level 1`, DOM/canvas/tunnel identici a `main`.
-- [ ] 390×844 (`?fx=2`, WebGPU): preloader (25k) → brand intro auto-play (tap = skip) → eclissi → line con bloom lite → lattices → passage (twin o composito secondo gate) → rail planes/founders solo se `RAIL_ISLANDS_TOUCH` (altrimenti DOM) → FLIP su nav; home ≤ 14.5 vp; 0 overflow; nessun listener touchmove non-passive nuovo.
-- [ ] 390×844 (`?fx=1`): tutto come oggi (DOM cascade, CSS composito, SVG lattices), preloader 14k punti.
-- [ ] RM desktop e RM phone: nessun canvas, preloader saltato, rail STACK pills visibili (A1), DragRail non ripitturato (A2).
-- [ ] No-WebGL motion-OK: overlay via in ≤ 1 s.
-- [ ] Device log compilato per ≥ 3 device reali; nessuna feature "on" senza riga nel log.
-- [ ] `MOBILE_HOME_SPEC.md §4.5` e `MOBILE_AUDIT.md:171` aggiornati con un paragrafo «superseded 2026-08-17 by plans/2026-08-17-mobile-parity.md» (non cancellare la motivazione storica).
+*(Stato 2026-08-18, `origin/mobile-parity` @ `5190a39`; ✅ = verificato, 🟡 = verificato in parte / harness, ⏳ = solo su device o pane visibile)*
+- [x] ✅ `tsc --noEmit` e `next build` puliti a ogni commit (bun non è sul PATH: `npm run build`); `navigator.userAgent` in `src/webgl` + `src/components/fx` ⇒ solo `displacement-wipe.tsx:84`, **pre-esistente** e non toccato (nessuna capacità decisa da UA in questo lavoro); diff `preventDefault` di `cinematic-system-scroll.tsx`/`hero-intro-gate.tsx` vs `origin/main` vuoto; nessun `touchmove` non-passive aggiunto; `package.json` invariato; ogni `tier ===` rimosso è una migrazione sanzionata al budget (Scene gate PostFX/HomeSingularity/NeuralLattice/SequenceSingularity, SignatureLine segmenti/radiali/breath, complemento lattice, `degrade()` che ri-deriva il budget).
+- [x] 🟡 Desktop 1440×900 (harness Playwright + pane nascosto via DOM): hero 2835 px, passage 3420 px, `data-on="seq"`, `[data-hero-brand]` ×1, `fxBudget.level 3`, `PostFXNodes full`, `brandAnchorEpoch 0`, 0 errori console. Pixel-diff screenshot **⏳** (nessun pane visibile). Diff ammesso: contatore 70/30, manifest, sessione corta.
+- [ ] ⏳ Desktop stretto 700×900 fine pointer: `level 1` verificato solo staticamente (il pane emula touch sotto 768). Desktop 4 core: `level 3` (statico).
+- [x] 🟡 390×844 `?fx=2` (harness, backend **WebGL2**): preloader 25k, `PostFXNodes lite`, DPR [1,1.5], line/drift a budget, FLIP su card visibile, landscape stacked, 14.46 vp, 0 overflow, 0 errori. **⏳ WebGPU-only** (brand intro auto-play + eclissi lite, lattices reali, gyro se abilitato): Chrome visibile con device toolbar o telefono.
+- [x] ✅ 390×844 `?fx=1`: come oggi (nessun PostFX, 2 canvas vs 5, DOM cascade, tunnel 14k) — harness.
+- [ ] ⏳ RM desktop e RM phone: A1/A2 verificati staticamente + review; runtime RM non emulabile nel pane (`resize_window` non imposta `prefers-reduced-motion`) — Playwright `reducedMotion:'reduce'` possibile come follow-up.
+- [x] 🟡 No-WebGL motion-OK: shortcut `resolved && tier === "off" ⇒ warm` verificato staticamente + review (harness non può disabilitare WebGL senza perdere il pane).
+- [ ] ⏳ Device log: solo la riga baseline harness; **serve il telefono** (owner).
+- [x] ✅ `MOBILE_HOME_SPEC.md §4.5` e `MOBILE_AUDIT.md` (righe hero-spine e postprocessing) marcati «superseded» con motivazione storica conservata.
 
 ---
 
