@@ -19,6 +19,12 @@
  *      in OVER the <img> on hover, fades out on leave, and is DISPOSED
  *      (texture/program deleted + context lost) on leave and on unmount so we
  *      never pile up live WebGL contexts.
+ *      TOUCH (mobile-parity plan Phase 4e): on a coarse pointer without reduced
+ *      motion and `fxBudget.level >= 2` (capable phone) the SAME canvas/shader
+ *      runs, driven by the card's `data-focus` attribute (lib/use-centre-focus
+ *      — the card scrolled into the viewport's centre band) instead of hover:
+ *      focus in ⇒ hover-enter, focus out ⇒ hover-leave. Level ≤ 1 coarse and
+ *      reduced motion keep today's CSS-only <img> reveal (no canvas).
  *   3. Scrim — a dark navy gradient overlay so the existing WHITE card text
  *      stays legible over the (busy) product shot.
  *
@@ -29,6 +35,19 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useTierStore } from "@/webgl/store/tierStore";
+
+/**
+ * What drives the distortion canvas, resolved once on mount (never in SSR):
+ *   "none"    — no canvas (RM, coarse below budget level 2, SSR)
+ *   "pointer" — fine pointer: hover enter/leave/move on the card (today's path)
+ *   "focus"   — coarse pointer + motion OK + `fxBudget.level >= 2`: the card's
+ *               `data-focus` attribute (centre-focus) plays enter/leave
+ */
+type DistortDriver = "none" | "pointer" | "focus";
+
+/** Attribute written by lib/use-centre-focus on the focused `.card-steel`. */
+const FOCUS_ATTR = "data-focus";
 
 interface CardImageDistortProps {
   /** Public path of the preview image, e.g. /case-studies/spherenode-preview.webp */
@@ -235,15 +254,17 @@ export function CardImageDistort({ src, alt }: CardImageDistortProps) {
   const imgRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Capability gate, resolved once on mount (never during SSR). When false the
+  // Capability gate, resolved once on mount (never during SSR). When "none" the
   // canvas is never created and only the CSS <img> fade runs.
-  const [canDistort, setCanDistort] = useState(false);
+  const [driver, setDriver] = useState<DistortDriver>("none");
+  const canDistort = driver !== "none";
 
   // True once the WebGL context is created AND its render loop is live. Drives
   // `data-canvas-active` on the root → CSS hides the base <img> so only the
   // shader image shows (no more double-image / mismatched crop). When the canvas
-  // is never used (RM / coarse pointer / no WebGL2) this stays false and the
-  // <img> remains the hover fallback. Set true on first real enter, false only
+  // is never used (RM / coarse pointer below budget level 2 / no WebGL2) this
+  // stays false and the <img> remains the reveal fallback (hover on a fine
+  // pointer, `[data-focus]` on touch). Set true on first real enter, false only
   // on teardown/unmount — never per-frame, so no re-render loop and no <img>
   // flash mid fade-out.
   const [canvasActive, setCanvasActive] = useState(false);
@@ -252,7 +273,26 @@ export function CardImageDistort({ src, alt }: CardImageDistortProps) {
     if (typeof window === "undefined") return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const coarse = window.matchMedia("(pointer: coarse)").matches;
-    setCanDistort(!reduced && !coarse);
+    if (!coarse) {
+      // Fine pointer: today's one-shot gate, unchanged.
+      setDriver(reduced ? "none" : "pointer");
+      return;
+    }
+    if (reduced) {
+      setDriver("none");
+      return;
+    }
+    // Coarse + motion OK: the canvas is allowed only on the capable-phone budget
+    // (Phase 4e). SUBSCRIBED, not sampled: this component can mount before
+    // CanvasHost's `resolve()` lands (the store still says level 0 then), and a
+    // runtime `stepDownBudget()` (2 → 1) must take the canvas away again. The
+    // subscription lives on the coarse branch only — a fine pointer never
+    // touches the tier store here.
+    const apply = (level: number) => setDriver(level >= 2 ? "focus" : "none");
+    apply(useTierStore.getState().fxBudget.level);
+    return useTierStore.subscribe((s, prev) => {
+      if (s.fxBudget.level !== prev.fxBudget.level) apply(s.fxBudget.level);
+    });
   }, []);
 
   // Force-load the base <img> via IntersectionObserver. Native lazy-load does
@@ -294,10 +334,13 @@ export function CardImageDistort({ src, alt }: CardImageDistortProps) {
 
   useEffect(() => {
     const root = rootRef.current;
-    if (!root || !canDistort) return;
+    if (!root || driver === "none") return;
 
     // The hoverable card is the nearest .card-steel ancestor (the <Link>).
+    // On touch it is also the element lib/use-centre-focus stamps `data-focus`
+    // on (the same `.card-steel` carries the centre-focus ref).
     const card = root.closest<HTMLElement>(".card-steel") ?? root;
+    const focusDriven = driver === "focus";
 
     let ctx: GLContext | null = null;
     let raf = 0;
@@ -376,7 +419,20 @@ export function CardImageDistort({ src, alt }: CardImageDistortProps) {
         hoverEased > 0.002 ||
         Math.abs(velocity.x) > 0.0002 ||
         Math.abs(velocity.y) > 0.0002;
-      if (hovering || settling) {
+      // TOUCH ONLY: nothing moves the pointer while a card sits focused, so
+      // once the zoom-in has settled the frame is static — park the loop with
+      // the canvas left visible (a phone reading a card must not burn a rAF).
+      // `leave()` and `onResize` re-arm it. Never taken on the pointer path,
+      // where hover keeps the loop live exactly as before.
+      const parkedWhileFocused =
+        focusDriven &&
+        hovering &&
+        hoverEased > 0.998 &&
+        Math.abs(velocity.x) <= 0.0002 &&
+        Math.abs(velocity.y) <= 0.0002;
+      if (parkedWhileFocused) {
+        raf = 0;
+      } else if (hovering || settling) {
         raf = requestAnimationFrame(render);
       } else {
         // Fully idle and not hovering — park the loop and hide the canvas, but
@@ -431,14 +487,19 @@ export function CardImageDistort({ src, alt }: CardImageDistortProps) {
       if (!raf) raf = requestAnimationFrame(render);
     };
 
-    const onLeave = (e: PointerEvent) => {
-      // pointerout fires on inner boundaries too; ignore if still inside.
-      if (card.contains(e.relatedTarget as Node | null)) return;
+    // Shared exit: pointer-leave (fine) and focus-out (touch) both land here.
+    const leave = () => {
       hovering = false;
       hover = 0;
       // render() keeps the loop alive through the ease-out, then parks the rAF
       // and hides the canvas while keeping the context alive for the next hover.
       if (ctx && !raf) raf = requestAnimationFrame(render);
+    };
+
+    const onLeave = (e: PointerEvent) => {
+      // pointerout fires on inner boundaries too; ignore if still inside.
+      if (card.contains(e.relatedTarget as Node | null)) return;
+      leave();
     };
 
     const onMove = (e: PointerEvent) => {
@@ -455,23 +516,90 @@ export function CardImageDistort({ src, alt }: CardImageDistortProps) {
       pointer.y = ny;
     };
 
-    const onResize = () => resize();
+    const onResize = () => {
+      resize();
+      // Touch: the loop may be parked on a static focused frame; a resize
+      // (orientation change) rewrote the backing store, so paint one frame.
+      if (focusDriven && hovering && ctx && !raf) {
+        raf = requestAnimationFrame(render);
+      }
+    };
 
-    card.addEventListener("pointerenter", onEnter, { passive: true });
-    card.addEventListener("pointerout", onLeave, { passive: true });
-    card.addEventListener("pointermove", onMove, { passive: true });
     window.addEventListener("resize", onResize, { passive: true });
+
+    if (!focusDriven) {
+      // FINE POINTER — hover drives the effect (unchanged).
+      card.addEventListener("pointerenter", onEnter, { passive: true });
+      card.addEventListener("pointerout", onLeave, { passive: true });
+      card.addEventListener("pointermove", onMove, { passive: true });
+
+      return () => {
+        disposed = true;
+        if (raf) cancelAnimationFrame(raf);
+        card.removeEventListener("pointerenter", onEnter);
+        card.removeEventListener("pointerout", onLeave);
+        card.removeEventListener("pointermove", onMove);
+        window.removeEventListener("resize", onResize);
+        teardown();
+      };
+    }
+
+    // TOUCH — the card's `data-focus` attribute (lib/use-centre-focus writes it
+    // from an IntersectionObserver on the centre band) plays enter/leave. No
+    // pointer listeners at all on this path: a tap would fire
+    // pointerenter/pointerout around the touch and fight the focus state, and
+    // there is no hover to move with, so the pointer stays centred (the shader
+    // shows its zoom-in; parallax/RGB-shift are structurally 0 — same shader,
+    // different trigger).
+    const isFocused = () => card.getAttribute(FOCUS_ATTR) === "true";
+    const img = imgRef.current;
+
+    const focusIn = () => {
+      const cv = canvasRef.current;
+      // The hover CSS twin (`.card-steel:hover .card-image-distort__canvas
+      // { transform: scale(1) }`) is fine-pointer-only; mirror it inline here so
+      // the canvas settles to scale(1) through the same class transition.
+      if (cv) cv.style.transform = "scale(1)";
+      onEnter();
+    };
+    const focusOut = () => {
+      const cv = canvasRef.current;
+      if (cv) cv.style.transform = "";
+      leave();
+    };
+
+    const applyFocus = () => {
+      const focused = isFocused();
+      if (focused === hovering) return;
+      if (focused) focusIn();
+      else focusOut();
+    };
+
+    // The card can be scrolled into the centre band before its <img> has
+    // finished loading (ensureContext needs a decoded image, and returns false
+    // until then — a hover would simply retry on the next enter, focus has no
+    // "next enter"). Retry once the image lands.
+    const onImgLoad = () => {
+      if (hovering && !ctx && isFocused()) focusIn();
+    };
+    img?.addEventListener("load", onImgLoad);
+
+    const mo = new MutationObserver(applyFocus);
+    mo.observe(card, { attributes: true, attributeFilter: [FOCUS_ATTR] });
+    // Already focused when the driver resolved (IO fired before this effect).
+    applyFocus();
 
     return () => {
       disposed = true;
       if (raf) cancelAnimationFrame(raf);
-      card.removeEventListener("pointerenter", onEnter);
-      card.removeEventListener("pointerout", onLeave);
-      card.removeEventListener("pointermove", onMove);
+      mo.disconnect();
+      img?.removeEventListener("load", onImgLoad);
       window.removeEventListener("resize", onResize);
+      const cv = canvasRef.current;
+      if (cv) cv.style.transform = "";
       teardown();
     };
-  }, [canDistort]);
+  }, [driver]);
 
   return (
     <div

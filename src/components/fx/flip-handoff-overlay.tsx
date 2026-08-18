@@ -66,9 +66,10 @@ if (typeof window !== "undefined") gsap.registerPlugin(Flip);
  * Robustness contract: the real hero is NEVER left stuck-hidden — it is
  * revealed on landing AND on poll timeout AND on the hard flight timeout
  * (~2.5s from arm, covers a stalled route); clones are always removed on
- * completion / stale navigation / unmount. Reduced-motion, coarse pointers
- * and modified clicks never arm (use-flip-source guards) → plain navigation
- * exactly as before.
+ * completion / stale navigation / unmount. Reduced-motion and modified clicks
+ * never arm, and coarse pointers arm only with the source ≥ 60% on-screen
+ * (use-flip-source guards) → otherwise plain navigation exactly as before.
+ * The ripple below is a separate, reduced-motion-only bail.
  */
 
 const NAVY = "#0B1422";

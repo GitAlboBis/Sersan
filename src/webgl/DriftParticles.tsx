@@ -31,15 +31,45 @@ import { useScrollStore } from "./store/scrollStore";
 import { useFxStore } from "./store/fxStore";
 import { routeFx, HOME_FX } from "./store/routeFxStore";
 import type { SectionAnchors } from "./hooks/useSectionAnchors";
-import type { SceneTier } from "./store/tierStore";
+import { useTierStore, type SceneTier } from "./store/tierStore";
 
 interface DriftParticlesProps {
+  /**
+   * Host contract (Scene.tsx passes it, like every island). The instance COUNT
+   * no longer reads it — it reads the BUDGET axis (`fxBudget`, plan Phase 4e,
+   * see `selectBudgetCount`); the prop is kept so the host signature stays
+   * untouched.
+   */
   tier: Exclude<SceneTier, "off">;
   anchors: SectionAnchors;
   pathname: string;
 }
 
-const COUNT: Record<string, number> = { full: 3000, lite: 800 };
+/**
+ * Base instance counts. `full` is the desktop constant (fxBudget level 3),
+ * `lite` is today's frozen level-1 constant (weak phone / narrow fine window).
+ * A capable phone (level 2) scales `full` by `fxBudget.particleScale` (0.5 →
+ * 1500) — see `selectBudgetCount`.
+ */
+const COUNT = { full: 3000, lite: 800 } as const;
+
+/**
+ * Budget → base count (mobile-parity plan Phase 4e). ONE store selector that
+ * returns a PRIMITIVE, so the island re-renders only when the resulting count
+ * actually changes (resolve() before mount, or the one-shot stepDownBudget()
+ * 2 → 1) — never per frame, never a setState from useFrame.
+ *   level 3 (⇔ desktop tier "full") → 3000, byte-identical to the old COUNT.full
+ *   level 2 (capable phone)          → round(3000 × particleScale) = 1500
+ *   level ≤ 1 (today's lite)         → 800, the frozen level-1 constant
+ */
+function selectBudgetCount(s: {
+  fxBudget: { level: number; particleScale: number };
+}): number {
+  const { level, particleScale } = s.fxBudget;
+  if (level >= 3) return COUNT.full;
+  if (level === 2) return Math.round(COUNT.full * particleScale);
+  return COUNT.lite;
+}
 
 /**
  * The shared unit-quad corners for the billboard (z=0, xy in [-0.5,0.5]). Two
@@ -53,8 +83,13 @@ const QUAD_CORNERS = new Float32Array([
 ]);
 const QUAD_INDEX = new Uint16Array([0, 1, 2, 0, 2, 3]);
 
-export function DriftParticles({ tier, anchors, pathname }: DriftParticlesProps) {
+export function DriftParticles({ anchors, pathname }: DriftParticlesProps) {
   const { size, gl } = useThree();
+  // Budget-derived base count (plan Phase 4e) — see selectBudgetCount. Read
+  // inside the island through a single primitive selector (the store is
+  // module-stable; the same pattern AdaptiveResolution / FounderPortraitMorph
+  // already use inside the Canvas).
+  const budgetCount = useTierStore(selectBudgetCount);
 
   // Material selection by the build-time WebGPU flag (createRenderer.ts),
   // MIRRORING SignatureLine exactly:
@@ -142,14 +177,17 @@ export function DriftParticles({ tier, anchors, pathname }: DriftParticlesProps)
   // resize at 150ms, and the bucket collapses that to ~one rebuild per 128px.
   const widthBucket = Math.round(size.width / 128);
 
-  // Instance count for the active tier/route — used both to size the geometry
-  // buffers and to set the InstancedMesh draw count.
+  // Instance count for the active budget/route — used both to size the geometry
+  // buffers and to set the InstancedMesh draw count. `budgetCount` stands where
+  // `COUNT[tier]` stood: identical on desktop (level 3 → 3000) and on today's
+  // lite (level ≤ 1 → 800); a level change is a one-shot memo re-run, exactly
+  // as a tier change was.
   const count = useMemo(
     () =>
       anchors.scrollHeight <= 1
         ? 0
-        : Math.max(64, Math.round(COUNT[tier] * route.particleCountScale)),
-    [tier, route.particleCountScale, anchors.scrollHeight],
+        : Math.max(64, Math.round(budgetCount * route.particleCountScale)),
+    [budgetCount, route.particleCountScale, anchors.scrollHeight],
   );
 
   const geometry = useMemo(() => {

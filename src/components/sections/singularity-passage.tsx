@@ -207,7 +207,9 @@ import { cn } from "@/lib/utils";
  *     level 2, else the tunnel's own 14k/50k heuristic — see
  *     preloader-tunnel.ts) and its own DPR cap of 1.5 — a workload this site
  *     already ships to phones, and zero extra bytes. The single additive
- *     check is SEQ.LITE_MIN_CORES: ≤4 logical cores → CSS-only beat.
+ *     check is SEQ.LITE_MIN_CORES: ≤4 logical cores → CSS-only beat. The
+ *     landscape PHONE (LANDSCAPE_PHONE_MQ, mobile-parity Phase 5) takes the
+ *     same CSS-only road — composite beat, no tunnel.
  *     Budget order per MOBILE_AUDIT.md §5.5: resolution first
  *     (SEQ.LITE_DPR_CAP pins the persistent R3F canvas to DPR 1 for the whole
  *     approach band), then particle count (the tunnel's own small tier), then
@@ -278,6 +280,18 @@ if (typeof window !== "undefined") {
 const DESKTOP_MQ = "(min-width: 1024px)";
 const FINE_MQ = "(pointer: fine)";
 const MOTION_OK_MQ = "(prefers-reduced-motion: no-preference)";
+// Landscape PHONE (mobile-parity Phase 5, plans/2026-08-17-mobile-parity.md;
+// the hero spine keys the same query, cinematic-system-scroll.tsx): a coarse
+// device turned sideways with ≤500px of height. The phone beat still runs its
+// CSS-composite move there (hole + veil + cover — the whole 1/d law), but the
+// point tunnel is treated as dead: a 100svh stage that short has no room for
+// a fixed z-40 star-field over the copy, and the swapchain/GL work is not
+// worth a beat the reader can barely see. Registered as a matchMedia
+// CONDITION (not a one-shot read) so a rotation reverts + rebuilds the branch
+// with the fresh predicate. Coarse-only by construction: no fine-pointer
+// window can ever match, so the desktop sequence is untouched.
+const LANDSCAPE_PHONE_MQ =
+  "(orientation: landscape) and (max-height: 500px) and (pointer: coarse)";
 
 // ── Owner tuning knobs (one-line tuning at review) ──────────────────────────
 /** Panel 05 leaves the focus order / a11y tree below this opacity. */
@@ -521,12 +535,18 @@ export default function SingularityPassage() {
 
       const mm = gsap.matchMedia();
       mm.add(
-        { desktop: DESKTOP_MQ, fine: FINE_MQ, motionOk: MOTION_OK_MQ },
+        {
+          desktop: DESKTOP_MQ,
+          fine: FINE_MQ,
+          motionOk: MOTION_OK_MQ,
+          landscapePhone: LANDSCAPE_PHONE_MQ,
+        },
         (ctx) => {
           const c = ctx.conditions as {
             desktop: boolean;
             fine: boolean;
             motionOk: boolean;
+            landscapePhone: boolean;
           };
           // Reduced motion → the static vertical section 05 + gradient
           // spacer only (default CSS — no JS at all, the simple fade cut).
@@ -730,12 +750,16 @@ export default function SingularityPassage() {
             // The one additive check: skip the tunnel on a genuinely old
             // device (≤ LITE_MIN_CORES logical cores). Those get the CSS-only
             // beat, which still carries the whole 1/d move — a degrade, not a
-            // hole in the composition.
+            // hole in the composition. The landscape PHONE (Phase 5,
+            // LANDSCAPE_PHONE_MQ — a matchMedia condition, so a rotation
+            // rebuilds this branch with the fresh value) takes the same
+            // CSS-only road: composite beat, no point tunnel.
             const cores = navigator.hardwareConcurrency;
             let tunnelDead =
-              typeof cores === "number" &&
-              cores > 0 &&
-              cores <= SEQ.LITE_MIN_CORES;
+              c.landscapePhone ||
+              (typeof cores === "number" &&
+                cores > 0 &&
+                cores <= SEQ.LITE_MIN_CORES);
 
             // ── Star-field state. Everything the frame loop needs lives in
             // these locals: the scrub writes them, the rAF reads them, and

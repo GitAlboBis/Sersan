@@ -640,6 +640,15 @@ export function Preloader() {
       if (cancelled || revealed) return;
       revealed = true;
       useIntroStore.getState().complete();
+      // The visitor has already sat through the full watchdog window: mark the
+      // session like a normal reveal would, so a repeat hard load in this tab
+      // at least gets the shorter minimum floor (SESSION_SHORT) rather than
+      // paying twice. Best effort.
+      try {
+        window.sessionStorage.setItem(SESSION_KEY, "1");
+      } catch {
+        // Storage unavailable — nothing to remember.
+      }
       restoreScroll();
       setActive(false); // unmount the overlay immediately (no wipe)
     }, WATCHDOG_MS);

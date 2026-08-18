@@ -43,7 +43,9 @@
  *              already ships and makes the panel its own overflow guard.
  *   "stacked"  prefers-reduced-motion, ON ANY VIEWPORT → StackedFallback (the
  *              former MobileFallback, body untouched): the UNGROUPED 5 copy
- *              blocks, no pin, no scrub.
+ *              blocks, no pin, no scrub. Also the landscape PHONE
+ *              (LANDSCAPE_PHONE_MQ: coarse + landscape + ≤500px tall, mobile-
+ *              parity Phase 5) — a sticky 100svh stage has no room there.
  *
  * THE SPLIT MATTERS (MOBILE_HOME_SPEC §0): the old gate was
  * `isMobile || reduceMotion` → one fallback, so routing the compact spine off
@@ -90,6 +92,16 @@ if (typeof window !== "undefined") {
 // and it must not receive the desktop HeroIntroGate's touchmove hijack (D-11).
 const COMPACT_MQ = "(max-width: 768px), (pointer: coarse)";
 const MOTION_OK_MQ = "(prefers-reduced-motion: no-preference)";
+// Landscape PHONE (mobile-parity Phase 5, plans/2026-08-17-mobile-parity.md):
+// a coarse device turned sideways with ≤500px of height has no room for a
+// pinned 100svh stage — the sticky compact spine would be a scrub across a
+// stage shorter than its own copy. ERA refuses landscape outright
+// (`.landscape-cover`); we do NOT block: the hero simply resolves to the
+// existing StackedFallback (no pin, no scrub) for as long as the query holds
+// and returns to the compact spine on rotate-back. Coarse-only by
+// construction, so no desktop window (fine pointer) can ever match it.
+const LANDSCAPE_PHONE_MQ =
+  "(orientation: landscape) and (max-height: 500px) and (pointer: coarse)";
 
 // === Stage definitions ====================================================
 // Each stage carries both EN and IT copy. `localizeStages(language)` resolves
@@ -1097,6 +1109,7 @@ export default function CinematicSystemScroll() {
   const [isCompact, setIsCompact] = useState<boolean>(false);
   const [hasDetectedViewport, setHasDetectedViewport] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
+  const [landscapePhone, setLandscapePhone] = useState(false);
   const prevModeRef = useRef<string | null>(null);
 
   // Mode detection is a SUBSCRIPTION, not a one-shot sample: a window snapped
@@ -1109,14 +1122,17 @@ export default function CinematicSystemScroll() {
   // the desktop path, complete with the HeroIntroGate touchmove hijack (D-11).
   // A `matchMedia` list fires `change` for either arm, so one listener covers
   // both a resize and a device-class change (a tablet docking a mouse).
+  // LANDSCAPE_PHONE_MQ rides the same listener: a rotation flips it live.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const compactQ = window.matchMedia(COMPACT_MQ);
     const reducedQ = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const queries = [compactQ, reducedQ];
+    const landscapeQ = window.matchMedia(LANDSCAPE_PHONE_MQ);
+    const queries = [compactQ, reducedQ, landscapeQ];
     const sync = () => {
       setIsCompact(compactQ.matches);
       setReduceMotion(reducedQ.matches);
+      setLandscapePhone(landscapeQ.matches);
       setHasDetectedViewport(true);
     };
     sync();
@@ -1132,13 +1148,20 @@ export default function CinematicSystemScroll() {
   // that MOBILE_HOME_SPEC §0 flags as the desktop-regression trap. Folding it
   // back into the compact test would scrub-pin a 27" monitor for a user who
   // asked the OS for no motion.
+  //
+  // The landscape-phone arm is the ONLY other road into "stacked" (Phase 5):
+  // it is coarse-only by construction (LANDSCAPE_PHONE_MQ), so it can never
+  // reach a fine-pointer window of any size — desktop stays "desktop", the
+  // narrow fine window stays exactly what COMPACT_MQ made it before.
   const mode: "desktop" | "compact" | "stacked" = !hasDetectedViewport
     ? "desktop"
     : reduceMotion
       ? "stacked"
-      : isCompact
-        ? "compact"
-        : "desktop";
+      : landscapePhone
+        ? "stacked"
+        : isCompact
+          ? "compact"
+          : "desktop";
 
   // The three paths have very different document heights (315vh / 180svh /
   // content-stacked), so a flip between ANY two of them must re-measure every

@@ -49,8 +49,10 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
   // plain left click on it arms the REVERSE flight (the hero deflates onto
   // its matching card — fx/flip-handoff-overlay) while the <Link> navigates
   // natively. Arming is passive and per-click gated inside the hook —
-  // reduced-motion / coarse pointers / modified clicks / no-hero studies all
-  // fall through to the standard route cover unchanged, and browser
+  // reduced-motion / coarse pointers whose source is < 60 % on-screen /
+  // modified clicks / no-hero studies all fall through to the standard route
+  // cover unchanged (mobile-parity Phase 5: a coarse tap on a mostly-visible
+  // card DOES arm the flight), and browser
   // back/forward (popstate) never arms since no click handler runs. The hook
   // also toggles [data-no-curtain] on the link so the generic cover twin
   // (navbar's RouteTransitionCover) never double-covers an armed flight.

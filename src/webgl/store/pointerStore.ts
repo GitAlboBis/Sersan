@@ -21,8 +21,16 @@
  *   target. All smoothing + velocity is computed in `updatePointer(dt)`, called
  *   once per frame from the existing FrameDriver `useFrame` — never from its own
  *   requestAnimationFrame.
+ *
+ * COARSE POINTERS (mobile-parity plan Phase 4e)
+ *   The mouse listener stays a no-op. The ONE alternative source is the gyro
+ *   (`lib/gyro-parallax.ts`: deviceorientation after the first tap, half the
+ *   mouse amplitude, same `raw` → same `updatePointer` smoothing). It is behind
+ *   `GYRO_PARALLAX_ENABLED` (owner Decision 7) — while false, coarse pointers
+ *   register nothing at all, exactly as before.
  */
 import { create } from "zustand";
+import { GYRO_PARALLAX_ENABLED, installGyroParallax } from "@/lib/gyro-parallax";
 
 export interface PointerVec {
   x: number;
@@ -99,8 +107,12 @@ export function updatePointer(dt: number) {
  * Install the single window pointer listener. Returns a teardown fn.
  *
  * GATING (identical to custom-cursor.tsx): no-op (and returns a no-op cleanup)
- * on coarse pointers or under prefers-reduced-motion — on those devices nothing
- * tracks the pointer, the cursor stays native and the fluid never runs.
+ * under prefers-reduced-motion, and on coarse pointers for the MOUSE listener —
+ * on those devices nothing tracks the pointer, the cursor stays native and the
+ * fluid never runs. A coarse pointer without reduced motion may instead get the
+ * gyro source (Phase 4e, `lib/gyro-parallax.ts`) — never both — and only while
+ * `GYRO_PARALLAX_ENABLED` is true; with the flag false the coarse branch is the
+ * same no-op as before (no listener registered).
  *
  * Refcounted so multiple consumers (cursor + fluid) share ONE listener; the
  * last release removes it.
@@ -110,11 +122,15 @@ let detach: (() => void) | null = null;
 
 export function installPointerTracking(): () => void {
   if (typeof window === "undefined") return () => {};
-  if (
-    window.matchMedia("(prefers-reduced-motion: reduce)").matches ||
-    window.matchMedia("(pointer: coarse)").matches
-  ) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
     return () => {};
+  }
+  if (window.matchMedia("(pointer: coarse)").matches) {
+    // Alternative source, never two: gyro (refcounted on its own side, gated on
+    // fxBudget.gyroParallax + RM inside). Structurally dead while the flag is
+    // false — `installGyroParallax` is not even called.
+    if (!GYRO_PARALLAX_ENABLED) return () => {};
+    return installGyroParallax(usePointerStore.getState().setRaw);
   }
 
   listenerRefcount++;

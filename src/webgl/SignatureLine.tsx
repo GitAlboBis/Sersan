@@ -44,7 +44,8 @@ import { useFxStore } from "./store/fxStore";
 import { usePointerStore } from "./store/pointerStore";
 import { routeFx } from "./store/routeFxStore";
 import type { SectionAnchors } from "./hooks/useSectionAnchors";
-import type { SceneTier } from "./store/tierStore";
+import { useTierStore } from "./store/tierStore";
+import type { FxBudget, SceneTier } from "./store/tierStore";
 
 interface SignatureLineProps {
   tier: Exclude<SceneTier, "off">;
@@ -120,7 +121,13 @@ interface LineBuildInputs {
   /** World units per document/CSS pixel. */
   k: number;
   worldViewWidth: number;
-  tier: Exclude<SceneTier, "off">;
+  /**
+   * Geometry BUDGET (mobile-parity plan Phase 4e) — `fxBudget.level`, not
+   * `tier`: the tube's segment/radial density is vertex cost, so a capable
+   * phone (level 2) gets the full desktop tessellation. Level 3 ⇔ desktop
+   * `tier "full"` (byte-identical), level ≤ 1 = today's lite constants.
+   */
+  budgetLevel: FxBudget["level"];
 }
 
 type LineBuildResult =
@@ -202,13 +209,17 @@ function buildLineGeometry(inp: LineBuildInputs): LineBuildResult {
   // keeps every visible sweep perfectly smooth.
   // tessellationScale (1 on home → unchanged) biases segment density per
   // route before the same min/max clamp; rounded so the count stays integral.
+  // Segment/radial caps read the BUDGET level (plan Phase 4e): level ≥ 2
+  // (desktop full AND capable phone) gets 640/8, level ≤ 1 keeps today's
+  // lite 320/6. Level 3 is exactly the old `tier === "full"` branch.
+  const fullBudget = inp.budgetLevel >= 2;
   const tubularSegments = THREE.MathUtils.clamp(
     Math.round(config.waypoints.length * 40 * tessellationScale),
     256,
-    inp.tier === "full" ? 640 : 320,
+    fullBudget ? 640 : 320,
   );
   const radius = WORLD_VIEW_HEIGHT * radiusFactor;
-  const radialSegments = inp.tier === "full" ? 8 : 6;
+  const radialSegments = fullBudget ? 8 : 6;
 
   const geo = new THREE.TubeGeometry(
     curve,
@@ -255,6 +266,16 @@ const CAM_ROLL_MAX = 0.046;
 
 export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   const { camera, size } = useThree();
+  // Effects BUDGET (mobile-parity plan Phase 4e). ONE store selector on a
+  // primitive: re-renders only when the level itself changes (resolve() before
+  // mount, or the one-shot stepDownBudget() 2 → 1) — never per frame, never a
+  // setState from useFrame. It decides BUDGET only (tube tessellation, the
+  // uBreath/comet driver); every CAMERA behaviour below (dolly ×0.5, orbit,
+  // pointer parallax, lookAt/roll) stays on `tier` — those need a pointer /
+  // the desktop layout, and the plan keeps them off on touch until a gyro
+  // source feeds pointerStore. Level 3 ⇔ tier "full" ⇒ desktop byte-identical;
+  // level 1 ⇔ today's lite (weak phone / narrow fine window) unchanged.
+  const budgetLevel = useTierStore((s) => s.fxBudget.level);
   const meshRef = useRef<THREE.Mesh>(null);
   const dampedProgress = useRef(0);
   const dampedReveal = useRef(1);
@@ -465,7 +486,7 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       measuredPath: anchors.measuredPath,
       k,
       worldViewWidth,
-      tier,
+      budgetLevel,
     });
     if (res.status === "no-data") return null;
     // FIX A2 route-change race: HOLD the last good geometry (uReveal is 0
@@ -489,8 +510,12 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // anchors.version covers fraction/scrollHeight/measuredPath changes (a
     // path change always bumps the version — sectionStore.setMeasured never
     // short-circuits it).
+    // `budgetLevel` replaces the old `tier` dep (the build no longer reads the
+    // tier): a level change is a ONE-SHOT rebuild here, exactly as a tier
+    // change was — the level is a primitive that only moves on resolve() /
+    // stepDownBudget(), so no per-frame rebuild can arise from it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, anchors.version, size.width, size.height, k, worldViewWidth, tier]);
+  }, [pathname, anchors.version, size.width, size.height, k, worldViewWidth, budgetLevel]);
 
   // Commit-time bookkeeping + disposal for memo-built geometries. Effects run
   // only for COMMITTED renders, so:
@@ -620,7 +645,7 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
           measuredPath: section.measuredPath,
           k,
           worldViewWidth,
-          tier,
+          budgetLevel,
         });
         // "hold" is impossible here (pathname === measuredPath by
         // construction) and "no-data" is excluded by the sentinel guard.
@@ -1301,13 +1326,18 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // through unperturbed: the physically-correct tilt is < 0.2° (because uv.x
     // spans the full ~150-unit curve, so d/ds is divided by L), i.e. below
     // perception, so dropping the correction produces no shimmer. Driver gated
-    // to the full tier; 0 elsewhere makes the shader skip the breath branch
-    // (uBreath <= 0.0001), and under prefers-reduced-motion the Canvas is
-    // unmounted anyway (tier "off").
+    // on the BUDGET level (plan Phase 4e): level ≥ 2 — desktop full (level 3,
+    // the old `tier === "full"` branch, byte-identical) AND a capable phone
+    // (level 2) — drives it; 0 at level ≤ 1 (today's lite) makes the shader
+    // skip the breath branch (uBreath <= 0.0001). The comet vertex swell in
+    // lineShader.ts / lineNodeMaterial.ts shares this uBreath > 0 gate, so
+    // this single write turns breath AND comet on together (vertex cost, not
+    // fill — the same rationale as the tessellation above). Under
+    // prefers-reduced-motion the Canvas is unmounted anyway (tier "off").
     const radius = WORLD_VIEW_HEIGHT * fx.radiusFactor;
     const velNorm = Math.min(aliveVelocity * 0.01, 1);
     u.uBreath.value =
-      tier === "full" ? 0.4 * radius * (0.45 + 0.55 * velNorm) : 0;
+      budgetLevel >= 2 ? 0.4 * radius * (0.45 + 0.55 * velNorm) : 0;
     // Comet head (uVel): damp the SAME normalized alive velocity the breath
     // uses toward the shader — the fragment stretches the hot head band into
     // a tail (headLen ×(1+5·uVel)) and lifts its hot mix, the vertex swells

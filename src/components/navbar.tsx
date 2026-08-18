@@ -528,8 +528,9 @@ function RouteTransitionCover() {
         // Work-card zoom clicks: the inflating clone IS that navigation's
         // curtain (flip-handoff suppresses the template wipe too) — one cover
         // per navigation. Skipped by attribute rather than by peeking the flip
-        // store so coarse/RM clicks (where the flip never arms) also fall
-        // through to today's behavior unchanged.
+        // store so RM clicks, and coarse clicks whose source is mostly
+        // off-screen (use-flip-source COARSE_MIN_VISIBLE) — where the flip
+        // never arms — also fall through to today's behavior unchanged.
         if (link.closest("[data-flip-source]")) return;
         let url: URL;
         try {
