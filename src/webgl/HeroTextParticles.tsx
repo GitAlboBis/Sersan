@@ -56,6 +56,7 @@ import { useIntroStore } from "./store/introStore";
 import { useTextMorphStore } from "./store/textMorphStore";
 import { useFxStore } from "./store/fxStore";
 import { useTierStore, type SceneTier } from "./store/tierStore";
+import { wordmarkTuner } from "./store/wordmarkTuner";
 import { holeField } from "./HomeSingularity";
 
 interface HeroTextParticlesProps {
@@ -452,9 +453,34 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
         homeAWorld,
         count,
         // ICS-media-reference look (user 2026-06-10): bright glowing sprites,
-        // dense enough to read as solid strokes — bigger discs, hotter
-        // emissive, near-white ink. POINT_SIZE 8 (was 7): the 16vw brand's
-        // thicker strokes carry the larger disc without clogging counters.
+        // dense enough to read as solid strokes — hot emissive, near-white ink.
+        //
+        // POINT_SIZE 8 — the calibrated value, RESTORED 2026-08-18 after a
+        // one-day detour to 4 that was made on a false premise.
+        //
+        // WHAT THE NUMBER IS IN SCREEN TERMS: it is NOT CSS px, and it is not
+        // in the same units as the stroke width. The render stage computes
+        //   quadExtentDevicePx = POINT_SIZE × dpr × (0.7 + 0.7·hash) / dist
+        // (gpgpuNodeSim `sizeNode`; the quad corners are ±0.5, so that extent
+        // IS the diameter, and uViewport is in device px), where `dist` is the
+        // view-space distance to the wordmark plane — CAMERA_Z = 12 at the hero
+        // station. Dividing the dpr back out, the on-screen MOTE DIAMETER is
+        //   POINT_SIZE × (0.7…1.4) / 12 CSS px,   mean ≈ POINT_SIZE / 11.4
+        //   ⇒ 8 → 0.70 CSS px mean        4 → 0.35 CSS px mean
+        // Every mote is therefore deeply SUB-PIXEL. The lockup's stem at 1440
+        // is ~5.7px (cap 72.6px × 7.86% at weight 300), i.e. ~8 motes wide: the
+        // disc can never overhang the letterform, and no value in this knob's
+        // range can. The earlier claim that it did — and the 8→4 drop that
+        // followed from it — was wrong.
+        //
+        // WHAT IT ACTUALLY CONTROLS IS BRIGHTNESS. Additive coverage scales
+        // with mote AREA, i.e. roughly POINT_SIZE², so 8→4 discarded ~75% of
+        // the ink and made the wordmark read FAINTER — the exact opposite of
+        // the owner's "too thin" report. Raise it to deposit more light per
+        // particle (paying in edge softness); lower it only to thin the ink on
+        // purpose. The Wordmark Lab (`?wordmark`) overrides this uniform live
+        // through wordmarkTuner.pointSize, with the per-weight stem table and
+        // the mote-diameter readout: components/fx/wordmark-lab.tsx.
         {
           SPRING: 42,
           DAMPING: 6.5,
@@ -475,11 +501,17 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
         scatter,
       );
       built = bm as unknown as MorphBuild;
-      // COMPACT look knob (plan Phase 4b, measure-first default): the 13vw
-      // wordmark on a 390px phone has a ~50px cap height (ink area ≈1/7 of
-      // desktop's) and 24k particles — ~7× denser than desktop; the desktop
-      // POINT_SIZE 8 discs on a ~7px stroke would read as a solid slab and
-      // clog counters. 5px keeps the strokes as light. Desktop untouched (8).
+      // COMPACT look knob (plan Phase 4b, measure-first; restored to 5 on
+      // 2026-08-18 with the desktop 8 — the 3 that briefly shipped alongside
+      // the 4 rested on the same false "disc wider than the stroke" premise).
+      // The argument here is DENSITY, not overhang: the 9.8vw wordmark on a
+      // 390px viewport is a 38.2px font-size ⇒ 26.8px cap ⇒ a ~2.1px stem at
+      // weight 300, and its ink area is ≈1/7 of desktop's while 24k particles
+      // fill it — ≈3.7× more motes per unit of ink. At the desktop disc that
+      // stacks into a blown-out slab with clogged counters, so the phone runs
+      // one notch of light less: 5 ⇒ mean mote ≈0.44 CSS px, ≈39% of desktop's
+      // coverage per mote, which the higher density puts back. Still far below
+      // the ~2.1px stem, so nothing overhangs on this anchor either.
       if (autoRef.current) built.uPointSize.value = 5;
       // Resume state: a rebuild mid/after entry must not restart the wave.
       // On a genuine full-intro replay (fresh mount) start from a clean
@@ -753,6 +785,17 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
     const dpr = Math.min(gl.getPixelRatio(), 2);
     build.uPixelRatio.value = dpr;
     build.uViewport.value.set(size.width * dpr, size.height * dpr);
+
+    // WORDMARK LAB override (dev/`?wordmark` only — components/fx/wordmark-lab
+    // .tsx). A plain property read on a globalThis-pinned module ref (the
+    // holeField / entryProgressRef pattern): null for every real visitor, so
+    // this is one null compare per frame and the built-in POINT_SIZE stands.
+    // Re-applied every frame on purpose — a resample rebuilds the sim and
+    // re-bakes the default, and the panel's value must survive that.
+    const discOverride = wordmarkTuner.pointSize;
+    if (discOverride !== null && build.uPointSize.value !== discOverride) {
+      build.uPointSize.value = discOverride;
+    }
 
     // Sleep when nothing can move: brand fully dissolved, gate released and
     // not re-engaged (raw gateProgress pinned at 1). A reverse re-engage

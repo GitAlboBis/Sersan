@@ -15,6 +15,7 @@ import { CardTiltController } from "@/components/fx/card-tilt-controller";
 import { HeadingChoreographer } from "@/components/fx/heading-choreographer";
 import { LabelScrambler } from "@/components/fx/label-scrambler";
 import { CustomCursor } from "@/components/fx/custom-cursor";
+import { WordmarkLab } from "@/components/fx/wordmark-lab";
 import { FlipHandoffOverlay } from "@/components/fx/flip-handoff-overlay";
 import { CommandPalette } from "@/components/fx/command-palette";
 import { AudioTriggers } from "@/components/fx/audio-triggers";
@@ -23,8 +24,18 @@ import { Analytics } from "@vercel/analytics/next";
 // Brand type stack (self-hosted via next/font, no runtime CDN requests):
 // - Brand: Sersan Display — the custom logotype face (Jost, SIL OFL, see
 //   ../fonts/LICENSE-Jost.txt) with two glyph amputations baked in: the A has
-//   no crossbar and the R's bowl stops short of the stem. Weights 200/300
-//   only; used for the SERSAN wordmark, nothing else.
+//   no crossbar and the R's bowl stops short of the stem. Shipped as a full
+//   weight LADDER (200/220/240/260/280/300/340 — every step verified to keep
+//   both amputations intact) so the wordmark's stroke weight can be settled
+//   against the live particle render instead of guessed. 300 is the default
+//   (stem 7.86% of cap height) — deliberately one step ABOVE the 5.0–6.5%-ish
+//   band the owner's flat reference artwork measures (220 = 5.43%, 240 =
+//   6.00%, 260 = 6.71%), because the additive sub-pixel particle render
+//   scatters light and reads lighter than solid artwork, so matching the
+//   artwork's stem number ships a wordmark that looks too thin. 340 (9.71%) is
+//   the next step up and overshoots. The Wordmark Lab
+//   (`components/fx/wordmark-lab.tsx`, `?wordmark`) cycles the rest live.
+//   Used for the SERSAN wordmark, nothing else.
 // - Display: Fraunces (variable, optical sizing + italic) — the editorial
 //   serif for big headings. Editorial New is no longer distributed by
 //   Fontshare; Fraunces is what the live site already resolves to.
@@ -38,11 +49,35 @@ const fraunces = Fraunces({
   display: "swap",
 });
 
+// PRELOAD OFF (2026-08-18). `preload` defaults to true and next/font/local
+// preloads EVERY file in `src` — it cannot know which weight a page uses — so
+// the seven-step ladder was putting 7 × ~10KB = ~71KB of woff2 on the critical
+// path for a face that paints NOTHING. Safe here, specifically:
+//   · the only two nodes that use `font-brand` are the `[data-hero-brand]`
+//     anchors (cinematic-system-scroll.tsx), both `opacity: 0` forever — they
+//     exist purely as a typography/geometry SOURCE for the particle sampler,
+//     so nothing on screen can flash or reflow while the face arrives;
+//   · the sampler does not race it: HeroTextParticles awaits
+//     `document.fonts.ready` in the same Promise.all as its WebGPU imports
+//     (webgl/HeroTextParticles.tsx) BEFORE it calls sampleTextPoints, and the
+//     anchor is SSR'd, so the face is already requested by layout when that
+//     await is made. The Wordmark Lab additionally awaits `document.fonts.load`
+//     for the weight it just wrote before bumping the resample epoch.
+// The files are still requested normally (the anchors use them); they are just
+// no longer `<link rel=preload>`-ed ahead of the real critical path. Once the
+// owner has frozen the weight, deleting the unused `src` entries takes the
+// remaining ~61KB of transfer off too.
 const sersanDisplay = localFont({
   variable: "--font-sersan-display",
+  preload: false,
   src: [
     { path: "../fonts/sersan-display-200.woff2", weight: "200", style: "normal" },
+    { path: "../fonts/sersan-display-220.woff2", weight: "220", style: "normal" },
+    { path: "../fonts/sersan-display-240.woff2", weight: "240", style: "normal" },
+    { path: "../fonts/sersan-display-260.woff2", weight: "260", style: "normal" },
+    { path: "../fonts/sersan-display-280.woff2", weight: "280", style: "normal" },
     { path: "../fonts/sersan-display-300.woff2", weight: "300", style: "normal" },
+    { path: "../fonts/sersan-display-340.woff2", weight: "340", style: "normal" },
   ],
   display: "swap",
 });
@@ -254,6 +289,12 @@ export default function RootLayout({
             {/* Mono eyebrow/label decode-scramble — one delegated observer. */}
             <LabelScrambler />
             <CustomCursor />
+            {/* Wordmark Lab — live tuner for the SERSAN particle wordmark's
+                font weight + particle disc size (home route only; dev or
+                `?wordmark`, never on an ordinary production load). Lets the
+                owner settle the two coupled numbers against the live render;
+                renders null for everyone else. */}
+            <WordmarkLab />
             {/* Persistent card→detail Flip "flying image" handoff overlay.
                 Renders null normally; on arrival at a /case-studies/<slug> with
                 a fresh armed snapshot it flies a fixed image clone (z-70, above
