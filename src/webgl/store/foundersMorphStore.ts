@@ -62,6 +62,22 @@
  * The section MUST call reset() in its effect cleanup so the WebGL layer never
  * reads a stale section after navigation (the store outlives routes).
  *
+ * TOUCH / NATIVE SCRUB (mobile-parity plan Phase 4d, RAIL_ISLANDS_TOUCH): on a
+ * capable phone the founders block is the NATIVE snap scroller (no pin, no
+ * gate, no scroll-jack) and the morph is SCRUBBED, not self-played: the DOM
+ * writer (founders-rail.tsx, native branch) registers ONE passive `scroll`
+ * listener on the DragRail scroller and publishes `scrollLeft` (raw, clamped)
+ * + `scrub` — the continuous 0..MORPH_MAX scalar derived from the focused
+ * card's offset from its snap-rest position (j + (x − T_j)/(T_{j+1} − T_j),
+ * with a ±px deadband so `scrub` is an EXACT integer at snap rest, inside
+ * LOCK_EPS) — via setNativeScroll (one set()). `native` is the liveness flag
+ * (`pinned` stays false); the island bypasses its one-shot clock and drives
+ * morphRef straight from `scrub`, then runs the SAME applyMorph / stage /
+ * envelope / fade / group code. secTop := the scroller's document top,
+ * travel := 0. Reused as-is: active, reveal, measureVersion, morph, stage.
+ * NOT used on touch: morphTarget / morphImmediate / gateEngaged / mouse /
+ * hover. reset() covers the new fields.
+ *
  * GLOBALTHIS PIN (mirrors neuralLatticeStore / textMorphStore): written by the
  * route bundle (founders-rail lives in the home route bundle) and read by the
  * lazy WebGL island (FounderPortraitMorph) — the exact cross-bundle split that
@@ -159,6 +175,17 @@ interface FoundersMorphState {
   /** True while the desktop vertical sticky morph mode is active. */
   pinned: boolean;
   /**
+   * True while the TOUCH scrub source is armed on the native snap scroller
+   * (Phase 4d). Rare-change; reactive reads allowed like `pinned`. Mutually
+   * exclusive with `pinned` by construction; never true on tier "full".
+   */
+  native: boolean;
+  /** Touch: the scroller's live scrollLeft, clamped to [0, max] (CSS px). */
+  scrollLeft: number;
+  /** Touch: continuous 0..MORPH_MAX scrub — the focused card's snap-relative
+   * offset; an EXACT integer at snap rest (writer applies a deadband). */
+  scrub: number;
+  /**
    * True once the WebGL island has actually built its particle cloud on a
    * TRUE-WebGPU compute backend. The DOM stage reads this to hide its static
    * portrait poster only when the cloud is really rendering — so a flag-on but
@@ -196,6 +223,9 @@ interface FoundersMorphState {
   /** Bumped after every layout measure; the island re-measures + rebuilds. */
   measureVersion: number;
   setPinned: (pinned: boolean) => void;
+  setNative: (native: boolean) => void;
+  /** Touch source: ONE set() per scroll event (scrollLeft + scrub). */
+  setNativeScroll: (scrollLeft: number, scrub: number) => void;
   setActive: (active: boolean) => void;
   setGateEngaged: (gateEngaged: boolean) => void;
   setStage: (stage: FounderStage) => void;
@@ -213,6 +243,9 @@ interface FoundersMorphState {
 
 const INITIAL = {
   pinned: false,
+  native: false,
+  scrollLeft: 0,
+  scrub: 0,
   active: false,
   gateEngaged: false,
   stage: "A" as FounderStage,
@@ -232,6 +265,13 @@ const createFoundersMorphStore = () =>
     ...INITIAL,
     mouse: { x: 0.5, y: 0.5 },
     setPinned: (pinned) => set((s) => (s.pinned === pinned ? s : { pinned })),
+    setNative: (native) => set((s) => (s.native === native ? s : { native })),
+    setNativeScroll: (scrollLeft, scrub) =>
+      set((s) =>
+        s.scrollLeft === scrollLeft && s.scrub === scrub
+          ? s
+          : { scrollLeft, scrub },
+      ),
     setActive: (active) => set((s) => (s.active === active ? s : { active })),
     setGateEngaged: (gateEngaged) =>
       set((s) => (s.gateEngaged === gateEngaged ? s : { gateEngaged })),

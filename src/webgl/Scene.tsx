@@ -48,7 +48,7 @@ import { CAMERA_FOV, CAMERA_Z } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
 import { SEQ } from "./store/seqStore";
 import { onLiftOnce } from "@/lib/route-transition-store";
-import { HERO_BRAND_COMPACT } from "@/lib/spine";
+import { HERO_BRAND_COMPACT, RAIL_ISLANDS_TOUCH } from "@/lib/spine";
 import type { SectionAnchors } from "./hooks/useSectionAnchors";
 import {
   devOverridesAllowed,
@@ -290,6 +290,27 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
       SEQ.LITE_RAYMARCH && s.fxBudget.raymarchLite && s.backend === "webgpu",
   );
 
+  // Phase 4d twin for the two home RAIL islands (RailPlanes +
+  // FounderPortraitMorph) on a CAPABLE PHONE, behind the RAIL_ISLANDS_TOUCH
+  // kill-switch (src/lib/spine.ts — the SAME constant the two DOM rail
+  // writers read, so one flag arms/disarms both halves). Predicate:
+  // `fxBudget.level >= 2` (capable phone; follows stepDownBudget) AND-ed with
+  // the runtime `backend === "webgpu"` at the consumption site (both islands
+  // are TSL/compute-only) AND `tier !== "full"`: on desktop (tier full, level
+  // 3) the selector is a constant false, so the backend flip at onCreated
+  // never re-renders this host — the desktop mount below stays the identical
+  // `tier === "full"` gate and its render path is byte-identical. On a
+  // capable phone it flips true once at onCreated. With the flag off it
+  // short-circuits before reading a single store field (SEQ.LITE_RAYMARCH
+  // pattern above). ONE primitive selector, read here in the Canvas host.
+  const railIslandsTouch = useTierStore(
+    (s) =>
+      RAIL_ISLANDS_TOUCH &&
+      s.tier !== "full" &&
+      s.fxBudget.level >= 2 &&
+      s.backend === "webgpu",
+  );
+
   // `?perf=1` HUD probe (plan Phase 6.1). Dev/preview only — `perfHud` is
   // written by tierStore.resolve() through devOverridesAllowed(), so it is
   // false on the real domain and the probe is NOT in the tree there (no
@@ -407,8 +428,20 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           fallback. MUST stay mounted AFTER SignatureLine: the per-frame plane
           placement is camera-relative and relies on the single camera
           authority having written camera.position.y earlier in the same
-          priority-0 frame pass. */}
-      {pathname === "/" && tier === "full" && webgpu && <RailPlanes />}
+          priority-0 frame pass.
+
+          TOUCH GATE (mobile-parity plan Phase 4d, RAIL_ISLANDS_TOUCH): a
+          CAPABLE PHONE (`railIslandsTouch` — tier lite, level ≥ 2, true
+          WebGPU) also mounts it, as `<RailPlanes touch />` — the same planes
+          driven by the CONTINUOUS touch source case-studies-rail.tsx publishes
+          into railStore from its native snap scroller (`native` instead of
+          `pinned`; trackX := scrollLeft, travel 0). Inside the component the
+          `native` guard keeps the planes off until that DOM writer arms.
+          Desktop: tier full ⇒ railIslandsTouch false ⇒ touch=false, the
+          identical mount. */}
+      {pathname === "/" && webgpu && (tier === "full" || railIslandsTouch) && (
+        <RailPlanes touch={tier !== "full" && railIslandsTouch} />
+      )}
       {/* Home founders particle-portrait morph (P1R, WEBGL_UPGRADE_PLAN §4R).
           Same gates as RailPlanes (home route + full tier + the WebGPU flag —
           TSL/compute-only, no GLSL twin; on the classic flag-OFF path or
@@ -420,8 +453,21 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           SignatureLine (same reason as RailPlanes): the per-frame group
           placement is camera-relative and relies on the single camera authority
           having written camera.position/quaternion earlier in the same
-          priority-0 frame pass. */}
-      {pathname === "/" && tier === "full" && webgpu && <FounderPortraitMorph />}
+          priority-0 frame pass.
+
+          TOUCH GATE (mobile-parity plan Phase 4d, RAIL_ISLANDS_TOUCH): a
+          CAPABLE PHONE (`railIslandsTouch`) also mounts it, as
+          `<FounderPortraitMorph touch />` — a ~17k-particle cloud SCRUBBED by
+          the founders' native snap scroller (founders-rail.tsx publishes
+          `scrub` = the snap-relative offset of the focused card into
+          foundersMorphStore; `native` instead of `pinned`), placed over the
+          card in the touch flow layout. The DOM duotone→colour reveal stays
+          the whole visual until the island publishes `active` (all founders
+          loaded + built) and reverts on any failure — the DOM writer owns
+          that exclusivity. Desktop: tier full ⇒ touch=false, identical. */}
+      {pathname === "/" && webgpu && (tier === "full" || railIslandsTouch) && (
+        <FounderPortraitMorph touch={tier !== "full" && railIslandsTouch} />
+      )}
       {/* FIX 3 neural-lattice islands (home only). Two camera-locked lattices:
           the Problem section ("broken" — pathways go dark / packets die) and the
           ProductionGrade section ("healthy" — clusters pulse in sequence). MUST

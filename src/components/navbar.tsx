@@ -50,6 +50,12 @@ type NavItem = { href: string; label: string; labelIt: string };
  * backend resolves), the probe also re-runs on textMorphStore's
  * `brandAnchorEpoch` bump — otherwise the header would sit visible until the
  * first scroll tick and then vanish. The epoch never changes on desktop.
+ *
+ * Compact anchor, second reveal condition (owner decision 2026-08-18): on a
+ * phone the menu is the only navigation, so the header ALSO comes back the
+ * moment the beat is over — `textMorphStore.domReveal ≥ 1` (DOM H1 fully in
+ * charge: dissolve landed, tap-skip, island never built / handed back) —
+ * whichever of the two comes first. Desktop keeps the travel rule alone.
  */
 const HERO_HEADER_REVEAL = 0.8;
 
@@ -649,12 +655,30 @@ export function Navbar() {
       // 80svh scrub, the desktop one under 215vh — same fraction of each.
       const brandEl = document.querySelector("[data-hero-brand]");
       const heroLayout = pathname === "/" && !!brandEl;
-      const travelVh = brandEl?.hasAttribute("data-hero-brand-compact")
-        ? COMPACT_SPINE_TRAVEL_SVH
-        : SPINE_TRAVEL_VH;
+      const compact = !!brandEl?.hasAttribute("data-hero-brand-compact");
+      const travelVh = compact ? COMPACT_SPINE_TRAVEL_SVH : SPINE_TRAVEL_VH;
       const revealPx =
         window.innerHeight * (travelVh / 100) * HERO_HEADER_REVEAL;
-      setHeroHidden(heroLayout && window.scrollY < revealPx);
+      // COMPACT anchor only (owner decision 2026-08-18, plan Phase 4b): the
+      // menu is the ONLY navigation on a phone, so the header comes back as
+      // soon as the beat is over — textMorphStore.domReveal ≥ 1 (the DOM H1
+      // has fully taken over: auto-dissolve landed, tap-skip) — OR at the
+      // travel fraction, whichever comes first. The desktop rule below is the
+      // pre-existing one, untouched (`compact` is false there).
+      //
+      // `domReveal` DEFAULTS to 1 (the store's inactive value) and the island
+      // only writes 0 when its build resolves, so `domReveal ≥ 1` alone would
+      // read "beat over" on a NOT-YET-BUILT island: header visible at first
+      // paint → hidden the instant the island arms → visible again when the
+      // beat lands. Requiring the island to actually be live (`active`) or the
+      // intro to be skipped (`introSkipped` — session seed or tap-skip) makes
+      // the pre-build state read "beat pending": hidden until the reveal
+      // lands, no visible→hidden→visible flash. Never-built island ⇒ the
+      // travel rule alone, exactly as before this condition existed.
+      const m = useTextMorphStore.getState();
+      const beatOver =
+        compact && m.domReveal >= 1 && (m.active || m.introSkipped);
+      setHeroHidden(heroLayout && window.scrollY < revealPx && !beatOver);
     };
     update();
     const unsubscribe = useScrollStore.subscribe(update);
@@ -662,9 +686,27 @@ export function Navbar() {
     // probe (CompactSpine arms it once tierStore.backend resolves) — re-probe
     // on its epoch signal so the header hides before the preloader lifts
     // instead of flashing away on the first scroll tick. One integer compare
-    // per store notification; the epoch never changes on desktop.
+    // per store notification; the epoch never changes on desktop. The same
+    // subscription re-probes on the `domReveal ≥ 1` THRESHOLD flip (either
+    // direction — the island writes `domReveal: 0` when it arms and 1 when
+    // the beat lands / hands back) and on an `active` / `introSkipped` edge
+    // (the other two inputs of `beatOver`), and ONLY while a compact anchor
+    // exists: boolean edges, so the per-frame eases in (0,1) never reach
+    // update(), and on desktop (no compact anchor) update() is called exactly
+    // as before — the attribute query runs only on those few flips.
     const offBrand = useTextMorphStore.subscribe((s, prev) => {
-      if (s.brandAnchorEpoch !== prev.brandAnchorEpoch) update();
+      if (s.brandAnchorEpoch !== prev.brandAnchorEpoch) {
+        update();
+        return;
+      }
+      if (
+        ((s.domReveal >= 1) !== (prev.domReveal >= 1) ||
+          s.active !== prev.active ||
+          s.introSkipped !== prev.introSkipped) &&
+        document.querySelector("[data-hero-brand-compact]")
+      ) {
+        update();
+      }
     });
     return () => {
       unsubscribe();

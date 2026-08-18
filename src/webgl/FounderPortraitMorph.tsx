@@ -65,6 +65,33 @@
  * otherwise — the accessible DOM founders section is the whole experience on
  * every other path.
  *
+ * TOUCH / NATIVE SCRUB (mobile-parity plan Phase 4d, lib/spine.ts
+ * RAIL_ISLANDS_TOUCH; `touch` prop from Scene.tsx, true only on a capable
+ * phone — tier "lite" + level ≥ 2 + true WebGPU — never on tier "full"). No
+ * pin, no gate: founders-rail.tsx's native branch publishes `scrollLeft` +
+ * `scrub` (the focused card's snap-relative offset, 0..MORPH_MAX, an exact
+ * integer at snap rest) from a passive scroll listener on its native snap
+ * scroller, with foundersMorphStore.native as the liveness flag. Here:
+ *   - the one-shot morph clock is BYPASSED exactly like the dev override —
+ *     `morphRef = clamp(store.scrub)` — then the SAME applyMorph / stage /
+ *     envelope / entry / fade / group code runs (uMorph sequencing invariant
+ *     untouched: it is a property of applyMorph, not of the clock);
+ *   - the stage is the focused card's media area — the flow-layout article
+ *     minus its `[data-founder-copy]` block — measured on measureVersion bumps
+ *     (per-card `{ baseVpX = left + scrollLeft, offsetY = top + scrollY −
+ *     secTop }`, cached; NO rect reads in the frame loop). Placement lerps the
+ *     card lefts of leg j→j+1 by fract(scrub) minus the live scrollLeft: with
+ *     equal card pitch that is horizontally STATIONARY at the snapped-card
+ *     position while the face morphs, and the DOM cards slide under it;
+ *   - count: on touch the sampler grid is scaled by TOUCH_GRID_SCALE so the
+ *     union lands ≈ 17–19k cells at stride 1 (uniform), under the lite
+ *     ceiling — NOT a stride-2 halving of the desktop grid (scan-order
+ *     thinning); defPointSize auto-adapts from spacingDev;
+ *   - mouse parallax is neutral (mouse stays 0.5/0.5 — no pointer handler on
+ *     touch); the DOM writer owns DOM/WebGL exclusivity via `active`.
+ * With `touch` false the `native` selector is a constant false and the pinned
+ * path is byte-identical.
+ *
  * ISLAND RULE. Per-frame state flows through getState() in useFrame (refs only);
  * the stage rect is measured ONLY on measureVersion bumps; dispose on cleanup.
  *
@@ -139,8 +166,22 @@ const MAX_COUNT_BY_TIER: Record<"full" | "lite", number> = {
   // Measure any future portrait added to this rail BEFORE it lands — the union
   // is monotone in image count, so every new face can only grow it.
   full: 60000,
-  lite: 16000,
+  // LITE = the TOUCH island (mobile-parity Phase 4d; the island never mounted
+  // on tier lite before that phase, so this ceiling was dead). The touch
+  // sampler grid is scaled by TOUCH_GRID_SCALE (below) precisely so the union
+  // stays UNDER this at stride 1: ESTIMATE 168×235 grid × the measured
+  // 51,751 / 117,450 = 44.06% union fraction ≈ 17.4k cells (~13% margin to
+  // this ceiling; the plan's "≈ 20k = 60k × 0.33"). NOT MEASURED IN-BROWSER
+  // YET — this session could not run the app. Measure on device via
+  // __sersanFounderMorph.getSampler() (sharedCells / stride / count) and
+  // write the number here; if stride reads 2 the grid scale is too high.
+  lite: 20000,
 };
+
+/** Touch island (Phase 4d): scale applied to GRID_W × GRID_H so the union
+ *  lands under MAX_COUNT_BY_TIER.lite at stride 1 (see that comment). Cell
+ *  count scales with grid AREA (×0.336 here). */
+const TOUCH_GRID_SCALE = 0.58;
 
 // --- Sampler grid + look constants -----------------------------------------
 /** Shared sample grid (5:7 portrait). Measured on the two shipped headshots:
@@ -273,12 +314,23 @@ function applyMorph(b: MorphBuild, p: number) {
 }
 
 interface StageRect {
-  /** Stage top offset within the sticky frame (CSS px). */
+  /** Stage top offset within the sticky frame (CSS px). Touch: the card's
+   * document top minus store.secTop (travel 0 ⇒ the same per-frame formula). */
   offsetY: number;
-  /** Stage left edge in viewport space (the sticky frame never translates x). */
+  /** Stage left edge in viewport space (the sticky frame never translates x).
+   * Touch: card 0's left un-translated to scrollLeft = 0. */
   baseVpX: number;
   w: number;
   h: number;
+}
+
+/** Touch (Phase 4d): per-card placement cache — one per founder article in
+ * the native flow rail, measured on measureVersion bumps only. */
+interface TouchCard {
+  /** Card left in viewport space at scrollLeft = 0 (`left + scrollLeft`). */
+  baseVpX: number;
+  /** Card top relative to store.secTop (`top + scrollY − secTop`). */
+  offsetY: number;
 }
 
 /** Live-tunable subset of the sampler spec (dev handle `resample`). */
@@ -318,7 +370,9 @@ async function loadFounder(idx: number): Promise<HTMLImageElement> {
   return loadImg(f.image);
 }
 
-export function FounderPortraitMorph() {
+export function FounderPortraitMorph({
+  touch = false,
+}: { touch?: boolean } = {}) {
   const { camera, size, gl } = useThree();
 
   const tier = useTierStore((s) => s.tier);
@@ -326,6 +380,10 @@ export function FounderPortraitMorph() {
 
   // Rare-change reactive reads (allowed) — trigger (re)build + (re)measure.
   const measureVersion = useFoundersMorphStore((s) => s.measureVersion);
+  // Touch scrub source armed (Phase 4d). Folded behind the `touch` prop so on
+  // tier "full" the selector is a constant false — no subscription-driven
+  // re-render, no behaviour change on the pinned path.
+  const native = useFoundersMorphStore((s) => touch && s.native);
 
   // Cached decoded portraits + the (scale-independent) shared-grid SET sample.
   const imgsRef = useRef<HTMLImageElement[]>([]);
@@ -344,6 +402,15 @@ export function FounderPortraitMorph() {
    * PRESERVE the morph + skip the entrance instead of snapping back to A. */
   const hasBuiltRef = useRef(false);
   const stageRectRef = useRef<StageRect | null>(null);
+  /** Touch: per-card placement cache (see TouchCard). Empty when pinned. */
+  const touchCardsRef = useRef<TouchCard[]>([]);
+  /** Touch: size.height at build time. The world-scale fit bakes worldPerPx =
+   * WORLD_VIEW_HEIGHT / ih into the cloud, and touch builds deliberately do
+   * NOT re-run on height-only resizes (the mobile address bar collapses ih by
+   * ~10% mid-scroll — a GPU rebuild there is exactly the storm to avoid), so
+   * the frame loop scales the group by ihBuild / ih to keep the face's CSS-px
+   * extent registered to the card. Neutral (1) on the pinned path. */
+  const buildIhRef = useRef(0);
   /** Cloud world half-extents (for bbox() registration checks). */
   const extentRef = useRef({ hx: 0, hy: 0, hz: 0 });
 
@@ -381,6 +448,15 @@ export function FounderPortraitMorph() {
    * fadeStart etc. would break the shared-grid invariant outright). */
   const sampleSpec = (): PortraitSpec => ({
     ...SAMPLE_SPEC_BASE,
+    // Touch island: a smaller grid, NOT a stride — see MAX_COUNT_BY_TIER.lite.
+    // `touch` is fixed for the island's whole mount (Scene.tsx), so the set
+    // sample never has to be redone for it. Live tuning still overrides.
+    ...(touch
+      ? {
+          gridW: Math.round(GRID_W * TOUCH_GRID_SCALE),
+          gridH: Math.round(GRID_H * TOUCH_GRID_SCALE),
+        }
+      : null),
     ...tuningRef.current,
     maxCount,
   });
@@ -452,22 +528,69 @@ export function FounderPortraitMorph() {
     // island's probe to mirror it — so the two cannot drift.
     if (backendOf(gl) !== "webgpu") return;
 
-    const sticky = document.querySelector<HTMLElement>(
-      "[data-founders-morph-sticky]",
-    );
-    const stage = document.querySelector<HTMLElement>("[data-founder-stage]");
-    if (!sticky || !stage) return;
-    const stickyTop = sticky.getBoundingClientRect().top;
-    const sr = stage.getBoundingClientRect();
-    if (sr.width === 0 || sr.height === 0) return;
-    stageRectRef.current = {
-      offsetY: sr.top - stickyTop,
-      baseVpX: sr.left,
-      w: sr.width,
-      h: sr.height,
-    };
+    // Stage rect. PINNED (desktop): [data-founder-stage] inside the sticky
+    // frame. TOUCH (Phase 4d, `touch` prop + store.native): the founder
+    // articles of the native flow rail — all equal size (li stretch); the
+    // stage is card 0's box minus its [data-founder-copy] block (the copy +
+    // FLOW_COPY_SCRIM sit at the card bottom above the canvas, so the cloud
+    // must be centred in the media area, not mid-card), cached per card
+    // relative to store.secTop / store.scrollLeft.
+    const storeNow = useFoundersMorphStore.getState();
+    let stageW: number;
+    let stageH: number;
+    if (touch && storeNow.native) {
+      const articles = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "[data-founders-panel] .founder-portrait",
+        ),
+      );
+      if (articles.length === 0) return;
+      const scrollY = window.scrollY;
+      const r0 = articles[0].getBoundingClientRect();
+      if (r0.width === 0 || r0.height === 0) return;
+      // ONE shared stage for every face (all targets share one world scale):
+      // the card minus the TALLEST copy block, so no face tucks under any
+      // card's copy scrim (Michele's block carries an extra "Previously" row).
+      let copyH = 0;
+      touchCardsRef.current = articles.map((a) => {
+        const r = a.getBoundingClientRect();
+        const copy = a.querySelector<HTMLElement>("[data-founder-copy]");
+        if (copy) copyH = Math.max(copyH, copy.getBoundingClientRect().height);
+        return {
+          baseVpX: r.left + storeNow.scrollLeft,
+          offsetY: r.top + scrollY - storeNow.secTop,
+        };
+      });
+      stageW = r0.width;
+      stageH = Math.max(1, r0.height - copyH);
+      stageRectRef.current = {
+        offsetY: r0.top + scrollY - storeNow.secTop,
+        baseVpX: r0.left + storeNow.scrollLeft,
+        w: stageW,
+        h: stageH,
+      };
+    } else {
+      const sticky = document.querySelector<HTMLElement>(
+        "[data-founders-morph-sticky]",
+      );
+      const stage = document.querySelector<HTMLElement>("[data-founder-stage]");
+      if (!sticky || !stage) return;
+      const stickyTop = sticky.getBoundingClientRect().top;
+      const sr = stage.getBoundingClientRect();
+      if (sr.width === 0 || sr.height === 0) return;
+      touchCardsRef.current = [];
+      stageW = sr.width;
+      stageH = sr.height;
+      stageRectRef.current = {
+        offsetY: sr.top - stickyTop,
+        baseVpX: sr.left,
+        w: sr.width,
+        h: sr.height,
+      };
+    }
 
     const worldPerPx = WORLD_VIEW_HEIGHT / size.height;
+    buildIhRef.current = size.height;
 
     // --- WORLD-SCALE FIT: map the sampled FACE extent onto the stage rect -----
     // The sampler returns the robust half-extent (grid px) of the sampled face.
@@ -496,8 +619,8 @@ export function FounderPortraitMorph() {
     // check only; it under-predicted the three-portrait union by ~8%.
     const halfX = Math.max(...pts.map((p) => p.halfExtentX), 1e-3);
     const halfY = Math.max(...pts.map((p) => p.halfExtentY), 1e-3);
-    const stageWorldW = sr.width * worldPerPx;
-    const stageWorldH = sr.height * worldPerPx;
+    const stageWorldW = stageW * worldPerPx;
+    const stageWorldH = stageH * worldPerPx;
     const scaleX = (stageWorldW * STAGE_FILL) / (2 * halfX);
     const scaleY = (stageWorldH * STAGE_FILL) / (2 * halfY);
     const worldPerGrid = Math.min(scaleX, scaleY);
@@ -585,7 +708,7 @@ export function FounderPortraitMorph() {
       2,
     );
     const areaDev =
-      sr.width * dprNow * sr.height * dprNow * STAGE_FILL * STAGE_FILL;
+      stageW * dprNow * stageH * dprNow * STAGE_FILL * STAGE_FILL;
     const spacingDev = Math.sqrt(Math.max(areaDev / count, 1));
     const discDev = spacingDev * 2.1;
     const defPointSize = THREE.MathUtils.clamp(
@@ -739,8 +862,12 @@ export function FounderPortraitMorph() {
       setBuild(null);
       useFoundersMorphStore.getState().setActive(false);
     };
+    // `native` (touch, Phase 4d): a constant false on the pinned path; on
+    // touch it flips once when the DOM writer arms so the stage can be found
+    // (the writer bumps measureVersion in the same tick, but the dep keeps
+    // the rebuild correct even if the two writes are not batched).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gl, maxCount, sampleEpoch, measureVersion, size.width]);
+  }, [gl, maxCount, sampleEpoch, measureVersion, size.width, native]);
 
   useFrame((_, rawDelta) => {
     const group = groupRef.current;
@@ -753,7 +880,11 @@ export function FounderPortraitMorph() {
     const delta = Math.min(rawDelta, 1 / 30);
     const store = useFoundersMorphStore.getState();
     const rect = stageRectRef.current;
-    if (!store.pinned || !rect) {
+    // `touch` (prop) AND-ed in: a `native` write can only come from the touch
+    // DOM writer, but the guard mirrors the reactive selector so the pinned
+    // path never depends on it.
+    const isNative = touch && store.native;
+    if (!(store.pinned || isNative) || !rect) {
       group.visible = false;
       return;
     }
@@ -764,14 +895,32 @@ export function FounderPortraitMorph() {
     const scrollY = window.scrollY;
 
     // Sticky-frame viewport position (0 while pinned, negative as it releases).
+    // Touch: travel = 0 ⇒ this is exactly secTop − scrollY, the viewport top
+    // of the normal-flow scroller, and rect.offsetY is card-top − secTop.
     const clampedTop = Math.min(
       Math.max(scrollY, store.secTop),
       store.secTop + store.travel,
     );
     const stickyVpTop = clampedTop - scrollY;
     const vpY = stickyVpTop + rect.offsetY;
-    const cx = rect.baseVpX + rect.w / 2;
+    let cx = rect.baseVpX + rect.w / 2;
     const cy = vpY + rect.h / 2;
+    if (isNative) {
+      // Touch placement (see header): lerp the card lefts of leg j → j+1 by
+      // fract(scrub), minus the live scrollLeft. With equal card pitch the
+      // result is stationary at the snapped-card position while the face
+      // morphs; at the ends it rides the (clamped) last leg to `max`.
+      const cards = touchCardsRef.current;
+      if (cards.length > 0) {
+        const s = THREE.MathUtils.clamp(store.scrub, 0, MORPH_MAX);
+        const j = Math.min(Math.floor(s), cards.length - 1);
+        const f = s - j;
+        const a = cards[j];
+        const b = cards[j + 1] ?? a;
+        cx =
+          a.baseVpX + (b.baseVpX - a.baseVpX) * f - store.scrollLeft + rect.w / 2;
+      }
+    }
 
     if (vpY + rect.h < -CULL_PAD || vpY > ih + CULL_PAD) {
       // Off-screen: skip the compute dispatch so this + the hero never both
@@ -795,6 +944,11 @@ export function FounderPortraitMorph() {
       // releases.
       morphRef.current = THREE.MathUtils.clamp(override, 0, MORPH_MAX);
       if (store.morphImmediate) store.setMorphImmediate(false);
+    } else if (isNative) {
+      // TOUCH SCRUB (Phase 4d): the progress scalar IS the DOM writer's
+      // snap-relative `scrub` — the one-shot clock is bypassed exactly like
+      // the dev override above; everything after applyMorph is shared.
+      morphRef.current = THREE.MathUtils.clamp(store.scrub, 0, MORPH_MAX);
     } else {
       if (store.morphImmediate) {
         morphRef.current = store.morphTarget;
@@ -901,7 +1055,13 @@ export function FounderPortraitMorph() {
     // accumulated), so an interrupted leg can never leave a drifted scale baked
     // in; every particle scales together about the group origin, so the sampled
     // silhouette stays registered to itself.
-    group.scale.setScalar(1 + restEnv * REST_BREATH * Math.sin(t * 0.5));
+    // Touch: × ihBuild/ih so an address-bar height change (no rebuild) keeps
+    // the face's CSS-px extent on the card — see buildIhRef. Exactly 1 pinned.
+    const extentComp =
+      isNative && buildIhRef.current > 0 ? buildIhRef.current / ih : 1;
+    group.scale.setScalar(
+      (1 + restEnv * REST_BREATH * Math.sin(t * 0.5)) * extentComp,
+    );
 
     const dpr = Math.min(gl.getPixelRatio(), 2);
     b.uPixelRatio.value = dpr;
@@ -915,6 +1075,12 @@ export function FounderPortraitMorph() {
     (window as unknown as Record<string, unknown>).__sersanFounderMorph = {
       hasBuild: !!buildRef.current,
       maxCount,
+      /** Touch island armed (Phase 4d) + its per-card placement cache. */
+      touch,
+      native,
+      get touchCards() {
+        return touchCardsRef.current;
+      },
       /** Live instance count — decided by the sampler, not by a tier budget. */
       get count() {
         return setRef.current?.count ?? 0;

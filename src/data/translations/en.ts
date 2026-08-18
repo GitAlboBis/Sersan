@@ -377,6 +377,10 @@ const en = {
     'cal.fallback.body': "Online booking is being set up. In the meantime, send a written intake or email us directly — a senior engineer replies within 1 business day.",
     'cal.fallback.intakeCta': 'Send a written intake',
     'cal.fallback.emailCta': 'Email us',
+
+    // First-load preloader readout (mobile-parity plan, owner Decision 8).
+    // "52. SERSAN" is a tag, not copy — it stays untranslated in the component.
+    'preloader.readout': 'Initialising signal',
 } as const;
 
 export default en;

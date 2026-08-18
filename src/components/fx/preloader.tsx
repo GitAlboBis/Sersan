@@ -106,6 +106,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
+import { useLanguage } from "@/components/language-provider";
 import { useTierStore } from "@/webgl/store/tierStore";
 import { useIntroStore } from "@/webgl/store/introStore";
 import { getLenis } from "@/lib/lenis-singleton";
@@ -223,6 +224,14 @@ interface Star {
 }
 
 export function Preloader() {
+  // Readout copy follows the visitor's language (owner Decision 8, plan Phase
+  // 3.1.3). This component is a child of LanguageProvider (layout.tsx), whose
+  // pre-paint layout effect commits the persisted language (html data-lang →
+  // storage → cookie) in the SAME sync re-render that follows hydration —
+  // BEFORE this component's mount effect can arm the overlay — so the first
+  // painted frame of the readout is already in the right language: no EN→IT
+  // flash. The "52. SERSAN" corner tag is a mark, not copy, and stays as is.
+  const { t } = useLanguage();
   // Render nothing on the server / first client paint; mount after hydration so
   // the SSR HTML is identical with and without JS (no hydration mismatch).
   const [mounted, setMounted] = useState(false);
@@ -1096,7 +1105,7 @@ export function Preloader() {
             className="mt-5 font-mono text-[10px] uppercase tracking-[0.3em] text-[hsl(var(--ink-dim))]"
             style={{ fontFamily: "var(--font-jbm), ui-monospace, monospace" }}
           >
-            Initialising signal
+            {t("preloader.readout")}
           </div>
         </div>
       </div>

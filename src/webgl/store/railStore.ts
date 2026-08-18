@@ -22,12 +22,31 @@
  *
  * The rail component MUST call reset() in its effect cleanup so the WebGL
  * layer never reads a stale rail after navigation (the store outlives routes).
+ *
+ * TOUCH / NATIVE SOURCE (mobile-parity plan Phase 4d, RAIL_ISLANDS_TOUCH):
+ * on a capable phone the rail is a NATIVE snap scroller (no ScrollTrigger, no
+ * transforms) and the SAME fields are written from a passive `scroll` listener
+ * on that scroller — `native` (instead of `pinned`) is the liveness flag,
+ * `trackX` := scroller.scrollLeft (identical semantic: content shifted left by
+ * trackX, so RailPlanes' `vpX = baseVpX − trackX` is unchanged), `progress` :=
+ * scrollLeft / max, `velocity` := Δleft/Δt px/s, `secTop` := the scroller's
+ * document top and `travel` := 0 — with travel 0 the pinned per-frame model
+ * `clamp(scrollY, secTop, secTop+travel) − scrollY` degenerates EXACTLY to the
+ * viewport top of a normal-flow element, so the reader needs no new placement
+ * code. `pinned` and `native` are mutually exclusive by construction (the DOM
+ * rail is either pinned or native, and only the touch predicate arms native).
  */
 import { create } from "zustand";
 
 interface RailState {
   /** True while the desktop pinned rail mode is active (ScrollTrigger attached). */
   pinned: boolean;
+  /**
+   * True while the TOUCH continuous source is armed on the native snap
+   * scroller (Phase 4d). Rare-change; reactive reads allowed like `pinned`.
+   * Never true on tier "full".
+   */
+  native: boolean;
   /** Max horizontal translation in px: railWidth - viewportWidth. */
   travel: number;
   /** Document Y of the tall rail wrapper (the sticky range start). */
@@ -49,6 +68,7 @@ interface RailState {
   /** Bumped after every layout measure; RailPlanes re-reads card rects on it. */
   measureVersion: number;
   setPinned: (pinned: boolean) => void;
+  setNative: (native: boolean) => void;
   setLayout: (travel: number, secTop: number) => void;
   setTrack: (trackX: number, progress: number, velocity: number) => void;
   setHover: (index: number, target: number) => void;
@@ -60,6 +80,7 @@ interface RailState {
 
 const INITIAL = {
   pinned: false,
+  native: false,
   travel: 0,
   secTop: 0,
   trackX: 0,
@@ -73,6 +94,7 @@ export const useRailStore = create<RailState>((set) => ({
   hover: {},
   reveal: {},
   setPinned: (pinned) => set({ pinned }),
+  setNative: (native) => set((s) => (s.native === native ? s : { native })),
   setLayout: (travel, secTop) => set({ travel, secTop }),
   setTrack: (trackX, progress, velocity) => set({ trackX, progress, velocity }),
   setHover: (index, target) =>

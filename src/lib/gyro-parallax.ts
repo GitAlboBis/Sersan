@@ -44,10 +44,12 @@
 import { useTierStore } from "@/webgl/store/tierStore";
 
 /**
- * owner Decision 7 in plans/2026-08-17-mobile-parity.md — iOS shows a system
- * permission prompt on the first tap; flip to true once approved.
+ * owner Decision 7 in plans/2026-08-17-mobile-parity.md — APPROVED 2026-08-18
+ * (delegated: the iOS system permission prompt on the first tap is accepted;
+ * Lusion does the same). Kill-switch: flip to false and the coarse branch of
+ * `installPointerTracking()` is structurally dead again (no listener at all).
  */
-export const GYRO_PARALLAX_ENABLED = false;
+export const GYRO_PARALLAX_ENABLED = true;
 
 /** Tilt delta (degrees, either axis) that reaches the full half-range. */
 const TILT_DEG = 20;

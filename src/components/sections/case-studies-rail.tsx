@@ -26,6 +26,7 @@ import { CardLogoReveal } from "@/components/fx/card-logo-reveal";
 import { SeeMorePortal } from "@/components/fx/see-more-portal";
 import { useFlipSource } from "@/lib/use-flip-source";
 import { DragRail } from "@/components/ui/drag-rail";
+import { RAIL_ISLANDS_TOUCH } from "@/lib/spine";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger, Draggable, InertiaPlugin);
@@ -96,6 +97,30 @@ if (typeof window !== "undefined") {
  *     a plain overflow-x snap scroller. data-lenis-prevent keeps Lenis off it.
  *     No focus motion, no drag bridge, no skew.
  *
+ * TOUCH ISLAND SOURCE (mobile-parity plan Phase 4d, lib/spine.ts
+ * RAIL_ISLANDS_TOUCH): on a CAPABLE PHONE (tier lite + fxBudget.level ≥ 2 +
+ * a resolved true-WebGPU backend — never tier "full") the native branch ALSO
+ * arms a continuous source for webgl/RailPlanes: ONE passive `scroll`
+ * listener on the DragRail's [data-rail-scroller] publishes into the SAME
+ * railStore fields the pinned ScrollTrigger writes — trackX := scrollLeft,
+ * progress := scrollLeft/max, velocity := Δleft/Δt px/s (0 on settle),
+ * secTop := the scroller's document top, travel := 0 — with `native` (not
+ * `pinned`) as the liveness flag, so RailPlanes' per-frame model needs no new
+ * placement code (travel 0 makes the sticky formula degenerate to normal
+ * flow). Store writes only, zero setState, zero preventDefault, no pointer
+ * handler, no transform on any card: the scroller stays exactly the native
+ * scroller <DragRail> guarantees. Re-measure (rects → store.bumpMeasure) only
+ * on real geometry change (ResizeObserver on the scroller, width-changing
+ * resize / orientationchange, one-shot fonts.ready, a scrollWidth change =
+ * the EN/IT toggle — the use-rail-progress trick); a rigid vertical shift of
+ * the rail (content above reflowing) is corrected by republishing secTop
+ * alone (RailPlanes caches offsets RELATIVE to secTop). The nearest snap
+ * target is derived per scroll event and written as the card's hover target —
+ * the touch stand-in for uHover; while armed the pointer/focus hover writers
+ * are muted so the two never fight ([data-focus] stays CSS-only on/off,
+ * untouched). With the flag off, on level ≤ 1, on a WebGL2 backend or on
+ * desktop the effect never arms and the DOM is byte-identical to today.
+ *
  * TOUCH REVEALS (D-2, D-16): everything the desktop card gates behind `:hover`
  * — the product shot / brand mark (globals.css) and the STACK pills — is gated
  * on `[data-focus="true"]` instead, written by lib/use-centre-focus on the card
@@ -142,6 +167,53 @@ const RAIL_LIMIT = 6;
 const SKEW_MAX_DEG = 2.2;
 const SKEW_DEG_PER_PXS = 0.002;
 const SKEW_STRETCH = 0.015;
+
+/** Touch source (Phase 4d): ms of scroll silence after which velocity is
+ *  republished as 0 (the last momentum event can carry a large delta, and
+ *  RailPlanes' touch fade + bend must relax at rest). */
+const TOUCH_SETTLE_MS = 90;
+/** Touch source: px deadband at the scroller's end (rounding of scrollWidth /
+ *  clientWidth) inside which the last card counts as the focused one — the
+ *  use-rail-progress END_SNAP rule. */
+const TOUCH_END_SNAP = 2;
+
+/**
+ * Per-card noisy-reveal trigger (P2 #3, consumed by webgl/RailPlanes):
+ * fire-once, in-view via IntersectionObserver — robust when the section is
+ * already scrolled into view on mount, and naturally staggered when each card
+ * slides in horizontally. Harmless on the non-WebGPU path (RailPlanes isn't
+ * mounted there, so nobody reads `reveal`). Shared by the pinned scrub effect
+ * and the touch source so both write the identical target.
+ *
+ * `onFirstIntersect` (optional, touch source only): called ONCE, on the very
+ * first intersecting entry, BEFORE the first setReveal — the touch writer
+ * re-syncs `secTop` there (content above the rail has settled by the time the
+ * reader reaches it), mirroring founders-rail's reveal IO. The pinned effect
+ * passes nothing and is byte-identical.
+ */
+function observeCardReveal(
+  cards: Iterable<HTMLElement>,
+  onFirstIntersect?: () => void,
+): IntersectionObserver {
+  let first = true;
+  const io = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        if (first) {
+          first = false;
+          onFirstIntersect?.();
+        }
+        const idx = Number((entry.target as HTMLElement).dataset.railIndex);
+        if (!Number.isNaN(idx)) useRailStore.getState().setReveal(idx, 1);
+        io.unobserve(entry.target);
+      }
+    },
+    { threshold: 0.15 },
+  );
+  for (const el of cards) io.observe(el);
+  return io;
+}
 
 function StudyCard({
   study,
@@ -341,8 +413,30 @@ export default function CaseStudiesRail() {
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const skewRef = useRef<HTMLDivElement | null>(null);
   const railRef = useRef<HTMLUListElement | null>(null);
+  // The NATIVE branch's <section> — the touch source finds the DragRail's
+  // [data-rail-scroller] beneath it (Phase 4d). Separate from sectionRef,
+  // which is the pinned runway <div>.
+  const nativeSectionRef = useRef<HTMLElement | null>(null);
 
   const prevModeRef = useRef<"pinned" | "native" | null>(null);
+
+  // Phase 4d touch predicate — the SAME shape as Scene.tsx's `railIslandsTouch`
+  // (RAIL_ISLANDS_TOUCH && tier !== "full" && level ≥ 2 && backend webgpu),
+  // read reactively as ONE boolean selector: on desktop (tier full) it is a
+  // constant false and never re-renders this component; on a capable phone it
+  // flips true once when the backend resolves. `mode === "native"` is implied
+  // on level ≥ 2 (coarse ⇒ native) but is asserted explicitly in the effect.
+  const islandsTouch = useTierStore(
+    (s) =>
+      RAIL_ISLANDS_TOUCH &&
+      s.tier !== "full" &&
+      s.fxBudget.level >= 2 &&
+      s.backend === "webgpu",
+  );
+  // While the touch source owns `hover` (nearest snap card), the pointer /
+  // focus writers on the cards are muted so a tap (pointerenter → pointerleave
+  // on a coarse pointer) cannot clear the focused card's hover under it.
+  const touchHoverOwnedRef = useRef(false);
 
   // Mode detection is a SUBSCRIPTION, not a one-shot sample: a window snapped
   // narrow, devtools docked, or an OS reduced-motion toggle must flip the path
@@ -712,25 +806,11 @@ export default function CaseStudiesRail() {
     };
     rail.addEventListener("focusin", onFocusIn);
 
-    // ---- Per-card noisy-reveal trigger (P2 #3, consumed by webgl/RailPlanes).
-    // Fire-once, in-view via IntersectionObserver: robust when the section is
-    // already scrolled into view on mount, and naturally staggered when each
-    // card slides in horizontally during the pin. Harmless on the non-WebGPU
-    // path — RailPlanes isn't mounted there, so nobody reads `reveal`.
-    const revealIO = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          const idx = Number((entry.target as HTMLElement).dataset.railIndex);
-          if (!Number.isNaN(idx)) useRailStore.getState().setReveal(idx, 1);
-          revealIO.unobserve(entry.target);
-        }
-      },
-      { threshold: 0.15 },
+    // ---- Per-card noisy-reveal trigger (P2 #3, consumed by webgl/RailPlanes)
+    // — see observeCardReveal (shared with the touch source below).
+    const revealIO = observeCardReveal(
+      rail.querySelectorAll<HTMLElement>("[data-rail-card]"),
     );
-    rail
-      .querySelectorAll<HTMLElement>("[data-rail-card]")
-      .forEach((el) => revealIO.observe(el));
 
     return () => {
       fontsCancelled = true;
@@ -757,8 +837,188 @@ export default function CaseStudiesRail() {
     };
   }, [detected, mode]);
 
-  const onHover = (index: number, target: number) =>
+  // === TOUCH SOURCE for webgl/RailPlanes (Phase 4d) — native mode only ========
+  // See the header block "TOUCH ISLAND SOURCE". Everything here is store
+  // writes from a passive scroll listener + rect reads on real geometry
+  // change; no setState, no preventDefault, no transforms, no pointer handler.
+  useEffect(() => {
+    if (!detected || mode !== "native" || !islandsTouch) return;
+    const section = nativeSectionRef.current;
+    const scroller = section?.querySelector<HTMLElement>("[data-rail-scroller]");
+    if (!section || !scroller) return;
+
+    const store = useRailStore.getState();
+
+    let max = 0;
+    /** scrollWidth at the last measure — the free content-changed signal. */
+    let lastWidth = -1;
+    /** Geometry signature at the last HARD measure (dedupes RO/resize/fonts). */
+    let lastSig = "";
+    /** Cards + their data-rail-index, cached at measure. */
+    let cards: HTMLElement[] = [];
+    let cardIdx: number[] = [];
+    /** scrollLeft at which card i sits at the snapport start (≤ max). */
+    let targets: number[] = [];
+    let focusPos = -1;
+    let lastX = 0;
+    let lastT = performance.now();
+    let settleT: ReturnType<typeof setTimeout> | undefined;
+    let raf = 0;
+    let fontsCancelled = false;
+
+    const clampX = () => Math.min(Math.max(scroller.scrollLeft, 0), max);
+
+    /** Rigid-shift correction: republish the scroller's document top only.
+     *  RailPlanes caches per-card offsets RELATIVE to secTop, so this alone
+     *  re-registers the planes after content above the rail reflowed. */
+    const syncTop = () => {
+      store.setLayout(0, scroller.getBoundingClientRect().top + window.scrollY);
+    };
+
+    /** Full measure: rail extent, snap targets, secTop, then bumpMeasure so
+     *  RailPlanes re-reads the card rects. Deduped on a geometry signature so
+     *  the initial ResizeObserver fire, an address-bar resize or an already-
+     *  resolved fonts.ready cannot re-measure a rail that did not change. */
+    const measure = (force = false) => {
+      const view = scroller.clientWidth;
+      const total = scroller.scrollWidth;
+      cards = Array.from(
+        scroller.querySelectorAll<HTMLElement>("[data-rail-card]"),
+      );
+      const first = cards[0];
+      const sig = `${total}|${view}|${first?.offsetWidth ?? 0}|${first?.offsetHeight ?? 0}|${cards.length}`;
+      if (!force && sig === lastSig) {
+        syncTop();
+        return;
+      }
+      lastSig = sig;
+      lastWidth = total;
+      max = Math.max(0, total - view);
+      cardIdx = cards.map((c, i) => Number(c.dataset.railIndex ?? i));
+      // Snap-start targets: the use-rail-progress formula (child rect against
+      // the scroller's content origin minus scroll-padding-inline-start),
+      // clamped to `max` so the last card can still count as focused when the
+      // rail runs out of scroll before it reaches the snap start.
+      // `base` = the content origin in VIEWPORT space, scrollLeft-invariant:
+      // child.getBoundingClientRect().left = scroller.left + contentOffset −
+      // scrollLeft, so contentOffset = child.left − (scroller.left −
+      // scrollLeft). Subtract, never add — this measure re-runs mid-rail (EN/IT
+      // toggle, fonts.ready, orientation) with scrollLeft ≠ 0, and `+` would
+      // shift every target by −2·scrollLeft.
+      const base = scroller.getBoundingClientRect().left - scroller.scrollLeft;
+      const padStart =
+        parseFloat(getComputedStyle(scroller).scrollPaddingLeft) || 0;
+      targets = cards.map((c) =>
+        Math.min(c.getBoundingClientRect().left - base - padStart, max),
+      );
+      syncTop();
+      // RailPlanes re-reads card rects on this bump (reads secTop first).
+      store.bumpMeasure();
+    };
+
+    /** Publish the continuous state: trackX/progress/velocity + the focused
+     *  card's hover target (nearest snap target; last card at the end). */
+    const publish = (now: number, settle: boolean) => {
+      const x = clampX();
+      let v = 0;
+      if (!settle) {
+        const dt = (now - lastT) / 1000;
+        v = dt > 0 ? (x - lastX) / dt : 0;
+      }
+      lastX = x;
+      lastT = now;
+      store.setTrack(x, max > 0 ? x / max : 0, v);
+
+      let pos = targets.length ? 0 : -1;
+      let best = Infinity;
+      for (let i = 0; i < targets.length; i++) {
+        const d = Math.abs(targets[i] - x);
+        if (d < best) {
+          best = d;
+          pos = i;
+        }
+      }
+      if (max > 0 && targets.length && x >= max - TOUCH_END_SNAP) {
+        pos = targets.length - 1;
+      }
+      if (pos !== focusPos) {
+        if (focusPos >= 0 && cardIdx[focusPos] !== undefined) {
+          store.setHover(cardIdx[focusPos], 0);
+        }
+        focusPos = pos;
+        if (pos >= 0 && cardIdx[pos] !== undefined) {
+          store.setHover(cardIdx[pos], 1);
+        }
+      }
+    };
+
+    const onScroll = (e: Event) => {
+      // Content width moved (EN/IT toggle re-flows the copy) → re-measure.
+      if (scroller.scrollWidth !== lastWidth) measure();
+      publish(e.timeStamp || performance.now(), false);
+      clearTimeout(settleT);
+      settleT = setTimeout(() => publish(performance.now(), true), TOUCH_SETTLE_MS);
+    };
+
+    // rAF-coalesced re-measure for resize / orientation / RO / fonts. The
+    // signature dedupe inside measure() makes an address-bar-only resize a
+    // pure secTop republish (no rect pass, no RailPlanes re-measure).
+    const scheduleMeasure = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        measure();
+      });
+    };
+
+    measure(true);
+    publish(performance.now(), true);
+    touchHoverOwnedRef.current = true;
+    store.setNative(true);
+
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", scheduleMeasure);
+    window.addEventListener("orientationchange", scheduleMeasure);
+    const ro =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(scheduleMeasure)
+        : null;
+    ro?.observe(scroller);
+    document.fonts?.ready
+      .then(() => {
+        if (!fontsCancelled) scheduleMeasure();
+      })
+      .catch(() => {});
+
+    // Per-card noisy reveal — the SAME fire-once IO the pinned scrub uses.
+    // On the FIRST intersect re-sync secTop before the first setReveal
+    // (mirrors founders-rail): content above the rail (hero islands, lazy
+    // sections) may have settled since measure(true) ran at mount, and a
+    // stale secTop would leave every plane vertically mis-registered against
+    // its card for exactly the beat the reveal makes them visible.
+    const revealIO = observeCardReveal(cards, syncTop);
+
+    return () => {
+      fontsCancelled = true;
+      revealIO.disconnect();
+      ro?.disconnect();
+      window.removeEventListener("resize", scheduleMeasure);
+      window.removeEventListener("orientationchange", scheduleMeasure);
+      scroller.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(raf);
+      clearTimeout(settleT);
+      touchHoverOwnedRef.current = false;
+      // WebGL layer must never read a stale rail after unmount / disarm (store
+      // survives route changes). reset() clears `native` too.
+      useRailStore.getState().reset();
+    };
+  }, [detected, mode, islandsTouch]);
+
+  const onHover = (index: number, target: number) => {
+    // Muted while the touch source owns hover (Phase 4d) — see the ref.
+    if (touchHoverOwnedRef.current) return;
     useRailStore.getState().setHover(index, target);
+  };
 
   // Counter now reads "01/13"…"06/13" — the six shown studies against the full
   // archive count, teasing the rest via the SeeMorePortal closing slot.
@@ -923,7 +1183,11 @@ export default function CaseStudiesRail() {
   // same mechanic, not a replacement of it.
   if (detected && mode === "native") {
     return (
-      <section id="work" className="relative section-lg scroll-mt-24">
+      <section
+        id="work"
+        ref={nativeSectionRef}
+        className="relative section-lg scroll-mt-24"
+      >
         {/* §5.5 chrome trim: 32 → 16px below `sm`; `sm:mb-10` unchanged. */}
         <div className="mb-4 sm:mb-10">{heading}</div>
         <DragRail
@@ -933,6 +1197,13 @@ export default function CaseStudiesRail() {
              coarse pointer — see `.rail-affordance-touch` in globals.css for
              the full reasoning and what it costs. */
           railClassName="rail-affordance-touch"
+          /* Phase 4d: while the WebGL planes are armed behind the cards the
+             coarse-only masked edge fade would fade the DOM card to
+             transparent over the scroller's 20px edges while the plane
+             behind stays lit — a plane sliver with no card chrome over it.
+             Off only while the touch island is armed; every other phone
+             keeps the fade. */
+          edgeFade={!islandsTouch}
           /* `pb-3` not `pb-4`: the progress bar now sits 20px below the
              scroller and supplies the separation the old bottom padding was
              carrying on its own. `sm:pb-4` keeps the ≥640px box identical. */

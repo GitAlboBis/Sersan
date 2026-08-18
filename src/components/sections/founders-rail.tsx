@@ -29,6 +29,7 @@ import {
 import { useIntroStore } from "@/webgl/store/introStore";
 import { founderCardMotion } from "@/webgl/store/founderMotion";
 import { useTierStore } from "@/webgl/store/tierStore";
+import { RAIL_ISLANDS_TOUCH } from "@/lib/spine";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger);
@@ -68,6 +69,33 @@ if (typeof window !== "undefined") {
  *      cards use the FLOW panel layout (see FounderPanel) — min-height instead
  *      of a fixed height, copy in normal flow — so a founder's bio, credential
  *      chips and LinkedIn link can never be clipped on a narrow phone (D-13).
+ *
+ *      3b. NATIVE + TOUCH MORPH (mobile-parity plan Phase 4d, lib/spine.ts
+ *      RAIL_ISLANDS_TOUCH): on a CAPABLE PHONE (tier lite + fxBudget.level ≥ 2
+ *      + a resolved true-WebGPU backend — never tier "full") the native
+ *      scroller ALSO arms a continuous SCRUB source for the WebGL morph
+ *      island: ONE passive `scroll` listener on the DragRail scroller writes
+ *      `scrollLeft` + `scrub` (the focused card's offset from its snap-rest
+ *      position, 0..MORPH_MAX, an exact integer at snap rest) into
+ *      foundersMorphStore, with `native` as the liveness flag (`pinned` stays
+ *      false; no gate, no scroll-jack, no preventDefault, no transforms). The
+ *      island (FounderPortraitMorph, `touch` prop) scrubs its progress scalar
+ *      straight from it and places the cloud over the focused card's media
+ *      area (the card minus its `[data-founder-copy]` block). MUTUAL
+ *      EXCLUSIVITY (the lattice rule): the DOM duotone→colour reveal stays the
+ *      WHOLE visual until the island publishes `active` (all founders loaded
+ *      + sampled + GPU-built); at that instant every card's [data-founder-media]
+ *      is driven to opacity 0 and the article gets `data-morph-live` (its 45%
+ *      navy bg goes transparent so the cloud painting BEHIND the page is not
+ *      dimmed) — a DOM latch, so the island's rebuild flap of `active` never
+ *      flashes the photo back. If the island never goes live within 12 s
+ *      (`morphFailed`, same one-way door as mode 1), stays NOT live for 3 s
+ *      after having been live (a rebuild that never returns — the bounded
+ *      re-live door, same `morphFailed` exit) or the predicate drops
+ *      (stepDownBudget, flag off) the effect cleanup restores the media and
+ *      resets the store: no content-loss path exists. With the flag off, on
+ *      level ≤ 1, on WebGL2 or on desktop the effect never arms and the DOM
+ *      is byte-identical to today.
  *
  * PORTRAIT COLOUR REVEAL (modes 2 and 3, D-1): the duotone→colour clip reveal
  * has two triggers — `:hover` on a fine pointer, and `[data-focus="true"]` on
@@ -237,7 +265,24 @@ const PORTRAIT_CSS = `
 [data-founder-stage] [data-founder-media] {
   transition: opacity 0.45s ease;
 }
+/* Touch morph live (Phase 4d): the WebGL cloud paints BEHIND the page, so the
+   card's 45% navy bg would dim it — transparent while the island owns the
+   visual. Written by the native touch writer, removed on any revert. */
+.founder-portrait[data-morph-live="true"] { background: transparent; }
 `;
+
+/** Touch morph (Phase 4d): px deadband around each snap target inside which
+ *  `scrub` snaps to the exact integer — keeps the face LOCKED (inside
+ *  LOCK_EPS 0.02 ≈ 7px on a 359px pitch) under scroll-snap rounding at rest. */
+const SCRUB_DEADBAND_PX = 2;
+/** Touch morph: island-never-went-live grace before the DOM reveal is made
+ *  the final visual (mirrors the mode-1 morphFailGrace; see that comment). */
+const TOUCH_MORPH_FAIL_MS = 12000;
+/** Touch morph: after the island HAS been live, how long `active` may stay
+ *  false (rebuild in flight) before the media is handed back to the DOM via
+ *  the same `morphFailed` door — bounds the "blank cards" window a rebuild
+ *  that never returns would otherwise leave open for the whole mount. */
+const TOUCH_MORPH_RELIVE_MS = 3000;
 
 /** Per-panel elements + cached geometry driven by the single ScrollTrigger. */
 type PanelFx = {
@@ -538,6 +583,10 @@ function FounderPanel({
           flow ? "relative mt-auto" : "absolute inset-x-0 bottom-0"
         }`}
         style={flow ? { background: FLOW_COPY_SCRIM } : undefined}
+        /* Phase 4d: the touch morph island measures this block so the cloud's
+           stage is the card MINUS its copy (flow layout only — the fixed
+           panel's DOM stays byte-identical). */
+        {...(flow ? { "data-founder-copy": "" } : {})}
       >
         <div className="flex items-end justify-between gap-4">
           <div className="min-w-0">
@@ -711,6 +760,23 @@ export default function FoundersRail() {
   const sectionRef = useRef<HTMLDivElement | null>(null);
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const trackRef = useRef<HTMLUListElement | null>(null);
+  // The NATIVE branch's <section> — the touch morph writer (mode 3b) finds the
+  // DragRail's [data-rail-scroller] and the founder articles beneath it.
+  const nativeSectionRef = useRef<HTMLElement | null>(null);
+
+  // Phase 4d touch predicate — the SAME shape as Scene.tsx's `railIslandsTouch`
+  // (RAIL_ISLANDS_TOUCH && tier !== "full" && level ≥ 2 && backend webgpu) as
+  // ONE boolean selector: a constant false on desktop (tier full — the pinned
+  // morph/rail paths never see it), flips true once on a capable phone when
+  // the backend resolves. `mode === "native"` is implied on level ≥ 2 (coarse
+  // ⇒ native) but is asserted explicitly in the effect.
+  const islandsTouch = useTierStore(
+    (s) =>
+      RAIL_ISLANDS_TOUCH &&
+      s.tier !== "full" &&
+      s.fxBudget.level >= 2 &&
+      s.backend === "webgpu",
+  );
   // One entry per morph stage, indexed by stage (0 = Alessandro, 1 = Michele,
   // 2 = Mattia). NOT querySelectorAll: the gate effect reads these
   // synchronously below (refs are already committed there), and a query would
@@ -1610,6 +1676,250 @@ export default function FoundersRail() {
     };
   }, [canMorph]);
 
+  // === NATIVE + TOUCH MORPH (mode 3b, Phase 4d): the scrub source ===========
+  // See the header block. Store writes from ONE passive scroll listener + rect
+  // reads on real geometry change; the only setState is the one-way
+  // `setMorphFailed(true)` on the 12 s never-went-live door (as mode 1).
+  useEffect(() => {
+    if (!detected || mode !== "native" || !islandsTouch || morphFailed) return;
+    const section = nativeSectionRef.current;
+    const scroller = section?.querySelector<HTMLElement>("[data-rail-scroller]");
+    if (!section || !scroller) return;
+
+    const store = useFoundersMorphStore.getState();
+
+    let max = 0;
+    /** scrollWidth at the last measure — the free content-changed signal. */
+    let lastWidth = -1;
+    /** Geometry signature at the last HARD measure (dedupes RO/resize/fonts —
+     *  a hard measure bumps measureVersion, which REBUILDS the GPU cloud, so
+     *  an address-bar-only resize must never reach it). */
+    let lastSig = "";
+    /** scrollLeft at which panel j sits at the snapport start (≤ max). */
+    let targets: number[] = [];
+    let raf = 0;
+    let fontsCancelled = false;
+
+    /** Rigid-shift correction: republish the scroller's document top only.
+     *  The island caches card offsets RELATIVE to secTop. */
+    const syncTop = () => {
+      store.setLayout(0, scroller.getBoundingClientRect().top + window.scrollY);
+    };
+
+    /** scrub = the focused card's snap-relative offset, 0..MORPH_MAX (see the
+     *  store header). Snap targets, not vw/2: at ≥ 430px the end cards never
+     *  reach the viewport centre, so a centre-offset formula could never lock.
+     *  T_j is clamped to `max` at measure so the last leg completes even when
+     *  the last card cannot reach the snap start; the ±deadband makes `scrub`
+     *  an exact integer at snap rest (inside LOCK_EPS). */
+    const publish = () => {
+      const x = Math.min(Math.max(scroller.scrollLeft, 0), max);
+      let scrub = 0;
+      const n = Math.min(targets.length, STAGE_TOTAL);
+      if (n >= 2) {
+        let j = 0;
+        while (j < n - 2 && x >= targets[j + 1]) j++;
+        const t0 = targets[j];
+        const t1 = targets[j + 1];
+        const pitch = t1 - t0;
+        let f = pitch > 0 ? (x - t0) / pitch : 0;
+        if (Math.abs(x - t0) <= SCRUB_DEADBAND_PX) f = 0;
+        else if (Math.abs(x - t1) <= SCRUB_DEADBAND_PX) f = 1;
+        scrub = Math.min(Math.max(j + f, 0), MORPH_MAX);
+      }
+      store.setNativeScroll(x, scrub);
+    };
+
+    const measure = (force = false) => {
+      const view = scroller.clientWidth;
+      const total = scroller.scrollWidth;
+      const panels = Array.from(
+        scroller.querySelectorAll<HTMLElement>("[data-founders-panel]"),
+      );
+      const first = panels[0];
+      const sig = `${total}|${view}|${first?.offsetWidth ?? 0}|${first?.offsetHeight ?? 0}|${panels.length}`;
+      if (!force && sig === lastSig) {
+        syncTop();
+        return;
+      }
+      lastSig = sig;
+      lastWidth = total;
+      max = Math.max(0, total - view);
+      // use-rail-progress' snap-start formula: child rect against the
+      // scroller's content origin minus scroll-padding-inline-start.
+      // `base` = the content origin in VIEWPORT space, scrollLeft-invariant:
+      // child.getBoundingClientRect().left = scroller.left + contentOffset −
+      // scrollLeft, so contentOffset = child.left − (scroller.left −
+      // scrollLeft). Subtract, never add — this measure re-runs mid-rail (EN/IT
+      // toggle, fonts.ready, orientation) with scrollLeft ≠ 0, and `+` would
+      // shift every target by −2·scrollLeft (and every `scrub` leg with it).
+      const base = scroller.getBoundingClientRect().left - scroller.scrollLeft;
+      const padStart =
+        parseFloat(getComputedStyle(scroller).scrollPaddingLeft) || 0;
+      targets = panels.map((p) =>
+        Math.min(p.getBoundingClientRect().left - base - padStart, max),
+      );
+      syncTop();
+      publish();
+      // The island re-measures the card rects + rebuilds on this bump (reads
+      // secTop / scrollLeft first — both already published above).
+      store.bumpMeasure();
+    };
+
+    const onScroll = () => {
+      // Content width moved (EN/IT toggle re-flows the copy) → re-measure.
+      if (scroller.scrollWidth !== lastWidth) measure();
+      publish();
+    };
+
+    // rAF-coalesced re-measure for resize / orientation / RO / fonts; the
+    // signature dedupe makes an address-bar-only resize a pure secTop republish.
+    const scheduleMeasure = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        measure();
+      });
+    };
+
+    // --- Mutual exclusivity: DOM reveal until the island is LIVE ----------
+    // `active` = all founders loaded + sampled + GPU build done (the island
+    // sets it at the end of buildNow). The instant it flips true every card's
+    // media goes to 0 and the article gets data-morph-live; a DOM LATCH — the
+    // island's build cleanup flaps `active` false on every rebuild and we
+    // must never flash the photo back (a blank card for a few frames beats
+    // a photo flash). Restored ONLY by this effect's cleanup.
+    const articles = Array.from(
+      section.querySelectorAll<HTMLElement>("[data-founders-panel] .founder-portrait"),
+    );
+    const mediaFx = articles.map((article) => {
+      const media = article.querySelector<HTMLElement>("[data-founder-media]");
+      return {
+        article,
+        media,
+        setOp: media
+          ? (gsap.quickSetter(media, "opacity") as (v: number) => void)
+          : null,
+      };
+    });
+    // Local latch (NOT everLiveRef — that one belongs to the mode-1 grace and
+    // must not be pre-satisfied by the touch island if the mode flips later).
+    let live = false;
+    let mediaHidden = false;
+    const hideMedia = () => {
+      if (mediaHidden) return;
+      mediaHidden = true;
+      for (const m of mediaFx) {
+        m.setOp?.(0);
+        m.article.setAttribute("data-morph-live", "true");
+      }
+    };
+    const restoreMedia = () => {
+      if (!mediaHidden) return;
+      mediaHidden = false;
+      for (const m of mediaFx) {
+        if (m.media) gsap.set(m.media, { clearProps: "opacity" });
+        m.article.removeAttribute("data-morph-live");
+      }
+    };
+    // Bounded RE-LIVE door: the latch above tolerates the island's `active`
+    // flapping false on a rebuild (a few blank frames beat a photo flash), but
+    // a rebuild that never comes back — GPU device lost, texture reload
+    // failing on a background tab, a stepped-down budget that stops the
+    // build mid-way — would otherwise leave every card BLANK for the rest of
+    // the mount, since only this effect's cleanup restores the media. So once
+    // the island HAS been live, an `active: true → false` edge arms a
+    // TOUCH_MORPH_RELIVE_MS timer; if `active` is still false when it fires,
+    // the same one-way `morphFailed` door as the never-went-live case flips —
+    // the dep re-run tears this effect down (restoreMedia + store reset) and
+    // the DOM colour reveal is the final visual. `active` returning cancels
+    // it, so an ordinary rebuild (hundreds of ms) never trips it.
+    let reliveT: ReturnType<typeof setTimeout> | undefined;
+    const cancelRelive = () => {
+      if (reliveT !== undefined) {
+        clearTimeout(reliveT);
+        reliveT = undefined;
+      }
+    };
+    const unsub = useFoundersMorphStore.subscribe((s, prev) => {
+      if (s.active) {
+        live = true;
+        cancelRelive();
+        hideMedia();
+        return;
+      }
+      // Live → not live: start (or keep) the bounded wait for it to come back.
+      if (live && prev.active && reliveT === undefined) {
+        reliveT = setTimeout(() => {
+          reliveT = undefined;
+          if (!useFoundersMorphStore.getState().active) setMorphFailed(true);
+        }, TOUCH_MORPH_RELIVE_MS);
+      }
+    });
+    if (useFoundersMorphStore.getState().active) {
+      live = true;
+      hideMedia();
+    }
+    // Never-went-live door (mirrors mode 1's morphFailGrace): flips the
+    // `morphFailed` dep, whose re-run cleans up below — media restored, store
+    // reset — and the DOM colour reveal is the final visual this mount.
+    const failGrace = setTimeout(() => {
+      if (!live && !useFoundersMorphStore.getState().active) setMorphFailed(true);
+    }, TOUCH_MORPH_FAIL_MS);
+
+    // Entry reveal (fire-once, the touch replacement for engage()'s setReveal):
+    // the island advances its one-shot entry assemble on it. Re-sync secTop
+    // on the same edge — content above has settled by the time we get here.
+    const revealIO = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          syncTop();
+          useFoundersMorphStore.getState().setReveal(1);
+          revealIO.disconnect();
+          break;
+        }
+      },
+      { threshold: 0.15 },
+    );
+    revealIO.observe(scroller);
+
+    measure(true);
+    store.setNative(true);
+
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", scheduleMeasure);
+    window.addEventListener("orientationchange", scheduleMeasure);
+    const ro =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(scheduleMeasure)
+        : null;
+    ro?.observe(scroller);
+    document.fonts?.ready
+      .then(() => {
+        if (!fontsCancelled) scheduleMeasure();
+      })
+      .catch(() => {});
+
+    return () => {
+      fontsCancelled = true;
+      clearTimeout(failGrace);
+      cancelRelive();
+      revealIO.disconnect();
+      ro?.disconnect();
+      window.removeEventListener("resize", scheduleMeasure);
+      window.removeEventListener("orientationchange", scheduleMeasure);
+      scroller.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(raf);
+      unsub();
+      restoreMedia();
+      // The store outlives routes — clear it (native/scrollLeft/scrub included)
+      // so the island hides and never reads a stale rail; its build effect
+      // re-fires on the zeroed measureVersion and finds no native stage.
+      useFoundersMorphStore.getState().reset();
+    };
+  }, [detected, mode, islandsTouch, morphFailed]);
+
   // === HORIZONTAL RAIL mode: pinned desktop, NOT morph-eligible (pure DOM) ======
   useEffect(() => {
     if (!detected || mode !== "pinned" || canMorph) return;
@@ -1878,6 +2188,7 @@ export default function FoundersRail() {
     return (
       <section
         id="founders"
+        ref={nativeSectionRef}
         className="section-accent-tint relative section-lg scroll-mt-24 overflow-hidden"
       >
         <SectionGlow position="top-left" intensity={1.2} size="60rem" />

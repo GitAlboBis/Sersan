@@ -266,7 +266,13 @@ function unbind() {
  * card one gutter out from where a swipe leaves it.
  */
 function measureTargets(el: HTMLElement): number[] {
-  const base = el.getBoundingClientRect().left + el.scrollLeft;
+  // Content origin in viewport space, scrollLeft-INVARIANT: a child's
+  // getBoundingClientRect().left = el.left + contentOffset − el.scrollLeft, so
+  // contentOffset = child.left − (el.left − el.scrollLeft). Subtracting (not
+  // adding) scrollLeft is what makes the targets correct when this runs with
+  // the rail already scrolled (fonts.ready / a scrollWidth change mid-rail);
+  // `+ scrollLeft` was only right at scrollLeft = 0.
+  const base = el.getBoundingClientRect().left - el.scrollLeft;
   const padStart = parseFloat(getComputedStyle(el).scrollPaddingLeft) || 0;
   const out: number[] = [];
   for (let i = 0; i < el.children.length; i++) {

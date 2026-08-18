@@ -64,3 +64,27 @@ export const COMPACT_SPINE_TRAVEL_SVH = COMPACT_SPINE_SVH - 100;
 // gate). Constant only — no state, so the duplicated module copies stay
 // identical (see the header note).
 export const HERO_BRAND_COMPACT = true;
+
+// === Phase 4d kill-switch =================================================
+// RAIL_ISLANDS_TOUCH (plans/2026-08-17-mobile-parity.md, Phase 4d — owner
+// delegated the default). When TRUE, capable phones (fxBudget.level ≥ 2 AND a
+// resolved true-WebGPU backend, tier "lite" — never tier "full") mount the two
+// home rail islands over their NATIVE snap scrollers: RailPlanes behind the
+// case-studies cards and FounderPortraitMorph over the founders cards, both
+// driven by a CONTINUOUS touch source (a passive `scroll` listener on the
+// rail's own [data-rail-scroller], writing scrollLeft/progress/velocity —
+// or the founders' snap-relative scrub — into railStore / foundersMorphStore;
+// store writes only, zero setState, zero preventDefault). When FALSE every
+// phone renders byte-identical to before this phase: DOM-only rails, the
+// duotone→colour founder reveal, no store writes, and neither island mounts
+// (Scene.tsx AND-s this flag into its `railIslandsTouch` selector, so the
+// selectors short-circuit before reading a single store field).
+//
+// Desktop (tier "full", level 3) never consults this flag: every selector
+// that reads it is also AND-ed with `tier !== "full"`, so the pinned
+// ScrollTrigger rail + the gated vertical morph stage are untouched.
+//
+// Lives HERE (DOM-free, three-free) for the same reason as HERO_BRAND_COMPACT:
+// the route bundle (case-studies-rail / founders-rail DOM writers) and the
+// lazy WebGL host (Scene.tsx mount gates) both read it. Constant only.
+export const RAIL_ISLANDS_TOUCH = true;

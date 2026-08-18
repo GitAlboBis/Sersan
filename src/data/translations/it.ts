@@ -377,6 +377,10 @@ const it = {
     'cal.fallback.body': "La prenotazione online è in fase di configurazione. Nel frattempo, inviate un intake scritto o scriveteci direttamente — un ingegnere senior risponde entro 1 giorno lavorativo.",
     'cal.fallback.intakeCta': 'Inviate un intake scritto',
     'cal.fallback.emailCta': 'Scriveteci',
+
+    // Readout del preloader al primo caricamento (piano mobile-parity, Decisione 8).
+    // "52. SERSAN" è un tag, non copy — resta invariato nel componente.
+    'preloader.readout': 'Inizializzazione del segnale',
 } as const;
 
 export default it;
