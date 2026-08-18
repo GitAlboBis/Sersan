@@ -347,7 +347,21 @@ Compute is not required: the island skips only `build.compute(delta)` on a non-W
 
 ### 4.5 Why each of the other seven stays off
 
-| island | reason (structural, not budgetary, wherever possible) |
+> **SUPERSEDED 2026-08-17/18 by `plans/2026-08-17-mobile-parity.md`** (owner directive: Lusion/ERA-style
+> parity on phones). The reasoning below is kept as history; the current gates are the `fxBudget` axis in
+> `tierStore.ts` + a real-device measurement gate (`docs/recon-2026-08-17/DEVICE_LOG.md`), each with a
+> one-line kill-switch:
+> - `PostFXNodes` / `PostFX` — **now mounted at `fxBudget.postFx !== "off"`** (level 2 phones get the same
+>   chain in "lite": WebGL `Bloom levels 4` + no Noise; WebGPU same graph at DPR 1, grain/fluid off).
+>   `stepDownBudget()` turns it off by itself if the phone cannot hold frame. Plan Phase 2.
+> - `HomeSingularity` — **no longer structurally impossible**: the CompactSpine renders a compact
+>   `[data-hero-brand][data-hero-brand-compact]` at level 2 + WebGPU (`HERO_BRAND_COMPACT`, auto-play beat,
+>   no scroll hijack, tap = skip) and the eclipse mounts in "lite" (`ITER_LO`/`STEP_LO`, dprCap 1). Plan Phase 4b.
+> - `SequenceSingularity`, `RailPlanes`, `FounderPortraitMorph` — still off on phones (Phase 4c/4d, behind
+>   `SEQ.LITE_RAYMARCH` / `RAIL_ISLANDS_TOUCH`, gate-dependent); the brand argument in the SequenceSingularity
+>   row is now the *criterion of the measurement gate* (side-by-side screenshot + fps), not an a-priori veto.
+
+| island | reason (structural, not budgetary, wherever possible) — HISTORICAL, see note above |
 |---|---|
 | `RailPlanes` (317) | Self-disables on `railStore.pinned`, which only the pinned desktop DOM writes. Mounting it on a phone renders **nothing** until the rail is pinned — and pinning the rail on touch is a layout regression this spec explicitly reverses. |
 | `FounderPortraitMorph` (330) | Same `foundersMorphStore.pinned` shape. On top of that, `founders-rail.tsx:620-640` documents an all-or-nothing failure path: one rejected `loadFounder` promise leaves every founder past the first at opacity 0. That is a P0 content-loss risk on the device class with the worst Lighthouse, in exchange for what the audit itself ranks the *second* wow payload. `useCentreFocus` already restored the colour portraits on touch (`:708`); that is the section's answer and it is sufficient. |

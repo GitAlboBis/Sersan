@@ -22,12 +22,29 @@
  * normal scroll takes over. Fully reversible: scrolling back up to the very
  * top re-engages the gate and re-forms the brand.
  *
+ * TOUCH (compact anchor, `data-hero-brand-compact` — mobile-parity plan
+ * Phase 4b): the CompactSpine on a capable phone (fxBudget.level ≥ 2 +
+ * WebGPU backend) renders the SAME `[data-hero-brand]` span with an extra
+ * `data-hero-brand-compact` attribute and NO HeroIntroGate (no scroll hijack,
+ * no `touchmove` preventDefault, no Lenis stop — native touch scroll stays
+ * untouched). After the entry the brand HOLDS for AUTO_HOLD_S, then
+ * gateProgress is ramped 0→1 over AUTO_RAMP_S on THIS loop's own clock — it
+ * writes the very same store field a desktop wheel drives, so the dissolve,
+ * morphDone/morph2Done, the DOM cascade (domReveal), HomeSingularity's melt,
+ * HeroLogo's flight and the `resting` sleep all follow unchanged. Tap/Esc skip
+ * comes from the DOM (CompactIntroSkip — the identical payload HeroIntroGate
+ * writes); a real scroll (page moved > AUTO_SCROLL_ABORT_PX) aborts straight
+ * to gateProgress 1 without marking the session skip. Whether the anchor is
+ * the compact one is decided from the DOM truth at build time (autoRef);
+ * every branch below that reads it is DEAD on desktop.
+ *
  * The compute build keeps its 4-target signature; B/C/D are fed homeA and
  * uMorph/uMorph2/uMorph3 stay 0 forever — the legs never play.
  *
  * Mounts its sim ONLY when: true WebGPU compute backend + fonts ready + the
- * desktop pinned H1 + brand elements exist. Every other path leaves
- * textMorphStore inactive → no scroll gate, DOM hero exactly as before.
+ * pinned H1 + brand elements exist (desktop spine, or the compact spine's
+ * armed brand). Every other path leaves textMorphStore inactive → no scroll
+ * gate, DOM hero exactly as before.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -38,10 +55,16 @@ import { webgpuEnabled } from "./renderer/createRenderer";
 import { useIntroStore } from "./store/introStore";
 import { useTextMorphStore } from "./store/textMorphStore";
 import { useFxStore } from "./store/fxStore";
-import type { SceneTier } from "./store/tierStore";
+import { useTierStore, type SceneTier } from "./store/tierStore";
 import { holeField } from "./HomeSingularity";
 
 interface HeroTextParticlesProps {
+  /**
+   * Host contract (Scene.tsx passes it, like every island). The particle COUNT
+   * no longer reads it — it reads the BUDGET axis (`fxBudget`, plan Phase 4b,
+   * see `selectBrandCount`); the prop is kept so the host signature stays
+   * untouched.
+   */
   tier: Exclude<SceneTier, "off">;
 }
 
@@ -50,6 +73,40 @@ interface HeroTextParticlesProps {
 // the ICS-media reference's 4s tween; the per-particle stagger + easing live
 // in the sim (uAssemble + delay buffer).
 const ENTRY_DURATION = 3.6;
+
+/**
+ * TOUCH BEAT clocks (mobile-parity plan Phase 4b — the compact anchor only,
+ * `data-hero-brand-compact`; every read of these is dead on desktop). There
+ * is NO gate on touch and NO scroll consumption: once the entry has formed
+ * the brand it HOLDS for AUTO_HOLD_S at MINIMUM (≥ HomeSingularity's
+ * IGNITE_DURATION 1.2s, so the eclipse has fully risen behind the formed
+ * wordmark before the melt starts — the melt begins at domReveal 0.05 ≈ g
+ * 0.44, i.e. ~0.66s into the ramp), then gateProgress is ramped 0→1 LINEARLY
+ * over AUTO_RAMP_S. It drives the SAME store field a desktop wheel drives (g
+ * still damps at λ 7, so the visible dissolve tail is ~+0.4s). Total from
+ * lift ≈ 3.6 + 1.5 + 1.5 + 0.4 ≈ 7s — owner-tunable; a tap skips.
+ *
+ * HOLD GATED ON THE ECLIPSE (AUTO_HOLD_MAX_S): the eclipse island
+ * (HomeSingularity) arms on the assembleDone edge and only THEN loads its
+ * chunk, builds the march and compileAsync-warms it — on a slow phone that
+ * can outlast the minimum hold, and a melt started over a not-yet-risen
+ * eclipse reads as a broken beat. So the ramp starts on the first frame where
+ *   elapsedSinceEntry >= AUTO_HOLD_S
+ *   && (textMorphStore.eclipseReady || elapsedSinceEntry >= AUTO_HOLD_MAX_S)
+ * i.e. the hold is AUTO_HOLD_S when the eclipse is ready in time, stretches
+ * while it is not, and never exceeds AUTO_HOLD_MAX_S (a phone whose eclipse
+ * never resolves — build failure, WebGL2 — still gets its hero back).
+ * `eclipseReady` is set by HomeSingularity right after its build resolves,
+ * reset on its dispose/rebuild and by the provider's nav-into-home reset; it
+ * is read here via getState() in the loop (transient, no subscription).
+ * AUTO_SCROLL_ABORT_PX mirrors HeroIntroGate's safety valve: if the page has
+ * genuinely moved (the user is scrolling through), jump to gateProgress 1 —
+ * WITHOUT marking the session skip (only an explicit tap/Esc does that).
+ */
+const AUTO_HOLD_S = 1.5;
+const AUTO_HOLD_MAX_S = 3.0;
+const AUTO_RAMP_S = 1.5;
+const AUTO_SCROLL_ABORT_PX = 24;
 
 /**
  * ENTRY-CLOCK SHARED REF (P0 hotfix 2026-08-07) — the wordmark entry's
@@ -94,10 +151,33 @@ const REVEAL_END = 0.88;
 // tripled, so the particle budget grows with it to keep the strokes reading
 // as solid light instead of a sparse dust. The kernel is a simple
 // spring+turb integration — 48k instances is routine for the full tier.
+// Budget mapping (plan Phase 4b, see selectBrandCount): fxBudget level 3
+// (⇔ desktop tier "full") = 48000 exactly as today; level 2 (capable phone)
+// = round(48000 × particleScale 0.5) = 24000; level ≤ 1 = the frozen 20000
+// (unreachable in practice: level 1 never mounts a brand anchor).
 const COUNT_BY_TIER: Record<"full" | "lite", number> = {
   full: 48000,
   lite: 20000,
 };
+
+/**
+ * Budget → particle count (mobile-parity plan Phase 4b; the DriftParticles
+ * `selectBudgetCount` pattern). ONE store selector returning a PRIMITIVE, so
+ * the island re-renders only when the resulting count actually changes
+ * (resolve() before mount, or the one-shot stepDownBudget() 2 → 1) — never
+ * per frame, never a setState from useFrame.
+ *   level 3 (⇔ desktop tier "full") → 48000, byte-identical to COUNT_BY_TIER.full
+ *   level 2 (capable phone)          → round(48000 × particleScale) = 24000
+ *   level ≤ 1 (today's lite)         → 20000, the frozen lite constant
+ */
+function selectBrandCount(s: {
+  fxBudget: { level: number; particleScale: number };
+}): number {
+  const { level, particleScale } = s.fxBudget;
+  if (level >= 3) return COUNT_BY_TIER.full;
+  if (level === 2) return Math.round(COUNT_BY_TIER.full * particleScale);
+  return COUNT_BY_TIER.lite;
+}
 
 interface MorphBuild {
   geometry: THREE.InstancedBufferGeometry;
@@ -124,12 +204,27 @@ interface MorphBuild {
   dispose: () => void;
 }
 
-export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
+export function HeroTextParticles(_props: HeroTextParticlesProps) {
   const { camera, size, gl } = useThree();
   const groupRef = useRef<THREE.Group>(null);
   const brandRef = useRef<HTMLElement | null>(null);
   const timeRef = useRef(0);
   const gSmoothRef = useRef(0);
+  // TOUCH BEAT state (plan Phase 4b) — decided from the DOM truth at build
+  // time: autoRef is true ONLY when the sampled `[data-hero-brand]` carries
+  // `data-hero-brand-compact` (the CompactSpine's anchor). On desktop it is
+  // false forever and every branch keyed on it is dead. autoClockRef is the
+  // hold+ramp clock (seconds since the entry completed); autoRampAtRef is
+  // the clock value at which the ramp STARTED (−1 = not yet — the hold is
+  // gated on the eclipse, see AUTO_HOLD_MAX_S, so the start is decided per
+  // frame, not fixed at AUTO_HOLD_S); autoDoneRef latches once the ramp
+  // reached 1 (or a scroll aborted it) so an in-place REBUILD after the beat
+  // (URL-bar collapse tripping sizeEpoch) preserves the dissolved end state
+  // instead of replaying the entry.
+  const autoRef = useRef(false);
+  const autoClockRef = useRef(0);
+  const autoRampAtRef = useRef(-1);
+  const autoDoneRef = useRef(false);
   // Damped flyby envelope (0..1) — follows holeField.strength (clamped-dt
   // damp) so the eclipse's activation/retirement edges never step the text:
   // unlike the crust's spring-integrated force, the text displacement is
@@ -142,7 +237,17 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
   const entryRef = useRef(0);
   const [build, setBuild] = useState<MorphBuild | null>(null);
 
-  const count = COUNT_BY_TIER[tier] ?? COUNT_BY_TIER.lite;
+  // Budget-derived particle count (plan Phase 4b) — see selectBrandCount.
+  // Read inside the island through a single primitive selector (the store is
+  // module-stable; the same pattern DriftParticles / AdaptiveResolution use
+  // inside the Canvas). Level 3 resolves to exactly the old COUNT_BY_TIER.full.
+  const count = useTierStore(selectBrandCount);
+  // DOM→island anchor signal (plan Phase 4b): the CompactSpine bumps this when
+  // its `[data-hero-brand-compact]` anchor mounts/unmounts. It is a build dep
+  // below because the compact anchor mounts AFTER tierStore.backend resolves —
+  // i.e. after this island's first build attempt may already have run and
+  // bailed on a missing anchor. Desktop: stays 0 forever (one build as today).
+  const brandEpoch = useTextMorphStore((s) => s.brandAnchorEpoch);
 
   // World units per CSS pixel at the z=0 content plane (camera at CAMERA_Z).
   // Held in a REF, not a build dep: R3F publishes `size` on every
@@ -205,13 +310,58 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
         typeof (gl as unknown as { compute?: unknown }).compute === "function";
       if (!isWebGPUBackend) return;
 
+      // DETACHED-ANCHOR guard (plan Phase 4b hardening): if the anchor this
+      // instance last sampled is no longer in the document (the compact
+      // anchor unmounted — compact→stacked rotate, stepDownBudget 2→1 —
+      // and this effect re-ran, or a mode switch swapped the stage under a
+      // desktop resize), drop the stale ref and, if the system still owns the
+      // hero, hand it back to the DOM NOW: a compact H1 must never stay hidden
+      // behind a stale `active` while the fresh query below decides. On
+      // desktop the SSR span is connected for the page lifetime → dead.
+      {
+        const el = brandRef.current;
+        if (el && !el.isConnected) {
+          brandRef.current = null;
+          if (useTextMorphStore.getState().active) {
+            useTextMorphStore.setState({ active: false, domReveal: 1 });
+          }
+        }
+      }
+
       // The H1 is no longer sampled (the headline is pure DOM now), but its
-      // presence still gates the mount: it marks the desktop pinned layout —
-      // mobile fallback / interior routes render neither element → inactive.
+      // presence still gates the mount: it marks the pinned hero layout
+      // (desktop spine, or the compact spine with an ARMED brand anchor) —
+      // interior routes / unarmed compact / stacked render neither → inactive.
       const h1 = document.querySelector<HTMLElement>("[data-hero-headline]");
       const brand = document.querySelector<HTMLElement>("[data-hero-brand]");
-      if (!h1 || !brand) return;
+      if (!h1 || !brand) {
+        // Anchor GONE while the system owned the hero (plan Phase 4b): the
+        // compact anchor unmounted under us — compact→stacked rotate, or
+        // stepDownBudget() 2→1 disarming the brand — and the epoch bump
+        // re-ran this effect. Hand the hero back to the DOM (the crisp H1 +
+        // cluster restore, HeroLogo flies to rest); the sim itself was
+        // already disposed by this effect's cleanup. On desktop this branch
+        // is reachable only when the elements are absent, where the store
+        // used to be left stale — publishing the inactive state is the
+        // correct handoff there too. Nothing to re-run: on compact the anchor
+        // mounts AFTER backend resolves and its bump re-enters here; the
+        // desktop span is SSR truth (epoch 0 forever, one build as today).
+        if (useTextMorphStore.getState().active) {
+          useTextMorphStore.setState({ active: false, domReveal: 1 });
+        }
+        return;
+      }
       brandRef.current = brand;
+      // TOUCH BEAT flag from the DOM truth (plan Phase 4b): only the
+      // CompactSpine's anchor carries `data-hero-brand-compact`. Desktop →
+      // false, and every autoRef branch downstream is dead. A fresh compact
+      // build restarts the hold clock only if the beat has not already been
+      // played by this instance (autoDoneRef — see replayDone below).
+      autoRef.current = brand.hasAttribute("data-hero-brand-compact");
+      if (!autoRef.current) {
+        autoClockRef.current = 0;
+        autoRampAtRef.current = -1;
+      }
 
       // --- BRAND sample, with the big [data-hero-brand]'s own typography ----
       const bcs = getComputedStyle(brand);
@@ -256,7 +406,14 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       // replay the whole intro; an in-place REBUILD (resize) kept entryRef at
       // 1 → preserve the finished state. A session skip also preserves.
       const isRebuild = entryRef.current >= 1;
-      const replayDone = isRebuild || useTextMorphStore.getState().introSkipped;
+      // autoDoneRef (touch beat, plan Phase 4b): a rebuild after the timed
+      // beat has played (URL-bar collapse moving the fixed canvas' height >5%
+      // trips sizeEpoch) must not replay the entry — the brand would pop back
+      // over the already-revealed hero. Always false on desktop.
+      const replayDone =
+        isRebuild ||
+        useTextMorphStore.getState().introSkipped ||
+        autoDoneRef.current;
       let minX = Infinity;
       let maxX = -Infinity;
       for (let i = 0; i < count; i++) {
@@ -318,6 +475,12 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
         scatter,
       );
       built = bm as unknown as MorphBuild;
+      // COMPACT look knob (plan Phase 4b, measure-first default): the 13vw
+      // wordmark on a 390px phone has a ~50px cap height (ink area ≈1/7 of
+      // desktop's) and 24k particles — ~7× denser than desktop; the desktop
+      // POINT_SIZE 8 discs on a ~7px stroke would read as a solid slab and
+      // clog counters. 5px keeps the strokes as light. Desktop untouched (8).
+      if (autoRef.current) built.uPointSize.value = 5;
       // Resume state: a rebuild mid/after entry must not restart the wave.
       // On a genuine full-intro replay (fresh mount) start from a clean
       // store, regardless of stale journey flags that survived on the
@@ -375,13 +538,15 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
       // morphDone, …) likewise SURVIVES a rebuild: the component refs
       // (entryRef, gSmoothRef) persist and re-prime the fresh sim's uniforms.
     };
-    // Rebuild ONLY on a real change: renderer identity, particle count, or a
+    // Rebuild ONLY on a real change: renderer identity, particle count, a
     // quantized+debounced viewport change (sizeEpoch — NOT raw size, which
-    // ticks per ResizeObserver observation). No language dep: the one-beat
-    // brand ("Sersan AI") is language-invariant. Current metrics are read
-    // from worldPerPxRef inside the build.
+    // ticks per ResizeObserver observation), or the compact brand anchor
+    // mounting/unmounting (brandEpoch — the DOM→island signal of plan Phase
+    // 4b; 0 forever on desktop, so desktop still builds exactly once). No
+    // language dep: the one-beat brand ("Sersan AI") is language-invariant.
+    // Current metrics are read from worldPerPxRef inside the build.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gl, count, sizeEpoch]);
+  }, [gl, count, sizeEpoch, brandEpoch]);
 
   // Unmount-only visual handoff. This is the ONLY correct discriminator between
   // "the island is going away, hand the hero back to the DOM" and "the sim is
@@ -400,6 +565,27 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
   useFrame((_, rawDelta) => {
     const group = groupRef.current;
     if (!group) return;
+
+    // DETACHED-ANCHOR guard, per frame (plan Phase 4b hardening; ONE
+    // property read — `isConnected` — dead on desktop where the SSR span
+    // stays connected for the page lifetime). The compact anchor can unmount
+    // under a live sim (compact→stacked rotate, stepDownBudget 2→1); the
+    // epoch bump re-runs the build effect, but the React commit → effect
+    // round-trip is frames away, and any path that detaches the anchor
+    // WITHOUT a bump would leave `active` stale forever. Either way the
+    // compact H1 must never sit hidden behind a stale `active`: drop the ref
+    // and hand the hero back to the DOM at once. Runs BEFORE the `!build`
+    // early-out so it also covers the disposed-and-not-yet-rebuilt window.
+    {
+      const el = brandRef.current;
+      if (el && !el.isConnected) {
+        brandRef.current = null;
+        if (useTextMorphStore.getState().active) {
+          useTextMorphStore.setState({ active: false, domReveal: 1 });
+        }
+      }
+    }
+
     if (!build) {
       group.visible = false;
       return;
@@ -436,6 +622,80 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
     // notifications. Unconditional so the skip pin (entryRef = 1 above) and
     // the completed state stay visible to HeroLogo's burst trigger.
     entryProgressRef.value = entryRef.current;
+
+    // --- TOUCH BEAT auto-driver (plan Phase 4b; DEAD on desktop: autoRef is
+    // only true for the compact `data-hero-brand-compact` anchor) -----------
+    // Once the entry has formed the brand: hold AUTO_HOLD_S, then ramp the
+    // SAME gateProgress a desktop wheel drives, linearly over AUTO_RAMP_S.
+    // A genuine page scroll (> AUTO_SCROLL_ABORT_PX) aborts straight to 1 —
+    // HeroIntroGate's safety valve, minus the session-skip mark. The value is
+    // MERGED into the per-frame domReveal write below (pendingGate) so the
+    // store notification count per frame is unchanged; on desktop pendingGate
+    // stays null and the write is byte-identical. gTarget below may read the
+    // previous frame's value — a one-frame lag under the λ7 damp, invisible.
+    let pendingGate: number | null = null;
+    if (autoRef.current) {
+      const st0 = useTextMorphStore.getState();
+      if (st0.introSkipped) {
+        // Skip re-assert — the mirror of HeroIntroGate's per-tick re-pin,
+        // which never runs on compact. The skip wins for the whole session:
+        // whenever anything rewinds the gate (the session seed lands with
+        // gateProgress still 0; the provider's nav-into-home reset zeroes
+        // it and keeps introSkipped) re-pin the journey at its end state.
+        // Without this, gSmooth is pinned 1 above but damps toward a 0
+        // target every frame (g ≈ 0.8–0.9): the DOM would sit at a partial
+        // domReveal on a 30fps phone, morphDone would flap, and `resting`
+        // (gTarget ≥ 1) would never sleep the sim. One-shot by construction
+        // (gateProgress is 1 from the next frame on), never per-frame.
+        if (st0.gateProgress < 1) {
+          autoDoneRef.current = true;
+          useTextMorphStore.setState({
+            gateProgress: 1,
+            assembleDone: true,
+            morphDone: true,
+            morph2Done: true,
+          });
+        }
+      } else if (st0.gateProgress < 1) {
+        if (
+          typeof window !== "undefined" &&
+          window.scrollY > AUTO_SCROLL_ABORT_PX
+        ) {
+          // Page genuinely moved (native touch scroll is never blocked):
+          // jump to the released state. Applies DURING the entry too — on
+          // touch nothing holds the page, and a hidden H1 under a visitor
+          // who is already scrolling away is a real defect (the desktop
+          // gate makes this case unreachable there). Not a session skip.
+          autoDoneRef.current = true;
+          pendingGate = 1;
+        } else if (entryRef.current >= 1) {
+          autoClockRef.current += delta;
+          const t = autoClockRef.current;
+          // HOLD GATED ON THE ECLIPSE (see the constants block): the ramp
+          // starts on the FIRST frame the minimum hold has elapsed AND (the
+          // eclipse island reports ready OR the maximum hold has elapsed).
+          // `eclipseReady` is a transient getState() read (no subscription);
+          // the start instant is latched in autoRampAtRef so the ramp is
+          // measured from when it actually began, not from AUTO_HOLD_S.
+          if (
+            autoRampAtRef.current < 0 &&
+            t >= AUTO_HOLD_S &&
+            (st0.eclipseReady || t >= AUTO_HOLD_MAX_S)
+          ) {
+            autoRampAtRef.current = t;
+          }
+          if (autoRampAtRef.current >= 0) {
+            const p = THREE.MathUtils.clamp(
+              (t - autoRampAtRef.current) / AUTO_RAMP_S,
+              0,
+              1,
+            );
+            if (p >= 1) autoDoneRef.current = true;
+            if (p !== st0.gateProgress) pendingGate = p;
+          }
+        }
+      }
+    }
 
     // The gate accumulates in discrete wheel ticks — smooth it here so the
     // whole transition glides (frame-rate independent damp).
@@ -475,7 +735,13 @@ export function HeroTextParticles({ tier }: HeroTextParticlesProps) {
     // entryProgressRef, the module-scope shared ref, so the per-frame store
     // notification rate stays exactly what it was before the burst retiming.)
     const reveal = THREE.MathUtils.smoothstep(g, REVEAL_START, REVEAL_END);
-    useTextMorphStore.setState({ domReveal: reveal });
+    // pendingGate (touch beat) rides the SAME set() — one notification per
+    // frame either way; null on desktop → the exact call it always was.
+    useTextMorphStore.setState(
+      pendingGate === null
+        ? { domReveal: reveal }
+        : { domReveal: reveal, gateProgress: pendingGate },
+    );
 
     // After the gate releases, real scroll resumes: the particle block —
     // anchor frozen below — slides up out of the viewport with the world,

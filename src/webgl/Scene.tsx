@@ -47,6 +47,7 @@ import { useSectionAnchors } from "./hooks/useSectionAnchors";
 import { CAMERA_FOV, CAMERA_Z } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
 import { onLiftOnce } from "@/lib/route-transition-store";
+import { HERO_BRAND_COMPACT } from "@/lib/spine";
 import type { SectionAnchors } from "./hooks/useSectionAnchors";
 import {
   devOverridesAllowed,
@@ -249,6 +250,28 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
   // single kill-switch for the whole post chain: `stepDownBudget()` (level
   // 2 → 1) or `?postfx=off` flips it to "off" and both rigs unmount.
   const postFx = useTierStore((s) => s.fxBudget.postFx);
+
+  // Raymarch-lite axis AND-ed with the resolved backend (mobile-parity plan
+  // Phase 4b). `raymarchLite` is only a WISH (level 2 ⇒ true, level 3 ⇒
+  // false); it must be AND-ed with the runtime `backend === "webgpu"` AT THE
+  // CONSUMPTION SITE because `backend` is written later than `resolve()`
+  // (this Canvas' onCreated) and the eclipse is TSL-compute-only. ONE
+  // primitive selector: on desktop (level 3) it is false forever, so the
+  // backend flip at onCreated does NOT re-render this host — desktop stays
+  // byte-identical; on a capable phone it flips true once at onCreated.
+  // Read here in the Canvas host like postFx/dpr — never inside <Canvas>.
+  // stepDownBudget() (2 → 1) flips raymarchLite off and unmounts the lite
+  // eclipse. HERO_BRAND_COMPACT (src/lib/spine.ts — the Phase 4b
+  // kill-switch, the SAME constant CompactSpine's `brandArmed` reads) is
+  // AND-ed in first: with the flag off no compact anchor is ever rendered,
+  // so the eclipse island must not mount either — the eclipse exists only
+  // for the brand beat and would otherwise sit armed-but-invisible for the
+  // page lifetime. A build-time constant, so `true` folds away and the
+  // selector is exactly the two-term one it was.
+  const homeSingularityLite = useTierStore(
+    (s) =>
+      HERO_BRAND_COMPACT && s.fxBudget.raymarchLite && s.backend === "webgpu",
+  );
 
   // `?perf=1` HUD probe (plan Phase 6.1). Dev/preview only — `perfHud` is
   // written by tierStore.resolve() through devOverridesAllowed(), so it is
@@ -462,8 +485,23 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           hero + the text sim — AdaptiveResolution owns the framerate, and
           group.visible flips off outside the intro beat so the march costs
           nothing once the hero has cascaded in. Its emissive output rides the
-          SAME >1.0 threshold bloom in PostFXNodes — no second post chain. */}
-      {pathname === "/" && tier === "full" && webgpu && <HomeSingularity />}
+          SAME >1.0 threshold bloom in PostFXNodes — no second post chain.
+
+          LITE GATE (mobile-parity plan Phase 4b): a CAPABLE PHONE
+          (`fxBudget.raymarchLite`, i.e. level 2) with a TRUE WebGPU backend
+          — and the HERO_BRAND_COMPACT kill-switch on (src/lib/spine.ts; off
+          ⇒ no compact anchor, no beat, no eclipse) —
+          also mounts it, as `<HomeSingularity lite />` — the same island at
+          the SEQ low march step (ITER_LO 64 / STEP_LO, path product ≈1.82
+          preserved) with dprCap 1 held for the beat. It accompanies the
+          compact "Sersan AI" beat (CompactSpine's `data-hero-brand-compact`
+          anchor + HeroTextParticles' timed auto-driver — no scroll hijack);
+          on a WebGL2-fallback phone or level ≤ 1 nothing mounts, exactly as
+          today. Desktop: tier full ⇒ level 3 ⇒ raymarchLite false ⇒
+          lite=false, the identical mount. */}
+      {pathname === "/" && webgpu && (tier === "full" || homeSingularityLite) && (
+        <HomeSingularity lite={homeSingularityLite} />
+      )}
       {/* HOME mid-page plunge singularity (THE LONG TAKE): the third framing
           of the raymarch factory — a world-anchored-X / camera-locked-Y hole
           revealed by the passage's TRACK-RIGHT camera pan after spine beat

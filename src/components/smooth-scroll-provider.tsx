@@ -131,6 +131,12 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
           camDescend: 0,
           tiltDone: false,
           domReveal: 1,
+          // Phase 4b hold gate: the eclipse island remounts with the route
+          // and re-arms on the replayed assembleDone edge, so its "ready to
+          // show" flag must start false again — otherwise the compact
+          // auto-driver would read a stale true from the previous visit
+          // and start the melt at the minimum hold before the eclipse rose.
+          eclipseReady: false,
         });
       }
       return () => {

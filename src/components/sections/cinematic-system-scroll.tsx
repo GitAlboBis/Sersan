@@ -74,10 +74,17 @@ import { HeroHoverLayer } from "@/components/hero-hover-layer";
 import { HeroIntroGate } from "@/components/fx/hero-intro-gate";
 import { useLanguage } from "@/components/language-provider";
 import { useTextMorphStore } from "@/webgl/store/textMorphStore";
+import { useTierStore } from "@/webgl/store/tierStore";
+import { useIntroStore } from "@/webgl/store/introStore";
+import { isIntroSkipped, markIntroSkipped } from "@/lib/intro-skip";
 import { snapPoint, snapBarrier } from "@/lib/scroll-snap";
 import type { Language } from "@/data/translations/types";
 import { START_HREF } from "@/lib/site";
-import { SPINE_HEIGHT_VH } from "@/lib/spine";
+import {
+  SPINE_HEIGHT_VH,
+  COMPACT_SPINE_SVH,
+  HERO_BRAND_COMPACT,
+} from "@/lib/spine";
 import { cn } from "@/lib/utils";
 
 if (typeof window !== "undefined") {
@@ -296,7 +303,17 @@ const SNAP_STATION_PROGRESS = DESKTOP_GROUPS.map((g) => (g.start + g.end) / 2);
 // while the bar is up and the frame jumps the moment the bar collapses. `svh`
 // is defined against the bar-VISIBLE viewport and is frozen against that
 // resize for free — no listener, no px capture at mount.
-const COMPACT_SPINE_SVH = 180;
+//
+// The constant itself lives in src/lib/spine.ts (COMPACT_SPINE_SVH, imported
+// above) since mobile-parity Phase 4b: navbar.tsx derives the compact hero
+// header-hide reveal band from the same number, so the two can never drift.
+//
+// The Phase 4b kill-switch HERO_BRAND_COMPACT (owner Decision 2: "brand intro
+// 'Sersan AI' anche su telefono capace, tap = skip") lives in src/lib/spine.ts
+// too, imported above: CompactSpine's `brandArmed` reads it here (the compact
+// anchor + tap/Esc skip), and Scene.tsx AND-s the same constant into its
+// `homeSingularityLite` gate, so flipping it off removes BOTH the anchor and
+// the lite eclipse island in one place. Desktop never consults it.
 
 // CTA + hint labels used in the desktop spine, the mobile fallback, AND the
 // singularity passage's panel 05 (exported: the passage renders the same
@@ -363,10 +380,15 @@ function panelOpacity(
 //   1. the type scale swaps to the mobile clamps this file already ships in
 //      StackedFallback — H1 clamp(2.25rem,8vw,3.25rem), H2 clamp(2rem,7vw,3rem);
 //   2. the panel becomes its own overflow guard (see the className note);
-//   3. the WebGL text-particle intro is not consulted at all — it is a
-//      true-WebGPU desktop beat chained to [data-hero-brand], which the
-//      compact stage deliberately does not render, so the store read (and the
-//      whole cascade branch below it) is dead weight on a phone.
+//   3. (mobile-parity Phase 4b) the WebGL text-particle intro IS consulted on
+//      compact too — the same `textMorphStore.getState()` read as desktop, no
+//      `!compact` bypass. On every phone that does NOT arm the compact brand
+//      (HERO_BRAND_COMPACT off, fxBudget.level < 2, WebGL2 backend, build
+//      failure) `active` is simply false by construction — nothing ever writes
+//      it without a `[data-hero-brand]` anchor — so the H1 renders visible and
+//      the cascade branch is inert exactly as before. Only when CompactSpine
+//      arms the compact anchor does the H1 crossfade / [data-hero-stagger]
+//      cascade run, driven by the time-based beat in HeroTextParticles.
 function StagePanel({
   group,
   blocks,
@@ -411,8 +433,10 @@ function StagePanel({
       // sub, CTA pair) cascades in as domReveal rises over the gate's final
       // stretch — the intro releases onto an actionable invitation, not an
       // empty frame. Inactive (any fallback) → everything renders visible
-      // from first paint, no cascade.
-      const morph = isHero && !compact ? useTextMorphStore.getState() : null;
+      // from first paint, no cascade. Read on compact too (Phase 4b): the
+      // compact brand beat drives the same store, and `active` stays false
+      // on every phone that does not arm it.
+      const morph = isHero ? useTextMorphStore.getState() : null;
       const active = !!(morph && morph.active);
       const reveal = active && morph ? morph.domReveal : 1;
       const baseO = panelOpacity(p, group.start, group.end, isHero);
@@ -952,15 +976,24 @@ function StackedFallback({
 // sticky stage instead of 100vh — and the type scale, via `compact`.
 //
 // WHAT IT DELIBERATELY DOES NOT RENDER (each omission is load-bearing):
-//   · [data-hero-brand] — the desktop-only particle anchor. MOBILE_HOME_SPEC
-//     §0: HomeSingularity's first-frame gate is `!textMorphStore.active →
-//     invisible`, and that store is only ever written through this node, so
-//     introducing it on a phone would arm a black hole that never becomes
-//     visible. It is also navbar.tsx:634's probe for "am I inside the desktop
-//     pinned hero" — absent, the header stays visible on touch, which is the
-//     behaviour the stacked path already shipped.
+//   · [data-hero-brand] — rendered ONLY as the COMPACT anchor
+//     (`[data-hero-brand][data-hero-brand-compact]`, CompactHeroBrand below)
+//     when `brandArmed` (mobile-parity Phase 4b: HERO_BRAND_COMPACT &&
+//     fxBudget.level ≥ 2 && backend === "webgpu"). On every other phone it is
+//     still absent, for the original reasons: HomeSingularity's first-frame
+//     gate is `!textMorphStore.active → invisible` and that store is only ever
+//     written through this node, so an anchor a WebGL2/weak phone can never
+//     drive would arm a black hole that never becomes visible. It is also
+//     navbar.tsx's probe for "am I inside the pinned hero" — since Phase 4b
+//     navbar reads the COMPACT travel (COMPACT_SPINE_TRAVEL_SVH, spine.ts)
+//     when the anchor carries `data-hero-brand-compact`, and re-probes on the
+//     store's `brandAnchorEpoch` bump because this anchor mounts AFTER the
+//     navbar's mount-time probe.
 //   · HeroIntroGate — its `touchmove` preventDefault is a full scroll hijack
 //     with no touch escape (defect D-11). This is the fix for coarse tablets.
+//     STILL not rendered with the compact brand: the touch beat is TIME-driven
+//     inside HeroTextParticles (no scroll consumption, no Lenis stop), and
+//     tap/Esc = skip is CompactHeroBrand's own listener.
 //   · HeroHoverLayer — a pointer-hover sense overlay; meaningless on touch and
 //     it would only eat taps.
 //   · StageRail — `hidden lg:flex`, i.e. invisible on every phone, but its rAF
@@ -971,6 +1004,198 @@ function StackedFallback({
 //
 // R3F island note: nothing here commits into the Canvas. progressRef is a ref
 // and the WebGL side reads scroll through its own store, exactly as on desktop.
+
+/**
+ * CompactHeroBrand — the compact "Sersan AI" particle ANCHOR (mobile-parity
+ * Phase 4b). Rendered inside CompactSpine's sticky stage ONLY while
+ * `brandArmed` (HERO_BRAND_COMPACT && fxBudget.level ≥ 2 && backend
+ * "webgpu"); CompactSpine itself is client-only (never in the SSR HTML), so
+ * there is no hydration concern for anything rendered here.
+ *
+ * SCOPE — this component provides exactly four things and nothing else:
+ *   1. the anchor: the same decorative `[data-hero-brand]` span the desktop
+ *      stage renders (same text "Sersan AI", same Switzer semibold, opacity 0
+ *      forever — HeroTextParticles samples its rect + computed style and the
+ *      particles are the only visible render), plus `data-hero-brand-compact`
+ *      so HeroTextParticles picks the AUTO-PLAY (time-driven) beat and navbar
+ *      picks the compact travel;
+ *   2. the session-skip seed (`isIntroSkipped()` → `introSkipped: true`),
+ *      which HeroIntroGate does on desktop but nothing else does on compact —
+ *      seeded BEFORE the epoch bump so the island's build reads it;
+ *   3. the tap / Esc skip: a window `click` (capture) + `keydown Escape`
+ *      listener landing EXACTLY HeroIntroGate's skip payload, guarded like
+ *      its canEngage (morph active, preloader lifted, not yet skipped, ramp
+ *      not yet complete). A swipe never produces a click, a tap does. NO
+ *      preventDefault, NO touchmove/wheel listeners, NO getLenis() — scroll
+ *      stays native throughout;
+ *   4. the DOM→island signal: `textMorphStore.brandAnchorEpoch` bumped on
+ *      mount AND unmount (anchor exists / anchor gone), the dep that re-runs
+ *      HeroTextParticles' build (which queries the anchor once and otherwise
+ *      never retries) and navbar's header-hide re-probe.
+ *
+ * The beat itself — entry assemble, 1.5 s minimum hold (stretched up to 3 s
+ * until HomeSingularity reports `textMorphStore.eclipseReady`), timed
+ * gateProgress 0→1 ramp, scroll-abort — is TIME-DRIVEN in HeroTextParticles'
+ * frame loop; nothing here writes gateProgress except the skip.
+ *
+ * Optional affordance: the existing `copy.skipIntro` label ("Skip intro" /
+ * "Salta l'intro" — no new string) as a bottom-right mono button, shown once
+ * `active && assembleDone && !introSkipped && gateProgress < 1` has held
+ * ≥ SKIP_LABEL_DELAY_MS, mirroring HeroIntroGate's syncLabel discipline (a
+ * real control while shown, fully neutral while hidden). No "· Esc" suffix on
+ * touch. "Tap anywhere" already works without it.
+ */
+const COMPACT_SKIP_LABEL_DELAY_MS = 1500;
+const COMPACT_LABEL_SHOW_TRANSITION =
+  "opacity 500ms var(--ease-entrance, cubic-bezier(0.16, 1, 0.3, 1)), color 200ms var(--ease-out, ease-out)";
+const COMPACT_LABEL_HIDE_TRANSITION =
+  "opacity 200ms cubic-bezier(0.32, 0, 0.67, 0), color 200ms var(--ease-out, ease-out)";
+
+function CompactHeroBrand({ skipLabel }: { skipLabel: string }) {
+  const labelRef = useRef<HTMLButtonElement | null>(null);
+  const skipRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    // (a) Session seed FIRST — HeroIntroGate seeds this on desktop; on compact
+    // nobody else does. Must land before the epoch bump so HeroTextParticles'
+    // rebuild reads introSkipped when deciding replayDone.
+    if (isIntroSkipped()) {
+      useTextMorphStore.setState({ introSkipped: true });
+    }
+    // (b) Anchor exists → tell the island to (re)build against THIS span.
+    useTextMorphStore.setState((s) => ({
+      brandAnchorEpoch: s.brandAnchorEpoch + 1,
+    }));
+
+    // (c) The skip — HeroIntroGate's payload verbatim (minus release(): the
+    // gate is never engaged on compact, so there is nothing to release).
+    // Guarded on the live beat: inert before the build resolves, while the
+    // preloader curtain is still up (introComplete — same clause as
+    // HeroIntroGate.canEngage: a stray tap on the preloader must not burn
+    // the session's intro), after a skip, and once the ramp has completed.
+    const skip = () => {
+      const m = useTextMorphStore.getState();
+      if (!m.active || m.introSkipped || m.gateProgress >= 1) return;
+      if (!useIntroStore.getState().introComplete) return;
+      markIntroSkipped();
+      useTextMorphStore.setState({
+        introSkipped: true,
+        gateProgress: 1,
+        assembleDone: true,
+        morphDone: true,
+        morph2Done: true,
+        gateKick: 0,
+      });
+    };
+    skipRef.current = skip;
+    // (d) Tap anywhere = skip. `click` (never touchstart/touchmove): a swipe
+    // does not produce a click, a tap does; capture so a tap on an inert
+    // panel or the canvas still lands here. Never preventDefault — the tap's
+    // own default (if any) proceeds; scroll is untouched.
+    const onClick = () => skip();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") skip();
+    };
+    window.addEventListener("click", onClick, { capture: true });
+    window.addEventListener("keydown", onKeyDown);
+
+    // (e) Skip-label state, polled from a rAF (the store is written per frame
+    // by the island; no React subscription). Same discipline as
+    // HeroIntroGate.syncLabel: shown = real control, hidden = neutral.
+    let raf = 0;
+    let armedAt = 0;
+    let labelShown = false;
+    const tick = () => {
+      const m = useTextMorphStore.getState();
+      const armed =
+        m.active && m.assembleDone && !m.introSkipped && m.gateProgress < 1;
+      if (!armed) armedAt = 0;
+      else if (armedAt === 0) armedAt = performance.now();
+      const shown =
+        armed && performance.now() - armedAt >= COMPACT_SKIP_LABEL_DELAY_MS;
+      if (shown !== labelShown) {
+        labelShown = shown;
+        const el = labelRef.current;
+        if (el) {
+          el.style.transition = shown
+            ? COMPACT_LABEL_SHOW_TRANSITION
+            : COMPACT_LABEL_HIDE_TRANSITION;
+          el.style.opacity = shown ? "1" : "0";
+          el.style.pointerEvents = shown ? "auto" : "none";
+          el.tabIndex = shown ? 0 : -1;
+          if (shown) {
+            el.removeAttribute("aria-hidden");
+          } else {
+            el.setAttribute("aria-hidden", "true");
+            if (document.activeElement === el) el.blur();
+          }
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("click", onClick, { capture: true });
+      window.removeEventListener("keydown", onKeyDown);
+      skipRef.current = () => {};
+      // Anchor gone (compact→stacked rotate, stepDownBudget 2→1, route
+      // change) → the island's rebuild bails on the missing anchor and hands
+      // the hero back (`active: false, domReveal: 1`); navbar re-probes.
+      useTextMorphStore.setState((s) => ({
+        brandAnchorEpoch: s.brandAnchorEpoch + 1,
+      }));
+    };
+  }, []);
+
+  return (
+    <>
+      {/* The compact particle anchor — same content and typography source as
+          the desktop [data-hero-brand] span (see the desktop stage): "Sersan
+          AI", Switzer semibold, decorative, opacity 0 forever. 13vw per the
+          intro one-beat (≈50.7px cap at 390px, ≈60vw wide). translateY in svh
+          (the stage's own unit): 16svh puts the wordmark centre ≈66svh —
+          below the mark's lockup (spans ≈35–57vh on 390×844) and above the
+          eclipse arc (≈76–85vh). START value: tune live against the render,
+          exactly as desktop's 18vh was. Absolute → zero height contribution
+          (home stays ≤14.5vp). */}
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 flex items-center justify-center pointer-events-none"
+      >
+        <span
+          data-hero-brand
+          data-hero-brand-compact
+          className="font-sans font-semibold text-[13vw] leading-none tracking-[-0.045em] text-ink inline-block whitespace-nowrap"
+          style={{
+            opacity: 0,
+            transform: "translateY(16svh)",
+            willChange: "opacity",
+          }}
+        >
+          Sersan AI
+        </span>
+      </div>
+      {/* Skip affordance — bottom-right mono label, ships neutral (opacity 0,
+          no pointer target, out of tab order, aria-hidden); the rAF above
+          flips it live once the formed brand has held. Above the inert
+          panels (z-30) so it stays reachable while they are hidden. */}
+      <button
+        ref={labelRef}
+        type="button"
+        tabIndex={-1}
+        aria-hidden="true"
+        onClick={() => skipRef.current()}
+        className="absolute bottom-8 right-8 z-30 inline-flex items-center rounded-full px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-mute"
+        style={{ opacity: 0, pointerEvents: "none", willChange: "opacity" }}
+      >
+        {skipLabel}
+      </button>
+    </>
+  );
+}
+
 function CompactSpine({
   groups,
   stageById,
@@ -982,6 +1207,47 @@ function CompactSpine({
 }) {
   const outerRef = useRef<HTMLElement | null>(null);
   const progressRef = useRef<number>(0);
+  const scrimRef = useRef<HTMLDivElement | null>(null);
+
+  // Phase 4b gate. `backend` (not level alone): `[data-hero-brand]` presence
+  // has side effects (navbar header-hide) and must never appear on a phone
+  // whose renderer can't drive the beat (WebGL2 fallback). backend is written
+  // in Scene onCreated — before HeroTextParticles' build could ever succeed —
+  // and this component re-renders on the store flip. `level` is 0 until
+  // tierStore.resolve() → false until then. HeroTextParticles keeps its own
+  // WebGPU probe as the last line of defence; a WebGPU phone whose text build
+  // fails (fonts/compute) leaves the H1 visible by construction (StagePanel
+  // keys the crossfade on `morph.active`, which only the build sets).
+  const level = useTierStore((s) => s.fxBudget.level);
+  const backend = useTierStore((s) => s.backend);
+  const brandArmed = HERO_BRAND_COMPACT && level >= 2 && backend === "webgpu";
+
+  // Scrim dimmer (compact twin of the desktop one below in the main
+  // component): the centred 0.82-alpha navy wash paints OVER the canvas and
+  // would swallow the particle brand at the frame centre. While the morph
+  // owns the hero it drops to a whisper and eases back exactly as domReveal
+  // brings the DOM H1 in. Runs ONLY while brandArmed — every other phone
+  // never starts this loop, and the inline opacity is cleared on teardown so
+  // the scrim returns to its stylesheet state.
+  useEffect(() => {
+    if (!brandArmed) return;
+    let raf = 0;
+    let last = -1;
+    const tick = () => {
+      const m = useTextMorphStore.getState();
+      const o = m.active ? 0.15 + 0.85 * m.domReveal : 1;
+      if (o !== last) {
+        last = o;
+        if (scrimRef.current) scrimRef.current.style.opacity = String(o);
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      if (scrimRef.current) scrimRef.current.style.opacity = "";
+    };
+  }, [brandArmed]);
 
   useGSAP(
     () => {
@@ -1060,8 +1326,11 @@ function CompactSpine({
             "lite" (Scene.tsx routes home → HeroLogo for every tier but "off"),
             so this is what holds the headline at AA over the spore mark. It
             fades to transparent at the edges so the filament and the mark's
-            silhouette still read. */}
+            silhouette still read. Phase 4b: while the compact brand beat owns
+            the hero the dimmer effect above drops it (0.15 + 0.85·domReveal)
+            — otherwise the 0.82 wash paints over the particle brand. */}
         <div
+          ref={scrimRef}
           aria-hidden="true"
           className="absolute inset-0 pointer-events-none"
           style={{
@@ -1069,6 +1338,12 @@ function CompactSpine({
               "radial-gradient(120% 80% at 50% 50%, hsl(var(--bg) / 0.82) 0%, hsl(var(--bg) / 0.55) 55%, transparent 100%)",
           }}
         />
+
+        {/* Phase 4b: the compact "Sersan AI" particle anchor + tap/Esc skip,
+            capable phones only (brandArmed). Absent → this stage is exactly
+            what it was before the phase. Rendered BEFORE the panels so the
+            DOM order matches the desktop stage (anchor, then panels). */}
+        {brandArmed && <CompactHeroBrand skipLabel={copy.skipIntro} />}
 
         {/* The same three grouped panels as desktop, absolutely stacked, each
             lit strictly inside its own DESKTOP_GROUPS range. Every panel's

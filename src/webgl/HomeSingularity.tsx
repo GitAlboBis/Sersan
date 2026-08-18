@@ -111,6 +111,33 @@
  * single camera authority having written camera.position earlier in the same
  * priority-0 pass), no rect reads, no per-frame allocations, clamped-dt
  * damps.
+ *
+ * LITE (mobile-parity plan Phase 4b — capable phones): the Scene consumption
+ * site mounts `<HomeSingularity lite />` when `fxBudget.raymarchLite &&
+ * backend === "webgpu"` (level 2 only; level 3 ⇒ raymarchLite false ⇒ the
+ * desktop mount is byte-identical with lite=false). In lite the march runs
+ * at the SEQ low step — `uIterations = SEQ.ITER_LO (64)`, `uStep =
+ * SEQ.STEP_LO (0.0142)`, path product 1.818 ≈ the factory's 128×0.0071×2 =
+ * 1.82 — iterations and step MUST move inversely (blackHoleMaterial contract).
+ * Fallback knob if the Phase 6 measure fails: 48 iterations with step
+ * 0.0071·128/48 ≈ 0.01893 (product 1.817). While the eclipse can be visible
+ * lite also holds `tierStore.dprCap` at 1 (the coarse range is {1,1,1.5}: the
+ * monitor may climb to 1.25/1.5 after its hysteresis, so the cap is
+ * meaningful), cleared with a `dprCap === 1` guard on the first
+ * visible→invisible edge / unmount so singularity-passage's own caps
+ * (SEQ.LITE_DPR_CAP 1 / SEQ.DPR_CAP 1.5) are never clobbered — the two
+ * writers cannot overlap in time (the hole is faded out within ~0.7
+ * viewports; the passage caps far below). The intro lifecycle (arm on
+ * assembleDone, compileAsync warm, melt on domReveal, active/introSkipped
+ * gates) is UNCHANGED and works on touch because the compact beat in
+ * HeroTextParticles drives the very same gateProgress a desktop wheel does.
+ * The one signal flowing the OTHER way is `textMorphStore.eclipseReady`:
+ * set true right after this island's build resolves (lite AND full path —
+ * on desktop nothing reads it), false again on dispose/rebuild and by the
+ * provider's nav-into-home reset. The compact auto-driver holds the formed
+ * brand for at least AUTO_HOLD_S and extends the hold up to AUTO_HOLD_MAX_S
+ * until this is true, so the melt never starts over an eclipse that has not
+ * risen on a slow phone.
  */
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -121,6 +148,8 @@ import { useScrollStore } from "./store/scrollStore";
 import { useIntroStore } from "./store/introStore";
 import { useTextMorphStore } from "./store/textMorphStore";
 import { usePointerStore, installPointerTracking } from "./store/pointerStore";
+import { useTierStore } from "./store/tierStore";
+import { SEQ } from "./store/seqStore";
 import type { SingularityBuild } from "./singularity/blackHoleMaterial";
 
 /** tan(FOV/2) — the one trig constant the placement math needs. */
@@ -211,9 +240,40 @@ const HOLE_FAR_FRAC = 0.58;
  * multiplicatively with the melt fade-out and the route reveal. */
 const IGNITE_DURATION = 1.2;
 
-export function HomeSingularity() {
+/**
+ * LITE march step (see the header): the SEQ low step, shared with
+ * SequenceSingularity's scripted quality band. Kept as named constants here
+ * so the fallback knob (48 / 0.01893) is a one-line swap.
+ */
+const HOME_LITE_ITER = SEQ.ITER_LO;
+const HOME_LITE_STEP = SEQ.STEP_LO;
+/** DPR held while the lite eclipse can be visible (coarse range {1,1,1.5}). */
+const HOME_LITE_DPR_CAP = 1;
+
+/**
+ * Release the lite DPR cap — GUARDED on the store still holding OUR value, so
+ * singularity-passage's caps (SEQ.LITE_DPR_CAP 1 / SEQ.DPR_CAP 1.5, written
+ * far below the hero and cleared by the passage itself) are never clobbered.
+ * One-shot per hold (the ref flips false first); a plain store write, never
+ * per-frame.
+ */
+function releaseLiteCap(cappedRef: { current: boolean }): void {
+  cappedRef.current = false;
+  const ts = useTierStore.getState();
+  if (ts.dprCap === HOME_LITE_DPR_CAP) ts.setDprCap(null);
+}
+
+export function HomeSingularity({ lite = false }: { lite?: boolean }) {
   const { camera, size, gl, scene } = useThree();
   const groupRef = useRef<THREE.Group>(null);
+  /** True while THIS island holds tierStore.dprCap at HOME_LITE_DPR_CAP
+   * (lite only). Cleared — guarded on the store still holding OUR value —
+   * on the first visible→invisible edge after the eclipse has shown, on the
+   * gate branch once it has shown, and on unmount. */
+  const cappedRef = useRef(false);
+  /** Set once the eclipse has actually been visible this build (lite: the
+   * cap is only released after the beat, never on the pre-ignite frames). */
+  const shownRef = useRef(false);
 
   // --- ARM on the assembleDone edge (regression fix — see the header) -------
   // Nothing below — not even the dynamic imports — may start before the
@@ -273,6 +333,15 @@ export function HomeSingularity() {
         // the shared factory stays untouched, /audit keeps its exact behavior.
         built.material.depthWrite = false;
         built.material.side = THREE.FrontSide;
+        // LITE march step (plan Phase 4b, capable phones only): iterations
+        // and step move INVERSELY so the path product stays ≈1.82 (the
+        // blackHoleMaterial contract; 64 × 0.0142 × 2 = 1.818). Fallback if
+        // the Phase 6 measure fails: 48 with step 0.0071·128/48 ≈ 0.01893.
+        // Desktop (lite=false) keeps the factory default 128 / 0.0071.
+        if (lite) {
+          built.u.uIterations.value = HOME_LITE_ITER;
+          built.u.uStep.value = HOME_LITE_STEP;
+        }
 
         // WARM the march pipeline before the mesh ever mounts: even armed
         // post-assemble, a synchronous first-frame compile would hitch the
@@ -298,14 +367,46 @@ export function HomeSingularity() {
       .then(() => {
         if (cancelled || !built) return;
         setBuild(built);
+        // HOLD GATE signal (plan Phase 4b): the island is built, warmed and
+        // ready to ignite behind the formed wordmark → tell the compact
+        // auto-driver in HeroTextParticles it may start the melt once its
+        // MINIMUM hold has elapsed (it otherwise waits, up to
+        // AUTO_HOLD_MAX_S, so a slow phone never melts the brand over an
+        // eclipse that has not risen). Written on the lite AND full path —
+        // one store write per build; on desktop nothing reads it (the gate
+        // is wheel-driven there). Reset false in this effect's cleanup and by
+        // the provider's nav-into-home replay reset.
+        useTextMorphStore.getState().setEclipseReady(true);
+        // LITE dprCap (plan Phase 4b): hold the render DPR at 1 while the
+        // eclipse can be visible. On coarse the DPR is already 1 at this
+        // point (dprInitial 1), so the cap costs no realloc hitch during the
+        // calm hold beat — it only prevents the monitor climbing to 1.25/1.5
+        // under the fullscreen march. Released with a guard on the first
+        // visible→invisible edge / unmount (see the frame loop + cleanup);
+        // singularity-passage's own caps are written far below the hero, so
+        // the two writers never overlap in time.
+        if (lite) {
+          useTierStore.getState().setDprCap(HOME_LITE_DPR_CAP);
+          cappedRef.current = true;
+        }
       });
 
     return () => {
       cancelled = true;
       built?.dispose();
       setBuild(null);
+      shownRef.current = false;
+      // HOLD GATE signal back to false: the island is disposing (unmount) or
+      // rebuilding (dep change) — until the next build resolves there is no
+      // eclipse ready to show, and the compact auto-driver must not read a
+      // stale true. Plain store write, once per dispose.
+      useTextMorphStore.getState().setEclipseReady(false);
+      // Guarded clear (releaseLiteCap): only if the store still holds OUR
+      // cap value — a passage cap of 1.5 is left alone; the passage clears
+      // its own. Dead when not lite (cappedRef never true there).
+      if (cappedRef.current) releaseLiteCap(cappedRef);
     };
-  }, [armed, gl, camera, scene]);
+  }, [armed, gl, camera, scene, lite]);
 
   // Pointer tracking for the parallax (refcounted window listener; no-op on
   // coarse pointers / reduced-motion — parallax simply stays centered there).
@@ -380,6 +481,9 @@ export function HomeSingularity() {
       group.visible = false;
       holeField.active = false;
       holeField.strength = 0;
+      // LITE: the beat is over for good on this branch (skipped / anchor
+      // gone) — release the DPR cap (guarded, one-shot; dead when not lite).
+      if (cappedRef.current) releaseLiteCap(cappedRef);
       return;
     }
 
@@ -412,8 +516,24 @@ export function HomeSingularity() {
     if (!group.visible) {
       holeField.active = false;
       holeField.strength = 0;
+      // LITE: first visible→invisible edge AFTER the eclipse has shown (the
+      // melt landed) → release the DPR cap. Pre-ignite frames (opacity still
+      // rising from 0) never release: shownRef is only set below. The
+      // `domReveal >= MELT_END` clause covers the beat that ended BEFORE the
+      // island could ever show (a scroll-abort during the entry, a late
+      // build): the melt is fully landed, the hole is invisible for good on
+      // touch (the compact beat never rewinds gateProgress), so the cap
+      // must not be held for the rest of the page. Guarded one-shot; dead
+      // when not lite (cappedRef never true there).
+      if (
+        cappedRef.current &&
+        (shownRef.current || morph.domReveal >= MELT_END)
+      ) {
+        releaseLiteCap(cappedRef);
+      }
       return;
     }
+    shownRef.current = true;
 
     // --- Pointer parallax: TRANSLATION ONLY (±PARALLAX_MAX, damped). The
     // group counter-moves (near-layer depth parallax); uCamLocal keeps the
@@ -528,6 +648,11 @@ export function HomeSingularity() {
       /** False until assembleDone armed the deferred build (regression fix). */
       armed,
       hasBuild: !!build,
+      /** Plan Phase 4b: lite march step (ITER_LO/STEP_LO) + dprCap hold. */
+      lite,
+      get capped() {
+        return cappedRef.current;
+      },
       project: () => {
         const g = groupRef.current;
         if (!g || !g.visible) return null;

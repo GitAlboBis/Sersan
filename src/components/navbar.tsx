@@ -13,10 +13,11 @@ import { SersanLogo } from "@/components/sersan-logo";
 import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 import { START_HREF } from "@/lib/site";
-import { SPINE_TRAVEL_VH } from "@/lib/spine";
+import { SPINE_TRAVEL_VH, COMPACT_SPINE_TRAVEL_SVH } from "@/lib/spine";
 import { getLenis } from "@/lib/lenis-singleton";
 import { useAudioStore } from "@/webgl/store/audioStore";
 import { useScrollStore } from "@/webgl/store/scrollStore";
+import { useTextMorphStore } from "@/webgl/store/textMorphStore";
 import {
   armCover,
   disarmCover,
@@ -32,11 +33,23 @@ type NavItem = { href: string; label: string; labelIt: string };
  * header must be INVISIBLE — during the gated intro (page parked at scrollY
  * 0) and while the scroll still sits inside the pinned cinematic spine — and
  * slide/fade in once the visitor has scrolled this fraction of the spine's
- * scrub travel (the owner's 70–90% band → 0.8 ⇒ reveal at ≈232vh of the
- * 290vh travel, while the final spine group is settling). Applies ONLY where
- * the desktop pinned hero actually exists (detected via [data-hero-brand] —
- * the same probe HeroTextParticles uses); interior routes, the mobile
- * fallback and reduced-motion keep the header exactly as before.
+ * scrub travel (the owner's 70–90% band → 0.8 ⇒ reveal at ≈172vh of the
+ * 215vh desktop travel — SPINE_TRAVEL_VH — while the final spine group is
+ * settling). Applies ONLY where a pinned hero brand anchor actually exists
+ * (detected via [data-hero-brand] — the same probe HeroTextParticles uses);
+ * interior routes, the stacked fallback and reduced-motion keep the header
+ * exactly as before.
+ *
+ * Mobile-parity Phase 4b: the CompactSpine now renders the same anchor on
+ * capable phones, tagged `data-hero-brand-compact`. That anchor sits inside
+ * an 80svh scrub (COMPACT_SPINE_TRAVEL_SVH), so the reveal band is measured
+ * against the COMPACT travel there (0.8 × 80 = 64svh) — the same fraction,
+ * the real travel. The desktop numbers above are unchanged (same element,
+ * same SPINE_TRAVEL_VH). Because the compact anchor mounts AFTER this
+ * component's mount-time probe (CompactSpine only arms it once the render
+ * backend resolves), the probe also re-runs on textMorphStore's
+ * `brandAnchorEpoch` bump — otherwise the header would sit visible until the
+ * first scroll tick and then vanish. The epoch never changes on desktop.
  */
 const HERO_HEADER_REVEAL = 0.8;
 
@@ -626,20 +639,37 @@ export function Navbar() {
   useEffect(() => {
     const update = () => {
       setScrolled(window.scrollY > 24);
-      // [data-hero-brand] exists ONLY in the desktop pinned hero layout
-      // (HeroTextParticles gates its mount on the same probe): interior
-      // routes / mobile fallback / reduced motion → header always visible.
-      // The attribute query per tick is a µs-class lookup; the setState
-      // bail-out keeps React out of the hot path entirely.
-      const heroLayout =
-        pathname === "/" && !!document.querySelector("[data-hero-brand]");
+      // [data-hero-brand] exists ONLY inside a pinned hero stage — the
+      // desktop spine's SSR'd span, or (Phase 4b) the CompactSpine's
+      // `data-hero-brand-compact` anchor on capable phones (HeroTextParticles
+      // gates its build on the same probe): interior routes / weak phones /
+      // reduced motion → header always visible. The attribute query per tick
+      // is a µs-class lookup; the setState bail-out keeps React out of the
+      // hot path entirely. Travel-aware: the compact anchor lives under an
+      // 80svh scrub, the desktop one under 215vh — same fraction of each.
+      const brandEl = document.querySelector("[data-hero-brand]");
+      const heroLayout = pathname === "/" && !!brandEl;
+      const travelVh = brandEl?.hasAttribute("data-hero-brand-compact")
+        ? COMPACT_SPINE_TRAVEL_SVH
+        : SPINE_TRAVEL_VH;
       const revealPx =
-        window.innerHeight * (SPINE_TRAVEL_VH / 100) * HERO_HEADER_REVEAL;
+        window.innerHeight * (travelVh / 100) * HERO_HEADER_REVEAL;
       setHeroHidden(heroLayout && window.scrollY < revealPx);
     };
     update();
     const unsubscribe = useScrollStore.subscribe(update);
-    return unsubscribe;
+    // Phase 4b: the compact anchor mounts/unmounts AFTER this mount-time
+    // probe (CompactSpine arms it once tierStore.backend resolves) — re-probe
+    // on its epoch signal so the header hides before the preloader lifts
+    // instead of flashing away on the first scroll tick. One integer compare
+    // per store notification; the epoch never changes on desktop.
+    const offBrand = useTextMorphStore.subscribe((s, prev) => {
+      if (s.brandAnchorEpoch !== prev.brandAnchorEpoch) update();
+    });
+    return () => {
+      unsubscribe();
+      offBrand();
+    };
   }, [pathname]);
 
   // While the dropdown is open: lock the background (freeze Lenis smooth-scroll

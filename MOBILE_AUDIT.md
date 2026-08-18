@@ -159,7 +159,7 @@ wayfinding.
 | **Singularity passage** (380vh black hole) | 180vh of empty `aria-hidden` scroll | **No — worst offender** | Cut to ~120svh. `Sticky beat` + scrubbed WebGL at reduced budget (see §5). This is the "wow" payload. |
 | **Founders portrait morph** (WebGL particles) | Native snap rail, grayscale photos | No | `Centre-of-viewport focus` drives the colour reveal + a scrubbed 2-stage morph. Second "wow" payload. |
 | **Case-studies rail** (pinned, drag, DOF, RailPlanes) | Native snap rail, no media | No | `Drag rail` primitive: progress affordance, per-card scrub, media revealed at centre. |
-| **Hero spine** (315vh, 3 panels, particle text) | Stacked `80svh` blocks | Borderline | `Sticky beat` ×2 with scrubbed panel cross-fade. Keep the particle intro off. |
+| **Hero spine** (315vh, 3 panels, particle text) | Stacked `80svh` blocks | Borderline | `Sticky beat` ×2 with scrubbed panel cross-fade. Keep the particle intro off. **SUPERSEDED 2026-08-18** (`plans/2026-08-17-mobile-parity.md` Phase 4b): capable phones (`fxBudget.level 2` + WebGPU) now get the "Sersan AI" particle intro as an auto-play beat inside the compact stage — no scroll hijack, tap = skip, kill-switch `HERO_BRAND_COMPACT`. |
 | **Services POV pan** | Stacked grid | **Yes** | Add `Staged reveal` polish only. |
 | **Fit verdict beats** | Static settled list | **Yes** | Add `Staged reveal` polish only. |
 | **Audit week timeline** (580vh pin + drag) | Flat stacked cards | No | `Drag rail` — a 6-station horizontal beat is natural on touch. |
@@ -168,7 +168,7 @@ wayfinding.
 | **Resource hover preview** | Nothing | Borderline | `Press state` feedback; no preview layer needed. |
 | **FLIP route transitions** | Plain navigation | No | Reuse `displacement-wipe.tsx`. |
 | **Custom cursor / magnetic / tilt** | Nothing | No | `Press state` primitive. |
-| **Postprocessing (bloom/DOF)** | Off | **Yes — keep off** | Fill-rate suicide on tile GPUs. |
+| **Postprocessing (bloom/DOF)** | Off | ~~**Yes — keep off**~~ **SUPERSEDED 2026-08-17** | Was "fill-rate suicide on tile GPUs". Now gated on `fxBudget.postFx` (plan Phase 2): level 2 phones mount the same chain in "lite" (WebGL `Bloom levels 4` + no Noise; WebGPU same graph at DPR 1, grain/fluid off), behind the real-device gate in `docs/recon-2026-08-17/DEVICE_LOG.md`; `stepDownBudget()` turns it off by itself if the phone cannot hold frame. |
 | **Pointer flowmap / fluid** | Off | **Yes — keep off** | No pointer to track. |
 | **Scroll snap engine** | Off on touch | **Yes — keep off** | Deliberate and correct ([scroll-snap.ts:194](src/lib/scroll-snap.ts:194)). |
 | **`prefers-reduced-motion` → no canvas** | Honoured | **Yes — keep** | Do not touch. |

@@ -131,10 +131,42 @@ interface TextMorphState {
    * replay reset — the skip wins for the rest of the session.
    */
   introSkipped: boolean;
+  /**
+   * DOM→island "anchor exists / anchor gone" signal (mobile-parity Phase 4b).
+   * Bumped by the DOM (CompactHeroBrand in cinematic-system-scroll.tsx)
+   * whenever the COMPACT `[data-hero-brand]` anchor (`data-hero-brand-compact`)
+   * mounts or unmounts; the desktop SSR'd span never bumps it, so on desktop
+   * this stays 0 for the whole page lifetime. Readers: HeroTextParticles
+   * (build-effect dep — the compact anchor mounts AFTER the island's first
+   * build attempt, because CompactSpine only renders it once tierStore.backend
+   * resolves; without a re-run the phone intro would be silently dead) and
+   * Navbar (re-probe of the header-hide, which keys on the anchor's presence).
+   * A monotonic integer, never reset: NOT touched by SmoothScrollProvider's
+   * nav-into-home reset. Zero per-frame writes.
+   */
+  brandAnchorEpoch: number;
+  /**
+   * Eclipse→beat "ready to show" signal (mobile-parity Phase 4b, hold gate).
+   * True once HomeSingularity's deferred build (three/webgpu chunk + march
+   * factory + compileAsync warm) has resolved and the island is ready to
+   * ignite behind the formed wordmark; false before, and reset to false when
+   * that island disposes/rebuilds (its build-effect cleanup) and by
+   * SmoothScrollProvider's nav-into-home replay reset. Reader:
+   * HeroTextParticles' TOUCH auto-driver (compact anchor only) — the hold
+   * after the entry lasts AUTO_HOLD_S at minimum and extends up to
+   * AUTO_HOLD_MAX_S until this is true, so the melt never starts over an
+   * eclipse that has not risen yet on a slow phone. Read via getState() in
+   * the frame loop (transient, no subscription); written a handful of times
+   * per page — never per frame. On desktop it is written the same way but
+   * nothing reads it (the desktop gate is wheel-driven).
+   */
+  eclipseReady: boolean;
+  /** Setter for `eclipseReady` (HomeSingularity build resolve / dispose). */
+  setEclipseReady: (ready: boolean) => void;
 }
 
 const createTextMorphStore = () =>
-  create<TextMorphState>(() => ({
+  create<TextMorphState>((set) => ({
     active: false,
     domReveal: 1,
     gateProgress: 0,
@@ -149,6 +181,9 @@ const createTextMorphStore = () =>
     camRoll: 0,
     tiltDone: false,
     introSkipped: false,
+    brandAnchorEpoch: 0,
+    eclipseReady: false,
+    setEclipseReady: (ready) => set({ eclipseReady: ready }),
   }));
 
 declare global {
