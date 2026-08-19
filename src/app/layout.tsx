@@ -15,7 +15,6 @@ import { CardTiltController } from "@/components/fx/card-tilt-controller";
 import { HeadingChoreographer } from "@/components/fx/heading-choreographer";
 import { LabelScrambler } from "@/components/fx/label-scrambler";
 import { CustomCursor } from "@/components/fx/custom-cursor";
-import { WordmarkLab } from "@/components/fx/wordmark-lab";
 import { FlipHandoffOverlay } from "@/components/fx/flip-handoff-overlay";
 import { CommandPalette } from "@/components/fx/command-palette";
 import { AudioTriggers } from "@/components/fx/audio-triggers";
@@ -33,9 +32,9 @@ import { Analytics } from "@vercel/analytics/next";
 //   6.00%, 260 = 6.71%), because the additive sub-pixel particle render
 //   scatters light and reads lighter than solid artwork, so matching the
 //   artwork's stem number ships a wordmark that looks too thin — 300 (7.86%)
-//   still did, and 340 is where the owner settled on the live panel. The
-//   Wordmark Lab (`components/fx/wordmark-lab.tsx`, `?wordmark`) cycles the
-//   rest live.
+//   still did, and 340 is where the owner settled, judging the live particle
+//   render rather than the arithmetic. The rest of the ladder is kept as the
+//   measured record of that comparison.
 //   Used for the SERSAN wordmark, nothing else.
 // - Display: Fraunces (variable, optical sizing + italic) — the editorial
 //   serif for big headings. Editorial New is no longer distributed by
@@ -62,12 +61,12 @@ const fraunces = Fraunces({
 //     `document.fonts.ready` in the same Promise.all as its WebGPU imports
 //     (webgl/HeroTextParticles.tsx) BEFORE it calls sampleTextPoints, and the
 //     anchor is SSR'd, so the face is already requested by layout when that
-//     await is made. The Wordmark Lab additionally awaits `document.fonts.load`
-//     for the weight it just wrote before bumping the resample epoch.
+//     await is made.
 // The files are still requested normally (the anchors use them); they are just
-// no longer `<link rel=preload>`-ed ahead of the real critical path. Once the
-// owner has frozen the weight, deleting the unused `src` entries takes the
-// remaining ~61KB of transfer off too.
+// no longer `<link rel=preload>`-ed ahead of the real critical path. The weight
+// is now frozen at 340, so deleting the six unused `src` entries would take the
+// remaining ~61KB of transfer off too — kept for now as the ladder that
+// documents the choice.
 const sersanDisplay = localFont({
   variable: "--font-sersan-display",
   preload: false,
@@ -290,12 +289,6 @@ export default function RootLayout({
             {/* Mono eyebrow/label decode-scramble — one delegated observer. */}
             <LabelScrambler />
             <CustomCursor />
-            {/* Wordmark Lab — live tuner for the SERSAN particle wordmark's
-                font weight + particle disc size (home route only; dev or
-                `?wordmark`, never on an ordinary production load). Lets the
-                owner settle the two coupled numbers against the live render;
-                renders null for everyone else. */}
-            <WordmarkLab />
             {/* Persistent card→detail Flip "flying image" handoff overlay.
                 Renders null normally; on arrival at a /case-studies/<slug> with
                 a fresh armed snapshot it flies a fixed image clone (z-70, above

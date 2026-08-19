@@ -56,7 +56,6 @@ import { useIntroStore } from "./store/introStore";
 import { useTextMorphStore } from "./store/textMorphStore";
 import { useFxStore } from "./store/fxStore";
 import { useTierStore, type SceneTier } from "./store/tierStore";
-import { wordmarkTuner } from "./store/wordmarkTuner";
 import { holeField } from "./HomeSingularity";
 
 interface HeroTextParticlesProps {
@@ -193,9 +192,6 @@ interface MorphBuild {
   uSizeComp2: { value: number };
   uSizeComp3: { value: number };
   uPointSize: { value: number };
-  /** Colour multiplier — the wordmark's GLOW, seeded from the build's
-   * `EMISSIVE`. Live-overridable from the Wordmark Lab (wordmarkTuner.glow). */
-  uEmissive: { value: number };
   uPixelRatio: { value: number };
   uViewport: { value: THREE.Vector2 };
   /** Flyby attractor (owner 2026-08-07): LOCAL-space center, world-unit
@@ -458,10 +454,10 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
         // ICS-media-reference look (user 2026-06-10): bright glowing sprites,
         // dense enough to read as solid strokes — hot emissive, near-white ink.
         //
-        // POINT_SIZE 9 — the owner's own value, settled live on the
-        // `?wordmark` panel (2026-08-18) one notch above the calibrated 8 that
-        // had been RESTORED earlier the same day, after a one-day detour to 4
-        // that was made on a false premise.
+        // POINT_SIZE 9 — the owner's own value, settled against the live
+        // render (2026-08-18) one notch above the calibrated 8 that had been
+        // RESTORED earlier the same day, after a one-day detour to 4 that was
+        // made on a false premise.
         //
         // WHAT THE NUMBER IS IN SCREEN TERMS: it is NOT CSS px, and it is not
         // in the same units as the stroke width. The render stage computes
@@ -484,9 +480,7 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
         // the owner's "too thin" report, while 8→9 deposits ~27% MORE ink per
         // particle ((9/8)² = 1.27). Raise it to deposit more light per
         // particle (paying in edge softness); lower it only to thin the ink on
-        // purpose. The Wordmark Lab (`?wordmark`) overrides this uniform live
-        // through wordmarkTuner.pointSize, with the per-weight stem table and
-        // the mote-diameter readout: components/fx/wordmark-lab.tsx.
+        // purpose.
         {
           SPRING: 42,
           DAMPING: 6.5,
@@ -793,27 +787,6 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
     const dpr = Math.min(gl.getPixelRatio(), 2);
     build.uPixelRatio.value = dpr;
     build.uViewport.value.set(size.width * dpr, size.height * dpr);
-
-    // WORDMARK LAB override (dev/`?wordmark` only — components/fx/wordmark-lab
-    // .tsx). A plain property read on a globalThis-pinned module ref (the
-    // holeField / entryProgressRef pattern): null for every real visitor, so
-    // this is one null compare per frame and the built-in POINT_SIZE stands.
-    // Re-applied every frame on purpose — a resample rebuilds the sim and
-    // re-bakes the default, and the panel's value must survive that.
-    const discOverride = wordmarkTuner.pointSize;
-    if (discOverride !== null && build.uPointSize.value !== discOverride) {
-      build.uPointSize.value = discOverride;
-    }
-    // Same channel, same contract, for the GLOW (`uEmissive`, seeded from
-    // EMISSIVE: 4 above). This is the knob that decides whether the R's cut
-    // and the A's apex survive the post chain: at 4 the motes sit 4× above
-    // the 1.0 Bloom threshold and the glow veils them (measured: the cut
-    // renders at ~97% of stroke luminance, i.e. invisible — and widening the
-    // gap does not move that number).
-    const glowOverride = wordmarkTuner.glow;
-    if (glowOverride !== null && build.uEmissive.value !== glowOverride) {
-      build.uEmissive.value = glowOverride;
-    }
 
     // Sleep when nothing can move: brand fully dissolved, gate released and
     // not re-engaged (raw gateProgress pinned at 1). A reverse re-engage

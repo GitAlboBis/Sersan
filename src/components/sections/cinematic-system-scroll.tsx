@@ -1170,14 +1170,15 @@ function CompactHeroBrand({ skipLabel }: { skipLabel: string }) {
           answer to the owner's actual "too thin". 260 runs 5.253em and 300
           runs 5.296em (−0.812% / +0.818% — the desktop span's per-weight
           table, read off the patched faces' hmtx), so ×0.9919 returned the
-          size to 9.8vw. 9.8vw → 9.69vw with 300→340 (the owner's own call on
-          the live `?wordmark` panel — 300 was still short of the weight he
-          wanted): 340 runs 5.355em (+1.11% over 300), so ×0.9890 and 9.69 ×
-          5.355 ⇒ ≈51.89vw wide — the same share every step of the chain has
-          held. (At 390px: 37.79px font-size ⇒ 26.45px cap ⇒ a ≈2.57px stem at
+          size to 9.8vw. 9.8vw → 9.69vw with 300→340 (the owner's own call,
+          made against the live particle render — 300 was still short of the
+          weight he wanted): 340 runs 5.355em (+1.11% over 300), so ×0.9890 and
+          9.69 × 5.355 ⇒ ≈51.89vw wide — the same share every step of the
+          chain has held. (At 390px: 37.79px font-size ⇒ 26.45px cap ⇒ a ≈2.57px stem at
           weight 340.) The weight is an INLINE style for the same reason as the
-          desktop span — the Wordmark Lab writes `style.fontWeight` on BOTH
-          anchors. translateY in svh (the stage's own unit): 16svh puts the
+          desktop span (see there): it is calibrated in lockstep with the size
+          above, so the two numbers live together — and BOTH anchors carry the
+          same weight. translateY in svh (the stage's own unit): 16svh puts the
           wordmark centre ≈66svh — below the
           mark's lockup (spans ≈35–57vh on 390×844) and above the eclipse arc
           (≈76–85vh) — UNCHANGED by the restyle. Absolute → zero height
@@ -1719,8 +1720,8 @@ export default function CinematicSystemScroll() {
             // ≈1687px vw — was 547/1684) and lands 549px wide at 1440×900,
             // i.e. 38.1% of the viewport, against the old 549px / 38.1%.
             // WEIGHT — 340 (2026-08-18, after 200→300→260→300→340; the last
-            // step is the owner's own call, settled live on the `?wordmark`
-            // panel). The 260 step was taken on the theory that the wordmark
+            // step is the owner's own call, settled against the live particle
+            // render). The 260 step was taken on the theory that the wordmark
             // read thin because the particle DISC overhung the stroke; it does
             // not — every mote is ~0.8 CSS px, ~9× narrower than the 7.0px stem
             // (the derivation lives on POINT_SIZE in
@@ -1760,9 +1761,9 @@ export default function CinematicSystemScroll() {
             // 38.13% at 200 and 549.1px / 38.13% at 300. Cap = 71.8px, stem =
             // 71.8 × 9.71% = 6.97px.
             // The weight itself is an INLINE style, not `font-light`/`font-[…]`:
-            // the Wordmark Lab (`components/fx/wordmark-lab.tsx`, `?wordmark`)
-            // tunes it by writing `style.fontWeight` on this very node, so the
-            // default lives in the same place the tuner writes.
+            // it is calibrated in lockstep with the size clamp above (every
+            // weight move re-runs that share-of-viewport arithmetic), so the
+            // two numbers are kept together on the node they describe.
             // POSITION — unchanged by the restyle. The +18vh push below the
             // flex center puts the mark ABOVE this line (see HeroLogo's
             // LOCKUP_* block). The translate is calibrated against the LIVE

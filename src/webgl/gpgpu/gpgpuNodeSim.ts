@@ -1018,19 +1018,10 @@ export interface TextMorphNodeBuild {
   uPointSize: UniformNode<number>;
   uPixelRatio: UniformNode<number>;
   uViewport: UniformNode<unknown>;
-  /**
-   * Colour multiplier, live-tunable on BOTH paths. Portrait: applied in the
-   * vertex stage inside `portraitColorExpr` (face brightness). Hero text: the
-   * last term of the fragment's `col`, seeded from `params.EMISSIVE` — the
-   * GLOW, and the reason the R's cut and the A's apex wash out. At the shipped
-   * 4 the motes sit far above the Bloom threshold (fxStore.bloomThreshold 1.0)
-   * and the glow veils the fine features; the Wordmark Lab drives this uniform
-   * live through `wordmarkTuner.glow` so the owner can find the value where
-   * the cut reads. It was a baked `float(params.EMISSIVE)` constant until
-   * 2026-08-19; the uniform's default is that same value, so an untouched
-   * build renders exactly as before.
-   */
-  uEmissive: UniformNode<number>;
+  /** Colour multiplier — PORTRAIT PATH ONLY (live-tunable emissive). Absent on
+   * the hero text path (which bakes params.EMISSIVE), so the hero graph is
+   * byte-identical. */
+  uEmissive?: UniformNode<number>;
   /** Flyby attractor center in the build's LOCAL space (park at 1e9 = off) —
    * the black-hole lean, owner 2026-08-07. Applied in the VERTEX stage as
    * displacement ONLY (no colour term — vSpeedF is untouched); never touches
@@ -1780,18 +1771,12 @@ export function createTextMorphComputeBuild(
   const uTravelTint = portrait
     ? (uniform(new Color().fromArray(portrait.travelTint ?? [0.16, 2.4, 3.0])) as UniformNode<ColorLike>)
     : null;
-  // Live-tunable emissive — ONE uniform, whichever path is live, so the value
-  // can be dialled without a rebuild. Portrait: face brightness, consumed in
-  // the vertex stage by `portraitColorExpr`. Hero text: the wordmark's GLOW,
-  // consumed as the last term of the fragment's `col` where a baked
-  // `float(params.EMISSIVE)` used to sit (2026-08-19 — the owner needs the
-  // glow, not the geometry, to make the R's cut read: at EMISSIVE 4 the motes
-  // clear the 1.0 Bloom threshold by 4× and the bloom veils the cut). The
-  // seed is the same number the constant carried, so an untouched build is
-  // numerically identical to the baked one.
-  const uEmissive = uniform(
-    portrait ? (portrait.emissive ?? 1) : params.EMISSIVE,
-  ) as UniformNode<number>;
+  // Live-tunable emissive on the portrait path (uniform, not a baked constant)
+  // so the human can dial face brightness without a rebuild. Hero path: null →
+  // the fragment keeps its `params.EMISSIVE` constant, byte-identical.
+  const uPortraitEmissive = portrait
+    ? (uniform(portrait.emissive ?? 1) as UniformNode<number>)
+    : null;
   /** Speed→travel-tint gain: fast (mid-flight) discs surge to the HDR cyan. */
   const PORTRAIT_TRAVEL_K = 0.16;
 
@@ -1839,7 +1824,7 @@ export function createTextMorphComputeBuild(
           (uTravelTint as unknown as AnyNode).toVec3(),
           clamp(heroSpeedExpr.mul(PORTRAIT_TRAVEL_K), 0.0, 1.0),
         );
-        return base.mul(uEmissive as unknown as AnyNode);
+        return base.mul(uPortraitEmissive as unknown as AnyNode);
       })()
     : null;
   const vPortraitColorF = hasPortrait ? varying(portraitColorExpr!) : null;
@@ -1867,10 +1852,7 @@ export function createTextMorphComputeBuild(
         .toVec3()
         .mul(float(1.0).add(vSpeedF.mul(0.25)))
         .mul(float(0.75).add(float(0.4).mul(vRandF)))
-        // GLOW. Was `float(params.EMISSIVE)`; the uniform is seeded with that
-        // exact value, so the shipped frame is unchanged — it is a uniform
-        // only so the Wordmark Lab can dial it live (see `uEmissive` above).
-        .mul(uEmissive as unknown as AnyNode);
+        .mul(float(params.EMISSIVE));
     }
     const alpha = a
       .mul(float(params.POINT_ALPHA))
@@ -1965,7 +1947,7 @@ export function createTextMorphComputeBuild(
     uPointSize,
     uPixelRatio,
     uViewport,
-    uEmissive,
+    uEmissive: uPortraitEmissive ?? undefined,
     uHole,
     uHoleStrength,
     uHoleRadius,
