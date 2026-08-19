@@ -1,13 +1,17 @@
 /**
- * Renders the preloader choreography frame by frame, from the SAME constants
- * and the SAME easing shapes as src/components/fx/preloader.tsx, so the motion
- * can be judged without a browser.
+ * Renders the preloader choreography frame by frame, from the SAME constants,
+ * the SAME easings and the SAME spark physics as src/components/fx/preloader.tsx,
+ * so the motion can be judged without a browser.
  *   → node design/logo-mark/preloader-filmstrip.mjs
  *
- * Row A — THE BREATH: one part→join→part cycle at 30% progress. The seam lights
- *         only as the faces meet.
- * Row B — THE LOCK at 100%: draw back, slam flush, seam flares white-hot and
- *         settles lit.
+ * Row A — ASSEMBLY: the halves arrive apart and close, gaining speed into the
+ *         strike; the seam ignites in the joint on contact.
+ * Row B — THE WHEEL: once joined the mark spins clockwise and winds up with the
+ *         counter, throwing sparks tangentially off both rim apexes, with the
+ *         travelling shine running its outline. Last frame is the exit burst.
+ *
+ * The canvas trail (destination-out 0.22 per frame) is emulated by drawing each
+ * spark's last TRAIL segments at 0.78^i alpha — the same decay.
  */
 import sharp from "sharp";
 
@@ -20,28 +24,123 @@ const SEAM =
 
 // --- mirrored from preloader.tsx ------------------------------------------
 const AX = { x: Math.sqrt(3) / 2, y: 0.5 };
-const SPLIT_MAX = 78;
-const SPLIT_CYCLE = 2.6;
-const SPLIT_FLOOR = 0.34;
-const SEAM_RANGE = 22;
-const SEAM_PEAK = 0.8;
-const LOCK_PULL = 34;
+const MARK_W = 162.38;
+const MARK_H = 200;
 const PAD_X = 110;
 const PAD_Y = 66;
-const VB = [-PAD_X, -PAD_Y, 162.38 + PAD_X * 2, 200 + PAD_Y * 2];
+const VB = [-PAD_X, -PAD_Y, MARK_W + PAD_X * 2, MARK_H + PAD_Y * 2];
+const MARK_CX = MARK_W / 2;
+const MARK_CY = MARK_H / 2;
+const GAP_START = 118;
+const JOIN_S = 1.55;
+const JOIN_FLASH_S = 0.65;
+const SPIN_MIN = 0.24;
+const SPIN_MAX = 3.4;
+const SPIN_CURVE = 1.6;
+const SEAM_RANGE = 22;
+const SEAM_PEAK = 0.8;
+const SHINE_FRACTION = 0.13;
+const SHINE_BASE = 0.28;
+const SHINE_PER_TURN = 0.34;
+const SPARK_MAX = 300;
+const SPARK_PER_TURN = 150;
+const SPARK_LIFE = 0.66;
+const SPARK_DRAG = 1.9;
+const SPARK_SPEED = 0.62;
 
-const seamAlpha = (gap, boost) => {
-  const close = Math.max(0, 1 - gap / SEAM_RANGE);
-  return Math.min(1, close * close * SEAM_PEAK + boost);
-};
+// The panel is drawn in viewBox units; the canvas layer maps 1:1 onto them.
+const RIM = MARK_CY; // the apex distance from the pivot
+const CENTER = { x: MARK_CX, y: MARK_CY };
+const TRAIL = 10;
+
+// --- spark simulation (same equations, same order of operations) -----------
+function makeSim() {
+  return { sparks: [], emitAcc: 0, arm: 0, torch: [] };
+}
+function emit(sim, a, turns, spread) {
+  if (sim.sparks.length >= SPARK_MAX) return;
+  const ux = Math.sin(a);
+  const uy = -Math.cos(a);
+  const rim = turns * Math.PI * 2 * RIM;
+  const sp = rim * SPARK_SPEED * (0.75 + Math.random() * 0.5);
+  const out = sp * (0.16 + Math.random() * 0.22);
+  sim.sparks.push({
+    x: CENTER.x + ux * RIM,
+    y: CENTER.y + uy * RIM,
+    vx: -uy * sp + ux * out + (Math.random() - 0.5) * spread,
+    vy: ux * sp + uy * out + (Math.random() - 0.5) * spread,
+    age: 0,
+    life: SPARK_LIFE * (0.6 + Math.random() * 0.7),
+    tone: Math.random(),
+    hist: [],
+  });
+}
+function step(sim, dt, turns, a) {
+  sim.emitAcc += turns * SPARK_PER_TURN * dt;
+  while (sim.emitAcc >= 1) {
+    sim.emitAcc -= 1;
+    sim.arm ^= 1;
+    emit(sim, a + (sim.arm ? Math.PI : 0), turns, RIM * 0.5);
+  }
+  sim.torch.unshift({ a, turns });
+  if (sim.torch.length > TRAIL) sim.torch.pop();
+  for (let i = sim.sparks.length - 1; i >= 0; i--) {
+    const s = sim.sparks[i];
+    s.age += dt;
+    if (s.age >= s.life) {
+      sim.sparks.splice(i, 1);
+      continue;
+    }
+    const px = s.x;
+    const py = s.y;
+    const drag = Math.max(0, 1 - SPARK_DRAG * dt);
+    s.vx *= drag;
+    s.vy *= drag;
+    s.x += s.vx * dt;
+    s.y += s.vy * dt;
+    s.hist.unshift([px, py, s.x, s.y, 1 - s.age / s.life]);
+    if (s.hist.length > TRAIL) s.hist.pop();
+  }
+}
+const TONE = (t) => (t > 0.82 ? "#F0FCFF" : t > 0.4 ? "#3BE1FF" : "#2A7FFF");
+
+function sparkSvg(sim) {
+  let out = "";
+  for (const s of sim.sparks) {
+    const col = TONE(s.tone);
+    s.hist.forEach(([x0, y0, x1, y1, k], i) => {
+      const a = k * k * Math.pow(0.78, i);
+      if (a < 0.02) return;
+      out += `<line x1="${x0.toFixed(1)}" y1="${y0.toFixed(1)}" x2="${x1.toFixed(1)}" y2="${y1.toFixed(1)}" stroke="${col}" stroke-opacity="${a.toFixed(3)}" stroke-width="${(0.6 + 1.8 * k).toFixed(2)}" stroke-linecap="round"/>`;
+    });
+  }
+  sim.torch.forEach(({ a, turns }, i) => {
+    if (turns <= 0.02) return;
+    const alpha = Math.min(0.5, turns * 0.15) * Math.pow(0.78, i);
+    if (alpha < 0.02) return;
+    for (const off of [0, Math.PI]) {
+      const end = a + off - Math.PI / 2;
+      const x0 = CENTER.x + Math.cos(end - 0.42) * RIM;
+      const y0 = CENTER.y + Math.sin(end - 0.42) * RIM;
+      const x1 = CENTER.x + Math.cos(end) * RIM;
+      const y1 = CENTER.y + Math.sin(end) * RIM;
+      out += `<path d="M ${x0.toFixed(1)} ${y0.toFixed(1)} A ${RIM} ${RIM} 0 0 1 ${x1.toFixed(1)} ${y1.toFixed(1)}" fill="none" stroke="#96ECFF" stroke-opacity="${alpha.toFixed(3)}" stroke-width="${(RIM * 0.035).toFixed(2)}" stroke-linecap="round"/>`;
+    }
+  });
+  return out;
+}
 
 const CW = 300;
 const CH = Math.round((CW * VB[3]) / VB[2]);
+const PERIM = 559.9; // measured in-page via getTotalLength()
 
-const frame = ({ gap, boost = 0, fill = 1, ghost = 1, seamFill = "#3BE1FF", label }) => {
+const panel = ({ gap, boost, spin, shine, shineAlpha, fill, ghost, sim, label }) => {
   const dx = (AX.x * gap).toFixed(2);
   const dy = (AX.y * gap).toFixed(2);
-  const a = seamAlpha(gap, boost).toFixed(3);
+  const close = Math.max(0, 1 - gap / SEAM_RANGE);
+  const seamA = Math.min(1, close * close * SEAM_PEAK + boost).toFixed(3);
+  const rot = `rotate(${spin.toFixed(2)} ${MARK_CX} ${MARK_CY})`;
+  const dash = `${(PERIM * SHINE_FRACTION).toFixed(1)} ${(PERIM * (1 - SHINE_FRACTION)).toFixed(1)}`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${CW}" height="${CH + 26}" viewBox="0 0 ${CW} ${CH + 26}">
   <rect width="${CW}" height="${CH + 26}" fill="#0B1422"/>
   <svg x="0" y="0" width="${CW}" height="${CH}" viewBox="${VB.join(" ")}">
@@ -55,77 +154,111 @@ const frame = ({ gap, boost = 0, fill = 1, ghost = 1, seamFill = "#3BE1FF", labe
       <filter id="sglow" x="-45%" y="-45%" width="190%" height="190%">
         <feDropShadow dx="0" dy="0" stdDeviation="9" flood-color="#3BE1FF" flood-opacity="0.9"/>
       </filter>
+      <filter id="shglow" x="-40%" y="-40%" width="180%" height="180%">
+        <feDropShadow dx="0" dy="0" stdDeviation="4.5" flood-color="#9FEFFF" flood-opacity="0.95"/>
+      </filter>
       <clipPath id="rev"><rect x="${VB[0]}" y="${VB[1]}" width="${(VB[2] * fill).toFixed(2)}" height="${VB[3]}"/></clipPath>
     </defs>
-    <path d="${SEAM}" fill="${seamFill}" filter="url(#sglow)" opacity="${a}"/>
-    <g opacity="${ghost}">
-      <g transform="translate(${-dx} ${-dy})"><path d="${UPPER}" fill="#F4F6FA" fill-opacity="0.14"/></g>
-      <g transform="translate(${dx} ${dy})"><path d="${LOWER}" fill="#F4F6FA" fill-opacity="0.14"/></g>
-    </g>
-    <g clip-path="url(#rev)" filter="url(#glow)">
-      <g transform="translate(${-dx} ${-dy})"><path d="${UPPER}" fill="url(#lit)"/></g>
-      <g transform="translate(${dx} ${dy})"><path d="${LOWER}" fill="url(#lit)"/></g>
+    ${sim ? sparkSvg(sim) : ""}
+    <g transform="${rot}">
+      <path d="${SEAM}" fill="#3BE1FF" filter="url(#sglow)" opacity="${seamA}"/>
+      <g opacity="${ghost}">
+        <g transform="translate(${-dx} ${-dy})"><path d="${UPPER}" fill="#F4F6FA" fill-opacity="0.14"/></g>
+        <g transform="translate(${dx} ${dy})"><path d="${LOWER}" fill="#F4F6FA" fill-opacity="0.14"/></g>
+      </g>
+      <g clip-path="url(#rev)" filter="url(#glow)">
+        <g transform="translate(${-dx} ${-dy})"><path d="${UPPER}" fill="url(#lit)"/></g>
+        <g transform="translate(${dx} ${dy})"><path d="${LOWER}" fill="url(#lit)"/></g>
+      </g>
+      <g opacity="${shineAlpha}" filter="url(#shglow)">
+        <path d="${UPPER}" fill="none" stroke="#EAF9FF" stroke-width="3.2" stroke-linecap="round"
+              stroke-dasharray="${dash}" stroke-dashoffset="${(-shine * PERIM).toFixed(1)}" transform="translate(${-dx} ${-dy})"/>
+        <path d="${LOWER}" fill="none" stroke="#EAF9FF" stroke-width="3.2" stroke-linecap="round"
+              stroke-dasharray="${dash}" stroke-dashoffset="${(-(shine + 0.5) * PERIM).toFixed(1)}" transform="translate(${dx} ${dy})"/>
+      </g>
     </g>
   </svg>
-  <text x="${CW / 2}" y="${CH + 17}" fill="#5C6A80" font-family="ui-monospace, monospace" font-size="11" letter-spacing="1.6" text-anchor="middle">${label}</text>
+  <text x="${CW / 2}" y="${CH + 17}" fill="#5C6A80" font-family="ui-monospace, monospace" font-size="10.5" letter-spacing="1.4" text-anchor="middle">${label}</text>
 </svg>`;
 };
 
-// --- Row A: the breath at 30% ---------------------------------------------
+// ---- Row A: the assembly --------------------------------------------------
 const rowA = [];
-for (let i = 0; i < 6; i++) {
-  const t = (i / 6) * SPLIT_CYCLE;
-  const breath = 0.5 + 0.5 * Math.cos((t / SPLIT_CYCLE) * Math.PI * 2);
-  const gap = SPLIT_MAX * (SPLIT_FLOOR + (1 - SPLIT_FLOOR) * (1 - 0.3)) * breath;
-  rowA.push(frame({ gap, fill: 0.3, label: `BREATH  t+${t.toFixed(2)}s  gap ${gap.toFixed(0)}` }));
+for (const t of [0, 0.8, 1.38, 1.62]) {
+  const k = Math.min(1, t / JOIN_S);
+  const gap = GAP_START * (1 - Math.pow(k, 2.2));
+  const since = Math.max(0, t - JOIN_S);
+  const boost = k >= 1 ? Math.max(0, 1 - since / JOIN_FLASH_S) : 0;
+  rowA.push(
+    panel({
+      gap: k >= 1 ? 0 : gap,
+      boost,
+      spin: 0,
+      shine: 0,
+      shineAlpha: k >= 1 ? Math.min(1, since / 0.5) : 0,
+      fill: Math.min(0.42, 0.1 + t * 0.2),
+      ghost: 1,
+      sim: null,
+      label: `ASSEMBLY  t+${t.toFixed(2)}s  gap ${(k >= 1 ? 0 : gap).toFixed(0)}`,
+    }),
+  );
 }
 
-// --- Row B: the lock ------------------------------------------------------
-const p2out = (t) => 1 - Math.pow(1 - t, 2);
-const p4out = (t) => 1 - Math.pow(1 - t, 4);
-const p2in = (t) => t * t;
-const at = (t, start, dur, ease) =>
-  t <= start ? 0 : t >= start + dur ? 1 : ease((t - start) / dur);
-
-const G0 = 40; // wherever the breath left the halves when 100% landed
+// ---- Row B: the wheel -----------------------------------------------------
 const rowB = [];
-for (const t of [0, 0.18, 0.42, 0.62, 0.74, 1.05]) {
-  const pull = G0 + (LOCK_PULL - G0) * at(t, 0, 0.18, p2out);
-  const gap = pull + (0 - pull) * at(t, 0.18, 0.46, p4out);
-  const boost = at(t, 0.5, 0.16, p2in) * (1 - at(t, 0.66, 0.55, p2out));
-  const hot = at(t, 0.5, 0.16, p2in) * (1 - at(t, 0.66, 0.5, p2out));
-  const mix = (a, b, k) =>
-    "#" +
-    [0, 1, 2]
-      .map((i) => {
-        const av = parseInt(a.slice(1 + i * 2, 3 + i * 2), 16);
-        const bv = parseInt(b.slice(1 + i * 2, 3 + i * 2), 16);
-        return Math.round(av + (bv - av) * k).toString(16).padStart(2, "0");
-      })
-      .join("");
+const DT = 1 / 60;
+for (const pct of [0.25, 0.6, 1.0]) {
+  const turns = SPIN_MIN + (SPIN_MAX - SPIN_MIN) * Math.pow(pct, SPIN_CURVE);
+  const sim = makeSim();
+  let spin = 0;
+  let shine = 0;
+  for (let i = 0; i < Math.round(1.6 / DT); i++) {
+    spin = (spin + turns * 360 * DT) % 360;
+    shine = (shine + (SHINE_BASE + SHINE_PER_TURN * turns) * DT) % 1;
+    step(sim, DT, turns, (spin * Math.PI) / 180);
+  }
   rowB.push(
-    frame({
-      gap,
-      boost,
-      fill: 1,
-      ghost: 1 - at(t, 0.3, 0.32, p2out),
-      seamFill: mix("#3BE1FF", "#EAF9FF", hot),
-      label: `LOCK  t+${t.toFixed(2)}s  gap ${gap.toFixed(0)}`,
+    panel({
+      gap: 0, boost: 0, spin, shine, shineAlpha: 1, fill: 1, ghost: 0, sim,
+      label: `WHEEL  ${Math.round(pct * 100)}%  ${turns.toFixed(2)} turns/s`,
+    }),
+  );
+}
+// the exit: the wheel winds up and the rim throws a full ring
+{
+  const turns = SPIN_MAX * 1.9;
+  const sim = makeSim();
+  let spin = 0;
+  let shine = 0;
+  for (let i = 0; i < Math.round(0.5 / DT); i++) {
+    spin = (spin + turns * 360 * DT) % 360;
+    shine = (shine + (SHINE_BASE + SHINE_PER_TURN * turns) * DT) % 1;
+    step(sim, DT, turns, (spin * Math.PI) / 180);
+  }
+  for (let i = 0; i < 96; i++) emit(sim, (i / 96) * Math.PI * 2, Math.max(turns, 1.6), RIM * 1.5);
+  for (let i = 0; i < 9; i++) {
+    spin = (spin + turns * 360 * DT) % 360;
+    step(sim, DT, turns, (spin * Math.PI) / 180);
+  }
+  rowB.push(
+    panel({
+      gap: 0, boost: 0.85, spin, shine, shineAlpha: 1, fill: 1, ghost: 0, sim,
+      label: "EXIT  release burst",
     }),
   );
 }
 
 const bufs = await Promise.all(
-  [...rowA, ...rowB].map((s) => sharp(Buffer.from(s)).png().toBuffer()),
+  [...rowA, ...rowB].map((x) => sharp(Buffer.from(x)).png().toBuffer()),
 );
-const W = CW * 6;
+const W = CW * 4;
 const H = (CH + 26) * 2;
 await sharp({ create: { width: W, height: H, channels: 3, background: "#0B1422" } })
   .composite(
     bufs.map((b, i) => ({
       input: b,
-      left: (i % 6) * CW,
-      top: Math.floor(i / 6) * (CH + 26),
+      left: (i % 4) * CW,
+      top: Math.floor(i / 4) * (CH + 26),
     })),
   )
   .png()

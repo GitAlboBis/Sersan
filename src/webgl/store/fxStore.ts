@@ -283,13 +283,19 @@ export const useFxStore = create<FxState>((set) => ({
   vignetteDarkness: 0.55,
   heroEmissive: 2.6,
   heroPulseSpeed: 0.45,
-  // Framing the wide "52" mark as a sober, FULLY-VISIBLE particle logo on the
-  // hero right. The old 0.32 rendered it ~9.5×7.2 world units pushed to x≈+3.7
-  // (overflowing — only a corner showed). At 0.17 the 1.62w×2.0h mark renders
-  // baseScale = WORLD_VIEW_HEIGHT(≈11.19)×0.17 ≈ 1.90 → ~3.1w×3.8h, sat at
-  // world x = worldViewWidth×0.2, so the whole "52" sits inside the viewport
-  // with margin across desktop aspect ratios (verified vs CAMERA_Z/FOV).
-  heroScale: 0.17,
+  // Framing the mark as a sober, FULLY-VISIBLE particle logo on the hero right.
+  // RAISED 0.17 → 0.21 for the hexagon (owner, 2026-08-19): the mark is
+  // height-anchored and the new one is 38% narrower than the old two-S plate,
+  // so at 0.17 it lost real optical mass. 0.21 puts the visual area back where
+  // it was — baseScale = WORLD_VIEW_HEIGHT(≈11.19)×0.21 ≈ 2.35 → ~3.8w×4.7h at
+  // world x = worldViewWidth×0.2, still inside the viewport across desktop
+  // aspect ratios.
+  //
+  // The ceiling is the LOCKUP, not the hero: the lockup's half-height in vh is
+  // exactly heroScale×LOCKUP_SCALE(0.66)×100, and its centre sits ≈22vh from
+  // the frame top, so the mark's top edge is 22 − 13.9 ≈ 8.1vh — still clear of
+  // the ~7vh header band. Past ≈0.225 the lockup starts to tuck under it.
+  heroScale: 0.21,
   heroOffsetX: 0.2,
   heroOffsetY: 0.0,
   heroPosZ: -0.3,

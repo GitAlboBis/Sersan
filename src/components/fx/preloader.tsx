@@ -18,34 +18,47 @@
  * twinkling stars + faint cyan/blue nebula glows) draws on the same canvas as
  * the fallback backdrop.
  *
- * THE MARK IS THE PROGRESS BAR — and it assembles itself.
+ * THE MARK ASSEMBLES, THEN BECOMES A WHEEL.
  *
  * The mark is a hexagon split into two interlocking halves by an S-shaped
- * channel. During load those halves keep PARTING and RE-JOINING along the
- * mark's own −30° grid axis (`SPLIT_AXIS`, sersan-logo.tsx): the one direction
- * where the channel's diagonal faces stay parallel to the motion, so they slide
- * across each other at constant clearance while the other walls open. The
- * halves disengage like two milled parts leaving a dovetail — mechanism, not a
- * cut. Three channels carry the SAME progress, so the mark is the readout:
- *   (a) a GHOST layer — both halves at low opacity (the unbuilt mark);
- *   (b) a LIT layer — the same halves filled with a cyan→blue gradient + accent
- *       glow, CLIPPED by a reveal <rect> whose width is driven L→R every frame
- *       by the eased `current` progress (0..1);
- *   (c) the SPLIT itself — the halves breathe apart and back (SPLIT_CYCLE), and
- *       the amplitude of that breath COLLAPSES as % climbs, so the mark visibly
- *       converges on itself.
- * There is no separate thin progress bar.
+ * channel, and the load-in has two acts.
  *
- * THE SEAM. The S-channel between the halves (MARK_SEAM_PATH) is drawn as a
- * cyan light behind them, its opacity keyed to how CLOSE they are — invisible
- * while apart, brightest at contact. The mark's negative space is the brand's
- * S, so every time the halves kiss, the S ignites in the joint; the tunnel
- * behind surges on the same beat. That is the whole idea of the load-in: the
- * logo is a thing being assembled, and the light lives in the fit.
+ * ACT 1 — ASSEMBLY (JOIN_S, on its own clock, once). The halves start clearly
+ * apart and close along the mark's own −30° grid axis (`SPLIT_AXIS`,
+ * sersan-logo.tsx): the one direction where the channel's diagonal faces stay
+ * parallel to the motion, so they slide across each other at constant clearance
+ * while the other walls open. The halves seat like two milled parts entering a
+ * dovetail — mechanism, not a cut. They are still GAINING speed at contact
+ * (the eased position uses an exponent > 1), so the arrival reads as a strike.
+ * Through this act the cyan→blue fill sweeping L→R carries the %.
+ *
+ * ACT 2 — THE WHEEL. The instant they touch, the mark starts turning clockwise
+ * and the WHEEL SPEED becomes the readout: `SPIN_MIN → SPIN_MAX` over progress,
+ * on a curve (SPIN_CURVE) that keeps the early climb calm and the last stretch
+ * dramatic. Three things ride that one term, so everything accelerates
+ * together and the % is felt before it is read:
+ *   - a CATHERINE WHEEL of sparks thrown TANGENTIALLY off the mark's two rim
+ *     apexes (drawSparks, on its own 2D canvas behind the mark — the canvas is
+ *     erased a little each frame rather than cleared, so what survives is the
+ *     trail and it stays transparent over the tunnel);
+ *   - the OUTLINE SHINE: a short bright dash travelling each half's perimeter
+ *     (stroke-dasharray + a moving offset), the two halves half a lap apart so
+ *     across the 180°-symmetric mark they read as ONE light going round;
+ *   - the tunnel behind, whose time coefficient winds up with the same spin.
+ * There is no separate thin progress bar; the counter beneath is the only
+ * numeral.
+ *
+ * THE SEAM. The S-channel between the halves (MARK_SEAM_PATH) is drawn as cyan
+ * light BEHIND them, its opacity keyed to how CLOSE they are — invisible while
+ * apart, brightest at contact. The mark's negative space is the brand's S, so
+ * the moment the halves strike, the S ignites in the joint and the tunnel
+ * lurches on the same beat. It then stays lit through the spin, which is what
+ * keeps the turning mark legible as the mark.
  *
  * The geometry is IMPORTED from src/components/sersan-logo.tsx (one source of
  * truth for the DOM logo, the favicon, the archive portal and the 3D GLB), and
  * each half is its own `<path>` so it can be moved independently.
+ *
  *
  * Progress is driven by REAL readiness, not a fake timer (mobile-parity plan
  * Phase 3.2 — "assets 0.70 + warm 0.30", Lusion's 70/30 split):
@@ -91,21 +104,26 @@
  * the same tab session, see SESSION_SHORT) prevents a flash; a MAX watchdog
  * (~14s) guarantees a stuck GPU never traps the user.
  *
- * Hand-off (lock → zoom-through → fade): at 100% the mark SEATS itself — the
- * halves draw back a touch, then slam flush (power4.out) and stay there, the
- * seam flaring to full on contact and settling lit. The pull-back matters: the
- * breath may leave the halves anywhere, so the beat would otherwise read as a
- * no-op whenever 100% lands on a kiss. The locked mark then ZOOMS toward the
- * viewer and never
+ * Hand-off (release → zoom-through → fade): at 100% nothing needs seating —
+ * the wheel is already turning, so the exit RELEASES it. spinBoost winds the
+ * spin up through the whole exit (the spin is an integrated RATE, never a tween
+ * target, so the hand-off can multiply it without touching the angle), the seam
+ * flares white-hot one last time, and the rim throws a full ring of sparks. A
+ * warm cache can satisfy every readiness signal before the halves have even met
+ * — JOIN_S outlasts MIN_VISIBLE_SHORT_MS — so the exit never fires mid-flight:
+ * it RUSHES the closing instead (the join clock accelerates, the eased position
+ * stays continuous) and waits MIN_SPIN_S for the wheel to spin up. The turning
+ * mark then ZOOMS toward the viewer and never
  * stops — one continuous power2.in acceleration (scale 1 → ~4, slight blur)
  * that flies PAST the camera while the ENTIRE overlay crossfades to
  * transparent, the tunnel still warping beneath the fade. The exit reads as
  * flying THROUGH the mark into the site: warp + zoom + crossfade, no wipe, no
  * hard edge. Through that beat introStore.complete() flips (SignatureLine
  * listens for the false→true edge and re-kicks its uReveal 0→1 draw-in), and a
- * cyan SHAFT is drawn downward out of the lit seam, elongating into the
- * signature line and dissolving with the overlay — the eye reads the light in
- * the mark's joint becoming the scroll line.
+ * cyan SHAFT is drawn downward out of the lit seam — deliberately OUTSIDE the
+ * spinning group, because it is already the signature line — elongating into it
+ * and dissolving with the overlay. The eye reads the light in the mark's joint
+ * becoming the scroll line.
  *
  * SSR-safe: the overlay only renders AFTER mount (a client effect sets `mounted`),
  * so the server HTML never contains it → no hydration mismatch, no layout shift.
@@ -203,28 +221,52 @@ const VB_X = -PAD_X;
 const VB_Y = -PAD_Y;
 const VB_W = MARK_W + PAD_X * 2;
 const VB_H = MARK_H + PAD_Y * 2;
-/** Mark centre, used by the seam shaft that becomes the signature line. */
+/** Mark centre — the spin pivot, and the shaft that becomes the signature line. */
 const MARK_CX = MARK_W / 2;
 const MARK_CY = MARK_H / 2;
-// Half-separation (user units, along SPLIT_AXIS) at 0% and at the top of each
-// breath. 78 reads as a clean disengage without throwing the halves off-frame.
-const SPLIT_MAX = 78;
-// Seconds per part→join→part breath. Slow enough to feel deliberate rather
-// than nervous — the mark is being seated, not vibrating.
-const SPLIT_CYCLE = 2.6;
-// Residual amplitude at 100%: the breath narrows as % climbs but never dies on
-// its own, so the LOCK at reveal always has somewhere to come from.
-const SPLIT_FLOOR = 0.34;
-// Gap (user units) below which the seam starts to light. Tight, so the S reads
-// as light in the JOINT rather than a shape floating between two loose parts.
+
+// ---- ASSEMBLY → WHEEL ------------------------------------------------------
+/** Half-separation at t=0 (user units). Sized to stay inside the padding: the
+ *  halves must read as clearly apart without overlapping the counter below. */
+const GAP_START = 118;
+/** Seconds the halves take to close. The whole load-in hinges on this beat. */
+const JOIN_S = 1.55;
+/** Seconds the seam's contact flare takes to decay after the join. */
+const JOIN_FLASH_S = 0.65;
+/** Seconds the fill takes to rush to full once the halves lock. */
+const FILL_RUSH_S = 0.42;
+/** Wheel speed (turns/second) at 0% and at 100%. */
+const SPIN_MIN = 0.24;
+const SPIN_MAX = 3.4;
+/** Exponent on progress → spin. >1 keeps the early climb calm and the last
+ *  stretch dramatic, so the acceleration is felt rather than merely measured. */
+const SPIN_CURVE = 1.6;
+/** The wheel keeps winding up through the exit. */
+const SPIN_EXIT = 2.6;
+/** Seconds the wheel must have turned before the exit may fire. Guards the
+ *  warm-cache case where every readiness signal lands during the assembly. */
+const MIN_SPIN_S = 0.45;
+/** Gap (user units) below which the seam starts to light. */
 const SEAM_RANGE = 22;
-/** Seam opacity at contact during load (the lock flares past this to 1). */
+/** Seam opacity at contact (the join and the exit flare past this to 1). */
 const SEAM_PEAK = 0.8;
-// Entry: the halves arrive further apart than the first breath and settle in.
-const ENTRY_S = 0.9;
-const ENTRY_OVERSHOOT = 0.55;
-/** How far the halves draw BACK before the final slam (user units). */
-const LOCK_PULL = 34;
+/** Share of each half's outline covered by the travelling shine. */
+const SHINE_FRACTION = 0.13;
+/** Outline laps per second: a floor, plus a term that rides the wheel. */
+const SHINE_BASE = 0.28;
+const SHINE_PER_TURN = 0.34;
+
+// ---- Catherine-wheel sparks (2D canvas layer behind the mark) --------------
+/** Hard cap on live sparks. Reached only at full speed on a wide viewport. */
+const SPARK_MAX = 300;
+/** Sparks emitted per TURN of the wheel — emission rides the spin, so the
+ *  spray thickens with the acceleration instead of being timed separately. */
+const SPARK_PER_TURN = 150;
+/** Spark lifetime (s), and the drag that bends the spray into a spiral. */
+const SPARK_LIFE = 0.66;
+const SPARK_DRAG = 1.9;
+/** Fraction of the rim's tangential speed a spark leaves with. */
+const SPARK_SPEED = 0.62;
 
 // ---- Starfield (2D fallback backdrop — WebGL-unavailable path only) ---------
 interface Star {
@@ -267,12 +309,23 @@ export function Preloader() {
   // their open ±90° pose to 0° on close; their outer groups carry static
   // placement.
   const logoRef = useRef<HTMLDivElement>(null);
-  // The four moving halves: ghost + lit, upper + lower. All four carry the SAME
-  // translate (upper −gap·axis, lower +gap·axis), written by applySplit().
+  const svgRef = useRef<SVGSVGElement>(null);
+  // The wheel: everything that spins hangs off this one group.
+  const spinRef = useRef<SVGGElement>(null);
+  // Sparks are a 2D canvas layer of their own, BEHIND the mark and INSIDE the
+  // logo wrapper, so they inherit the exit zoom with it.
+  const sparkCanvasRef = useRef<HTMLCanvasElement>(null);
+  // The six moving pieces: ghost + lit + shine, upper + lower. All carry the
+  // SAME translate (upper −gap·axis, lower +gap·axis), written by applyMark().
   const upperGhostRef = useRef<SVGGElement>(null);
   const lowerGhostRef = useRef<SVGGElement>(null);
   const upperLitRef = useRef<SVGGElement>(null);
   const lowerLitRef = useRef<SVGGElement>(null);
+  // Outline shine — one travelling dash per half, half a lap out of phase, so
+  // across the 180°-symmetric mark they read as ONE light going round.
+  const shineWrapRef = useRef<SVGGElement>(null);
+  const upperShineRef = useRef<SVGPathElement>(null);
+  const lowerShineRef = useRef<SVGPathElement>(null);
   const ghostWrapRef = useRef<SVGGElement>(null); // both ghost halves (fade on lock)
   const litWrapRef = useRef<SVGGElement>(null); // both lit halves (fade on zoom)
   // The seam: an inner <path> whose opacity applySplit() owns, inside a wrapper
@@ -306,9 +359,16 @@ export function Preloader() {
     let cancelled = false;
     let rafId = 0;
     let revealed = false;
-    // How close the two halves are RIGHT NOW (0 apart → 1 touching), published
-    // by applySplit() each frame so the backdrop can answer the joint.
-    let contact = 0;
+    // Assembly → wheel state. `joinClock` is a SEPARATE clock from the frame
+    // clock so a late-arriving 100% can rush the closing (below) without the
+    // eased position jumping.
+    let joined = false;
+    let joinedAt = 0;
+    let joinClock = 0;
+    let joinRush = 1;
+    /** Wheel speed in turns/second, and the exit's multiplier on it. */
+    let spinTurns = 0;
+    let spinBoost = 1;
     const startedAt = performance.now();
 
     // Guard against (somehow) running under reduced motion — never animate the
@@ -369,7 +429,11 @@ export function Preloader() {
     if (!tunnel) sizeStarCanvas();
     // One resize handler for both backdrop paths: the tunnel refits its
     // drawing buffer + projection + FBO; the starfield re-sizes its 2d canvas.
-    const onResize = () => (tunnel ? tunnel.resize() : sizeStarCanvas());
+    const onResize = () => {
+      if (tunnel) tunnel.resize();
+      else sizeStarCanvas();
+      sizeSparks();
+    };
     window.addEventListener("resize", onResize);
 
     const drawStarfield = (tSec: number) => {
@@ -440,7 +504,11 @@ export function Preloader() {
           : 0.55 + 0.45 * Math.sin(tSec * s.tws + s.tw);
         const alpha = s.a * twinkle;
         const rgb =
-          s.c === 0 ? "230, 240, 255" : s.c === 1 ? "59, 225, 255" : "42, 127, 255"; // was violet "124, 92, 255"; blue #2A7FFF
+          s.c === 0
+            ? "230, 240, 255"
+            : s.c === 1
+              ? "59, 225, 255"
+              : "42, 127, 255"; // was violet "124, 92, 255"; blue #2A7FFF
         ctx.fillStyle = `rgba(${rgb}, ${alpha})`;
         ctx.beginPath();
         ctx.arc(px, py, s.r, 0, Math.PI * 2);
@@ -449,45 +517,227 @@ export function Preloader() {
       ctx.globalCompositeOperation = "source-over";
     };
 
-    // ----- The split: ONE writer for the halves + the seam -------------------
-    // `splitState` is the whole choreography's state. The rAF loop owns it
-    // during load; at reveal, GSAP tweens own it (the loop stops writing once
-    // `revealed`). Everything — both ghost halves, both lit halves, and the
-    // seam's opacity — is written from HERE and nowhere else, so no two writers
-    // can ever fight over the same attribute.
-    const splitState = {
+    // ----- The mark writer: ONE owner for everything the mark moves ---------
+    // `markState` is the whole choreography. The rAF loop owns it during load;
+    // at reveal the GSAP timeline takes the pieces it needs (the loop keeps
+    // integrating ONLY the spin, which is a rate, not a target). Every
+    // attribute — the six translated pieces, the spin, the seam, the outline
+    // shine, the lit-layer reveal — is written from HERE and nowhere else, so
+    // no two writers can ever fight over one attribute.
+    const markState = {
       /** Half-separation in user units along SPLIT_AXIS. 0 = flush. */
-      gap: SPLIT_MAX,
-      /** Extra seam flare added at the lock (0..1), on top of the contact term. */
+      gap: GAP_START,
+      /** Extra seam flare (0..1) added on top of the contact term. */
       boost: 0,
+      /** Wheel rotation, degrees CLOCKWISE from rest. */
+      spin: 0,
+      /** Travelling-shine phase, in laps of a half's outline. */
+      shine: 0,
+      /** Outline-shine opacity — 0 until the halves lock. */
+      shineAlpha: 0,
+      /** Lit-layer reveal, 0..1 of the viewBox width. */
+      fill: 0,
     };
-    const applySplit = () => {
-      const dx = SPLIT_AXIS.x * splitState.gap;
-      const dy = SPLIT_AXIS.y * splitState.gap;
+    /** Perimeter of one half, measured once the paths exist. */
+    let shineLen = 0;
+
+    const applyMark = () => {
+      const dx = SPLIT_AXIS.x * markState.gap;
+      const dy = SPLIT_AXIS.y * markState.gap;
       const up = "translate(" + -dx + " " + -dy + ")";
       const down = "translate(" + dx + " " + dy + ")";
       upperGhostRef.current?.setAttribute("transform", up);
       upperLitRef.current?.setAttribute("transform", up);
+      upperShineRef.current?.setAttribute("transform", up);
       lowerGhostRef.current?.setAttribute("transform", down);
       lowerLitRef.current?.setAttribute("transform", down);
+      lowerShineRef.current?.setAttribute("transform", down);
+      spinRef.current?.setAttribute(
+        "transform",
+        "rotate(" +
+          markState.spin.toFixed(2) +
+          " " +
+          MARK_CX +
+          " " +
+          MARK_CY +
+          ")",
+      );
       // The seam is the JOINT: it only exists as the faces close, and squaring
       // the closeness keeps it dark until they are genuinely near contact.
-      const close = Math.max(0, 1 - splitState.gap / SEAM_RANGE);
-      const a = Math.min(1, close * close * SEAM_PEAK + splitState.boost);
-      seamRef.current?.setAttribute("opacity", a.toFixed(3));
-      return close;
+      const close = Math.max(0, 1 - markState.gap / SEAM_RANGE);
+      seamRef.current?.setAttribute(
+        "opacity",
+        Math.min(1, close * close * SEAM_PEAK + markState.boost).toFixed(3),
+      );
+      if (shineLen > 0) {
+        // Half a lap apart: across a 180°-symmetric mark the two dashes read as
+        // ONE light running the whole outline.
+        upperShineRef.current?.setAttribute(
+          "stroke-dashoffset",
+          (-markState.shine * shineLen).toFixed(2),
+        );
+        lowerShineRef.current?.setAttribute(
+          "stroke-dashoffset",
+          (-(markState.shine + 0.5) * shineLen).toFixed(2),
+        );
+      }
+      shineWrapRef.current?.setAttribute(
+        "opacity",
+        markState.shineAlpha.toFixed(3),
+      );
+      fillRectRef.current?.setAttribute("width", String(VB_W * markState.fill));
     };
-    applySplit();
 
-    // ----- Logo intro: the halves settle in, the mark fades up ---------------
+    // Measure the outline so the travelling dash is a real fraction of the
+    // perimeter. Both halves are congruent, but measure each rather than assume.
+    for (const el of [upperShineRef.current, lowerShineRef.current]) {
+      if (!el) continue;
+      shineLen = el.getTotalLength();
+      el.setAttribute(
+        "stroke-dasharray",
+        shineLen * SHINE_FRACTION + " " + shineLen * (1 - SHINE_FRACTION),
+      );
+    }
+    applyMark();
+
+    // ----- The Catherine wheel ----------------------------------------------
+    // A 2D canvas layer of its own, behind the mark and inside the logo wrapper
+    // (so it inherits the exit zoom). Sparks leave the two rim apexes
+    // TANGENTIALLY, exactly as a pinwheel throws them, and the canvas is ERASED
+    // a little each frame rather than cleared — what survives is the trail, and
+    // it stays transparent over the tunnel behind.
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    interface Spark {
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      age: number;
+      life: number;
+      tone: number;
+    }
+    const sparks: Spark[] = [];
+    let sparkCtx: CanvasRenderingContext2D | null = null;
+    let sparkPx = 0;
+    let rimPx = 0;
+    let emitAcc = 0;
+    let arm = 0;
+
+    const sizeSparks = () => {
+      const svgEl = svgRef.current;
+      const cvs = sparkCanvasRef.current;
+      if (!svgEl || !cvs) return;
+      const r = svgEl.getBoundingClientRect();
+      if (r.height < 2) return;
+      sparkPx = Math.min(Math.round(Math.max(r.width, r.height) * 2.4), 900);
+      cvs.style.width = sparkPx + "px";
+      cvs.style.height = sparkPx + "px";
+      cvs.width = Math.round(sparkPx * dpr);
+      cvs.height = Math.round(sparkPx * dpr);
+      sparkCtx = cvs.getContext("2d");
+      sparkCtx?.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // The rim: the mark's apex sits MARK_CY user units from the pivot.
+      rimPx = (MARK_CY / VB_H) * r.height;
+    };
+    sizeSparks();
+
+    // `a` is measured from straight up, clockwise — the same convention as
+    // markState.spin, so the arm is wherever the mark's apex currently is.
+    const emitSpark = (a: number, turns: number, spread: number) => {
+      if (sparks.length >= SPARK_MAX || sparkPx === 0) return;
+      const ux = Math.sin(a);
+      const uy = -Math.cos(a);
+      // Under clockwise rotation a rim point moves perpendicular to its radius.
+      const rim = turns * Math.PI * 2 * rimPx;
+      const sp = rim * SPARK_SPEED * (0.75 + Math.random() * 0.5);
+      const out = sp * (0.16 + Math.random() * 0.22);
+      sparks.push({
+        x: sparkPx / 2 + ux * rimPx,
+        y: sparkPx / 2 + uy * rimPx,
+        vx: -uy * sp + ux * out + (Math.random() - 0.5) * spread,
+        vy: ux * sp + uy * out + (Math.random() - 0.5) * spread,
+        age: 0,
+        life: SPARK_LIFE * (0.6 + Math.random() * 0.7),
+        tone: Math.random(),
+      });
+    };
+
+    /** A ring of sparks in every direction — fired once, on the exit. */
+    const burstSparks = (n: number, turns: number) => {
+      for (let i = 0; i < n; i++) {
+        emitSpark((i / n) * Math.PI * 2, Math.max(turns, 1.6), rimPx * 1.5);
+      }
+    };
+
+    const drawSparks = (dt: number, turns: number, a: number) => {
+      const c = sparkCtx;
+      if (!c || sparkPx === 0) return;
+      c.globalCompositeOperation = "destination-out";
+      c.fillStyle = "rgba(0,0,0,0.22)";
+      c.fillRect(0, 0, sparkPx, sparkPx);
+      c.globalCompositeOperation = "lighter";
+
+      emitAcc += turns * SPARK_PER_TURN * dt;
+      while (emitAcc >= 1) {
+        emitAcc -= 1;
+        arm ^= 1;
+        emitSpark(a + (arm ? Math.PI : 0), turns, rimPx * 0.5);
+      }
+
+      // The two torches: a short bright arc at each arm. The per-frame erase
+      // smears them into the ring of light the sparks come off. Canvas angles
+      // run from +x, so the arm at `a` (measured from up) sits at a − π/2.
+      if (turns > 0.02) {
+        const alpha = Math.min(0.5, turns * 0.15);
+        c.lineWidth = Math.max(1.5, rimPx * 0.035);
+        c.strokeStyle = "rgba(150,236,255," + alpha.toFixed(3) + ")";
+        for (const off of [0, Math.PI]) {
+          const end = a + off - Math.PI / 2;
+          c.beginPath();
+          c.arc(sparkPx / 2, sparkPx / 2, rimPx, end - 0.42, end);
+          c.stroke();
+        }
+      }
+
+      for (let i = sparks.length - 1; i >= 0; i--) {
+        const sp = sparks[i];
+        sp.age += dt;
+        if (sp.age >= sp.life) {
+          sparks.splice(i, 1);
+          continue;
+        }
+        const px = sp.x;
+        const py = sp.y;
+        const drag = Math.max(0, 1 - SPARK_DRAG * dt);
+        sp.vx *= drag;
+        sp.vy *= drag;
+        sp.x += sp.vx * dt;
+        sp.y += sp.vy * dt;
+        const k = 1 - sp.age / sp.life;
+        const alpha = (k * k).toFixed(3);
+        c.strokeStyle =
+          sp.tone > 0.82
+            ? "rgba(240,252,255," + alpha + ")"
+            : sp.tone > 0.4
+              ? "rgba(59,225,255," + alpha + ")"
+              : "rgba(42,127,255," + alpha + ")";
+        c.lineWidth = 0.6 + 1.8 * k;
+        c.beginPath();
+        c.moveTo(px, py);
+        c.lineTo(sp.x, sp.y);
+        c.stroke();
+      }
+    };
+
+    // ----- Logo intro: the halves settle in, the mark fades up ---------------    // ----- Logo intro: the halves settle in, the mark fades up ---------------
     // A short, refined entrance for the open (horizontal) mark. Reduced-motion
     // never reaches here (active is false), so this is desktop/standard-motion
     // only. GSAP cleans these up automatically when killed in teardown below.
     //
-    // The halves' separation is driven entirely by the rAF loop (including the
-    // entry overshoot), so nothing tweens them here — only the fade-up of the
-    // ghost layer and a gentle scale settle on the wrapper. The seam shaft stays
-    // hidden (scaleY 0, opacity 0) until the lock.
+    // The halves' approach is driven entirely by the rAF loop, so nothing tweens
+    // them here — only the fade-up of the ghost layer and a gentle scale settle
+    // on the wrapper. The shaft stays hidden (scaleY 0, opacity 0) until the
+    // wheel is released into the exit.
     const introTweens: gsap.core.Tween[] = [];
     if (dividerRef.current && logoRef.current && ghostWrapRef.current) {
       gsap.set(dividerRef.current, {
@@ -707,29 +957,35 @@ export function Preloader() {
 
         const pct = Math.round(current * 100);
         setDisplay(pct);
-        // Drive the LIT-layer reveal: the clipPath rect grows L→R across the
-        // mark, so the cyan→blue fill sweeps over the two halves with %.
-        if (fillRectRef.current) {
-          fillRectRef.current.setAttribute("width", String(VB_W * current));
-        }
-
-        // Drive the SPLIT. A breath (part → join → part) times SPLIT_CYCLE,
-        // multiplied by two envelopes:
-        //   ENTRY — an overshoot decaying over ENTRY_S (power3.out), so the
-        //     halves arrive from further out and settle instead of popping in;
-        //   PROGRESS — 1 → SPLIT_FLOOR as % climbs, so the mark converges on
-        //     itself. The floor is deliberate: it leaves the LOCK at reveal
-        //     something to travel, whatever phase the breath is caught in.
+        // ---- ASSEMBLY, then WHEEL ------------------------------------
+        // Phase 1: the halves arrive apart and close ONCE, on their own clock.
+        // That beat is the load-in's opening statement, not a progress readout
+        // — the cyan→blue fill sweeping L→R carries the % meanwhile.
+        // Phase 2: the instant they touch, the mark becomes a wheel and the
+        // WHEEL SPEED becomes the readout. The spark spray and the outline
+        // shine both ride that same term, so everything accelerates together
+        // and the % is felt before it is read.
         const tSec = (now - startedAt) / 1000;
-        const entry = Math.min(1, tSec / ENTRY_S);
-        const settle = 1 + ENTRY_OVERSHOOT * Math.pow(1 - entry, 3);
-        const breath = 0.5 + 0.5 * Math.cos((tSec / SPLIT_CYCLE) * Math.PI * 2);
-        splitState.gap =
-          SPLIT_MAX *
-          (SPLIT_FLOOR + (1 - SPLIT_FLOOR) * (1 - current)) *
-          breath *
-          settle;
-        contact = applySplit();
+        if (!joined) {
+          joinClock += delta * joinRush;
+          const k = Math.min(1, joinClock / JOIN_S);
+          // Exponent > 1 ⇒ the halves are still gaining speed at contact: they
+          // arrive with a strike rather than settling gently into place.
+          markState.gap = GAP_START * (1 - Math.pow(k, 2.2));
+          markState.fill = current;
+          if (k >= 1) {
+            joined = true;
+            joinedAt = tSec;
+            markState.gap = 0;
+          }
+        } else {
+          const since = tSec - joinedAt;
+          markState.boost = Math.max(0, 1 - since / JOIN_FLASH_S);
+          markState.fill = Math.min(1, current + since / FILL_RUSH_S);
+          markState.shineAlpha = Math.min(1, since / 0.5);
+          spinTurns =
+            SPIN_MIN + (SPIN_MAX - SPIN_MIN) * Math.pow(current, SPIN_CURVE);
+        }
 
         // Reveal as soon as the readout reads 100 AND the target is genuinely 1
         // (all readiness signals — fonts/load/manifest/warm — plus min time satisfied).
@@ -741,12 +997,19 @@ export function Preloader() {
         // makes the reveal fire the instant "100" shows, frame-rate-independent,
         // and never before genuine readiness (target < 1 ⇒ no reveal).
         if (target >= 1 && Math.round(current * 100) >= 100) {
-          current = 1;
-          if (fillRectRef.current) {
-            fillRectRef.current.setAttribute("width", String(VB_W));
+          // A warm cache can satisfy every signal before the halves have even
+          // met (JOIN_S outlasts MIN_VISIBLE_SHORT_MS). Firing here would zoom
+          // a mark that never assembled, so instead RUSH the closing — the
+          // clock accelerates, the position stays continuous — and hold the
+          // exit until the wheel has had a beat to spin up.
+          if (!joined) {
+            joinRush = 5;
+          } else if (tSec - joinedAt >= MIN_SPIN_S) {
+            current = 1;
+            markState.fill = 1;
+            revealed = true;
+            reveal();
           }
-          revealed = true;
-          reveal();
           // NOTE: the loop deliberately KEEPS RUNNING (no return) so the
           // tunnel renders through the close/zoom/warp/curtain beats. Once
           // `revealed`, this branch never re-enters — no setDisplay, no fill
@@ -755,16 +1018,33 @@ export function Preloader() {
         }
       }
 
+      // ---- The wheel turns through EVERYTHING, including the exit --------
+      // The spin is a RATE integrated each frame, not a tween target, so the
+      // hand-off can multiply it (spinBoost) without ever resetting the angle.
+      // applyMark() runs here every frame — during load it is the only writer;
+      // after `revealed` the GSAP timeline writes the same state through the
+      // same function, so the two can never disagree.
+      if (joined) {
+        const rate = spinTurns * spinBoost;
+        markState.spin = (markState.spin + rate * 360 * delta) % 360;
+        markState.shine =
+          (markState.shine + (SHINE_BASE + SHINE_PER_TURN * rate) * delta) % 1;
+        drawSparks(delta, rate, (markState.spin * Math.PI) / 180);
+      }
+      applyMark();
+
       // Backdrop — SAME single loop, never a second rAF. During load the
       // tunnel breathes faster as the counter climbs (targetTimeCoef =
       // 1 + eased·2, subtle kinetic progress); reveal() slams the target to
       // 100 (THE WARP) on its own beat, so post-reveal frames only render.
       if (tunnel) {
-        // The backdrop answers the mark: the base coefficient breathes with %
-        // (subtle kinetic progress) and SURGES every time the halves kiss, so
-        // the field behind lurches on the same beat the seam ignites.
+        // The backdrop answers the mark: it breathes with % , lurches on the
+        // beat the halves strike (the seam flare), and then winds up with the
+        // wheel — so the field behind is never doing its own thing.
         if (!revealed)
-          tunnel.setTargetTimeCoef(1 + current * 2 + contact * contact * 3);
+          tunnel.setTargetTimeCoef(
+            1 + current * 2 + markState.boost * 2.5 + spinTurns * 0.7,
+          );
         tunnel.render(delta);
       } else {
         drawStarfield((now - startedAt) / 1000);
@@ -840,62 +1120,73 @@ export function Preloader() {
       // is missing the timeline still runs the overlay fade via the final tween.
       const tl = gsap.timeline();
 
-      // (a) LOCK — seat the two halves. They draw BACK a touch first, then
-      //     slam flush and STAY: the mark stops breathing and becomes the mark.
-      //     The pull-back is not decoration — the breath can leave the halves
-      //     anywhere, including mid-kiss, so without it the lock would read as
-      //     a no-op whenever 100% lands on a contact frame.
-      //
-      //     These tweens drive `splitState`, the SAME single writer the rAF
-      //     loop used; the loop stopped touching it the instant `revealed`
-      //     flipped, so nothing here can be clobbered (and nothing here
-      //     clobbers the counter).
+      // (a) RELEASE — the wheel is ALREADY turning, so the exit does not seat
+      //     anything: it winds the wheel up (spinBoost), flares the seam
+      //     white-hot one last time, and throws a full ring of sparks off the
+      //     rim. The spin itself stays with the rAF integrator — a tween here
+      //     would fight it for the angle.
+      if (!joined) {
+        // Watchdog path only: the halves never met (a stuck GPU tripped the
+        // 14s insurance). Snap them together rather than zoom a mark in pieces.
+        joined = true;
+        joinedAt = 0;
+        markState.gap = 0;
+        markState.fill = 1;
+        markState.shineAlpha = 1;
+        applyMark();
+      }
+      const exit = { boost: markState.boost, spin: 1 };
+      const pushBoost = () => {
+        markState.boost = exit.boost;
+        applyMark();
+      };
       tl.to(
-        splitState,
-        { gap: LOCK_PULL, duration: 0.18, ease: "power2.out", onUpdate: applySplit },
+        exit,
+        { boost: 1, duration: 0.18, ease: "power2.in", onUpdate: pushBoost },
         0,
       );
       tl.to(
-        splitState,
-        { gap: 0, duration: 0.46, ease: "power4.out", onUpdate: applySplit },
-        0.18,
-      );
-      // The seam flares past its load-time ceiling as the faces meet, then
-      // settles lit — the S keeps burning in the joint through the exit.
-      tl.to(
-        splitState,
-        { boost: 1, duration: 0.16, ease: "power2.in", onUpdate: applySplit },
-        0.5,
+        exit,
+        { boost: 0.25, duration: 0.6, ease: "power2.out", onUpdate: pushBoost },
+        0.2,
       );
       tl.to(
-        splitState,
-        { boost: 0, duration: 0.55, ease: "power2.out", onUpdate: applySplit },
-        0.66,
+        exit,
+        {
+          spin: SPIN_EXIT,
+          duration: 0.9,
+          ease: "power2.in",
+          onUpdate: () => {
+            spinBoost = exit.spin;
+          },
+        },
+        0,
       );
+      tl.call(() => burstSparks(96, spinTurns * spinBoost), undefined, 0.16);
       if (seamRef.current) {
-        // White-hot at the moment of contact, cooling back to signal cyan.
-        tl.to(seamRef.current, { fill: "#EAF9FF", duration: 0.16 }, 0.5);
+        // White-hot at the release, cooling back to signal cyan.
+        tl.to(seamRef.current, { fill: "#EAF9FF", duration: 0.16 }, 0);
         tl.to(
           seamRef.current,
           { fill: "hsl(189 100% 62%)", duration: 0.5, ease: "power2.out" },
-          0.66,
+          0.2,
         );
       }
       if (ghostWrapRef.current) {
         tl.to(
           ghostWrapRef.current,
           { opacity: 0, duration: 0.32, ease: "power1.out" },
-          0.3,
+          0,
         );
       }
 
-      // The shaft: a thin cyan bar drawn downward OUT of the lit seam the
-      // instant the halves seat. It is the bridge into the signature line.
+      // The shaft: a thin cyan bar drawn downward OUT of the lit seam. It does
+      // not spin with the mark — it is already the signature line, waiting.
       if (dividerRef.current) {
         tl.to(
           dividerRef.current,
           { scaleY: 1, opacity: 1, duration: 0.3, ease: "power2.out" },
-          0.56,
+          0.4,
         );
       }
 
@@ -1066,113 +1357,183 @@ export function Preloader() {
           driven by %. Behind them the SEAM: the S-shaped channel, lit by how
           close the halves are. On hand-off they slam flush and the mark zooms
           through. */}
-      <div ref={logoRef} className="flex flex-col items-center will-change-transform">
-        <svg
-          viewBox={`${VB_X} ${VB_Y} ${VB_W} ${VB_H}`}
-          xmlns="http://www.w3.org/2000/svg"
-          role="img"
-          aria-label="SERSAN"
-          className="h-[clamp(108px,24vw,178px)] w-auto"
-          style={{ aspectRatio: `${VB_W} / ${VB_H}`, overflow: "visible" }}
-        >
-          <defs>
-            <linearGradient id="preloader-fill" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="hsl(var(--accent))" />
-              <stop offset="100%" stopColor="hsl(var(--accent-2))" />
-            </linearGradient>
-            <filter
-              id="preloader-glow"
-              x="-30%"
-              y="-30%"
-              width="160%"
-              height="160%"
-            >
-              <feDropShadow
-                dx="0"
-                dy="0"
-                stdDeviation="6"
-                floodColor="hsl(189 100% 62%)"
-                floodOpacity="0.55"
-              />
-            </filter>
-            {/* The seam burns hotter than the halves — its own, wider glow. */}
-            <filter
-              id="preloader-seam-glow"
-              x="-45%"
-              y="-45%"
-              width="190%"
-              height="190%"
-            >
-              <feDropShadow
-                dx="0"
-                dy="0"
-                stdDeviation="9"
-                floodColor="hsl(189 100% 62%)"
-                floodOpacity="0.9"
-              />
-            </filter>
-            {/* Horizontal reveal: a rect grown L→R by `current` each frame. */}
-            <clipPath id="preloader-reveal">
-              <rect ref={fillRectRef} x={VB_X} y={VB_Y} width="0" height={VB_H} />
-            </clipPath>
-          </defs>
+      <div
+        ref={logoRef}
+        className="flex flex-col items-center will-change-transform"
+      >
+        <div className="relative flex items-center justify-center">
+          {/* SPARKS — the Catherine wheel's spray, on its own 2D canvas behind
+              the mark. Sized from the SVG's box (sizeSparks) and drawn by the
+              SAME rAF loop as everything else. Inside the logo wrapper, so the
+              exit zoom carries the sparks through with the mark. */}
+          <canvas
+            ref={sparkCanvasRef}
+            aria-hidden="true"
+            className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
+          />
+          <svg
+            ref={svgRef}
+            viewBox={`${VB_X} ${VB_Y} ${VB_W} ${VB_H}`}
+            xmlns="http://www.w3.org/2000/svg"
+            role="img"
+            aria-label="SERSAN"
+            className="relative h-[clamp(108px,24vw,178px)] w-auto"
+            style={{ aspectRatio: `${VB_W} / ${VB_H}`, overflow: "visible" }}
+          >
+            <defs>
+              <linearGradient id="preloader-fill" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="hsl(var(--accent))" />
+                <stop offset="100%" stopColor="hsl(var(--accent-2))" />
+              </linearGradient>
+              <filter
+                id="preloader-glow"
+                x="-30%"
+                y="-30%"
+                width="160%"
+                height="160%"
+              >
+                <feDropShadow
+                  dx="0"
+                  dy="0"
+                  stdDeviation="6"
+                  floodColor="hsl(189 100% 62%)"
+                  floodOpacity="0.55"
+                />
+              </filter>
+              {/* The seam burns hotter than the halves — its own, wider glow. */}
+              <filter
+                id="preloader-seam-glow"
+                x="-45%"
+                y="-45%"
+                width="190%"
+                height="190%"
+              >
+                <feDropShadow
+                  dx="0"
+                  dy="0"
+                  stdDeviation="9"
+                  floodColor="hsl(189 100% 62%)"
+                  floodOpacity="0.9"
+                />
+              </filter>
+              {/* The outline shine is a light, not a line: the glow supplies
+                the falloff the flat dash cannot. */}
+              <filter
+                id="preloader-shine-glow"
+                x="-40%"
+                y="-40%"
+                width="180%"
+                height="180%"
+              >
+                <feDropShadow
+                  dx="0"
+                  dy="0"
+                  stdDeviation="4.5"
+                  floodColor="#9FEFFF"
+                  floodOpacity="0.95"
+                />
+              </filter>
+              {/* Horizontal reveal: a rect grown L→R by `current` each frame. */}
+              <clipPath id="preloader-reveal">
+                <rect
+                  ref={fillRectRef}
+                  x={VB_X}
+                  y={VB_Y}
+                  width="0"
+                  height={VB_H}
+                />
+              </clipPath>
+            </defs>
 
-          {/* SEAM — drawn in its ASSEMBLED position, BEHIND both layers, so it
+            {/* THE WHEEL — everything that spins hangs off this one group,
+              pivoting on the mark's centre. The shaft below is deliberately
+              OUTSIDE it: it is already the signature line, and the signature
+              line does not spin. */}
+            <g ref={spinRef}>
+              {/* SEAM — drawn in its ASSEMBLED position, BEHIND both layers, so it
               reads as light coming out of the joint rather than a shape laid on
               top. Its opacity is owned by applySplit(); the wrapper exists only
               so the zoom can fade it without fighting that writer. */}
-          <g ref={seamWrapRef}>
-            <path
-              ref={seamRef}
-              d={MARK_SEAM_PATH}
-              fill="hsl(var(--accent))"
-              filter="url(#preloader-seam-glow)"
-              opacity="0"
-            />
-          </g>
+              <g ref={seamWrapRef}>
+                <path
+                  ref={seamRef}
+                  d={MARK_SEAM_PATH}
+                  fill="hsl(var(--accent))"
+                  filter="url(#preloader-seam-glow)"
+                  opacity="0"
+                />
+              </g>
 
-          {/* GHOST layer — the unbuilt halves (dim). Hidden on first paint
+              {/* GHOST layer — the unbuilt halves (dim). Hidden on first paint
               (opacity 0), faded in by the intro. Each half sits in its own
               group so applySplit() can translate it. */}
-          <g ref={ghostWrapRef} style={{ opacity: 0 }}>
-            <g ref={upperGhostRef}>
-              <path d={MARK_UPPER_PATH} fill="hsl(var(--ink) / 0.14)" />
-            </g>
-            <g ref={lowerGhostRef}>
-              <path d={MARK_LOWER_PATH} fill="hsl(var(--ink) / 0.14)" />
-            </g>
-          </g>
+              <g ref={ghostWrapRef} style={{ opacity: 0 }}>
+                <g ref={upperGhostRef}>
+                  <path d={MARK_UPPER_PATH} fill="hsl(var(--ink) / 0.14)" />
+                </g>
+                <g ref={lowerGhostRef}>
+                  <path d={MARK_LOWER_PATH} fill="hsl(var(--ink) / 0.14)" />
+                </g>
+              </g>
 
-          {/* LIT layer — the same halves, cyan→blue gradient + glow, clipped by
+              {/* LIT layer — the same halves, cyan→blue gradient + glow, clipped by
               the L→R reveal so the fill sweeps with progress. Wrapped
               (litWrapRef) so it fades on the zoom while the shaft — a SIBLING
               below — stays visible into the exit fade. */}
-          <g
-            ref={litWrapRef}
-            clipPath="url(#preloader-reveal)"
-            filter="url(#preloader-glow)"
-          >
-            <g ref={upperLitRef}>
-              <path d={MARK_UPPER_PATH} fill="url(#preloader-fill)" />
-            </g>
-            <g ref={lowerLitRef}>
-              <path d={MARK_LOWER_PATH} fill="url(#preloader-fill)" />
-            </g>
-          </g>
+              <g
+                ref={litWrapRef}
+                clipPath="url(#preloader-reveal)"
+                filter="url(#preloader-glow)"
+              >
+                <g ref={upperLitRef}>
+                  <path d={MARK_UPPER_PATH} fill="url(#preloader-fill)" />
+                </g>
+                <g ref={lowerLitRef}>
+                  <path d={MARK_LOWER_PATH} fill="url(#preloader-fill)" />
+                </g>
+              </g>
 
-          {/* The shaft — hidden during load (scaleY 0 + opacity 0 via the intro
+              {/* OUTLINE SHINE — one short bright dash travelling each half's
+              perimeter (stroke-dasharray + a moving offset), half a lap apart.
+              Faded in at the join and sped up with the wheel. */}
+              <g
+                ref={shineWrapRef}
+                opacity="0"
+                filter="url(#preloader-shine-glow)"
+              >
+                <path
+                  ref={upperShineRef}
+                  d={MARK_UPPER_PATH}
+                  fill="none"
+                  stroke="#EAF9FF"
+                  strokeWidth="3.2"
+                  strokeLinecap="round"
+                />
+                <path
+                  ref={lowerShineRef}
+                  d={MARK_LOWER_PATH}
+                  fill="none"
+                  stroke="#EAF9FF"
+                  strokeWidth="3.2"
+                  strokeLinecap="round"
+                />
+              </g>
+            </g>
+
+            {/* The shaft — hidden during load (scaleY 0 + opacity 0 via the intro
               set), drawn downward out of the lit seam at the lock, then
               streaked into the signature line on hand-off. */}
-          <rect
-            ref={dividerRef}
-            x={MARK_CX - 1.5}
-            y={MARK_CY - 34}
-            width="3"
-            height="68"
-            fill="hsl(var(--accent))"
-            opacity="0"
-          />
-        </svg>
+            <rect
+              ref={dividerRef}
+              x={MARK_CX - 1.5}
+              y={MARK_CY - 34}
+              width="3"
+              height="68"
+              fill="hsl(var(--accent))"
+              opacity="0"
+            />
+          </svg>
+        </div>
 
         {/* Subordinate readout: mono % counter + label beneath the mark. Wrapped
             (readoutRef) so it fades out on the zoom alongside the lit glyphs,
