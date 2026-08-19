@@ -245,6 +245,14 @@ const JOIN_AT = 0.82;
  * read them as two pieces at all.
  */
 const ASSEMBLY_MIN_S = 1.9;
+/**
+ * The same floor for a REPEAT hard load in this tab session. It follows the
+ * SESSION_SHORT rule the visible-time floor already follows: the visitor has
+ * watched the two pieces come together once, so they should not pay the full
+ * beat again — but the act must not vanish either, or the mark would simply be
+ * assembled when the curtain lifts.
+ */
+const ASSEMBLY_SHORT_S = 0.95;
 /** Seconds the seam's contact flare takes to decay after the join. */
 const JOIN_FLASH_S = 0.65;
 /** Wheel speed (turns/second) at the join and at 100%. */
@@ -875,6 +883,9 @@ export function Preloader() {
         // Storage unavailable — full minimum.
       }
     }
+    // The assembly floor rides the same session rule as the visible-time floor.
+    const assemblyMinS =
+      minVisibleMs === MIN_VISIBLE_SHORT_MS ? ASSEMBLY_SHORT_S : ASSEMBLY_MIN_S;
 
     // ----- Real-readiness target (0..1) -----
     // Four independent signals; each contributes a weighted slice — assets 0.70
@@ -1042,7 +1053,7 @@ export function Preloader() {
           assemblyClock += delta * joinRush;
           const k = Math.min(
             current / JOIN_AT,
-            assemblyClock / ASSEMBLY_MIN_S,
+            assemblyClock / assemblyMinS,
             1,
           );
           // Exponent > 1 ⇒ the halves are still gaining speed at contact: they
