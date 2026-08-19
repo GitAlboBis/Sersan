@@ -49,12 +49,12 @@
  * counter — the mark reads as something being fed), and are CAST outward,
  * swirled by the wheel's tangential speed, once it turns.
  *
- * THE SEAM. The S-channel between the halves (MARK_SEAM_PATH) is drawn as cyan
- * light BEHIND them, its opacity keyed to how CLOSE they are — invisible while
- * apart, brightest at contact. The mark's negative space is the brand's S, so
- * the moment the halves strike, the S ignites in the joint and the tunnel
- * lurches on the same beat. It then stays lit through the spin, which is what
- * keeps the turning mark legible as the mark.
+ * THE NEGATIVE SPACE IS LEFT ALONE. The S between the halves is the mark, and
+ * the mark reads because nothing is painted there — the sheet shows through it,
+ * exactly as the logo does everywhere else on the site. The contact still has a
+ * beat: a `strike` envelope decays from the moment the halves meet and lurches
+ * the tunnel behind, so the load-in registers the impact without putting a
+ * coloured plate under the icon.
  *
  * The geometry is IMPORTED from src/components/sersan-logo.tsx (one source of
  * truth for the DOM logo, the favicon, the archive portal and the 3D GLB), and
@@ -108,8 +108,8 @@
  * Hand-off (release → zoom-through → fade): at 100% nothing needs seating —
  * the wheel is already turning, so the exit RELEASES it. spinBoost winds the
  * spin up through the whole exit (the spin is an integrated RATE, never a tween
- * target, so the hand-off can multiply it without touching the angle), the seam
- * flares white-hot one last time, and the rim casts a full ring of points. A
+ * target, so the hand-off can multiply it without touching the angle) and the
+ * rim casts a full ring of points. A
  * warm cache can satisfy every readiness signal before the halves have even met
  * — ASSEMBLY_MIN_S outlasts MIN_VISIBLE_SHORT_MS — so the exit never fires
  * mid-flight:
@@ -122,9 +122,9 @@
  * flying THROUGH the mark into the site: warp + zoom + crossfade, no wipe, no
  * hard edge. Through that beat introStore.complete() flips (SignatureLine
  * listens for the false→true edge and re-kicks its uReveal 0→1 draw-in), and a
- * cyan SHAFT is drawn downward out of the lit seam — deliberately OUTSIDE the
- * spinning group, because it is already the signature line — elongating into it
- * and dissolving with the overlay. The eye reads the light in the mark's joint
+ * cyan SHAFT is drawn downward out of the mark's centre — deliberately OUTSIDE
+ * the spinning group, because it is already the signature line — elongating into
+ * it and dissolving with the overlay. The eye reads the light in the mark
  * becoming the scroll line.
  *
  * SSR-safe: the overlay only renders AFTER mount (a client effect sets `mounted`),
@@ -158,7 +158,6 @@ import {
 import {
   MARK_UPPER_PATH,
   MARK_LOWER_PATH,
-  MARK_SEAM_PATH,
   MARK_W,
   MARK_H,
   SPLIT_AXIS,
@@ -253,7 +252,7 @@ const ASSEMBLY_MIN_S = 1.9;
  * assembled when the curtain lifts.
  */
 const ASSEMBLY_SHORT_S = 0.95;
-/** Seconds the seam's contact flare takes to decay after the join. */
+/** Seconds the contact's strike envelope takes to decay after the join. */
 const JOIN_FLASH_S = 0.65;
 /** Wheel speed (turns/second) at the join and at 100%. */
 const SPIN_MIN = 0.3;
@@ -264,10 +263,6 @@ const SPIN_CURVE = 1.5;
 const SPIN_EXIT = 2.6;
 /** Seconds the wheel must have turned before the exit may fire. */
 const MIN_SPIN_S = 0.34;
-/** Gap (user units) below which the seam starts to light. */
-const SEAM_RANGE = 22;
-/** Seam opacity at contact (the join and the exit flare past this to 1). */
-const SEAM_PEAK = 0.8;
 /** Share of each half's outline covered by the travelling shine. */
 const SHINE_FRACTION = 0.13;
 /** Outline laps per second: a floor, plus a term that rides the wheel. */
@@ -351,10 +346,6 @@ export function Preloader() {
   const lowerShineRef = useRef<SVGPathElement>(null);
   const ghostWrapRef = useRef<SVGGElement>(null); // both ghost halves (fade on lock)
   const litWrapRef = useRef<SVGGElement>(null); // both lit halves (fade on zoom)
-  // The seam: an inner <path> whose opacity applySplit() owns, inside a wrapper
-  // the zoom fades — two elements so the two writers never fight over one.
-  const seamRef = useRef<SVGPathElement>(null);
-  const seamWrapRef = useRef<SVGGElement>(null);
   const readoutRef = useRef<HTMLDivElement>(null); // % counter + label (fade on zoom)
   const dividerRef = useRef<SVGRectElement>(null);
 
@@ -546,14 +537,18 @@ export function Preloader() {
     // `markState` is the whole choreography. The rAF loop owns it during load;
     // at reveal the GSAP timeline takes the pieces it needs (the loop keeps
     // integrating ONLY the spin, which is a rate, not a target). Every
-    // attribute — the six translated pieces, the spin, the seam, the outline
-    // shine, the lit-layer reveal — is written from HERE and nowhere else, so
-    // no two writers can ever fight over one attribute.
+    // attribute — the six translated pieces, the spin, the outline shine, the
+    // lit-layer reveal — is written from HERE and nowhere else, so no two
+    // writers can ever fight over one attribute.
     const markState = {
       /** Half-separation in user units along SPLIT_AXIS. 0 = flush. */
       gap: GAP_START,
-      /** Extra seam flare (0..1) added on top of the contact term. */
-      boost: 0,
+      /**
+       * Strike envelope (1 → 0 over JOIN_FLASH_S from the moment the halves
+       * meet). Nothing on the mark draws it — it exists so the backdrop can
+       * lurch on the beat of the contact.
+       */
+      strike: 0,
       /** Wheel rotation, degrees CLOCKWISE from rest. */
       spin: 0,
       /** Travelling-shine phase, in laps of a half's outline. */
@@ -586,13 +581,6 @@ export function Preloader() {
           " " +
           MARK_CY +
           ")",
-      );
-      // The seam is the JOINT: it only exists as the faces close, and squaring
-      // the closeness keeps it dark until they are genuinely near contact.
-      const close = Math.max(0, 1 - markState.gap / SEAM_RANGE);
-      seamRef.current?.setAttribute(
-        "opacity",
-        Math.min(1, close * close * SEAM_PEAK + markState.boost).toFixed(3),
       );
       if (shineLen > 0) {
         // Half a lap apart: across a 180°-symmetric mark the two dashes read as
@@ -1070,7 +1058,7 @@ export function Preloader() {
         } else {
           const since = tSec - joinedAt;
           gatherK = 0;
-          markState.boost = Math.max(0, 1 - since / JOIN_FLASH_S);
+          markState.strike = Math.max(0, 1 - since / JOIN_FLASH_S);
           markState.shineAlpha = Math.min(1, since / 0.5);
           const tail = Math.min(
             1,
@@ -1134,11 +1122,11 @@ export function Preloader() {
       // 100 (THE WARP) on its own beat, so post-reveal frames only render.
       if (tunnel) {
         // The backdrop answers the mark: it breathes with % , lurches on the
-        // beat the halves strike (the seam flare), and then winds up with the
-        // wheel — so the field behind is never doing its own thing.
+        // beat the halves strike, and then winds up with the wheel — so the
+        // field behind is never doing its own thing.
         if (!revealed)
           tunnel.setTargetTimeCoef(
-            1 + current * 2 + markState.boost * 2.5 + spinTurns * 0.7,
+            1 + current * 2 + markState.strike * 2.5 + spinTurns * 0.7,
           );
         tunnel.render(delta);
       } else {
@@ -1216,10 +1204,9 @@ export function Preloader() {
       const tl = gsap.timeline();
 
       // (a) RELEASE — the wheel is ALREADY turning, so the exit does not seat
-      //     anything: it winds the wheel up (spinBoost), flares the seam
-      //     white-hot one last time, and casts a full ring of points off the
-      //     rim. The spin itself stays with the rAF integrator — a tween here
-      //     would fight it for the angle.
+      //     anything: it winds the wheel up (spinBoost) and casts a full ring
+      //     of points off the rim. The spin itself stays with the rAF
+      //     integrator — a tween here would fight it for the angle.
       if (!joined) {
         // Watchdog path only: the halves never met (a stuck GPU tripped the
         // 14s insurance). Snap them together rather than zoom a mark in pieces.
@@ -1230,21 +1217,7 @@ export function Preloader() {
         markState.shineAlpha = 1;
         applyMark();
       }
-      const exit = { boost: markState.boost, spin: 1 };
-      const pushBoost = () => {
-        markState.boost = exit.boost;
-        applyMark();
-      };
-      tl.to(
-        exit,
-        { boost: 1, duration: 0.18, ease: "power2.in", onUpdate: pushBoost },
-        0,
-      );
-      tl.to(
-        exit,
-        { boost: 0.25, duration: 0.6, ease: "power2.out", onUpdate: pushBoost },
-        0.2,
-      );
+      const exit = { spin: 1 };
       tl.to(
         exit,
         {
@@ -1258,15 +1231,6 @@ export function Preloader() {
         0,
       );
       tl.call(() => burstField(110, spinTurns * spinBoost), undefined, 0.16);
-      if (seamRef.current) {
-        // White-hot at the release, cooling back to signal cyan.
-        tl.to(seamRef.current, { fill: "#EAF9FF", duration: 0.16 }, 0);
-        tl.to(
-          seamRef.current,
-          { fill: "hsl(189 100% 62%)", duration: 0.5, ease: "power2.out" },
-          0.2,
-        );
-      }
       if (ghostWrapRef.current) {
         tl.to(
           ghostWrapRef.current,
@@ -1275,8 +1239,8 @@ export function Preloader() {
         );
       }
 
-      // The shaft: a thin cyan bar drawn downward OUT of the lit seam. It does
-      // not spin with the mark — it is already the signature line, waiting.
+      // The shaft: a thin cyan bar drawn downward out of the mark's centre. It
+      // does not spin with it — the shaft is already the signature line, waiting.
       if (dividerRef.current) {
         tl.to(
           dividerRef.current,
@@ -1321,11 +1285,9 @@ export function Preloader() {
           0.66,
         );
       }
-      const fadeOnZoom = [
-        litWrapRef.current,
-        seamWrapRef.current,
-        readoutRef.current,
-      ].filter(Boolean) as (SVGGElement | HTMLDivElement)[];
+      const fadeOnZoom = [litWrapRef.current, readoutRef.current].filter(
+        Boolean,
+      ) as (SVGGElement | HTMLDivElement)[];
       if (fadeOnZoom.length) {
         tl.to(
           fadeOnZoom,
@@ -1449,8 +1411,7 @@ export function Preloader() {
       {/* HERO: the mark, mid-assembly. Two halves that keep parting and
           re-joining along SPLIT_AXIS, in two stacked layers — a dim GHOST
           (unbuilt) and a cyan→blue LIT layer clipped by a L→R reveal rect
-          driven by %. Behind them the SEAM: the S-shaped channel, lit by how
-          close the halves are. On hand-off they slam flush and the mark zooms
+          driven by %. On hand-off the wheel is released and the mark zooms
           through. */}
       <div
         ref={logoRef}
@@ -1496,22 +1457,6 @@ export function Preloader() {
                   floodOpacity="0.55"
                 />
               </filter>
-              {/* The seam burns hotter than the halves — its own, wider glow. */}
-              <filter
-                id="preloader-seam-glow"
-                x="-45%"
-                y="-45%"
-                width="190%"
-                height="190%"
-              >
-                <feDropShadow
-                  dx="0"
-                  dy="0"
-                  stdDeviation="9"
-                  floodColor="hsl(189 100% 62%)"
-                  floodOpacity="0.9"
-                />
-              </filter>
               {/* The outline shine is a light, not a line: the glow supplies
                 the falloff the flat dash cannot. */}
               <filter
@@ -1546,20 +1491,6 @@ export function Preloader() {
               OUTSIDE it: it is already the signature line, and the signature
               line does not spin. */}
             <g ref={spinRef}>
-              {/* SEAM — drawn in its ASSEMBLED position, BEHIND both layers, so it
-              reads as light coming out of the joint rather than a shape laid on
-              top. Its opacity is owned by applySplit(); the wrapper exists only
-              so the zoom can fade it without fighting that writer. */}
-              <g ref={seamWrapRef}>
-                <path
-                  ref={seamRef}
-                  d={MARK_SEAM_PATH}
-                  fill="hsl(var(--accent))"
-                  filter="url(#preloader-seam-glow)"
-                  opacity="0"
-                />
-              </g>
-
               {/* GHOST layer — the unbuilt halves (dim). Hidden on first paint
               (opacity 0), faded in by the intro. Each half sits in its own
               group so applySplit() can translate it. */}
@@ -1617,7 +1548,7 @@ export function Preloader() {
             </g>
 
             {/* The shaft — hidden during load (scaleY 0 + opacity 0 via the intro
-              set), drawn downward out of the lit seam at the lock, then
+              set), drawn downward out of the mark's centre at the release, then
               streaked into the signature line on hand-off. */}
             <rect
               ref={dividerRef}

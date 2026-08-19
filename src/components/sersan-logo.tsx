@@ -6,7 +6,7 @@ import Link from "next/link";
  *
  * Server component. Pure SVG, no hooks. Wraps in a `next/link` to "/" by default.
  *
- * THE GEOMETRY IS THE SOURCE OF TRUTH FOR THE WHOLE SITE. The three paths below
+ * THE GEOMETRY IS THE SOURCE OF TRUTH FOR THE WHOLE SITE. The paths below
  * are exported and reused by the preloader (fx/preloader.tsx — the halves shear
  * apart and lock), the archive portal (fx/see-more-portal.tsx — rasterised into
  * particle targets), public/favicon.svg and the 3D mark
@@ -43,14 +43,6 @@ export const MARK_UPPER_PATH = `M 81.19 0 L 162.38 46.88 L 127.3 67.13 L 81.19 4
 
 /** LOWER half — MARK_UPPER_PATH rotated 180° about the mark's centre. */
 export const MARK_LOWER_PATH = `M 81.19 200 L 0 153.13 L 35.08 132.87 L 81.19 159.49 L 122.73 135.51 L 122.73 109.97 L 82.27 86.6 L 121.78 63.79 L 162.38 87.22 L 162.38 153.13 Z`;
-
-/**
- * The SEAM — the S-shaped channel BETWEEN the two halves, as a filled polygon:
- * the upper half's inner chain, down the left edge, the lower half's inner
- * chain, up the right edge. It is the mark's negative space made positive, and
- * the preloader lights it as the two halves lock together.
- */
-export const MARK_SEAM_PATH = `M 162.38 46.88 L 127.3 67.13 L 81.19 40.51 L 39.64 64.49 L 39.64 90.03 L 80.11 113.4 L 40.6 136.21 L 0 112.78 L 0 153.13 L 35.08 132.87 L 81.19 159.49 L 122.73 135.51 L 122.73 109.97 L 82.27 86.6 L 121.78 63.79 L 162.38 87.22 Z`;
 
 /**
  * The direction the two halves separate along, as a unit vector in SVG space

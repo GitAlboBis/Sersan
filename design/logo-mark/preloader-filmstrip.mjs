@@ -6,7 +6,7 @@
  *
  * Row A — ASSEMBLY (owns the load): the halves converge as the counter climbs,
  *         lighting L→R on the same schedule, while the field gathers inward.
- *         They seat at JOIN_AT and the seam ignites in the joint.
+ *         They seat at JOIN_AT.
  * Row B — THE WHEEL (owns the tail): short and steep, the field cast outward
  *         and swirled by the spin. Last frame is the exit release.
  */
@@ -16,9 +16,6 @@ const UPPER =
   "M 81.19 0 L 162.38 46.88 L 127.3 67.13 L 81.19 40.51 L 39.64 64.49 L 39.64 90.03 L 80.11 113.4 L 40.6 136.21 L 0 112.78 L 0 46.88 Z";
 const LOWER =
   "M 81.19 200 L 0 153.13 L 35.08 132.87 L 81.19 159.49 L 122.73 135.51 L 122.73 109.97 L 82.27 86.6 L 121.78 63.79 L 162.38 87.22 L 162.38 153.13 Z";
-const SEAM =
-  "M 162.38 46.88 L 127.3 67.13 L 81.19 40.51 L 39.64 64.49 L 39.64 90.03 L 80.11 113.4 L 40.6 136.21 L 0 112.78 L 0 153.13 L 35.08 132.87 L 81.19 159.49 L 122.73 135.51 L 122.73 109.97 L 82.27 86.6 L 121.78 63.79 L 162.38 87.22 Z";
-
 // --- mirrored from preloader.tsx ------------------------------------------
 const AX = { x: Math.sqrt(3) / 2, y: 0.5 };
 const MARK_W = 162.38;
@@ -34,8 +31,6 @@ const JOIN_FLASH_S = 0.65;
 const SPIN_MIN = 0.3;
 const SPIN_MAX = 3.6;
 const SPIN_CURVE = 1.5;
-const SEAM_RANGE = 22;
-const SEAM_PEAK = 0.8;
 const SHINE_FRACTION = 0.13;
 const SHINE_BASE = 0.28;
 const SHINE_PER_TURN = 0.34;
@@ -146,8 +141,6 @@ const CH = Math.round((CW * VB[3]) / VB[2]);
 const panel = ({ gap, boost, spin, shine, shineAlpha, fill, ghost, S, label }) => {
   const dx = (AX.x * gap).toFixed(2);
   const dy = (AX.y * gap).toFixed(2);
-  const close = Math.max(0, 1 - gap / SEAM_RANGE);
-  const seamA = Math.min(1, close * close * SEAM_PEAK + boost).toFixed(3);
   const dash = `${(PERIM * SHINE_FRACTION).toFixed(1)} ${(PERIM * (1 - SHINE_FRACTION)).toFixed(1)}`;
   const dot = (i, rgb) =>
     `<radialGradient id="dot${i}"><stop offset="0" stop-color="rgb(${rgb})" stop-opacity="1"/><stop offset="0.35" stop-color="rgb(${rgb})" stop-opacity="0.42"/><stop offset="1" stop-color="rgb(${rgb})" stop-opacity="0"/></radialGradient>`;
@@ -162,9 +155,6 @@ const panel = ({ gap, boost, spin, shine, shineAlpha, fill, ghost, S, label }) =
       <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
         <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#3BE1FF" flood-opacity="0.55"/>
       </filter>
-      <filter id="sglow" x="-45%" y="-45%" width="190%" height="190%">
-        <feDropShadow dx="0" dy="0" stdDeviation="9" flood-color="#3BE1FF" flood-opacity="0.9"/>
-      </filter>
       <filter id="shglow" x="-40%" y="-40%" width="180%" height="180%">
         <feDropShadow dx="0" dy="0" stdDeviation="4.5" flood-color="#9FEFFF" flood-opacity="0.95"/>
       </filter>
@@ -172,7 +162,6 @@ const panel = ({ gap, boost, spin, shine, shineAlpha, fill, ghost, S, label }) =
     </defs>
     ${S ? fieldSvg(S) : ""}
     <g transform="rotate(${spin.toFixed(2)} ${MARK_CX} ${MARK_CY})">
-      <path d="${SEAM}" fill="#3BE1FF" filter="url(#sglow)" opacity="${seamA}"/>
       <g opacity="${ghost}">
         <g transform="translate(${-dx} ${-dy})"><path d="${UPPER}" fill="#F4F6FA" fill-opacity="0.14"/></g>
         <g transform="translate(${dx} ${dy})"><path d="${LOWER}" fill="#F4F6FA" fill-opacity="0.14"/></g>
@@ -220,7 +209,7 @@ const rowA = [];
           S,
           label:
             k >= 1
-              ? "JOIN  100% of act 1  the seam ignites"
+              ? "JOIN  100% of act 1"
               : `ASSEMBLY  ${Math.round(k * JOIN_AT * 100)}%  gap ${gap.toFixed(0)}`,
         }),
       );
