@@ -455,8 +455,10 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
         // ICS-media-reference look (user 2026-06-10): bright glowing sprites,
         // dense enough to read as solid strokes — hot emissive, near-white ink.
         //
-        // POINT_SIZE 8 — the calibrated value, RESTORED 2026-08-18 after a
-        // one-day detour to 4 that was made on a false premise.
+        // POINT_SIZE 9 — the owner's own value, settled live on the
+        // `?wordmark` panel (2026-08-18) one notch above the calibrated 8 that
+        // had been RESTORED earlier the same day, after a one-day detour to 4
+        // that was made on a false premise.
         //
         // WHAT THE NUMBER IS IN SCREEN TERMS: it is NOT CSS px, and it is not
         // in the same units as the stroke width. The render stage computes
@@ -466,9 +468,9 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
         // view-space distance to the wordmark plane — CAMERA_Z = 12 at the hero
         // station. Dividing the dpr back out, the on-screen MOTE DIAMETER is
         //   POINT_SIZE × (0.7…1.4) / 12 CSS px,   mean ≈ POINT_SIZE / 11.4
-        //   ⇒ 8 → 0.70 CSS px mean        4 → 0.35 CSS px mean
+        //   ⇒ 9 → 0.79 CSS px mean        8 → 0.70        4 → 0.35
         // Every mote is therefore deeply SUB-PIXEL. The lockup's stem at 1440
-        // is ~5.7px (cap 72.6px × 7.86% at weight 300), i.e. ~8 motes wide: the
+        // is ~7.0px (cap 71.8px × 9.71% at weight 340), i.e. ~9 motes wide: the
         // disc can never overhang the letterform, and no value in this knob's
         // range can. The earlier claim that it did — and the 8→4 drop that
         // followed from it — was wrong.
@@ -476,7 +478,8 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
         // WHAT IT ACTUALLY CONTROLS IS BRIGHTNESS. Additive coverage scales
         // with mote AREA, i.e. roughly POINT_SIZE², so 8→4 discarded ~75% of
         // the ink and made the wordmark read FAINTER — the exact opposite of
-        // the owner's "too thin" report. Raise it to deposit more light per
+        // the owner's "too thin" report, while 8→9 deposits ~27% MORE ink per
+        // particle ((9/8)² = 1.27). Raise it to deposit more light per
         // particle (paying in edge softness); lower it only to thin the ink on
         // purpose. The Wordmark Lab (`?wordmark`) overrides this uniform live
         // through wordmarkTuner.pointSize, with the per-weight stem table and
@@ -486,7 +489,7 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
           DAMPING: 6.5,
           MAX_SPEED: 9,
           TURB: 14,
-          POINT_SIZE: 8,
+          POINT_SIZE: 9,
           POINT_ALPHA: 1.0,
           EMISSIVE: 4,
           COL_COLD: [1, 1, 1.0], // bright white-lavender ink
@@ -501,18 +504,20 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
         scatter,
       );
       built = bm as unknown as MorphBuild;
-      // COMPACT look knob (plan Phase 4b, measure-first; restored to 5 on
-      // 2026-08-18 with the desktop 8 — the 3 that briefly shipped alongside
-      // the 4 rested on the same false "disc wider than the stroke" premise).
-      // The argument here is DENSITY, not overhang: the 9.8vw wordmark on a
-      // 390px viewport is a 38.2px font-size ⇒ 26.8px cap ⇒ a ~2.1px stem at
-      // weight 300, and its ink area is ≈1/7 of desktop's while 24k particles
+      // COMPACT look knob (plan Phase 4b, measure-first; 6 since 2026-08-18,
+      // moved in PROPORTION with the desktop 8→9 — round(9 × 5/8) = 6 — so the
+      // phone keeps the same ~2/3-of-desktop disc it has had since the 5/8
+      // pair. The 3 that briefly shipped alongside the 4 rested on the false
+      // "disc wider than the stroke" premise.)
+      // The argument here is DENSITY, not overhang: the 9.69vw wordmark on a
+      // 390px viewport is a 37.8px font-size ⇒ 26.5px cap ⇒ a ~2.6px stem at
+      // weight 340, and its ink area is ≈1/7 of desktop's while 24k particles
       // fill it — ≈3.7× more motes per unit of ink. At the desktop disc that
       // stacks into a blown-out slab with clogged counters, so the phone runs
-      // one notch of light less: 5 ⇒ mean mote ≈0.44 CSS px, ≈39% of desktop's
-      // coverage per mote, which the higher density puts back. Still far below
-      // the ~2.1px stem, so nothing overhangs on this anchor either.
-      if (autoRef.current) built.uPointSize.value = 5;
+      // a smaller mote: 6 ⇒ mean mote ≈0.53 CSS px, ≈44% of desktop's
+      // coverage per mote ((6/9)²), which the higher density puts back. Still
+      // far below the ~2.6px stem, so nothing overhangs on this anchor either.
+      if (autoRef.current) built.uPointSize.value = 6;
       // Resume state: a rebuild mid/after entry must not restart the wave.
       // On a genuine full-intro replay (fresh mount) start from a clean
       // store, regardless of stale journey flags that survived on the

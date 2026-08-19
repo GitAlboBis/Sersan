@@ -1,0 +1,132 @@
+{
+ "200": {
+  "style": "ExtraLight",
+  "usWeightClass": 250,
+  "out": "C:/Users/alber/Desktop/sersan-v2-main/src/fonts/sersan-display-200.woff2",
+  "size": 10456,
+  "glyphs": [
+   {
+    "ch": "A",
+    "pts": 10,
+    "contours": 1,
+    "bbox_old": [
+     12,
+     0,
+     606,
+     721
+    ],
+    "bbox_new": [
+     12,
+     0,
+     606,
+     721
+    ],
+    "adv": [
+     618,
+     618
+    ],
+    "lsb": [
+     12,
+     12
+    ]
+   },
+   {
+    "ch": "R",
+    "pts": 107,
+    "contours": 1,
+    "bbox_old": [
+     87,
+     0,
+     467,
+     700
+    ],
+    "bbox_new": [
+     87,
+     0,
+     467,
+     700
+    ],
+    "adv": [
+     495,
+     495
+    ],
+    "lsb": [
+     87,
+     87
+    ]
+   }
+  ],
+  "n1": "Sersan Display ExtraLight",
+  "n4": "Sersan Display ExtraLight",
+  "n6": "SersanDisplay-ExtraLight",
+  "n16": "Sersan Display",
+  "n17": "ExtraLight",
+  "n0": "Copyright 2020 The Jost Project Authors (https://github.com/indestructible-type/Jost)",
+  "n14": "http://scripts.sil.org/OFL"
+ },
+ "300": {
+  "style": "Light",
+  "usWeightClass": 300,
+  "out": "C:/Users/alber/Desktop/sersan-v2-main/src/fonts/sersan-display-300.woff2",
+  "size": 10136,
+  "glyphs": [
+   {
+    "ch": "A",
+    "pts": 10,
+    "contours": 1,
+    "bbox_old": [
+     9,
+     0,
+     627,
+     727
+    ],
+    "bbox_new": [
+     9,
+     0,
+     627,
+     727
+    ],
+    "adv": [
+     636,
+     636
+    ],
+    "lsb": [
+     9,
+     9
+    ]
+   },
+   {
+    "ch": "R",
+    "pts": 94,
+    "contours": 1,
+    "bbox_old": [
+     84,
+     0,
+     503,
+     700
+    ],
+    "bbox_new": [
+     84,
+     0,
+     503,
+     700
+    ],
+    "adv": [
+     523,
+     523
+    ],
+    "lsb": [
+     84,
+     84
+    ]
+   }
+  ],
+  "n1": "Sersan Display Light",
+  "n4": "Sersan Display Light",
+  "n6": "SersanDisplay-Light",
+  "n16": "Sersan Display",
+  "n17": "Light",
+  "n0": "Copyright 2020 The Jost Project Authors (https://github.com/indestructible-type/Jost)",
+  "n14": "http://scripts.sil.org/OFL"
+ }
+}

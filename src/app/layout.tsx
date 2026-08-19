@@ -27,14 +27,15 @@ import { Analytics } from "@vercel/analytics/next";
 //   no crossbar and the R's bowl stops short of the stem. Shipped as a full
 //   weight LADDER (200/220/240/260/280/300/340 — every step verified to keep
 //   both amputations intact) so the wordmark's stroke weight can be settled
-//   against the live particle render instead of guessed. 300 is the default
-//   (stem 7.86% of cap height) — deliberately one step ABOVE the 5.0–6.5%-ish
+//   against the live particle render instead of guessed. 340 is the default
+//   (stem 9.71% of cap height) — deliberately well ABOVE the 5.0–6.5%-ish
 //   band the owner's flat reference artwork measures (220 = 5.43%, 240 =
 //   6.00%, 260 = 6.71%), because the additive sub-pixel particle render
 //   scatters light and reads lighter than solid artwork, so matching the
-//   artwork's stem number ships a wordmark that looks too thin. 340 (9.71%) is
-//   the next step up and overshoots. The Wordmark Lab
-//   (`components/fx/wordmark-lab.tsx`, `?wordmark`) cycles the rest live.
+//   artwork's stem number ships a wordmark that looks too thin — 300 (7.86%)
+//   still did, and 340 is where the owner settled on the live panel. The
+//   Wordmark Lab (`components/fx/wordmark-lab.tsx`, `?wordmark`) cycles the
+//   rest live.
 //   Used for the SERSAN wordmark, nothing else.
 // - Display: Fraunces (variable, optical sizing + italic) — the editorial
 //   serif for big headings. Editorial New is no longer distributed by

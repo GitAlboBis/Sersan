@@ -1,0 +1,324 @@
+skip 200: shipped face left untouched
+skip 300: shipped face left untouched
+{
+ "220": {
+  "usWeightClass": 220,
+  "out": "C:/Users/alber/Desktop/sersan-v2-main/src/fonts/sersan-display-220.woff2",
+  "size": 10504,
+  "glyphs": [
+   {
+    "ch": "A",
+    "pts": 10,
+    "contours": 1,
+    "bbox_old": [
+     11,
+     0,
+     610,
+     722
+    ],
+    "bbox_new": [
+     11,
+     0,
+     610,
+     722
+    ],
+    "adv": [
+     621,
+     621
+    ],
+    "lsb": [
+     11,
+     11
+    ]
+   },
+   {
+    "ch": "R",
+    "pts": 92,
+    "contours": 1,
+    "bbox_old": [
+     86,
+     0,
+     474,
+     700
+    ],
+    "bbox_new": [
+     86,
+     0,
+     474,
+     700
+    ],
+    "adv": [
+     501,
+     501
+    ],
+    "lsb": [
+     86,
+     86
+    ]
+   }
+  ],
+  "n1": "Sersan Display 220",
+  "n4": "Sersan Display 220",
+  "n6": "SersanDisplay-220",
+  "n16": "Sersan Display",
+  "n17": "220",
+  "n0": "Copyright 2020 The Jost Project Authors (https://github.com/indestructible-type/Jost)",
+  "n14": "http://scripts.sil.org/OFL"
+ },
+ "240": {
+  "usWeightClass": 240,
+  "out": "C:/Users/alber/Desktop/sersan-v2-main/src/fonts/sersan-display-240.woff2",
+  "size": 10432,
+  "glyphs": [
+   {
+    "ch": "A",
+    "pts": 10,
+    "contours": 1,
+    "bbox_old": [
+     11,
+     0,
+     614,
+     723
+    ],
+    "bbox_new": [
+     11,
+     0,
+     614,
+     723
+    ],
+    "adv": [
+     625,
+     625
+    ],
+    "lsb": [
+     11,
+     11
+    ]
+   },
+   {
+    "ch": "R",
+    "pts": 92,
+    "contours": 1,
+    "bbox_old": [
+     86,
+     0,
+     482,
+     700
+    ],
+    "bbox_new": [
+     86,
+     0,
+     482,
+     700
+    ],
+    "adv": [
+     506,
+     506
+    ],
+    "lsb": [
+     86,
+     86
+    ]
+   }
+  ],
+  "n1": "Sersan Display 240",
+  "n4": "Sersan Display 240",
+  "n6": "SersanDisplay-240",
+  "n16": "Sersan Display",
+  "n17": "240",
+  "n0": "Copyright 2020 The Jost Project Authors (https://github.com/indestructible-type/Jost)",
+  "n14": "http://scripts.sil.org/OFL"
+ },
+ "260": {
+  "usWeightClass": 260,
+  "out": "C:/Users/alber/Desktop/sersan-v2-main/src/fonts/sersan-display-260.woff2",
+  "size": 10464,
+  "glyphs": [
+   {
+    "ch": "A",
+    "pts": 10,
+    "contours": 1,
+    "bbox_old": [
+     10,
+     0,
+     618,
+     725
+    ],
+    "bbox_new": [
+     10,
+     0,
+     618,
+     725
+    ],
+    "adv": [
+     629,
+     629
+    ],
+    "lsb": [
+     10,
+     10
+    ]
+   },
+   {
+    "ch": "R",
+    "pts": 102,
+    "contours": 1,
+    "bbox_old": [
+     85,
+     0,
+     489,
+     700
+    ],
+    "bbox_new": [
+     85,
+     0,
+     489,
+     700
+    ],
+    "adv": [
+     512,
+     512
+    ],
+    "lsb": [
+     85,
+     85
+    ]
+   }
+  ],
+  "n1": "Sersan Display 260",
+  "n4": "Sersan Display 260",
+  "n6": "SersanDisplay-260",
+  "n16": "Sersan Display",
+  "n17": "260",
+  "n0": "Copyright 2020 The Jost Project Authors (https://github.com/indestructible-type/Jost)",
+  "n14": "http://scripts.sil.org/OFL"
+ },
+ "280": {
+  "usWeightClass": 280,
+  "out": "C:/Users/alber/Desktop/sersan-v2-main/src/fonts/sersan-display-280.woff2",
+  "size": 10448,
+  "glyphs": [
+   {
+    "ch": "A",
+    "pts": 10,
+    "contours": 1,
+    "bbox_old": [
+     10,
+     0,
+     623,
+     726
+    ],
+    "bbox_new": [
+     10,
+     0,
+     623,
+     726
+    ],
+    "adv": [
+     632,
+     632
+    ],
+    "lsb": [
+     10,
+     10
+    ]
+   },
+   {
+    "ch": "R",
+    "pts": 92,
+    "contours": 1,
+    "bbox_old": [
+     85,
+     0,
+     496,
+     700
+    ],
+    "bbox_new": [
+     85,
+     0,
+     496,
+     700
+    ],
+    "adv": [
+     518,
+     518
+    ],
+    "lsb": [
+     85,
+     85
+    ]
+   }
+  ],
+  "n1": "Sersan Display 280",
+  "n4": "Sersan Display 280",
+  "n6": "SersanDisplay-280",
+  "n16": "Sersan Display",
+  "n17": "280",
+  "n0": "Copyright 2020 The Jost Project Authors (https://github.com/indestructible-type/Jost)",
+  "n14": "http://scripts.sil.org/OFL"
+ },
+ "340": {
+  "usWeightClass": 340,
+  "out": "C:/Users/alber/Desktop/sersan-v2-main/src/fonts/sersan-display-340.woff2",
+  "size": 10360,
+  "glyphs": [
+   {
+    "ch": "A",
+    "pts": 10,
+    "contours": 1,
+    "bbox_old": [
+     7,
+     0,
+     638,
+     730
+    ],
+    "bbox_new": [
+     7,
+     0,
+     638,
+     730
+    ],
+    "adv": [
+     646,
+     646
+    ],
+    "lsb": [
+     7,
+     7
+    ]
+   },
+   {
+    "ch": "R",
+    "pts": 97,
+    "contours": 1,
+    "bbox_old": [
+     82,
+     0,
+     522,
+     700
+    ],
+    "bbox_new": [
+     82,
+     0,
+     522,
+     700
+    ],
+    "adv": [
+     538,
+     538
+    ],
+    "lsb": [
+     82,
+     82
+    ]
+   }
+  ],
+  "n1": "Sersan Display 340",
+  "n4": "Sersan Display 340",
+  "n6": "SersanDisplay-340",
+  "n16": "Sersan Display",
+  "n17": "340",
+  "n0": "Copyright 2020 The Jost Project Authors (https://github.com/indestructible-type/Jost)",
+  "n14": "http://scripts.sil.org/OFL"
+ }
+}

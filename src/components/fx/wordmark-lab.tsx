@@ -59,9 +59,9 @@ const WEIGHTS = [200, 220, 240, 260, 280, 300, 340] as const;
  * faces in src/fonts. The owner's flat reference ARTWORK measures ~5.0–6.5%,
  * which is what makes 220/240/260 the "faithful" band — but the shipped
  * wordmark is a PARTICLE render, and additive sub-pixel motes scatter light
- * and read lighter than solid artwork, so the shipped weight (300, 7.86%)
- * deliberately sits one step above the band. The band is annotated, not
- * prescriptive.
+ * and read lighter than solid artwork, so the shipped weight (340, 9.71% —
+ * the owner's call on this very panel, after 300 still read thin) deliberately
+ * sits well above the band. The band is annotated, not prescriptive.
  */
 const STEM_OVER_CAP: Record<number, number> = {
   200: 0.0471,
@@ -78,10 +78,10 @@ const REFERENCE_BAND = new Set([220, 240, 260]);
 const CAP_OVER_EM = 0.7;
 
 /** Shipped defaults — what the page loads with, and what R restores. */
-const DEFAULT_WEIGHT = 300;
-const DEFAULT_DISC = 8;
-const DEFAULT_DISC_COMPACT = 5;
-// Range brackets the shipped 8 in both directions — the point of the knob is
+const DEFAULT_WEIGHT = 340;
+const DEFAULT_DISC = 9;
+const DEFAULT_DISC_COMPACT = 6;
+// Range brackets the shipped 9 in both directions — the point of the knob is
 // that the owner can go BRIGHTER as well as dimmer (coverage ≈ disc²).
 const DISC_MIN = 2;
 const DISC_MAX = 16;
@@ -333,7 +333,7 @@ export function WordmarkLab() {
     : Number.NaN;
   // Additive ink deposited per mote goes with its AREA, so the knob's real
   // effect is brightness, quadratic in the value. Shown relative to whichever
-  // default the LIVE anchor ships with (desktop 8 / compact 5).
+  // default the LIVE anchor ships with (desktop 9 / compact 6).
   const shippedDisc = readout?.compact ? DEFAULT_DISC_COMPACT : DEFAULT_DISC;
   const coverageRel = (disc / shippedDisc) ** 2;
   const coverageColor =
@@ -510,9 +510,10 @@ export function WordmarkLab() {
             <div style={{ ...hintText, marginTop: 6 }}>
               Bordered = reference band (stem 5.0–6.5% of cap, what the flat
               artwork measures): 220 · 240 · 260. • = shipped default{" "}
-              {DEFAULT_WEIGHT}, deliberately one step ABOVE the band — the
-              particle medium scatters light and reads lighter than solid
-              artwork, so matching the artwork&apos;s stem reads too thin.
+              {DEFAULT_WEIGHT}, deliberately well ABOVE the band — the particle
+              medium scatters light and reads lighter than solid artwork, so
+              matching the artwork&apos;s stem reads too thin (300 still did;
+              340 is where the owner settled).
             </div>
           </div>
 

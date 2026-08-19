@@ -29,7 +29,7 @@ interface WordmarkTuner {
   /**
    * Live override for the brand particles' `uPointSize` (the billboard sprite
    * size — see the POINT_SIZE derivation in `HeroTextParticles`). `null` = no
-   * override: the value baked into the build wins (8 desktop, 5 compact).
+   * override: the value baked into the build wins (9 desktop, 6 compact).
    * Applied per frame by `HeroTextParticles`, so it survives a resample.
    */
   pointSize: number | null;

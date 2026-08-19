@@ -1169,14 +1169,16 @@ function CompactHeroBrand({ skipLabel }: { skipLabel: string }) {
           which is false (see the desktop span's WEIGHT note), and 300 is the
           answer to the owner's actual "too thin". 260 runs 5.253em and 300
           runs 5.296em (−0.812% / +0.818% — the desktop span's per-weight
-          table, read off the patched faces' hmtx), so ×0.9919 returns the size
-          to 9.8vw and 9.8 × 5.296 ⇒ ≈51.90vw wide — the same share every step
-          of the chain has held. (At 390px: 38.22px font-size ⇒ 26.75px cap ⇒
-          a ≈2.10px stem at weight 300.) The weight is an INLINE style for the
-          same reason as the
+          table, read off the patched faces' hmtx), so ×0.9919 returned the
+          size to 9.8vw. 9.8vw → 9.69vw with 300→340 (the owner's own call on
+          the live `?wordmark` panel — 300 was still short of the weight he
+          wanted): 340 runs 5.355em (+1.11% over 300), so ×0.9890 and 9.69 ×
+          5.355 ⇒ ≈51.89vw wide — the same share every step of the chain has
+          held. (At 390px: 37.79px font-size ⇒ 26.45px cap ⇒ a ≈2.57px stem at
+          weight 340.) The weight is an INLINE style for the same reason as the
           desktop span — the Wordmark Lab writes `style.fontWeight` on BOTH
-          anchors. translateY in svh (the
-          stage's own unit): 16svh puts the wordmark centre ≈66svh — below the
+          anchors. translateY in svh (the stage's own unit): 16svh puts the
+          wordmark centre ≈66svh — below the
           mark's lockup (spans ≈35–57vh on 390×844) and above the eclipse arc
           (≈76–85vh) — UNCHANGED by the restyle. Absolute → zero height
           contribution (home stays ≤14.5vp). */}
@@ -1187,9 +1189,9 @@ function CompactHeroBrand({ skipLabel }: { skipLabel: string }) {
         <span
           data-hero-brand
           data-hero-brand-compact
-          className="font-brand text-[9.8vw] leading-none tracking-[0.3em] text-ink inline-block whitespace-nowrap"
+          className="font-brand text-[9.69vw] leading-none tracking-[0.3em] text-ink inline-block whitespace-nowrap"
           style={{
-            fontWeight: 300,
+            fontWeight: 340,
             opacity: 0,
             transform: "translateY(16svh)",
             willChange: "opacity",
@@ -1716,18 +1718,20 @@ export default function CinematicSystemScroll() {
             // clamp's own breakpoints put (min below ≈544px vw, max above
             // ≈1687px vw — was 547/1684) and lands 549px wide at 1440×900,
             // i.e. 38.1% of the viewport, against the old 549px / 38.1%.
-            // WEIGHT — 300 (2026-08-18, after 200→300→260→300). The 260 step
-            // was taken on the theory that the wordmark read thin because the
-            // particle DISC overhung the stroke; it does not — every mote is
-            // ~0.7 CSS px, ~8× narrower than the 5.7px stem (the derivation
-            // lives on POINT_SIZE in webgl/HeroTextParticles.tsx). With that
-            // premise gone the owner's actual complaint — TOO THIN — is
-            // answered by weight, so the ladder goes back up to 300. It sits
-            // one step ABOVE the 5.0–6.5%-of-cap band the flat reference
-            // artwork measures (300 = 7.86% vs 260 = 6.71%) ON PURPOSE: the
-            // particle medium scatters light and reads lighter than solid
+            // WEIGHT — 340 (2026-08-18, after 200→300→260→300→340; the last
+            // step is the owner's own call, settled live on the `?wordmark`
+            // panel). The 260 step was taken on the theory that the wordmark
+            // read thin because the particle DISC overhung the stroke; it does
+            // not — every mote is ~0.8 CSS px, ~9× narrower than the 7.0px stem
+            // (the derivation lives on POINT_SIZE in
+            // webgl/HeroTextParticles.tsx). With that premise gone the owner's
+            // actual complaint — TOO THIN — is answered by weight, and 300 was
+            // still short of it, so the ladder goes to its top step. 340 sits
+            // WELL ABOVE the 5.0–6.5%-of-cap band the flat reference artwork
+            // measures (340 = 9.71% vs 300 = 7.86%, 260 = 6.71%) ON PURPOSE:
+            // the particle medium scatters light and reads lighter than solid
             // artwork, so matching the artwork's stem number matches the wrong
-            // thing. 340 (9.71%) is the next step and overshoots.
+            // thing.
             // Jost's masters do NOT share advance widths, so every weight move
             // re-runs the same share-of-viewport calibration. "SERSAN" +0.3em
             // (the trailing letter-spacing advance included — that is how both
@@ -1746,14 +1750,15 @@ export default function CinematicSystemScroll() {
             //   300→260 ×5.296/5.253 = 1.0082 → 2.47rem/7.26vw/7.65rem;
             //   260→300 ×5.253/5.296 = 0.9919 → back to 2.45rem/7.2vw/7.59rem
             //     (the round trip reproduces the 300-era terms exactly, which
-            //     is the arithmetic check on the table).
-            // SHIPPED CLAMP at weight 300: clamp(2.45rem, 7.2vw, 7.59rem).
-            // Breakpoints stay put (the 7.2vw term is below the 2.45rem min
-            // under ≈544px of viewport and above the 7.59rem max over
-            // ≈1687px). At 1440×900 that is a 103.68px font-size ⇒ 103.68 ×
-            // 5.296 = 549.1px wide = 38.13% of the viewport, matching 549.0px /
-            // 38.13% at 200 and 549.2px / 38.14% at 260. Cap = 72.6px, stem =
-            // 72.6 × 7.86% = 5.71px.
+            //     is the arithmetic check on the table);
+            //   300→340 ×5.296/5.355 = 0.9890 → 2.42rem/7.12vw/7.51rem.
+            // SHIPPED CLAMP at weight 340: clamp(2.42rem, 7.12vw, 7.51rem).
+            // Breakpoints stay put (the 7.12vw term is below the 2.42rem min
+            // under ≈544px of viewport and above the 7.51rem max over
+            // ≈1688px). At 1440×900 that is a 102.53px font-size ⇒ 102.53 ×
+            // 5.355 = 549.0px wide = 38.13% of the viewport, matching 549.0px /
+            // 38.13% at 200 and 549.1px / 38.13% at 300. Cap = 71.8px, stem =
+            // 71.8 × 9.71% = 6.97px.
             // The weight itself is an INLINE style, not `font-light`/`font-[…]`:
             // the Wordmark Lab (`components/fx/wordmark-lab.tsx`, `?wordmark`)
             // tunes it by writing `style.fontWeight` on this very node, so the
@@ -1772,9 +1777,9 @@ export default function CinematicSystemScroll() {
             // HeroTextParticles samples this rect + computed style (transforms
             // included), so the size/translate here IS the particle wordmark's
             // frame; the wrapper keeps X flex-centered.
-            className="font-brand text-[clamp(2.45rem,7.2vw,7.59rem)] leading-none tracking-[0.3em] text-ink inline-block whitespace-nowrap"
+            className="font-brand text-[clamp(2.42rem,7.12vw,7.51rem)] leading-none tracking-[0.3em] text-ink inline-block whitespace-nowrap"
             style={{
-              fontWeight: 300,
+              fontWeight: 340,
               opacity: 0,
               transform: "translateY(18vh)",
               willChange: "opacity",
