@@ -1,0 +1,538 @@
+[
+ {
+  "name": "ceiling",
+  "blurb": "CONTROL — 3.0× clamped to the ceiling",
+  "opts": {
+   "rVariant": "openbowl",
+   "gapRatio": 3,
+   "legMargin": 0.15
+  },
+  "gapFontUnits": 151.24,
+  "gapPctCap": 21.61,
+  "gapRatioStem": 2.224,
+  "polys": 1,
+  "rings": 1,
+  "holes": 0,
+  "legAttached": true,
+  "selfIntersections": 0,
+  "minPieceSeparationU": null,
+  "pieces": [
+   {
+    "area": 112084.7,
+    "bbox": [
+     440,
+     700
+    ],
+    "meanWidth": 60.4,
+    "rings": 1
+   }
+  ],
+  "report": {
+   "variant": "openbowl",
+   "stem": {
+    "left": 11.714,
+    "right": 21.429,
+    "thickness": 9.714
+   },
+   "counterBBox": {
+    "x0": 21.428571428571427,
+    "y0": 49.71428571428571,
+    "x1": 60.71428571428571,
+    "y1": 91.42857142857142
+   },
+   "bottomStroke": [
+    41.143,
+    49.714
+   ],
+   "topStroke": [
+    91.429,
+    100
+   ],
+   "gap": 21.605,
+   "rect": [
+    21.429,
+    40.543,
+    43.034,
+    50.314
+   ],
+   "gapRequested": 29.143,
+   "gapRatioRequested": 3,
+   "gapClamped": true,
+   "gapMode": "ratio",
+   "gapCeiling": 23.063,
+   "pastCeiling": false,
+   "gapRatioAchieved": 2.224,
+   "before": {
+    "polys": 1,
+    "rings": 2
+   },
+   "after": {
+    "polys": 1,
+    "rings": 1
+   }
+  },
+  "residue": {
+   "area": 5300.458631827503,
+   "w": 132.86026257889995,
+   "h": 68.2260075,
+   "maxW": 132.86026257889995,
+   "bandCoverage": 1
+  },
+  "spur": null,
+  "notes": [
+   "ONE PIECE OF INK · 10u SHORT OF THE SEVERING CEILING"
+  ],
+  "wordMinGap": 50.286
+ },
+ {
+  "name": "past-01",
+  "blurb": "openbowl, the literal 3.0 × stem",
+  "opts": {
+   "rVariant": "openbowl",
+   "gapRatio": 3,
+   "legMargin": null
+  },
+  "gapFontUnits": 204,
+  "gapPctCap": 29.14,
+  "gapRatioStem": 3,
+  "polys": 2,
+  "rings": 2,
+  "holes": 0,
+  "legAttached": false,
+  "selfIntersections": 0,
+  "minPieceSeparationU": 40.97,
+  "pieces": [
+   {
+    "area": 86438.7,
+    "bbox": [
+     410,
+     700
+    ],
+    "meanWidth": 60.64,
+    "rings": 1
+   },
+   {
+    "area": 22601.6,
+    "bbox": [
+     280.3,
+     283.8
+    ],
+    "meanWidth": 52.9,
+    "rings": 1
+   }
+  ],
+  "report": {
+   "variant": "openbowl",
+   "stem": {
+    "left": 11.714,
+    "right": 21.429,
+    "thickness": 9.714
+   },
+   "counterBBox": {
+    "x0": 21.428571428571427,
+    "y0": 49.71428571428571,
+    "x1": 60.71428571428571,
+    "y1": 91.42857142857142
+   },
+   "bottomStroke": [
+    41.143,
+    49.714
+   ],
+   "topStroke": [
+    91.429,
+    100
+   ],
+   "gap": 29.143,
+   "rect": [
+    21.429,
+    40.543,
+    50.571,
+    50.314
+   ],
+   "gapRequested": 29.143,
+   "gapRatioRequested": 3,
+   "gapClamped": false,
+   "gapMode": "ratio",
+   "gapCeiling": 23.063,
+   "pastCeiling": true,
+   "gapRatioAchieved": 3,
+   "before": {
+    "polys": 1,
+    "rings": 2
+   },
+   "after": {
+    "polys": 2,
+    "rings": 2
+   }
+  },
+  "residue": {
+   "area": 2256.551027552498,
+   "w": 80.10126257889993,
+   "h": 48.21988499999998,
+   "maxW": 80.10126257889993,
+   "bandCoverage": 0.7075
+  },
+  "spur": null,
+  "notes": [
+   "PIECES 41u (5.9% CAP) APART AT THE NEAREST POINT",
+   "THE BOWL'S BOTTOM-RIGHT SURVIVES AS A 80×48u STUB, CUT FLAT"
+  ],
+  "wordMinGap": 50.286
+ },
+ {
+  "name": "past-02",
+  "blurb": "openbowl, 4.0 × stem — the return goes",
+  "opts": {
+   "rVariant": "openbowl",
+   "gapRatio": 4,
+   "legMargin": null
+  },
+  "gapFontUnits": 272,
+  "gapPctCap": 38.86,
+  "gapRatioStem": 4,
+  "polys": 2,
+  "rings": 2,
+  "holes": 0,
+  "legAttached": false,
+  "selfIntersections": 0,
+  "minPieceSeparationU": 68.4,
+  "pieces": [
+   {
+    "area": 84250.5,
+    "bbox": [
+     410,
+     700
+    ],
+    "meanWidth": 60.1,
+    "rings": 1
+   },
+   {
+    "area": 22601.6,
+    "bbox": [
+     280.3,
+     283.8
+    ],
+    "meanWidth": 52.9,
+    "rings": 1
+   }
+  ],
+  "report": {
+   "variant": "openbowl",
+   "stem": {
+    "left": 11.714,
+    "right": 21.429,
+    "thickness": 9.714
+   },
+   "counterBBox": {
+    "x0": 21.428571428571427,
+    "y0": 49.71428571428571,
+    "x1": 60.71428571428571,
+    "y1": 91.42857142857142
+   },
+   "bottomStroke": [
+    41.143,
+    49.714
+   ],
+   "topStroke": [
+    91.429,
+    100
+   ],
+   "gap": 38.857,
+   "rect": [
+    21.429,
+    40.543,
+    60.286,
+    50.314
+   ],
+   "gapRequested": 38.857,
+   "gapRatioRequested": 4,
+   "gapClamped": false,
+   "gapMode": "ratio",
+   "gapCeiling": 23.062,
+   "pastCeiling": true,
+   "gapRatioAchieved": 4,
+   "before": {
+    "polys": 1,
+    "rings": 2
+   },
+   "after": {
+    "polys": 2,
+    "rings": 2
+   }
+  },
+  "residue": {
+   "area": 68.28076202984965,
+   "w": 12.098262578899934,
+   "h": 10.77252750000001,
+   "maxW": 12.098262578899934,
+   "bandCoverage": 0.16
+  },
+  "spur": {
+   "w": 12.1,
+   "h": 10.8,
+   "area": 68.3
+  },
+  "notes": [
+   "PIECES 68u (9.8% CAP) APART AT THE NEAREST POINT",
+   "SPUR LEFT ON THE BOWL'S OUTER BOTTOM: 12×11u, 68u² — TAPERS TO NOTHING"
+  ],
+  "wordMinGap": 50.286
+ },
+ {
+  "name": "past-03",
+  "blurb": "openbowl, 5.0 × stem — slab clears the glyph",
+  "opts": {
+   "rVariant": "openbowl",
+   "gapRatio": 5,
+   "legMargin": null
+  },
+  "gapFontUnits": 340,
+  "gapPctCap": 48.57,
+  "gapRatioStem": 5,
+  "polys": 2,
+  "rings": 2,
+  "holes": 0,
+  "legAttached": false,
+  "selfIntersections": 0,
+  "minPieceSeparationU": 68.4,
+  "pieces": [
+   {
+    "area": 84182.2,
+    "bbox": [
+     410,
+     700
+    ],
+    "meanWidth": 60.38,
+    "rings": 1
+   },
+   {
+    "area": 22601.6,
+    "bbox": [
+     280.3,
+     283.8
+    ],
+    "meanWidth": 52.9,
+    "rings": 1
+   }
+  ],
+  "report": {
+   "variant": "openbowl",
+   "stem": {
+    "left": 11.714,
+    "right": 21.429,
+    "thickness": 9.714
+   },
+   "counterBBox": {
+    "x0": 21.428571428571427,
+    "y0": 49.71428571428571,
+    "x1": 60.71428571428571,
+    "y1": 91.42857142857142
+   },
+   "bottomStroke": [
+    41.143,
+    49.714
+   ],
+   "topStroke": [
+    91.429,
+    100
+   ],
+   "gap": 48.571,
+   "rect": [
+    21.429,
+    40.543,
+    70,
+    50.314
+   ],
+   "gapRequested": 48.571,
+   "gapRatioRequested": 5,
+   "gapClamped": false,
+   "gapMode": "ratio",
+   "gapCeiling": 23.062,
+   "pastCeiling": true,
+   "gapRatioAchieved": 5,
+   "before": {
+    "polys": 1,
+    "rings": 2
+   },
+   "after": {
+    "polys": 2,
+    "rings": 2
+   }
+  },
+  "residue": {
+   "area": 0,
+   "w": 0,
+   "h": 0,
+   "maxW": 0,
+   "bandCoverage": 0
+  },
+  "spur": null,
+  "notes": [
+   "PIECES 68u (9.8% CAP) APART AT THE NEAREST POINT",
+   "NOTHING OF THE RETURN SURVIVES",
+   "SAME LETTERFORM AS 03, MINUS ITS SPUR — THE SLAB SATURATED AT 284u"
+  ],
+  "wordMinGap": 50.286
+ },
+ {
+  "name": "bowl-return-gone",
+  "blurb": "openbowl-full: cut to a half-stem weld",
+  "opts": {
+   "rVariant": "openbowl-full"
+  },
+  "gapFontUnits": 139.21,
+  "gapPctCap": 19.89,
+  "gapRatioStem": 2.047,
+  "polys": 1,
+  "rings": 1,
+  "holes": 0,
+  "legAttached": true,
+  "selfIntersections": 0,
+  "minPieceSeparationU": null,
+  "pieces": [
+   {
+    "area": 113100.7,
+    "bbox": [
+     440,
+     700
+    ],
+    "meanWidth": 60.91,
+    "rings": 1
+   }
+  ],
+  "report": {
+   "variant": "openbowl-full",
+   "stem": {
+    "left": 11.714,
+    "right": 21.429,
+    "thickness": 9.714
+   },
+   "counterBBox": {
+    "x0": 21.428571428571427,
+    "y0": 49.71428571428571,
+    "x1": 60.71428571428571,
+    "y1": 91.42857142857142
+   },
+   "bottomStroke": [
+    41.143,
+    49.714
+   ],
+   "topStroke": [
+    91.429,
+    100
+   ],
+   "gap": 19.887,
+   "rect": [
+    21.429,
+    41.143,
+    41.316,
+    50.314
+   ],
+   "returnEndX": 41.316,
+   "weldKept": 4.857,
+   "gapRatioAchieved": 2.047,
+   "before": {
+    "polys": 1,
+    "rings": 2
+   },
+   "after": {
+    "polys": 1,
+    "rings": 1
+   }
+  },
+  "residue": {
+   "area": 5996.328974452361,
+   "w": 144.89156465284046,
+   "h": 64.03650750000003,
+   "maxW": 142.9465518485122,
+   "bandCoverage": 1
+  },
+  "spur": null,
+  "notes": [
+   "ONE PIECE OF INK · 22u SHORT OF THE SEVERING CEILING",
+   "THE NAME OVERSTATES IT: THE RETURN IS NOT GONE — THIS CUT IS 12u NARROWER THAN 01"
+  ],
+  "wordMinGap": 50.286
+ },
+ {
+  "name": "leg-from-stem",
+  "blurb": "bowl closes; the LEG cut back 3.0 × stem",
+  "opts": {
+   "rVariant": "detachedleg",
+   "gapRatio": 3
+  },
+  "gapFontUnits": 204,
+  "gapPctCap": 29.14,
+  "gapRatioStem": 3,
+  "polys": 2,
+  "rings": 3,
+  "holes": 1,
+  "legAttached": false,
+  "selfIntersections": 0,
+  "minPieceSeparationU": 192.23,
+  "pieces": [
+   {
+    "area": 98457.5,
+    "bbox": [
+     410,
+     700
+    ],
+    "meanWidth": 96.55,
+    "rings": 2
+   },
+   {
+    "area": 8836.4,
+    "bbox": [
+     144.8,
+     127.2
+    ],
+    "meanWidth": 42.72,
+    "rings": 1
+   }
+  ],
+  "report": {
+   "variant": "detachedleg",
+   "stem": {
+    "left": 11.714,
+    "right": 21.429,
+    "thickness": 9.714
+   },
+   "counterBBox": {
+    "x0": 21.428571428571427,
+    "y0": 49.71428571428571,
+    "x1": 60.71428571428571,
+    "y1": 91.42857142857142
+   },
+   "bottomStroke": [
+    41.143,
+    49.714
+   ],
+   "topStroke": [
+    91.429,
+    100
+   ],
+   "gap": 29.143,
+   "rect": null,
+   "legAxis": [
+    0.5837,
+    -0.8119
+   ],
+   "junctionT": -8.001,
+   "cutPlaneT": 21.142,
+   "before": {
+    "polys": 1,
+    "rings": 2
+   },
+   "after": {
+    "polys": 2,
+    "rings": 3
+   }
+  },
+  "residue": null,
+  "spur": null,
+  "notes": [
+   "PIECES 192u (27.5% CAP) APART AT THE NEAREST POINT"
+  ],
+  "wordMinGap": 50.286
+ }
+]

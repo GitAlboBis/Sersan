@@ -193,6 +193,9 @@ interface MorphBuild {
   uSizeComp2: { value: number };
   uSizeComp3: { value: number };
   uPointSize: { value: number };
+  /** Colour multiplier — the wordmark's GLOW, seeded from the build's
+   * `EMISSIVE`. Live-overridable from the Wordmark Lab (wordmarkTuner.glow). */
+  uEmissive: { value: number };
   uPixelRatio: { value: number };
   uViewport: { value: THREE.Vector2 };
   /** Flyby attractor (owner 2026-08-07): LOCAL-space center, world-unit
@@ -800,6 +803,16 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
     const discOverride = wordmarkTuner.pointSize;
     if (discOverride !== null && build.uPointSize.value !== discOverride) {
       build.uPointSize.value = discOverride;
+    }
+    // Same channel, same contract, for the GLOW (`uEmissive`, seeded from
+    // EMISSIVE: 4 above). This is the knob that decides whether the R's cut
+    // and the A's apex survive the post chain: at 4 the motes sit 4× above
+    // the 1.0 Bloom threshold and the glow veils them (measured: the cut
+    // renders at ~97% of stroke luminance, i.e. invisible — and widening the
+    // gap does not move that number).
+    const glowOverride = wordmarkTuner.glow;
+    if (glowOverride !== null && build.uEmissive.value !== glowOverride) {
+      build.uEmissive.value = glowOverride;
     }
 
     // Sleep when nothing can move: brand fully dissolved, gate released and

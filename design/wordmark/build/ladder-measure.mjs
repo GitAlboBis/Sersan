@@ -81,13 +81,14 @@ for (const w of WEIGHTS) {
   const E = probe("E", capMeasured * 0.25);
   const I = probe("I", capMeasured * 0.5);
 
-  // The R stem the amputation itself measured on the UNPATCHED source (the cut
-  // gap is gapRatio x this, clamped per weight to the ceiling the letterform
-  // imposes — see logotype.mjs `openBowlCeiling`). Read from
-  // amputated-ladder.json — the patched R has no
-  // enclosed counter any more, which is precisely the point of the open bowl,
-  // so it cannot be re-measured the same way. Cross-checked below by scanning
-  // the patched R's stem directly at the same height logotype.mjs used.
+  // The R stem the amputation itself measured on the UNPATCHED source. The cut
+  // slab is NOT a multiple of it: it is measured per weight, out to where the
+  // cut band holds no more ink (logotype.mjs `openBowlSaturation`), which lands
+  // anywhere from 4.2 x stem at wght 340 to 7.5 x at wght 200. Read from
+  // amputated-ladder.json — the patched R has no enclosed counter any more,
+  // which is precisely the point of the open bowl, so it cannot be re-measured
+  // the same way. Cross-checked below by scanning the patched R's stem directly
+  // at the same height logotype.mjs used.
   const amp = AMP[w].glyphs.R;
   const k = amp.k;
   const r = amp.report;
@@ -113,32 +114,33 @@ for (const w of WEIGHTS) {
     rStemPatched: +rStemPatched.toFixed(2),
     rGap: +(r.gap * k).toFixed(2),
     rGapPctCap: +((100 * r.gap * k) / capMeasured).toFixed(2),
-    rGapWanted: +(r.gapRequested * k).toFixed(2),
+    rGapSaturation: +(r.gapSaturation * k).toFixed(2),
+    rGapRatioSaturation: r.gapRatioSaturation,
     rGapCeiling: +(r.gapCeiling * k).toFixed(2),
-    rGapRatioWanted: r.gapRatioRequested,
     rGapRatio: r.gapRatioAchieved,
-    rGapClamped: r.gapClamped,
+    rPastCeiling: r.pastCeiling,
     rPct: +((100 * r.stem.thickness * k) / capMeasured).toFixed(2),
   });
 }
 
 const pad = (s, n) => String(s).padStart(n);
 console.log(
-  "wght   cap(decl/meas)   stem N    stem E    stem I  |  stem/cap %  N     E     I  |  R stem  R gap  R gap/cap   ratio  ceiling   bytes"
+  "wght   cap(decl/meas)   stem N    stem E    stem I  |  stem/cap %  N     E     I  |  R stem R slab R slab/cap   ratio  severs   bytes"
 );
 for (const r of rows)
   console.log(
     `${pad(r.weight, 4)}   ${pad(r.capDeclared, 4)} / ${pad(r.capMeasured, 5)}   ` +
       `${pad(r.stemN.toFixed(1), 6)}    ${pad(r.stemE.toFixed(1), 6)}    ${pad(r.stemI.toFixed(1), 6)}  |  ` +
       `${pad(r.pctN.toFixed(2), 10)} ${pad(r.pctE.toFixed(2), 5)} ${pad(r.pctI.toFixed(2), 5)}  |  ` +
-      `${pad(r.rStem.toFixed(0), 6)}  ${pad(r.rGap.toFixed(0), 5)}  ${pad(r.rGapPctCap.toFixed(2) + "%", 9)}  ` +
-      `${pad(r.rGapRatio.toFixed(3), 6)}${r.rGapClamped ? "*" : " "} ${pad(r.rGapCeiling.toFixed(0), 6)}   ${pad(r.bytes, 6)}`
+      `${pad(r.rStem.toFixed(0), 6)} ${pad(r.rGap.toFixed(0), 6)}  ${pad(r.rGapPctCap.toFixed(2) + "%", 10)}  ` +
+      `${pad(r.rGapRatio.toFixed(3), 6)}${r.rPastCeiling ? "*" : " "} ${pad(r.rGapCeiling.toFixed(0), 6)}   ${pad(r.bytes, 6)}`
   );
 console.log(
-  "\n* clamped: gapRatio " +
-    rows[0].rGapRatioWanted +
-    " x stem is wider than the letterform can give up without the leg floating free;" +
-    "\n  the gap is held legMargin x stem inside the measured ceiling instead (logotype.mjs openBowlCeiling)."
+  "\n* the slab is run to SATURATION: out to where the cut band holds no more ink, plus one unit." +
+    "\n  `severs` is the abscissa at which the leg lets go — every slab above is deliberately past it," +
+    "\n  so the R is two contours and the cut shows daylight. Held at the severing point it showed none:" +
+    "\n  the leg is diagonal, so the two pieces still touched (design/wordmark/build/r-beyond.mjs)." +
+    "\n  Daylight itself is measured on the shipped outlines by ladder-qa.mjs."
 );
 console.log(
   "\nspan counts on the scanline (sanity — N must be 3, E 1, I 1): " +

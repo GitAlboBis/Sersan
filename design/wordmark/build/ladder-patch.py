@@ -5,8 +5,13 @@ and the naming differ:
 
 Source : design/wordmark/build/instances/jost-var-{w}.ttf
          (variable Jost pinned at wght w by ladder-instance.py; TrueType `glyf`)
-Cuts   : A loses its crossbar (unchanged since sign-off), R loses the bowl's
-         return to the stem at the wider gapRatio 3.0.
+Cuts   : A loses its crossbar (unchanged since sign-off), R loses the WHOLE of
+         the bowl's return: the slab runs out to where the cut band holds no
+         more ink (gapRatio 'saturate'), which is past the abscissa at which the
+         leg lets go. The R therefore ships as TWO contours - stem+bowl, and a
+         free-standing leg - which is deliberate and authorised: clamped to the
+         severing ceiling the cut showed no daylight at all, because the leg is
+         diagonal and the two pieces still touched.
          The outlines come from amputated-ladder.json, which
          design/wordmark/logotype.mjs produced by boolean operations on these
          very glyphs' original outlines (see ladder-extract.mjs). Nothing is
@@ -44,8 +49,8 @@ VENDOR_TOKEN = "SRSN"  # free-text token inside nameID 3, keeps the ID unique
 DESCRIPTION = (
     "Sersan Display is a derivative of Jost* by indestructible type*, modified for "
     "SERSAN: the capital A is drawn without its crossbar and the capital R with an "
-    "open bowl. All other glyphs are unchanged. Licensed under the SIL Open Font "
-    "License 1.1."
+    "open bowl and a free-standing leg. All other glyphs are unchanged. Licensed "
+    "under the SIL Open Font License 1.1."
 )
 
 data = json.load(open(os.path.join(HERE, "amputated-ladder.json")))

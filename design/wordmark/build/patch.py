@@ -3,8 +3,12 @@
 Source : design/wordmark/build/jost-latin-{200,300}-normal.woff2 (TrueType `glyf`)
          the two static fontsource faces the shipped 200/300 have always been
          carved from; they used to sit in public/_typelab/fonts/, which is gone
-Cuts   : A loses its crossbar (unchanged since sign-off), R loses the bowl's
-         return to the stem at the wider gapRatio 3.0.
+Cuts   : A loses its crossbar (unchanged since sign-off), R loses the WHOLE of
+         the bowl's return: the slab runs out to where the cut band holds no
+         more ink (gapRatio 'saturate'), past the abscissa at which the leg lets
+         go, so the R ships as TWO contours - stem+bowl, and a free-standing
+         leg. Deliberate and authorised: clamped to the severing ceiling the cut
+         showed no daylight at all.
          The outlines come from amputated.json, which design/wordmark/logotype.mjs
          produced by boolean operations on these very glyphs' original outlines
          (see extract.mjs). Nothing is hand-drawn.
@@ -27,8 +31,8 @@ VENDOR_TOKEN = "SRSN"  # free-text token inside nameID 3, keeps the ID unique
 DESCRIPTION = (
     "Sersan Display is a derivative of Jost* by indestructible type*, modified for "
     "SERSAN: the capital A is drawn without its crossbar and the capital R with an "
-    "open bowl. All other glyphs are unchanged. Licensed under the SIL Open Font "
-    "License 1.1."
+    "open bowl and a free-standing leg. All other glyphs are unchanged. Licensed "
+    "under the SIL Open Font License 1.1."
 )
 
 data = json.load(open(os.path.join(HERE, "amputated.json")))
@@ -138,6 +142,7 @@ for w, payload in data.items():
     for ch, g in payload["glyphs"].items():
         rings = [orient(to_int_ring(r), ccw=True) for r in g["rings"]]
         assert all(len(r) >= 3 for r in rings), f"{ch}: degenerate contour"
+        assert all(abs(signed_area(r)) > 0 for r in rings), f"{ch}: zero-area contour"
 
         old = glyf[ch]
         old_adv, old_lsb = hmtx[ch]

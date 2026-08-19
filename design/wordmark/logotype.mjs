@@ -42,19 +42,31 @@
  *   hardcoded); the fifth is a difference with a slab perpendicular to the
  *   leg's own axis, clipped to the leg contour:
  *     'openbowl'      the bowl's lower-left join, where the bowl returns to the
- *                     stem — the bowl is left open at the bottom. The drawing
- *                     imposes its own ceiling on this one: run the slab far
- *                     enough right and it stops taking only the return and
+ *                     stem — the bowl is left open at the bottom. Run the slab
+ *                     far enough right and it stops taking only the return and
  *                     starts taking the leg's junction with it, so the leg
- *                     floats free as a second polygon. That ceiling is a
- *                     property of the letterform, not of the weight — across
+ *                     floats free as a second polygon. That severing ceiling is
+ *                     a property of the letterform, not of the weight — across
  *                     the Jost ladder it sits at 131–161 font units (18.7–23.1 %
- *                     of cap) at every weight, while `gapRatio` × stem spans
- *                     99–204, so one ratio that is safe at wght 200 severs the
- *                     leg at wght 340. The ceiling is therefore MEASURED (see
- *                     `openBowlCeiling`), the gap is clamped to `legMargin` ×
- *                     stem inside it, and `gapRequested` / `gapCeiling` /
- *                     `gapClamped` / `gapRatioAchieved` are reported back.
+ *                     of cap) at every weight.
+ *
+ *                     THE BRAND CUT GOES PAST IT, DELIBERATELY. A cut stopped
+ *                     at the ceiling shows NO daylight: the leg is diagonal, so
+ *                     the two pieces still touch and the cut reads as a dent
+ *                     (measured, six treatments, design/wordmark/build/
+ *                     r-beyond.mjs → design/logo-exploration/png/
+ *                     _R_beyond_ceiling.png). So `gapRatio: 'saturate'` — the
+ *                     default — runs the slab out to where the cut band holds
+ *                     no more ink (`openBowlSaturation`), which is the widest
+ *                     daylight this letterform can ever show and the narrowest
+ *                     slab that shows it. Wider buys nothing; narrower leaves a
+ *                     tapering spur of the bowl's outer bottom behind.
+ *                     ACCEPTED CONSEQUENCE: the R is then TWO contours, the leg
+ *                     free-standing. `gapSaturation` / `gapCeiling` /
+ *                     `gapRatioAchieved` are reported back.
+ *                     A numeric `gapRatio` still works and is still clamped to
+ *                     the ceiling unless `legMargin` is null — that is how the
+ *                     proof sheets draw the alternatives.
  *     'openbowl-full' the same cut, run out until the whole horizontal return
  *                     is gone: to the abscissa where the weld holding the leg
  *                     under the bowl has narrowed to half a stem. The bowl is
@@ -76,8 +88,10 @@
  *                     stem bit-identical to the font.
  *   Gap = `gapRatio` × the stem thickness, and the stem thickness is scanned
  *   off the outline just above the baseline, so the gap tracks the weight —
- *   except where 'openbowl' hits the ceiling described above, at which point it
- *   stops tracking the weight and tracks the drawing instead.
+ *   except for 'openbowl' at its 'saturate' default, where the gap is measured
+ *   off the drawing at every weight instead of scaled off the stem: the
+ *   saturation point is a property of the letterform, and it does not move
+ *   linearly with the stem.
  *
  * All geometry is normalised to cap height = 100 units, y-up internally,
  * flipped once at emit time. Curves are flattened to polygons at `tolerance`
@@ -530,6 +544,41 @@ function openBowlCeiling(pc, mpR, m, pad, seed) {
   return lo;
 }
 
+/**
+ * The slab width at which the open-bowl cut runs out of ink to remove.
+ *
+ * The cutter is a band of fixed height — the bowl's lower stroke plus `pad` top
+ * and bottom — swept right from the stem. Widen it and it keeps taking ink
+ * until its right edge passes the last ink IN THAT BAND (the bowl's outer
+ * bottom on its way up, or the leg on its way down, whichever reaches further
+ * right); past that abscissa the band is empty and the letterform stops
+ * changing no matter how much wider the slab runs.
+ *
+ * That abscissa is therefore the whole decision: it is simultaneously the
+ * WIDEST daylight the letterform can show (the two pieces are cut flat on the
+ * band's two edges, so they end up exactly `pad`-inflated-stroke apart) and the
+ * NARROWEST slab that shows it — stop short of it and a tapering spur of the
+ * bowl's outer bottom is left standing in the gap.
+ *
+ * It is measured, not derived: it does not scale linearly with the stem, so a
+ * single `gapRatio` cannot hit it at seven weights (at wght 340 it lands at
+ * 4.18 × stem; the ratio that hits it at wght 200 is a different number).
+ *
+ * Returned in cap-100 units, measured from the stem's right edge like `gap`.
+ */
+function openBowlSaturation(mpR, m, pad) {
+  const yA = m.bottomStroke[0] - pad;
+  const yB = m.bottomStroke[1] + pad;
+  const N = 4000; // ≈ 0.02 font-unit steps across the band at cap 700
+  let maxX = -Infinity;
+  for (let i = 0; i <= N; i++) {
+    const y = yA + ((yB - yA) * i) / N;
+    for (const sp of scanX(mpR, y)) if (sp[1] > maxX) maxX = sp[1];
+  }
+  if (!(maxX > m.stemR)) throw new Error('R: the open-bowl band holds no ink right of the stem');
+  return maxX - m.stemR;
+}
+
 /** The half-plane { p·u <= c } as a polygon large enough to cover the glyph. */
 function halfPlane(u, c, span) {
   const v = [-u[1], u[0]];
@@ -541,29 +590,61 @@ function halfPlane(u, c, span) {
   return [[[A, B, C, D, A]]];
 }
 
-function amputateR(pc, mpR, variant, gapRatio, report, rings, legMargin) {
+function amputateR(pc, mpR, variant, gapRatio, report, rings, legMargin, unit) {
   const m = measureR(mpR);
-  let gap = gapRatio * m.stemT;
+  const saturate = gapRatio === 'saturate';
+  // 'openbowl-full' ignores gapRatio altogether, so the default passes through
+  // it harmlessly; the three rectangle cuts below genuinely need a number.
+  if (saturate && (variant === 'cutstem' || variant === 'cutshoulder' || variant === 'detachedleg'))
+    throw new Error(
+      `R: rVariant "${variant}" needs a numeric gapRatio — 'saturate' is defined for 'openbowl' only`
+    );
+  let gap = saturate ? NaN : gapRatio * m.stemT;
   const pad = 0.6;
   let rect = null;
   let cutter = null;
   const extra = {};
 
   if (variant === 'openbowl') {
-    // Kill the run where the bowl returns and rejoins the stem — as much of it
-    // as the letterform will give up while the leg stays welded to the bowl.
-    const want = gap;
-    // legMargin === null asks for the ratio LITERALLY, ceiling and all. Nothing
-    // should ship that way - it is how the proof sheets show what a ratio does
-    // to the letterform when nothing stops it.
-    const ceiling = legMargin === null ? Infinity : openBowlCeiling(pc, mpR, m, pad, want);
-    const allowed = ceiling === Infinity ? Infinity : ceiling - legMargin * m.stemT;
-    if (!(allowed > 0)) throw new Error('R: no open-bowl cut leaves the leg attached');
-    gap = Math.min(want, allowed);
-    extra.gapRequested = +want.toFixed(3);
-    extra.gapRatioRequested = +gapRatio.toFixed(3);
+    // Kill the run where the bowl returns and rejoins the stem.
+    //
+    // 'saturate' (the brand cut): out to where the band holds no more ink, plus
+    // `unit` so integer rounding at font-build time cannot leave half a unit of
+    // the bowl's outer bottom standing in the daylight. The leg detaches — that
+    // is the point of the cut, and the reason `legMargin` plays no part here.
+    //
+    // A numeric ratio instead: `gapRatio` × stem, clamped `legMargin` × stem
+    // inside the severing ceiling so the leg stays welded on. legMargin === null
+    // asks for the ratio LITERALLY, ceiling and all — that is how the proof
+    // sheets show what a ratio does when nothing stops it.
+    const sat = openBowlSaturation(mpR, m, pad);
+    // Informational at the brand cut, enforced only for a numeric ratio: the
+    // abscissa at which the leg lets go. Reported either way so the geometry
+    // says on the record how far past it the cut sits.
+    let ceiling = Infinity;
+    try {
+      ceiling = openBowlCeiling(pc, mpR, m, pad, saturate ? sat : gap);
+    } catch {
+      ceiling = Infinity; // never splits, or splits immediately — report null
+    }
+    if (saturate) {
+      gap = sat + (unit || 0);
+      extra.gapSaturation = +sat.toFixed(3);
+      extra.gapMode = 'saturate';
+      extra.gapRatioSaturation = +(sat / m.stemT).toFixed(3);
+    } else {
+      const want = gap;
+      const allowed =
+        legMargin === null || ceiling === Infinity ? Infinity : ceiling - legMargin * m.stemT;
+      if (!(allowed > 0)) throw new Error('R: no open-bowl cut leaves the leg attached');
+      gap = Math.min(want, allowed);
+      extra.gapRequested = +want.toFixed(3);
+      extra.gapRatioRequested = +gapRatio.toFixed(3);
+      extra.gapClamped = gap < want - 1e-6;
+      extra.gapMode = 'ratio';
+    }
     extra.gapCeiling = ceiling === Infinity ? null : +ceiling.toFixed(3);
-    extra.gapClamped = gap < want - 1e-6;
+    extra.pastCeiling = ceiling !== Infinity && gap > ceiling;
     extra.gapRatioAchieved = +(gap / m.stemT).toFixed(3);
     rect = openBowlRect(m, gap, pad);
   } else if (variant === 'openbowl-full') {
@@ -665,19 +746,24 @@ export async function buildLogotype({
   aCrossbar = 'none', // 'none' | 'keep'
   // 'none' | 'openbowl' | 'openbowl-full' | 'cutstem' | 'cutshoulder' | 'detachedleg'
   rVariant = 'openbowl',
-  // The brand cut. 3.0 is the art director's pick off design/logo-exploration/
-  // png/_R_treatments.png (tile 03), replacing the 1.6 that shipped until
-  // 2026-08-18 and read as far too subtle against the reference artwork.
-  // 'openbowl' clamps it per weight to what the drawing can take — see
-  // `openBowlCeiling` and the `gapClamped` / `gapRatioAchieved` report fields.
-  gapRatio = 3.0,
-  // How much stem-width of welded junction the open-bowl cut must leave between
-  // the leg and the bowl. 0 would cut exactly to the point where the leg lets
-  // go; this keeps a real neck there, so integer rounding at font-build time
-  // cannot turn a hairline join into a broken letter. null disables the ceiling
-  // altogether and honours `gapRatio` literally - for proof sheets only, since
-  // past the ceiling the leg comes away as a second, floating contour.
-  legMargin = 0.15,
+  // The brand cut. 'saturate' means: run the open-bowl slab out to where the
+  // cut band holds no more ink and stop there (see `openBowlSaturation`). It
+  // replaces the 3.0 × stem clamped to the severing ceiling that shipped on
+  // 2026-08-18: clamped, the cut showed ZERO daylight — the leg is diagonal, so
+  // the two pieces still touched and the R read as an ordinary R with a dent,
+  // which is exactly what the client rejected. Measured six ways in
+  // design/wordmark/build/r-beyond.mjs; the sheet is design/logo-exploration/
+  // png/_R_beyond_ceiling.png.
+  // A number is still honoured (gapRatio × stem), for the proof sheets that
+  // draw the alternatives.
+  gapRatio = 'saturate',
+  // How much stem-width of welded junction a NUMERIC open-bowl gap must leave
+  // between the leg and the bowl, so integer rounding at font-build time cannot
+  // turn a hairline join into a broken letter. null disables that ceiling and
+  // honours `gapRatio` literally.
+  // At the 'saturate' default it plays no part: the brand cut is past the
+  // ceiling on purpose and the leg is MEANT to come away as a second contour.
+  legMargin = null,
   tolerance = 0.03,
   ink = '#0B1422',
   deps = null,
@@ -705,7 +791,7 @@ export async function buildLogotype({
     const report = {};
     if (ch === 'A' && aCrossbar === 'none') mp = stripCrossbar(pc, mp, report);
     if (ch === 'R' && rVariant !== 'none')
-      mp = amputateR(pc, mp, rVariant, gapRatio, report, rings, legMargin);
+      mp = amputateR(pc, mp, rVariant, gapRatio, report, rings, legMargin, 100 / cap);
     if (report.a || report.r) meta.reports[`${ch}${i}`] = report.a || report.r;
 
     const dx = pen + run.positions[i].xOffset * s;

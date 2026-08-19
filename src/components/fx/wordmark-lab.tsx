@@ -4,19 +4,25 @@
  * WORDMARK LAB — live tuner for the SERSAN particle wordmark.
  *
  * The hero wordmark is a particle render of the `[data-hero-brand]` span, and
- * how it READS is the product of two coupled numbers that can only be judged
- * on screen: the anchor's FONT WEIGHT, which sets the STROKE WIDTH, and the
+ * how it READS is the product of three coupled numbers that can only be judged
+ * on screen: the anchor's FONT WEIGHT, which sets the STROKE WIDTH; the
  * particle DISC SIZE (`uPointSize` — the billboard sprite each particle
- * draws), which sets the BRIGHTNESS. The two are not interchangeable: a mote
- * is sub-pixel at every value on this slider (mean disc ÷ 11.4 CSS px), so the
- * disc cannot widen or overhang a stroke — it only decides how much additive
- * light each of the ~48k particles deposits inside it, roughly as disc².
- * This panel exposes both live so the owner can settle them in one
+ * draws), which sets how much light each mote deposits; and the GLOW
+ * (`uEmissive`), which sets how far above the Bloom threshold the finished
+ * mote sits, i.e. how much the post chain smears it. Weight and disc are not
+ * interchangeable: a mote is sub-pixel at every value on this slider (mean
+ * disc ÷ 11.4 CSS px), so the disc cannot widen or overhang a stroke — it only
+ * decides how much additive light each of the ~48k particles deposits inside
+ * it, roughly as disc². GLOW is the knob that decides whether the FINE
+ * FEATURES survive: at the shipped 4 the strokes clip to white and bloom 4×
+ * over the threshold, and the R's cut measures ~97% of stroke luminance
+ * (invisible) at every gap width tested — see the glow block below.
+ * This panel exposes all three live so the owner can settle them in one
  * sitting instead of a round trip per guess. Bake the winner by editing the
  * inline `fontWeight` on both `[data-hero-brand]` anchors
  * (components/sections/cinematic-system-scroll.tsx — re-run the width
  * calibration documented there, the Jost masters do NOT share advance widths)
- * and `POINT_SIZE` in webgl/HeroTextParticles.tsx.
+ * and `POINT_SIZE` / `EMISSIVE` in webgl/HeroTextParticles.tsx.
  *
  * WHEN IT SHOWS: only on the home route (the only route with a wordmark
  * anchor) AND only when enabled. Enabled in DEVELOPMENT, or on any host by
@@ -28,8 +34,9 @@
  * are the plain zustand text-morph store and a bare module ref.
  *
  * CONTROLS: click a weight, or ◀ / ▶ (and ← / → arrow keys) to cycle it;
- * − / + (and ↑ / ↓) for the disc; R resets to the shipped defaults; H
- * hides/shows the panel. Collapsed state persists in localStorage.
+ * − / + (and ↑ / ↓) for the disc; − / + (and [ / ]) for the glow; R resets to
+ * the shipped defaults; H hides/shows the panel. Collapsed state persists in
+ * localStorage.
  *
  * HOW EACH KNOB REACHES THE PARTICLES:
  *   · WEIGHT — written as `style.fontWeight` on every `[data-hero-brand]`
@@ -45,6 +52,11 @@
  *   · DISC — written to `wordmarkTuner.pointSize`, which HeroTextParticles'
  *     frame loop copies into the existing `uPointSize` uniform (the same one
  *     the compact override writes). No rebuild, no second uniform.
+ *   · GLOW — written to `wordmarkTuner.glow`, copied the same frame into
+ *     `uEmissive`. That uniform used to be a baked `float(params.EMISSIVE)`
+ *     constant in the text-morph fragment (gpgpu/gpgpuNodeSim.ts); it is now
+ *     a uniform seeded with the very same 4, so an untouched build renders
+ *     exactly as it always did and a null override costs one compare a frame.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
@@ -85,6 +97,22 @@ const DEFAULT_DISC_COMPACT = 6;
 // that the owner can go BRIGHTER as well as dimmer (coverage ≈ disc²).
 const DISC_MIN = 2;
 const DISC_MAX = 16;
+/** Shipped `EMISSIVE` on the hero text build (webgl/HeroTextParticles.tsx). */
+const DEFAULT_GLOW = 4;
+// Down to half the bloom threshold (nothing blooms at all) and up to 1.5× the
+// shipped value, in quarter steps — the interesting band is 1.0–2.5, where the
+// motes stop clipping and the fine features come back.
+const GLOW_MIN = 0.5;
+const GLOW_MAX = 6;
+const GLOW_STEP = 0.25;
+/**
+ * The one number the glow is measured against: `fxStore.bloomThreshold`. Motes
+ * only bloom ABOVE it and the amount scales with how far above they sit, so
+ * glow ÷ 1.0 IS the bloom multiplier. Inlined (not imported) for the same
+ * reason CAMERA_Z is: this panel ships in the route bundle and must not pull
+ * the WebGL store graph in behind it.
+ */
+const BLOOM_THRESHOLD = 1.0;
 
 /**
  * On-screen MOTE size, for the honest readout. `uPointSize` is NOT CSS px and
@@ -166,6 +194,7 @@ export function WordmarkLab() {
   const [collapsed, setCollapsed] = useState(false);
   const [weight, setWeight] = useState<number>(DEFAULT_WEIGHT);
   const [disc, setDisc] = useState<number>(DEFAULT_DISC);
+  const [glow, setGlow] = useState<number>(DEFAULT_GLOW);
   const [readout, setReadout] = useState<Readout | null>(null);
   const [resampling, setResampling] = useState(false);
   // Monotonic token so a slow `fonts.load` from a superseded click can never
@@ -216,6 +245,8 @@ export function WordmarkLab() {
           wordmarkTuner.pointSize ??
             (m.compact ? DEFAULT_DISC_COMPACT : DEFAULT_DISC),
         );
+        // Glow has no per-anchor variant — one shipped value on both.
+        setGlow(wordmarkTuner.glow ?? DEFAULT_GLOW);
       }
     };
     tick();
@@ -263,6 +294,19 @@ export function WordmarkLab() {
     setDisc(clamped);
   }, []);
 
+  /**
+   * Glow → the shared ref; HeroTextParticles copies it into `uEmissive` the
+   * same way. Quantized to GLOW_STEP on the way in (÷4 · ×4, not a divide by
+   * 0.25, so the value stays exact and the readout never shows float noise).
+   */
+  const applyGlow = useCallback((g: number) => {
+    const clamped =
+      Math.round(Math.min(GLOW_MAX, Math.max(GLOW_MIN, g)) / GLOW_STEP) *
+      GLOW_STEP;
+    wordmarkTuner.glow = clamped;
+    setGlow(clamped);
+  }, []);
+
   const cycleWeight = useCallback(
     (dir: number) => {
       const i = WEIGHTS.indexOf(weight as (typeof WEIGHTS)[number]);
@@ -276,8 +320,9 @@ export function WordmarkLab() {
   const reset = useCallback(() => {
     const compact = readout?.compact ?? false;
     applyDisc(compact ? DEFAULT_DISC_COMPACT : DEFAULT_DISC);
+    applyGlow(DEFAULT_GLOW);
     void applyWeight(DEFAULT_WEIGHT);
-  }, [readout, applyDisc, applyWeight]);
+  }, [readout, applyDisc, applyGlow, applyWeight]);
 
   const toggleCollapsed = useCallback(() => {
     setCollapsed((c) => {
@@ -287,8 +332,9 @@ export function WordmarkLab() {
     });
   }, []);
 
-  // Keyboard: ← / → weight, ↑ / ↓ disc, R reset, H hide/show. Ignored while
-  // typing in a field. Arrow keys are consumed so they don't also scroll.
+  // Keyboard: ← / → weight, ↑ / ↓ disc, [ / ] glow, R reset, H hide/show.
+  // Ignored while typing in a field. Arrow keys are consumed so they don't
+  // also scroll.
   useEffect(() => {
     if (!enabled || pathname !== "/") return;
     function onKey(e: KeyboardEvent) {
@@ -304,6 +350,8 @@ export function WordmarkLab() {
       else if (e.key === "ArrowLeft") cycleWeight(-1);
       else if (e.key === "ArrowUp") applyDisc(disc + 1);
       else if (e.key === "ArrowDown") applyDisc(disc - 1);
+      else if (e.key === "]") applyGlow(glow + GLOW_STEP);
+      else if (e.key === "[") applyGlow(glow - GLOW_STEP);
       else if (e.key === "r" || e.key === "R") reset();
       else if (e.key === "h" || e.key === "H") toggleCollapsed();
       else return;
@@ -311,7 +359,17 @@ export function WordmarkLab() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [enabled, pathname, disc, cycleWeight, applyDisc, reset, toggleCollapsed]);
+  }, [
+    enabled,
+    pathname,
+    disc,
+    glow,
+    cycleWeight,
+    applyDisc,
+    applyGlow,
+    reset,
+    toggleCollapsed,
+  ]);
 
   if (!mounted || !enabled || pathname !== "/") return null;
 
@@ -338,6 +396,13 @@ export function WordmarkLab() {
   const coverageRel = (disc / shippedDisc) ** 2;
   const coverageColor =
     disc === shippedDisc ? ACCENT : disc < shippedDisc ? WARN : INK;
+  // How far the finished mote sits ABOVE the bloom threshold — the bloom
+  // multiplier, and therefore the size of the veil over the fine features.
+  // Below 1.0 nothing blooms at all (flagged WARN: the wordmark stops
+  // glowing, which is a look decision, not just a legibility one).
+  const bloomRel = glow / BLOOM_THRESHOLD;
+  const glowColor =
+    glow === DEFAULT_GLOW ? ACCENT : bloomRel <= 1 ? WARN : INK;
 
   const rows: Array<[string, string, string?]> = [
     [
@@ -359,6 +424,15 @@ export function WordmarkLab() {
         : "— (weight off ladder)",
     ],
     ["disc", `${disc} · mote ≈${discCssPx.toFixed(2)} CSS px (${disc} ÷ 11.4)`],
+    [
+      "glow",
+      `${glow.toFixed(2)} · ${bloomRel.toFixed(2)}× the ${BLOOM_THRESHOLD.toFixed(
+        1,
+      )} bloom threshold${
+        bloomRel <= 1 ? " (no bloom)" : ""
+      } · ${(glow / DEFAULT_GLOW).toFixed(2)}× shipped ${DEFAULT_GLOW}`,
+      glowColor,
+    ],
     [
       "ink",
       `${coverageRel.toFixed(2)}× shipped ${shippedDisc}${
@@ -429,7 +503,7 @@ export function WordmarkLab() {
           WORDMARK LAB
         </span>
         <span style={{ color: MUTED, fontSize: 10 }}>
-          {weight}/{disc}
+          {weight}/{disc}/{glow.toFixed(2)}
         </span>
         <button
           onClick={toggleCollapsed}
@@ -440,8 +514,11 @@ export function WordmarkLab() {
         </button>
       </div>
 
+      {/* Body scrolls: three control blocks + the readout can outgrow a short
+          laptop viewport, and the container is maxHeight-capped + overflow
+          hidden — without this the reset button would simply be cut off. */}
       {!collapsed && (
-        <>
+        <div style={{ minHeight: 0, overflowY: "auto" }}>
           {/* WEIGHT — current + cycle */}
           <div
             style={{ padding: "10px 12px", borderBottom: `1px solid ${BORDER}` }}
@@ -560,6 +637,66 @@ export function WordmarkLab() {
             </div>
           </div>
 
+          {/* GLOW — the knob that decides whether the fine features survive */}
+          <div
+            style={{ padding: "10px 12px", borderBottom: `1px solid ${BORDER}` }}
+          >
+            <div style={rowLabel}>Glow (emissive)</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <button
+                onClick={() => applyGlow(glow - GLOW_STEP)}
+                title="Dimmer ([)"
+                style={cycleBtn}
+              >
+                −
+              </button>
+              <div style={{ flex: 1, textAlign: "center" }}>
+                <div style={{ color: ACCENT, fontWeight: 600, fontSize: 15 }}>
+                  {glow.toFixed(2)}
+                </div>
+                <div style={{ color: MUTED, fontSize: 9.5 }}>
+                  {bloomRel.toFixed(2)}× threshold
+                </div>
+              </div>
+              <button
+                onClick={() => applyGlow(glow + GLOW_STEP)}
+                title="Brighter (])"
+                style={cycleBtn}
+              >
+                +
+              </button>
+            </div>
+            <input
+              type="range"
+              min={GLOW_MIN}
+              max={GLOW_MAX}
+              step={GLOW_STEP}
+              value={glow}
+              onChange={(e) => applyGlow(Number(e.target.value))}
+              style={{ width: "100%", marginTop: 8, accentColor: ACCENT }}
+            />
+            <div style={{ ...hintText, marginTop: 2 }}>
+              {GLOW_MIN}–{GLOW_MAX} in {GLOW_STEP} steps. Shipped default{" "}
+              {DEFAULT_GLOW}. The bloom threshold is{" "}
+              {BLOOM_THRESHOLD.toFixed(1)}: a mote only blooms ABOVE it, and how
+              far above sets how much — so this number IS the bloom multiplier.
+            </div>
+            <div style={{ ...hintText, marginTop: 6, color: WARN }}>
+              THE TRADE. At the shipped {DEFAULT_GLOW} the motes sit{" "}
+              {(DEFAULT_GLOW / BLOOM_THRESHOLD).toFixed(0)}× over the threshold
+              and the glow VEILS the letterforms: measured through this exact
+              sampler and post chain, the R&apos;s cut reads at ~97% of the
+              surviving stroke&apos;s luminance — i.e. invisible — and widening
+              the gap does not move it (97% at 21.6% of cap, still 96% at
+              48.6%). In the motes-only pass, with no post, the same cut reads
+              at 2%: the geometry is fine, the glow is what erases it. The same
+              mechanism softens the A&apos;s bare apex. Lowering glow peels the
+              veil back and the cut returns — the price is a dimmer, less
+              &ldquo;glowing&rdquo; wordmark, and below{" "}
+              {BLOOM_THRESHOLD.toFixed(1)} it stops blooming altogether.
+            </div>
+          </div>
+
           {/* MEASURED READOUT */}
           <div style={{ padding: "8px 12px 10px" }}>
             {rows.map(([k, v, color]) => (
@@ -593,13 +730,14 @@ export function WordmarkLab() {
               CSS px: on screen a mote is disc × (0.7–1.4) ÷ camera distance 12,
               mean disc ÷ 11.4 — sub-pixel at every value here, so the stroke is
               always many motes wide and the disc can never overhang it. Use the
-              WEIGHT to change stroke width, the DISC to change brightness.
+              WEIGHT to change stroke width, the DISC to change brightness, the
+              GLOW to change how much the post chain smears it.
             </div>
             <button onClick={reset} title="Reset (R)" style={{ ...cycleBtn, width: "100%", marginTop: 8, height: 26 }}>
-              reset to {DEFAULT_WEIGHT} / {shippedDisc}
+              reset to {DEFAULT_WEIGHT} / {shippedDisc} / {DEFAULT_GLOW}
             </button>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

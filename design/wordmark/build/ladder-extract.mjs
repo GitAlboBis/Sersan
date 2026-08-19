@@ -4,15 +4,18 @@
 // variable instances (design/wordmark/build/instances/jost-var-*.ttf) instead
 // of the two static fontsource faces. design/wordmark/logotype.mjs is imported
 // unchanged and run at its approved defaults (aCrossbar 'none', rVariant
-// 'openbowl', gapRatio 3.0, legMargin 0.15, capHeight 100), so the cut geometry
-// — including the gap being 3.0 x the *measured* stem, which is what makes it
-// track the weight, and the per-weight ceiling that stops the slab severing the
-// leg at the heavy end — is bit-for-bit the construction signed off on the
-// treatments sheet (tile 03).
+// 'openbowl', gapRatio 'saturate', legMargin null, capHeight 100).
 //
-// The gap does NOT come out at 3.0 x stem at every weight: from 260 up, 3.0 x
-// stem is wider than the letterform can give up, so logotype.mjs clamps to the
-// measured ceiling and reports gapRatioAchieved / gapClamped. Printed below.
+// The open-bowl slab is MEASURED per weight, not scaled off the stem: it runs
+// out to the abscissa where the cut band holds no more ink and stops one font
+// unit past it (logotype.mjs `openBowlSaturation`). That is the widest daylight
+// the letterform can show and the narrowest slab that shows it — a fixed ratio
+// cannot hit it at seven weights, because the saturation point lands at 7.5 x
+// stem at wght 200 and 4.2 x at wght 340.
+//
+// The cut is deliberately PAST the severing ceiling (still measured and printed
+// below, for the record): the leg comes away, so the R is TWO contours. Clamped
+// to the ceiling it showed no daylight at all — see r-beyond.mjs.
 //
 // LOGOTYPE_MODULE_PATHS must point at a node_modules with fontkit +
 // polygon-clipping (they are build-only tools, deliberately not project deps).
@@ -58,9 +61,9 @@ for (const w of WEIGHTS) {
     const rep = b.meta.reports[`${ch}0`];
     const extra =
       ch === "R"
-        ? ` stem=${(rep.stem.thickness * k).toFixed(1)}u gap=${(rep.gap * k).toFixed(1)}u` +
-          ` (want ${(rep.gapRequested * k).toFixed(1)}u, ceiling ${(rep.gapCeiling * k).toFixed(1)}u,` +
-          ` ratio ${rep.gapRatioAchieved}${rep.gapClamped ? ", CLAMPED" : ""})`
+        ? ` stem=${(rep.stem.thickness * k).toFixed(1)}u slab=${(rep.gap * k).toFixed(1)}u` +
+          ` (saturates at ${(rep.gapSaturation * k).toFixed(1)}u = ${rep.gapRatioSaturation}x stem,` +
+          ` severing ceiling ${(rep.gapCeiling * k).toFixed(1)}u${rep.pastCeiling ? " — PAST IT, leg free" : ""})`
         : ` crossbar=${(rep.crossbarThickness * k).toFixed(1)}u`;
     console.log(
       `w${w} ${ch}: rings=${rings.length} pts=${rings.reduce((n, r) => n + r.length, 0)} ` +

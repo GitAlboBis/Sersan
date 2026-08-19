@@ -1,0 +1,334 @@
+{
+ "heroCapPx": 72,
+ "faces": [
+  {
+   "weight": 200,
+   "cap": 700,
+   "contours": {
+    "A": 1,
+    "R": 2
+   },
+   "pieces": {
+    "A": 1,
+    "R": 2
+   },
+   "stem": 33,
+   "slab": 247.7,
+   "slabRatioStem": 7.507,
+   "saturation": 246.7,
+   "severingCeiling": 131.2,
+   "pastCeiling": true,
+   "daylight": 43,
+   "daylightPctCap": 6.15,
+   "daylightHeroPx": 4.4,
+   "inBandInk": 0,
+   "rPieces": [
+    {
+     "area": 42966,
+     "meanWidth": 30.4,
+     "bbox": [
+      374,
+      700
+     ],
+     "rings": 1
+    },
+    {
+     "area": 11400,
+     "meanWidth": 28.2,
+     "bbox": [
+      248,
+      300
+     ],
+     "rings": 1
+    }
+   ],
+   "advance": 495,
+   "untouchedGlyphs": [
+    230,
+    230
+   ]
+  },
+  {
+   "weight": 220,
+   "cap": 700,
+   "contours": {
+    "A": 1,
+    "R": 2
+   },
+   "pieces": {
+    "A": 1,
+    "R": 2
+   },
+   "stem": 38,
+   "slab": 253.3,
+   "slabRatioStem": 6.665,
+   "saturation": 252.3,
+   "severingCeiling": 135.7,
+   "pastCeiling": true,
+   "daylight": 44.4,
+   "daylightPctCap": 6.34,
+   "daylightHeroPx": 4.6,
+   "inBandInk": 0,
+   "rPieces": [
+    {
+     "area": 48765,
+     "meanWidth": 34.6,
+     "bbox": [
+      379,
+      700
+     ],
+     "rings": 1
+    },
+    {
+     "area": 13261,
+     "meanWidth": 32.5,
+     "bbox": [
+      253,
+      298
+     ],
+     "rings": 1
+    }
+   ],
+   "advance": 501,
+   "untouchedGlyphs": [
+    230,
+    230
+   ]
+  },
+  {
+   "weight": 240,
+   "cap": 700,
+   "contours": {
+    "A": 1,
+    "R": 2
+   },
+   "pieces": {
+    "A": 1,
+    "R": 2
+   },
+   "stem": 42,
+   "slab": 259.4,
+   "slabRatioStem": 6.177,
+   "saturation": 258.4,
+   "severingCeiling": 139.4,
+   "pastCeiling": true,
+   "daylight": 46.3,
+   "daylightPctCap": 6.62,
+   "daylightHeroPx": 4.8,
+   "inBandInk": 0,
+   "rPieces": [
+    {
+     "area": 54028,
+     "meanWidth": 38.3,
+     "bbox": [
+      383,
+      700
+     ],
+     "rings": 1
+    },
+    {
+     "area": 14800,
+     "meanWidth": 35.9,
+     "bbox": [
+      258,
+      296
+     ],
+     "rings": 1
+    }
+   ],
+   "advance": 506,
+   "untouchedGlyphs": [
+    230,
+    230
+   ]
+  },
+  {
+   "weight": 260,
+   "cap": 700,
+   "contours": {
+    "A": 1,
+    "R": 2
+   },
+   "pieces": {
+    "A": 1,
+    "R": 2
+   },
+   "stem": 47,
+   "slab": 264.9,
+   "slabRatioStem": 5.636,
+   "saturation": 263.9,
+   "severingCeiling": 142.4,
+   "pastCeiling": true,
+   "daylight": 49.6,
+   "daylightPctCap": 7.09,
+   "daylightHeroPx": 5.1,
+   "inBandInk": 0,
+   "rPieces": [
+    {
+     "area": 59834,
+     "meanWidth": 42.5,
+     "bbox": [
+      388,
+      700
+     ],
+     "rings": 1
+    },
+    {
+     "area": 16170,
+     "meanWidth": 39,
+     "bbox": [
+      262,
+      294
+     ],
+     "rings": 1
+    }
+   ],
+   "advance": 512,
+   "untouchedGlyphs": [
+    230,
+    230
+   ]
+  },
+  {
+   "weight": 280,
+   "cap": 700,
+   "contours": {
+    "A": 1,
+    "R": 2
+   },
+   "pieces": {
+    "A": 1,
+    "R": 2
+   },
+   "stem": 50,
+   "slab": 271.1,
+   "slabRatioStem": 5.422,
+   "saturation": 270.1,
+   "severingCeiling": 147.9,
+   "pastCeiling": true,
+   "daylight": 53,
+   "daylightPctCap": 7.58,
+   "daylightHeroPx": 5.5,
+   "inBandInk": 0,
+   "rPieces": [
+    {
+     "area": 64103,
+     "meanWidth": 45.7,
+     "bbox": [
+      392,
+      700
+     ],
+     "rings": 1
+    },
+    {
+     "area": 17666,
+     "meanWidth": 42.3,
+     "bbox": [
+      266,
+      292
+     ],
+     "rings": 1
+    }
+   ],
+   "advance": 518,
+   "untouchedGlyphs": [
+    230,
+    230
+   ]
+  },
+  {
+   "weight": 300,
+   "cap": 700,
+   "contours": {
+    "A": 1,
+    "R": 2
+   },
+   "pieces": {
+    "A": 1,
+    "R": 2
+   },
+   "stem": 55,
+   "slab": 276,
+   "slabRatioStem": 5.019,
+   "saturation": 275,
+   "severingCeiling": 151.5,
+   "pastCeiling": true,
+   "daylight": 57,
+   "daylightPctCap": 8.14,
+   "daylightHeroPx": 5.9,
+   "inBandInk": 0,
+   "rPieces": [
+    {
+     "area": 69726,
+     "meanWidth": 49.8,
+     "bbox": [
+      397,
+      700
+     ],
+     "rings": 1
+    },
+    {
+     "area": 18850,
+     "meanWidth": 44.9,
+     "bbox": [
+      269,
+      290
+     ],
+     "rings": 1
+    }
+   ],
+   "advance": 523,
+   "untouchedGlyphs": [
+    230,
+    230
+   ]
+  },
+  {
+   "weight": 340,
+   "cap": 700,
+   "contours": {
+    "A": 1,
+    "R": 2
+   },
+   "pieces": {
+    "A": 1,
+    "R": 2
+   },
+   "stem": 68,
+   "slab": 285.2,
+   "slabRatioStem": 4.194,
+   "saturation": 284.2,
+   "severingCeiling": 161.4,
+   "pastCeiling": true,
+   "daylight": 68,
+   "daylightPctCap": 9.71,
+   "daylightHeroPx": 7,
+   "inBandInk": 0,
+   "rPieces": [
+    {
+     "area": 84200,
+     "meanWidth": 60.3,
+     "bbox": [
+      410,
+      700
+     ],
+     "rings": 1
+    },
+    {
+     "area": 22578,
+     "meanWidth": 52.9,
+     "bbox": [
+      280,
+      284
+     ],
+     "rings": 1
+    }
+   ],
+   "advance": 538,
+   "untouchedGlyphs": [
+    230,
+    230
+   ]
+  }
+ ]
+}

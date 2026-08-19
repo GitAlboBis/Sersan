@@ -1,8 +1,11 @@
 // Extract the APPROVED amputated A and R as flat rings in FONT UNITS.
 //
 // Reuses design/wordmark/logotype.mjs unchanged, at its approved defaults
-// (aCrossbar 'none', rVariant 'openbowl', gapRatio 3.0, legMargin 0.15,
-// capHeight 100) so the geometry is bit-for-bit the look that was signed off.
+// (aCrossbar 'none', rVariant 'openbowl', gapRatio 'saturate', legMargin null,
+// capHeight 100) so the geometry is bit-for-bit the look that was signed off:
+// the open-bowl slab measured out to where the cut band holds no more ink,
+// which is past the severing ceiling — the leg comes away and the R is TWO
+// contours. See logotype.mjs `openBowlSaturation` and ladder-extract.mjs.
 // The rings come back in cap-100 space; we multiply by 1/meta.scale to land in
 // the font's own units. Every absolute constant inside the module (pad 0.6,
 // the 1e-3/1e-4 epsilons) therefore keeps the exact value it had when the
@@ -56,9 +59,16 @@ for (const w of WEIGHTS) {
       report: b.meta.reports[`${ch}0`] || null,
       pts: rings.reduce((n, r) => n + r.length, 0),
     };
+    const rep = b.meta.reports[`${ch}0`];
+    const extra =
+      ch === "R"
+        ? ` stem=${(rep.stem.thickness * k).toFixed(1)}u slab=${(rep.gap * k).toFixed(1)}u` +
+          ` (saturates at ${(rep.gapSaturation * k).toFixed(1)}u = ${rep.gapRatioSaturation}x stem,` +
+          ` severing ceiling ${(rep.gapCeiling * k).toFixed(1)}u${rep.pastCeiling ? " — PAST IT, leg free" : ""})`
+        : ` crossbar=${(rep.crossbarThickness * k).toFixed(1)}u`;
     console.log(
       `w${w} ${ch}: rings=${rings.length} pts=${rings.reduce((n, r) => n + r.length, 0)} ` +
-        `poly/ring=${JSON.stringify(b.meta.letters[0].rings)}`
+        `poly/ring=${JSON.stringify(b.meta.letters[0].rings)}${extra}`
     );
   }
 }

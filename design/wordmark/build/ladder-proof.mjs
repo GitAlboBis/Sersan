@@ -6,8 +6,11 @@
 //      captioned with the measured stem/cap % and a gauge against the
 //      5.0-6.5 % reference band
 //   2  A and R at cap 120px for every weight — the two amputated glyphs, big
-//   3  loupes on the R bowl/stem gap and the A crossbar band, the two places a
-//      heavier weight could close the cut or leave a nub
+//   3  loupes on the R's daylight and the A crossbar band, the two places a
+//      heavier weight could close the cut or leave a nub. The R's cut is run to
+//      saturation at every weight, so the leg stands free and the daylight —
+//      captioned from ladder-qa.json, i.e. measured on these very files — is the
+//      full height of the band the bowl's return used to occupy.
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
@@ -33,6 +36,8 @@ const OUT = "C:/Users/alber/Desktop/sersan-v2-main/design/logo-exploration/png/_
 const FONTS = "C:/Users/alber/Desktop/sersan-v2-main/src/fonts/";
 const M = JSON.parse(readFileSync("ladder-measure.json", "utf8"));
 const AMP = JSON.parse(readFileSync("amputated-ladder.json", "utf8"));
+const QA = JSON.parse(readFileSync("ladder-qa.json", "utf8"));
+const qa = (w) => QA.faces.find((f) => f.weight === w);
 
 const CREAM = "#F6F3EE",
   INK = "#0B1422",
@@ -84,7 +89,7 @@ const X = 80,
   W = 1720,
   COLW = W - 2 * X;
 let body = "",
-  y = 100;
+  y = 120;
 const label = (t, yy, fill = MUTED, size = 12.5) =>
   `<text x="${X}" y="${yy}" font-family="${MONO}" font-size="${size}" fill="${fill}" letter-spacing="1.5">${esc(t)}</text>`;
 const tag = (t, xx, yy, fill = MUTED, size = 11.5, anchor = "start") =>
@@ -133,7 +138,10 @@ y += 26;
     120,
     (100 * (COLW - GAPX * (M.length - 1))) / probe.reduce((a, b) => a + b, 0)
   );
-  body += label(`THE TWO CUTS · A (NO CROSSBAR) · R (OPEN BOWL) · CAP ${CAP2.toFixed(0)}PX`, y);
+  body += label(
+    `THE TWO CUTS · A (NO CROSSBAR, 1 CONTOUR) · R (OPEN BOWL, LEG FREE, 2 CONTOURS) · CAP ${CAP2.toFixed(0)}PX`,
+    y
+  );
   const base = y + 30 + CAP2;
   let x = X;
   for (const r of M) {
@@ -154,7 +162,10 @@ y += 26;
   const BW = Math.floor((COLW - GAPX * (N - 1)) / N);
   const BH = BW;
 
-  body += label("LOUPE · R BOWL/STEM GAP · 0.62PX PER FONT UNIT — the gap must stay open and the bowl must resume past it", y);
+  body += label(
+    "LOUPE · THE R'S DAYLIGHT · 0.62PX PER FONT UNIT — the cut band must be empty of ink and the leg must stand free",
+    y
+  );
   let top = y + 22;
   M.forEach((r, i) => {
     const rep = AMP[r.weight].glyphs.R.report;
@@ -162,9 +173,20 @@ y += 26;
     const rect = rep.rect.map((v) => v * k);
     const x = X + i * (BW + GAPX);
     body += zoom(F[r.weight], "R", (rect[0] + rect[2]) / 2, (rect[1] + rect[3]) / 2, 0.62, BW, BH, x, top);
-    body += tag(`${r.weight} · gap ${(rep.gap * k).toFixed(0)}u = 1.6x stem ${(rep.stem.thickness * k).toFixed(0)}u`, x, top + BH + 16);
+    const q = qa(r.weight);
+    body += tag(
+      `${r.weight} · daylight ${q.daylight}u (${q.daylightPctCap}% cap)`,
+      x,
+      top + BH + 16,
+      HIT
+    );
+    body += tag(
+      `slab ${q.slab.toFixed(0)}u = ${q.slabRatioStem.toFixed(2)}x stem ${(rep.stem.thickness * k).toFixed(0)}u`,
+      x,
+      top + BH + 31
+    );
   });
-  y = top + BH + 44;
+  y = top + BH + 58;
 
   body += label("LOUPE · A CROSSBAR BAND · 0.42PX PER FONT UNIT — the band must be empty, the legs clean, the peak bare", y);
   top = y + 22;
@@ -196,6 +218,7 @@ const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" 
 <rect width="${W}" height="${H}" fill="${CREAM}"/>
 <text x="${X}" y="52" font-family="${MONO}" font-size="13" fill="${INK}" letter-spacing="2.8">SERSAN DISPLAY · WEIGHT LADDER · RENDERED FROM src/fonts/sersan-display-*.woff2 VIA FONTKIT OUTLINES</text>
 <text x="${X}" y="74" font-family="${MONO}" font-size="12" fill="${MUTED}" letter-spacing="1.2">STEM = INK SPAN ACROSS THE N LEFT VERTICAL AT MID-CAP, SCANNED OFF THE OUTLINE · CAP = 700 UNITS (UPM 1000)</text>
+<text x="${X}" y="94" font-family="${MONO}" font-size="12" fill="${MUTED}" letter-spacing="1.2">EVERY R IS TWO CONTOURS: THE OPEN-BOWL SLAB IS RUN TO SATURATION, PAST THE POINT WHERE THE LEG LETS GO, SO THE CUT SHOWS DAYLIGHT (${QA.faces.map((f) => f.daylight + "u").join(" · ")})</text>
 ${body}</svg>`;
 writeFileSync("ladder-proof.svg", svg);
 await sharp(Buffer.from(svg), { density: 72 }).png().toFile(OUT);
