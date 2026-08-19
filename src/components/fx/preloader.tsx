@@ -21,32 +21,33 @@
  * THE MARK ASSEMBLES, THEN BECOMES A WHEEL.
  *
  * The mark is a hexagon split into two interlocking halves by an S-shaped
- * channel, and the load-in has two acts.
+ * channel, and the load-in has two acts — deliberately lopsided.
  *
- * ACT 1 — ASSEMBLY (JOIN_S, on its own clock, once). The halves start clearly
- * apart and close along the mark's own −30° grid axis (`SPLIT_AXIS`,
- * sersan-logo.tsx): the one direction where the channel's diagonal faces stay
- * parallel to the motion, so they slide across each other at constant clearance
- * while the other walls open. The halves seat like two milled parts entering a
- * dovetail — mechanism, not a cut. They are still GAINING speed at contact
- * (the eased position uses an exponent > 1), so the arrival reads as a strike.
- * Through this act the cyan→blue fill sweeping L→R carries the %.
+ * ACT 1 — ASSEMBLY owns the LOAD (up to JOIN_AT of the counter). The halves
+ * start clearly apart and converge as the % climbs, along the mark's own −30°
+ * grid axis (`SPLIT_AXIS`, sersan-logo.tsx): the one direction where the
+ * channel's diagonal faces stay parallel to the motion, so they slide across
+ * each other at constant clearance while the other walls open. The halves seat
+ * like two milled parts entering a dovetail — mechanism, not a cut. The
+ * cyan→blue fill lights them on the SAME schedule, so the two pieces finish
+ * lighting exactly as they meet, and they are still gaining speed at contact
+ * (the eased position uses an exponent > 1) so the arrival reads as a strike.
+ * Whichever is slower governs: progress, or the ASSEMBLY_MIN_S floor that keeps
+ * a warm cache from snapping them shut before the eye has read two pieces.
  *
- * ACT 2 — THE WHEEL. The instant they touch, the mark starts turning clockwise
- * and the WHEEL SPEED becomes the readout: `SPIN_MIN → SPIN_MAX` over progress,
- * on a curve (SPIN_CURVE) that keeps the early climb calm and the last stretch
- * dramatic. Three things ride that one term, so everything accelerates
- * together and the % is felt before it is read:
- *   - a CATHERINE WHEEL of sparks thrown TANGENTIALLY off the mark's two rim
- *     apexes (drawSparks, on its own 2D canvas behind the mark — the canvas is
- *     erased a little each frame rather than cleared, so what survives is the
- *     trail and it stays transparent over the tunnel);
- *   - the OUTLINE SHINE: a short bright dash travelling each half's perimeter
- *     (stroke-dasharray + a moving offset), the two halves half a lap apart so
- *     across the 180°-symmetric mark they read as ONE light going round;
- *   - the tunnel behind, whose time coefficient winds up with the same spin.
- * There is no separate thin progress bar; the counter beneath is the only
- * numeral.
+ * ACT 2 — THE WHEEL owns only the TAIL. Past JOIN_AT the mark turns clockwise
+ * and the wheel speed maps over that remaining sliver, so the spin is short and
+ * its wind-up steep. Two more things ride the same term — the outline SHINE (a
+ * short bright dash travelling each half's perimeter, the halves half a lap
+ * apart so across the 180°-symmetric mark they read as ONE light going round)
+ * and the tunnel behind, whose time coefficient winds up with the spin.
+ *
+ * THE FIELD. Behind the mark, on its own 2D canvas, a field of soft additive
+ * points — the same visual language as the hero's particle mark, so the
+ * preloader belongs to the site. One system, two regimes: they GATHER inward
+ * and are absorbed at the mark while it assembles (thickening with the
+ * counter — the mark reads as something being fed), and are CAST outward,
+ * swirled by the wheel's tangential speed, once it turns.
  *
  * THE SEAM. The S-channel between the halves (MARK_SEAM_PATH) is drawn as cyan
  * light BEHIND them, its opacity keyed to how CLOSE they are — invisible while
@@ -108,9 +109,10 @@
  * the wheel is already turning, so the exit RELEASES it. spinBoost winds the
  * spin up through the whole exit (the spin is an integrated RATE, never a tween
  * target, so the hand-off can multiply it without touching the angle), the seam
- * flares white-hot one last time, and the rim throws a full ring of sparks. A
+ * flares white-hot one last time, and the rim casts a full ring of points. A
  * warm cache can satisfy every readiness signal before the halves have even met
- * — JOIN_S outlasts MIN_VISIBLE_SHORT_MS — so the exit never fires mid-flight:
+ * — ASSEMBLY_MIN_S outlasts MIN_VISIBLE_SHORT_MS — so the exit never fires
+ * mid-flight:
  * it RUSHES the closing instead (the join clock accelerates, the eased position
  * stays continuous) and waits MIN_SPIN_S for the wheel to spin up. The turning
  * mark then ZOOMS toward the viewer and never
@@ -229,23 +231,31 @@ const MARK_CY = MARK_H / 2;
 /** Half-separation at t=0 (user units). Sized to stay inside the padding: the
  *  halves must read as clearly apart without overlapping the counter below. */
 const GAP_START = 118;
-/** Seconds the halves take to close. The whole load-in hinges on this beat. */
-const JOIN_S = 1.55;
+/**
+ * The share of the LOAD the assembly owns. The halves converge as the counter
+ * climbs to here and seat exactly when it arrives, so the long act is the one
+ * with something to read — two pieces lighting up with the load — and the wheel
+ * only gets the tail. Tie it to progress rather than a fixed clock and the
+ * proportion holds however long the load actually takes.
+ */
+const JOIN_AT = 0.82;
+/**
+ * Floor on the assembly, in seconds. A warm cache can hand us 100% almost
+ * immediately; without this the halves would snap together before the eye has
+ * read them as two pieces at all.
+ */
+const ASSEMBLY_MIN_S = 1.9;
 /** Seconds the seam's contact flare takes to decay after the join. */
 const JOIN_FLASH_S = 0.65;
-/** Seconds the fill takes to rush to full once the halves lock. */
-const FILL_RUSH_S = 0.42;
-/** Wheel speed (turns/second) at 0% and at 100%. */
-const SPIN_MIN = 0.24;
-const SPIN_MAX = 3.4;
-/** Exponent on progress → spin. >1 keeps the early climb calm and the last
- *  stretch dramatic, so the acceleration is felt rather than merely measured. */
-const SPIN_CURVE = 1.6;
+/** Wheel speed (turns/second) at the join and at 100%. */
+const SPIN_MIN = 0.3;
+const SPIN_MAX = 3.6;
+/** Exponent on the TAIL progress → spin. >1 keeps the wind-up felt, not linear. */
+const SPIN_CURVE = 1.5;
 /** The wheel keeps winding up through the exit. */
 const SPIN_EXIT = 2.6;
-/** Seconds the wheel must have turned before the exit may fire. Guards the
- *  warm-cache case where every readiness signal lands during the assembly. */
-const MIN_SPIN_S = 0.45;
+/** Seconds the wheel must have turned before the exit may fire. */
+const MIN_SPIN_S = 0.34;
 /** Gap (user units) below which the seam starts to light. */
 const SEAM_RANGE = 22;
 /** Seam opacity at contact (the join and the exit flare past this to 1). */
@@ -256,17 +266,22 @@ const SHINE_FRACTION = 0.13;
 const SHINE_BASE = 0.28;
 const SHINE_PER_TURN = 0.34;
 
-// ---- Catherine-wheel sparks (2D canvas layer behind the mark) --------------
-/** Hard cap on live sparks. Reached only at full speed on a wide viewport. */
-const SPARK_MAX = 300;
-/** Sparks emitted per TURN of the wheel — emission rides the spin, so the
- *  spray thickens with the acceleration instead of being timed separately. */
-const SPARK_PER_TURN = 150;
-/** Spark lifetime (s), and the drag that bends the spray into a spiral. */
-const SPARK_LIFE = 0.66;
-const SPARK_DRAG = 1.9;
-/** Fraction of the rim's tangential speed a spark leaves with. */
-const SPARK_SPEED = 0.62;
+// ---- Particle field (2D canvas layer behind the mark) ----------------------
+// Soft additive points, not sparks: the same visual language as the hero's
+// particle mark, so the preloader belongs to the site rather than to a fireworks
+// display. They GATHER inward while the mark assembles and are CAST outward,
+// swirled by the spin, once it turns.
+/** Hard cap on live particles. */
+const PARTICLE_MAX = 280;
+/** Particles per second drifting in during the assembly (scaled by progress). */
+const GATHER_RATE = 46;
+/** Particles per TURN of the wheel — emission rides the spin, so the field
+ *  thickens with the acceleration instead of being timed separately. */
+const CAST_PER_TURN = 135;
+const GATHER_LIFE = 2.2;
+const CAST_LIFE = 1.15;
+/** How much of the rim's tangential speed a cast particle carries (the swirl). */
+const CAST_SWIRL = 0.42;
 
 // ---- Starfield (2D fallback backdrop — WebGL-unavailable path only) ---------
 interface Star {
@@ -312,9 +327,9 @@ export function Preloader() {
   const svgRef = useRef<SVGSVGElement>(null);
   // The wheel: everything that spins hangs off this one group.
   const spinRef = useRef<SVGGElement>(null);
-  // Sparks are a 2D canvas layer of their own, BEHIND the mark and INSIDE the
-  // logo wrapper, so they inherit the exit zoom with it.
-  const sparkCanvasRef = useRef<HTMLCanvasElement>(null);
+  // The particle field is a 2D canvas layer of its own, BEHIND the mark and
+  // INSIDE the logo wrapper, so it inherits the exit zoom with it.
+  const fieldCanvasRef = useRef<HTMLCanvasElement>(null);
   // The six moving pieces: ghost + lit + shine, upper + lower. All carry the
   // SAME translate (upper −gap·axis, lower +gap·axis), written by applyMark().
   const upperGhostRef = useRef<SVGGElement>(null);
@@ -359,13 +374,15 @@ export function Preloader() {
     let cancelled = false;
     let rafId = 0;
     let revealed = false;
-    // Assembly → wheel state. `joinClock` is a SEPARATE clock from the frame
+    // Assembly → wheel state. `assemblyClock` is a SEPARATE clock from the frame
     // clock so a late-arriving 100% can rush the closing (below) without the
     // eased position jumping.
     let joined = false;
     let joinedAt = 0;
-    let joinClock = 0;
+    let assemblyClock = 0;
     let joinRush = 1;
+    /** 0..1 — how hard the field is gathering (assembly only). */
+    let gatherK = 0;
     /** Wheel speed in turns/second, and the exit's multiplier on it. */
     let spinTurns = 0;
     let spinBoost = 1;
@@ -432,7 +449,7 @@ export function Preloader() {
     const onResize = () => {
       if (tunnel) tunnel.resize();
       else sizeStarCanvas();
-      sizeSparks();
+      sizeField();
     };
     window.addEventListener("resize", onResize);
 
@@ -600,136 +617,190 @@ export function Preloader() {
     }
     applyMark();
 
-    // ----- The Catherine wheel ----------------------------------------------
+    // ----- The particle field ------------------------------------------------
     // A 2D canvas layer of its own, behind the mark and inside the logo wrapper
-    // (so it inherits the exit zoom). Sparks leave the two rim apexes
-    // TANGENTIALLY, exactly as a pinwheel throws them, and the canvas is ERASED
-    // a little each frame rather than cleared — what survives is the trail, and
-    // it stays transparent over the tunnel behind.
+    // (so it inherits the exit zoom). Points are drawn from ONE pre-rendered
+    // radial sprite per tone, additively — cheap, and soft-edged in a way a
+    // stroked segment can never be.
+    //
+    // Two regimes, one system:
+    //   GATHER — while the halves are still apart, points drift IN from the
+    //     rim of the field and are absorbed at the mark, thickening with the
+    //     counter. The mark reads as something being fed.
+    //   CAST — once it turns, points leave the mark's rim outward with the
+    //     wheel's tangential speed, so the field opens into a slow swirl.
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    interface Spark {
+    interface Particle {
       x: number;
       y: number;
       vx: number;
       vy: number;
       age: number;
       life: number;
+      size: number;
       tone: number;
+      gather: boolean;
     }
-    const sparks: Spark[] = [];
-    let sparkCtx: CanvasRenderingContext2D | null = null;
-    let sparkPx = 0;
+    const parts: Particle[] = [];
+    let partCtx: CanvasRenderingContext2D | null = null;
+    let fieldPx = 0;
     let rimPx = 0;
-    let emitAcc = 0;
-    let arm = 0;
+    let gatherAcc = 0;
+    let castAcc = 0;
 
-    const sizeSparks = () => {
+    /** One soft radial blob per tone, rendered once and blitted per point. */
+    const makeSprite = (rgb: string) => {
+      const c = document.createElement("canvas");
+      c.width = 32;
+      c.height = 32;
+      const g = c.getContext("2d");
+      if (!g) return null;
+      const grad = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+      grad.addColorStop(0, "rgba(" + rgb + ",1)");
+      grad.addColorStop(0.35, "rgba(" + rgb + ",0.42)");
+      grad.addColorStop(1, "rgba(" + rgb + ",0)");
+      g.fillStyle = grad;
+      g.fillRect(0, 0, 32, 32);
+      return c;
+    };
+    const sprites = [
+      makeSprite("59,225,255"),
+      makeSprite("42,127,255"),
+      makeSprite("232,249,255"),
+    ].filter(Boolean) as HTMLCanvasElement[];
+
+    const sizeField = () => {
       const svgEl = svgRef.current;
-      const cvs = sparkCanvasRef.current;
+      const cvs = fieldCanvasRef.current;
       if (!svgEl || !cvs) return;
       const r = svgEl.getBoundingClientRect();
       if (r.height < 2) return;
-      sparkPx = Math.min(Math.round(Math.max(r.width, r.height) * 2.4), 900);
-      cvs.style.width = sparkPx + "px";
-      cvs.style.height = sparkPx + "px";
-      cvs.width = Math.round(sparkPx * dpr);
-      cvs.height = Math.round(sparkPx * dpr);
-      sparkCtx = cvs.getContext("2d");
-      sparkCtx?.setTransform(dpr, 0, 0, dpr, 0, 0);
+      fieldPx = Math.min(Math.round(Math.max(r.width, r.height) * 2.4), 900);
+      cvs.style.width = fieldPx + "px";
+      cvs.style.height = fieldPx + "px";
+      cvs.width = Math.round(fieldPx * dpr);
+      cvs.height = Math.round(fieldPx * dpr);
+      partCtx = cvs.getContext("2d");
+      partCtx?.setTransform(dpr, 0, 0, dpr, 0, 0);
       // The rim: the mark's apex sits MARK_CY user units from the pivot.
       rimPx = (MARK_CY / VB_H) * r.height;
     };
-    sizeSparks();
+    sizeField();
 
-    // `a` is measured from straight up, clockwise — the same convention as
-    // markState.spin, so the arm is wherever the mark's apex currently is.
-    const emitSpark = (a: number, turns: number, spread: number) => {
-      if (sparks.length >= SPARK_MAX || sparkPx === 0) return;
-      const ux = Math.sin(a);
-      const uy = -Math.cos(a);
-      // Under clockwise rotation a rim point moves perpendicular to its radius.
-      const rim = turns * Math.PI * 2 * rimPx;
-      const sp = rim * SPARK_SPEED * (0.75 + Math.random() * 0.5);
-      const out = sp * (0.16 + Math.random() * 0.22);
-      sparks.push({
-        x: sparkPx / 2 + ux * rimPx,
-        y: sparkPx / 2 + uy * rimPx,
-        vx: -uy * sp + ux * out + (Math.random() - 0.5) * spread,
-        vy: ux * sp + uy * out + (Math.random() - 0.5) * spread,
+    const push = (pt: Particle) => {
+      if (parts.length < PARTICLE_MAX) parts.push(pt);
+    };
+
+    /** Drifts in from the edge of the field, curving as it comes. */
+    const spawnGather = () => {
+      if (fieldPx === 0) return;
+      const a = Math.random() * Math.PI * 2;
+      const r = (fieldPx / 2) * (0.78 + Math.random() * 0.22);
+      const sp = (fieldPx / 2) * (0.22 + Math.random() * 0.26);
+      push({
+        x: fieldPx / 2 + Math.cos(a) * r,
+        y: fieldPx / 2 + Math.sin(a) * r,
+        vx: -Math.cos(a) * sp - Math.sin(a) * sp * 0.3,
+        vy: -Math.sin(a) * sp + Math.cos(a) * sp * 0.3,
         age: 0,
-        life: SPARK_LIFE * (0.6 + Math.random() * 0.7),
-        tone: Math.random(),
+        life: GATHER_LIFE * (0.7 + Math.random() * 0.5),
+        size: rimPx * (0.032 + Math.random() * 0.05),
+        tone: Math.floor(Math.random() * sprites.length),
+        gather: true,
       });
     };
 
-    /** A ring of sparks in every direction — fired once, on the exit. */
-    const burstSparks = (n: number, turns: number) => {
-      for (let i = 0; i < n; i++) {
-        emitSpark((i / n) * Math.PI * 2, Math.max(turns, 1.6), rimPx * 1.5);
-      }
+    /** Leaves the mark's rim, carried outward and swirled by the wheel. */
+    const spawnCast = (turns: number, spread: number) => {
+      if (fieldPx === 0) return;
+      const a = Math.random() * Math.PI * 2;
+      const rim = turns * Math.PI * 2 * rimPx;
+      const out = rimPx * (0.5 + Math.random() * 0.8);
+      const swirl = rim * CAST_SWIRL * (0.7 + Math.random() * 0.6);
+      push({
+        x: fieldPx / 2 + Math.cos(a) * rimPx * (0.9 + Math.random() * 0.16),
+        y: fieldPx / 2 + Math.sin(a) * rimPx * (0.9 + Math.random() * 0.16),
+        vx:
+          Math.cos(a) * out -
+          Math.sin(a) * swirl +
+          (Math.random() - 0.5) * spread,
+        vy:
+          Math.sin(a) * out +
+          Math.cos(a) * swirl +
+          (Math.random() - 0.5) * spread,
+        age: 0,
+        life: CAST_LIFE * (0.7 + Math.random() * 0.6),
+        size: rimPx * (0.028 + Math.random() * 0.055),
+        tone: Math.floor(Math.random() * sprites.length),
+        gather: false,
+      });
     };
 
-    const drawSparks = (dt: number, turns: number, a: number) => {
-      const c = sparkCtx;
-      if (!c || sparkPx === 0) return;
-      c.globalCompositeOperation = "destination-out";
-      c.fillStyle = "rgba(0,0,0,0.22)";
-      c.fillRect(0, 0, sparkPx, sparkPx);
+    /** A ring of points thrown at once — fired on the exit. */
+    const burstField = (n: number, turns: number) => {
+      for (let i = 0; i < n; i++) spawnCast(Math.max(turns, 1.4), rimPx * 1.2);
+    };
+
+    const drawField = (dt: number, turns: number, gatherK: number) => {
+      const c = partCtx;
+      if (!c || fieldPx === 0 || sprites.length === 0) return;
+      c.clearRect(0, 0, fieldPx, fieldPx);
       c.globalCompositeOperation = "lighter";
 
-      emitAcc += turns * SPARK_PER_TURN * dt;
-      while (emitAcc >= 1) {
-        emitAcc -= 1;
-        arm ^= 1;
-        emitSpark(a + (arm ? Math.PI : 0), turns, rimPx * 0.5);
+      if (gatherK > 0) {
+        gatherAcc += GATHER_RATE * gatherK * dt;
+        while (gatherAcc >= 1) {
+          gatherAcc -= 1;
+          spawnGather();
+        }
       }
-
-      // The two torches: a short bright arc at each arm. The per-frame erase
-      // smears them into the ring of light the sparks come off. Canvas angles
-      // run from +x, so the arm at `a` (measured from up) sits at a − π/2.
-      if (turns > 0.02) {
-        const alpha = Math.min(0.5, turns * 0.15);
-        c.lineWidth = Math.max(1.5, rimPx * 0.035);
-        c.strokeStyle = "rgba(150,236,255," + alpha.toFixed(3) + ")";
-        for (const off of [0, Math.PI]) {
-          const end = a + off - Math.PI / 2;
-          c.beginPath();
-          c.arc(sparkPx / 2, sparkPx / 2, rimPx, end - 0.42, end);
-          c.stroke();
+      if (turns > 0) {
+        castAcc += turns * CAST_PER_TURN * dt;
+        while (castAcc >= 1) {
+          castAcc -= 1;
+          spawnCast(turns, rimPx * 0.35);
         }
       }
 
-      for (let i = sparks.length - 1; i >= 0; i--) {
-        const sp = sparks[i];
-        sp.age += dt;
-        if (sp.age >= sp.life) {
-          sparks.splice(i, 1);
+      const cx = fieldPx / 2;
+      const cy = fieldPx / 2;
+      for (let i = parts.length - 1; i >= 0; i--) {
+        const q = parts[i];
+        q.age += dt;
+        q.x += q.vx * dt;
+        q.y += q.vy * dt;
+        if (!q.gather) {
+          // Cast points coast: a light drag opens the swirl instead of
+          // letting them shoot straight off the plate.
+          const drag = Math.max(0, 1 - 0.9 * dt);
+          q.vx *= drag;
+          q.vy *= drag;
+        }
+        const dx = q.x - cx;
+        const dy = q.y - cy;
+        const absorbed = q.gather && dx * dx + dy * dy < rimPx * rimPx * 0.55;
+        if (q.age >= q.life || absorbed) {
+          parts.splice(i, 1);
           continue;
         }
-        const px = sp.x;
-        const py = sp.y;
-        const drag = Math.max(0, 1 - SPARK_DRAG * dt);
-        sp.vx *= drag;
-        sp.vy *= drag;
-        sp.x += sp.vx * dt;
-        sp.y += sp.vy * dt;
-        const k = 1 - sp.age / sp.life;
-        const alpha = (k * k).toFixed(3);
-        c.strokeStyle =
-          sp.tone > 0.82
-            ? "rgba(240,252,255," + alpha + ")"
-            : sp.tone > 0.4
-              ? "rgba(59,225,255," + alpha + ")"
-              : "rgba(42,127,255," + alpha + ")";
-        c.lineWidth = 0.6 + 1.8 * k;
-        c.beginPath();
-        c.moveTo(px, py);
-        c.lineTo(sp.x, sp.y);
-        c.stroke();
+        const k = q.age / q.life;
+        // Fade in fast, out long; gathering points also brighten as they close.
+        let alpha = Math.min(1, k / 0.12) * (1 - Math.max(0, (k - 0.5) / 0.5));
+        if (q.gather) {
+          const near =
+            1 - Math.min(1, Math.sqrt(dx * dx + dy * dy) / (fieldPx / 2));
+          alpha *= 0.35 + 0.65 * near;
+        }
+        if (alpha <= 0.01) continue;
+        const r =
+          q.size * (q.gather ? 0.8 + 0.5 * (1 - k) : 0.6 + 0.8 * (1 - k));
+        c.globalAlpha = alpha;
+        c.drawImage(sprites[q.tone], q.x - r, q.y - r, r * 2, r * 2);
       }
+      c.globalAlpha = 1;
     };
 
-    // ----- Logo intro: the halves settle in, the mark fades up ---------------    // ----- Logo intro: the halves settle in, the mark fades up ---------------
+    // ----- Logo intro: the halves settle in, the mark fades up ---------------    // ----- Logo intro: the halves settle in, the mark fades up ---------------    // ----- Logo intro: the halves settle in, the mark fades up ---------------
     // A short, refined entrance for the open (horizontal) mark. Reduced-motion
     // never reaches here (active is false), so this is desktop/standard-motion
     // only. GSAP cleans these up automatically when killed in teardown below.
@@ -958,33 +1029,44 @@ export function Preloader() {
         const pct = Math.round(current * 100);
         setDisplay(pct);
         // ---- ASSEMBLY, then WHEEL ------------------------------------
-        // Phase 1: the halves arrive apart and close ONCE, on their own clock.
-        // That beat is the load-in's opening statement, not a progress readout
-        // — the cyan→blue fill sweeping L→R carries the % meanwhile.
-        // Phase 2: the instant they touch, the mark becomes a wheel and the
-        // WHEEL SPEED becomes the readout. The spark spray and the outline
-        // shine both ride that same term, so everything accelerates together
-        // and the % is felt before it is read.
+        // ACT 1 owns the LOAD: the halves converge as the counter climbs to
+        // JOIN_AT and the cyan→blue fill lights them on the same schedule, so
+        // the two pieces finish lighting exactly as they seat. Whichever is
+        // SLOWER governs — progress, or the ASSEMBLY_MIN_S floor that stops a
+        // warm cache snapping them shut before the eye has read two pieces.
+        // ACT 2 owns only the TAIL: past JOIN_AT the mark turns, and the wheel
+        // speed maps over that remaining sliver, so the spin is short and its
+        // wind-up steep.
         const tSec = (now - startedAt) / 1000;
         if (!joined) {
-          joinClock += delta * joinRush;
-          const k = Math.min(1, joinClock / JOIN_S);
+          assemblyClock += delta * joinRush;
+          const k = Math.min(
+            current / JOIN_AT,
+            assemblyClock / ASSEMBLY_MIN_S,
+            1,
+          );
           // Exponent > 1 ⇒ the halves are still gaining speed at contact: they
           // arrive with a strike rather than settling gently into place.
           markState.gap = GAP_START * (1 - Math.pow(k, 2.2));
-          markState.fill = current;
+          markState.fill = k;
+          gatherK = 0.35 + 0.65 * k;
           if (k >= 1) {
             joined = true;
             joinedAt = tSec;
             markState.gap = 0;
+            markState.fill = 1;
           }
         } else {
           const since = tSec - joinedAt;
+          gatherK = 0;
           markState.boost = Math.max(0, 1 - since / JOIN_FLASH_S);
-          markState.fill = Math.min(1, current + since / FILL_RUSH_S);
           markState.shineAlpha = Math.min(1, since / 0.5);
+          const tail = Math.min(
+            1,
+            Math.max(0, (current - JOIN_AT) / (1 - JOIN_AT)),
+          );
           spinTurns =
-            SPIN_MIN + (SPIN_MAX - SPIN_MIN) * Math.pow(current, SPIN_CURVE);
+            SPIN_MIN + (SPIN_MAX - SPIN_MIN) * Math.pow(tail, SPIN_CURVE);
         }
 
         // Reveal as soon as the readout reads 100 AND the target is genuinely 1
@@ -998,7 +1080,7 @@ export function Preloader() {
         // and never before genuine readiness (target < 1 ⇒ no reveal).
         if (target >= 1 && Math.round(current * 100) >= 100) {
           // A warm cache can satisfy every signal before the halves have even
-          // met (JOIN_S outlasts MIN_VISIBLE_SHORT_MS). Firing here would zoom
+          // met (ASSEMBLY_MIN_S outlasts MIN_VISIBLE_SHORT_MS). Firing would zoom
           // a mark that never assembled, so instead RUSH the closing — the
           // clock accelerates, the position stays continuous — and hold the
           // exit until the wheel has had a beat to spin up.
@@ -1024,13 +1106,15 @@ export function Preloader() {
       // applyMark() runs here every frame — during load it is the only writer;
       // after `revealed` the GSAP timeline writes the same state through the
       // same function, so the two can never disagree.
+      let spinRate = 0;
       if (joined) {
-        const rate = spinTurns * spinBoost;
-        markState.spin = (markState.spin + rate * 360 * delta) % 360;
+        spinRate = spinTurns * spinBoost;
+        markState.spin = (markState.spin + spinRate * 360 * delta) % 360;
         markState.shine =
-          (markState.shine + (SHINE_BASE + SHINE_PER_TURN * rate) * delta) % 1;
-        drawSparks(delta, rate, (markState.spin * Math.PI) / 180);
+          (markState.shine + (SHINE_BASE + SHINE_PER_TURN * spinRate) * delta) %
+          1;
       }
+      drawField(delta, spinRate, gatherK);
       applyMark();
 
       // Backdrop — SAME single loop, never a second rAF. During load the
@@ -1122,7 +1206,7 @@ export function Preloader() {
 
       // (a) RELEASE — the wheel is ALREADY turning, so the exit does not seat
       //     anything: it winds the wheel up (spinBoost), flares the seam
-      //     white-hot one last time, and throws a full ring of sparks off the
+      //     white-hot one last time, and casts a full ring of points off the
       //     rim. The spin itself stays with the rAF integrator — a tween here
       //     would fight it for the angle.
       if (!joined) {
@@ -1162,7 +1246,7 @@ export function Preloader() {
         },
         0,
       );
-      tl.call(() => burstSparks(96, spinTurns * spinBoost), undefined, 0.16);
+      tl.call(() => burstField(110, spinTurns * spinBoost), undefined, 0.16);
       if (seamRef.current) {
         // White-hot at the release, cooling back to signal cyan.
         tl.to(seamRef.current, { fill: "#EAF9FF", duration: 0.16 }, 0);
@@ -1362,12 +1446,13 @@ export function Preloader() {
         className="flex flex-col items-center will-change-transform"
       >
         <div className="relative flex items-center justify-center">
-          {/* SPARKS — the Catherine wheel's spray, on its own 2D canvas behind
-              the mark. Sized from the SVG's box (sizeSparks) and drawn by the
-              SAME rAF loop as everything else. Inside the logo wrapper, so the
-              exit zoom carries the sparks through with the mark. */}
+          {/* PARTICLE FIELD — soft additive points on their own 2D canvas
+              behind the mark: gathering inward while it assembles, cast
+              outward once it turns. Sized from the SVG's box (sizeField) and
+              drawn by the SAME rAF loop as everything else. Inside the logo
+              wrapper, so the exit zoom carries the field through with it. */}
           <canvas
-            ref={sparkCanvasRef}
+            ref={fieldCanvasRef}
             aria-hidden="true"
             className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2"
           />
