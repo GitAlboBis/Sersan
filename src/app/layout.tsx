@@ -102,6 +102,16 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.sersan.io"),
+  // The SVG is declared first on purpose: it carries a prefers-color-scheme
+  // rule, so the mark inverts with the browser chrome. Browsers without SVG
+  // favicon support fall through to the .ico, which is a navy tile precisely
+  // because it cannot adapt (design/logo-mark/build-icons.mjs).
+  icons: {
+    icon: [
+      { url: "/favicon.svg?v=13", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "48x48" },
+    ],
+  },
   // Title structure: page-specific value goes first (template appends the
   // brand). Default fronts the hero promise + the buyer query.
   title: {

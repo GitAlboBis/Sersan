@@ -18,20 +18,34 @@
  * twinkling stars + faint cyan/blue nebula glows) draws on the same canvas as
  * the fallback backdrop.
  *
- * THE MARK IS THE PROGRESS BAR. During load the two stencil S's are shown in an
- * OPEN, ~90°-rotated horizontal pose (laid wide and flat, side by side — the
- * "loading bar"). Two stacked layers of that rotated mark are drawn:
- *   (a) a GHOST layer — the rotated letter paths at low opacity (the unfilled
- *       portion of the bar);
- *   (b) a LIT layer — the same rotated paths filled with a cyan→blue linear
- *       gradient + accent glow, CLIPPED by a horizontal reveal <rect> whose
- *       width is driven L→R every frame by the eased `current` progress (0..1).
- * As the % climbs the cyan→blue fill sweeps left→right across the whole wide
- * rotated mark, "filling the letters". There is no separate thin progress bar.
+ * THE MARK IS THE PROGRESS BAR — and it assembles itself.
  *
- * The mark's SVG is INLINED here (same path data + token colors as
- * src/components/sersan-logo.tsx — SymbolMark) so the two S `<path>`s and the
- * divider `<rect>` can be animated independently with GSAP.
+ * The mark is a hexagon split into two interlocking halves by an S-shaped
+ * channel. During load those halves keep PARTING and RE-JOINING along the
+ * mark's own −30° grid axis (`SPLIT_AXIS`, sersan-logo.tsx): the one direction
+ * where the channel's diagonal faces stay parallel to the motion, so they slide
+ * across each other at constant clearance while the other walls open. The
+ * halves disengage like two milled parts leaving a dovetail — mechanism, not a
+ * cut. Three channels carry the SAME progress, so the mark is the readout:
+ *   (a) a GHOST layer — both halves at low opacity (the unbuilt mark);
+ *   (b) a LIT layer — the same halves filled with a cyan→blue gradient + accent
+ *       glow, CLIPPED by a reveal <rect> whose width is driven L→R every frame
+ *       by the eased `current` progress (0..1);
+ *   (c) the SPLIT itself — the halves breathe apart and back (SPLIT_CYCLE), and
+ *       the amplitude of that breath COLLAPSES as % climbs, so the mark visibly
+ *       converges on itself.
+ * There is no separate thin progress bar.
+ *
+ * THE SEAM. The S-channel between the halves (MARK_SEAM_PATH) is drawn as a
+ * cyan light behind them, its opacity keyed to how CLOSE they are — invisible
+ * while apart, brightest at contact. The mark's negative space is the brand's
+ * S, so every time the halves kiss, the S ignites in the joint; the tunnel
+ * behind surges on the same beat. That is the whole idea of the load-in: the
+ * logo is a thing being assembled, and the light lives in the fit.
+ *
+ * The geometry is IMPORTED from src/components/sersan-logo.tsx (one source of
+ * truth for the DOM logo, the favicon, the archive portal and the 3D GLB), and
+ * each half is its own `<path>` so it can be moved independently.
  *
  * Progress is driven by REAL readiness, not a fake timer (mobile-parity plan
  * Phase 3.2 — "assets 0.70 + warm 0.30", Lusion's 70/30 split):
@@ -77,19 +91,21 @@
  * the same tab session, see SESSION_SHORT) prevents a flash; a MAX watchdog
  * (~14s) guarantees a stuck GPU never traps the user.
  *
- * Hand-off (close → zoom-through → fade): at 100% the mark folds CLOSED (the
- * two rotated S's animate back from the OPEN horizontal pose to the UPRIGHT
- * compact mark — the SymbolMark layout, two vertical S's flanking the centered
- * divider), fully lit. The compact mark then ZOOMS toward the viewer and never
+ * Hand-off (lock → zoom-through → fade): at 100% the mark SEATS itself — the
+ * halves draw back a touch, then slam flush (power4.out) and stay there, the
+ * seam flaring to full on contact and settling lit. The pull-back matters: the
+ * breath may leave the halves anywhere, so the beat would otherwise read as a
+ * no-op whenever 100% lands on a kiss. The locked mark then ZOOMS toward the
+ * viewer and never
  * stops — one continuous power2.in acceleration (scale 1 → ~4, slight blur)
  * that flies PAST the camera while the ENTIRE overlay crossfades to
  * transparent, the tunnel still warping beneath the fade. The exit reads as
  * flying THROUGH the mark into the site: warp + zoom + crossfade, no wipe, no
  * hard edge. Through that beat introStore.complete() flips (SignatureLine
- * listens for the false→true edge and re-kicks its uReveal 0→1 draw-in), and
- * the vertical DIVIDER brightens to accent cyan and streaks/elongates downward
- * into the signature line, dissolving with the overlay — the eye reads the
- * logo's signal-bar becoming the scroll line.
+ * listens for the false→true edge and re-kicks its uReveal 0→1 draw-in), and a
+ * cyan SHAFT is drawn downward out of the lit seam, elongating into the
+ * signature line and dissolving with the overlay — the eye reads the light in
+ * the mark's joint becoming the scroll line.
  *
  * SSR-safe: the overlay only renders AFTER mount (a client effect sets `mounted`),
  * so the server HTML never contains it → no hydration mismatch, no layout shift.
@@ -119,13 +135,21 @@ import {
   startPreloadManifest,
   type PreloadManifestHandle,
 } from "@/webgl/loading/preloadManifest";
+import {
+  MARK_UPPER_PATH,
+  MARK_LOWER_PATH,
+  MARK_SEAM_PATH,
+  MARK_W,
+  MARK_H,
+  SPLIT_AXIS,
+} from "@/components/sersan-logo";
 
 // Timing envelope (ms). MIN keeps the loader from flashing on a warm cache.
 const MIN_VISIBLE_MS = 700;
 // Session-short (ERA's `sessionStorage.hasVisited`): a REPEAT hard load in the
 // same tab session lowers the minimum visible time to MIN_VISIBLE_SHORT_MS —
 // the readiness signals still gate 100% truthfully and the exit choreography
-// (fold → zoom-through → divider streak → fade) is IDENTICAL; only the floor
+// (lock → zoom-through → shaft streak → fade) is IDENTICAL; only the floor
 // shrinks. Applies on desktop too (declared preloader-window exception).
 // Owner decision 3 in plans/2026-08-17-mobile-parity.md — flip SESSION_SHORT to
 // false to always play the full minimum. The key is separate from
@@ -168,47 +192,39 @@ const COUNTER_EASE = 0.12;
 // close+zoom choreography runs ~1.4s total, ending under this fade.
 const FADE_DURATION = 0.7;
 
-// The exact left-S outline from src/components/sersan-logo.tsx (SymbolMark).
-// Inlined so the two S `<path>`s and the divider `<rect>` can be animated
-// separately; the right S is the same path mirrored. Kept byte-identical to the
-// brand mark so the centered logo IS the logo, not a redraw.
-const LEFT_S_PATH = `
-  M 12 0 L 120 0 L 120 200 L 12 200 L 0 188 L 0 12 Z
-  M 24 24 L 120 24 L 120 88 L 24 88 Z
-  M 0 112 L 96 112 L 96 176 L 0 176 Z
-`;
-
-// ---- Mark geometry: OPEN (horizontal bar) → CLOSED (upright SERSAN mark) ----
-// A wide viewBox holds both states. CLOSED is the normal mark — two S's flanking
-// the centre divider, the RIGHT S MIRRORED — centred. OPEN lays both S's FLAT &
-// LEVEL on one row (each rotated 90°), the loading bar. Each glyph is drawn
-// CENTRED at its own local origin, so ONE `translate(cx CY) rotate(angle)`
-// transform both rotates it about its centre AND positions it. The close beat
-// animates cx (open→compact) and angle (OPEN_ANGLE→0) the SAME way for both
-// glyphs, so the bar "stands up" together — never one above the other — and
-// lands on the exact SERSAN mark.
-const VB_W = 480;
-const VB_H = 240;
-const CY = VB_H / 2; // 120 — BOTH glyphs sit on this one row.
-// Closed: centres 144 apart (matches SymbolMark's 60↔204), divider between.
-const LEFT_CLOSED_CX = VB_W / 2 - 72; // 168
-const RIGHT_CLOSED_CX = VB_W / 2 + 72; // 312
-const DIVIDER_X = VB_W / 2; // 240
-// Open: a 90°-rotated S spans 200 wide, so spread the centres clear of overlap.
-const LEFT_OPEN_CX = VB_W / 2 - 115; // 125
-const RIGHT_OPEN_CX = VB_W / 2 + 115; // 355
-// Open rotation (deg) — folds to 0° on close so the mark "stands up" (verso
-// l'alto). Both glyphs use the SAME sign; the right glyph's mirror is what makes
-// the closed pair the correct SERSAN symbol.
-const OPEN_ANGLE = -90;
-// Glyph-local centring inside each rotating group. The right S is MIRRORED
-// (scale -1) so the closed mark is the real symbol, not a doubled left-S.
-const LEFT_INNER = "translate(-60 -100)";
-const RIGHT_INNER = "translate(60 -100) scale(-1 1)";
-const glyphTF = (cx: number, angle: number) =>
-  `translate(${cx} ${CY}) rotate(${angle})`;
-const LEFT_OPEN_TF = glyphTF(LEFT_OPEN_CX, OPEN_ANGLE);
-const RIGHT_OPEN_TF = glyphTF(RIGHT_OPEN_CX, OPEN_ANGLE);
+// ---- Mark geometry: the two halves, the axis, and the room to part ---------
+// The paths come from sersan-logo.tsx (one source of truth). The viewBox is the
+// mark plus PADDING, because the halves travel OUTSIDE the mark's own box while
+// they are apart — the padding is sized so even the entry overshoot stays
+// inside, so nothing ever clips into the readout below.
+const PAD_X = 110;
+const PAD_Y = 66;
+const VB_X = -PAD_X;
+const VB_Y = -PAD_Y;
+const VB_W = MARK_W + PAD_X * 2;
+const VB_H = MARK_H + PAD_Y * 2;
+/** Mark centre, used by the seam shaft that becomes the signature line. */
+const MARK_CX = MARK_W / 2;
+const MARK_CY = MARK_H / 2;
+// Half-separation (user units, along SPLIT_AXIS) at 0% and at the top of each
+// breath. 78 reads as a clean disengage without throwing the halves off-frame.
+const SPLIT_MAX = 78;
+// Seconds per part→join→part breath. Slow enough to feel deliberate rather
+// than nervous — the mark is being seated, not vibrating.
+const SPLIT_CYCLE = 2.6;
+// Residual amplitude at 100%: the breath narrows as % climbs but never dies on
+// its own, so the LOCK at reveal always has somewhere to come from.
+const SPLIT_FLOOR = 0.34;
+// Gap (user units) below which the seam starts to light. Tight, so the S reads
+// as light in the JOINT rather than a shape floating between two loose parts.
+const SEAM_RANGE = 22;
+/** Seam opacity at contact during load (the lock flares past this to 1). */
+const SEAM_PEAK = 0.8;
+// Entry: the halves arrive further apart than the first breath and settle in.
+const ENTRY_S = 0.9;
+const ENTRY_OVERSHOOT = 0.55;
+/** How far the halves draw BACK before the final slam (user units). */
+const LOCK_PULL = 34;
 
 // ---- Starfield (2D fallback backdrop — WebGL-unavailable path only) ---------
 interface Star {
@@ -251,12 +267,18 @@ export function Preloader() {
   // their open ±90° pose to 0° on close; their outer groups carry static
   // placement.
   const logoRef = useRef<HTMLDivElement>(null);
-  const leftGhostRotRef = useRef<SVGGElement>(null);
-  const rightGhostRotRef = useRef<SVGGElement>(null);
-  const leftLitRotRef = useRef<SVGGElement>(null);
-  const rightLitRotRef = useRef<SVGGElement>(null);
-  const ghostWrapRef = useRef<SVGGElement>(null); // both ghost glyphs (fade on close)
-  const litWrapRef = useRef<SVGGElement>(null); // both lit glyphs (fade on zoom)
+  // The four moving halves: ghost + lit, upper + lower. All four carry the SAME
+  // translate (upper −gap·axis, lower +gap·axis), written by applySplit().
+  const upperGhostRef = useRef<SVGGElement>(null);
+  const lowerGhostRef = useRef<SVGGElement>(null);
+  const upperLitRef = useRef<SVGGElement>(null);
+  const lowerLitRef = useRef<SVGGElement>(null);
+  const ghostWrapRef = useRef<SVGGElement>(null); // both ghost halves (fade on lock)
+  const litWrapRef = useRef<SVGGElement>(null); // both lit halves (fade on zoom)
+  // The seam: an inner <path> whose opacity applySplit() owns, inside a wrapper
+  // the zoom fades — two elements so the two writers never fight over one.
+  const seamRef = useRef<SVGPathElement>(null);
+  const seamWrapRef = useRef<SVGGElement>(null);
   const readoutRef = useRef<HTMLDivElement>(null); // % counter + label (fade on zoom)
   const dividerRef = useRef<SVGRectElement>(null);
 
@@ -284,6 +306,9 @@ export function Preloader() {
     let cancelled = false;
     let rafId = 0;
     let revealed = false;
+    // How close the two halves are RIGHT NOW (0 apart → 1 touching), published
+    // by applySplit() each frame so the backdrop can answer the joint.
+    let contact = 0;
     const startedAt = performance.now();
 
     // Guard against (somehow) running under reduced motion — never animate the
@@ -424,28 +449,54 @@ export function Preloader() {
       ctx.globalCompositeOperation = "source-over";
     };
 
-    // ----- Logo intro: open mark fades in, rotated into the OPEN pose --------
+    // ----- The split: ONE writer for the halves + the seam -------------------
+    // `splitState` is the whole choreography's state. The rAF loop owns it
+    // during load; at reveal, GSAP tweens own it (the loop stops writing once
+    // `revealed`). Everything — both ghost halves, both lit halves, and the
+    // seam's opacity — is written from HERE and nowhere else, so no two writers
+    // can ever fight over the same attribute.
+    const splitState = {
+      /** Half-separation in user units along SPLIT_AXIS. 0 = flush. */
+      gap: SPLIT_MAX,
+      /** Extra seam flare added at the lock (0..1), on top of the contact term. */
+      boost: 0,
+    };
+    const applySplit = () => {
+      const dx = SPLIT_AXIS.x * splitState.gap;
+      const dy = SPLIT_AXIS.y * splitState.gap;
+      const up = "translate(" + -dx + " " + -dy + ")";
+      const down = "translate(" + dx + " " + dy + ")";
+      upperGhostRef.current?.setAttribute("transform", up);
+      upperLitRef.current?.setAttribute("transform", up);
+      lowerGhostRef.current?.setAttribute("transform", down);
+      lowerLitRef.current?.setAttribute("transform", down);
+      // The seam is the JOINT: it only exists as the faces close, and squaring
+      // the closeness keeps it dark until they are genuinely near contact.
+      const close = Math.max(0, 1 - splitState.gap / SEAM_RANGE);
+      const a = Math.min(1, close * close * SEAM_PEAK + splitState.boost);
+      seamRef.current?.setAttribute("opacity", a.toFixed(3));
+      return close;
+    };
+    applySplit();
+
+    // ----- Logo intro: the halves settle in, the mark fades up ---------------
     // A short, refined entrance for the open (horizontal) mark. Reduced-motion
     // never reaches here (active is false), so this is desktop/standard-motion
     // only. GSAP cleans these up automatically when killed in teardown below.
     //
-    // The four rotating inner groups are SET to their OPEN angle here (left
-    // ghost/lit → +90°, right ghost/lit → -90°, each about its glyph centre),
-    // then their wrappers fade in. The divider stays hidden (scaleY 0, opacity
-    // 0) until the close beat where it becomes the compact mark's centre bar.
+    // The halves' separation is driven entirely by the rAF loop (including the
+    // entry overshoot), so nothing tweens them here — only the fade-up of the
+    // ghost layer and a gentle scale settle on the wrapper. The seam shaft stays
+    // hidden (scaleY 0, opacity 0) until the lock.
     const introTweens: gsap.core.Tween[] = [];
     if (dividerRef.current && logoRef.current && ghostWrapRef.current) {
-      // The OPEN (rotated, level) pose is carried by the static `transform`
-      // attributes in the JSX (LEFT_OPEN_TF / RIGHT_OPEN_TF) — no rotation set is
-      // needed here. The divider stays hidden until the close beat builds the
-      // compact mark's centre bar.
       gsap.set(dividerRef.current, {
         scaleY: 0,
         opacity: 0,
         transformOrigin: "50% 50%",
         transformBox: "fill-box",
       });
-      // Fade the open mark in (the ghost; the lit layer is gated by the clip-rect,
+      // Fade the mark in (the ghost; the lit layer is gated by the clip-rect,
       // width 0 → grows with %), with a gentle scale settle on the wrapper.
       gsap.set(ghostWrapRef.current, { opacity: 0 });
       introTweens.push(
@@ -656,11 +707,29 @@ export function Preloader() {
 
         const pct = Math.round(current * 100);
         setDisplay(pct);
-        // Drive the LIT-layer reveal: the clipPath rect grows L→R across the wide
-        // rotated mark, so the cyan→blue fill sweeps over the letters with %.
+        // Drive the LIT-layer reveal: the clipPath rect grows L→R across the
+        // mark, so the cyan→blue fill sweeps over the two halves with %.
         if (fillRectRef.current) {
           fillRectRef.current.setAttribute("width", String(VB_W * current));
         }
+
+        // Drive the SPLIT. A breath (part → join → part) times SPLIT_CYCLE,
+        // multiplied by two envelopes:
+        //   ENTRY — an overshoot decaying over ENTRY_S (power3.out), so the
+        //     halves arrive from further out and settle instead of popping in;
+        //   PROGRESS — 1 → SPLIT_FLOOR as % climbs, so the mark converges on
+        //     itself. The floor is deliberate: it leaves the LOCK at reveal
+        //     something to travel, whatever phase the breath is caught in.
+        const tSec = (now - startedAt) / 1000;
+        const entry = Math.min(1, tSec / ENTRY_S);
+        const settle = 1 + ENTRY_OVERSHOOT * Math.pow(1 - entry, 3);
+        const breath = 0.5 + 0.5 * Math.cos((tSec / SPLIT_CYCLE) * Math.PI * 2);
+        splitState.gap =
+          SPLIT_MAX *
+          (SPLIT_FLOOR + (1 - SPLIT_FLOOR) * (1 - current)) *
+          breath *
+          settle;
+        contact = applySplit();
 
         // Reveal as soon as the readout reads 100 AND the target is genuinely 1
         // (all readiness signals — fonts/load/manifest/warm — plus min time satisfied).
@@ -691,7 +760,11 @@ export function Preloader() {
       // 1 + eased·2, subtle kinetic progress); reveal() slams the target to
       // 100 (THE WARP) on its own beat, so post-reveal frames only render.
       if (tunnel) {
-        if (!revealed) tunnel.setTargetTimeCoef(1 + current * 2);
+        // The backdrop answers the mark: the base coefficient breathes with %
+        // (subtle kinetic progress) and SURGES every time the halves kiss, so
+        // the field behind lurches on the same beat the seam ignites.
+        if (!revealed)
+          tunnel.setTargetTimeCoef(1 + current * 2 + contact * contact * 3);
         tunnel.render(delta);
       } else {
         drawStarfield((now - startedAt) / 1000);
@@ -758,7 +831,7 @@ export function Preloader() {
         return;
       }
 
-      // Make sure the fill is fully lit before we fold closed.
+      // Make sure the fill is fully lit before the halves seat.
       if (fillRectRef.current) {
         fillRectRef.current.setAttribute("width", String(VB_W));
       }
@@ -767,53 +840,67 @@ export function Preloader() {
       // is missing the timeline still runs the overlay fade via the final tween.
       const tl = gsap.timeline();
 
-      // (a) CLOSE — fold the OPEN bar UP into the upright mark. ONE proxy drives
-      //     BOTH glyphs identically: the centre slides open→compact and the angle
-      //     rotates OPEN_ANGLE→0, so the pair "stands up" together (verso l'alto),
-      //     stays level, and lands on the exact SERSAN mark (left S, divider,
-      //     mirrored right S). No re-render fires during the close (the rAF
-      //     loop keeps rendering the tunnel but, once `revealed`, never writes
-      //     counter/fill state), so these setAttribute writes are not clobbered.
-      const fold = { t: 0 };
-      const applyFold = () => {
-        const t = fold.t;
-        const lt = glyphTF(
-          LEFT_OPEN_CX + (LEFT_CLOSED_CX - LEFT_OPEN_CX) * t,
-          OPEN_ANGLE * (1 - t),
-        );
-        const rt = glyphTF(
-          RIGHT_OPEN_CX + (RIGHT_CLOSED_CX - RIGHT_OPEN_CX) * t,
-          OPEN_ANGLE * (1 - t),
-        );
-        leftLitRotRef.current?.setAttribute("transform", lt);
-        rightLitRotRef.current?.setAttribute("transform", rt);
-        leftGhostRotRef.current?.setAttribute("transform", lt);
-        rightGhostRotRef.current?.setAttribute("transform", rt);
-      };
+      // (a) LOCK — seat the two halves. They draw BACK a touch first, then
+      //     slam flush and STAY: the mark stops breathing and becomes the mark.
+      //     The pull-back is not decoration — the breath can leave the halves
+      //     anywhere, including mid-kiss, so without it the lock would read as
+      //     a no-op whenever 100% lands on a contact frame.
+      //
+      //     These tweens drive `splitState`, the SAME single writer the rAF
+      //     loop used; the loop stopped touching it the instant `revealed`
+      //     flipped, so nothing here can be clobbered (and nothing here
+      //     clobbers the counter).
       tl.to(
-        fold,
-        { t: 1, duration: 0.62, ease: "power3.inOut", onUpdate: applyFold },
+        splitState,
+        { gap: LOCK_PULL, duration: 0.18, ease: "power2.out", onUpdate: applySplit },
         0,
       );
+      tl.to(
+        splitState,
+        { gap: 0, duration: 0.46, ease: "power4.out", onUpdate: applySplit },
+        0.18,
+      );
+      // The seam flares past its load-time ceiling as the faces meet, then
+      // settles lit — the S keeps burning in the joint through the exit.
+      tl.to(
+        splitState,
+        { boost: 1, duration: 0.16, ease: "power2.in", onUpdate: applySplit },
+        0.5,
+      );
+      tl.to(
+        splitState,
+        { boost: 0, duration: 0.55, ease: "power2.out", onUpdate: applySplit },
+        0.66,
+      );
+      if (seamRef.current) {
+        // White-hot at the moment of contact, cooling back to signal cyan.
+        tl.to(seamRef.current, { fill: "#EAF9FF", duration: 0.16 }, 0.5);
+        tl.to(
+          seamRef.current,
+          { fill: "hsl(189 100% 62%)", duration: 0.5, ease: "power2.out" },
+          0.66,
+        );
+      }
       if (ghostWrapRef.current) {
         tl.to(
           ghostWrapRef.current,
           { opacity: 0, duration: 0.32, ease: "power1.out" },
-          0.22,
+          0.3,
         );
       }
 
-      // Bring the divider in as the closed mark's centre signal-bar.
+      // The shaft: a thin cyan bar drawn downward OUT of the lit seam the
+      // instant the halves seat. It is the bridge into the signature line.
       if (dividerRef.current) {
         tl.to(
           dividerRef.current,
-          { scaleY: 1, opacity: 1, duration: 0.32, ease: "power2.out" },
-          0.42,
+          { scaleY: 1, opacity: 1, duration: 0.3, ease: "power2.out" },
+          0.56,
         );
       }
 
       // THE WARP — the reference's hover behavior repurposed as the exit: at
-      // 0.62, the moment the mark has folded closed and starts its zoom, the
+      // 0.62, the moment the halves have seated and the mark starts its zoom, the
       // tunnel's targetTimeCoef slams to 100. timeCoef lerps up at 0.02/frame,
       // so particle streaks + zoom blur (strength = timeCoef · 0.004) explode
       // together with the mark's zoom-through + overlay fade — one "jump into
@@ -848,9 +935,11 @@ export function Preloader() {
           0.66,
         );
       }
-      const fadeOnZoom = [litWrapRef.current, readoutRef.current].filter(
-        Boolean,
-      ) as (SVGGElement | HTMLDivElement)[];
+      const fadeOnZoom = [
+        litWrapRef.current,
+        seamWrapRef.current,
+        readoutRef.current,
+      ].filter(Boolean) as (SVGGElement | HTMLDivElement)[];
       if (fadeOnZoom.length) {
         tl.to(
           fadeOnZoom,
@@ -971,17 +1060,19 @@ export function Preloader() {
         </span>
       </div>
 
-      {/* HERO: the SERSAN mark in its OPEN (horizontal) pose — the loading bar.
-          Two stacked layers of the rotated mark: a dim GHOST (unfilled) and a
-          cyan→blue LIT layer clipped by a L→R reveal rect driven by %.
-          On hand-off the lit mark folds CLOSED back to upright, then zooms. */}
+      {/* HERO: the mark, mid-assembly. Two halves that keep parting and
+          re-joining along SPLIT_AXIS, in two stacked layers — a dim GHOST
+          (unbuilt) and a cyan→blue LIT layer clipped by a L→R reveal rect
+          driven by %. Behind them the SEAM: the S-shaped channel, lit by how
+          close the halves are. On hand-off they slam flush and the mark zooms
+          through. */}
       <div ref={logoRef} className="flex flex-col items-center will-change-transform">
         <svg
-          viewBox={`0 0 ${VB_W} ${VB_H}`}
+          viewBox={`${VB_X} ${VB_Y} ${VB_W} ${VB_H}`}
           xmlns="http://www.w3.org/2000/svg"
           role="img"
           aria-label="SERSAN"
-          className="h-[clamp(80px,17vw,124px)] w-auto"
+          className="h-[clamp(108px,24vw,178px)] w-auto"
           style={{ aspectRatio: `${VB_W} / ${VB_H}`, overflow: "visible" }}
         >
           <defs>
@@ -1004,80 +1095,81 @@ export function Preloader() {
                 floodOpacity="0.55"
               />
             </filter>
+            {/* The seam burns hotter than the halves — its own, wider glow. */}
+            <filter
+              id="preloader-seam-glow"
+              x="-45%"
+              y="-45%"
+              width="190%"
+              height="190%"
+            >
+              <feDropShadow
+                dx="0"
+                dy="0"
+                stdDeviation="9"
+                floodColor="hsl(189 100% 62%)"
+                floodOpacity="0.9"
+              />
+            </filter>
             {/* Horizontal reveal: a rect grown L→R by `current` each frame. */}
             <clipPath id="preloader-reveal">
-              <rect ref={fillRectRef} x="0" y="0" width="0" height={VB_H} />
+              <rect ref={fillRectRef} x={VB_X} y={VB_Y} width="0" height={VB_H} />
             </clipPath>
           </defs>
 
-          {/* Each glyph is ONE group carrying `translate(cx CY) rotate(angle)`
-              (open pose = *_OPEN_TF; the close beat rewrites it), wrapping a
-              static inner group that CENTRES the glyph at its own origin. The
-              RIGHT inner group is mirrored (scale -1) so the closed pair is the
-              real SERSAN symbol, not a doubled left-S. */}
+          {/* SEAM — drawn in its ASSEMBLED position, BEHIND both layers, so it
+              reads as light coming out of the joint rather than a shape laid on
+              top. Its opacity is owned by applySplit(); the wrapper exists only
+              so the zoom can fade it without fighting that writer. */}
+          <g ref={seamWrapRef}>
+            <path
+              ref={seamRef}
+              d={MARK_SEAM_PATH}
+              fill="hsl(var(--accent))"
+              filter="url(#preloader-seam-glow)"
+              opacity="0"
+            />
+          </g>
 
-          {/* GHOST layer — the unfilled rotated letters (dim). Hidden on first
-              paint (opacity 0), faded in by the intro. */}
+          {/* GHOST layer — the unbuilt halves (dim). Hidden on first paint
+              (opacity 0), faded in by the intro. Each half sits in its own
+              group so applySplit() can translate it. */}
           <g ref={ghostWrapRef} style={{ opacity: 0 }}>
-            <g ref={leftGhostRotRef} transform={LEFT_OPEN_TF}>
-              <g transform={LEFT_INNER}>
-                <path
-                  d={LEFT_S_PATH}
-                  fill="hsl(var(--ink) / 0.14)"
-                  fillRule="evenodd"
-                />
-              </g>
+            <g ref={upperGhostRef}>
+              <path d={MARK_UPPER_PATH} fill="hsl(var(--ink) / 0.14)" />
             </g>
-            <g ref={rightGhostRotRef} transform={RIGHT_OPEN_TF}>
-              <g transform={RIGHT_INNER}>
-                <path
-                  d={LEFT_S_PATH}
-                  fill="hsl(var(--ink) / 0.14)"
-                  fillRule="evenodd"
-                />
-              </g>
+            <g ref={lowerGhostRef}>
+              <path d={MARK_LOWER_PATH} fill="hsl(var(--ink) / 0.14)" />
             </g>
           </g>
 
-          {/* LIT layer — same letters, cyan→blue gradient + glow, clipped by
-              the L→R reveal so the fill sweeps with progress. Wrapped (litWrapRef)
-              so it fades on the zoom while the divider streak — a SIBLING below —
-              stays visible into the exit fade. */}
+          {/* LIT layer — the same halves, cyan→blue gradient + glow, clipped by
+              the L→R reveal so the fill sweeps with progress. Wrapped
+              (litWrapRef) so it fades on the zoom while the shaft — a SIBLING
+              below — stays visible into the exit fade. */}
           <g
             ref={litWrapRef}
             clipPath="url(#preloader-reveal)"
             filter="url(#preloader-glow)"
           >
-            <g ref={leftLitRotRef} transform={LEFT_OPEN_TF}>
-              <g transform={LEFT_INNER}>
-                <path
-                  d={LEFT_S_PATH}
-                  fill="url(#preloader-fill)"
-                  fillRule="evenodd"
-                />
-              </g>
+            <g ref={upperLitRef}>
+              <path d={MARK_UPPER_PATH} fill="url(#preloader-fill)" />
             </g>
-            <g ref={rightLitRotRef} transform={RIGHT_OPEN_TF}>
-              <g transform={RIGHT_INNER}>
-                <path
-                  d={LEFT_S_PATH}
-                  fill="url(#preloader-fill)"
-                  fillRule="evenodd"
-                />
-              </g>
+            <g ref={lowerLitRef}>
+              <path d={MARK_LOWER_PATH} fill="url(#preloader-fill)" />
             </g>
           </g>
 
-          {/* Centre signal divider — hidden during the open pose (scaleY:0 +
-              opacity:0 via intro set), brought in on close as the compact mark's
-              bar, then streaks into the signature line on hand-off. */}
+          {/* The shaft — hidden during load (scaleY 0 + opacity 0 via the intro
+              set), drawn downward out of the lit seam at the lock, then
+              streaked into the signature line on hand-off. */}
           <rect
             ref={dividerRef}
-            x={DIVIDER_X - 2}
-            y={CY - 100}
-            width="4"
-            height="200"
-            fill="hsl(var(--accent-warm))"
+            x={MARK_CX - 1.5}
+            y={MARK_CY - 34}
+            width="3"
+            height="68"
+            fill="hsl(var(--accent))"
             opacity="0"
           />
         </svg>

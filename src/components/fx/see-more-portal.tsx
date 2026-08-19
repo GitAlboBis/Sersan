@@ -24,7 +24,13 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { LEFT_S_PATH } from "@/components/sersan-logo";
+import {
+  MARK_UPPER_PATH,
+  MARK_LOWER_PATH,
+  MARK_VIEWBOX,
+  MARK_W,
+  MARK_H,
+} from "@/components/sersan-logo";
 
 interface SeeMorePortalProps {
   /** Total engagements in the full archive (used in the DOM copy). */
@@ -130,28 +136,22 @@ export function SeeMorePortal({
     let W = 0;
     let H = 0;
 
-    // Rasterise the SERSAN mark (sersan-logo.tsx LEFT_S_PATH: two stencil S's +
-    // centre divider, 264×200 viewBox) and sample its ink → particle targets.
+    // Rasterise the SERSAN mark (sersan-logo.tsx — the hexagon's two
+    // interlocking halves) and sample its ink → particle targets.
     const sampleLogo = (w: number, h: number): Array<[number, number]> => {
       const off = document.createElement("canvas");
       off.width = Math.max(1, Math.round(w));
       off.height = Math.max(1, Math.round(h));
       const o = off.getContext("2d", { willReadFrequently: true });
       if (!o) return [];
-      const s = Math.min((h * LOGO_SCALE) / 200, (w * 0.82) / 264);
+      const s = Math.min((h * LOGO_SCALE) / MARK_H, (w * 0.82) / MARK_W);
       o.fillStyle = "#fff";
       o.save();
       o.translate(off.width / 2, off.height * LOGO_CY);
       o.scale(s, s);
-      o.translate(-132, -100); // centre of the 264×200 viewBox
-      const sPath = new Path2D(LEFT_S_PATH);
-      o.fill(sPath, "evenodd"); // left S
-      o.fillRect(129, 0, 6, 200); // centre divider (widened so it survives sampling)
-      o.save();
-      o.translate(264, 0);
-      o.scale(-1, 1);
-      o.fill(sPath, "evenodd"); // mirrored right S
-      o.restore();
+      o.translate(-MARK_W / 2, -MARK_H / 2); // centre of the mark viewBox
+      o.fill(new Path2D(MARK_UPPER_PATH));
+      o.fill(new Path2D(MARK_LOWER_PATH));
       o.restore();
       const data = o.getImageData(0, 0, off.width, off.height).data;
       const pts: Array<[number, number]> = [];
@@ -325,16 +325,13 @@ export function SeeMorePortal({
           className="pointer-events-none absolute inset-0 flex items-center justify-center"
         >
           <svg
-            viewBox="0 0 264 200"
+            viewBox={MARK_VIEWBOX}
             fill="currentColor"
-            className="h-[30%] w-auto text-[hsl(var(--accent))]"
+            className="h-[38%] w-auto text-[hsl(var(--accent))]"
             style={{ opacity: 0.55 }}
           >
-            <path d={LEFT_S_PATH} fillRule="evenodd" />
-            <rect x="130" y="0" width="4" height="200" />
-            <g transform="translate(264 0) scale(-1 1)">
-              <path d={LEFT_S_PATH} fillRule="evenodd" />
-            </g>
+            <path d={MARK_UPPER_PATH} />
+            <path d={MARK_LOWER_PATH} />
           </svg>
         </div>
       )}
