@@ -108,9 +108,9 @@ interface HeroLogoProps {
  * presents the mark face-on; we only add a small X tilt. This is the BASE rest
  * orientation; the mouse-parallax tilt below eases on top of it.
  *
- * Kept small (~4°) so the WIDE 2.64-unit mark reads as the letterform FACE-ON,
- * not a slanted box — at a larger near-plane scale a bigger tilt foreshortens
- * the wide plate and the mark stops looking like the mark.
+ * Kept small (~4°) so the 1.62-unit-wide hexagon mark reads FACE-ON, not a
+ * slanted box — at a larger near-plane scale a bigger tilt foreshortens the
+ * plate and the mark stops looking like the mark.
  */
 const TILT = THREE.MathUtils.degToRad(4);
 /**
@@ -134,7 +134,7 @@ const TILT_DAMP = 3.5; // damp lambda — soft ease toward the pointer target
 // ≡ 100vh at the z=0 content plane):
 //   mark height = 2 (normalized) × WORLD_VIEW_HEIGHT·fx.heroScale(0.17)
 //     × LOCKUP_SCALE(0.66) ≈ 2.51 world ≈ 22.4vh (~2% smaller apparent at
-//     the lockup's z = heroPosZ −0.3), width ≈ 3.31 world.
+//     the lockup's z = heroPosZ −0.3), width ≈ 2.04 world.
 // PLACEMENT IS CALIBRATED EMPIRICALLY, not from rect math: on the reference
 // desktop the whole WebGL lockup renders ~19vh ABOVE the DOM-center mapping
 // (browser-verified 2026-08-07 — the old flex-centered wordmark's particle
@@ -885,7 +885,7 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     // Framing + scroll choreography. The at-rest values come from LIVE fxStore
     // knobs (heroOffsetX / heroOffsetY / heroPosZ / heroScale) so the mark can
     // be tuned in the leva "GPGPU hero" folder (window.__sersanFx in dev). The
-    // defaults frame the wide 2.64×2 mark as a PROMINENT, front-facing, fully-
+    // defaults frame the 1.62×2 hexagon mark as a PROMINENT, front-facing, fully-
     // visible particle logo on the hero right, near the content plane (verified
     // against CAMERA_Z/FOV: at hp=0 the full mark sits inside the viewport with
     // margin across every desktop aspect). The hp terms keep the loved scroll

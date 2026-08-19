@@ -3,10 +3,11 @@
  * the dissolving hero logo (replaces the procedural Saturn).
  *
  * The mark GEOMETRY now comes from a Blender-built GLB
- * (`public/models/sersan-mark.glb` — a single clean beveled mesh: two stencil
- * "S" letters flanking a central divider). HeroLogo loads + normalizes that
- * GLB; this module no longer builds geometry. What remains here is the part
- * that operates on WHATEVER geometry it is handed:
+ * (`public/models/sersan-mark.glb` — a single clean beveled mesh: the pointy-top
+ * hexagon split by the S-shaped channel into two interlocking halves; rebuilt
+ * 2026-08-19 from the new brand mark, see design/logo-mark/). HeroLogo loads +
+ * normalizes that GLB; this module no longer builds geometry. What remains here
+ * is the part that operates on WHATEVER geometry it is handed:
  *   - `sampleMarkParticles(geometry, count)` — samples the surface into the
  *     instanced-billboard particle attribute arrays;
  *   - `markThreshold(x, y, z)` — the JS source of truth for the shared
@@ -31,7 +32,7 @@
  * old in-shader replicas (logoShader.ts's `MARK_NOISE_GLSL` and its TSL twin
  * logoNodeMaterial.ts) were deleted with the legacy sprite pipeline — any
  * revived GPU evaluation must replicate this hash/fbm constant-for-constant.
- * The GLB is centered & ~2 units tall — the same envelope the procedural mark
+ * The GLB is centered & ~2 units tall — the same envelope every previous mark
  * produced — so this object-space field stays consistent.
  */
 import * as THREE from "three";
@@ -148,7 +149,7 @@ export interface MarkHomeField {
  * How strongly to bias surface sampling toward the camera-facing FRONT of the
  * mark (the large +Z plate) over the back/bevel walls.
  *
- * The Blender mark is a flat wide plate (Z-depth ≈ 0.44 vs height 2). Plain
+ * The Blender mark is a flat plate (Z-depth ≈ 0.30 vs height 2). Plain
  * area-weighted MeshSurfaceSampler scatters ~half the particles onto the BACK
  * face (−Z, hidden behind the front from a head-on view) and onto the thin side
  * bevels — which is exactly the "thin box outline" / sparse look the user

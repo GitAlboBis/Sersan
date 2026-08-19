@@ -41,7 +41,7 @@ interface FxState {
   heroPulseSpeed: number;
   /**
    * Hero mark scale as a fraction of viewport world height. Raised to frame the
-   * wide SERSAN mark (2.64×2 normalized) as a PROMINENT particle logo at rest
+   * SERSAN mark (1.62×2 normalized) as a PROMINENT particle logo at rest
    * (HeroLogo: `WORLD_VIEW_HEIGHT * heroScale`).
    */
   heroScale: number;
@@ -285,8 +285,8 @@ export const useFxStore = create<FxState>((set) => ({
   heroPulseSpeed: 0.45,
   // Framing the wide "52" mark as a sober, FULLY-VISIBLE particle logo on the
   // hero right. The old 0.32 rendered it ~9.5×7.2 world units pushed to x≈+3.7
-  // (overflowing — only a corner showed). At 0.17 the 2.64w×2.0h mark renders
-  // baseScale = WORLD_VIEW_HEIGHT(≈11.19)×0.17 ≈ 1.90 → ~5.0w×3.8h, sat at
+  // (overflowing — only a corner showed). At 0.17 the 1.62w×2.0h mark renders
+  // baseScale = WORLD_VIEW_HEIGHT(≈11.19)×0.17 ≈ 1.90 → ~3.1w×3.8h, sat at
   // world x = worldViewWidth×0.2, so the whole "52" sits inside the viewport
   // with margin across desktop aspect ratios (verified vs CAMERA_Z/FOV).
   heroScale: 0.17,

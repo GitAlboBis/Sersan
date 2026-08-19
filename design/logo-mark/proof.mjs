@@ -1,0 +1,14 @@
+import sharp from "sharp"; import fs from "fs";
+const G=JSON.parse(fs.readFileSync("design/logo-mark/mark-geometry.json","utf8"));
+const SRC="C:/Users/alber/Downloads/loh.jpeg", W=920,H=708;
+const P=G.pixelFit;
+const px=p=>[P.cx+p[0]*P.Hh, P.cy-p[1]*P.Hh];
+const poly=(pts,c)=>`<polygon fill="none" stroke="${c}" stroke-width="2.5" points="${pts.map(px).map(p=>p.map(v=>v.toFixed(1)).join(",")).join(" ")}"/>`;
+const ov=`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${poly(G.navy,"#00FF66")}${poly(G.blue,"#FF2299")}</svg>`;
+const base=await sharp(SRC).resize({width:W,height:H,fit:"fill",kernel:"lanczos3"}).png().toBuffer();
+const layer=await sharp(Buffer.from(ov)).png().toBuffer();
+const comp=await sharp(base).composite([{input:layer,top:0,left:0}]).png().toBuffer();
+await sharp(comp).extract({left:250,top:170,width:430,height:480}).png().toFile("design/logo-mark/_overlay.png");
+const svg=fs.readFileSync("design/logo-mark/sersan-hex-mark.svg");
+await sharp(svg).resize({width:430}).flatten({background:"#F9F9F9"}).png().toFile("design/logo-mark/_recon.png");
+console.log("ok");
