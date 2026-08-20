@@ -70,6 +70,10 @@
      for fade/slide reveals — mirrored by GSAP `expo.out` and the framer
      EASE constant so every reveal on the page shares one feel. */
   --ease-entrance: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Lusion house ease (ANALISI_LUSION_WORK.md §1) — decisive start, long
+     settle. Used by the Featured Work grid (hover shifts, arrow slide) and
+     mirrored in GSAP via CustomEase "lusion" (featured-work.tsx). */
+  --ease-lusion: cubic-bezier(0.35, 0, 0, 1);
 
   --dur-fast:    200ms;
   --dur-normal:  300ms;
@@ -1832,3 +1836,121 @@ html.cursor-none [contenteditable="true"] {
     opacity: 0;
   }
 }
+
+/* === Featured Work (home) — Lusion work-grid grammar ======================
+   ANALISI_LUSION_WORK.md §2. DOM-complete on its own: the still image + these
+   CSS hovers ARE the section on non-WebGPU / lite tiers; the depth-parallax
+   planes (webgl/FeaturedWorkPlanes) overlay the media box only on the flag-ON
+   full-tier path, and then `data-planes-live` on the grid hides the DOM still
+   underneath (the plane owns the pixels — two stacked images would ghost).
+   Type + roll motion is GSAP-driven from featured-work.tsx; everything here
+   is static structure + the no-JS/reduced-motion resting state. */
+
+.fw-card {
+  display: block;
+  cursor: pointer;
+}
+
+/* Media frame — Lusion: padding-top 65% (≈1.538 aspect), radius 15px. The
+   still uses object-cover; hover fallback = restrained zoom + unfilter (the
+   WebGL path replaces this with the raymarched depth parallax + DOF). */
+.fw-media {
+  position: relative;
+  padding-top: 65%;
+  border-radius: 15px;
+  overflow: hidden;
+  /* Steel ground behind stills while they decode + the panel for logo cards. */
+  background:
+    linear-gradient(180deg, hsl(216 28% 10%) 0%, hsl(216 30% 13%) 100%);
+}
+.fw-media > img.fw-still {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scale(1.025);
+  filter: saturate(0.92) brightness(0.96);
+  transition:
+    transform 0.9s var(--ease-lusion),
+    filter 0.9s var(--ease-lusion),
+    opacity 0.35s var(--ease-entrance);
+}
+.fw-card:hover .fw-media > img.fw-still,
+.fw-card:focus-visible .fw-media > img.fw-still {
+  transform: scale(1);
+  filter: saturate(1) brightness(1);
+}
+/* WebGL plane owns the media box: the DOM still yields (kept in the tree so
+   the flip-handoff snapshot + no-JS path never lose their image). Per-card —
+   logo cards and depth-less stills keep their DOM layer. */
+.fw-media[data-plane-owned="true"] > img.fw-still {
+  opacity: 0;
+}
+
+/* Logo-only cards: brand-navy panel, monochrome mark, hover lift. */
+.fw-media > .fw-logo-panel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.fw-media > .fw-logo-panel > img {
+  width: 34%;
+  max-height: 38%;
+  object-fit: contain;
+  opacity: 0.66;
+  filter: grayscale(1) brightness(1.6);
+  transition: opacity 0.6s var(--ease-lusion), transform 0.6s var(--ease-lusion);
+}
+.fw-card:hover .fw-logo-panel > img {
+  opacity: 0.95;
+  transform: translateY(-4px);
+}
+
+/* Footer: eyebrow line-1 + rolling title line-2. */
+.fw-line-1 {
+  margin: 1.4em 0 0.55em;
+}
+.fw-title {
+  position: relative;
+  overflow: hidden;
+  height: 1.06em; /* +6% so display-font descenders survive the clip */
+  font-size: clamp(1.7rem, 3vw, 2.6rem);
+  line-height: 1;
+}
+.fw-title-inner {
+  position: relative;
+  display: flex;
+  height: 100%;
+}
+.fw-col {
+  display: flex;
+  flex-direction: column;
+  will-change: transform;
+}
+.fw-col > span {
+  display: block;
+  height: 1.06em;
+  line-height: 1.06;
+}
+.fw-col-space {
+  width: 0.3em;
+}
+/* Arrow parked outside the clip (left:-1em) — the hover tween slides it in
+   while the letters make room (translate 1.5em right, Lusion §2.3). */
+.fw-title-icon {
+  position: absolute;
+  left: -1em;
+  top: 0.13em;
+  width: 0.8em;
+  height: 0.8em;
+  color: hsl(var(--accent));
+  will-change: transform;
+}
+
+/* Reduced motion / no-JS resting state: everything visible, nothing rolls.
+   featured-work.tsx never arms the tweens under prefers-reduced-motion, so
+   the SSR transforms (none) simply persist; entrance slide + roll are pure
+   enhancement. */

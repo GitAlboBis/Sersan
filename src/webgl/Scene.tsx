@@ -31,7 +31,7 @@ import { HeroTextParticles } from "./HeroTextParticles";
 import { GatewayPortal } from "./GatewayPortal";
 import { RouteHero, type RouteHeroKind } from "./RouteHero";
 import { DriftParticles } from "./DriftParticles";
-import { RailPlanes } from "./RailPlanes";
+import { FeaturedWorkPlanes } from "./FeaturedWorkPlanes";
 import { FounderPortraitMorph } from "./FounderPortraitMorph";
 import { ResourcePreviewPlane } from "./ResourcePreviewPlane";
 import { NeuralLattice } from "./NeuralLattice";
@@ -419,29 +419,19 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           HeroLogo is mounted ONLY inside the pathname === "/" branch, so it
           never appears on an interior route. */}
       <RouteRitual pathname={pathname} tier={tier} anchors={anchors} />
-      {/* Home case-studies rail card planes (restyle step 2 part B). Gates:
-          home route + full tier (lite = DOM-only rail) + the WebGPU flag —
-          the planes are TSL-only (no GLSL twin; see railPlaneNodeMaterial
-          header), so the classic flag-OFF WebGLRenderer path never mounts
-          them. Inside the component an additional railStore.pinned gate keeps
-          the planes off while the DOM rail runs its native (unpinned)
-          fallback. MUST stay mounted AFTER SignatureLine: the per-frame plane
-          placement is camera-relative and relies on the single camera
-          authority having written camera.position.y earlier in the same
-          priority-0 frame pass.
-
-          TOUCH GATE (mobile-parity plan Phase 4d, RAIL_ISLANDS_TOUCH): a
-          CAPABLE PHONE (`railIslandsTouch` — tier lite, level ≥ 2, true
-          WebGPU) also mounts it, as `<RailPlanes touch />` — the same planes
-          driven by the CONTINUOUS touch source case-studies-rail.tsx publishes
-          into railStore from its native snap scroller (`native` instead of
-          `pinned`; trackX := scrollLeft, travel 0). Inside the component the
-          `native` guard keeps the planes off until that DOM writer arms.
-          Desktop: tier full ⇒ railIslandsTouch false ⇒ touch=false, the
-          identical mount. */}
-      {pathname === "/" && webgpu && (tier === "full" || railIslandsTouch) && (
-        <RailPlanes touch={tier !== "full" && railIslandsTouch} />
-      )}
+      {/* Home Featured Work depth-parallax planes (work-section refactor
+          2026-08-20, ANALISI_LUSION_WORK.md §2 — successor to RailPlanes,
+          which retired with the sticky rail). Gates: home route + full tier
+          + the WebGPU flag — TSL-only (no GLSL twin; see
+          depthParallaxNodeMaterial header), so the classic flag-OFF path and
+          lite tiers keep the DOM stills + CSS hover as the whole card
+          (featured-work.tsx is complete on its own). MUST stay mounted AFTER
+          SignatureLine: the per-frame plane placement is camera-relative and
+          relies on the single camera authority having written the camera
+          pose earlier in the same priority-0 frame pass. No touch variant:
+          the grid is normal flow, so phones simply keep the DOM layer
+          (unlike the rail there is no scrub source to mirror). */}
+      {pathname === "/" && webgpu && tier === "full" && <FeaturedWorkPlanes />}
       {/* Home founders particle-portrait morph (P1R, WEBGL_UPGRADE_PLAN §4R).
           Same gates as RailPlanes (home route + full tier + the WebGPU flag —
           TSL/compute-only, no GLSL twin; on the classic flag-OFF path or

@@ -4,6 +4,49 @@ export interface CaseStudyMetric {
   labelIt: string;
 }
 
+/**
+ * Per-project palette for the detail surface (Lusion work-detail grammar,
+ * ANALISI_LUSION_WORK.md §3.2 — but brand-fit tempered: where Lusion re-skins
+ * the WHOLE page per project, Sersan keeps the navy base and re-tints only the
+ * HIGHLIGHT (links, progress bar, eyebrow, launch CTA hover). `bg`/`text`
+ * exist for the rare project whose media demands a shifted ground; omitted =
+ * site tokens.
+ */
+export interface CaseStudyPalette {
+  /** The ONE per-project accent (CSS color). Defaults to the site cyan. */
+  highlight?: string;
+  /** Detail-surface base override — omit for the site navy. */
+  bg?: string;
+  /** Text override when `bg` shifts far from the navy. */
+  text?: string;
+}
+
+/**
+ * One item in the detail page's media rail (desktop: horizontal, scrubbed by
+ * vertical scroll; mobile: vertical stack — ANALISI_LUSION_WORK.md §3).
+ * `video`/`image` carry a src + intrinsic size (the rail derives width from
+ * the shared rail height × aspect). `text` panels are typographic beats — a
+ * big value + label, same shape as CaseStudyMetric — used where a project has
+ * no shippable imagery (prior-role engagements under confidentiality).
+ */
+export interface CaseStudyRailItem {
+  type: "video" | "image" | "text";
+  /** Public-path media src (`/case-studies/…`). Required for video/image. */
+  src?: string;
+  /** Intrinsic media width in px — aspect source, not a layout size. */
+  width?: number;
+  /** Intrinsic media height in px. */
+  height?: number;
+  /** Breaks out to full viewport height while crossing (Lusion data-fullscreen). */
+  fullscreen?: boolean;
+  /** Text panels: the big display value ("−47%", "€18M/yr"). */
+  value?: string;
+  valueIt?: string;
+  /** Text panels: the supporting line under the value. */
+  label?: string;
+  labelIt?: string;
+}
+
 export interface CaseStudy {
   id: string;
   client: string;
@@ -24,12 +67,36 @@ export interface CaseStudy {
   previewImage?: string;
   /** Optional brand logo (monochrome hover-reveal) for cards without a screenshot. */
   logoImage?: string;
+  /**
+   * Home "Featured Work" grid membership + order (1 = first card). Absent =
+   * archive-only. The grid is the Lusion-grammar section replacing the sticky
+   * rail (work-section refactor, 2026-08-20).
+   */
+  featured?: number;
+  /**
+   * Depth map twin of `previewImage` (same framing, single-channel-in-RGB
+   * webp) for the home card's depth-parallax + DOF shader. Generated offline
+   * by scripts/generate-depth-maps.mjs — never hand-authored. Cards without
+   * one render the still flat (or the brand panel when there is no still).
+   */
+  depthImage?: string;
+  /** Per-project detail accenting — see CaseStudyPalette. */
+  palette?: CaseStudyPalette;
+  /**
+   * Detail media rail. When absent, the rail is derived: text panels from
+   * `metrics` (+ the summary as a lead panel), so every study gets the new
+   * detail layout without duplicated data.
+   */
+  railItems?: CaseStudyRailItem[];
 }
 
 
 export const caseStudies: CaseStudy[] = [
   {
     id: "spherenode",
+    featured: 1,
+    palette: { highlight: "#3BE1FF" },
+    depthImage: "/case-studies/depth/spherenode-depth.webp",
     client: "SphereNode",
     engagement: "Vertical trading-education platform (Sersan Build)",
     engagementIt: "Piattaforma verticale di trading education (Build Sersan)",
@@ -57,6 +124,9 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     id: "quantex",
+    featured: 2,
+    palette: { highlight: "#2A7FFF" },
+    depthImage: "/case-studies/depth/quantex-depth.webp",
     client: "Quantex.live",
     engagement: "AI-Native Quant Trading Platform (Sersan Build)",
     engagementIt: "Piattaforma di Trading Quantitativo AI-Native (Build Sersan)",
@@ -81,6 +151,9 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     id: "terra-noa",
+    featured: 3,
+    palette: { highlight: "#58C97B" },
+    depthImage: "/case-studies/depth/terranoa-depth.webp",
     client: "Terra Noa",
     engagement: "Integrated Agritech & Renewables (Sersan Engagement)",
     engagementIt: "Agritech & Rinnovabili Integrato (Engagement Sersan)",
@@ -106,6 +179,8 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     id: "revolut",
+    featured: 4,
+    palette: { highlight: "#8AB8FF" },
     client: "Revolut",
     engagement: "Real-Time Anti-Fraud ML Platform",
     engagementIt: "Piattaforma ML Anti-Frode in Tempo Reale",
@@ -129,6 +204,8 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     id: "jp-morgan",
+    featured: 5,
+    palette: { highlight: "#9DB7D9" },
     client: "J.P. Morgan",
     engagement: "Quantitative ML across Treasury, Credit & Aerospace Research",
     engagementIt: "ML Quantitativo su Treasury, Credito e Ricerca Aerospaziale",
@@ -153,6 +230,8 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     id: "apple-uk",
+    featured: 6,
+    palette: { highlight: "#B8C4D4" },
     client: "Apple UK (via Deloitte)",
     engagement: "Retail Demand & Allocation Forecasting",
     engagementIt: "Forecasting Domanda & Allocazione Retail",
@@ -175,6 +254,7 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     id: "pharma-deloitte",
+    palette: { highlight: "#7FD1AE" },
     client: "Tier-1 Pharmaceutical (via Deloitte)",
     engagement: "Clinical Trial Site Selection ML",
     engagementIt: "ML per Selezione Siti di Trial Clinici",
@@ -196,6 +276,7 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     id: "regione-sardegna",
+    palette: { highlight: "#4AA6DE" },
     client: "Regione Sardegna (via Accenture)",
     engagement: "FSE Sardegna · SISAR · SIBAR / SIBEAR",
     engagementIt: "FSE Sardegna · SISAR · SIBAR / SIBEAR",
@@ -219,6 +300,7 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     id: "salvatori",
+    palette: { highlight: "#E8A33D" },
     client: "Salvatori",
     engagement: "Fractional CTO · Industrial AI programme (Sersan engagement)",
     engagementIt: "CTO frazionale · Programma AI Industriale (Ingaggio Sersan)",
@@ -242,6 +324,7 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     id: "leonardo",
+    palette: { highlight: "#C4262E" },
     client: "Leonardo S.p.A. (Freelance)",
     engagement: "SecDevOps Rebuild of Satellite-Imagery Platform",
     engagementIt: "Rebuild SecDevOps di Piattaforma di Imagery Satellitare",
@@ -265,6 +348,7 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     id: "who",
+    palette: { highlight: "#4AA6DE" },
     client: "World Health Organization (Freelance Research Grant)",
     engagement: "Early-Stage Breast-Cancer Nodule Detection",
     engagementIt: "Rilevamento Precoce di Noduli al Seno",
@@ -288,6 +372,7 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     id: "rsa-italy",
+    palette: { highlight: "#6FCF97" },
     client: "Italian RSA Network (Freelance)",
     engagement: "Clinical Risk & Operations Platform for Elderly Care",
     engagementIt: "Piattaforma Clinica di Rischio & Operations per Cura degli Anziani",
@@ -310,6 +395,7 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     id: "stealth-greentech",
+    palette: { highlight: "#3ED598" },
     client: "Stealth Greentech (Smart Charter Fleet)",
     engagement: "Smart Private-Charter Platform · CTO · Full Build to Exit",
     engagementIt: "Piattaforma Smart Private-Charter · CTO · Dal Build all'Exit",

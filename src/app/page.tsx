@@ -1,7 +1,7 @@
 import CinematicSystemScroll from "@/components/sections/cinematic-system-scroll";
 import SingularityPassage from "@/components/sections/singularity-passage";
 import ProblemSection from "@/components/sections/problem-section";
-import CaseStudiesRail from "@/components/sections/case-studies-rail";
+import FeaturedWork from "@/components/sections/featured-work";
 import ServicesSection from "@/components/sections/services-section";
 import ProductionGradeSection from "@/components/sections/production-grade-section";
 import FoundersRail from "@/components/sections/founders-rail";
@@ -58,12 +58,13 @@ export default function Home() {
       <div data-line-anchor="problem">
         <ProblemSection />
       </div>
-      {/* Restyle part B: the sticky horizontal rail of all 13 case studies +
-          the "In development" card, scrubbed by vertical scroll (desktop) or
-          natively swipeable (mobile/reduced-motion). The WebGL card planes
-          (webgl/RailPlanes) sync to its [data-rail-card] rects. */}
+      {/* Work-section refactor (2026-08-20, ANALISI_LUSION_WORK.md): the
+          Lusion-grammar Featured Work grid — two columns of large media
+          cards with rolling titles. Replaces the sticky horizontal rail;
+          the WebGL depth-parallax planes (webgl/FeaturedWorkPlanes) sync to
+          its [data-featured-media] rects on the flag-ON full-tier path. */}
       <div data-line-anchor="case-studies">
-        <CaseStudiesRail />
+        <FeaturedWork />
       </div>
       {/* Zero-height anchor kept so the signature-line curve waypoint stays
           stable now that the WIP teaser's entry lives on the rail above. */}
