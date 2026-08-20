@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -103,6 +104,9 @@ export function CaseStudyDetailClient({
 }: CaseStudyDetailClientProps) {
   const { language } = useLanguage();
   const isEn = language === "en";
+  const router = useRouter();
+  /** One navigation per full overscroll charge (unmounts on route change). */
+  const navigatedRef = useRef(false);
 
   const engagement = isEn ? study.engagement : study.engagementIt;
   const role = isEn ? study.role : study.roleIt;
@@ -133,8 +137,9 @@ export function CaseStudyDetailClient({
     return () => queries.forEach((q) => q.removeEventListener("change", sync));
   }, []);
 
-  /* The pin + scrub. Rebuilt whenever `armed` flips; media loads refresh the
-     measurement (invalidateOnRefresh re-reads scrollWidth). */
+  /* The pin + scrub + OVERSCROLL AUTO-NAV. Rebuilt whenever `armed` flips;
+     media loads refresh the measurement (invalidateOnRefresh re-reads
+     scrollWidth). */
   useGSAP(
     () => {
       if (!armed) return;
@@ -144,7 +149,12 @@ export function CaseStudyDetailClient({
       if (!stage || !frame || !track) return;
 
       const distance = () =>
-        Math.max(0, track.scrollWidth - window.innerWidth);
+        Math.max(1, track.scrollWidth - window.innerWidth);
+      /* Overscroll charge runway in scroll px (port source: overScrollSize
+         = 25vw of rail + a charge integrator; ours is scrub-positional —
+         keep wheeling past the end and the bar fills, back off and it
+         drains, full charge navigates. Reversible until the last pixel). */
+      const OVERSCROLL = 420;
 
       /* Text panels live in a viewport band (the port source's u_textRatio
          gate): they resolve in entering from the right and dissolve BEFORE
@@ -157,6 +167,7 @@ export function CaseStudyDetailClient({
       const panels = Array.from(
         track.querySelectorAll<HTMLElement>(".cs-item-text, .cs-next"),
       );
+      const nextPanel = track.querySelector<HTMLElement>(".cs-next");
       const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
       const applyPanelFades = () => {
         const vw = window.innerWidth;
@@ -174,23 +185,48 @@ export function CaseStudyDetailClient({
         }
       };
 
+      /* The rail tween is PAUSED and progressed manually from the trigger
+         below — the scroll range covers rail + overscroll, and the
+         containerAnimation parallax triggers keep a real tween to key off. */
       const tween = gsap.to(track, {
         x: () => -distance(),
         ease: "none",
-        scrollTrigger: {
-          trigger: stage,
-          pin: frame,
-          scrub: true,
-          start: "top top",
-          end: () => "+=" + distance(),
-          invalidateOnRefresh: true,
-          onUpdate: (self) => {
-            if (barRef.current)
-              barRef.current.style.transform = `scaleX(${self.progress})`;
-            applyPanelFades();
-          },
-          onRefresh: () => applyPanelFades(),
+        duration: 1,
+        paused: true,
+      });
+
+      let dist = distance();
+      const apply = (self: ScrollTrigger) => {
+        const px = self.progress * (dist + OVERSCROLL);
+        tween.progress(Math.min(1, px / dist));
+        /* Overscroll charge (port source: bar scaleX = overScrollRatio;
+           ratio 1 → routeManager.setPath(next)). */
+        const charge = clamp01((px - dist) / OVERSCROLL);
+        if (barRef.current)
+          barRef.current.style.transform = `scaleX(${charge})`;
+        /* The NEXT panel leans in as the charge builds (the preview slide
+           of the port source, scaled to our composition). */
+        if (nextPanel)
+          gsap.set(nextPanel, { x: -28 * charge });
+        applyPanelFades();
+        if (charge >= 1 && !navigatedRef.current) {
+          navigatedRef.current = true;
+          router.push(`/case-studies/${nextStudy.id}`);
+        }
+      };
+
+      ScrollTrigger.create({
+        trigger: stage,
+        pin: frame,
+        start: "top top",
+        end: () => "+=" + (distance() + OVERSCROLL),
+        invalidateOnRefresh: true,
+        onRefresh: (self) => {
+          dist = distance();
+          tween.invalidate();
+          apply(self);
         },
+        onUpdate: apply,
       });
 
       /* Interior parallax — media counter-slides inside its frame as the

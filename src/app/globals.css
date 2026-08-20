@@ -2189,3 +2189,58 @@ html.cursor-none [contenteditable="true"] {
   transform-origin: 0 50%;
   transform: scaleX(0);
 }
+
+/* === /case-studies archive header — Lusion /projects grammar ==============
+   (ANALISI_LUSION_WORK.md round 2). A massive display wordmark with the
+   project COUNT as a mono superscript and a diagonal arrow at its foot —
+   17vw on Lusion, tempered to 15vw for the longer Italian word. Char
+   entrance (rise + untwist) and the arrow's elastic pop are GSAP-driven in
+   case-studies-client.tsx; this is static geometry only. */
+.cs-archive-title-wrap {
+  position: relative;
+  width: fit-content;
+  font-size: 15vw;
+  line-height: 1;
+  left: -0.04em;
+}
+.cs-archive-title {
+  position: relative;
+  display: inline-block;
+  margin: 0;
+  line-height: 1.06em;
+  overflow: hidden;
+  letter-spacing: -0.02em;
+}
+.cs-archive-title .cs-archive-char {
+  display: inline-block;
+  will-change: transform;
+}
+.cs-archive-count {
+  position: absolute;
+  top: 0.09em;
+  right: -0.55em;
+  overflow: hidden;
+  font-family: var(--font-jbm), ui-monospace, monospace;
+  font-size: 0.235em;
+  letter-spacing: 0.04em;
+  color: hsl(var(--accent));
+}
+.cs-archive-count .cs-archive-char {
+  display: inline-block;
+  will-change: transform;
+}
+.cs-archive-arrow {
+  position: absolute;
+  right: -0.62em;
+  bottom: 0.28em;
+  width: 0.22em;
+  height: 0.22em;
+  color: hsl(var(--accent));
+  transform: scale(0);
+  will-change: transform;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-archive-arrow {
+    transform: scale(1);
+  }
+}

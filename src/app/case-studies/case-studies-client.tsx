@@ -1,603 +1,177 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { ArrowRight } from "lucide-react";
 import gsap from "gsap";
-import { Flip } from "gsap/Flip";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Button, CTA_FLUID_SM } from "@/components/ui/button";
-import { caseStudies, type CaseStudy } from "@/data/case-studies";
+import { caseStudies } from "@/data/case-studies";
 import { useLanguage } from "@/components/language-provider";
-import { Reveal } from "@/components/ui/reveal";
 import { SectionHeading } from "@/components/ui/section-heading";
-import WorkInProgress from "@/components/sections/work-in-progress";
-import { CardImageDistort } from "@/components/fx/card-image-distort";
-import { CardLogoReveal } from "@/components/fx/card-logo-reveal";
-import { useFlipSource } from "@/lib/use-flip-source";
-import { useCentreFocus, type CentreFocusRef } from "@/lib/use-centre-focus";
-import { usePressState, type PressStateRef } from "@/lib/use-press-state";
+import {
+  WorkGrid,
+  archiveStudies,
+  usePlanesLive,
+  lusionEase,
+  prefersReducedMotion,
+} from "@/components/work/work-card";
 import { cn } from "@/lib/utils";
 
-// Flip is already registered by the persistent flip-handoff overlay (root
-// layout), so this adds no bundle weight — registering again is idempotent
-// and keeps this module self-sufficient if the overlay is ever removed.
-if (typeof window !== "undefined") gsap.registerPlugin(Flip, ScrollTrigger);
+if (typeof window !== "undefined") gsap.registerPlugin(ScrollTrigger);
 
 /**
- * Per-industry eyebrow tint — mirrors the home rail's INDUSTRY_COLOR map
- * (components/sections/case-studies-rail.tsx) so the archive grid speaks the
- * same card language. Kept as a local copy on purpose: importing it from the
- * rail module would pull gsap/ScrollTrigger/Draggable into this route's
- * bundle for one lookup table.
- */
-const INDUSTRY_COLOR: Record<CaseStudy["industry"], string> = {
-  FinTech: "text-[hsl(var(--accent))]",
-  Healthcare: "text-[hsl(160_60%_60%)]",
-  Aerospace: "text-[hsl(260_60%_70%)]",
-  "Public Sector": "text-[hsl(200_30%_70%)]",
-  Industrial: "text-[hsl(30_70%_65%)]",
-  Energy: "text-[hsl(140_50%_60%)]",
-  Agritech: "text-[hsl(100_45%_60%)]",
-};
-
-/* ------------------------------------------------------------------------- */
-/* Sector filter rail + FLIP re-sort                                          */
-/* ------------------------------------------------------------------------- */
-
-/**
- * Spec-ordered sector rail (All · FinTech · Healthcare · Aerospace · Public
- * Sector · Industrial · Energy · Agritech), intersected with the sectors that
- * actually exist in the data: a sector with zero studies silently drops its
- * pill instead of offering a click that filters the grid into blankness.
- */
-const SECTOR_ORDER: CaseStudy["industry"][] = [
-  "FinTech",
-  "Healthcare",
-  "Aerospace",
-  "Public Sector",
-  "Industrial",
-  "Energy",
-  "Agritech",
-];
-const SECTORS = SECTOR_ORDER.filter((s) =>
-  caseStudies.some((study) => study.industry === s),
-);
-
-type SectorFilter = "all" | CaseStudy["industry"];
-
-/** URL slug for the ?filter= deep link ("Public Sector" → "public-sector"). */
-const sectorSlug = (s: CaseStudy["industry"]) =>
-  s.toLowerCase().replace(/\s+/g, "-");
-
-const prefersReducedMotion = () =>
-  typeof window !== "undefined" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-/**
- * One mono filter pill. Eyebrow language (JetBrains Mono, uppercase, tracked)
- * with the site's dot idiom: the dot is ALWAYS in the layout (accent when
- * active, rule-grey at rest) so toggling never reflows the rail. h-9 keeps the
- * ≥36px tap height of the navbar's language pill (WCAG 2.5.8 target size);
- * keyboard focus is handled by the global :focus-visible ring.
+ * /case-studies — the work archive on the Lusion /projects grammar
+ * (ANALISI_LUSION_WORK.md round 2, boss directive 2026-08-20): a massive
+ * display wordmark with the project count as a mono superscript and a
+ * diagonal arrow, then the SAME two-column card grid the home Featured Work
+ * renders (shared components/work/work-card.tsx) over the FULL population.
+ * The sector filter rail, FLIP re-sort machinery and the in-progress block
+ * of the previous archive are retired with the layout — lusion.co/projects
+ * is title + grid, nothing else (disclaimer + closing CTA stay: legal +
+ * business requirements, not layout).
  *
- * TOUCH (D-14) — 36px fails the 44px floor, so `tap-44` raises the pill to
- * 44×44 on a coarse pointer via min-height/min-width (which win over the `h-9`
- * used value, so the utility composes rather than being replaced) and desktop
- * keeps its 36px rail exactly. `press-surface` + pressRef add the M-4 press
- * pose, since a bare <button> has no `:active` grammar of its own — unlike
- * ui/button.tsx, which this rail deliberately does not use. Byte-identical
- * twin of the pill in resources/resources-client.tsx (MOBILE_REVIEW.md B2).
+ * HEADER ENTRANCE (port of ProjectsMainSection, bundle ~1102k): each title
+ * char rises from 100% below its clip while untwisting from 30°, staggered
+ * i/30s on ease.lusion; the count chars follow ~0.33s later (no twist); the
+ * arrow pops in with elastic.out. Fired once by a ScrollTrigger at mount
+ * (the header is above the fold — it plays on load, after the curtain).
+ *
+ * Line anchors (hero/grid/disclaimer/ritual/final-cta) keep their names —
+ * webgl/curves/routeCurves.ts glues the signature line to them.
+ *
+ * WebGL: Scene mounts FeaturedWorkPlanes on this route too — the archive's
+ * media boxes carry the same [data-featured-media] contract, so the three
+ * depth-mapped studies get the raymarched hover here as well.
  */
-function FilterPill({
-  active,
-  label,
-  onClick,
-  pressRef,
-}: {
-  active: boolean;
-  label: string;
-  onClick: () => void;
-  pressRef: PressStateRef;
-}) {
-  return (
-    <button
-      ref={pressRef}
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      data-cursor="link"
-      className={cn(
-        "tap-44 press-surface inline-flex h-9 items-center gap-2 rounded-full border px-3.5 font-mono text-[10px] uppercase tracking-[0.14em] transition-colors duration-300",
-        active
-          ? "border-[hsl(var(--accent)/0.55)] bg-[hsl(var(--accent)/0.08)] text-ink"
-          : "border-rule/80 text-ink-mute hover:border-rule hover:text-ink",
-      )}
-    >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "h-1.5 w-1.5 rounded-full transition-colors duration-300",
-          active ? "bg-[hsl(var(--accent))]" : "bg-rule",
-        )}
-      />
-      {label}
-    </button>
-  );
-}
-
-/**
- * useArchiveResort — entrance choreography + FLIP re-sort engine for the
- * archive grid. Deliberately a LOCAL twin of the hook in
- * resources/resources-client.tsx (same rationale as INDUSTRY_COLOR above:
- * the two archives stay independently tunable and neither route imports the
- * other's module for a shared hook).
- *
- * ENTRANCES — cards fade + rise 24px (0.85s expo.out) via ONE
- * IntersectionObserver over the card wrappers. Entries that arrive in the
- * SAME IO callback crossed the threshold together and stagger as one wave
- * (0.08s steps) instead of replaying a fixed per-row delay pair; a solo card
- * on a slow scroll enters alone. IO (not ScrollTrigger) so wrappers mounted
- * already-in-view after an SPA navigation still fire — same contract as
- * ui/reveal.tsx, which owned these entrances before the filter rail existed
- * (a Reveal wrapper can't be reused here: its once-only IO play would fight
- * the flip's onEnter when a filtered-out card returns).
- *
- * RE-SORT — the pill click calls arm() BEFORE the React state change:
- * Flip.getState captures the resting grid, React re-renders (display:none
- * via the `hidden` class — cards stay MOUNTED so Flip can classify
- * visible→hidden as "leaving" and hidden→visible as "entering", and so the
- * per-card zoom-handoff arming keeps stable element instances), then the
- * layout effect keyed on the filter plays Flip.from before paint: movers
- * glide (0.6s expo.inOut, 0.03 stagger, absolute so the grid re-packs
- * beneath them), leavers fall away (0.25s power2.in), enterers rise in
- * (0.4s expo.out). The CONTAINER itself is captured too, so the grid height
- * eases instead of snapping (no scrollbar jump). clearProps on complete:
- * transforms never rest on cards — critical because the [data-flip-source]
- * zoom flight measures card rects at click time.
- *
- * Reduced motion: arm() refuses to capture → the layout effect takes the
- * instant path (plain re-render + ScrollTrigger re-measure only).
- */
-function useArchiveResort(
-  containerRef: React.RefObject<HTMLDivElement | null>,
-  filter: string,
-) {
-  const pendingState = useRef<ReturnType<typeof Flip.getState> | null>(null);
-  const mounted = useRef(false);
-
-  const items = () =>
-    containerRef.current
-      ? Array.from(
-          containerRef.current.querySelectorAll<HTMLElement>(
-            "[data-archive-item]",
-          ),
-        )
-      : [];
-
-  useEffect(() => {
-    const els = items();
-    if (!els.length) return;
-    if (prefersReducedMotion()) {
-      // Instant final state — SSR markup is already visible, so there is
-      // nothing to set; just retire the choreography per element.
-      els.forEach((el) => (el.dataset.entered = "1"));
-      return;
-    }
-    const pending = els.filter((el) => el.dataset.entered !== "1");
-    gsap.set(pending, { opacity: 0, y: 24 });
-    const io = new IntersectionObserver(
-      (entries) => {
-        let wave = 0;
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          const el = entry.target as HTMLElement;
-          io.unobserve(el);
-          if (el.dataset.entered === "1") continue; // arm() got here first
-          el.dataset.entered = "1";
-          gsap.to(el, {
-            opacity: 1,
-            y: 0,
-            duration: 0.85,
-            ease: "expo.out",
-            delay: Math.min(wave++, 5) * 0.08,
-            // Resting cards carry NO inline transform/opacity: the zoom
-            // handoff and the next Flip capture both read clean rects.
-            onComplete: () => gsap.set(el, { clearProps: "transform,opacity" }),
-          });
-        }
-      },
-      // -18% bottom rootMargin ≈ the old "top 82%" start (see ui/reveal.tsx).
-      { rootMargin: "0px 0px -18% 0px", threshold: 0 },
-    );
-    pending.forEach((el) => io.observe(el));
-    return () => {
-      io.disconnect();
-      gsap.killTweensOf(pending);
-    };
-    // Mount-only: every card stays mounted across filter/language changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const arm = () => {
-    const container = containerRef.current;
-    if (!container || prefersReducedMotion()) return; // instant swap instead
-    const els = items();
-    // Interrupted-flight discipline: force any in-flight re-sort to its END
-    // state (progress 1 restores layout and runs its clearProps sweep) —
-    // killing alone would strand absolute-positioned movers or half-faded
-    // leavers, and the state captured below must be a RESTING layout.
-    Flip.killFlipsOf([container, ...els], true);
-    // Entrance tweens (running or still inside their wave delay) animate the
-    // same transforms Flip is about to own. From the first filter interaction
-    // the re-sort owns every wrapper: settle them all to the resting visible
-    // state and retire the IO entrance for good. (Un-entered wrappers are
-    // below the fold by definition — revealing them early is invisible, and
-    // a flight that pulls one into the viewport SHOULD show it mid-glide.)
-    gsap.killTweensOf(els);
-    els.forEach((el) => (el.dataset.entered = "1"));
-    gsap.set(els, { clearProps: "transform,opacity,visibility" });
-    pendingState.current = Flip.getState([container, ...els]);
-  };
-
-  useLayoutEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
-    const container = containerRef.current;
-    const state = pendingState.current;
-    pendingState.current = null;
-    const els = items();
-    if (!container || !state) {
-      // Instant path — reduced motion, or the ?filter= deep-link init right
-      // after mount. The document height still changed, so downstream
-      // ScrollTriggers must re-measure (the signature line re-glues itself
-      // separately via the section bus's body ResizeObserver).
-      ScrollTrigger.refresh();
-      return;
-    }
-    const tl = Flip.from(state, {
-      targets: [container, ...els],
-      duration: 0.6,
-      ease: "expo.inOut",
-      stagger: 0.03,
-      // Movers/leavers leave document flow during the flight so the grid can
-      // re-pack beneath them; the container is NOT absolutized — Flip eases
-      // its width/height, which is what keeps the page height (and the
-      // scrollbar) gliding instead of snapping.
-      absolute: "[data-archive-item]",
-      nested: false,
-      onEnter: (entered) =>
-        gsap.fromTo(
-          entered,
-          { autoAlpha: 0, y: 16 },
-          { autoAlpha: 1, y: 0, duration: 0.4, ease: "expo.out" },
-        ),
-      onLeave: (left) =>
-        gsap.to(left, {
-          autoAlpha: 0,
-          scale: 0.96,
-          duration: 0.25,
-          ease: "power2.in",
-        }),
-      onComplete: () => {
-        // Never leave transforms resting on cards (zoom-handoff rect reads,
-        // the next getState) — and hand the height back to natural flow.
-        gsap.set(els, { clearProps: "transform,opacity,visibility" });
-        gsap.set(container, { clearProps: "width,height" });
-        ScrollTrigger.refresh();
-      },
-    });
-    return () => {
-      // Re-arms mid-flight are already force-completed inside arm(); this
-      // only fires on unmount — jump to the end state so nothing ever rests
-      // absolute or half-hidden while React tears the grid down.
-      if (tl.isActive()) tl.progress(1).kill();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter]);
-
-  return arm;
-}
-
-/**
- * GridCard — one archive grid card, extracted so useFlipSource (a hook) is
- * called once per card at component top level (rules of hooks). The card markup
- * is unchanged from the inline version; the only additions are onClick +
- * data-flip-source on the <Link>: EVERY card arms the zoom-to-fullscreen
- * handoff (fx/flip-handoff-overlay) on a plain left click — arming is passive
- * (never preventDefault), the <Link> navigates natively while the clone
- * inflates above. Studies with a previewImage inflate the shot (even when the
- * grid shows their logo first — the zoom reveals the product and lands on the
- * detail hero); the rest inflate as a navy panel that cross-fades out.
- * Typography + the static STACK chips are aligned to the redesigned home rail
- * cards (visual language only — the grid keeps its layout, media priority and
- * wave entrances untouched).
- *
- * TOUCH (D-2): the logo / screenshot is `:hover`-gated, which on a phone means
- * never — 10 of 13 archive cards shipped media no touch user ever saw, already
- * downloaded (CardImageDistort force-loads on mobile). `focusRef` registers the
- * card with lib/use-centre-focus, which stamps `data-focus="true"` on whichever
- * cards are crossing the middle of the viewport; globals.css carries the
- * matching reveal rules. Inert on a fine pointer — desktop hover is unchanged —
- * and the card TEXT deliberately keeps its place on the touch path (the media
- * reveals behind it, under the full scrim).
- */
-function GridCard({
-  study,
-  isEn,
-  focusRef,
-}: {
-  study: CaseStudy;
-  isEn: boolean;
-  focusRef: CentreFocusRef;
-}) {
-  const engagement = isEn ? study.engagement : study.engagementIt;
-  const role = isEn ? study.role : study.roleIt;
-  const summary = isEn ? study.summary : study.summaryIt;
-  // Hook called unconditionally; undefined src arms the image-less (navy
-  // panel) variant of the zoom flight.
-  const onFlip = useFlipSource(study.id, study.previewImage);
-  // A brand logo (when present) takes priority over a product screenshot.
-  const showLogo = Boolean(study.logoImage);
-  const showPreview = !showLogo && Boolean(study.previewImage);
-  const hasMedia = showLogo || showPreview;
-  return (
-    <Link
-      href={`/case-studies/${study.id}`}
-      ref={focusRef}
-      data-cursor="view"
-      className={
-        hasMedia
-          ? "card-steel group flex flex-col h-full p-7 card-has-distort"
-          : "card-steel group flex flex-col h-full p-7"
-      }
-      aria-label={`${study.client}, ${engagement}`}
-      onClick={onFlip}
-      data-flip-source={study.id}
-    >
-      {showPreview && study.previewImage && (
-        <CardImageDistort
-          src={study.previewImage}
-          alt={`${study.client} product preview`}
-        />
-      )}
-      {showLogo && study.logoImage && <CardLogoReveal src={study.logoImage} />}
-      <div className="relative z-10 flex flex-col h-full card-text-layer">
-        <p
-          className={`text-[10px] font-mono uppercase tracking-[0.16em] mb-3 ${INDUSTRY_COLOR[study.industry]}`}
-        >
-          {study.industry}
-        </p>
-        <h3 className="font-display text-2xl text-ink leading-tight mb-2 transition-colors duration-300 group-hover:text-[hsl(var(--accent))]">
-          {study.client}
-        </h3>
-        <p className="font-mono text-[11.5px] text-ink-mute leading-relaxed mb-4">
-          {engagement}
-        </p>
-        <p className="text-sm text-ink/85 leading-[1.55] line-clamp-4 mb-4">{summary}</p>
-        {/* Static STACK chips — same pill language as the rail cards (data
-            only: study.techStack). Inside the text layer, so on the distort
-            cards they fade with the rest of the text when the shot reveals. */}
-        {study.techStack.length > 0 && (
-          <ul className="mb-6 flex flex-wrap gap-1.5">
-            {study.techStack.slice(0, 4).map((tech) => (
-              <li
-                key={tech}
-                className="rounded-full border border-[hsl(var(--rule)/0.8)] bg-[hsl(216_28%_12%/0.72)] px-2.5 py-0.5 font-mono text-[10px] tracking-[0.08em] text-ink-mute"
-              >
-                {tech}
-              </li>
-            ))}
-          </ul>
-        )}
-        <div className="mt-auto flex items-center justify-between text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
-          <span className="transition-colors duration-300 group-hover:text-ink">
-            {role}
-          </span>
-          {/* Arrow slides + fades in on hover (asset-free affordance). */}
-          <ArrowRight className="w-3.5 h-3.5 -translate-x-1 opacity-50 transition-all duration-300 group-hover:translate-x-0 group-hover:opacity-100 group-hover:text-[hsl(var(--accent))] motion-reduce:transition-none motion-reduce:translate-x-0 motion-reduce:opacity-100" />
-        </div>
-      </div>
-    </Link>
-  );
-}
-
 export function CaseStudiesClient() {
   const { language } = useLanguage();
   const isEn = language === "en";
+  const planesLive = usePlanesLive();
+  const headerRef = useRef<HTMLDivElement | null>(null);
 
-  // Sector filter — SSR always renders the full archive ("all"); a ?filter=
-  // deep link applies after hydration (instant path, under the initial
-  // reveal) so server and client markup never diverge.
-  const [sector, setSector] = useState<SectorFilter>("all");
-  const gridRef = useRef<HTMLDivElement | null>(null);
-  const armResort = useArchiveResort(gridRef, sector);
+  const word = isEn ? "Work" : "Lavori";
+  const count = String(caseStudies.length).padStart(2, "0");
 
-  // M-4 press feedback for the filter pills (lib/use-press-state) — same wiring
-  // as the /resources twin: ONE hook, a stable ref callback, so the pills
-  // survive the EN/IT toggle without re-attaching. Inert on a fine pointer and
-  // under reduced motion; the CSS half lives in globals.css `.press-surface`.
-  const pressRef = usePressState();
+  /* Header entrance — keyed on language (remount replays for the new word). */
+  useLayoutEffect(() => {
+    const header = headerRef.current;
+    if (!header || prefersReducedMotion()) return;
+    const titleChars = Array.from(
+      header.querySelectorAll<HTMLElement>(".cs-archive-title .cs-archive-char"),
+    );
+    const countChars = Array.from(
+      header.querySelectorAll<HTMLElement>(".cs-archive-count .cs-archive-char"),
+    );
+    const arrow = header.querySelector<HTMLElement>(".cs-archive-arrow");
+    const lusion = lusionEase();
 
-  // D-2: one observer for the whole archive. Cards register on mount and
-  // unregister on detach, so the FLIP re-sort (which keeps filtered-out cards
-  // alive but `display: none`) never leaves a stale entry — a hidden card has
-  // no box, so it simply stops intersecting and drops its attribute.
-  const cardFocusRef = useCentreFocus();
-
-  useEffect(() => {
-    const param = new URLSearchParams(window.location.search).get("filter");
-    if (!param) return;
-    const match = SECTORS.find((s) => sectorSlug(s) === param.toLowerCase());
-    if (match) setSector(match);
-  }, []);
-
-  const selectSector = (next: SectorFilter) => {
-    if (next === sector) return;
-    armResort(); // capture the resting layout BEFORE React re-renders
-    setSector(next);
-    // Deep-linkable choice: sync ?filter= via replaceState — no navigation,
-    // no route transition, no scroll reset. Passing the existing
-    // history.state keeps Next's App Router history entry intact.
-    const url = new URL(window.location.href);
-    if (next === "all") url.searchParams.delete("filter");
-    else url.searchParams.set("filter", sectorSlug(next));
-    window.history.replaceState(window.history.state, "", url.toString());
-  };
-
-  const visibleCount =
-    sector === "all"
-      ? caseStudies.length
-      : caseStudies.filter((s) => s.industry === sector).length;
+    const ctx = gsap.context(() => {
+      gsap.set(titleChars, { yPercent: 100, rotation: 30 });
+      gsap.set(countChars, { yPercent: 100 });
+      if (arrow) gsap.set(arrow, { scale: 0 });
+      const play = () => {
+        titleChars.forEach((ch, i) => {
+          gsap.to(ch, {
+            yPercent: 0,
+            rotation: 0,
+            duration: 0.67,
+            ease: lusion,
+            delay: 0.2 + i / 30,
+          });
+        });
+        countChars.forEach((ch, i) => {
+          gsap.to(ch, {
+            yPercent: 0,
+            duration: 0.6,
+            ease: lusion,
+            delay: 0.55 + i / 30,
+          });
+        });
+        if (arrow)
+          gsap.to(arrow, {
+            scale: 1,
+            duration: 1.1,
+            ease: "elastic.out(1, 0.5)",
+            delay: 0.65,
+          });
+      };
+      const st = ScrollTrigger.create({
+        trigger: header,
+        start: "top 95%",
+        once: true,
+        onEnter: play,
+      });
+      /* The header is at the page top on every normal landing — and a
+         freshly created trigger on this site does not evaluate until the
+         first real scroll (measured live). Fire directly when in view. */
+      if (header.getBoundingClientRect().top < window.innerHeight * 0.95) {
+        st.kill();
+        play();
+      }
+    }, header);
+    return () => ctx.revert();
+  }, [language]);
 
   return (
     <div className="min-h-[100svh] pt-24 relative">
-      {/* Hero */}
-      <section data-line-anchor="hero" data-snap className="py-20 sm:py-32 relative">
-        <div className="container-px relative">
-          {/* H1 outside the Reveal: the choreographer's line-mask reveal owns
-              it (data-split-reveal) — no double animation. Eyebrow entrance =
-              LabelScrambler decode; sub + divider keep the Reveal fade. */}
-          <div className="max-w-3xl mx-auto text-center">
-            <p className="eyebrow mb-6 inline-flex items-center justify-center gap-2">
-              <span
-                className="inline-block w-1.5 h-1.5 rounded-full"
-                style={{ background: "hsl(var(--accent))" }}
-                aria-hidden="true"
-              />
-              {isEn ? "Selected work" : "Lavori selezionati"}
-            </p>
-            {/* key={language}: SplitText owns this subtree once split; a language
-                swap must remount it or React reconciles against orphaned nodes
-                (same contract as SectionHeading's h2). */}
-            <h1 key={language} data-split-reveal className="font-display text-[clamp(2.25rem,7vw,4.5rem)] leading-[1.15] tracking-[-0.025em] text-ink text-balance mb-8 pb-1">
-              {isEn ? (
-                <>
-                  Engineering{" "}
-                  <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                    track record.
-                  </span>
-                </>
-              ) : (
-                <>
-                  Track record di{" "}
-                  <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                    ingegneria.
-                  </span>
-                </>
-              )}
-            </h1>
-            <Reveal delay={150}>
-              <p className="text-base sm:text-lg text-ink-mute max-w-2xl mx-auto leading-[1.55]">
-                {isEn
-                  ? "AI-powered software CPTO Michele Sanna has shipped across tier-1 institutions, plus current Sersan product builds. Each entry labels the role and the delivery context."
-                  : "Software AI-powered che il CPTO Michele Sanna ha portato in produzione in istituzioni tier-1, insieme ai build di prodotto attuali di Sersan. Ogni voce indica il ruolo e il contesto di delivery."}
-              </p>
-              <div
-                className="mt-10 mx-auto h-px w-48 origin-center"
-                style={{
-                  background:
-                    "linear-gradient(90deg, transparent 0%, hsl(var(--accent) / 0.6) 50%, transparent 100%)",
-                }}
-              />
-            </Reveal>
-          </div>
-        </div>
-      </section>
-
-      {/* Grid + sector filter rail */}
-      <section data-line-anchor="grid" className="py-16 sm:py-24">
+      {/* Header — the /projects wordmark. */}
+      <section data-line-anchor="hero" data-snap className="pt-16 pb-10 sm:pt-24 sm:pb-14">
         <div className="container-px">
-          <div className="max-w-6xl mx-auto">
-            <h2 className="sr-only">{isEn ? "Case studies" : "Case study"}</h2>
-
-            {/* Filter rail — mono pills (spec: All · FinTech · … · Agritech)
-                plus a live entry count. The count span REMOUNTS on every
-                filter change (key), so the delegated LabelScrambler sees a
-                fresh .eyebrow and decodes it once per change — one calm
-                decode for the whole rail, never one per pill. It is
-                aria-hidden (the decode mutates its text nodes); the sr-only
-                status line is the assistive announcement, and each pill
-                carries aria-pressed. Sector names stay untranslated in IT on
-                purpose: the card eyebrows show them raw in both languages. */}
-            <div className="mb-10 flex flex-wrap items-center gap-x-6 gap-y-4">
-              <div
-                role="group"
-                aria-label={
-                  isEn
-                    ? "Filter case studies by sector"
-                    : "Filtra i case study per settore"
-                }
-                className="flex flex-wrap items-center gap-2"
-              >
-                <FilterPill
-                  active={sector === "all"}
-                  label={isEn ? "All" : "Tutti"}
-                  onClick={() => selectSector("all")}
-                  pressRef={pressRef}
-                />
-                {SECTORS.map((s) => (
-                  <FilterPill
-                    key={s}
-                    active={sector === s}
-                    label={s}
-                    onClick={() => selectSector(s)}
-                    pressRef={pressRef}
-                  />
-                ))}
-              </div>
-              <span key={sector} className="eyebrow ms-auto" aria-hidden="true">
-                {visibleCount}{" "}
-                {visibleCount === 1
-                  ? isEn
-                    ? "entry"
-                    : "voce"
-                  : isEn
-                    ? "entries"
-                    : "voci"}
-              </span>
-              <span className="sr-only" role="status">
-                {isEn
-                  ? `Showing ${visibleCount} of ${caseStudies.length} case studies`
-                  : `${visibleCount} case study su ${caseStudies.length} visibili`}
-              </span>
-            </div>
-
-            {/* relative: the FLIP re-sort absolutizes cards mid-flight — give
-                them a positioning context that IS the grid. */}
-            <div
-              ref={gridRef}
-              className="relative grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8"
+          <div ref={headerRef} key={language} className="cs-archive-title-wrap">
+            <h1
+              className="cs-archive-title font-display text-ink"
+              aria-label={
+                isEn
+                  ? "Work — engineering track record"
+                  : "Lavori — track record di ingegneria"
+              }
             >
-              {caseStudies.map((study) => {
-                const hidden = sector !== "all" && study.industry !== sector;
-                return (
-                  /* Filtered-out cards are `hidden`, never UNMOUNTED: gsap
-                     Flip needs leaving elements alive to animate them off,
-                     display:none children vanish from the grid flow for
-                     free, and stable instances preserve entrance state, the
-                     per-card WebGL distort contexts and the zoom-handoff
-                     arming across re-sorts. Card hover behavior (distort /
-                     logo reveal / tilt) is documented on GridCard. */
-                  <div
-                    key={study.id}
-                    data-archive-item=""
-                    className={cn("h-full", hidden && "hidden")}
-                  >
-                    <GridCard study={study} isEn={isEn} focusRef={cardFocusRef} />
-                  </div>
-                );
-              })}
-            </div>
+              <span aria-hidden="true">
+                {word.split("").map((ch, i) => (
+                  <span key={i} className="cs-archive-char">
+                    {ch}
+                  </span>
+                ))}
+              </span>
+            </h1>
+            <span className="cs-archive-count" aria-hidden="true">
+              {count.split("").map((ch, i) => (
+                <span key={i} className="cs-archive-char">
+                  {ch}
+                </span>
+              ))}
+            </span>
+            {/* Diagonal arrow (↘) — Lusion's projects-title mark. */}
+            <svg
+              className="cs-archive-arrow"
+              viewBox="0 0 38 38"
+              fill="none"
+              aria-hidden="true"
+            >
+              <path
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2.5"
+                d="m2 2 34 34m0 0V6.046M36 36H6.046"
+              />
+            </svg>
           </div>
         </div>
       </section>
 
-      {/* Work in progress — internal builds, shown after the shipped archive
-          (restyle step 2: the archive grid leads, in-development work trails). */}
-      <WorkInProgress variant="full" />
+      {/* Grid — the shared Lusion-grammar cards, full population. */}
+      <section data-line-anchor="grid" className="pb-16 sm:pb-24">
+        <div className="container-px">
+          <h2 className="sr-only">{isEn ? "Case studies" : "Case study"}</h2>
+          <WorkGrid
+            studies={archiveStudies()}
+            isEn={isEn}
+            planesLive={planesLive}
+          />
+        </div>
+      </section>
 
       {/* Disclaimer */}
       <section data-line-anchor="disclaimer" className="pb-12">
@@ -617,16 +191,9 @@ export function CaseStudiesClient() {
           here and the signature line threads it before the CTA. */}
       <div data-line-anchor="ritual" aria-hidden="true" className="py-28 sm:py-40" />
 
-      {/* Closing CTA */}
-      {/* overflow-x-clip: the decorative glow below is a fixed 700px square
-          centred on the section, so on any viewport under 700px it hangs
-          ~(700−vw)/2 past the right edge and drags the DOCUMENT with it —
-          MEASURED at 190px of horizontal overflow at 320px, 135px at 430px.
-          The identical glow on /audit is already inside an `overflow-hidden`
-          section, which is why that route measured clean. `overflow-x-clip`
-          (not `overflow-hidden`) clips the horizontal escape WITHOUT creating
-          a scroll container or clipping vertical glow/shadow, and is inert at
-          every width where the glow already fits. */}
+      {/* Closing CTA — overflow-x-clip: the decorative 700px glow hangs past
+          the right edge on narrow viewports and would drag the document
+          (measured 190px at 320w); clip the horizontal escape only. */}
       <section data-line-anchor="final-cta" data-snap className="section-lg relative overflow-x-clip">
         <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] opacity-20 pointer-events-none"

@@ -431,8 +431,13 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
           relies on the single camera authority having written the camera
           pose earlier in the same priority-0 frame pass. No touch variant:
           the grid is normal flow, so phones simply keep the DOM layer
-          (unlike the rail there is no scrub source to mirror). */}
-      {pathname === "/" && webgpu && tier === "full" && <FeaturedWorkPlanes />}
+          (unlike the rail there is no scrub source to mirror). Mounted on
+          BOTH grid hosts — home Featured Work and the /case-studies archive
+          (Lusion-/projects rebuild, round 2) — the shared WorkCard carries
+          the same [data-featured-media] contract on each. */}
+      {(pathname === "/" || pathname === "/case-studies") &&
+        webgpu &&
+        tier === "full" && <FeaturedWorkPlanes />}
       {/* Home founders particle-portrait morph (P1R, WEBGL_UPGRADE_PLAN §4R).
           Same gates as RailPlanes (home route + full tier + the WebGPU flag —
           TSL/compute-only, no GLSL twin; on the classic flag-OFF path or
