@@ -44,10 +44,11 @@ if (typeof window !== "undefined") gsap.registerPlugin(ScrollTrigger, CustomEase
  *
  * WEBGL HANDOFF: the media box carries data-featured-media={id}; on the
  * WebGPU-flag full-tier path FeaturedWorkPlanes syncs depth-parallax planes
- * to those rects and flips featuredStore.planesLive — the grid mirrors it
- * into data-planes-live, and globals.css fades the DOM stills out under the
- * planes. Hover intent is published to featuredStore.hoverId for the shader
- * (focus/zoom springs), independent of the DOM letter tweens.
+ * to those rects and flips featuredStore.planesLive — mirrored PER CARD into
+ * data-plane-owned (only cards with a depth twin yield their DOM still;
+ * globals.css fades it under the plane). Hover intent is published to
+ * featuredStore.hoverId for the shader springs, independent of the DOM
+ * letter tweens.
  *
  * CLICK: useFlipSource arms the zoom-to-fullscreen flight (data-flip-source
  * + data-rail-media contracts, same as the archive grid) — the DOM Flip

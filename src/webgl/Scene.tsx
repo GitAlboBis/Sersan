@@ -76,8 +76,9 @@ if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
   import("./store/textMorphStore").then((m) => {
     (window as unknown as Record<string, unknown>).__sersanTextMorph = m.useTextMorphStore;
   });
-  import("./store/railStore").then((m) => {
-    (window as unknown as Record<string, unknown>).__sersanRail = m.useRailStore;
+  import("./store/featuredStore").then((m) => {
+    (window as unknown as Record<string, unknown>).__sersanFeatured =
+      m.useFeaturedStore;
   });
   import("./store/foundersMorphStore").then((m) => {
     (window as unknown as Record<string, unknown>).__sersanFoundersMorph =
