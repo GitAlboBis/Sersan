@@ -216,9 +216,12 @@ export function FeaturedWorkPlanes() {
   }, [built]);
 
   /* Rect measurement — document space, re-run on resize + layout shifts
-     (body ResizeObserver debounced to a frame) + font settle. */
+     (body ResizeObserver debounced to a frame) + font settle + the DOM
+     section's ScrollTrigger-refresh epoch (pin spacers above the grid
+     re-resolve after plain resize events — featured-work.tsx bumps it). */
   const [rects, setRects] = useState<PlaneRect[]>([]);
   const [measureTick, setMeasureTick] = useState(0);
+  const measureVersion = useFeaturedStore((s) => s.measureVersion);
   useEffect(() => {
     if (!built) return;
     let raf = 0;
@@ -257,7 +260,7 @@ export function FeaturedWorkPlanes() {
       });
     });
     setRects(next);
-  }, [built, measureTick]);
+  }, [built, measureTick, measureVersion]);
 
   const geometry = useMemo(() => new THREE.PlaneGeometry(1, 1, 1, 1), []);
   useEffect(() => () => geometry.dispose(), [geometry]);
@@ -333,8 +336,18 @@ export function FeaturedWorkPlanes() {
         motions.current.set(r.id, m);
       }
 
-      /* --- hover ratio + impulses (port §2.3) --- */
-      const isHover = hoverId === r.id;
+      /* --- hover ratio + impulses (port §2.3) ---
+         Belt against a stale DOM hover claim (pointerleave never fires when
+         the card scrolls out from under a stationary pointer): the shader
+         side only honours the claim while the pointer is actually inside
+         the rect, so the focus target can never chase a far-away pointer
+         into out-of-texture UVs. */
+      const isHover =
+        hoverId === r.id &&
+        mx >= vpX &&
+        mx <= vpX + r.w &&
+        my >= vpY &&
+        my <= vpY + r.h;
       m.prevHoverRatio = m.hoverRatio;
       m.hoverRatio = THREE.MathUtils.clamp(
         m.hoverRatio + (isHover ? 1 : -1) * delta,

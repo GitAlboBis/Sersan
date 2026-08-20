@@ -137,105 +137,129 @@ function FeaturedCard({
   const domain = isEn ? study.domain : study.domainIt;
   const side = index % 2 ? 1 : -1; // right column enters from the right
 
-  /* Entrance + hover choreography — armed once per mount, motion-gated.
-     Faithful split (ANALISI_LUSION_WORK.md §2.4): the DOM card itself never
-     slides — the TITLE rolls (here), line-1 decodes (LabelScrambler), and
-     the MEDIA entrance belongs to the WebGL plane (slide + mask grow).
-     Only on the DOM-fallback path (no plane for this card) does the media
-     box play a DOM version of the slide. useLayoutEffect so hidden poses
-     land before first paint. */
+  /* Whether the plane owns the media at ENTRANCE-FIRE time (the flag can
+     flip between mount and the card scrolling into view — the mount-keyed
+     effect below must read the live value, never a stale closure). */
+  const planeOwnedRef = useRef(planeOwned);
+  planeOwnedRef.current = planeOwned;
+
+  /* Entrance choreography — MOUNT-KEYED and idempotent (ANALISI_LUSION_WORK
+     §2.4). Faithful split: the DOM card never slides — the TITLE rolls,
+     line-1 decodes (LabelScrambler), and the MEDIA slide belongs to the
+     WebGL plane when one owns the box; the DOM INNER media (still img /
+     logo panel) plays the slide only on the fallback path. The roll is a
+     fromTo fired by a once-trigger, so no later effect cycle can strand the
+     columns in the hidden pose. useLayoutEffect so hidden poses land before
+     first paint. */
   useLayoutEffect(() => {
     const card = cardRef.current;
     if (!card || prefersReducedMotion()) return;
     const cols = Array.from(card.querySelectorAll<HTMLElement>("[data-fw-col]"));
-    const icon = card.querySelector<HTMLElement>("[data-fw-icon]");
-    const media = card.querySelector<HTMLElement>(".fw-media");
+    const inner = card.querySelector<HTMLElement>(
+      ".fw-media > img.fw-still, .fw-media > .fw-logo-panel",
+    );
     const n = cols.length;
-    const lusion = CustomEase.get("lusion") ?? CustomEase.create("lusion", "0.35, 0, 0, 1");
-    /* HOVER — fine pointer only (matchMedia guard, not pointerType: a
-       mouse+touchscreen laptop must keep the mouse path). */
-    const fine = window.matchMedia("(pointer: fine)");
-    const em = () =>
-      parseFloat(getComputedStyle(card.querySelector(".fw-title")!).fontSize);
-    const enter = () => {
-      if (!fine.matches) return;
-      useFeaturedStore.getState().setHover(study.id);
-      gsap.to(cols, {
-        x: () => em() * 1.5,
-        duration: 0.55,
-        ease: lusion,
-        stagger: { each: 0.004, from: "end" },
-        overwrite: "auto",
-      });
-      if (icon)
-        gsap.to(icon, { x: () => em(), duration: 0.55, ease: lusion, overwrite: "auto" });
-    };
-    const leave = () => {
-      useFeaturedStore.getState().clearHover(study.id);
-      gsap.to(cols, {
-        x: 0,
-        duration: 0.55,
-        ease: lusion,
-        stagger: { each: 0.004, from: "end" },
-        overwrite: "auto",
-      });
-      if (icon) gsap.to(icon, { x: 0, duration: 0.55, ease: lusion, overwrite: "auto" });
-    };
-    card.addEventListener("pointerenter", enter);
-    card.addEventListener("pointerleave", leave);
 
     const ctx = gsap.context(() => {
-      /* Title roll pose. −400%: one slot ABOVE the top copy, so the 1em clip
-         is EMPTY at rest and the roll streams all four copies through (−300
-         would already show copy #4 parked in the window). `entered` dataset
-         guards a planeOwned flip from replaying a finished entrance. */
-      const entered = card.dataset.fwEntered === "1";
-      if (!entered) gsap.set(cols, { yPercent: -400 });
-      /* DOM-fallback media slide — only when no plane owns the box (the
-         plane path keeps the DOM box untransformed so the WebGL sync rects
-         stay truthful; the plane plays the slide itself). */
-      const slideMedia = media && !planeOwned && !entered;
-      if (slideMedia)
-        gsap.set(media, {
-          x: () => side * window.innerWidth * 0.08,
-          rotation: side * 3.5,
-          autoAlpha: 0,
-        });
-      if (!entered)
-        ScrollTrigger.create({
-          trigger: card,
-          start: "top 88%",
-          once: true,
-          onEnter: () => {
-            card.dataset.fwEntered = "1";
-            if (slideMedia)
-              gsap.to(media, {
+      /* −400%: one slot ABOVE the top copy, so the 1em clip is EMPTY at
+         rest and the roll streams all four copies through. */
+      gsap.set(cols, { yPercent: -400 });
+      ScrollTrigger.create({
+        trigger: card,
+        start: "top 88%",
+        once: true,
+        onEnter: () => {
+          /* DOM media slide — fallback path only, and on the INNER element
+             so the media BOX (the plane's sync rect + the flip flight's
+             media rect) never carries a transform. */
+          if (inner && !planeOwnedRef.current)
+            gsap.fromTo(
+              inner,
+              { x: side * window.innerWidth * 0.08, rotation: side * 3.5, autoAlpha: 0 },
+              {
                 x: 0,
                 rotation: 0,
                 autoAlpha: 1,
                 duration: 1.5,
                 ease: "expo.out",
                 clearProps: "transform,opacity,visibility",
-              });
-            cols.forEach((col, i) => {
-              gsap.to(col, {
+              },
+            );
+          cols.forEach((col, i) => {
+            gsap.fromTo(
+              col,
+              { yPercent: -400 },
+              {
                 yPercent: 0,
                 duration: 1.25,
                 ease: "expo.inOut",
                 delay: 0.15 + rollDelay(i, n),
-              });
-            });
-          },
-        });
+                overwrite: "auto",
+              },
+            );
+          });
+        },
+      });
     }, card);
+    return () => ctx.revert();
+  }, [side, study.id]);
 
+  /* Hover — fine pointer only (matchMedia guard, not pointerType: a
+     mouse+touchscreen laptop must keep the mouse path). UNIDIRECTIONAL:
+     pointer events only WRITE featuredStore.hoverId; the letter/arrow tweens
+     play from a store SUBSCRIPTION. This matters because pointerleave never
+     fires when a card scrolls out from under a stationary pointer (measured
+     live: stuck hover left the shader's focus target keyed to a pointer far
+     outside the card, smearing the plane) — the section's scroll validator
+     clears the store, and the subscription plays the leave tween no matter
+     which writer cleared it. */
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card || prefersReducedMotion()) return;
+    const cols = Array.from(card.querySelectorAll<HTMLElement>("[data-fw-col]"));
+    const icon = card.querySelector<HTMLElement>("[data-fw-icon]");
+    const lusion =
+      CustomEase.get("lusion") ?? CustomEase.create("lusion", "0.35, 0, 0, 1");
+    const fine = window.matchMedia("(pointer: fine)");
+    const em = () =>
+      parseFloat(getComputedStyle(card.querySelector(".fw-title")!).fontSize);
+    const play = (on: boolean) => {
+      gsap.to(cols, {
+        x: on ? () => em() * 1.5 : 0,
+        duration: 0.55,
+        ease: lusion,
+        stagger: { each: 0.004, from: "end" },
+        overwrite: "auto",
+      });
+      if (icon)
+        gsap.to(icon, {
+          x: on ? () => em() : 0,
+          duration: 0.55,
+          ease: lusion,
+          overwrite: "auto",
+        });
+    };
+    let wasHover = false;
+    const unsub = useFeaturedStore.subscribe((s) => {
+      const isHover = s.hoverId === study.id;
+      if (isHover !== wasHover) {
+        wasHover = isHover;
+        play(isHover);
+      }
+    });
+    const enter = () => {
+      if (fine.matches) useFeaturedStore.getState().setHover(study.id);
+    };
+    const leave = () => useFeaturedStore.getState().clearHover(study.id);
+    card.addEventListener("pointerenter", enter);
+    card.addEventListener("pointerleave", leave);
     return () => {
+      unsub();
       card.removeEventListener("pointerenter", enter);
       card.removeEventListener("pointerleave", leave);
       useFeaturedStore.getState().clearHover(study.id);
-      ctx.revert();
     };
-  }, [side, study.id, planeOwned]);
+  }, [study.id]);
 
   const hasStill = Boolean(study.previewImage);
 
@@ -316,6 +340,51 @@ export default function FeaturedWork() {
       }),
     [],
   );
+
+  /* STALE-HOVER VALIDATOR + MEASURE EPOCH.
+     (a) pointerleave never fires when a card scrolls out from under a
+     stationary pointer — on every scroll frame, if the store still claims a
+     hover, re-test the last pointer position against that card's rect and
+     clear the claim when it left. The per-card store subscription then
+     plays the leave tween.
+     (b) The WebGL planes measure document rects; pin-spacer heights above
+     this section re-resolve on ScrollTrigger refresh AFTER plain resize
+     events, so every refresh bumps the store's measure epoch for them. */
+  useEffect(() => {
+    if (prefersReducedMotion()) return;
+    let px = -1;
+    let py = -1;
+    let raf = 0;
+    const onMove = (e: PointerEvent) => {
+      px = e.clientX;
+      py = e.clientY;
+    };
+    const validate = () => {
+      raf = 0;
+      const { hoverId, clearHover } = useFeaturedStore.getState();
+      if (!hoverId || px < 0) return;
+      const card = sectionRef.current?.querySelector<HTMLElement>(
+        `[data-flip-source="${hoverId}"]`,
+      );
+      if (!card) return clearHover(hoverId);
+      const r = card.getBoundingClientRect();
+      if (px < r.left || px > r.right || py < r.top || py > r.bottom)
+        clearHover(hoverId);
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(validate);
+    };
+    const bump = () => useFeaturedStore.getState().bumpMeasure();
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
+    ScrollTrigger.addEventListener("refresh", bump);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("scroll", onScroll);
+      ScrollTrigger.removeEventListener("refresh", bump);
+    };
+  }, []);
 
   return (
     <section

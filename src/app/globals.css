@@ -1881,9 +1881,15 @@ html.cursor-none [contenteditable="true"] {
   transform: scale(1);
   filter: saturate(1) brightness(1);
 }
-/* WebGL plane owns the media box: the DOM still yields (kept in the tree so
-   the flip-handoff snapshot + no-JS path never lose their image). Per-card —
-   logo cards and depth-less stills keep their DOM layer. */
+/* WebGL plane owns the media box: the DOM still yields AND the box goes
+   fully transparent — the persistent canvas draws BEHIND the page, so any
+   DOM paint here would sit on top of the plane (verified live: an opaque
+   background occludes it completely). Kept in the tree so the flip-handoff
+   snapshot + no-JS path never lose their image. Per-card — logo cards and
+   depth-less stills keep their DOM layer. */
+.fw-media[data-plane-owned="true"] {
+  background: transparent;
+}
 .fw-media[data-plane-owned="true"] > img.fw-still {
   opacity: 0;
 }
@@ -1983,6 +1989,8 @@ html.cursor-none [contenteditable="true"] {
   }
   .cs-frame[data-rail-armed="true"] .cs-meta {
     position: absolute;
+    /* Crossing media covers the meta — links must not eat clicks meant for
+       items above them while covered; the column re-raises nothing itself. */
     /* Absolute children ignore the frame's container-px padding — restate
        the same safe-area-aware gutter as the left offset. */
     left: max(var(--margin), var(--safe-l));
@@ -1995,6 +2003,11 @@ html.cursor-none [contenteditable="true"] {
     position: absolute;
     left: 0;
     top: 0;
+    /* ABOVE the meta column (Lusion §3.2): crossing media are opaque and
+       cover the pinned text cleanly; text panels never reach it visibly —
+       the JS fades them inside the 20–80% viewport band (the port source's
+       u_textRatio gate), so they dissolve before overlapping the meta. */
+    z-index: 3;
     height: 100%;
     display: flex;
     flex-wrap: nowrap;

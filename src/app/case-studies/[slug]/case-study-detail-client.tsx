@@ -146,6 +146,34 @@ export function CaseStudyDetailClient({
       const distance = () =>
         Math.max(0, track.scrollWidth - window.innerWidth);
 
+      /* Text panels live in a viewport band (the port source's u_textRatio
+         gate): they resolve in entering from the right and dissolve BEFORE
+         crossing the pinned meta column (gutter + min(30rem,36vw) ≈ 45% of
+         the viewport) — which is how the rail can pass over the meta
+         without two texts superimposing. Computed ANALYTICALLY per scrub
+         frame from live rects (a first cut with paired scrubbed tweens
+         raced each other across HMR/refresh ordering; one writer is
+         deterministic, and ~7 rect reads per scrubbed frame is nothing). */
+      const panels = Array.from(
+        track.querySelectorAll<HTMLElement>(".cs-item-text, .cs-next"),
+      );
+      const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+      const applyPanelFades = () => {
+        const vw = window.innerWidth;
+        for (const panel of panels) {
+          const r = panel.getBoundingClientRect();
+          const fadeIn = clamp01((vw * 0.85 - r.left) / (vw * 0.23));
+          /* Keyed on the LEFT edge (the first part to invade the meta
+             column at ≈45% vw): fully dissolved by 50%, regardless of the
+             panel's width — a right-edge key let wide panels overlap the
+             meta while still opaque (measured live). */
+          const fadeOut = panel.classList.contains("cs-next")
+            ? 0 // the closing NEXT panel never crosses the meta
+            : clamp01((vw * 0.62 - r.left) / (vw * 0.12));
+          gsap.set(panel, { autoAlpha: Math.min(fadeIn, 1 - fadeOut) });
+        }
+      };
+
       const tween = gsap.to(track, {
         x: () => -distance(),
         ease: "none",
@@ -159,7 +187,9 @@ export function CaseStudyDetailClient({
           onUpdate: (self) => {
             if (barRef.current)
               barRef.current.style.transform = `scaleX(${self.progress})`;
+            applyPanelFades();
           },
+          onRefresh: () => applyPanelFades(),
         },
       });
 
