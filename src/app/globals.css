@@ -1954,3 +1954,225 @@ html.cursor-none [contenteditable="true"] {
    featured-work.tsx never arms the tweens under prefers-reduced-motion, so
    the SSR transforms (none) simply persist; entrance slide + roll are pure
    enhancement. */
+
+/* === Case-study detail — Lusion project-page grammar =======================
+   ANALISI_LUSION_WORK.md §3, brand-tempered: navy stays, the per-project
+   accent lives in --cs-highlight (set inline from the study palette).
+   DESKTOP (lg+): a pinned 100svh frame — meta column fixed left, media rail
+   scrubbed horizontally by vertical scroll (GSAP pin+scrub armed in
+   case-study-detail-client.tsx; without JS or under reduced motion the same
+   markup reads as a vertical page, items wrapped).
+   MOBILE (<lg): normal vertical stack — meta, then items full width. */
+
+.cs-stage {
+  position: relative;
+}
+.cs-frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+/* Desktop pinned geometry — the JS sets .cs-stage height (the runway) and
+   ScrollTrigger pins .cs-frame for its duration. */
+@media (min-width: 1024px) {
+  .cs-frame[data-rail-armed="true"] {
+    height: 100svh;
+    flex-direction: row;
+    overflow: hidden;
+  }
+  .cs-frame[data-rail-armed="true"] .cs-meta {
+    position: absolute;
+    /* Absolute children ignore the frame's container-px padding — restate
+       the same safe-area-aware gutter as the left offset. */
+    left: max(var(--margin), var(--safe-l));
+    top: 50%;
+    transform: translateY(-50%);
+    width: min(30rem, 36vw);
+    z-index: 2;
+  }
+  .cs-frame[data-rail-armed="true"] .cs-track {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 5rem;
+    /* Gutter + meta column + breathing gap — the rail starts right of the
+       pinned text (absolute track also ignores the frame padding). */
+    padding-left: calc(max(var(--margin), var(--safe-l)) + min(30rem, 36vw) + 8vw);
+    padding-right: 12vw;
+    will-change: transform;
+  }
+}
+.cs-track {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+@media (min-width: 1024px) {
+  .cs-frame[data-rail-armed="true"] .cs-track {
+    flex-direction: row;
+  }
+}
+
+/* One rail item. Media items size from their intrinsic aspect (h fixed,
+   w auto); text panels get a readable measure. */
+.cs-item {
+  position: relative;
+  flex: none;
+}
+.cs-item-media {
+  display: block;
+  border-radius: 15px;
+  overflow: hidden;
+  background: linear-gradient(180deg, hsl(216 28% 10%) 0%, hsl(216 30% 13%) 100%);
+}
+.cs-item-media > img,
+.cs-item-media > video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+@media (min-width: 1024px) {
+  .cs-frame[data-rail-armed="true"] .cs-item-media {
+    height: 60svh;
+    width: auto;
+  }
+  .cs-frame[data-rail-armed="true"] .cs-item-media > img,
+  .cs-frame[data-rail-armed="true"] .cs-item-media > video {
+    width: auto;
+    height: 100%;
+  }
+  /* Fullscreen breakout (Lusion data-fullscreen): the item swells to the
+     whole frame height and sheds its radius while it crosses. */
+  .cs-frame[data-rail-armed="true"] .cs-item[data-fullscreen] .cs-item-media {
+    height: 92svh;
+    border-radius: 0;
+  }
+}
+
+/* Typographic rail panel — a metric as a beat (derived from study.metrics
+   where a project ships no imagery). */
+.cs-item-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1rem;
+  max-width: 26rem;
+}
+@media (min-width: 1024px) {
+  .cs-frame[data-rail-armed="true"] .cs-item-text {
+    width: 26rem;
+    height: 60svh;
+  }
+}
+.cs-item-text .cs-item-value {
+  font-size: clamp(2.6rem, 5vw, 4.2rem);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: hsl(var(--ink));
+}
+.cs-item-text .cs-item-label {
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: hsl(var(--ink-mute));
+  max-width: 22rem;
+}
+
+/* Launch CTA pill (§3 launch-cta anatomy): dot → explodes to a highlight
+   fill on hover, label shifts, arrow chip scales in. */
+.cs-launch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.9em;
+  overflow: hidden;
+  padding: 0.9em 3em 0.9em 1.25em;
+  border-radius: 100px;
+  background: hsl(var(--ink));
+  color: hsl(216 30% 8%);
+  font-family: var(--font-jbm), ui-monospace, monospace;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.cs-launch-dot {
+  width: 0.5em;
+  height: 0.5em;
+  border-radius: 100px;
+  background: hsl(216 30% 8%);
+  z-index: 1;
+  transition:
+    transform 0.4s var(--ease-lusion),
+    background 0.5s var(--ease-lusion);
+}
+.cs-launch-text {
+  position: relative;
+  z-index: 1;
+  transition: transform 0.4s var(--ease-lusion), color 0.5s var(--ease-lusion);
+}
+.cs-launch-arrow {
+  position: absolute;
+  right: 0.55em;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9em;
+  height: 1.9em;
+  border-radius: 100%;
+  background: hsl(var(--ink));
+  transform: translateY(-50%) scale(0);
+  transition: transform 0.4s var(--ease-lusion);
+  z-index: 1;
+}
+.cs-launch:hover .cs-launch-dot {
+  transform: translate3d(4em, 0, 0) scale(26);
+  background: var(--cs-highlight);
+}
+.cs-launch:hover .cs-launch-text {
+  transform: translate3d(-0.9em, 0, 0);
+  color: hsl(var(--ink));
+}
+.cs-launch:hover .cs-launch-arrow {
+  transform: translateY(-50%) scale(1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cs-launch-dot,
+  .cs-launch-text,
+  .cs-launch-arrow {
+    transition: none;
+  }
+}
+
+/* Next-project rail panel + progress bar. */
+.cs-next {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1.5rem;
+}
+@media (min-width: 1024px) {
+  .cs-frame[data-rail-armed="true"] .cs-next {
+    width: 34rem;
+    height: 60svh;
+  }
+}
+.cs-next-bar {
+  position: relative;
+  height: 3px;
+  border-radius: 16px;
+  background: hsl(var(--rule));
+  overflow: hidden;
+}
+.cs-next-bar-inner {
+  position: absolute;
+  inset: 0;
+  background: var(--cs-highlight);
+  transform-origin: 0 50%;
+  transform: scaleX(0);
+}

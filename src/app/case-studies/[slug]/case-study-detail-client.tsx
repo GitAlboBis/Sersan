@@ -1,28 +1,48 @@
 "use client";
 
-import { useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useGSAP } from "@gsap/react";
 import gsap from "gsap";
-import { ArrowLeft, ArrowUpRight, ArrowRight } from "lucide-react";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { ArrowLeft, ArrowRight, ArrowUpRight } from "lucide-react";
 import { Button, CTA_FLUID_SM } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { CountUp } from "@/components/ui/count-up";
-import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
-import { type CaseStudy } from "@/data/case-studies";
+import {
+  type CaseStudy,
+  type CaseStudyRailItem,
+} from "@/data/case-studies";
 import { isFlipArmedFor } from "@/lib/flip-handoff-store";
 import { useReturnFlipSource } from "@/lib/use-flip-source";
 
-const INDUSTRY_ACCENT: Record<CaseStudy["industry"], string> = {
-  FinTech: "var(--accent)",
-  Healthcare: "var(--refusal)",
-  Aerospace: "var(--accent)",
-  "Public Sector": "var(--accent)",
-  Industrial: "var(--accent)",
-  Energy: "var(--accent)",
-  Agritech: "var(--accent)",
-};
+if (typeof window !== "undefined") gsap.registerPlugin(ScrollTrigger);
+
+/**
+ * Case-study detail — the Lusion project-page grammar
+ * (ANALISI_LUSION_WORK.md §3), brand-tempered: the navy base stays and only
+ * the per-project highlight re-tints (--cs-highlight from study.palette).
+ *
+ * DESKTOP (lg+, fine scroll, no reduced motion): a pinned 100svh frame —
+ * the meta column (title, summary, stack, launch CTA) sits fixed left,
+ * vertically centred, while the MEDIA RAIL scrubs horizontally under
+ * vertical scroll (GSAP pin + scrub; ScrollTrigger's pin spacer provides
+ * the runway). Rail items: the lead media (demo video / product still —
+ * also the flip-handoff hero), further shots, TYPOGRAPHIC PANELS derived
+ * from study.metrics (Lusion's type:"text" items — every study gets the
+ * layout, imagery or not), and the closing NEXT PROJECT panel with a
+ * progress bar tied to the scrub.
+ *
+ * Per-item parallax: each media's inner img/video is oversized 12% and
+ * counter-slides via a containerAnimation trigger (the DOM twin of the
+ * shader's u_parallax). Videos are muted playsinline loops that PLAY ONLY
+ * IN VIEW (IntersectionObserver — rects account for the track transform).
+ *
+ * MOBILE / REDUCED MOTION / NO-JS: the identical markup reads top-to-bottom
+ * as a vertical page (globals.css `.cs-*` rules key on [data-rail-armed]) —
+ * the pin is pure enhancement.
+ */
 
 interface CaseStudyDetailClientProps {
   study: CaseStudy;
@@ -30,7 +50,57 @@ interface CaseStudyDetailClientProps {
   nextStudy: CaseStudy;
 }
 
-export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudyDetailClientProps) {
+/** Rail = declared items, else the lead still, then metric text panels. */
+function deriveRail(study: CaseStudy): CaseStudyRailItem[] {
+  const declared = study.railItems ?? [];
+  const items: CaseStudyRailItem[] = [...declared];
+  if (declared.length === 0 && study.previewImage) {
+    items.push({ type: "image", src: study.previewImage });
+  }
+  for (const m of study.metrics) {
+    items.push({
+      type: "text",
+      value: m.value,
+      label: m.label,
+      labelIt: m.labelIt,
+    });
+  }
+  return items;
+}
+
+/** Muted loop that plays only while on screen (rail or stack). */
+function RailVideo({ src }: { src: string }) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) void el.play().catch(() => {});
+        else el.pause();
+      },
+      { threshold: 0.15 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return (
+    <video
+      ref={ref}
+      src={src}
+      muted
+      loop
+      playsInline
+      preload="metadata"
+      aria-hidden="true"
+    />
+  );
+}
+
+export function CaseStudyDetailClient({
+  study,
+  nextStudy,
+}: CaseStudyDetailClientProps) {
   const { language } = useLanguage();
   const isEn = language === "en";
 
@@ -39,42 +109,118 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
   const domain = isEn ? study.domain : study.domainIt;
   const summary = isEn ? study.summary : study.summaryIt;
 
-  const accent = INDUSTRY_ACCENT[study.industry] || "var(--accent)";
+  const highlight = study.palette?.highlight ?? "hsl(var(--accent))";
   const [firstWord, ...rest] = study.client.split(" ");
+  const rail = useMemo(() => deriveRail(study), [study]);
 
-  const hasHero = Boolean(study.previewImage);
-  const heroRef = useRef<HTMLElement>(null);
+  const stageRef = useRef<HTMLElement | null>(null);
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const heroRef = useRef<HTMLDivElement | null>(null);
+  const barRef = useRef<HTMLDivElement | null>(null);
 
-  // The breadcrumb is the page's EXPLICIT way back to the work archive: a
-  // plain left click on it arms the REVERSE flight (the hero deflates onto
-  // its matching card — fx/flip-handoff-overlay) while the <Link> navigates
-  // natively. Arming is passive and per-click gated inside the hook —
-  // reduced-motion / coarse pointers whose source is < 60 % on-screen /
-  // modified clicks / no-hero studies all fall through to the standard route
-  // cover unchanged (mobile-parity Phase 5: a coarse tap on a mostly-visible
-  // card DOES arm the flight), and browser
-  // back/forward (popstate) never arms since no click handler runs. The hook
-  // also toggles [data-no-curtain] on the link so the generic cover twin
-  // (navbar's RouteTransitionCover) never double-covers an armed flight.
+  /* Desktop rail arming — reactive to viewport + motion preference (a
+     resize across the lg boundary or an OS toggle must rebuild). */
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    const queries = [
+      window.matchMedia("(min-width: 1024px)"),
+      window.matchMedia("(prefers-reduced-motion: reduce)"),
+    ];
+    const sync = () => setArmed(queries[0].matches && !queries[1].matches);
+    sync();
+    queries.forEach((q) => q.addEventListener("change", sync));
+    return () => queries.forEach((q) => q.removeEventListener("change", sync));
+  }, []);
+
+  /* The pin + scrub. Rebuilt whenever `armed` flips; media loads refresh the
+     measurement (invalidateOnRefresh re-reads scrollWidth). */
+  useGSAP(
+    () => {
+      if (!armed) return;
+      const stage = stageRef.current;
+      const frame = frameRef.current;
+      const track = trackRef.current;
+      if (!stage || !frame || !track) return;
+
+      const distance = () =>
+        Math.max(0, track.scrollWidth - window.innerWidth);
+
+      const tween = gsap.to(track, {
+        x: () => -distance(),
+        ease: "none",
+        scrollTrigger: {
+          trigger: stage,
+          pin: frame,
+          scrub: true,
+          start: "top top",
+          end: () => "+=" + distance(),
+          invalidateOnRefresh: true,
+          onUpdate: (self) => {
+            if (barRef.current)
+              barRef.current.style.transform = `scaleX(${self.progress})`;
+          },
+        },
+      });
+
+      /* Interior parallax — media counter-slides inside its frame as the
+         item crosses the viewport (containerAnimation = the rail tween).
+         Fullscreen items skip it (their media fills edge-to-edge). */
+      const parallaxed = Array.from(
+        track.querySelectorAll<HTMLElement>(
+          ".cs-item:not([data-fullscreen]) .cs-item-media > img, .cs-item:not([data-fullscreen]) .cs-item-media > video",
+        ),
+      );
+      for (const media of parallaxed) {
+        gsap.fromTo(
+          media,
+          { xPercent: -5, scale: 1.12 },
+          {
+            xPercent: 5,
+            scale: 1.12,
+            ease: "none",
+            scrollTrigger: {
+              containerAnimation: tween,
+              trigger: media.closest(".cs-item") as HTMLElement,
+              start: "left right",
+              end: "right left",
+              scrub: true,
+            },
+          },
+        );
+      }
+
+      /* Media loads move scrollWidth — refresh so the runway stays true. */
+      const media = Array.from(
+        track.querySelectorAll<HTMLElement>("img, video"),
+      );
+      const onLoad = () => ScrollTrigger.refresh();
+      media.forEach((el) => {
+        el.addEventListener("load", onLoad);
+        el.addEventListener("loadedmetadata", onLoad);
+      });
+      return () => {
+        media.forEach((el) => {
+          el.removeEventListener("load", onLoad);
+          el.removeEventListener("loadedmetadata", onLoad);
+        });
+      };
+    },
+    { scope: stageRef, dependencies: [armed, rail.length] },
+  );
+
+  /* Breadcrumb = the explicit way back; arms the REVERSE flight (deflate
+     onto the matching card) on a plain left click — see use-flip-source. */
   const onReturnFlip = useReturnFlipSource(study.id, study.previewImage);
 
-  // Hero image entrance. The hook is called unconditionally (rules of hooks);
-  // `if (!el) return` covers the no-figure case so the effect is a no-op when
-  // !hasHero. The 0.62 / expo.out timing deliberately echoes the route
-  // curtain's open beat (CURTAIN_DURATION = 0.62, expo.inOut in
-  // src/app/template.tsx) so the image resolves in as the curtain lifts.
+  /* Lead-media entrance — flip-flight aware (the flying clone IS the
+     entrance when a card→detail Flip is incoming), otherwise a clip reveal
+     echoing the route curtain's beat. Same contract as the old hero. */
   useGSAP(
     () => {
       const el = heroRef.current;
       if (!el) return;
       if (isFlipArmedFor(study.id)) {
-        // A card→detail Flip is incoming: the flying clone IS the entrance.
-        // Stay hidden until the overlay lands it; safety-reveal if the flight
-        // never runs. This PEEKS (non-consuming) while the overlay CONSUMES, so
-        // the figure reliably sees "armed" and hides before the overlay flies
-        // (useGSAP is a layout effect, runs child-before-parent ahead of the
-        // overlay's useEffect). The figure must NEVER stay stuck hidden — this
-        // 1.3s safety plus the overlay's reveal-on-complete both guarantee it.
         gsap.set(el, { autoAlpha: 0 });
         const safety = gsap.delayedCall(1.3, () =>
           gsap.to(el, { autoAlpha: 1, duration: 0.3 }),
@@ -102,306 +248,257 @@ export function CaseStudyDetailClient({ study, prevStudy, nextStudy }: CaseStudy
     { scope: heroRef },
   );
 
+  let mediaIndex = -1;
+
   return (
-    <div className="min-h-[100svh] pt-24 relative">
-      {/* Hero halo */}
-      <div aria-hidden="true" className="absolute inset-x-0 top-0 h-[60vh] pointer-events-none">
+    <div
+      className="min-h-[100svh] pt-24 relative"
+      style={{ ["--cs-highlight" as string]: highlight }}
+    >
+      <section ref={stageRef} className="cs-stage">
         <div
-          className="absolute left-1/2 top-0 -translate-x-1/2 w-[80vw] max-w-[1100px] h-[55vh] blur-3xl opacity-25"
-          style={{ background: `radial-gradient(closest-side, hsl(${accent} / 0.28), transparent 70%)` }}
-        />
-      </div>
+          ref={frameRef}
+          className="cs-frame container-px"
+          data-rail-armed={armed ? "true" : "false"}
+        >
+          {/* ------------------------------------------------ meta column */}
+          <div className="cs-meta flex flex-col gap-6">
+            <nav aria-label="Breadcrumb">
+              <Link
+                href="/case-studies"
+                onClick={onReturnFlip}
+                className="inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.16em] text-ink-mute hover:text-[var(--cs-highlight)] transition-colors"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                {isEn ? "All work" : "Tutti i lavori"}
+              </Link>
+            </nav>
 
-      <article className="container-px max-w-5xl relative z-10">
-        {/* Breadcrumb */}
-        <nav aria-label="Breadcrumb" className="mb-10">
-          <Link
-            href="/case-studies"
-            onClick={onReturnFlip}
-            className="inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.16em] text-ink-mute hover:text-[hsl(var(--accent))] transition-colors"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            {isEn ? "All work" : "Tutti i lavori"}
-          </Link>
-        </nav>
+            <p className="eyebrow inline-flex items-center gap-2">
+              <span
+                className="inline-block w-1.5 h-1.5 rounded-full"
+                style={{ background: "var(--cs-highlight)" }}
+                aria-hidden="true"
+              />
+              {study.industry} · {engagement}
+            </p>
 
-        {/* Hero product image. Rendered only for studies with a previewImage
-            (SphereNode, Quantex, Terra Noa). When the study has a live URL the
-            shot carries a "View site" link out to it (new tab) — full-bleed
-            with a hover cue on fine pointers, collapsed to a permanently
-            visible corner pill on coarse ones (see the link's own note).
-            data-flip-id / data-flip-hero are inert hooks for a
-            future cross-route Flip transition. Height-capped so the eyebrow +
-            h1 stay near the top of the viewport — in `svh`, because this is a
-            REAL layout height: in `vh` it would re-size when the iOS URL bar
-            collapses and reflow the article under the reader's thumb. */}
-        {study.previewImage && (
-          <figure
-            ref={heroRef}
-            data-flip-id={study.id}
-            data-flip-hero
-            className="group relative mb-12 overflow-hidden rounded-xl border border-rule/70 h-[min(44svh,24rem)] bg-[hsl(216_28%_10%)]"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={study.previewImage}
-              alt=""
-              aria-hidden="true"
-              className="absolute inset-0 h-full w-full object-cover"
-              draggable={false}
-            />
-            {/* subtle bottom-up navy scrim for depth + to seat it against the page */}
-            <div
-              aria-hidden="true"
-              className="absolute inset-0"
-              style={{ background: "linear-gradient(180deg, transparent 40%, hsl(216 30% 6% / 0.55) 100%)" }}
-            />
-            {/* "View site" — the shape of this link is pointer-dependent
-                (D-22). On a FINE pointer it stays exactly as designed: the
-                whole shot is the target, a scrim washes in on hover and the
-                pill rises with it — the hover itself is the affordance, and
-                the custom cursor reads `data-cursor="view"`.
+            {/* Logo studies show the mark; the rest the split wordmark. */}
+            {study.logoImage ? (
+              <h1 key={language} className="my-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={study.logoImage}
+                  alt={study.client}
+                  draggable={false}
+                  className="block h-auto w-auto max-h-[clamp(2.5rem,6vw,4rem)] max-w-full object-contain object-left"
+                />
+              </h1>
+            ) : (
+              <h1
+                key={language}
+                className="font-display text-[clamp(2.1rem,4.5vw,3.6rem)] leading-[1.08] tracking-[-0.025em] text-ink text-balance"
+              >
+                {firstWord}
+                {rest.length > 0 ? (
+                  <>
+                    {" "}
+                    <span
+                      className="italic"
+                      style={{ color: "var(--cs-highlight)" }}
+                    >
+                      {rest.join(" ")}.
+                    </span>
+                  </>
+                ) : (
+                  <span style={{ color: "var(--cs-highlight)" }}>.</span>
+                )}
+              </h1>
+            )}
 
-                On a COARSE pointer there is no hover, so a full-bleed
-                `inset-0` anchor is a large invisible trap that throws the
-                reader onto an external site in a new tab with no warning.
-                There the anchor collapses to the pill alone (`inset-auto` +
-                bottom-right offset, min-h-11 so it clears 44×44) and the pill
-                is painted permanently: the tap target and the affordance
-                become the same object, and tapping the image does nothing.
-                The hover-only scrim is dropped on coarse — the figure's own
-                bottom-up navy gradient already seats the pill. The aria-label
-                carries the accessible name in BOTH modes. */}
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[10.5px] font-mono uppercase tracking-[0.14em] text-ink-mute">
+              <span>
+                <span className="text-ink/70">{isEn ? "Role:" : "Ruolo:"}</span>{" "}
+                <span className="text-ink">{role}</span>
+              </span>
+              <span
+                aria-hidden="true"
+                className="inline-block w-1 h-1 rounded-full bg-rule"
+              />
+              <span>{domain}</span>
+            </div>
+
+            <p className="text-[15px] text-ink-mute leading-[1.6] max-w-prose">
+              {summary}
+            </p>
+
+            {/* Stack — the Lusion "Services" side list, as chips. */}
+            {study.techStack.length > 0 && (
+              <ul className="flex flex-wrap gap-1.5" aria-label="Tech stack">
+                {study.techStack.slice(0, 10).map((tech) => (
+                  <li
+                    key={tech}
+                    className="px-2.5 py-1 text-[10px] font-mono uppercase tracking-[0.1em] rounded-full border border-rule/70 text-ink-mute"
+                  >
+                    {tech}
+                  </li>
+                ))}
+              </ul>
+            )}
+
             {study.liveUrl && (
               <a
                 href={study.liveUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 data-cursor="view"
-                aria-label={`${isEn ? "View" : "Visita"} ${study.client} — ${isEn ? "live site" : "sito live"}`}
-                className="absolute inset-0 z-10 flex items-center justify-center pointer-coarse:inset-auto pointer-coarse:bottom-3 pointer-coarse:right-3 pointer-coarse:rounded-full"
+                className="cs-launch w-fit"
               >
-                <span
-                  aria-hidden="true"
-                  className="absolute inset-0 bg-[hsl(216_30%_6%/0)] transition-colors duration-300 group-hover:bg-[hsl(216_30%_6%/0.5)] pointer-coarse:hidden"
-                />
-                <span className="relative inline-flex translate-y-1 items-center gap-2 rounded-full border border-[hsl(var(--accent)/0.5)] bg-[hsl(216_30%_8%/0.72)] px-5 py-2.5 font-mono text-[11px] uppercase tracking-[0.16em] text-ink opacity-0 backdrop-blur-sm transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100 pointer-coarse:min-h-11 pointer-coarse:translate-y-0 pointer-coarse:opacity-100">
-                  {isEn ? "View site" : "Visita il sito"}
-                  <ArrowUpRight className="h-3.5 w-3.5" />
+                <span className="cs-launch-dot" aria-hidden="true" />
+                <span className="cs-launch-text">
+                  {isEn ? "Launch project" : "Apri il progetto"}
+                </span>
+                <span className="cs-launch-arrow" aria-hidden="true">
+                  <ArrowUpRight className="w-3.5 h-3.5 text-[hsl(216_30%_8%)]" />
                 </span>
               </a>
             )}
-          </figure>
-        )}
 
-        {/* Eyebrow */}
-        <p className="eyebrow mb-5 inline-flex items-center gap-2">
-          <span
-            className="inline-block w-1.5 h-1.5 rounded-full"
-            style={{ background: `hsl(${accent})` }}
-            aria-hidden="true"
-          />
-          {study.industry} · {engagement}
-        </p>
-
-        {/* Headline. Studies with a brand logo show the LOGO in place of the
-            wordmark title (real full-colour SVG, left-aligned); the rest keep
-            the split-reveal text title. The <h1> stays for document structure —
-            the logo's alt carries the client name. key={language}: SplitText
-            owns the TEXT subtree once split, so a language swap must remount it
-            (same contract as SectionHeading's h2). */}
-        {study.logoImage ? (
-          <h1 key={language} className="mb-6">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={study.logoImage}
-              alt={study.client}
-              draggable={false}
-              className="block h-auto w-auto max-h-[clamp(2.75rem,8vw,5rem)] max-w-full sm:max-w-md object-contain object-left"
-            />
-          </h1>
-        ) : (
-          <h1 key={language} data-split-reveal className="font-display text-[clamp(2.25rem,7vw,4.75rem)] leading-[1.12] tracking-[-0.025em] text-ink text-balance mb-6">
-            {firstWord}
-            {rest.length > 0 ? (
-              <>
-                {" "}
-                <span className="italic" style={{ color: `hsl(${accent})` }}>
-                  {rest.join(" ")}.
-                </span>
-              </>
-            ) : (
-              <span style={{ color: `hsl(${accent})` }}>.</span>
-            )}
-          </h1>
-        )}
-
-        {/* Role + domain */}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-10 text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
-          <span>
-            <span className="text-ink/70">{isEn ? "Role:" : "Ruolo:"}</span>{" "}
-            <span className="text-ink">{role}</span>
-          </span>
-          <span aria-hidden="true" className="inline-block w-1 h-1 rounded-full bg-rule" />
-          <span>
-            <span className="text-ink/70">{isEn ? "Domain:" : "Ambito:"}</span>{" "}
-            <span className="text-ink">{domain}</span>
-          </span>
-        </div>
-
-        {/* Lead */}
-        <p className="text-lg sm:text-xl text-ink-mute max-w-3xl leading-[1.55] mb-16">{summary}</p>
-
-        {/* Brass rule */}
-        <div
-          className="h-px w-full mb-12"
-          style={{
-            background:
-              "linear-gradient(90deg, transparent 0%, hsl(var(--accent) / 0.4) 50%, transparent 100%)",
-          }}
-        />
-
-        {/* Metrics */}
-        {study.metrics.length > 0 && (
-          <section className="mb-20">
-            <p className="eyebrow mb-8" style={{ color: "hsl(var(--accent))" }}>
-              {isEn ? "What shipped" : "Cosa abbiamo consegnato"}
+            <p className="hidden lg:block text-[10px] font-mono uppercase tracking-[0.16em] text-ink-mute/70">
+              {isEn ? "Scroll to explore" : "Scorri per esplorare"} →
             </p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-12">
-              {study.metrics.map((metric, i) => (
-                <Reveal key={i} delay={i * 70} className="flex flex-col">
-                  <span
-                    className="font-display text-[clamp(2rem,5vw,3.25rem)] leading-[1.1] text-ink mb-3"
-                    style={{ letterSpacing: "-0.02em" }}
-                  >
-                    {/* CountUp animates only values its parser classifies as
-                        metrics (leading number + unit token: −47%, ~€18M/year,
-                        0.94 AUC…). Label-led, date, and word values ("p99 220ms
-                        → 38ms", "Exit · Oct 2024", "Live") render statically —
-                        that contract lives in count-up.tsx, not here. */}
-                    <CountUp value={metric.value} />
-                  </span>
-                  <span className="text-sm text-ink-mute leading-[1.5]">
-                    {isEn ? metric.label : metric.labelIt}
-                  </span>
-                </Reveal>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* Tech stack */}
-        {study.techStack.length > 0 && (
-          <section className="mb-20">
-            <p className="eyebrow mb-6">{isEn ? "Tech stack" : "Stack tecnologico"}</p>
-            <div className="flex flex-wrap gap-2">
-              {study.techStack.map((tech, i) => (
-                <Reveal key={tech} as="span" delay={i * 40} from="left">
-                <span
-                  className="px-3 py-1.5 text-[11px] font-mono uppercase tracking-[0.12em] rounded-full border border-rule/70 bg-surface/40 text-ink-mute"
-                >
-                  {tech}
-                </span>
-                </Reveal>
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* CTA */}
-        <section className="mb-20">
-          <Reveal>
-          <div className="rounded-xl border border-rule/70 bg-surface/40 backdrop-blur-sm p-8 sm:p-10">
-            <p className="eyebrow mb-4" style={{ color: "hsl(var(--accent))" }}>
-              {isEn ? "Next" : "Prossimo"}
-            </p>
-            <h3 className="font-display text-2xl sm:text-[1.75rem] text-ink mb-4 leading-tight max-w-2xl">
-              {isEn ? (
-                <>
-                  Want this kind of work in{" "}
-                  <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                    your business?
-                  </span>
-                </>
-              ) : (
-                <>
-                  Volete questo tipo di lavoro nel{" "}
-                  <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                    vostro business?
-                  </span>
-                </>
-              )}
-            </h3>
-            <p className="text-sm text-ink-mute mb-6 max-w-2xl">
-              {isEn ? (
-                <>
-                  One week, inside your stack. We hand you a written report on what&apos;s broken, what&apos;s manual, and
-                  what AI can actually do.
-                </>
-              ) : (
-                <>
-                  Una settimana, dentro il vostro stack. Vi consegniamo un report scritto su cosa è rotto, cosa è
-                  manuale e cosa l&apos;AI può davvero fare.
-                </>
-              )}
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Button asChild size="lg" className={cn("group", CTA_FLUID_SM)}>
-                <Link href="/audit">
-                  {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
-                  <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
-                </Link>
-              </Button>
-              <Button asChild variant="outline" size="lg" className={CTA_FLUID_SM}>
-                <Link href="/contact">{isEn ? "Or just say hello" : "Oppure scriveteci e basta"}</Link>
-              </Button>
-            </div>
           </div>
-          </Reveal>
-        </section>
 
-        {/* Prev / Next */}
-        {(prevStudy || nextStudy) && (
-          <nav className="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-16">
-            {prevStudy && (
-              <Link
-                href={`/case-studies/${prevStudy.id}`}
-                data-cursor="view"
-                className="group p-5 rounded-xl border border-rule/70 hover:border-[hsl(var(--accent)/0.5)] hover:bg-surface/40 transition-colors"
-              >
-                <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-ink-mute mb-2 inline-flex items-center gap-1.5">
-                  <ArrowLeft className="w-3 h-3" />
-                  {isEn ? "Previous" : "Precedente"}
-                </p>
-                <p className="font-display text-lg text-ink leading-tight group-hover:text-[hsl(var(--accent))] transition-colors">
-                  {prevStudy.client}
-                </p>
-                <p className="text-xs text-ink-mute mt-1">
-                  {isEn ? prevStudy.engagement : prevStudy.engagementIt}
-                </p>
-              </Link>
-            )}
-            {nextStudy && (
+          {/* ------------------------------------------------ media rail */}
+          <div ref={trackRef} className="cs-track">
+            {rail.map((item, i) => {
+              if (item.type === "text") {
+                return (
+                  <div key={i} className="cs-item cs-item-text">
+                    <span
+                      className="cs-item-value font-display"
+                      style={
+                        i % 3 === 1
+                          ? { color: "var(--cs-highlight)" }
+                          : undefined
+                      }
+                    >
+                      <CountUp value={item.value ?? ""} />
+                    </span>
+                    <span className="cs-item-label">
+                      {isEn ? item.label : item.labelIt ?? item.label}
+                    </span>
+                  </div>
+                );
+              }
+              mediaIndex++;
+              const isLead = mediaIndex === 0;
+              return (
+                <div
+                  key={i}
+                  className="cs-item"
+                  data-fullscreen={item.fullscreen ? "" : undefined}
+                >
+                  <div
+                    ref={isLead ? heroRef : undefined}
+                    data-flip-id={isLead ? study.id : undefined}
+                    data-flip-hero={isLead ? "" : undefined}
+                    className="cs-item-media"
+                    style={
+                      item.width && item.height
+                        ? { aspectRatio: `${item.width} / ${item.height}` }
+                        : undefined
+                    }
+                  >
+                    {item.type === "video" ? (
+                      <RailVideo src={item.src ?? ""} />
+                    ) : (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img src={item.src} alt="" draggable={false} />
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* NEXT PROJECT — the rail's closing beat (§3.2). */}
+            <div className="cs-item cs-next">
+              <p className="eyebrow">
+                {isEn ? "Next project" : "Prossimo progetto"}
+              </p>
               <Link
                 href={`/case-studies/${nextStudy.id}`}
                 data-cursor="view"
-                className="group p-5 rounded-xl border border-rule/70 hover:border-[hsl(var(--accent)/0.5)] hover:bg-surface/40 transition-colors text-right"
+                className="font-display text-[clamp(2rem,3.5vw,3.2rem)] leading-[1.08] text-ink hover:text-[var(--cs-highlight)] transition-colors"
               >
-                <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-ink-mute mb-2 inline-flex items-center gap-1.5 justify-end w-full">
-                  {isEn ? "Next" : "Successivo"}
-                  <ArrowUpRight className="w-3 h-3" />
-                </p>
-                <p className="font-display text-lg text-ink leading-tight group-hover:text-[hsl(var(--accent))] transition-colors">
-                  {nextStudy.client}
-                </p>
-                <p className="text-xs text-ink-mute mt-1">
-                  {isEn ? nextStudy.engagement : nextStudy.engagementIt}
-                </p>
+                {nextStudy.client}
               </Link>
+              <div className="cs-next-bar" aria-hidden="true">
+                <div ref={barRef} className="cs-next-bar-inner" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ---------------------------------------------------- closing CTA */}
+      <section className="container-px max-w-5xl relative z-10 py-20">
+        <div className="rounded-xl border border-rule/70 bg-surface/40 backdrop-blur-sm p-8 sm:p-10">
+          <p className="eyebrow mb-4" style={{ color: "var(--cs-highlight)" }}>
+            {isEn ? "Next" : "Prossimo"}
+          </p>
+          <h3 className="font-display text-2xl sm:text-[1.75rem] text-ink mb-4 leading-tight max-w-2xl">
+            {isEn ? (
+              <>
+                Want this kind of work in{" "}
+                <span className="italic" style={{ color: "var(--cs-highlight)" }}>
+                  your business?
+                </span>
+              </>
+            ) : (
+              <>
+                Volete questo tipo di lavoro nel{" "}
+                <span className="italic" style={{ color: "var(--cs-highlight)" }}>
+                  vostro business?
+                </span>
+              </>
             )}
-          </nav>
-        )}
-      </article>
+          </h3>
+          <p className="text-sm text-ink-mute mb-6 max-w-2xl">
+            {isEn ? (
+              <>
+                One week, inside your stack. We hand you a written report on
+                what&apos;s broken, what&apos;s manual, and what AI can
+                actually do.
+              </>
+            ) : (
+              <>
+                Una settimana, dentro il vostro stack. Vi consegniamo un
+                report scritto su cosa è rotto, cosa è manuale e cosa
+                l&apos;AI può davvero fare.
+              </>
+            )}
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <Button asChild size="lg" className={cn("group", CTA_FLUID_SM)}>
+              <Link href="/audit">
+                {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
+                <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
+              </Link>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className={CTA_FLUID_SM}
+            >
+              <Link href="/contact">
+                {isEn ? "Or just say hello" : "Oppure scriveteci e basta"}
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
