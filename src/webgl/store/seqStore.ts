@@ -490,6 +490,48 @@ interface SeqState {
    * dies exactly as the black closes), read by SignatureLine's useFrame via
    * getState() and multiplied into `uReveal`. Nothing round-trips. */
   liteSwallow: number;
+
+  // === WARP-JUMP fields (round 3 §C, igloo grammar — desktop one-shot ONLY;
+  // the phone/RM variants never write these, so they stay 0 there) ==========
+  /** NET camera up-flip roll about the view axis, RADIANS (0 at rest). The
+   * passage composes igloo's two-channel move per timeline tick — upRotation
+   * 0→π (power3.inOut) overlapped by the lerp-back-to-world-up settle — into
+   * this ONE angle: φ = atan2((1−s)·sinθ, (1−s)·cosθ + s). CONSUMED ONLY in
+   * SignatureLine's camera-authority frame (camera.rotateZ, additive, after
+   * every other orientation writer). */
+  upFlip: number;
+  /** Fov widen in DEGREES added to CAMERA_FOV (0 at rest, up to +8 at max
+   * warp — igloo's 22→30 ramp transposed). SignatureLine applies it with an
+   * updateProjectionMatrix call gated on a >0.01° change. */
+  fovShift: number;
+  /** Deterministic sine-noise camera-shake amplitude, RADIANS (igloo's
+   * shake.setScalar(0.02) grammar): 0 → 0.02 near the horizon, 0 after
+   * emergence. SignatureLine evaluates the stacked-sine noise (sineNoise1
+   * port — never Math.random in a frame path). */
+  shakeAmp: number;
+  /** Ring-passage burst spike 0→1→0 (igloo uRingProximity envelope: 0.5s
+   * power1.in up / 0.4s power1.out down), fired at the horizon crossing and
+   * at emergence. Read via getState in PostFXNodes' useFrame and damped
+   * there; drives the TSL angular-smear / block-glitch / sat-value lift,
+   * which is If-guarded so idle cost ≈ 0. */
+  burst: number;
+  /** Per-burst seed (igloo uSquareAttr: .x/.y = noise-lookup offset, .z =
+   * block-glitch intensity). Randomized ONCE at fire time (Math.random is
+   * allowed there, never per frame). Three scalars — this module stays
+   * three-free, no Vector3. */
+  burstSeedX: number;
+  burstSeedY: number;
+  burstSeedZ: number;
+
+  // === P0 disarm hardening (2026-08-21): the passage's measured armed band
+  // as PAGE-PROGRESS fractions, published by the desktop path's cache() on
+  // every ScrollTrigger refresh. SequenceSingularity's useFrame clamps
+  // group.visible to false whenever scrollStore.progress sits outside
+  // [armedLoP, armedHiP] — a deterministic belt-and-braces gate that cannot
+  // go stale with downstream layout changes (defaults 0/1 = permissive until
+  // the passage measures; reset with the store). ============================
+  armedLoP: number;
+  armedHiP: number;
 }
 
 const SEQ_DEFAULTS: SeqState = {
@@ -510,6 +552,15 @@ const SEQ_DEFAULTS: SeqState = {
   holeNdcY: 0.5,
   lite: false,
   liteSwallow: 0,
+  upFlip: 0,
+  fovShift: 0,
+  shakeAmp: 0,
+  burst: 0,
+  burstSeedX: 0,
+  burstSeedY: 0,
+  burstSeedZ: 1,
+  armedLoP: 0,
+  armedHiP: 1,
 };
 
 const createSeqStore = () => create<SeqState>(() => ({ ...SEQ_DEFAULTS }));

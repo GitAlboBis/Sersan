@@ -31,6 +31,7 @@ import {
   useSeqStore,
   resetSeqStore,
 } from "@/webgl/store/seqStore";
+import { useScrollStore } from "@/webgl/store/scrollStore";
 import { useTierStore } from "@/webgl/store/tierStore";
 import { cn } from "@/lib/utils";
 
@@ -1144,6 +1145,10 @@ export default function SingularityPassage() {
               trigger: root,
               start: "top bottom",
               end: "bottom top",
+              // P0 fix (same hardening as the desktop band): re-measure on
+              // refresh so a downstream layout change can never leave the
+              // island armed off-band.
+              invalidateOnRefresh: true,
               onToggle: (self) => {
                 if (self.isActive) {
                   ensureTunnel();
@@ -1176,6 +1181,16 @@ export default function SingularityPassage() {
             const onRefresh = () => {
               tunnel?.resize();
               measureOverflow();
+              // P0 fix — ISLAND MODE only (flag off: nothing subscribes to
+              // `armed` on a phone): re-assert the armed truth from the
+              // band's refreshed measurement so the lite march can never
+              // outlive its window after a downstream layout change.
+              if (seqLiteMarch) {
+                const inBand = bandST.isActive;
+                if (useSeqStore.getState().armed !== inBand) {
+                  useSeqStore.setState({ armed: inBand });
+                }
+              }
             };
             ScrollTrigger.addEventListener("refresh", onRefresh);
             measureOverflow();
@@ -1299,6 +1314,17 @@ export default function SingularityPassage() {
           // ── Caches — refreshed ONLY on ScrollTrigger "refresh" ───────────
           let ih = window.innerHeight;
           let vw = window.innerWidth;
+          /** Late-bound handle for the armed-band trigger (created further
+           * down) so cache() — registered on "refresh" BEFORE bandST exists —
+           * can re-assert `armed` without a TDZ read. P0 fix 2026-08-21: the
+           * home sections BELOW this passage keep changing height across the
+           * restyle rounds, and a stale band measurement (or a missed toggle
+           * across a big layout shift) left `armed` latched true — the
+           * camera-Y-locked hole then rode the viewport over the whole page
+           * ("il buco nero si vede in tutta la home"). After every refresh
+           * the band re-derives its truth from the FRESH measurements and the
+           * store is forced to match it. */
+          let bandSTRef: ScrollTrigger | null = null;
           let emergeEl =
             document.querySelector<HTMLElement>("#problem [data-emerge]");
           let emergeSet: ((v: Record<string, number | string>) => void) | null =
@@ -1335,6 +1361,36 @@ export default function SingularityPassage() {
               emergeSet = null;
             }
             tunnel?.resize();
+            // ── P0 disarm hardening (see bandSTRef above) ─────────────────
+            // (a) Re-assert `armed` from the band's freshly-refreshed truth,
+            // and hard-dispose the tunnel when outside it (mirrors onToggle,
+            // idempotent when nothing changed — zustand bails on same-value
+            // sets and disposeTunnel no-ops without an instance).
+            if (bandSTRef) {
+              const inBand = bandSTRef.isActive;
+              if (useSeqStore.getState().armed !== inBand) {
+                useSeqStore.setState({ armed: inBand });
+              }
+              if (!inBand) disposeTunnel();
+            }
+            // (b) Publish the band window as PAGE-PROGRESS fractions — the
+            // belt-and-braces gate SequenceSingularity clamps group.visible
+            // with (deterministic even if a toggle is ever missed between
+            // refreshes). Same geometry as bandST: start "top bottom", end
+            // "bottom+=2.5·ih top".
+            const rootTopDoc =
+              root.getBoundingClientRect().top + window.scrollY;
+            const docH = document.documentElement.scrollHeight;
+            const denom = Math.max(docH - ih, 1);
+            const loP = Math.max(0, (rootTopDoc - ih) / denom);
+            const hiP = Math.min(
+              1,
+              (rootTopDoc + root.offsetHeight + ih * 2.5) / denom,
+            );
+            const seqNow = useSeqStore.getState();
+            if (seqNow.armedLoP !== loP || seqNow.armedHiP !== hiP) {
+              useSeqStore.setState({ armedLoP: loP, armedHiP: hiP });
+            }
           };
           ScrollTrigger.addEventListener("refresh", cache);
 
@@ -1410,7 +1466,10 @@ export default function SingularityPassage() {
             const cv = document.createElement("canvas");
             cv.style.opacity = "0";
             host.appendChild(cv);
-            const t = createPreloaderTunnel(cv, { tilt: false });
+            // warpFx — round 3 §C4: spaghettification + wisp layer, DESKTOP
+            // one-shot only (the phone beat and the preloader construct
+            // without it and keep the reference field byte-identical).
+            const t = createPreloaderTunnel(cv, { tilt: false, warpFx: true });
             if (!t) {
               host.removeChild(cv);
               // Graft 5: no WebGL1 → the veil carries the entry alone (a
@@ -1618,7 +1677,15 @@ export default function SingularityPassage() {
               tunnelAlpha: 0,
               warp: SEQ.WARP_MIN,
               pan01: 0,
+              // Round 3 §C — warp-camera + burst fields die WITH the shot
+              // (the skip path may land mid-flip; SignatureLine's damped
+              // consume eases the residual out over ~0.2s).
+              upFlip: 0,
+              fovShift: 0,
+              shakeAmp: 0,
+              burst: 0,
             });
+            tunnel?.setEmergence(0, 0);
             veilSet({ opacity: 0, scale: 2.3 });
             if (pulseAlpha) pulseAlpha(0);
             if (imposterSet) imposterSet({ opacity: 0 });
@@ -1886,6 +1953,13 @@ export default function SingularityPassage() {
             // divario lands as a ZOOM-IN from the vanishing point
             // (transform-only; doc-position cached on refresh, viewport
             // position derived from scrollY — no rect reads here).
+            //
+            // Round 3 §C3 — the flat alpha fade is replaced by the TORN
+            // reveal: the overlay holds near-full alpha while the layered
+            // falloff cut (setEmergence → the tunnel's final fragment) tears
+            // it away through the diagonal noise edge with spectral CA at
+            // the lip; the residual alpha ramp in the tail is only cleanup
+            // (and the t = 1 cut already zeroes the fragment itself).
             tl.to(emerge, {
               t: 1,
               duration: SEQ.PLUNGE_EMERGE_S,
@@ -1894,8 +1968,20 @@ export default function SingularityPassage() {
                 const t = emerge.t;
                 useSeqStore.setState({
                   warp: SEQ.WARP_MAX + (SEQ.WARP_EMERGE - SEQ.WARP_MAX) * t,
-                  tunnelAlpha: tunnelNull() ? 0 : 1 - t,
+                  tunnelAlpha: tunnelNull() ? 0 : 1 - seqSmooth(t, 0.7, 1),
                 });
+                // The wipe: cut rides this tween's own power2.out clock; the
+                // velocity-weighted slope term (igloo's commented-out line,
+                // wired) reads the live Lenis velocity from scrollStore —
+                // ~0 while the shot's input lock holds, alive if the user is
+                // flinging as the lock releases.
+                tunnel?.setEmergence(
+                  t,
+                  Math.min(
+                    1,
+                    Math.abs(useScrollStore.getState().velocity) * 0.01,
+                  ),
+                );
                 veilSet({ opacity: 1 - t, scale: 2.3 });
                 if (pulseAlpha) pulseAlpha(0);
                 if (emergeSet) {
@@ -1915,6 +2001,147 @@ export default function SingularityPassage() {
                 }
               },
             });
+
+            // ══════════════════════════════════════════════════════════════
+            // Round 3 §C1/§C2 — WARP CAMERA FIELDS + RING-PASSAGE BURSTS
+            // (igloo entry-scene grammar, mined 2026-08-21). All positioned
+            // tweens on the SAME timeline (absolute seconds), so they scrub,
+            // skip and kill with the shot. This block only WRITES seqStore —
+            // SignatureLine (camera) and PostFXNodes (burst) consume.
+            // Segment boundaries: TRAVERSE ends tT, LIGHT-SPEED tL, ENTER tE
+            // (the black-frame call), SPEED tS, EMERGE tM.
+            // ══════════════════════════════════════════════════════════════
+            const tT = SEQ.PLUNGE_TRAVERSE_S; // 1.7
+            const tL = tT + SEQ.PLUNGE_LIGHTSPEED_S; // 3.3
+            const tE = tL + SEQ.PLUNGE_ENTER_S; // 5.1
+            const tS = tE + SEQ.PLUNGE_SPEED_S; // 5.8
+
+            // C1a — corkscrew up-flip. igloo composes upRotation 0→π
+            // (power3.inOut) with an overlapped lerp-back-to-world-up
+            // (their update(): baseUp.applyAxisAngle(θ).lerp(worldUp, s));
+            // we bake the SAME two-channel move into one net view-axis roll:
+            // φ = atan2((1−s)·sinθ, (1−s)·cosθ + s). With θ→π completing
+            // while s > 0.5 the composition returns to 0 smoothly UNDER the
+            // black frame (tE..tS), so the divario never sees the un-roll.
+            const flipState = { rot: 0, settle: 0 };
+            const writeFlip = () => {
+              const s = flipState.settle;
+              const th = flipState.rot;
+              useSeqStore.setState({
+                upFlip: Math.atan2(
+                  (1 - s) * Math.sin(th),
+                  (1 - s) * Math.cos(th) + s,
+                ),
+              });
+            };
+            tl.to(
+              flipState,
+              {
+                rot: Math.PI,
+                duration: 3.4,
+                ease: "power3.inOut",
+                onUpdate: writeFlip,
+              },
+              tT + 0.2,
+            );
+            tl.to(
+              flipState,
+              {
+                settle: 1,
+                duration: 2.6,
+                ease: "power2.inOut",
+                onUpdate: writeFlip,
+              },
+              tL + 0.3,
+            );
+
+            // C1b — fov widen: base +8° across LIGHT-SPEED + ENTER (igloo's
+            // 22→30 ramp transposed onto CAMERA_FOV), held through SPEED,
+            // eased back on landing (EMERGE).
+            const fovState = { v: 0 };
+            const writeFov = () =>
+              useSeqStore.setState({ fovShift: fovState.v });
+            tl.to(
+              fovState,
+              { v: 8, duration: tE - tT, ease: "power1.inOut", onUpdate: writeFov },
+              tT,
+            );
+            tl.to(
+              fovState,
+              {
+                v: 0,
+                duration: SEQ.PLUNGE_EMERGE_S,
+                ease: "power2.out",
+                onUpdate: writeFov,
+              },
+              tS,
+            );
+
+            // C1c — deterministic sine-noise shake amplitude: 0 → 0.02 rad
+            // as the warp climbs toward the horizon, held through
+            // ENTER/SPEED, 0 after emergence. (The noise itself lives in
+            // SignatureLine — igloo sineNoise1, never Math.random per frame.)
+            const shakeState = { v: 0 };
+            const writeShake = () =>
+              useSeqStore.setState({ shakeAmp: shakeState.v });
+            tl.to(
+              shakeState,
+              { v: 0.02, duration: 1.2, ease: "power1.in", onUpdate: writeShake },
+              tT + 0.4,
+            );
+            tl.to(
+              shakeState,
+              { v: 0, duration: 0.5, ease: "power1.out", onUpdate: writeShake },
+              tS,
+            );
+
+            // C2 — ring-passage bursts (igloo uRingProximity envelope:
+            // 0.5s power1.in up / 0.4s power1.out down, seed re-rolled per
+            // burst — Math.random at FIRE TIME only). Burst 1 rides the
+            // horizon crossing (the veil's closing tail, peaking just before
+            // the black-frame call); burst 2 rides the emergence as the
+            // black opens over the divario.
+            const burstState = { v: 0 };
+            const writeBurst = () =>
+              useSeqStore.setState({ burst: burstState.v });
+            const seedBurst = () =>
+              useSeqStore.setState({
+                burstSeedX: Math.random() * 25.424,
+                burstSeedY: Math.random() * 64.453,
+                burstSeedZ: 0.6 + Math.random() * 0.5,
+              });
+            const spike = (at: number) => {
+              tl.call(seedBurst, undefined, at);
+              // immediateRender OFF: a positioned fromTo must not stamp its
+              // `from` value at build time (the spike exists only in its
+              // window).
+              tl.fromTo(
+                burstState,
+                { v: 0 },
+                {
+                  v: 1,
+                  duration: 0.5,
+                  ease: "power1.in",
+                  immediateRender: false,
+                  onUpdate: writeBurst,
+                },
+                at,
+              );
+              tl.fromTo(
+                burstState,
+                { v: 1 },
+                {
+                  v: 0,
+                  duration: 0.4,
+                  ease: "power1.out",
+                  immediateRender: false,
+                  onUpdate: writeBurst,
+                },
+                at + 0.5,
+              );
+            };
+            spike(tL + 1.0); // horizon crossing (veil ~closing, still visible)
+            spike(tS); // emergence (the black opening onto the divario)
 
             tl.play();
           };
@@ -2005,7 +2232,13 @@ export default function SingularityPassage() {
                 tunnelAlpha: 0,
                 warp: SEQ.WARP_MIN,
                 pan01: 0,
+                // Round 3 §C — mirror finishPlunge's terminal write.
+                upFlip: 0,
+                fovShift: 0,
+                shakeAmp: 0,
+                burst: 0,
               });
+              tunnel?.setEmergence(0, 0);
               if (imposterSet) imposterSet({ opacity: 0 });
               stopRaf();
               setCap(false);
@@ -2022,11 +2255,17 @@ export default function SingularityPassage() {
             trigger: root,
             start: "top bottom",
             end: () => `bottom+=${Math.round(ih * 2.5)} top`,
+            // P0 fix: downstream sections keep changing height — the band
+            // must re-derive its function-based end from fresh measurements
+            // on every refresh (cache() then re-asserts `armed` from the
+            // refreshed truth — see bandSTRef).
+            invalidateOnRefresh: true,
             onToggle: (self) => {
               useSeqStore.setState({ armed: self.isActive });
               if (!self.isActive) disposeTunnel();
             },
           });
+          bandSTRef = bandST;
 
           // Prime against the current scroll position (SPA nav can land
           // mid-page) and once webfonts settle (the display serif changes

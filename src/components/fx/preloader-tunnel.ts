@@ -47,6 +47,31 @@
  * (a failed WebGL attempt leaves the canvas free for a "2d" context). If the
  * FBO for the zoom-blur pass can't be completed, the pass alone is skipped
  * and points render straight to the canvas.
+ *
+ * WARP-JUMP EXTENSIONS (round 3 §C — igloo.inc grammar, mined 2026-08-21;
+ * ALL gated behind `options.warpFx` + their own uniforms, so the preloader
+ * and the phone beat keep the reference math byte-identical):
+ *   C4 SPAGHETTIFICATION — per-point corkscrew shear (≤0.4rad) + tidal
+ *      z-pull + sprite stretch (≤2.5×) driven by igloo's
+ *      `falloffsmooth(distToCamera)` in the point vertex; scaled by uSpag,
+ *      which the module derives from its own timeCoef (0 below warp ~25, so
+ *      the calm field is exactly the reference — the guarded branch is a
+ *      no-op identity at sp = 0).
+ *   C4 WISP LAYER — igloo's triple-multiplied sheared-noise smoke
+ *      (`uv.x -= uv.y`, three octave-products, tint 0.85/0.9/1.0) as one
+ *      additive fullscreen pass INTO the FBO after the points (so it
+ *      inherits the zoom blur and the emergence wipe). Program compiled and
+ *      drawn only under `warpFx`, alpha 0 outside the high-warp window.
+ *   C3 EMERGENCE WIPE — the final (zoom) fragment carries igloo's layered
+ *      falloff() cut: three margins (2.0 CA halo / 0.9 displacement shove /
+ *      0.2 hard edge), procedural value-noise channels standing in for their
+ *      baked tScroll texture, diagonal slope −0.2·aspect PLUS the
+ *      velocity-weighted term igloo left commented out
+ *      (+0.15·clamp(velNorm)·aspect), and the verbatim 5-tap spectral CA
+ *      (ca_barrelDistortion + spectrum weights) blended in at the leading
+ *      edge, dithered by the pass's own gl_FragCoord hash. Driven by
+ *      setEmergence(cut, velNorm); uCut ≤ 0 keeps the original output
+ *      bit-comparable (the whole block is branch-guarded).
  */
 
 // Budget source: the tierStore is AUTHORITATIVE once resolved (it honours
@@ -75,6 +100,16 @@ export interface PreloaderTunnel {
    * pointer tilt active (preloader default) only the blur center moves.
    */
   setCenter(u: number, v: number): void;
+  /**
+   * C3 — drive the emergence wipe (round 3 §C, igloo layered-falloff cut).
+   * `cut` 0→1 tears the overlay away through the diagonal noise edge (0 =
+   * original untorn output, bit-comparable to the reference); `velNorm`
+   * (0..1, |Lenis velocity| normalized by the caller) feeds the
+   * velocity-weighted slope term. The wipe seed re-randomizes on each 0→>0
+   * crossing (fire-time randomness only — the fragment itself is
+   * deterministic per frame).
+   */
+  setEmergence(cut: number, velNorm: number): void;
   /** Delete every GL resource (buffers, textures, programs, FBO), remove the
    *  pointer listener, and lose the context. */
   dispose(): void;
@@ -88,6 +123,13 @@ export interface PreloaderTunnelOptions {
    * Default `true` (preloader behavior, byte-identical).
    */
   tilt?: boolean;
+  /**
+   * `true` arms the round-3 warp-jump extras (C4 spaghettification + wisp
+   * layer; see the header) — the DESKTOP singularity passage only. Default
+   * `false`: the preloader and the phone beat never compile the wisp program
+   * and keep uSpag pinned at 0 (exact-identity vertex path).
+   */
+  warpFx?: boolean;
 }
 
 // ---- Reference parameters (see header — do not tune these) ------------------
@@ -113,21 +155,111 @@ const CYAN_SHARE = 0.18; // #3BE1FF rgb(59,225,255) × rnd(0.55, 0.95)
 // ---- Shaders (GLSL 100) -----------------------------------------------------
 // Vertex math is VERBATIM from the reference; projectionMatrix/modelViewMatrix
 // are plain uniforms here (raw WebGL has no built-ins).
+
+// igloo falloff helpers (mined 2026-08-21, `Ue` bundle string) — `_linstep`
+// handles reversed edges by construction, so no undefined reversed-smoothstep.
+const GLSL_FALLOFF = /* glsl */ `
+  float _linstep(float begin, float end, float t) {
+    return clamp((t - begin) / (end - begin), 0.0, 1.0);
+  }
+  float falloff(float _input, float start, float end, float margin, float progress) {
+    float m = margin * sign(end - start);
+    float p = mix(start - m, end, progress);
+    return _linstep(p + m, p, _input);
+  }
+  float falloffsmooth(float _input, float start, float end, float margin, float progress) {
+    float m = margin * sign(end - start);
+    float p = mix(start - m, end, progress);
+    float t = _linstep(p + m, p, _input);
+    return t * t * (3.0 - 2.0 * t);
+  }
+`;
+
+// Procedural 2D value noise — the stand-in for igloo's baked scroll/wind
+// data textures (round 3 §C3/§C4: "no new textures").
+const GLSL_VNOISE = /* glsl */ `
+  float hash21(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+  }
+  float vnoise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(hash21(i), hash21(i + vec2(1.0, 0.0)), u.x),
+      mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), u.x),
+      u.y
+    );
+  }
+`;
+
+// igloo 5-tap spectral chromatic aberration (mined `d3` bundle string,
+// ported VERBATIM — ca_barrelDistortion + gamma-corrected spectrum weights).
+const GLSL_SPECTRAL_CA = /* glsl */ `
+  float ca_linterp(float t) { return clamp(1.0 - abs(2.0 * t - 1.0), 0.0, 1.0); }
+  float ca_remap(float t, float a, float b) { return clamp((t - a) / (b - a), 0.0, 1.0); }
+  vec2 ca_barrelDistortion(vec2 coord, float amt) {
+    vec2 cc = coord - 0.5;
+    float dist = dot(cc, cc);
+    return coord + cc * dist * amt;
+  }
+  vec4 ca_spectrum_offset(float t) {
+    vec4 ret;
+    float lo = step(t, 0.5);
+    float hi = 1.0 - lo;
+    float w = ca_linterp(ca_remap(t, 1.0 / 6.0, 5.0 / 6.0));
+    ret = vec4(lo, 1.0, hi, 1.0) * vec4(1.0 - w, w, 1.0 - w, 1.0);
+    return pow(ret, vec4(1.0 / 2.2));
+  }
+  const int CA_ITERATIONS = 5;
+  const float RECI_ITER = 1.0 / float(CA_ITERATIONS);
+  vec4 chromatic_aberration(sampler2D text, vec2 uv, float maxdistort, float bendAmount) {
+    vec4 sumcol = vec4(0.0);
+    vec4 sumw = vec4(0.0);
+    for (int i = 0; i < CA_ITERATIONS; ++i) {
+      float t = float(i) * RECI_ITER;
+      vec4 w = ca_spectrum_offset(t);
+      sumw += w;
+      sumcol += w * texture2D(text, ca_barrelDistortion(uv, bendAmount * maxdistort * t));
+    }
+    return sumcol / sumw;
+  }
+`;
+
 const POINT_VERT = /* glsl */ `
   precision highp float;
   attribute vec3 position;
   attribute vec3 color;
   attribute float size;
   uniform float uTime;
+  uniform float uSpag;
   uniform mat4 projectionMatrix;
   uniform mat4 modelViewMatrix;
   varying vec4 vColor;
+  ${GLSL_FALLOFF}
   void main(){
     vColor = vec4(color, 1.0);
     vec3 p = vec3(position);
     p.z = -150. + mod(position.z + uTime, 300.);
+    // C4 — spaghettification (igloo §5/§6 grammar): the treadmill fract-wrap
+    // above IS igloo's treadmill() on one axis (mod → [-150, 150) about the
+    // group at z = -150, camera at 0); per-point stretch + shear ride
+    // falloffsmooth(distToCamera). uSpag = 0 (preloader / phone / calm field)
+    // keeps this branch a no-op and the reference math exact.
+    float sp = 0.0;
+    if (uSpag > 0.0001) {
+      float dist = 150.0 - p.z; // view-space distance (tilt ≤ 0.05 rad → ~exact)
+      sp = uSpag * falloffsmooth(dist, 0.0, 300.0, 120.0, 0.4);
+      float ang = 0.4 * sp; // corkscrew shear, ≤ 0.4 rad
+      float c = cos(ang);
+      float s = sin(ang);
+      p.xy = mat2(c, s, -s, c) * p.xy;
+      // Tidal pull: near points accelerate toward the camera (capped so no
+      // point crosses the eye plane and mirrors).
+      p.z = min(p.z + 40.0 * sp, 148.0);
+    }
     vec4 mvPosition = modelViewMatrix * vec4( p, 1.0 );
-    gl_PointSize = size * (-50.0 / mvPosition.z);
+    gl_PointSize = size * (-50.0 / mvPosition.z) * (1.0 + 1.5 * sp);
     gl_Position = projectionMatrix * mvPosition;
   }
 `;
@@ -155,27 +287,121 @@ const QUAD_VERT = /* glsl */ `
 // Port of the reference's ZoomBlurPass (evanw glfx zoom blur): dithered taps
 // marching radially toward the screen centre, triangular weights. 24 taps
 // (the pen used 40) — visually identical at preloader scale, cheaper.
+//
+// C3 — EMERGENCE WIPE (round 3 §C, igloo composite pass, mined 2026-08-21):
+// when uCut > 0 the same fragment carries igloo's three-margin layered cut —
+// CA halo (margin 2.0) / displacement shove (0.9 → cutDisp on the g-noise) /
+// hard ice edge (0.2 → cut on the r-noise) — over a diagonal whose slope is
+// the base −0.2·aspect PLUS the velocity term igloo left commented out
+// (+0.15·clamp(velNorm)·aspect), with procedural value noise standing in for
+// their baked tScroll channels and the 5-tap spectral CA blended in at the
+// leading edge, dithered by this pass's own gl_FragCoord hash. uCut ≤ 0
+// branches to the original output (preloader / phone beat untouched).
 const ZOOM_FRAG = /* glsl */ `
   precision mediump float;
   uniform sampler2D tDiffuse;
   uniform vec2 uCenter;
   uniform float uStrength;
+  uniform float uCut;
+  uniform float uVelNorm;
+  uniform float uAspect;
+  uniform vec2 uSeed;
   varying vec2 vUv;
   float random(vec3 scale, float seed) {
     return fract(sin(dot(gl_FragCoord.xyz + seed, scale)) * 43758.5453 + seed);
   }
+  ${GLSL_FALLOFF}
+  ${GLSL_VNOISE}
+  ${GLSL_SPECTRAL_CA}
   void main() {
+    // ── C3 wipe channels (all 0 / identity while uCut ≤ 0) ──
+    float cut = 0.0;
+    float cutBlur = 0.0;
+    vec2 tuv = vUv;
+    if (uCut > 0.001) {
+      // Aspect-corrected noise frame (igloo normalizes uvTex.x *= aspect).
+      vec2 nuv = vec2(vUv.x * uAspect, vUv.y);
+      // Three procedural channels standing in for tScroll.rgb.
+      float nR = vnoise(nuv * 3.0 + uSeed);
+      float nG = vnoise(nuv * 6.0 + uSeed * 1.7);
+      float nB = vnoise(nuv * 2.0 + uSeed * 2.3);
+      // Slope displacement + the wired velocity-weighted diagonal.
+      float slopeDisp = (nB * 2.0 - 1.0) * 0.4;
+      float slope = (-0.2 + 0.15 * clamp(uVelNorm, 0.0, 1.0)) * uAspect;
+      float inclination = mix(1.0 - vUv.x + slopeDisp, vUv.x + slopeDisp, step(slope, 0.0));
+      float incProgress = uCut * (1.0 + abs(slope));
+      float diag = vUv.y + inclination * abs(slope);
+      // Three-margin layered cut (igloo verbatim margins: 2.0 / 0.9+1.0 / 0.2).
+      cutBlur = falloff(diag, 0.0, 1.0, 2.0, incProgress);
+      float cutDiagonalDisplacement = falloff(diag, 0.0, 1.0, 0.9, incProgress);
+      float cutDisp = falloff(nG, 0.0, 1.0, 1.0, cutDiagonalDisplacement);
+      float cutDiagonal = falloff(diag, 0.0, 1.0, 0.2, incProgress);
+      cut = falloff(nR, 0.0, 1.0, 2.0, cutDiagonal);
+      // Displacement shove on the sample (igloo's 0.025 constant).
+      tuv = vUv + vec2(0.0, 0.025 * cutDisp);
+    }
+
     vec4 color = vec4(0.0);
     float total = 0.0;
-    vec2 toCenter = uCenter - vUv;
+    vec2 toCenter = uCenter - tuv;
     float offset = random(vec3(12.9898, 78.233, 151.7182), 0.0);
     for (float t = 0.0; t <= 24.0; t++) {
       float percent = (t + offset) / 24.0;
       float weight = 4.0 * (percent - percent * percent);
-      color += texture2D(tDiffuse, vUv + toCenter * percent * uStrength) * weight;
+      color += texture2D(tDiffuse, tuv + toCenter * percent * uStrength) * weight;
       total += weight;
     }
-    gl_FragColor = color / total;
+    vec4 outc = color / total;
+
+    if (uCut > 0.001) {
+      // 5-tap spectral CA at the leading edge only: cutBlur grades 0→1
+      // approaching the tear from above; (1 − cut) keeps it out of the
+      // already-torn region. Dithered by the pass's own hash (igloo dithers
+      // with blue noise "to hide the seams from the chromatic aberration").
+      float dith = random(vec3(12.9898, 78.233, 151.7182), 1.0);
+      // Edge-proximity modulator — full CA over the frame, fading to 0 across
+      // the outer 15% border so the barrel taps never sample off-texture.
+      // Written as 1 − smoothstep(lo, hi, x): reversed-edge smoothstep is
+      // UNDEFINED in GLSL ES (same reason _linstep exists above).
+      float modulator = 12.0
+        * (1.0 - smoothstep(0.7, 1.0, abs(vUv.x * 2.0 - 1.0)))
+        * (1.0 - smoothstep(0.7, 1.0, abs(vUv.y * 2.0 - 1.0)));
+      vec4 ca = chromatic_aberration(tDiffuse, tuv, modulator, cutBlur * dith);
+      float caW = clamp(cutBlur * (1.0 - cut), 0.0, 1.0);
+      outc = mix(outc, ca, caW);
+      // The tear: premultiplied output → scale rgb AND alpha, so the page
+      // shows through the torn edge instead of a flat fade.
+      outc *= (1.0 - cut);
+    }
+    gl_FragColor = outc;
+  }
+`;
+
+// C4 — the optional "inhabited atmosphere" wisp layer (igloo groundsmoke
+// grammar, mined 2026-08-21): sheared uv (uv.x -= uv.y), THREE multiplied
+// noise octaves drifting at (-t, t*0.7), pow-shaped alpha, cool tint. Drawn
+// additively INTO the FBO after the points, so it inherits the zoom blur and
+// the emergence wipe. Compiled + drawn only under `options.warpFx`; uAlpha 0
+// outside the high-warp window skips the draw call entirely.
+const WISP_FRAG = /* glsl */ `
+  precision mediump float;
+  uniform float uTime;
+  uniform float uAlpha;
+  uniform float uAspect;
+  varying vec2 vUv;
+  ${GLSL_VNOISE}
+  void main() {
+    vec2 uv = vec2(vUv.x * uAspect, vUv.y);
+    uv.x -= uv.y; // igloo's shear
+    float t = uTime * 0.02 + 0.5;
+    float w = vnoise(uv * 3.0 + vec2(-t, t * 0.7));
+    w *= vnoise(uv * 6.0 + vec2(-t * 1.3, t * 0.7));
+    w *= vnoise(uv * 9.0 + vec2(-t * 1.7, t * 0.7));
+    float v = clamp(w * 3.0, 0.0, 1.0);
+    float a = pow(v, 3.0) * uAlpha;
+    // Keep the dead-center clear — the hole owns the vanishing point.
+    a *= smoothstep(0.12, 0.45, length(vUv - 0.5));
+    gl_FragColor = vec4(vec3(0.85, 0.9, 1.0) * a, a);
   }
 `;
 
@@ -382,11 +608,13 @@ function initTunnel(
         : COUNT_DESKTOP;
 
   // ---- Programs ----
+  const warpFx = options?.warpFx === true;
   const pointProgram = buildProgram(gl, POINT_VERT, POINT_FRAG);
   const aPosition = gl.getAttribLocation(pointProgram, "position");
   const aColor = gl.getAttribLocation(pointProgram, "color");
   const aSize = gl.getAttribLocation(pointProgram, "size");
   const uTimeLoc = gl.getUniformLocation(pointProgram, "uTime");
+  const uSpagLoc = gl.getUniformLocation(pointProgram, "uSpag");
   const uProjLoc = gl.getUniformLocation(pointProgram, "projectionMatrix");
   const uMvLoc = gl.getUniformLocation(pointProgram, "modelViewMatrix");
   const uTexLoc = gl.getUniformLocation(pointProgram, "uTexture");
@@ -396,6 +624,25 @@ function initTunnel(
   const zTexLoc = gl.getUniformLocation(zoomProgram, "tDiffuse");
   const zCenterLoc = gl.getUniformLocation(zoomProgram, "uCenter");
   const zStrengthLoc = gl.getUniformLocation(zoomProgram, "uStrength");
+  const zCutLoc = gl.getUniformLocation(zoomProgram, "uCut");
+  const zVelLoc = gl.getUniformLocation(zoomProgram, "uVelNorm");
+  const zAspectLoc = gl.getUniformLocation(zoomProgram, "uAspect");
+  const zSeedLoc = gl.getUniformLocation(zoomProgram, "uSeed");
+
+  // C4 wisp program — warpFx only (the preloader/phone never compile it).
+  const wispProgram = warpFx ? buildProgram(gl, QUAD_VERT, WISP_FRAG) : null;
+  const wPosition = wispProgram
+    ? gl.getAttribLocation(wispProgram, "position")
+    : -1;
+  const wTimeLoc = wispProgram
+    ? gl.getUniformLocation(wispProgram, "uTime")
+    : null;
+  const wAlphaLoc = wispProgram
+    ? gl.getUniformLocation(wispProgram, "uAlpha")
+    : null;
+  const wAspectLoc = wispProgram
+    ? gl.getUniformLocation(wispProgram, "uAspect")
+    : null;
 
   // ---- Geometry: interleaved [x y z | r g b | size], built ONCE ----
   // Spread + size are the reference's exact distributions; the color mix is
@@ -461,6 +708,14 @@ function initTunnel(
   let centerU = 0.5;
   let centerV = 0.5;
   let disposed = false;
+  // C3 emergence-wipe state (0 everywhere except the desktop passage's
+  // EMERGE beat). The seed re-randomizes on each 0→>0 crossing — fire-time
+  // randomness only, the per-frame fragment is deterministic.
+  let emergeCut = 0;
+  let emergeVel = 0;
+  let emergeSeedX = 0;
+  let emergeSeedY = 0;
+  let aspect = 1;
 
   // Pointer normalized to [-1, 1] from the window centre, y up (three.js
   // pointer convention, matching the reference's positionN). Skipped
@@ -519,6 +774,7 @@ function initTunnel(
     canvas.style.height = `${cssH}px`;
     width = canvas.width;
     height = canvas.height;
+    aspect = height > 0 ? width / height : 1;
     setPerspective(proj, FOV_RAD, width / height, NEAR, FAR);
     allocFbo();
   }
@@ -572,6 +828,14 @@ function initTunnel(
     gl.enableVertexAttribArray(aSize);
     gl.vertexAttribPointer(aSize, 1, gl.FLOAT, false, STRIDE, 24);
     gl.uniform1f(uTimeLoc, uTime);
+    // C4 — spaghettification drive: 0 below warp ~25, 1 by ~85 (WARP_MIN 2 /
+    // preloader idle sit at exactly 0 → the vertex branch is skipped and the
+    // reference math is untouched). warpFx-gated so the phone beat's peak-60
+    // scrub never reaches it either.
+    const spag = warpFx
+      ? Math.min(1, Math.max(0, (timeCoef - 25) / 60))
+      : 0;
+    gl.uniform1f(uSpagLoc, spag);
     gl.uniformMatrix4fv(uProjLoc, false, proj);
     gl.uniformMatrix4fv(uMvLoc, false, modelView);
     gl.activeTexture(gl.TEXTURE0);
@@ -580,6 +844,28 @@ function initTunnel(
     gl.drawArrays(gl.POINTS, 0, count);
     gl.disableVertexAttribArray(aColor);
     gl.disableVertexAttribArray(aSize);
+
+    // C4 — wisp layer: one additive fullscreen pass into the same target,
+    // AFTER the points (inherits the zoom blur + the emergence wipe below).
+    // Only under warpFx, only while the high-warp window is open, and it
+    // fades with the tear (igloo's "end fades").
+    if (wispProgram) {
+      const wispA =
+        Math.min(1, Math.max(0, (timeCoef - 30) / 40)) *
+        0.5 *
+        (1 - emergeCut);
+      if (wispA > 0.003) {
+        gl.useProgram(wispProgram);
+        gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+        gl.enableVertexAttribArray(wPosition);
+        gl.vertexAttribPointer(wPosition, 2, gl.FLOAT, false, 0, 0);
+        gl.uniform1f(wTimeLoc, uTime);
+        gl.uniform1f(wAlphaLoc, wispA);
+        gl.uniform1f(wAspectLoc, aspect);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.disableVertexAttribArray(wPosition);
+      }
+    }
 
     // Pass 2 — zoom blur toward the screen centre (the reference's
     // ZoomBlurPass). The FBO texture already holds accumulated rgb+alpha, so
@@ -599,6 +885,11 @@ function initTunnel(
       gl.uniform1i(zTexLoc, 0);
       gl.uniform2f(zCenterLoc, centerU, centerV);
       gl.uniform1f(zStrengthLoc, zoomStrength);
+      // C3 — emergence wipe drive (0 = original output, bit-comparable).
+      gl.uniform1f(zCutLoc, emergeCut);
+      gl.uniform1f(zVelLoc, emergeVel);
+      gl.uniform1f(zAspectLoc, aspect);
+      gl.uniform2f(zSeedLoc, emergeSeedX, emergeSeedY);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
   }
@@ -617,6 +908,7 @@ function initTunnel(
     fboOk = false;
     gl.deleteProgram(pointProgram);
     gl.deleteProgram(zoomProgram);
+    if (wispProgram) gl.deleteProgram(wispProgram);
     gl.getExtension("WEBGL_lose_context")?.loseContext();
   }
 
@@ -629,6 +921,16 @@ function initTunnel(
     setCenter(u: number, v: number) {
       centerU = Math.min(1, Math.max(0, u));
       centerV = Math.min(1, Math.max(0, v));
+    },
+    setEmergence(cut: number, velNorm: number) {
+      const c = Math.min(1, Math.max(0, cut));
+      if (emergeCut <= 0 && c > 0) {
+        // New tear → new noise frame (fire-time randomness only).
+        emergeSeedX = Math.random() * 61.7;
+        emergeSeedY = Math.random() * 43.1;
+      }
+      emergeCut = c;
+      emergeVel = Math.min(1, Math.max(0, velNorm));
     },
     dispose,
   };

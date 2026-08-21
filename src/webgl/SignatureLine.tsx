@@ -32,7 +32,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { createLineMaterial, type LineUniforms } from "./materials/lineShader";
 import { webgpuEnabled } from "./renderer/createRenderer";
 import { getRouteCurve } from "./curves/routeCurves";
-import { CAMERA_Z, WORLD_VIEW_HEIGHT } from "./constants";
+import { CAMERA_FOV, CAMERA_Z, WORLD_VIEW_HEIGHT } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
 import { useSectionStore, sectionProgress } from "./store/sectionStore";
 import { useProductionPulseStore } from "./store/productionPulseStore";
@@ -264,6 +264,29 @@ function buildLineGeometry(inp: LineBuildInputs): LineBuildResult {
  */
 const CAM_ROLL_MAX = 0.046;
 
+// --- Round 3 §C1 — warp-jump camera (igloo entry-scene grammar) -------------
+/** igloo `sineNoise1` (bundle fn kD, mined 2026-08-21), ported verbatim as
+ * six hardcoded dot products — DETERMINISTIC (never Math.random in a frame
+ * path), zero allocation. Sum of six sines of dot((x,y,z), fixed vec3s) / 6. */
+function sineNoise1(x: number, y: number, z: number): number {
+  return (
+    (Math.sin(x * 1.5 + y * 3.4598 + z * 1.234) +
+      Math.sin(x * 3.12 - y * 3.234 + z * 4.221) +
+      Math.sin(x * 0.355 + y * 2.3 - z * 1.375) +
+      Math.sin(-x * 0.156 - y * 3.34 - z * 0.4566) +
+      Math.sin(-x * 4.1235 - y * 0.485 - z * 1.45) +
+      Math.sin(x * 2.54 - y * 0.879 - z * 2.123)) /
+    6
+  );
+}
+/** damp() λ for the up-flip chase — fast enough that the timeline's own ease
+ * is the visible motion (steady-state lag ≈ rate/λ ≈ 0.07 rad at the flip's
+ * peak rate), and a skip/teardown snap-to-0 eases out in ~0.2s instead of
+ * cutting the world's roll in one frame. */
+const WARP_FLIP_DAMP = 14;
+/** damp() λ for the fov widen + shake amplitude (slower channels). */
+const WARP_FOV_DAMP = 10;
+
 export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   const { camera, size } = useThree();
   // Effects BUDGET (mobile-parity plan Phase 4e). ONE store selector on a
@@ -361,6 +384,14 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   // authority; exact camTilt precedent). Lightly damped so a passage
   // teardown mid-scrub (language toggle) relaxes instead of snapping.
   const seqPanCurrent = useRef(0);
+  // Round 3 §C1 — warp-jump camera state (home one-shot plunge; seqStore
+  // upFlip/fovShift/shakeAmp consumers — this frame stays the single camera
+  // authority). Damped chases + a monotonic clock for the deterministic
+  // sine-noise shake.
+  const warpFlipCurrent = useRef(0);
+  const warpFovCurrent = useRef(CAMERA_FOV);
+  const warpShakeCurrent = useRef(0);
+  const warpClock = useRef(0);
   // Cached `window.innerHeight` — the viewport height Lenis derives its scroll
   // limit from, and therefore the only correct denominator for the doc→scroll
   // mapping below (see the file header). A REF, not state: it is read inside
@@ -1225,6 +1256,87 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     if ((tier !== "full" || !curve) && Math.abs(descendPitch.current) > 0.0001) {
       camera.quaternion.set(0, 0, 0, 1);
       camera.rotateX(-descendPitch.current);
+    }
+
+    // === Round 3 §C1 — WARP CAMERA (home one-shot plunge; igloo grammar) ====
+    // seqStore.upFlip / fovShift / shakeAmp are written ONLY by the passage's
+    // desktop one-shot timeline (0 on every other route, on the phone beat and
+    // under RM — those variants never write them), read from the SAME
+    // `seqState` snapshot the pan/aim blocks above consumed. Applied here,
+    // AFTER every other orientation writer (lookAt + bank above, descent
+    // pitch), additive with the biggest term first: the ≤π corkscrew up-flip
+    // (a pure roll about the view axis — igloo's baseUp.applyAxisAngle move),
+    // then the ≤0.02 rad deterministic sine-noise shake (sineNoise1 port —
+    // never Math.random in a frame path). Deliberately NOT folded into the
+    // camRoll publish below: that channel is the cinematic bank HeroLogo
+    // counter-rotates against, and the hero is nowhere on screen during the
+    // plunge. Idle cost: two damp calls + comparisons, all channels
+    // hard-snapped to rest.
+    const seqWarpOn = pathname === "/" && seqState.active;
+    // Orientation terms apply ONLY while the full-tier lookAt above owns (and
+    // therefore RESETS) the camera quaternion every frame — on lite/no-curve
+    // nothing re-bases orientation, so an additive rotate would ACCUMULATE
+    // into a spin (reachable: a weak-GPU ≥1024px desktop runs the passage's
+    // desktop branch — which writes these fields — at tier "lite"). The fov
+    // channel below is an absolute write and stays live on every tier.
+    const warpOriented = tier === "full" && !!curve;
+    const flipTarget = seqWarpOn ? seqState.upFlip : 0;
+    warpFlipCurrent.current = THREE.MathUtils.damp(
+      warpFlipCurrent.current,
+      flipTarget,
+      WARP_FLIP_DAMP,
+      delta,
+    );
+    if (flipTarget === 0 && Math.abs(warpFlipCurrent.current) < 1e-4) {
+      warpFlipCurrent.current = 0;
+    }
+    if (warpOriented && warpFlipCurrent.current !== 0) {
+      camera.rotateZ(warpFlipCurrent.current);
+    }
+    const shakeTarget = seqWarpOn ? seqState.shakeAmp : 0;
+    warpShakeCurrent.current = THREE.MathUtils.damp(
+      warpShakeCurrent.current,
+      shakeTarget,
+      WARP_FOV_DAMP,
+      delta,
+    );
+    if (shakeTarget === 0 && warpShakeCurrent.current < 1e-4) {
+      warpShakeCurrent.current = 0;
+    }
+    if (warpOriented && warpShakeCurrent.current > 0) {
+      // Clamped clock (background-tab discipline, uTime precedent below).
+      warpClock.current += Math.min(delta, 1 / 30);
+      const ts = warpClock.current * 0.25; // igloo `time * shakeSpeed(0.25)`
+      const amp = warpShakeCurrent.current;
+      // igloo's exact per-axis phase constants: x-shake → yaw, y → pitch,
+      // z → the extra up-roll.
+      camera.rotateY(sineNoise1(12.23, 3.44, -3.234 + ts) * amp);
+      camera.rotateX(sineNoise1(-2.45, 4.789, 7.343 + ts) * amp);
+      camera.rotateZ(sineNoise1(23.434, -1.565, 8.454 + ts) * amp);
+    }
+    // Fov widen (igloo's 22→30 ramp transposed to CAMERA_FOV + up to 8°).
+    // Re-project ONLY on a > 0.01° change — the idle frame never touches the
+    // projection matrix.
+    const fovTarget = CAMERA_FOV + (seqWarpOn ? seqState.fovShift : 0);
+    warpFovCurrent.current = THREE.MathUtils.damp(
+      warpFovCurrent.current,
+      fovTarget,
+      WARP_FOV_DAMP,
+      delta,
+    );
+    if (
+      fovTarget === CAMERA_FOV &&
+      Math.abs(warpFovCurrent.current - CAMERA_FOV) < 0.005
+    ) {
+      warpFovCurrent.current = CAMERA_FOV;
+    }
+    const persp = camera as THREE.PerspectiveCamera;
+    if (
+      persp.isPerspectiveCamera &&
+      Math.abs(persp.fov - warpFovCurrent.current) > 0.01
+    ) {
+      persp.fov = warpFovCurrent.current;
+      persp.updateProjectionMatrix();
     }
 
     // Publish the APPLIED camera roll (same discipline as camDescend above:

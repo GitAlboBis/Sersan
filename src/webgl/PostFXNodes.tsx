@@ -135,6 +135,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useFxStore } from "./store/fxStore";
 import { routeFx, HOME_FX } from "./store/routeFxStore";
 import { usePointerStore } from "./store/pointerStore";
+import { useSeqStore } from "./store/seqStore";
 import { devOverridesAllowed, type FxBudget } from "./store/tierStore";
 import { createPointerFlowmap, type PointerFlowmap } from "./fluid/PointerFlowmap";
 
@@ -198,6 +199,16 @@ export function PostFXNodes({
   // re-running the (expensive) build effect. `null` until the lazy chunk lands.
   const postRef = useRef<PostProcessingLike | null>(null);
   const bloomRef = useRef<BloomNodeLike | null>(null);
+  // C2 — warp-burst uniforms (round 3 §C, igloo ring-passage pass) + the
+  // damped spike the per-frame reader integrates (seqStore.burst is the GSAP
+  // envelope; this ref is the post-side smoothing the spec asks for).
+  const burstRef = useRef<{
+    burst: UniformNode;
+    seedX: UniformNode;
+    seedY: UniformNode;
+    seedZ: UniformNode;
+  } | null>(null);
+  const burstDampedRef = useRef(0);
   // The pointer fluid flowmap (WebGPU-only). Null when disabled (coarse pointer
   // / reduced-motion / level "lite") or before the lazy build lands.
   const flowRef = useRef<PointerFlowmap | null>(null);
@@ -271,8 +282,14 @@ export function PostFXNodes({
         add: (n: TslNode | number) => TslNode;
         sub: (n: TslNode | number) => TslNode;
         mul: (n: TslNode | number) => TslNode;
+        div: (n: TslNode | number) => TslNode;
         oneMinus: () => TslNode;
+        greaterThan: (n: TslNode | number) => TslNode;
+        toVar: () => TslNode & { assign: (n: TslNode) => void };
         rg: TslNode;
+        rgb: TslNode;
+        x: TslNode;
+        y: TslNode;
       };
       // The scene-pass texture node is a PassTextureNode (extends TextureNode):
       // `.sample(uvNode)` clones it sampling at a different UV — the supported
@@ -286,13 +303,22 @@ export function PostFXNodes({
         screenUV,
         uv,
         vec2,
+        vec3,
         vec4,
         smoothstep,
         float,
         sin,
+        cos,
+        atan,
+        length,
+        floor,
         fract,
         dot,
         time,
+        uniform,
+        Fn,
+        If,
+        screenSize,
       } = tsl as unknown as {
         pass: (
           scene: unknown,
@@ -300,19 +326,32 @@ export function PostFXNodes({
         ) => { getTextureNode: (name?: string) => ScenePassTextureNode };
         screenUV: { distance: (p: TslNode) => TslNode; add: (n: TslNode) => TslNode };
         uv: () => TslNode;
-        vec2: (x: number, y: number) => TslNode;
+        vec2: (x: TslNode | number, y: TslNode | number) => TslNode;
+        vec3: (
+          x: TslNode | number,
+          y?: TslNode | number,
+          z?: TslNode | number,
+        ) => TslNode;
         vec4: (
           x: TslNode | number,
           y: TslNode | number,
-          z: TslNode | number,
-          w: TslNode | number,
+          z?: TslNode | number,
+          w?: TslNode | number,
         ) => TslNode;
         smoothstep: (a: number, b: number, x: TslNode) => TslNode;
         float: (v: number) => TslNode;
         sin: (n: TslNode) => TslNode;
+        cos: (n: TslNode) => TslNode;
+        atan: (y: TslNode, x: TslNode) => TslNode;
+        length: (n: TslNode) => TslNode;
+        floor: (n: TslNode) => TslNode;
         fract: (n: TslNode) => TslNode;
         dot: (a: TslNode, b: TslNode) => TslNode;
         time: TslNode;
+        uniform: (v: number) => TslNode & { value: number };
+        Fn: (fn: () => TslNode) => () => TslNode;
+        If: (cond: TslNode, fn: () => void) => unknown;
+        screenSize: TslNode;
       };
 
       const { intensity, threshold, radius } = resolveBloom(pathname);
@@ -334,7 +373,7 @@ export function PostFXNodes({
       //    warp. Gated: only when the fluid is enabled (fine pointer, no RM, level
       //    "full"). When disabled we sample the scene at the unmodified UV
       //    (identical to before).
-      let colorForBloom: ScenePassTextureNode = color;
+      let baseUv: TslNode = uv();
       if (fluidEnabledRef.current) {
         const flow = createPointerFlowmap(
           gl as never,
@@ -349,17 +388,82 @@ export function PostFXNodes({
         const flowVec = (flow.flowTexNode as unknown as TslNode).rg.mul(
           flow.uStrength as unknown as TslNode,
         );
-        const offsetUv = uv().add(flowVec);
-        colorForBloom = color.sample(offsetUv) as ScenePassTextureNode;
+        baseUv = baseUv.add(flowVec);
       }
+
+      // 0b) WARP-BURST UV (round 3 §C2 — igloo's ring-passage pass, TSL port;
+      //     inserted AFTER the flowmap refraction, BEFORE bloom). The angular
+      //     smear (sample angle rotated by (noise − 0.5)·0.3·burst around the
+      //     aspect-corrected screen centre) + the coarse block glitch (cell
+      //     hash · 0.01 · seed.z · burst — the procedural stand-in for their
+      //     tScroll squares) both live behind a REAL `If(uWarpBurst > 0.001)`
+      //     on a uniform (uniform control flow — implicit-LOD sampling stays
+      //     legal), so the idle frame's uv path is the untouched base uv and
+      //     the polar round-trip costs nothing at burst 0. The seed trio is
+      //     re-rolled per burst at FIRE time by the passage (never per frame).
+      const uWarpBurst = uniform(0);
+      const uBurstSeedX = uniform(0);
+      const uBurstSeedY = uniform(0);
+      const uBurstSeedZ = uniform(1);
+      burstRef.current = {
+        burst: uWarpBurst,
+        seedX: uBurstSeedX,
+        seedY: uBurstSeedY,
+        seedZ: uBurstSeedZ,
+      };
+      const aspect = (screenSize as TslNode).x.div((screenSize as TslNode).y);
+      const burstUv = Fn(() => {
+        const u = baseUv.toVar();
+        If(uWarpBurst.greaterThan(0.001), () => {
+          // Polar frame about the aspect-corrected centre (igloo: uv -= 0.5;
+          // uv.x *= aspect).
+          const cc = vec2(u.x.sub(0.5).mul(aspect), u.y.sub(0.5));
+          const ang = atan(cc.y, cc.x);
+          const dist = length(cc);
+          // Screen-space hash — the blue-noise stand-in for the smear dither.
+          const nR = fract(
+            sin(
+              dot(
+                u.mul(719.3).add(vec2(uBurstSeedX, uBurstSeedY)),
+                vec2(12.9898, 78.233),
+              ),
+            ).mul(43758.5453),
+          );
+          // igloo: angle1 = angle + 0.3 * (noise.r - 0.5) * uRingProximity.
+          const ang1 = ang.add(nR.sub(0.5).mul(uWarpBurst.mul(0.3)));
+          const nuv = vec2(
+            cos(ang1).mul(dist).div(aspect).add(0.5),
+            sin(ang1).mul(dist).add(0.5),
+          );
+          // igloo: dispSquares (coarse texture cells) * 0.01 * seed.z * prox.
+          const cell = floor(
+            vec2(nuv.x.mul(aspect), nuv.y)
+              .mul(14.0)
+              .add(vec2(uBurstSeedX, uBurstSeedY)),
+          );
+          const n2 = fract(sin(dot(cell, vec2(41.34, 289.7))).mul(43758.5453));
+          u.assign(
+            nuv.add(
+              n2.mul(2.0).sub(1.0).mul(uWarpBurst.mul(uBurstSeedZ).mul(0.01)),
+            ),
+          );
+        });
+        return u;
+      })();
+
+      // The one scene sample — at the (flow + burst) displaced uv. `.sample()`
+      // keeps this a REAL texture node, so bloom() below never falls back to
+      // an RTT wrap (idle cost unchanged vs the previous plain-color feed).
+      const colorForBloom = color.sample(burstUv) as ScenePassTextureNode;
 
       // 1) SELECTIVE BLOOM (the priority): threshold ≈ 1.0 so only the >1.0
       //    emissive signal (line/planet/particles) blooms. Additive over the
       //    color (matches PostFX.tsx: `<Bloom intensity radius luminanceThreshold>`).
       //    `bloom()` accepts plain-number strength/radius/threshold (it wraps
       //    them in uniforms internally — that is the .strength/.radius/.threshold
-      //    we mutate on route change). Fed the (optionally fluid-displaced) scene
-      //    color so the refracted line/planet still blooms.
+      //    we mutate on route change). Fed the (optionally fluid-displaced,
+      //    optionally burst-smeared) scene color so the disturbed line still
+      //    blooms.
       const bloomPass = bloom(
         colorForBloom as never,
         intensity,
@@ -370,6 +474,29 @@ export function PostFXNodes({
       // Base the composite on the (optionally fluid-displaced) scene color so the
       // whole scene — not just the bloom halo — breathes around the pointer.
       let node: TslNode = (colorForBloom as TslNode).add(bloomNode);
+
+      // 1b) WARP-BURST saturation/value lift (igloo: rgb2hsv → s += 0.05·prox,
+      //     v += 0.075·prox → hsv2rgb, "highlight only when not already
+      //     white"). Applied POST-bloom-composite as a luma-space push —
+      //     (c − luma)·k reproduces the saturation lift, the flat +0.075·prox
+      //     the value lift — so the bloom input stays a pure texture node (no
+      //     RTT wrap) and the full HSV round-trip never runs. If-guarded on
+      //     the same uniform → idle cost ≈ 0.
+      const burstLift = Fn(() => {
+        const d = vec3(0, 0, 0).toVar();
+        If(uWarpBurst.greaterThan(0.001), () => {
+          const c = (colorForBloom as TslNode).rgb;
+          const l = dot(c, vec3(0.2125, 0.7154, 0.0721));
+          d.assign(
+            c
+              .sub(l)
+              .mul(uWarpBurst.mul(0.35))
+              .add(uWarpBurst.mul(0.075)),
+          );
+        });
+        return d;
+      })();
+      node = node.add(vec4(burstLift, 0));
 
       // 2) VIGNETTE (hand-rolled — no `vignette` export in three/tsl). Mirrors
       //    `<Vignette offset={0.35} darkness={...}>`: darken from ~0.5 of the way
@@ -432,6 +559,8 @@ export function PostFXNodes({
       built?.dispose();
       if (postRef.current === built) postRef.current = null;
       bloomRef.current = null;
+      burstRef.current = null;
+      burstDampedRef.current = 0;
       flowRef.current?.dispose();
       flowRef.current = null;
     };
@@ -483,6 +612,31 @@ export function PostFXNodes({
         splatRadius: fx.splatRadius,
         strength: fx.fluidStrength,
       });
+    }
+
+    // C2 — warp-burst spike (round 3 §C2): seqStore.burst carries the GSAP
+    // envelope (0.5s in / 0.4s out, written by the home passage's one-shot);
+    // read via getState and DAMPED here (λ 18 — softens tween-tick stairs
+    // without stretching the igloo envelope), uniforms-only writes. Idle cost:
+    // one getState + two comparisons; the uniform sits at exactly 0 so the
+    // If-guarded burst branches never execute.
+    const bu = burstRef.current;
+    if (bu) {
+      const seq = useSeqStore.getState();
+      const target = seq.burst;
+      const cur = burstDampedRef.current;
+      if (target > 0 || cur > 1e-4) {
+        const k = 1 - Math.exp(-18 * Math.min(delta, 1 / 30));
+        let next = cur + (target - cur) * k;
+        if (target === 0 && next < 1e-4) next = 0;
+        burstDampedRef.current = next;
+        bu.burst.value = next;
+        bu.seedX.value = seq.burstSeedX;
+        bu.seedY.value = seq.burstSeedY;
+        bu.seedZ.value = seq.burstSeedZ;
+      } else if (bu.burst.value !== 0) {
+        bu.burst.value = 0;
+      }
     }
 
     const post = postRef.current;

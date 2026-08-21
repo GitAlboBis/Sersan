@@ -236,6 +236,30 @@ export function SequenceSingularity({ lite = false }: { lite?: boolean }) {
       group.visible = false;
       return;
     }
+    // === P0 disarm hardening (2026-08-21, round 3 §C5) =====================
+    // Outside the passage's armed band the hole must be GONE deterministically
+    // — its Y is CAMERA-LOCKED (the hybrid anchor above), so any staleness in
+    // `armed` made it ride the viewport over the whole page ("il buco nero si
+    // vede in tutta la home"). Two independent gates, cheapest first:
+    //  (1) `armed` itself — the band edge disposes the build, but the React
+    //      commit lands a frame late; hide immediately on the flipped flag.
+    //  (2) The measured band window in PAGE-PROGRESS space (seqStore
+    //      armedLoP/armedHiP, re-published by the passage's cache() on every
+    //      ScrollTrigger refresh): even if a band toggle is ever missed
+    //      across a downstream layout change, a scroll position outside the
+    //      window clamps visibility. Defaults 0/1 are permissive until the
+    //      passage measures; the small epsilon absorbs sub-tick rounding.
+    // Neither gate touches holeFade — the owner's "no scroll fade, we enter
+    // it" rule (2026-08-07) is untouched INSIDE the band.
+    if (!seq.armed) {
+      group.visible = false;
+      return;
+    }
+    const pageP = useScrollStore.getState().progress;
+    if (pageP < seq.armedLoP - 0.01 || pageP > seq.armedHiP + 0.01) {
+      group.visible = false;
+      return;
+    }
 
     // --- Fade: scrubbed holeFade × damped route reveal (sibling grammar) ---
     revealDamped.current = THREE.MathUtils.damp(
