@@ -15,14 +15,16 @@
  *     ~55% of the rect, then dispersal into drifting ember debris. Surges ride
  *     in from the left every ~4s (and on the DOM's in-view `bump("broken")`)
  *     and DIE at the fracture with a >1.0 emissive flash that decays at once.
- *     Pane hover → the debris briefly re-coheres toward the spline then falls
- *     apart again (the "what if it were fixed" tease).
+ *     Row ignition (round-3 de-card: the ledger ROWS replaced the panes;
+ *     same setHovered store call) → a BIGGER re-cohere tease at the fracture
+ *     + a localized uRowGlow brightness/thickness swell in the row's zone.
  *   mode "healthy" (ProductionGrade, anchor "production"): the same stream
  *     threaded through THREE GUIDE RINGS (eval → trace → guardrail at 40/62/
  *     84% of the rect); particles tighten past each ring. The DOM's sequenced
  *     `bumpCluster("healthy", i)` ignites ring i (>1.0 ring-flash); every ~6s
  *     a surge rides the WHOLE stream and SURVIVES, ringing each ring as it
- *     passes. Pane hover → ring i flares.
+ *     passes. Row ignition → ring i flares + the segment between ring i-1
+ *     and i tightens/brightens (uRowGlow).
  *
  * ANCHORING — camera-LOCKED screen-space placement (contract unchanged): the
  * OUTER group is positioned from the anchor rect's center, quaternion =
@@ -74,8 +76,10 @@ import {
   RING_GLOW_FLARE,
   RING_GLOW_DIM,
   RING_GLOW_DAMP,
+  ROW_GLOW_DAMP,
   RECOHERE_ATTACK,
   RECOHERE_DECAY,
+  RECOHERE_ROW_BOOST,
   SURGE_PERIOD_BROKEN,
   SURGE_PERIOD_HEALTHY,
   SURGE_SPEED,
@@ -214,6 +218,10 @@ export function NeuralLattice({
   const ringFlashEased = useRef<number[]>(new Array(CLUSTER_COUNT).fill(0));
   // Per-ring damped hover glow (1 = neutral).
   const ringGlow = useRef<number[]>(new Array(CLUSTER_COUNT).fill(1));
+  // Round-3 row-reactive current: per-row damped attention glow (0 = idle),
+  // driven from the SAME store.hovered value the ring flare / re-cohere tease
+  // read — the DOM ledger rows are the only writer (setHovered unchanged).
+  const rowGlow = useRef<number[]>(new Array(CLUSTER_COUNT).fill(0));
   // Broken hover tease — one-shot re-cohere envelope.
   const recohereTarget = useRef(0);
   const recohereEnv = useRef(0);
@@ -351,13 +359,16 @@ export function NeuralLattice({
       );
     }
 
-    // --- Hover link (store.hovered — DOM panes are the only writer) ----------
+    // --- Hover link (store.hovered — the DOM ledger rows are the only
+    // writer; round-3 de-card: rows replaced the panes, same store call) -----
     const hoveredIdx = store.hovered[surfaceKey];
     if (broken) {
-      // Rising edge (a pane becomes hovered) → one-shot re-cohere tease: the
-      // debris pulls toward the spline, then falls apart again on its own.
+      // Rising edge (a row ignites) → one-shot re-cohere tease. Round-3:
+      // fired at RECOHERE_ROW_BOOST (>1 saturates the shader's uRecohere·0.9
+      // term) — the BIGGER tease: debris fully re-coheres for a beat before
+      // falling apart again on its own.
       if (hoveredIdx !== prevHovered.current && hoveredIdx !== null) {
-        recohereTarget.current = 1;
+        recohereTarget.current = RECOHERE_ROW_BOOST;
       }
       recohereTarget.current = THREE.MathUtils.damp(
         recohereTarget.current,
@@ -387,6 +398,16 @@ export function NeuralLattice({
       }
     }
     prevHovered.current = hoveredIdx;
+    // Round-3 row glow (BOTH modes): damp each row's attention 0↔1. The
+    // shader localizes it (broken: gaussian zone; healthy: ring segment).
+    for (let i = 0; i < CLUSTER_COUNT; i++) {
+      rowGlow.current[i] = THREE.MathUtils.damp(
+        rowGlow.current[i],
+        hoveredIdx === i ? 1 : 0,
+        ROW_GLOW_DAMP,
+        delta,
+      );
+    }
 
     // --- Subtle whole-group life: damped pointer parallax + faint orbit -----
     const ptr = usePointerStore.getState();
@@ -424,6 +445,7 @@ export function NeuralLattice({
     for (let i = 0; i < CLUSTER_COUNT; i++) {
       u.uRingGlow.array[i] = ringGlow.current[i];
       u.uRingFlash.array[i] = ringFlashEased.current[i];
+      u.uRowGlow.array[i] = rowGlow.current[i];
     }
     // Cursor bend (compute tier): pointer → LOCAL rect space; parked at 1e9
     // when idle, coarse, or outside the band's influence zone. Pure math on
@@ -476,6 +498,9 @@ export function NeuralLattice({
       get ringGlow() {
         return ringGlow.current.slice();
       },
+      get rowGlow() {
+        return rowGlow.current.slice();
+      },
       get count() {
         return countRef.current;
       },
@@ -484,9 +509,11 @@ export function NeuralLattice({
       get uniforms() {
         return build ? build.uniforms : null;
       },
-      /** Round-2 beauty-pass tunables, snapshot form (write via `uniforms`).
+      /** Round-2 + round-3 tunables, snapshot form (write via `uniforms`).
        * sparkCount is BUILD-TIME (baked into the meta buffer — a rebuild is
-       * needed to change it; broken mode only). */
+       * needed to change it; broken mode only). Round-3 knobs: curl (compute
+       * tier only), dof (0 = flat round-2 look), rowGain/rowSwell (the
+       * row-reactive current's brightness / width response). */
       get tunables() {
         const u = build?.uniforms;
         if (!u) return null;
@@ -504,6 +531,10 @@ export function NeuralLattice({
           strandPhase: [...u.uStrandPhase.array],
           strandThick: [...u.uStrandThick.array],
           sparkCount: mode === "broken" ? SPARK_COUNT : 0,
+          curl: u.uCurl.value,
+          dof: u.uDof.value,
+          rowGain: u.uRowGain.value,
+          rowSwell: u.uRowSwell.value,
         };
       },
       project: () => {

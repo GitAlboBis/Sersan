@@ -63,23 +63,32 @@ export const STREAM_SPAN_X = 0.58;
  * Per-mode control points [x, y, z]. Evenly spaced in x (the in-shader
  * Catmull-Rom assumes 4 equal segments, so flow-t maps ~linearly to band x —
  * which is what keeps the DOM ghost callouts registered with the WebGL
- * fracture/rings). Gentle y meander (±0.07 ≈ ±35px on a 500px band) + a
- * little z weave for parallax depth.
+ * fracture/rings; x and z are round-2 values, UNCHANGED).
+ *
+ * ROUND-3 VERTICAL WEAVE (2026-08-21 de-card §B.1): with the glass panes gone
+ * the band is the WHOLE rows-stack background, so the y column is now MODE-
+ * AUTHORED story, up to ±0.30 of band height:
+ *   broken  → the river enters high and DIPS accelerating into the fracture
+ *             (t=0.55 sits between c2/c3) — a river losing its course. The
+ *             post-fracture points only show through the re-cohere tease,
+ *             where the "lost" downward course is exactly the point.
+ *   healthy → the river enters low and RISES confidently through the three
+ *             guide rings (t 0.414/0.603/0.793 land on the ascent).
  */
 export const STREAM_CTRL: Record<LatticeMode, [number, number, number][]> = {
   broken: [
-    [-STREAM_SPAN_X, 0.02, 0.0],
-    [-STREAM_SPAN_X / 2, -0.07, 0.05],
-    [0.0, 0.06, -0.04],
-    [STREAM_SPAN_X / 2, -0.03, 0.05],
-    [STREAM_SPAN_X, 0.04, -0.02],
+    [-STREAM_SPAN_X, 0.18, 0.0],
+    [-STREAM_SPAN_X / 2, 0.1, 0.05],
+    [0.0, -0.08, -0.04],
+    [STREAM_SPAN_X / 2, -0.27, 0.05],
+    [STREAM_SPAN_X, -0.3, -0.02],
   ],
   healthy: [
-    [-STREAM_SPAN_X, -0.04, 0.0],
-    [-STREAM_SPAN_X / 2, 0.06, 0.04],
-    [0.0, -0.05, -0.03],
-    [STREAM_SPAN_X / 2, 0.03, 0.04],
-    [STREAM_SPAN_X, 0.0, 0.0],
+    [-STREAM_SPAN_X, -0.28, 0.0],
+    [-STREAM_SPAN_X / 2, -0.14, 0.04],
+    [0.0, 0.0, -0.03],
+    [STREAM_SPAN_X / 2, 0.15, 0.04],
+    [STREAM_SPAN_X, 0.27, 0.0],
   ],
 };
 
@@ -88,11 +97,13 @@ export const STREAM_CTRL: Record<LatticeMode, [number, number, number][]> = {
 export const STRAND_COUNT = 4;
 /** Strand orbit radius around the spline center (local y units; the group's
  * y-scale is the rect HEIGHT, so the braid's rest thickness ≈
- * 2·(STRAND_RADIUS + STRAND_THICKNESS)·h ≈ 34px on a 500px band — the round-2
- * "legible river" envelope, tightened from the draft's ~50px blob). */
-export const STRAND_RADIUS = 0.023;
+ * 2·(STRAND_RADIUS + STRAND_THICKNESS)·h. Round-3 de-card rescale: the band
+ * is now the FULL rows-stack background (~650–700px vs the round-2 ~500px
+ * pane band), so the local radii come DOWN slightly to land the spec's ~44px
+ * rest envelope: 2·0.0325·680 ≈ 44px. Live-tunable via uEnvelope. */
+export const STRAND_RADIUS = 0.0215;
 /** Per-particle jitter radius within a strand (thickness noise). */
-export const STRAND_THICKNESS = 0.012;
+export const STRAND_THICKNESS = 0.011;
 /** Full braid twists across the stream length. */
 export const BRAID_TURNS = 2.6;
 /**
@@ -246,14 +257,73 @@ export const RING_GLOW_DAMP = 7.0;
 export const RECOHERE_ATTACK = 14.0;
 export const RECOHERE_DECAY = 1.6;
 
+// --- Round-3 "de-card" — row-reactive current (§B.3) -------------------------
+/**
+ * The DOM panes are gone; the two sections are typographic LEDGER ROWS and the
+ * river owns the whole band. uRowGlow[3] (driven from the EXISTING
+ * setHovered store value — no store changes) makes the stream visibly answer
+ * the ignited row:
+ *   broken  → a gaussian brightness + thickness swell in the stream zone
+ *             nearest row i (rows stack top→bottom; the weave descends, so
+ *             row 0 ↔ the early/high stream, row 2 ↔ the fracture itself)
+ *             PLUS a bigger one-shot re-cohere tease at the fracture.
+ *   healthy → the segment between ring i-1 and ring i TIGHTENS + brightens.
+ */
+/** Broken row-zone centers in flow-t (row 2 = the fracture itself). */
+export const ROW_ZONE_T = [0.2, 0.38, FRACTURE_T] as const;
+/** Gaussian sharpness of a broken row zone (flow-t): half-width ≈ 0.12. */
+export const ROW_ZONE_K = 70;
+/** Healthy segment 0 starts here (just inside the entry edge fade). */
+export const ROW_SEG_START = 0.06;
+/** Smooth half-feather of the healthy segment box windows (flow-t). */
+export const ROW_SEG_FEATHER = 0.04;
+/** Emissive boost at full row glow (rides on STREAM_EMISSIVE; localized). */
+export const ROW_GAIN = 1.0;
+/** Width response at full row glow: broken SWELLS +this; healthy TIGHTENS
+ * −this·ROW_TIGHTEN_RATIO (a laminar squeeze, not a pinch-off). */
+export const ROW_SWELL = 0.45;
+export const ROW_TIGHTEN_RATIO = 0.7;
+/** Damp rate of uRowGlow[i] toward its hover target (driver-side). */
+export const ROW_GLOW_DAMP = 7.0;
+/** Broken: a row ignition fires the re-cohere one-shot at THIS target instead
+ * of 1 — >1 saturates dispFactor's uRecohere·0.9 term, so the debris fully
+ * re-coheres for a beat before falling apart (the "bigger tease", §B.3). */
+export const RECOHERE_ROW_BOOST = 1.45;
+
+// --- Round-3 curl-noise micro-turbulence (§B.2, compute tier only) -----------
+/** Strand-offset displacement gain (× CURL_SCALE local units at |curl|=1).
+ * Small by design — filaments SHRED organically, the river keeps its course.
+ * Static tier keeps the analytic twist (no curl). Live-tunable via uCurl. */
+export const CURL_GAIN = 0.15;
+/** Displacement scale = the braid cross-section radius (local units). */
+export const CURL_SCALE = STRAND_RADIUS + STRAND_THICKNESS;
+/** Two octaves: base + ~2.1× frequency at half amplitude (AT nebula texture). */
+export const CURL_FREQ = 22;
+export const CURL_FREQ_2 = 47;
+export const CURL_AMP_2 = 0.5;
+/** Field drift speeds (rad/s into the potential phases, per octave). */
+export const CURL_SPEED = 0.55;
+export const CURL_SPEED_2 = 0.9;
+
+// --- Round-3 depth-DOF illusion (§B.4) ---------------------------------------
+/** Alpha multiplier at the FAR extreme of the z-bow (far = smaller/dimmer). */
+export const DOF_FAR_DIM = 0.55;
+/** Soft-disc inner edge at full NEAR softness (rest edge is 0.12 → a wider,
+ * bokeh-like falloff on near particles; no postprocessing involved). */
+export const DOF_SOFT_MIN = 0.03;
+/** Extra size gain across the z range (rides on NEURAL_DEPTH_ATTEN). */
+export const DOF_SIZE_GAIN = 0.6;
+
 // --- Emissive / render (>1.0 selective-bloom contract) -----------------------
 export const STREAM_EMISSIVE = 2.6;
 export const RING_EMISSIVE = 3.0;
 /** At-rest alpha of a stream particle disc. */
 export const STREAM_ALPHA = 0.8;
 /** Billboard size in device px (perspective-scaled in the shader; the round-2
- * CORE_SIZE_BOOST/FRINGE_SIZE_DROP falloff rides on top). */
-export const NEURAL_POINT_SIZE = 7.0;
+ * CORE_SIZE_BOOST/FRINGE_SIZE_DROP falloff rides on top). Round-3: bumped
+ * 7 → 8 so the same particle count keeps its fill density across the taller
+ * rows-stack band + the vertical weave's longer arc. */
+export const NEURAL_POINT_SIZE = 8.0;
 /** Ring particles read slightly denser. */
 export const RING_POINT_SIZE_BOOST = 1.3;
 /** Depth size/brightness attenuation keyed on local z (aerial depth cue). */

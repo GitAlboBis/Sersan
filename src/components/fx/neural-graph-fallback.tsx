@@ -32,6 +32,7 @@ import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { MotionPathPlugin } from "gsap/MotionPathPlugin";
 import { useGSAP } from "@gsap/react";
+import { useNeuralLatticeStore } from "@/webgl/store/neuralLatticeStore";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(MotionPathPlugin);
@@ -136,6 +137,34 @@ export function NeuralGraphFallback({
   const strandEnd = broken ? FRACTURE_X : VB_W;
   const strandDs = [0, 1, 2, 3].map((s) => strandPath(s, 0, strandEnd));
   const railD = centerPath(0, broken ? FRACTURE_X : VB_W);
+
+  // Round-3 row-reactive echo (the TRIVIAL mapping only — spec §B.5): the
+  // ledger rows write setHovered on every tier, so when the WebGL island is
+  // absent this twin answers attention with a whole-stream stroke-width /
+  // opacity bump on the core strands. A LOCALIZED zone glow does NOT map
+  // trivially onto full-length gradient strokes (path splitting or filters —
+  // both banned here), so the echo is global by design. RM: static, no tween.
+  const hovered = useNeuralLatticeStore((s) => s.hovered[variant]);
+  const hoverActive = hovered !== null;
+  useEffect(() => {
+    if (rest) return;
+    const root = rootRef.current;
+    if (!root) return;
+    const cores = root.querySelectorAll<SVGPathElement>("[data-strand-core]");
+    cores.forEach((p) => {
+      const w = Number(p.dataset.baseW ?? "1.2");
+      const o = Number(p.dataset.baseO ?? "0.55");
+      gsap.to(p, {
+        attr: {
+          "stroke-width": hoverActive ? w * 1.4 : w,
+          "stroke-opacity": hoverActive ? Math.min(1, o + 0.2) : o,
+        },
+        duration: 0.4,
+        ease: "power2.out",
+        overwrite: "auto",
+      });
+    });
+  }, [hoverActive, rest]);
 
   useGSAP(
     () => {
@@ -322,6 +351,9 @@ export function NeuralGraphFallback({
         {strandDs.map((d, s) => (
           <path
             key={`strand-${s}`}
+            data-strand-core
+            data-base-w={s === 1 || s === 2 ? 1.7 : 1.2}
+            data-base-o={s === 1 || s === 2 ? 0.8 : 0.55}
             d={d}
             stroke={`url(#${gradId}-stream)`}
             strokeWidth={s === 1 || s === 2 ? 1.7 : 1.2}

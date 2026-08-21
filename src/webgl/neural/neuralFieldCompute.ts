@@ -70,6 +70,24 @@
  * Round-2 folds ALL color math into the vertex stage (per-instance constants
  * anyway): the fragment receives vColor (premultiplied tone×emissive), vAlpha
  * and the quad UV — fewer scalars than the draft's five varyings.
+ *
+ * ROUND-3 "DE-CARD" STREAM v3 (2026-08-21 §B — the panes are gone, the river
+ * owns the whole rows-stack band). Everything below is UNIFORMS + one new
+ * float varying — the 4-storage-buffer / 5-vertex-slot budget is untouched:
+ *   1. VERTICAL WEAVE — mode-authored y on the spline control points (config;
+ *      pure uC0..4 re-author, zero shader change) + the ~44px envelope
+ *      rescale for the taller band.
+ *   2. CURL MICRO-TURBULENCE (compute tier only) — analytic 2-octave curl of
+ *      a sin/cos vector potential displaces the strand offsets so filaments
+ *      shred organically; the static tier keeps the analytic twist.
+ *   3. ROW-REACTIVE CURRENT — uRowGlow[3] (uniformArray, driven from the DOM
+ *      rows' setHovered): broken = gaussian brightness+thickness swell at the
+ *      row's stream zone; healthy = the segment between ring i-1 and i
+ *      tightens + brightens. The driver also fires a BIGGER re-cohere tease
+ *      on broken row ignition (RECOHERE_ROW_BOOST).
+ *   4. DEPTH-DOF ILLUSION — size × alpha modulated by the z-bow (far =
+ *      smaller/dimmer; near = bigger + a SOFTER disc falloff via the new
+ *      vSoft varying) — a cheap bokeh read, no post.
  */
 import {
   unifiedForceStep,
@@ -137,6 +155,23 @@ import {
   RING_POINT_SIZE_BOOST,
   NEURAL_DEPTH_ATTEN,
   DEPTH_Z_RANGE,
+  ROW_ZONE_T,
+  ROW_ZONE_K,
+  ROW_SEG_START,
+  ROW_SEG_FEATHER,
+  ROW_GAIN,
+  ROW_SWELL,
+  ROW_TIGHTEN_RATIO,
+  CURL_GAIN,
+  CURL_SCALE,
+  CURL_FREQ,
+  CURL_FREQ_2,
+  CURL_AMP_2,
+  CURL_SPEED,
+  CURL_SPEED_2,
+  DOF_FAR_DIM,
+  DOF_SOFT_MIN,
+  DOF_SIZE_GAIN,
   NEURAL_SPRING,
   NEURAL_DAMPING,
   NEURAL_MAX_SPEED,
@@ -187,8 +222,13 @@ export interface NeuralFieldUniforms {
   uPointer: { value: { set: (x: number, y: number, z: number) => unknown } };
   uPixelRatio: { value: number };
   uViewport: { value: { set: (x: number, y: number) => unknown } };
+  /** Per-row attention glow 0..1 (write to `.array`) — round-3 row-reactive
+   * current, driven from the DOM rows' setHovered by the useFrame driver.
+   * broken: gaussian swell at ROW_ZONE_T[i]; healthy: segment ring i-1→i
+   * tightens + brightens. */
+  uRowGlow: { array: number[] };
   // --- Round-2 live tunables (surfaced on the dev handle) -------------------
-  /** Master braid-thickness scale (1 = config rest ≈ 34px visual). */
+  /** Master braid-thickness scale (1 = config rest ≈ 44px visual, round-3). */
   uEnvelope: { value: number };
   /** Idle envelope breathing amplitude (±, BREATHE_PERIOD seconds). */
   uBreathe: { value: number };
@@ -209,6 +249,16 @@ export interface NeuralFieldUniforms {
   uStrandPhase: { array: number[] };
   /** Per-strand tube-thickness biases — write entries of `.array`. */
   uStrandThick: { array: number[] };
+  // --- Round-3 live tunables ------------------------------------------------
+  /** Curl micro-turbulence gain (× CURL_SCALE displacement; compute tier
+   * only — the static graph never reads it). */
+  uCurl: { value: number };
+  /** Depth-DOF strength 0..1 (0 = the round-2 flat look). */
+  uDof: { value: number };
+  /** Row-glow emissive boost at full attention. */
+  uRowGain: { value: number };
+  /** Row-glow width response (broken swell + / healthy tighten −·ratio). */
+  uRowSwell: { value: number };
 }
 
 export interface NeuralFieldBuild {
@@ -405,6 +455,14 @@ export function createNeuralFieldBuild(
   const uSurgeGain = uniform(SURGE_GAIN);
   const uStrandPhase = uniformArray([...STRAND_PHASES]);
   const uStrandThick = uniformArray([...STRAND_THICK_BIAS]);
+  // Round-3 (§B): row-reactive current + curl turbulence + depth-DOF. All
+  // uniforms/uniformArrays — the storage-buffer and vertex-slot budgets are
+  // untouched.
+  const uRowGlow = uniformArray([0, 0, 0]);
+  const uCurl = uniform(CURL_GAIN);
+  const uDof = uniform(1);
+  const uRowGain = uniform(ROW_GAIN);
+  const uRowSwell = uniform(ROW_SWELL);
 
   // --- Geometry: shared billboard quad + per-instance role attributes -------
   const geometry = new InstancedBufferGeometry();
@@ -479,6 +537,89 @@ export function createNeuralFieldBuild(
   function strandThickAt(idx: Any): Any {
     return uStrandThick.element(int(clamp(idx, float(0), float(3)))) as Any;
   }
+  /** Round-3 row glow by JS-literal row index (uniformArray element — legal
+   * in any stage, costs no buffer slot). */
+  function rowGlowAt(i: number): Any {
+    return uRowGlow.element(int(i)) as Any;
+  }
+  /** Row i's attention window over flow-t — mode-blended by uBroken:
+   * broken = gaussian at ROW_ZONE_T[i] (the stream zone nearest the row;
+   * row 2 sits ON the fracture), healthy = smooth box over the segment
+   * between ring i-1 (or the entry) and ring i (§B.3). */
+  function rowWin(t: Any, i: number): Any {
+    const dz = t.sub(float(ROW_ZONE_T[i]));
+    const gauss = exp(float(ROW_ZONE_K).mul(dz.mul(dz)).negate());
+    const lo = i === 0 ? ROW_SEG_START : RING_T[i - 1];
+    const hi = RING_T[i];
+    const seg = smoothstep(
+      float(lo - ROW_SEG_FEATHER),
+      float(lo + ROW_SEG_FEATHER),
+      t,
+    ).mul(
+      float(1).sub(
+        smoothstep(float(hi - ROW_SEG_FEATHER), float(hi + ROW_SEG_FEATHER), t),
+      ),
+    );
+    return mix(seg, gauss, uBroken);
+  }
+  /** Σ rowGlow[i] · window_i(t) — 0..~1 "attention at t" (rows are mutually
+   * exclusive hover targets, so the sum never stacks in practice). */
+  function rowResponse(t: Any): Any {
+    let s: Any = float(0);
+    for (let i = 0; i < ROW_ZONE_T.length; i++) {
+      s = s.add(rowGlowAt(i).mul(rowWin(t, i)));
+    }
+    return s;
+  }
+
+  /** Round-3 curl-noise micro-turbulence (§B.2): analytic curl of a sin/cos
+   * vector potential — divergence-free by construction, two octaves, six trig
+   * evals per octave. A PURE spatial+time field (no per-particle hash), so
+   * neighbours along a filament read coherent offsets and the strands BEND /
+   * SHRED organically instead of fuzzing per-particle. Components ∈ ~[-1,1]. */
+  function curlAt(p: Any): Any {
+    const octave = (freq: number, speed: number): Any => {
+      const K = float(freq);
+      const t1 = uTime.mul(speed);
+      // Potential ψ = (sin a1, sin a2, sin a3) with skewed frequency pairs;
+      // curl(ψ) = (1.7K·c3 − K·c2, 1.7K·c1 − K·c3, 1.7K·c2 − K·c1) / (2.7K).
+      const a1 = p.y.mul(K).add(p.z.mul(K).mul(1.7)).add(t1);
+      const a2 = p.z.mul(K).add(p.x.mul(K).mul(1.7)).add(t1.mul(1.31));
+      const a3 = p.x.mul(K).add(p.y.mul(K).mul(1.7)).add(t1.mul(0.87));
+      const c1 = cos(a1).toVar();
+      const c2 = cos(a2).toVar();
+      const c3 = cos(a3).toVar();
+      return vec3(
+        c3.mul(1.7).sub(c2),
+        c1.mul(1.7).sub(c3),
+        c2.mul(1.7).sub(c1),
+      ).div(2.7);
+    };
+    return octave(CURL_FREQ, CURL_SPEED)
+      .add(octave(CURL_FREQ_2, CURL_SPEED_2).mul(float(CURL_AMP_2)))
+      .div(1 + CURL_AMP_2);
+  }
+
+  /** Normalized local-z 0 (far) → 1 (near) over the depth range. */
+  function zNorm(z: Any): Any {
+    return clamp(
+      z.div(float(DEPTH_Z_RANGE)).mul(0.5).add(0.5),
+      float(0),
+      float(1),
+    );
+  }
+  /** Depth-DOF alpha: the FAR half of the z range dims toward DOF_FAR_DIM
+   * (far = smaller/dimmer); the near half stays at 1 (§B.4). */
+  function dofAlphaAt(z: Any): Any {
+    const far01 = clamp(float(1).sub(zNorm(z).mul(2.0)), float(0), float(1));
+    return float(1).sub(far01.mul(float(1 - DOF_FAR_DIM)).mul(uDof));
+  }
+  /** Depth-DOF disc softness 0..1: only the NEAR half softens (bokeh read);
+   * mid/far keep the crisp round-2 disc. Feeds the vSoft varying. */
+  function dofSoftAt(z: Any): Any {
+    const near01 = clamp(zNorm(z).mul(2.0).sub(1.0), float(0), float(1));
+    return near01.mul(uDof);
+  }
   /** Ring flow-t by index (config constants — fixed topology). */
   function ringT(idx: Any): Any {
     const i0 = idx.lessThan(float(0.5));
@@ -498,7 +639,10 @@ export function createNeuralFieldBuild(
   /** Laminar width envelope: 1 at entry, tightening STEPWISE past each ring
    * (healthy; 1 → ~0.61 after all three — the igloo lock), times the idle
    * BREATHING (±uBreathe over BREATHE_PERIOD s) and the master uEnvelope.
-   * uBroken gates the ring tightening off; breathing applies to both modes. */
+   * uBroken gates the ring tightening off; breathing applies to both modes.
+   * Round-3: times the ROW-REACTIVE width response — the ignited row's zone
+   * SWELLS on broken (+uRowSwell) and TIGHTENS on healthy
+   * (−uRowSwell·ROW_TIGHTEN_RATIO, the laminar squeeze). */
   function widthEnvelope(t: Any): Any {
     let w: Any = float(1);
     for (let i = 0; i < RING_T.length; i++) {
@@ -511,7 +655,12 @@ export function createNeuralFieldBuild(
     const breathe = float(1).add(
       sin(uTime.mul((Math.PI * 2) / BREATHE_PERIOD)).mul(uBreathe),
     );
-    return mix(w, float(1), uBroken).mul(breathe).mul(uEnvelope);
+    const rowW = float(1).add(
+      rowResponse(t).mul(
+        mix(uRowSwell.mul(-ROW_TIGHTEN_RATIO), uRowSwell, uBroken),
+      ),
+    );
+    return mix(w, float(1), uBroken).mul(breathe).mul(rowW).mul(uEnvelope);
   }
 
   /** Fracture detachment factor 0..1 for a stream particle (broken only,
@@ -542,9 +691,12 @@ export function createNeuralFieldBuild(
   /**
    * The analytic anchor: where particle i WANTS to be, from the spline
    * uniforms + its read-only role/offset attributes. Pure function of uTime →
-   * deterministic for any scrub state (the unified-force contract).
+   * deterministic for any scrub state (the unified-force contract; the curl
+   * field is a pure function of position+uTime, so the contract holds).
+   * `curl` is a BUILD-TIME flag: the compute kernel passes true (filaments
+   * shred through the spring), the static tier keeps the analytic twist.
    */
-  function anchorNode(opts: { metaN: Any; offN: Any }): Any {
+  function anchorNode(opts: { metaN: Any; offN: Any; curl?: boolean }): Any {
     const { metaN, offN } = opts;
     const role = metaN.x;
     const aux = metaN.y;
@@ -581,7 +733,15 @@ export function createNeuralFieldBuild(
       sin(offN.z).mul(offN.y).mul(float(STRAND_THICKNESS)),
       cos(offN.z).mul(offN.y).mul(float(STRAND_THICKNESS)),
     ).mul(strandThickAt(aux));
-    const onStream = center.add(strandOff.add(jit).mul(w)).toVar();
+    // Round-3 curl micro-turbulence (compute tier only): displace the strand
+    // offset with the analytic curl field sampled AT the braid position, so
+    // the field varies along the stream AND across the cross-section.
+    const preStream = center.add(strandOff.add(jit).mul(w)).toVar();
+    const onStream = (
+      opts.curl
+        ? preStream.add(curlAt(preStream).mul(uCurl).mul(float(CURL_SCALE)))
+        : preStream
+    ).toVar();
 
     // Broken: past the fracture the particle loses the spline home and
     // becomes slow drifting debris — offset past the CLEAN-BREAK gap so the
@@ -783,11 +943,16 @@ export function createNeuralFieldBuild(
     const shimmer = float(1).add(
       sin(uTime.mul(0.5).add(metaN.w.mul(37.0)).add(t.mul(9.0))).mul(uShimmer),
     );
+    // Round-3 row-reactive brightness: the ignited row's zone glows. On
+    // broken the window reaches into the debris (row 2 = the fracture) where
+    // deadMix keeps the boost a warm ember lift, not a debris flare.
+    const rowBright = float(1).add(rowResponse(t).mul(uRowGain));
     const emisStream = float(1)
       .add(surge.mul(uSurgeGain))
       .add(flash.mul(float(FLASH_GAIN)))
       .mul(float(STREAM_EMISSIVE))
       .mul(shimmer)
+      .mul(rowBright)
       .mul(float(1).sub(deadMix.mul(0.75)));
     // Fringe alpha drop (edges dissolve into the navy) + the debris ceiling.
     const fringeA = mix(
@@ -863,10 +1028,20 @@ export function createNeuralFieldBuild(
 
   /** Shared fragment shade — identical on both backends. The disc UV is the
    * UNROTATED quad corner, so the screen-space stretch below renders it as an
-   * ellipse along the motion axis (the streak). */
-  function buildShade(v: { vQuadUv: Any; vColor: Any; vAlpha: Any }): Any {
+   * ellipse along the motion axis (the streak). Round-3 depth-DOF: vSoft
+   * (0 crisp → 1 near-bokeh) widens the disc falloff and sheds a little peak
+   * brightness — near particles read as soft out-of-focus discs. */
+  function buildShade(v: {
+    vQuadUv: Any;
+    vColor: Any;
+    vAlpha: Any;
+    vSoft: Any;
+  }): Any {
     return Fn(() => {
-      const disc = smoothstep(0.5, 0.12, length(v.vQuadUv)).toVar();
+      const inner = mix(float(0.12), float(DOF_SOFT_MIN), v.vSoft);
+      const disc = smoothstep(float(0.5), inner, length(v.vQuadUv))
+        .mul(float(1).sub(v.vSoft.mul(0.2)))
+        .toVar();
       const alpha = disc.mul(v.vAlpha).mul(uReveal).toVar();
       Discard(alpha.lessThan(0.004));
       return vec4(v.vColor.toVec3(), alpha);
@@ -907,14 +1082,15 @@ export function createNeuralFieldBuild(
     })();
   }
 
-  /** Depth attenuation (nearer = slightly bigger/brighter) from local z. */
+  /** Depth attenuation (nearer = bigger) from local z: the round-2 aerial
+   * cue × the round-3 DOF size gain (uDof-scaled — far smaller, near bigger). */
   function depthAtten(z: Any): Any {
-    const zn = clamp(
-      z.div(float(DEPTH_Z_RANGE)).mul(0.5).add(0.5),
-      float(0),
-      float(1),
+    const zn = zNorm(z);
+    const base = float(1).add(zn.sub(0.5).mul(float(NEURAL_DEPTH_ATTEN)));
+    const dof = float(1).add(
+      zn.sub(0.5).mul(float(DOF_SIZE_GAIN)).mul(uDof),
     );
-    return float(1).add(zn.sub(0.5).mul(float(NEURAL_DEPTH_ATTEN)));
+    return base.mul(dof);
   }
 
   function configureMaterial(material: Any, shade: Any) {
@@ -961,9 +1137,15 @@ export function createNeuralFieldBuild(
 
     const vQuadUv = varying(positionLocal.xy);
     const vColor = varying(sc.colorE);
-    const vAlpha = varying(sc.alpha);
+    // Round-3 depth-DOF: far half of the z-bow dims; near half softens (each
+    // varying stays a SELF-CONTAINED expression — varying discipline).
+    const vAlpha = varying(sc.alpha.mul(dofAlphaAt(centerS.z)));
+    const vSoft = varying(dofSoftAt(centerS.z));
 
-    configureMaterial(material, buildShade({ vQuadUv, vColor, vAlpha }));
+    configureMaterial(
+      material,
+      buildShade({ vQuadUv, vColor, vAlpha, vSoft }),
+    );
 
     return {
       geometry,
@@ -999,7 +1181,9 @@ export function createNeuralFieldBuild(
     // (role 2 must never read as −1 through a `1 − role` term).
     const nonStream = clamp(role, float(0), float(1)).toVar();
 
-    const liveAnchor = anchorNode({ metaN, offN }).toVar();
+    // Round-3: the compute anchor carries the curl micro-turbulence (build-
+    // time flag — the static tier keeps the analytic twist).
+    const liveAnchor = anchorNode({ metaN, offN, curl: true }).toVar();
     // Reconstruct the scattered seed deterministically (matches seedBuffers).
     const idxF = float(instanceIndex);
     const s0 = fract(sin(idxF.mul(127.1).add(311.7)).mul(43758.545));
@@ -1110,9 +1294,13 @@ export function createNeuralFieldBuild(
 
   const vQuadUv = varying(positionLocal.xy);
   const vColor = varying(scR.colorE);
-  const vAlpha = varying(scR.alpha);
+  // Round-3 depth-DOF on the LIVE position z (pointer-bent particles pushed
+  // toward camera go soft too). Self-contained expressions per the varying
+  // discipline; posR is already a bound vertex-buffer read — no new slot.
+  const vAlpha = varying(scR.alpha.mul(dofAlphaAt(posR.z)));
+  const vSoft = varying(dofSoftAt(posR.z));
 
-  configureMaterial(material, buildShade({ vQuadUv, vColor, vAlpha }));
+  configureMaterial(material, buildShade({ vQuadUv, vColor, vAlpha, vSoft }));
 
   return {
     geometry,
@@ -1161,6 +1349,11 @@ export function createNeuralFieldBuild(
       uPointSize,
       uStrandPhase: uStrandPhase as unknown as { array: number[] },
       uStrandThick: uStrandThick as unknown as { array: number[] },
+      uRowGlow: uRowGlow as unknown as { array: number[] },
+      uCurl,
+      uDof,
+      uRowGain,
+      uRowSwell,
     };
   }
 }
