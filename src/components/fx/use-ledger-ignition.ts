@@ -26,6 +26,12 @@
  * setHovered is idempotent (store skips identical writes), cleared on
  * unmount so a stale ring never stays flared.
  *
+ * `onResolvedChange` (round 5, optional): fires with the resolved index on
+ * every EDGE (a different row ignites, or none) — the hook for GSAP-side
+ * ignition choreography (the Hv1 letter-shift wave in lusion-type.ts) riding
+ * the exact same three entry points as the store link. Ref-stored so the
+ * handlers/sync stay referentially stable; also fired with null on unmount.
+ *
  * All returned arrays are memoized per (surface, count): ref callbacks stay
  * STABLE across re-renders (the EN/IT toggle re-renders every row body
  * without remounting it — a fresh ref callback each render would detach and
@@ -44,7 +50,11 @@ export interface LedgerRowHandlers {
   onBlur: () => void;
 }
 
-export function useLedgerIgnition(surface: Surface, count: number) {
+export function useLedgerIgnition(
+  surface: Surface,
+  count: number,
+  onResolvedChange?: (index: number | null) => void,
+) {
   const setHovered = useNeuralLatticeStore((s) => s.setHovered);
   const centreRef = useCentreFocus();
 
@@ -56,9 +66,22 @@ export function useLedgerIgnition(surface: Surface, count: number) {
   }>({ hover: null, focus: null, centre: null });
   const canHoverRef = useRef(false);
 
+  // Ref-stored callback + last-resolved edge detector: sync stays stable
+  // regardless of the caller's callback identity.
+  const onChangeRef = useRef(onResolvedChange);
+  useEffect(() => {
+    onChangeRef.current = onResolvedChange;
+  });
+  const lastResolvedRef = useRef<number | null>(null);
+
   const sync = useCallback(() => {
     const s = stateRef.current;
-    setHovered(surface, s.hover ?? s.focus ?? s.centre);
+    const resolved = s.hover ?? s.focus ?? s.centre;
+    setHovered(surface, resolved);
+    if (lastResolvedRef.current !== resolved) {
+      lastResolvedRef.current = resolved;
+      onChangeRef.current?.(resolved);
+    }
   }, [setHovered, surface]);
 
   // Hover capability — subscribed, never one-shot (a mouse plugged into a
@@ -102,9 +125,16 @@ export function useLedgerIgnition(surface: Surface, count: number) {
     return () => mo.disconnect();
   }, [sync, count]);
 
-  // Clear the store on unmount so a stale ring doesn't stay flared.
+  // Clear the store (and the GSAP-side listener) on unmount so a stale ring
+  // never stays flared and a stale wave never stays shifted.
   useEffect(() => {
-    return () => setHovered(surface, null);
+    return () => {
+      setHovered(surface, null);
+      if (lastResolvedRef.current !== null) {
+        lastResolvedRef.current = null;
+        onChangeRef.current?.(null);
+      }
+    };
   }, [setHovered, surface]);
 
   /** Stable per-index ref callbacks: register with centre-focus + the local

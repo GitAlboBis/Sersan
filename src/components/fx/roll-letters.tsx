@@ -2,30 +2,37 @@
 
 /**
  * RollLetters — the Lusion LETTER-ROLL grammar for short display words
- * (round-3 owner note, 2026-08-21: "le animazioni delle scritte grandi,
- * stile Lusion"). A local twin of the work section's RollingTitle
- * (work-card.tsx): per-letter columns of stacked glyph copies streaming
- * through a one-line clip, yPercent −500 → 0, expo.inOut, center-out cosine
- * stagger. Differences, on purpose:
+ * (dossier recipe R1: per-letter columns of stacked glyph copies streaming
+ * through a one-line clip, yPercent −500 → 0, expo.inOut, ~1.25s, center-out
+ * cosine stagger). A local twin of the work section's RollingTitle
+ * (work-card.tsx). Differences, on purpose:
  *
  *   - CLIP-PATH, not overflow:hidden. An inline-block with overflow≠visible
  *     moves its baseline to the bottom margin edge — these words sit INSIDE
  *     mixed display lines (mono index · serif cause -> ghost effect), so the
  *     clip must not break baseline registration. `clip-path: inset(0)` clips
  *     paint without touching layout or baseline.
+ *   - `clipInset` (round 5, Hv1): the problem EFFECT word's ignition wave
+ *     slides its chars x 0→1.5em — a plain inset(0) would clip the shifted
+ *     glyphs. Passing negative HORIZONTAL insets (`inset(0 -2em)`) lets the
+ *     x-shift escape while the vertical roll clip survives.
+ *   - `wave` marks the word as the Hv1 target (`data-wave-word`) so the
+ *     ignition driver (lusion-type useIgnitionWave) can find its columns.
  *   - Copies live BELOW the in-flow final glyph (absolute, top k·100%): the
  *     final char is the ONLY in-flow text, so SSR / no-JS / reduced-motion
  *     rest state is exactly the real string, clipped to one clean line.
  *   - `decoys="decode"`: the three streaming copies are DETERMINISTIC
  *     scramble glyphs (never Math.random in render — SSR and hydration must
  *     agree byte-for-byte), so the word rolls in already-scrambled and lands
- *     decoded — the AT read composed with the Lusion roll, zero timers.
- *     `decoys="self"` (default) is the pure Lusion roll (letter ×4).
+ *     decoded. `decoys="self"` (default) is the pure Lusion roll (letter ×4).
  *
- * PURE MARKUP: the owning section's GSAP timeline drives the transforms via
- * `[data-roll-word]` / `[data-roll-col]` queries (prime yPercent −500, play
- * fromTo → 0 with rollDelay stagger). Without JS nothing is primed — the
- * word simply reads. A11y: real string in an .sr-only span; the visual
+ * PURE MARKUP: the owning section's GSAP timelines drive the transforms via
+ * `[data-roll-word]` / `[data-roll-col]` queries. Round 5: the entrance is a
+ * viewport-entry REPLAYABLE tween (yPercent −500→0, expo.inOut, 1.25s, the
+ * rollDelay center-out cosine as real seconds — R1's literal numbers), reset
+ * off-screen and replayed on re-entry; the Hv1 x-wave composes on the same
+ * columns (x channel only, never yPercent). Without JS nothing is primed —
+ * the word simply reads. A11y: real string in an .sr-only span; the visual
  * column machinery is aria-hidden (RollingTitle contract).
  *
  * Copy freeze: the component re-renders the exact `text` string (the sr-only
@@ -55,22 +62,34 @@ interface RollLettersProps {
    * already-scrambled, land decoded. */
   decoys?: "self" | "decode";
   className?: string;
+  /** clip-path for the roll mask. Default clips exactly to the line; pass
+   * negative horizontal insets (e.g. "inset(0 -2em)") when a hover x-shift
+   * must escape the clip while the vertical roll stays masked (Hv1). */
+  clipInset?: string;
+  /** Marks the word as the Hv1 ignition-wave target (data-wave-word). */
+  wave?: boolean;
 }
 
 export function RollLetters({
   text,
   decoys = "self",
   className,
+  clipInset = "inset(0)",
+  wave = false,
 }: RollLettersProps) {
   const chars = useMemo(() => Array.from(text), [text]);
   return (
-    <span className={className} data-roll-word="">
+    <span
+      className={className}
+      data-roll-word=""
+      data-wave-word={wave ? "" : undefined}
+    >
       <span className="sr-only">{text}</span>
       <span
         aria-hidden="true"
         style={{
           display: "inline-block",
-          clipPath: "inset(0)",
+          clipPath: clipInset,
           whiteSpace: "pre",
         }}
       >

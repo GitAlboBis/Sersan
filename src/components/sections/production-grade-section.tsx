@@ -9,45 +9,58 @@ import { useNeuralLatticeFallback } from "@/components/fx/use-neural-lattice-fal
 import { NeuralGraphFallback } from "@/components/fx/neural-graph-fallback";
 import { RollLetters } from "@/components/fx/roll-letters";
 import { useLedgerIgnition } from "@/components/fx/use-ledger-ignition";
-import { useChapterScrub, useLedgerScrub } from "@/components/fx/use-type-scrub";
+import {
+  useChapterReveal,
+  useLedgerReveal,
+  useTextDrift,
+} from "@/components/fx/lusion-type";
 
 /**
  * ProductionGradeSection — the SIGNATURE section, ProblemSection's twin.
  *
- * SCROLL-SCRUBBED TYPOGRAPHIC LEDGER (round 4, 2026-08-21 — the round-3
- * IO-once entrances are gone; same scrub grammar as the Problem ledger,
- * opposite narrative — the stream is HEALTHY here):
- *   - Chapter heading: the h2 dropped `data-split-reveal` (the shared
- *     one-shot HeadingChoreographer no longer owns it — untouched for the
- *     rest of the site) and carries `data-chapter-h2` → useChapterScrub's
- *     SCRUBBED SplitText line-rise, with the D-17 description as the
- *     right-hung `[data-chapter-note]` annotation following in the last 25%
- *     (byte-identical string). key={language} + revert discipline unchanged.
- *   - Each artifact is a FULL-WIDTH row over a hairline: a mono kicker line
- *     `[01·] [cluster label]`, then the CLAIM in display serif rendered as
- *     GHOST type — outlined/transparent so the WebGL river threading the
- *     guide rings shines through — with `why` as the right-cell mono
- *     annotation (grid [1fr_minmax(280px,34%)], Lusion pairing).
- *   - PER-ROW SCRUB (useLedgerScrub; scrub:true raw — Lenis smooths; start
- *     "top 85%" / end "top 40%"; no pin): the ghost CLAIM line FILLS
- *     LEFT→RIGHT with solid ink exactly proportionally to the row's
- *     progress (background-clip:text gradient, background-size driven by
- *     GSAP; the stroke outline sits UNDER the un-filled part); the index and
- *     the claim rise/settle on the first 25%; the cluster KICKER's Lusion
- *     letter-roll (RollLetters) is scrub-driven; the hairline draws scaleX
- *     across the middle; the annotation fades+rises in the last 35%. All of
- *     it reverses scrubbing up; re-entry replays by construction.
- *   - `bumpCluster("healthy", i)` fires ONCE per row per page life as row
- *     i's scrub crosses its landing beat (IGNITE_AT in use-type-scrub) —
- *     DOM row and WebGL ring still ignite together, in pipeline order (on
- *     the fallback tier the SVG twin draws its own ring ignition on mount;
- *     the store write is a harmless no-op there).
- *   - IGNITION (fine-pointer hover, keyboard focus, touch centre-band) is an
- *     ACCENT ON TOP of the scroll fill — a subtle brightness + glyph-shaped
- *     accent drop-shadow glow + stroke hue shift, never a second fill; the
- *     cluster eyebrow goes accent, the index brightens, and
- *     setHovered("healthy", i) flares ring i in the WebGL field (existing
- *     store link, untouched).
+ * TYPOGRAPHIC LEDGER, TEXT v3 (round 5, 2026-08-21 — the round-4 scrubbed
+ * fill-wipe and the right-hung mono annotations are DEAD, owner call; same
+ * Lusion pair as the Problem ledger — replayable viewport-entry choreography
+ * + per-frame parallax drift (fx/lusion-type.ts) — opposite narrative: the
+ * stream is HEALTHY here):
+ *   - Chapter: the h2 carries `data-chapter-h2` (NOT data-split-reveal — the
+ *     shared one-shot HeadingChoreographer must skip it) → useChapterReveal
+ *     plays recipe H3 (SplitText words in line masks, y 115→0 1s lusion
+ *     0.025s/word + x 200→0 trailing +0.4s), replayable (reset fully-out,
+ *     replay on re-entry). key={language} + revert discipline unchanged. The
+ *     D-17 description is no longer a 13px caption — a structural right grid
+ *     column at BODY scale (`[data-chapter-desc]`), revealed in B3 spirit
+ *     cascaded after the title, drifting at k=1.25. Byte-identical string.
+ *   - Each artifact is a FULL-WIDTH row over a hairline (no right cell): a
+ *     mono kicker line `[01·] [cluster label]`, the CLAIM in display serif
+ *     as GHOST type (outlined/transparent — the river threading the guide
+ *     rings shines through), then the WHY as a Switzer body-scale block
+ *     (`[data-row-body]`, max-width 34em) UNDER the claim, then the
+ *     hairline. Row = [kicker + claim] over [body] over [hairline].
+ *   - ENTRANCES (useLedgerReveal, per row, replayable): the cluster label's
+ *     RollLetters plays recipe R1 exactly (per-char column, yPercent −500→0,
+ *     expo.inOut, 1.25s, center-out cosine); the index settles
+ *     (autoAlpha+rise); the CLAIM plays recipe H3 (`[data-claim]` — SplitText
+ *     words in line masks, y then x trailing +0.4s; the ghost stroke
+ *     inherits through the split wrappers; key={language} remounts it); the
+ *     hairline draws scaleX; the body plays recipe B1 (words, opacity .1→1 +
+ *     y 100→0, 0.01s/word) cascaded +0.3s after the roll starts. Everything
+ *     resets when the row fully leaves the viewport and replays on re-entry.
+ *   - `bumpCluster("healthy", i)` fires ONCE per row per page life at the
+ *     entrance's landing beat (timeline callback at IGNITE_BEAT in
+ *     lusion-type; the latch survives EN/IT rebuilds) — DOM row and WebGL
+ *     ring still ignite together. A load landing PAST a row fires its latch
+ *     immediately (the field must read "already landed"). On the fallback
+ *     tier the SVG twin draws its own ring ignition on mount; the store
+ *     write is a harmless no-op there.
+ *   - DRIFT (useTextDrift): kicker+claim block at k=0.5, body at k=1.5,
+ *     chapter desc at 1.25. One shared ticker, transform-only, zero
+ *     per-frame gBCR. Hairlines never drift. No arrows here → no Hv1 wave.
+ *   - IGNITION (fine-pointer hover, keyboard focus, touch centre-band) stays
+ *     the CSS accent — brightness + glyph-shaped accent drop-shadow glow +
+ *     stroke hue shift, the cluster eyebrow goes accent, the index
+ *     brightens — and setHovered("healthy", i) flares ring i in the WebGL
+ *     field (existing store link, untouched).
  *   - BAND GEOMETRY CONTRACT (§A round 3, shared with the stream agent): the
  *     `[data-lattice-anchor="production"]` rect stays the FULL-BLEED -z-10
  *     background of the rows stack. Ring registration UNCHANGED (40/62/84%
@@ -55,10 +68,10 @@ import { useChapterScrub, useLedgerScrub } from "@/components/fx/use-type-scrub"
  *     callout x mirrors it). Ghost callouts + dot grid KEPT.
  *   - `productionPulseStore.bump()` on every in-view edge is UNTOUCHED (the
  *     signature line's BEAT 1 emissive boost).
- *   - Guards: SSR/no-JS renders fully-solid ink fill (background-size 100%
- *     in CSS), full-width hairlines, visible notes; scrub poses primed only
- *     at arm with an immediate init snap. Reduced motion: static solid ink,
- *     zero scrub choreography, no store bumps from the scrub path.
+ *   - Guards: SSR/no-JS renders everything settled and visible (solid ink
+ *     fallback where stroke is unsupported — @supports guard); FROM poses
+ *     primed only by GSAP at arm (D-10). Reduced motion: static solid ink,
+ *     zero choreography, no drift, no store bumps from the entrance path.
  *   - A11y: strings in source order (index → label → claim → why), ghost
  *     styling is pure CSS on real text, rows are tabIndex=0 with the global
  *     :focus-visible ring; focus = ignition.
@@ -163,13 +176,12 @@ const CALLOUT_POS: { left: string; edge: "top" | "bottom"; at: string }[] = [
 
 /**
  * Ghost + ignition CSS — file-scoped (no globals.css edits, parallel-agent
- * rule). Same scrub-fill machinery as the Problem ledger (see its header for
- * the full rationale), fill color = solid ink. Base state is fully filled
- * (background-size 100%) so SSR / no-JS / unsupported browsers read solid;
- * the scrub-derived partial fill is a GSAP inline write only. Ignition =
- * accent glow on top (drop-shadow, NOT text-shadow — text-shadow paints
- * over a background-clipped fill), never a second fill. Reduced motion:
- * solid readable ink, static, state selectors carried.
+ * rule). Same rest grammar as the Problem ledger (see its header note): the
+ * claim is permanently outlined — transparent fill + stroke — so the river
+ * shines through; the @supports guard keeps non-supporting browsers on solid
+ * ink. Ignition = accent glow on top (drop-shadow, NOT text-shadow — the
+ * glow must wrap the glyph shapes, not the text box). Reduced motion: solid
+ * readable ink, static, state selectors carried.
  */
 const PGROW_CSS = `
 .pgrow__ghost {
@@ -178,16 +190,10 @@ const PGROW_CSS = `
     filter 0.6s var(--ease-lusion),
     -webkit-text-stroke-color 0.6s var(--ease-lusion);
 }
-@supports ((-webkit-background-clip: text) and (-webkit-text-stroke-width: 1px)) {
+@supports ((-webkit-text-fill-color: transparent) and (-webkit-text-stroke-width: 1px)) {
   .pgrow__ghost {
     -webkit-text-fill-color: transparent;
     -webkit-text-stroke: 1px hsl(var(--ink) / 0.35);
-    background-image: linear-gradient(90deg, hsl(var(--ink)), hsl(var(--ink)));
-    background-repeat: no-repeat;
-    background-position: 0 0;
-    background-size: 100% 100%;
-    -webkit-background-clip: text;
-    background-clip: text;
   }
 }
 .pgrow__index {
@@ -224,7 +230,6 @@ const PGROW_CSS = `
     color: hsl(var(--ink));
     -webkit-text-fill-color: currentColor;
     -webkit-text-stroke-width: 0;
-    background-image: none;
     filter: none;
     transition: none;
   }
@@ -246,15 +251,15 @@ export default function ProductionGradeSection() {
 
   // Ignition driver: centre-band on touch (data-focus), hover/focus on fine
   // pointer — visual is CSS above; the store link (ring i flare) rides the
-  // same edges via setHovered("healthy", i).
+  // same edges via setHovered("healthy", i). No arrows → no Hv1 wave here.
   const { rowRefs, rowHandlers } = useLedgerIgnition(
     "healthy",
     artifacts.length,
   );
 
   const bumpCluster = useNeuralLatticeStore((s) => s.bumpCluster);
-  // Ring i ignites exactly as row i's scrub lands — DOM and WebGL together
-  // (once per page life; the latch lives inside useLedgerScrub). Stable
+  // Ring i ignites exactly as row i's entrance lands — DOM and WebGL together
+  // (once per page life; the latch lives inside useLedgerReveal). Stable
   // identity: bumpCluster is a zustand action, so this callback never
   // changes shape across renders (constant-shape deps in the hook).
   const igniteRing = useCallback(
@@ -264,17 +269,20 @@ export default function ProductionGradeSection() {
     [bumpCluster],
   );
 
-  // Round-4 scroll-scrubbed type: chapter h2/annotation + per-row
-  // fill-wipe/rise/roll/hairline/note choreography (see use-type-scrub.ts
-  // for the full contract — RM static, SSR solid, init snap, revert on
-  // language rebuild).
+  // Round-5 text v3: replayable viewport-entry choreography (chapter H3 +
+  // per-row R1/H3/B1/hairline) + the shared per-frame parallax drift (see
+  // fx/lusion-type.ts for the full contract — RM static, SSR settled,
+  // FROM primed at arm only, revert on language rebuild).
+  const sectionRef = useRef<HTMLElement | null>(null);
   const chapterRef = useRef<HTMLDivElement | null>(null);
-  useChapterScrub(chapterRef, language);
-  useLedgerScrub(rowRef, language, igniteRing);
+  useChapterReveal(chapterRef, language);
+  useLedgerReveal(rowRef, language, igniteRing);
+  useTextDrift(sectionRef, language);
 
   return (
     <section
       id="trust"
+      ref={sectionRef}
       data-snap
       className="section-accent-tint section-accent-tint--strong relative section-lg scroll-mt-24 overflow-hidden"
     >
@@ -282,13 +290,13 @@ export default function ProductionGradeSection() {
       <SectionGlow position="bottom-right" intensity={1.25} size="65rem" />
       <SectionGlow position="top-left" intensity={0.9} size="50rem" />
       <div className="container-px relative">
-        {/* Chapter heading + right-hung annotation (the Problem section's
-            twin grammar). */}
+        {/* Chapter heading + body-scale description column (the Problem
+            section's twin grammar). */}
         <div
           ref={chapterRef}
-          className="grid gap-6 lg:grid-cols-[1fr_320px] lg:items-end lg:gap-10"
+          className="grid gap-6 lg:grid-cols-[1fr_minmax(320px,30rem)] lg:items-end lg:gap-12"
         >
-          <div>
+          <div data-drift="0.5">
             {/* Plain `.eyebrow` (no [data-eyebrow-text]) → the global
                 LabelScrambler owns its decode reveal. */}
             <p className="eyebrow mb-5 inline-flex items-center gap-2 text-ink-mute">
@@ -305,10 +313,9 @@ export default function ProductionGradeSection() {
             {/* max-sm override — the Problem chapter title's twin (same
                 budget arithmetic; presentation-only).
                 data-chapter-h2 (NOT data-split-reveal — the shared one-shot
-                choreographer must skip it) → useChapterScrub's SCRUBBED
-                SplitText line-rise; key={language}: SplitText owns the
-                subtree once split, a language swap must remount it
-                (SectionHeading contract). */}
+                choreographer must skip it) → useChapterReveal's replayable
+                H3; key={language}: SplitText owns the subtree once split, a
+                language swap must remount it (SectionHeading contract). */}
             <h2
               key={language}
               data-chapter-h2
@@ -329,25 +336,30 @@ export default function ProductionGradeSection() {
               )}
             </h2>
           </div>
-          {/* Scrubbed into the chapter window's last 25% (round 4; the
-              IO-once ChapterAnnotation blur-fade is retired here). */}
-          <p
-            data-chapter-note
-            className="max-w-[320px] text-[13px] leading-relaxed text-ink-mute"
-          >
-            {/* Device-neutral verb (D-17, owner-approved 2026-08-11): ONE
-                string per locale, byte-identical under the copy freeze. */}
-            {isEn
-              ? "Not a list of compliance buzzwords. These are artifacts you can ask to see in any scoping call. Open a panel to see why it matters."
-              : "Non un elenco di buzzword sulla compliance. Sono artefatti che puoi chiedere di vedere in qualsiasi call di scoping. Apri un pannello per capire perché conta."}
-          </p>
+          {/* The chapter description — structural right column at BODY scale
+              (W2). B3-spirit reveal after the title; drift k=1.25.
+              max-sm 0.9rem: §Mobile budget trim (W2 scale-up overshot
+              390×844 by ~90px) — body scale on desktop, one step down on
+              phones. */}
+          <div data-drift="1.25">
+            <p
+              data-chapter-desc
+              className="max-w-[34em] text-[clamp(1rem,1.2vw,1.3rem)] max-sm:text-[0.9rem] leading-[1.5] text-ink-mute"
+            >
+              {/* Device-neutral verb (D-17, owner-approved 2026-08-11): ONE
+                  string per locale, byte-identical under the copy freeze. */}
+              {isEn
+                ? "Not a list of compliance buzzwords. These are artifacts you can ask to see in any scoping call. Open a panel to see why it matters."
+                : "Non un elenco di buzzword sulla compliance. Sono artefatti che puoi chiedere di vedere in qualsiasi call di scoping. Apri un pannello per capire perché conta."}
+            </p>
+          </div>
         </div>
 
         {/* THE LEDGER — full-width typographic rows; the WebGL band is their
             full-bleed -z-10 background (BAND GEOMETRY CONTRACT). `isolate`
             pins the negative-z band inside this container so it paints above
             the section wash but below every row. */}
-        <div ref={rowRef} className="relative isolate mt-6 sm:mt-12">
+        <div ref={rowRef} className="relative isolate mt-4 sm:mt-12">
           {/* The WebGL anchor rect — full-bleed to the viewport edges; the
               rings ignite at 40/62/84% of this box (registration unchanged).
               Decorative layer: aria-hidden, pointer-events-none. */}
@@ -388,11 +400,12 @@ export default function ProductionGradeSection() {
             })}
           </div>
 
-          {/* The rows — full-width, chrome-less, each closed by a hairline
-              (a scrub-drawn span now, not a border — no hidden pose baked in:
-              SSR/no-JS/RM paint it full-width). tabIndex + the global
-              :focus-visible ring; hover/focus/centre ignite (CSS) and fire
-              the store link (useLedgerIgnition). */}
+          {/* The rows — full-width, chrome-less: [kicker + claim] over
+              [body] over [hairline] (W2 — the right cell is dead). Hairline
+              is an entrance-drawn span (no hidden pose baked in: SSR/no-JS/RM
+              paint it full-width). tabIndex + the global :focus-visible ring;
+              hover/focus/centre ignite (CSS) and fire the store link
+              (useLedgerIgnition). */}
           {artifacts.map((a, i) => (
             <article
               key={i}
@@ -400,16 +413,17 @@ export default function ProductionGradeSection() {
               tabIndex={0}
               data-ledger-row={i}
               {...rowHandlers[i]}
-              className="pgrow relative grid gap-x-10 gap-y-3 py-8 max-sm:py-5 lg:py-10 sm:grid-cols-[1fr_minmax(280px,34%)] sm:items-end"
+              className="pgrow relative py-8 max-sm:py-4 lg:py-10"
             >
-              <div>
-                {/* Kicker line: the mono index scrub-rises on the window's
-                    first 25% (inline-block: GSAP transforms are no-ops on
-                    plain inline boxes); the cluster label's letter-roll is
-                    scrub-driven (goes accent on ignition). */}
+              {/* Kicker + claim — drift k=0.5. */}
+              <div data-drift="0.5">
+                {/* Kicker line: the mono index settles on entry (inline-block:
+                    GSAP transforms are no-ops on plain inline boxes); the
+                    cluster label's letter-roll is recipe R1 (goes accent on
+                    ignition). */}
                 <p className="font-mono text-[11px] uppercase leading-relaxed tracking-[0.16em]">
                   <span
-                    data-scrub-rise
+                    data-row-rise
                     className="pgrow__index inline-block tabular-nums"
                   >
                     {`0${i + 1}`}
@@ -421,30 +435,33 @@ export default function ProductionGradeSection() {
                   />
                 </p>
                 {/* The CLAIM — ghost display serif (the river shines through
-                    the un-filled glyphs), scrub-FILLED to solid ink
-                    left→right with the row's progress, riding the same
-                    window's rise. */}
+                    the outlined glyphs), recipe H3 entrance (data-claim;
+                    key={language}: SplitText owns the subtree once split). */}
                 <h3
-                  data-scrub-rise
-                  data-scrub-ghost
-                  className="pgrow__ghost mt-2 sm:mt-3 font-display text-[clamp(1.9rem,3.2vw,3.4rem)] leading-[1.05] tracking-[-0.01em] text-balance"
+                  key={language}
+                  data-claim
+                  className="pgrow__ghost mt-2 sm:mt-3 font-display text-[clamp(1.9rem,3.6vw,3.9rem)] leading-[1.05] tracking-[-0.01em] text-balance"
                 >
                   {a.claim}
                 </h3>
               </div>
-              {/* The why as the right-cell mono annotation (Lusion pairing).
-                  Scrubbed across the window's last 35%; never primed under
-                  RM/no-JS. */}
-              <p
-                data-row-note
-                className="font-mono text-[13px] leading-relaxed text-ink-mute max-w-[44ch] sm:justify-self-end"
-              >
-                {a.why}
-              </p>
-              {/* Hairline — scaleX-drawn across the middle of the scrub
-                  window (origin left). Hidden pose is GSAP-only (D-10). */}
+              {/* The why — UNDER the claim (W2), Switzer at body scale,
+                  ~34em measure. B1 word-wave entrance (split → remount on
+                  language); drift k=1.5. max-sm 0.875rem/1.45 + mt-3:
+                  §Mobile budget trim (still body Switzer, not a caption). */}
+              <div data-drift="1.5" className="mt-3 sm:mt-5">
+                <p
+                  key={language}
+                  data-row-body
+                  className="max-w-[34em] text-[clamp(0.95rem,1.05vw,1.15rem)] max-sm:text-[0.875rem] leading-[1.5] max-sm:leading-[1.45] text-ink-mute"
+                >
+                  {a.why}
+                </p>
+              </div>
+              {/* Hairline — entrance-drawn scaleX (origin left), replayable.
+                  Hidden pose is GSAP-only (D-10). Never drifts. */}
               <span
-                data-scrub-hairline
+                data-hairline
                 aria-hidden="true"
                 className="absolute inset-x-0 bottom-0 h-px origin-left bg-[hsl(var(--rule)/0.5)]"
               />
@@ -452,8 +469,9 @@ export default function ProductionGradeSection() {
           ))}
         </div>
 
-        {/* Closing disclaimer — kept verbatim. */}
-        <p className="mt-10 sm:mt-14 text-[12px] font-mono uppercase tracking-[0.14em] text-ink-mute max-w-2xl">
+        {/* Closing disclaimer — kept verbatim. mt-8 below sm: §Mobile budget
+            trim (desktop sm:mt-14 unchanged). */}
+        <p className="mt-8 sm:mt-14 text-[12px] font-mono uppercase tracking-[0.14em] text-ink-mute max-w-2xl">
           {isEn ? (
             <>
               We do not claim compliance certifications we don&apos;t hold.

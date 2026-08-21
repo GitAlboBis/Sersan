@@ -9,6 +9,7 @@ import { caseStudies, type CaseStudy } from "@/data/case-studies";
 import { useFlipSource } from "@/lib/use-flip-source";
 import { useFeaturedStore } from "@/webgl/store/featuredStore";
 import { cn } from "@/lib/utils";
+import { lusionEase } from "@/components/fx/lusion-ease";
 
 if (typeof window !== "undefined") gsap.registerPlugin(ScrollTrigger, CustomEase);
 
@@ -64,10 +65,10 @@ function rollDelay(i: number, n: number): number {
   return (Math.cos(phase) + 1) * 0.0625;
 }
 
-/** The house ease as a shared GSAP CustomEase (created once, cached). */
-export function lusionEase() {
-  return CustomEase.get("lusion") ?? CustomEase.create("lusion", "0.35, 0, 0, 1");
-}
+/** The house ease — re-exported from the shared guarded module
+ * (fx/lusion-ease.ts, the ONE registration point) for existing importers
+ * (case-studies-client.tsx). */
+export { lusionEase };
 
 /**
  * RollingTitle — the 4-copy letter-column title. Pure markup; WorkCard's
