@@ -123,12 +123,12 @@ export const caseStudies: CaseStudy[] = [
     liveUrl: "https://www.spherenode.com",
     previewImage: "/case-studies/spherenode-preview.webp",
     logoImage: "/case-studies/logos/logo-white.svg",
-    /* Detail rail media (Lusion parity): product loops captured from the
-       live site (Playwright screencast → ping-pong H.264, ~28s each). The
-       lead still stays first — it is the flip-flight landing rect. */
+    /* Detail rail media (Lusion parity): ONE product loop captured from the
+       live site (Playwright screencast → ping-pong H.264) — the features
+       sweep, boss-picked over the hero take. The lead still stays first —
+       it is the flip-flight landing rect. */
     railItems: [
       { type: "image", src: "/case-studies/spherenode-preview.webp", width: 1600, height: 940 },
-      { type: "video", src: "/case-studies/spherenode/main.mp4", poster: "/case-studies/spherenode/main-poster.webp", width: 1280, height: 720 },
       { type: "video", src: "/case-studies/spherenode/features.mp4", poster: "/case-studies/spherenode/features-poster.webp", width: 1280, height: 720, fullscreen: true },
     ],
   },
@@ -158,10 +158,10 @@ export const caseStudies: CaseStudy[] = [
     liveUrl: "https://www.quantex.live",
     previewImage: "/case-studies/quantex-preview.webp",
     logoImage: "/case-studies/logos/logo.svg",
-    /* Detail rail media — same capture pipeline as SphereNode. */
+    /* Detail rail media — same pipeline and same boss pick as SphereNode:
+       the performance-chart sweep alone. */
     railItems: [
       { type: "image", src: "/case-studies/quantex-preview.webp", width: 1600, height: 922 },
-      { type: "video", src: "/case-studies/quantex/main.mp4", poster: "/case-studies/quantex/main-poster.webp", width: 1280, height: 720 },
       { type: "video", src: "/case-studies/quantex/features.mp4", poster: "/case-studies/quantex/features-poster.webp", width: 1280, height: 720, fullscreen: true },
     ],
   },
