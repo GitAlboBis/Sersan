@@ -49,3 +49,6 @@ f_*.png
 # Cloned reference repos (codrops demos etc.) — analysis only, not shipped
 /.refs/
 /_refs/
+
+# Lusion reverse-engineering raw artifacts — proprietary code, NEVER push
+/research/lusion-raw/
