@@ -2,17 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import {
-  ArrowRight,
-  Boxes,
-  Workflow,
-  Activity,
-  ScanSearch,
-  type LucideIcon,
-} from "lucide-react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { SectionHeading } from "@/components/ui/section-heading";
 import { Reveal } from "@/components/ui/reveal";
 import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
@@ -55,8 +46,9 @@ if (typeof window !== "undefined") {
  *     per segment (sine.inOut chase). scaleX/scaleY quickTo pair, never the
  *     `scale` shorthand (repo-wide "not eligible for reset" gotcha).
  *   - Focus states: the segment's target card brightens to full opacity +
- *     accent ring, the card being left dims back (opacity 0.5, scale 0.96) —
- *     per-card quickTo writers on an INNER wrapper, no React state per frame.
+ *     accent left-edge glow, the card being left dims back (opacity 0.5,
+ *     scale 0.96) — per-card quickTo writers on an INNER wrapper, no React
+ *     state per frame.
  *   - ALL per-frame math is analytic from measure()-cached untransformed
  *     offsetLeft/offsetTop centers — zero getBoundingClientRect in the loop.
  *
@@ -81,7 +73,7 @@ if (typeof window !== "undefined") {
  * before. Two mechanisms, and nothing else:
  *   - `ServiceCard`'s compact pose follows the spec table literally — every
  *     condensed class ships its `sm:` restoration on the same element
- *     (`text-[2rem] sm:text-[4rem]`, …), so ≥640px resolves to today's value.
+ *     (`text-[6rem] sm:text-[9rem]`, …), so ≥640px resolves to today's value.
  *   - The rail is purely ADDITIVE `max-sm:` utilities layered over the ORIGINAL
  *     grid class string, which is left untouched. Above 639px the media query
  *     simply does not match and the element is the grid it always was. Nothing
@@ -122,7 +114,6 @@ if (typeof window !== "undefined") {
 
 type Service = {
   num: string;
-  icon: LucideIcon;
   title: string;
   positioning: string;
   includes: string[];
@@ -137,7 +128,6 @@ function getServices(isEn: boolean): Service[] {
   return [
     {
       num: "01",
-      icon: Boxes,
       title: isEn
         ? "AI-Native Software Development"
         : "Sviluppo software AI-native",
@@ -171,7 +161,6 @@ function getServices(isEn: boolean): Service[] {
     },
     {
       num: "02",
-      icon: Workflow,
       title: isEn ? "Workflow Automation" : "Automazione dei flussi di lavoro",
       positioning: isEn
         ? "Automation that compounds, not breaks."
@@ -197,7 +186,6 @@ function getServices(isEn: boolean): Service[] {
     },
     {
       num: "03",
-      icon: Activity,
       title: isEn ? "MLOps & Evaluation" : "MLOps e valutazione",
       positioning: isEn
         ? "Models in production, not in notebooks."
@@ -223,7 +211,6 @@ function getServices(isEn: boolean): Service[] {
     },
     {
       num: "04",
-      icon: ScanSearch,
       title: isEn ? "AI Architecture & Audits" : "Architettura e audit AI",
       positioning: isEn
         ? "Find what should not be built, before code becomes debt."
@@ -300,121 +287,112 @@ function ServiceCard({
   compact?: boolean;
 }) {
   return (
-    <article className="group relative flex h-full flex-col overflow-hidden rounded-lg border border-[hsl(var(--rule))] bg-[hsl(216_30%_8%/0.92)] p-6 sm:p-8 backdrop-blur-sm transition-colors duration-300 hover:border-[hsl(var(--accent)/0.45)]">
-      {/* POV focus ring — opacity is driven to the card's focus value by a
-          quickTo writer in pinned mode; inert (opacity 0) in the native grid.
-          On the rail it is lit by `data-focus` on the CENTRED station (written
-          by the stepper sync below): the touch answer to `:hover`, which on a
-          phone is a gesture that does not exist. Scoped `max-sm:` so the
-          ≥640px native branch (coarse tablet) stays inert — GSAP owns this
-          opacity as an inline style in pinned mode and must never race a CSS
-          transition. */}
+    // The SLAB (2026-08-21 restyle): a chrome-less glass surface — no border
+    // box, no icon tile, no boxed solves strip. The only "edge" is the top
+    // hairline; zones inside separate on rule/0.5 hairlines. `isolate` pins a
+    // stacking context so the ghost number's -z-10 stays INSIDE the slab
+    // (above its background, below its content) even where backdrop-filter
+    // is unsupported. Hover (fine pointer, via Tailwind's hover-hover gate):
+    // lift + hairline brighten + ghost number up — 500ms --ease-lusion,
+    // transform/opacity/color only.
+    <article className="group isolate relative flex h-full flex-col overflow-hidden rounded-2xl bg-[hsl(216_30%_9%/0.55)] p-7 sm:p-9 backdrop-blur-md shadow-[0_28px_90px_-40px_hsl(220_60%_2%/0.85)] transition-transform duration-500 ease-[var(--ease-lusion)] hover:-translate-y-1 motion-reduce:transition-none motion-reduce:transform-none">
+      {/* POV focus EDGE GLOW (restyled from the full border ring — same
+          element, same data attribute, same quickTo opacity contract) — a 2px
+          accent bar down the left edge plus a soft radial wash (::after, so
+          bar + wash ride ONE opacity). Opacity is driven to the card's focus
+          value by a quickTo writer in pinned mode; inert (opacity 0) in the
+          native grid. On the rail it is lit by `data-focus` on the CENTRED
+          station (written by the stepper sync below): the touch answer to
+          `:hover`, which on a phone is a gesture that does not exist. Scoped
+          `max-sm:` so the ≥640px native branch (coarse tablet) stays inert —
+          GSAP owns this opacity as an inline style in pinned mode and must
+          never race a CSS transition. */}
       <span
         data-pov-focus
         aria-hidden="true"
         className={
-          "pointer-events-none absolute inset-0 rounded-[inherit] border border-[hsl(var(--accent)/0.6)] opacity-0 shadow-[inset_0_1px_0_hsl(var(--accent)/0.4),0_0_48px_-12px_hsl(var(--accent)/0.55)]" +
+          "pointer-events-none absolute left-0 top-6 bottom-6 w-[2px] rounded-full bg-[hsl(var(--accent))] opacity-0 shadow-[0_0_24px_2px_hsl(var(--accent)/0.5)] after:absolute after:inset-y-0 after:left-0 after:w-64 after:content-[''] after:[background:radial-gradient(60%_40%_at_0%_50%,hsl(var(--accent)/0.07),transparent_70%)]" +
           (compact
             ? " max-sm:transition-opacity max-sm:duration-500 max-sm:group-data-[focus=true]:opacity-100 motion-reduce:transition-none"
             : "")
         }
       />
-      {/* Top-edge accent line — fades in on hover */}
+      {/* Top hairline — the slab's only edge. Cyan→transparent, always on,
+          brightens on hover (opacity only). */}
       <span
         aria-hidden="true"
-        className="
-          pointer-events-none absolute top-0 left-0 right-0 h-px
-          bg-gradient-to-r from-transparent via-[hsl(var(--accent)/0.7)] to-transparent
-          opacity-0 group-hover:opacity-100
-          transition-opacity duration-500
-        "
+        className="pointer-events-none absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-[hsl(var(--accent)/0.6)] to-transparent opacity-60 group-hover:opacity-100 transition-opacity duration-500 ease-[var(--ease-lusion)] motion-reduce:transition-none"
       />
-      {/* Soft radial sheen from top-left */}
+      {/* Ghost number — huge display-serif watermark behind the content
+          (-z-10 inside the slab's own stacking context). Decorative twin of
+          the num in the eyebrow row below, so it is aria-hidden. */}
       <span
         aria-hidden="true"
-        className="
-          pointer-events-none absolute inset-0
-          opacity-0 group-hover:opacity-100
-          transition-opacity duration-500
-        "
-        style={{
-          background:
-            "radial-gradient(ellipse 60% 50% at 0% 0%, hsl(var(--accent) / 0.08) 0%, transparent 60%)",
-        }}
-      />
-      {/* Header — editorial num + mono eyebrow + technical icon */}
-      <div
         className={
-          compact
-            ? "mb-4 sm:mb-6 flex items-start justify-between gap-4"
-            : "mb-6 flex items-start justify-between gap-4"
+          "pointer-events-none select-none absolute -top-6 -left-2 -z-10 font-display leading-none tracking-[-0.04em] text-ink/[0.05] transition-colors duration-500 ease-[var(--ease-lusion)] group-hover:text-ink/[0.09] motion-reduce:transition-none " +
+          (compact ? "text-[6rem] sm:text-[9rem]" : "text-[9rem]")
         }
       >
-        <div className="flex items-baseline gap-3">
-          <span
-            className={
-              compact
-                ? "font-display text-[2rem] sm:text-[4rem] leading-[0.9] tracking-[-0.03em] text-[hsl(var(--accent)/0.9)]"
-                : "font-display text-[3.25rem] sm:text-[4rem] leading-[0.9] tracking-[-0.03em] text-[hsl(var(--accent)/0.9)]"
-            }
-          >
-            {service.num}
-          </span>
-          <span className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute">
-            {isEn ? "Service" : "Servizio"}
-          </span>
-        </div>
-        <span
-          aria-hidden="true"
-          className="grid place-items-center h-9 w-9 rounded-md border border-[hsl(var(--rule))] bg-[hsl(var(--accent)/0.05)] text-ink-mute group-hover:text-[hsl(var(--accent))] group-hover:border-[hsl(var(--accent)/0.4)] transition-colors duration-300"
-        >
-          <service.icon
-            className="h-4 w-4 transition-transform duration-300 ease-out group-hover:scale-110 group-hover:rotate-[10deg] motion-reduce:transform-none motion-reduce:transition-none"
-            strokeWidth={1.5}
-          />
-        </span>
-      </div>
+        {service.num}
+      </span>
 
-      <h3 className="font-display text-2xl sm:text-[28px] leading-[1.05] tracking-[-0.025em] text-ink mb-2">
+      {/* Eyebrow row — mono "SERVICE 01" (the existing label + num strings) */}
+      <p
+        className={
+          compact
+            ? "mb-4 sm:mb-6 font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute"
+            : "mb-6 font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute"
+        }
+      >
+        {isEn ? "Service" : "Servizio"} {service.num}
+      </p>
+
+      <h3 className="font-display text-[30px] sm:text-[34px] leading-[1.02] tracking-[-0.025em] text-ink mb-2">
         {service.title}
       </h3>
       <p
         className={
           compact
-            ? "text-[15px] text-ink leading-snug mb-4 sm:mb-6"
-            : "text-[15px] text-ink leading-snug mb-6"
+            ? "text-[15px] text-ink-mute leading-snug mb-4 sm:mb-6"
+            : "text-[15px] text-ink-mute leading-snug mb-6"
         }
       >
         {service.positioning}
       </p>
 
-      {/* Typical build includes — compact, scannable */}
-      <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute mb-3">
-        {isEn ? "Typical build includes" : "Un progetto tipico include"}
-      </p>
-      <ul
+      {/* Typical build includes — mono micro-list over a hairline, `+`
+          markers (ASCII garnish) instead of bullet dots, tight stack. */}
+      <div
         className={
           compact
-            ? "flex flex-col gap-1.5 mb-5 sm:gap-2 sm:mb-7"
-            : "flex flex-col gap-2 mb-7"
+            ? "border-t border-[hsl(var(--rule)/0.5)] pt-4 mb-5 sm:mb-7"
+            : "border-t border-[hsl(var(--rule)/0.5)] pt-4 mb-7"
         }
       >
-        {service.includes.map((line) => (
-          <li
-            key={line}
-            className="flex items-start gap-2.5 text-[13.5px] text-ink-mute leading-snug"
-          >
-            <span
-              aria-hidden="true"
-              className="mt-[6px] block w-1 h-1 rounded-full bg-[hsl(var(--accent)/0.8)] shrink-0"
-            />
-            <span>{line}</span>
-          </li>
-        ))}
-      </ul>
+        <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute mb-3">
+          {isEn ? "Typical build includes" : "Un progetto tipico include"}
+        </p>
+        <ul className="flex flex-col">
+          {service.includes.map((line) => (
+            <li
+              key={line}
+              className="flex items-start gap-2 font-mono text-[12px] leading-relaxed text-ink-mute"
+            >
+              <span
+                aria-hidden="true"
+                className="select-none text-[hsl(var(--accent)/0.7)]"
+              >
+                +
+              </span>
+              <span>{line}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
 
-      {/* Solves — highlighted bottom strip. */}
-      <div className="mt-auto -mx-6 sm:-mx-8 -mb-6 sm:-mb-8 px-6 sm:px-8 py-4 border-t border-[hsl(var(--rule))] bg-[hsl(var(--accent)/0.04)] transition-shadow duration-300 group-hover:shadow-[inset_0_1px_0_hsl(var(--accent)/0.45),0_-8px_24px_-16px_hsl(var(--accent)/0.4)] motion-reduce:transition-none">
+      {/* Solves — hairline zone (no -mx bleed, no bg fill, no inset shadow),
+          CTA as a bare mono text link with a leading `->` arrow. */}
+      <div className="mt-auto border-t border-[hsl(var(--rule)/0.5)] pt-4">
         {/* The measured epicentre: a `shrink-0` CTA sharing a 326px row with
             two ~55-character sentences made this strip 253px — 42% of card 04.
             Stacking the CTA under the copy below 640px is the whole fix. */}
@@ -444,15 +422,17 @@ function ServiceCard({
             href={service.ctaHref}
             className={
               compact
-                ? "inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-ink hover:text-[hsl(var(--accent))] transition-colors duration-200 sm:shrink-0 sm:self-center"
-                : "inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-ink hover:text-[hsl(var(--accent))] transition-colors duration-200 shrink-0 self-center"
+                ? "group/cta inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-ink hover:text-[hsl(var(--accent))] transition-colors duration-200 sm:shrink-0 sm:self-center"
+                : "group/cta inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-ink hover:text-[hsl(var(--accent))] transition-colors duration-200 shrink-0 self-center"
             }
           >
-            {service.ctaLabel}
-            <ArrowRight
-              className="h-3.5 w-3.5 transition-transform duration-200 group-hover:translate-x-0.5"
+            <span
               aria-hidden="true"
-            />
+              className="transition-transform duration-300 ease-[var(--ease-lusion)] group-hover/cta:translate-x-1 motion-reduce:transition-none motion-reduce:transform-none"
+            >
+              {"->"}
+            </span>
+            {service.ctaLabel}
           </Link>
         </div>
       </div>
@@ -894,29 +874,45 @@ export default function ServicesSection() {
     };
   }, [detected, mode, isEn]);
 
+  // Chapter heading (2026-08-21 restyle, shared grammar): the title is
+  // promoted to a chapter statement and the description moves to a right-hung
+  // ~320px annotation on lg:. SectionHeading cannot express the two-column
+  // pairing (its description is hard-wired under the title at paragraph
+  // width), so the heading is composed locally — per the slab spec — instead
+  // of forking the site-wide component. The eyebrow keeps the `.eyebrow`
+  // class WITHOUT [data-eyebrow-text], so the root-layout LabelScrambler
+  // gives it the mono decode reveal; the block entrance rides the same
+  // `Reveal` primitive the cards already use. All strings byte-identical.
   const heading = (
-    <SectionHeading
-      eyebrow={isEn ? "What SerSan builds" : "Cosa costruisce SerSan"}
-      title={
-        isEn ? (
-          <>
-            Four services.{" "}
-            <span className="font-display italic text-ink">One discipline.</span>
-          </>
-        ) : (
-          <>
-            Quattro servizi.{" "}
-            <span className="font-display italic text-ink">Una sola disciplina.</span>
-          </>
-        )
-      }
-      description={
-        isEn
+    <Reveal className="mb-8 sm:mb-16 grid gap-8 lg:grid-cols-[1fr_320px] lg:items-end">
+      <div>
+        <p className="eyebrow mb-5 inline-flex items-center gap-2 text-ink-mute">
+          <span
+            aria-hidden="true"
+            className="inline-block w-6 h-px bg-[hsl(var(--accent))]"
+          />
+          <span>{isEn ? "What SerSan builds" : "Cosa costruisce SerSan"}</span>
+        </p>
+        <h2 className="font-display text-[clamp(2.75rem,4.6vw,5.5rem)] leading-[0.98] tracking-[-0.02em] text-ink text-balance">
+          {isEn ? (
+            <>
+              Four services.{" "}
+              <span className="font-display italic text-ink">One discipline.</span>
+            </>
+          ) : (
+            <>
+              Quattro servizi.{" "}
+              <span className="font-display italic text-ink">Una sola disciplina.</span>
+            </>
+          )}
+        </h2>
+      </div>
+      <p className="max-w-md text-[13px] leading-relaxed text-ink-mute">
+        {isEn
           ? "Every engagement is delivered by senior engineers from scoping to handover. No account layer, no junior bench, no roadmap that quietly becomes a multi-year retainer."
-          : "Ogni ingaggio è seguito da ingegneri senior, dallo scoping al passaggio di consegne. Nessun livello di account management, nessuna panchina di junior, nessuna roadmap che si trasforma silenziosamente in un retainer pluriennale."
-      }
-      className="mb-8 sm:mb-16 max-w-3xl"
-    />
+          : "Ogni ingaggio è seguito da ingegneri senior, dallo scoping al passaggio di consegne. Nessun livello di account management, nessuna panchina di junior, nessuna roadmap che si trasforma silenziosamente in un retainer pluriennale."}
+      </p>
+    </Reveal>
   );
 
   // Section closer — plain text only. The /start CTA that lived here was
