@@ -3,6 +3,10 @@
 /**
  * NeuralLattice — the SIGNAL STREAM WebGL island (2026-08-21 refactor; the
  * component/file name is kept so Scene.tsx's mount gate stays byte-identical).
+ * Round-2 "life pass": the look lives in neuralFieldCompute (phase-separated
+ * braid, velocity streaks, clean fracture + spark burst on uFlash, ring
+ * shockwaves on uRingFlash, idle breathing) — this driver's state machines
+ * are unchanged; it only gained the dev-handle tunables surface below.
  *
  * A braided river of ~9000 particles (3200 compact tier) flows left→right
  * through the section's `[data-lattice-anchor]` rect. Two instances mount on
@@ -57,6 +61,7 @@ import {
   CLUSTER_COUNT,
   FLOW_SPEED,
   FRACTURE_T,
+  SPARK_COUNT,
   NEURAL_PARTICLE_COUNT,
   NEURAL_PARTICLE_COUNT_COMPACT,
   NEURAL_DEPTH_SCALE_FACTOR,
@@ -473,6 +478,33 @@ export function NeuralLattice({
       },
       get count() {
         return countRef.current;
+      },
+      /** The live uniform bag — set `.value` (or `.array` entries) from the
+       * console for zero-recompile tuning of anything the shader reads. */
+      get uniforms() {
+        return build ? build.uniforms : null;
+      },
+      /** Round-2 beauty-pass tunables, snapshot form (write via `uniforms`).
+       * sparkCount is BUILD-TIME (baked into the meta buffer — a rebuild is
+       * needed to change it; broken mode only). */
+      get tunables() {
+        const u = build?.uniforms;
+        if (!u) return null;
+        return {
+          envelope: u.uEnvelope.value,
+          breathe: u.uBreathe.value,
+          shimmer: u.uShimmer.value,
+          zBow: u.uZBow.value,
+          gap: u.uGap.value,
+          stretchGain: u.uStretchGain.value,
+          stretchMax: u.uStretchMax.value,
+          surgeGain: u.uSurgeGain.value,
+          pointSize: u.uPointSize.value,
+          flowSpeed: u.uFlowSpeed.value,
+          strandPhase: [...u.uStrandPhase.array],
+          strandThick: [...u.uStrandThick.array],
+          sparkCount: mode === "broken" ? SPARK_COUNT : 0,
+        };
       },
       project: () => {
         const g = groupRef.current;

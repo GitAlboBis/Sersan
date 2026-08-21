@@ -266,6 +266,34 @@ export function NeuralGraphFallback({
           <stop offset="0%" stopColor="hsl(var(--accent))" />
           <stop offset="100%" stopColor="hsl(var(--accent-2))" />
         </linearGradient>
+        {/* Strand-only twin with EDGE FADES (round-2 restyle, mirrors the
+            WebGL flow-t edge fades): soft entry always; soft exit only on
+            healthy — the broken stream must END CLEAN at the fracture. Rings
+            keep the crisp un-faded gradient above. */}
+        <linearGradient id={`${gradId}-stream`} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="hsl(var(--accent))" stopOpacity="0" />
+          <stop offset="7%" stopColor="hsl(var(--accent))" stopOpacity="1" />
+          {broken ? (
+            <stop
+              offset="100%"
+              stopColor="hsl(var(--accent-2))"
+              stopOpacity="1"
+            />
+          ) : (
+            <>
+              <stop
+                offset="93%"
+                stopColor="hsl(var(--accent-2))"
+                stopOpacity="1"
+              />
+              <stop
+                offset="100%"
+                stopColor="hsl(var(--accent-2))"
+                stopOpacity="0"
+              />
+            </>
+          )}
+        </linearGradient>
         {/* Soft radial halo for the surge packet — the glow is a gradient
             FILL, not a filter: this fallback runs precisely on the weak /
             reduced tiers where an animated feGaussianBlur would hurt most
@@ -278,14 +306,16 @@ export function NeuralGraphFallback({
       </defs>
 
       {/* The braided strands. Glow = a wide translucent UNDERLAY stroke per
-          strand beneath the crisp core stroke (filter-free bloom). */}
+          strand beneath the crisp core stroke (filter-free bloom). Round-2:
+          thinner filaments + the edge-faded stream gradient — the SVG twin of
+          the WebGL "legible river" pass. */}
       <g fill="none" strokeLinecap="round">
         {strandDs.map((d, s) => (
           <path
             key={`strand-under-${s}`}
             d={d}
-            stroke={`url(#${gradId})`}
-            strokeWidth={s === 1 || s === 2 ? 7 : 5.5}
+            stroke={`url(#${gradId}-stream)`}
+            strokeWidth={s === 1 || s === 2 ? 5 : 4}
             strokeOpacity={s === 1 || s === 2 ? 0.16 : 0.1}
           />
         ))}
@@ -293,8 +323,8 @@ export function NeuralGraphFallback({
           <path
             key={`strand-${s}`}
             d={d}
-            stroke={`url(#${gradId})`}
-            strokeWidth={s === 1 || s === 2 ? 2.4 : 1.8}
+            stroke={`url(#${gradId}-stream)`}
+            strokeWidth={s === 1 || s === 2 ? 1.7 : 1.2}
             strokeOpacity={s === 1 || s === 2 ? 0.8 : 0.55}
           />
         ))}
