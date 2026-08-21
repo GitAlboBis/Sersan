@@ -33,6 +33,8 @@ export interface CaseStudyRailItem {
   type: "video" | "image" | "text";
   /** Public-path media src (`/case-studies/…`). Required for video/image. */
   src?: string;
+  /** Video poster frame (webp) — painted before the loop starts. */
+  poster?: string;
   /** Intrinsic media width in px — aspect source, not a layout size. */
   width?: number;
   /** Intrinsic media height in px. */
@@ -121,6 +123,14 @@ export const caseStudies: CaseStudy[] = [
     liveUrl: "https://www.spherenode.com",
     previewImage: "/case-studies/spherenode-preview.webp",
     logoImage: "/case-studies/logos/logo-white.svg",
+    /* Detail rail media (Lusion parity): product loops captured from the
+       live site (Playwright screencast → ping-pong H.264, ~28s each). The
+       lead still stays first — it is the flip-flight landing rect. */
+    railItems: [
+      { type: "image", src: "/case-studies/spherenode-preview.webp", width: 1600, height: 940 },
+      { type: "video", src: "/case-studies/spherenode/main.mp4", poster: "/case-studies/spherenode/main-poster.webp", width: 1280, height: 720 },
+      { type: "video", src: "/case-studies/spherenode/features.mp4", poster: "/case-studies/spherenode/features-poster.webp", width: 1280, height: 720, fullscreen: true },
+    ],
   },
   {
     id: "quantex",
@@ -148,6 +158,12 @@ export const caseStudies: CaseStudy[] = [
     liveUrl: "https://www.quantex.live",
     previewImage: "/case-studies/quantex-preview.webp",
     logoImage: "/case-studies/logos/logo.svg",
+    /* Detail rail media — same capture pipeline as SphereNode. */
+    railItems: [
+      { type: "image", src: "/case-studies/quantex-preview.webp", width: 1600, height: 922 },
+      { type: "video", src: "/case-studies/quantex/main.mp4", poster: "/case-studies/quantex/main-poster.webp", width: 1280, height: 720 },
+      { type: "video", src: "/case-studies/quantex/features.mp4", poster: "/case-studies/quantex/features-poster.webp", width: 1280, height: 720, fullscreen: true },
+    ],
   },
   {
     id: "terra-noa",

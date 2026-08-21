@@ -70,7 +70,7 @@ function deriveRail(study: CaseStudy): CaseStudyRailItem[] {
 }
 
 /** Muted loop that plays only while on screen (rail or stack). */
-function RailVideo({ src }: { src: string }) {
+function RailVideo({ src, poster }: { src: string; poster?: string }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   useEffect(() => {
     const el = ref.current;
@@ -89,6 +89,7 @@ function RailVideo({ src }: { src: string }) {
     <video
       ref={ref}
       src={src}
+      poster={poster}
       muted
       loop
       playsInline
@@ -477,7 +478,7 @@ export function CaseStudyDetailClient({
                     }
                   >
                     {item.type === "video" ? (
-                      <RailVideo src={item.src ?? ""} />
+                      <RailVideo src={item.src ?? ""} poster={item.poster} />
                     ) : (
                       /* eslint-disable-next-line @next/next/no-img-element */
                       <img src={item.src} alt="" draggable={false} />
