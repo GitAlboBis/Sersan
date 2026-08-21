@@ -82,8 +82,48 @@
  * guard in `Scene.tsx`), and — mirroring `SignatureLine`/`createRenderer` — it
  * imports `three/webgpu`, `three/tsl` and the addon nodes LAZILY via
  * `import(...)` inside the build effect. The static import graph of this file
- * touches only `react`, `@react-three/fiber` and local stores, so even importing
- * the component never drags the heavy node-material build into the OFF bundle.
+ * touches only `react`, `@react-three/fiber`, local stores and the tiny DOM
+ * cut-tick driver (components/fx/cut-tick + its CSS module — no three), so
+ * even importing the component never drags the heavy node-material build into
+ * the OFF bundle.
+ *
+ * SECTION-CUT WARP (ROUND 5 W4 — igloo composite cut, single-scene hybrid)
+ * ------------------------------------------------------------------------
+ * research/2026-08-21-igloo-cuts-spec.md §C. Between the home sections named
+ * in sectionStore.CUT_BOUNDARY_PAIRS, a scrubbed diagonal seam-sweep band
+ * (`uWipe`, 0→1 across ~one viewport of scroll centered on each boundary)
+ * applies Igloo's falloff-cascade cut geometry as darkening + band-limited
+ * spectral CA + block-displacement uv shove — their two-scene
+ * `mix(scene1,scene2,cut)` is unreachable here (no second RT), so the band
+ * modulates the single composite instead. All noise is procedural (hash /
+ * value noise): zero new textures, zero new bindings (the gpgpu budget walls
+ * are untouched — the CA taps re-sample the EXISTING scene-pass texture).
+ * The CPU half lives in THIS component's single useFrame (no new loop):
+ * boundary doc-fractions are re-derived from sectionStore ONLY on
+ * `measureVersion` bumps and remapped there into Lenis-progress space
+ * (igloo §A-EXT: window = one viewport of scroll, boundary at the viewport
+ * CENTER at uWipe 0.5), with per-boundary caps so short sections can never
+ * overlap two windows; per frame it is a crossing scan + nearest-boundary
+ * scan + guarded uniform writes, and `uWipe` is written to a hard 0 exactly
+ * ONCE when the window is left, so the `If(uWipe > 0.001)` graph branch
+ * skips all texture math at rest (same idiom as the burst — idle cost ≈ one
+ * guarded branch). The crossing detector is the prevP/p STRADDLE of a
+ * boundary (jump-proof: a same-frame End/Home/anchor jump across one or
+ * more cuts fires exactly once, for the boundary nearest the landing
+ * point). At the crossing instant it fires:
+ *   • the uWarpBurst SPIKE — the existing burst uniform GENERALIZED as a
+ *     velocity-scaled crossing spike `min(1, 0.35 + 0.65·|vel|/velNorm)`
+ *     riding a 0.5 s linear-in / 0.4 s linear-out envelope (igloo's power1
+ *     pair IS linear), max()-merged with the passage's seqStore envelope
+ *     (whichever source dominates also contributes its seed trio; fresh
+ *     random seeds per crossing, intensity 1.0 scrolling up / 0.5 forward).
+ *     Level "full" only.
+ *   • the DOM `.cut-tick` 140 ms heading micro-glitch on the two adjacent
+ *     sections (components/fx/cut-tick — compositor-only, RM-guarded in its
+ *     CSS module, blue/cyan only).
+ * Level "lite" keeps the darkening + CA and drops the block displacement
+ * (one noise fetch fewer) + the spike. Dev/preview handle:
+ * `window.__sersanSectionCuts` = { params, state, uniforms } for live tuning.
  *
  * BUDGET / REDUCED-MOTION GATING (mobile-parity plan, Phase 2)
  * ------------------------------------------------------------
@@ -136,8 +176,17 @@ import { useFxStore } from "./store/fxStore";
 import { routeFx, HOME_FX } from "./store/routeFxStore";
 import { usePointerStore } from "./store/pointerStore";
 import { useSeqStore } from "./store/seqStore";
+import { useScrollStore } from "./store/scrollStore";
+import {
+  CUT_BOUNDARY_PAIRS,
+  CUT_BOUNDARY_ROUTE,
+  MAX_CUT_BOUNDARIES,
+  deriveCutBoundaries,
+  useSectionStore,
+} from "./store/sectionStore";
 import { devOverridesAllowed, type FxBudget } from "./store/tierStore";
 import { createPointerFlowmap, type PointerFlowmap } from "./fluid/PointerFlowmap";
+import { fireCutTick } from "@/components/fx/cut-tick";
 
 /** The two profiles this rig can build — `fxBudget.postFx` minus "off". */
 type PostFxLevel = Exclude<FxBudget["postFx"], "off">;
@@ -181,6 +230,124 @@ function resolveBloom(pathname: string) {
   return { intensity, threshold, radius };
 }
 
+// === ROUND 5 W4 — section-cut wipe: CPU driver state (module scope so the
+// useRef initializers never allocate per render; lazy `??=` in the loop) ====
+
+const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
+
+/** Deterministic per-boundary hash for the band seeds (spec §C:
+ *  `hash(i)·25.424` / `hash(i)·64.453`, written once per window entry). */
+const hash01 = (i: number): number => {
+  const s = Math.sin((i + 1) * 127.1) * 43758.5453;
+  return s - Math.floor(s);
+};
+
+/** Hoisted section-cut driver state — typed arrays sized once, refilled in
+ *  place on `measureVersion` bumps only. Zero per-frame allocation. */
+interface CutDriverState {
+  /** sectionStore.measureVersion the cuts were derived from (−1 = never). */
+  version: number;
+  /** Wired boundary count for the current measurement. */
+  count: number;
+  /** Boundary positions in LENIS-PROGRESS space, document order.
+   *  `deriveCutBoundaries` fills DOC fractions; the driver remaps in place
+   *  (measure cadence): cutP = (cutDoc·scrollHeight − innerHeight/2) /
+   *  (scrollHeight − innerHeight), so `progress === cuts[i]` ⇔ the DOM
+   *  boundary sits at the viewport CENTER (igloo §A-EXT; raw progress runs
+   *  over scrollHeight − innerHeight, so comparing it against doc fractions
+   *  directly would skew every window toward the document edges). */
+  cuts: Float64Array;
+  /** Index into CUT_BOUNDARY_PAIRS per wired boundary. */
+  pairIdx: Int32Array;
+  /** Half-window h = 0.5·innerHeight/(scrollHeight − innerHeight) (progress
+   *  fraction) — Igloo's one-viewport scrub span (boundary enters at the
+   *  viewport bottom at cut − h, exits at the top at cut + h), re-derived
+   *  with the cuts. */
+  halfWindow: number;
+  /** Per-boundary window cap: half the progress-distance to the nearest
+   *  OTHER boundary, so neighbouring windows can never overlap (short
+   *  sections) — the nearest-boundary pick can then never flip mid-band,
+   *  which would re-seed the block pattern and jump uWipe discontinuously.
+   *  Infinity for a lone boundary. */
+  maxH: Float64Array;
+  /** Boundary whose window the scroll sits inside (−1 = none). */
+  activeIdx: number;
+  /** Previous frame's scroll progress (NaN = disarmed sentinel — set on
+   *  mount, re-measure, route exit and kill-switch). The crossing detector
+   *  is the prevP/p STRADDLE of a boundary, so a same-frame End/Home/anchor
+   *  jump across a cut still fires exactly once even when neither frame is
+   *  inside the boundary's window. */
+  prevP: number;
+}
+const makeCutState = (): CutDriverState => ({
+  version: -1,
+  count: 0,
+  cuts: new Float64Array(MAX_CUT_BOUNDARIES),
+  pairIdx: new Int32Array(MAX_CUT_BOUNDARIES),
+  halfWindow: 0,
+  maxH: new Float64Array(MAX_CUT_BOUNDARIES),
+  activeIdx: -1,
+  prevP: Number.NaN,
+});
+
+/** Live-tunable CPU knobs, exposed on `window.__sersanSectionCuts.params`
+ *  (dev/preview only). Read per frame as plain property loads. */
+interface CutParams {
+  enabled: boolean;
+  /** Multiplies the one-viewport half-window (band scrub length). */
+  windowScale: number;
+  /** Master switch for the crossing burst spike (level "full" only). */
+  spike: boolean;
+  /** Spike floor (spec: 0.35). */
+  spikeBase: number;
+  /** Velocity gain on top of the floor (spec: 0.65). */
+  spikeVelGain: number;
+  /** |lenis velocity| (px/frame-ish) that maps to a full-strength spike —
+   *  the normalizer for the spec's 0..1 `scrollVelocity`. */
+  velNorm: number;
+  /** Master switch for the DOM .cut-tick heading micro-glitch. */
+  tick: boolean;
+}
+const makeCutParams = (): CutParams => ({
+  enabled: true,
+  windowScale: 1,
+  spike: true,
+  spikeBase: 0.35,
+  spikeVelGain: 0.65,
+  velNorm: 50,
+  tick: true,
+});
+
+/** Crossing-spike envelope (0.5 s linear in / 0.4 s linear out — igloo's
+ *  power1 pair) advanced with wall-clock delta in the frame loop. */
+interface SpikeState {
+  peak: number;
+  t: number;
+  seedX: number;
+  seedY: number;
+  seedZ: number;
+}
+const makeSpikeState = (): SpikeState => ({
+  peak: 0,
+  t: 0,
+  seedX: 0,
+  seedY: 0,
+  seedZ: 1,
+});
+
+/** The wipe uniform set (built with the graph). shove/dark/ca are tuning
+ *  uniforms written only from the dev handle — never per frame. */
+interface WipeUniforms {
+  wipe: UniformNode;
+  dir: UniformNode;
+  seedX: UniformNode;
+  seedY: UniformNode;
+  shoveX: UniformNode;
+  shoveY: UniformNode;
+  dark: UniformNode;
+  ca: UniformNode;
+}
+
 export function PostFXNodes({
   pathname = "/",
   level,
@@ -209,6 +376,13 @@ export function PostFXNodes({
     seedZ: UniformNode;
   } | null>(null);
   const burstDampedRef = useRef(0);
+  // W4 — section-cut wipe uniforms (built with the graph) + the CPU driver's
+  // hoisted state. State/params/spike are lazy-init (`??=`) so the useRef
+  // initializers stay allocation-free across re-renders.
+  const wipeRef = useRef<WipeUniforms | null>(null);
+  const cutStateRef = useRef<CutDriverState | null>(null);
+  const cutParamsRef = useRef<CutParams | null>(null);
+  const spikeRef = useRef<SpikeState | null>(null);
   // The pointer fluid flowmap (WebGPU-only). Null when disabled (coarse pointer
   // / reduced-motion / level "lite") or before the lazy build lands.
   const flowRef = useRef<PointerFlowmap | null>(null);
@@ -234,8 +408,17 @@ export function PostFXNodes({
     }
     const w = window as unknown as Record<string, unknown>;
     w.__sersanPostFx = { rig: "nodes", level };
+    // W4 — section-cut live-tuning handle (same neural-handles idiom): CPU
+    // knobs are plain mutable fields; `uniforms.current.*.value` reaches the
+    // GL band amplitudes (shove/dark/ca) directly from the console.
+    w.__sersanSectionCuts = {
+      params: (cutParamsRef.current ??= makeCutParams()),
+      state: (cutStateRef.current ??= makeCutState()),
+      uniforms: wipeRef,
+    };
     return () => {
       delete w.__sersanPostFx;
+      delete w.__sersanSectionCuts;
     };
   }, [level]);
   // The LIVE pathname, reachable from the async build. Assigned during render
@@ -288,6 +471,8 @@ export function PostFXNodes({
         toVar: () => TslNode & { assign: (n: TslNode) => void };
         rg: TslNode;
         rgb: TslNode;
+        r: TslNode;
+        b: TslNode;
         x: TslNode;
         y: TslNode;
       };
@@ -306,6 +491,8 @@ export function PostFXNodes({
         vec3,
         vec4,
         smoothstep,
+        clamp,
+        mix,
         float,
         sin,
         cos,
@@ -339,6 +526,8 @@ export function PostFXNodes({
           w?: TslNode | number,
         ) => TslNode;
         smoothstep: (a: number, b: number, x: TslNode) => TslNode;
+        clamp: (x: TslNode, lo: number, hi: number) => TslNode;
+        mix: (a: TslNode, b: TslNode, t: TslNode) => TslNode;
         float: (v: number) => TslNode;
         sin: (n: TslNode) => TslNode;
         cos: (n: TslNode) => TslNode;
@@ -412,8 +601,112 @@ export function PostFXNodes({
         seedZ: uBurstSeedZ,
       };
       const aspect = (screenSize as TslNode).x.div((screenSize as TslNode).y);
+
+      // 0c) W4 — SECTION-CUT WIPE, GL half (round 5; igloo composite cut →
+      //     single-scene hybrid, research/2026-08-21-igloo-cuts-spec.md §C —
+      //     see the SECTION-CUT WARP header note). This block declares the
+      //     wipe uniforms + the shared field helpers and applies the
+      //     PRE-SAMPLE half (the block-displacement uv shove) BEFORE the
+      //     burst block; the post-composite half (darkening / spectral CA /
+      //     edge lift) lives in `wipeGrade` further down. Everything sits
+      //     behind `If(uWipe > 0.001)` on a uniform (uniform control flow —
+      //     implicit-LOD sampling stays legal on the WebGL2 fallback), so
+      //     the idle frame costs one guarded branch. The seam slope is the
+      //     igloo constant −0.2·aspect computed IN-GRAPH (the spec's
+      //     uWipeSlope uniform is dropped: same value, no resize listener,
+      //     cannot go stale); since the slope is always negative, igloo's
+      //     `mix(1−uv.x+wob, uv.x+wob, step(slope,0))` statically resolves
+      //     to the `uv.x + wob` branch. shove/dark/ca amplitudes are tuning
+      //     uniforms written only from the dev handle, never per frame.
+      const uWipe = uniform(0);
+      const uWipeDir = uniform(1);
+      const uWipeSeedX = uniform(0);
+      const uWipeSeedY = uniform(0);
+      const uWipeShoveX = uniform(0.006);
+      const uWipeShoveY = uniform(0.012);
+      const uWipeDark = uniform(0.3);
+      const uWipeCA = uniform(0.12);
+      wipeRef.current = {
+        wipe: uWipe,
+        dir: uWipeDir,
+        seedX: uWipeSeedX,
+        seedY: uWipeSeedY,
+        shoveX: uWipeShoveX,
+        shoveY: uWipeShoveY,
+        dark: uWipeDark,
+        ca: uWipeCA,
+      };
+      // |slope| with slope = −0.2·aspect, and the scrub remap
+      // incP = fit(uWipe, 0, 1, 0, 1 + |slope|).
+      const absSlope = aspect.mul(0.2);
+      const incP = uWipe.mul(absSlope.add(1));
+      // Igloo falloff (bundle L22983) specialised to the [0,1] range:
+      // falloff(x, 0, 1, m, prog) = saturate((prog·(1+m) − x) / m).
+      const falloff01 = (x: TslNode, margin: number, prog: TslNode): TslNode =>
+        clamp(prog.mul(1 + margin).sub(x).div(margin), 0, 1);
+      // Smooth 2D value noise — the procedural stand-in for their tScroll.b
+      // wobble and the ice texture: 4 cell hashes + bilinear smoothstep mix.
+      const vhash = (p: TslNode): TslNode =>
+        fract(sin(dot(p, vec2(127.1, 311.7))).mul(43758.5453));
+      const vnoise = (p: TslNode): TslNode => {
+        const ip = floor(p);
+        const fp = fract(p);
+        const sm = fp.mul(fp).mul(fp.mul(-2).add(3));
+        return mix(
+          mix(vhash(ip), vhash(ip.add(vec2(1, 0))), sm.x),
+          mix(vhash(ip.add(vec2(0, 1))), vhash(ip.add(vec2(1, 1))), sm.x),
+          sm.y,
+        );
+      };
+      // Seam diagonal: uv.y + (uv.x + wobble)·|slope| with wobble
+      // = (vnoise(uv·2)·2 − 1)·0.4 (spec §C, replaces tScroll.b).
+      const wipeDiag = (u: TslNode): TslNode =>
+        u.y.add(
+          u.x.add(vnoise(u.mul(2)).mul(2).sub(1).mul(0.4)).mul(absSlope),
+        );
+      // Coarse block field (their tScroll.g squares): flat per-cell hash at
+      // ~24×14 cells, offset by the per-boundary seed.
+      const blockNoise = (u: TslNode): TslNode =>
+        fract(
+          sin(
+            dot(
+              floor(u.mul(vec2(24, 14)).add(vec2(uWipeSeedX, uWipeSeedY))),
+              vec2(41.34, 289.7),
+            ),
+          ).mul(43758.5453),
+        );
+      // PRE-SAMPLE uv shove — the block displacement (falloff margins
+      // 0.9→1.0): uv += (0.006·(dispB·2−1), uWipeDir·0.012·dispB) — igloo's
+      // 0.025 halved because we self-sample a single scene. Level "lite"
+      // drops this whole branch (one noise fetch fewer, per the tier spec);
+      // the darkening + CA in wipeGrade below stay.
+      let wipeUv: TslNode = baseUv;
+      if (!lite) {
+        wipeUv = Fn(() => {
+          const u = baseUv.toVar();
+          If(uWipe.greaterThan(0.001), () => {
+            const dispB = falloff01(
+              blockNoise(baseUv),
+              1.0,
+              falloff01(wipeDiag(baseUv), 0.9, incP),
+            );
+            u.assign(
+              u.add(
+                vec2(
+                  dispB.mul(2).sub(1).mul(uWipeShoveX),
+                  dispB.mul(uWipeShoveY).mul(uWipeDir),
+                ),
+              ),
+            );
+          });
+          return u;
+        })();
+      }
+
       const burstUv = Fn(() => {
-        const u = baseUv.toVar();
+        // Base uv includes the wipe shove (0c) — the cut block-displacement
+        // rides through the burst transform and into the one scene sample.
+        const u = wipeUv.toVar();
         If(uWarpBurst.greaterThan(0.001), () => {
           // Polar frame about the aspect-corrected centre (igloo: uv -= 0.5;
           // uv.x *= aspect).
@@ -498,6 +791,66 @@ export function PostFXNodes({
       })();
       node = node.add(vec4(burstLift, 0));
 
+      // 1c) W4 — WIPE GRADE (post-bloom-composite, the same delta idiom as
+      //     the burst lift so the bloom input stays a pure texture node):
+      //     • darkening: −base·0.30·core·(1−core)·4 — band-limited (zero at
+      //       both band ends), the seam body that replaces igloo's scene mix.
+      //     • spectral CA: 3-tap barrel split (R at +off, G in place, B at
+      //       −off — their 5-tap loop reduced; 2 extra samples of the SAME
+      //       scene-pass texture, no new binding), with bend
+      //       = haloB·(1−haloB)·4·noise — zero at both ends, so band entry
+      //       and exit are seamless.
+      //     • leading-edge lift: the burst's luma-space HSV stand-in
+      //       ((c−luma)·0.35 ≈ sat+0.05, flat +0.075 ≈ val+0.075) on
+      //       edge = smoothstep(.35,.5,core)·(1 − smoothstep(.5,.65,core))
+      //       (the descending smoothstep written via oneMinus — defined
+      //       behavior on BOTH the WGSL and GLSL builders).
+      //     Fields are computed at the un-shoved uv (igloo evaluates them at
+      //     vUv); the CA taps sample at the final displaced uv ± the barrel
+      //     offset. If-guarded on the same uniform → idle cost ≈ 0.
+      const wipeGrade = Fn(() => {
+        const d = vec3(0, 0, 0).toVar();
+        If(uWipe.greaterThan(0.001), () => {
+          const diag = wipeDiag(baseUv);
+          const haloB = falloff01(diag, 2.0, incP);
+          const core = falloff01(
+            vnoise(baseUv.mul(3)),
+            2.0,
+            falloff01(diag, 0.2, incP),
+          );
+          const base = (colorForBloom as TslNode).rgb;
+          const dark = core.mul(core.oneMinus()).mul(4).mul(uWipeDark);
+          // Per-pixel dither on the CA bend — the blue-noise stand-in,
+          // time-shifted like igloo's per-frame uBlueOffset re-roll.
+          const nCA = fract(
+            sin(
+              dot(
+                baseUv.mul(547.7).add(vec2(uWipeSeedX, uWipeSeedY)).add(time),
+                vec2(12.9898, 78.233),
+              ),
+            ).mul(43758.5453),
+          );
+          const bend = haloB.mul(haloB.oneMinus()).mul(4).mul(nCA);
+          const cc = burstUv.sub(0.5);
+          const off = cc.mul(dot(cc, cc)).mul(bend.mul(uWipeCA));
+          const rS = color.sample(burstUv.add(off)) as TslNode;
+          const bS = color.sample(burstUv.sub(off)) as TslNode;
+          const edge = smoothstep(0.35, 0.5, core).mul(
+            smoothstep(0.5, 0.65, core).oneMinus(),
+          );
+          const luma = dot(base, vec3(0.2125, 0.7154, 0.0721));
+          d.assign(
+            base
+              .mul(dark)
+              .mul(-1)
+              .add(vec3(rS.r.sub(base.r), 0, bS.b.sub(base.b)))
+              .add(base.sub(luma).mul(edge.mul(0.35)).add(edge.mul(0.075))),
+          );
+        });
+        return d;
+      })();
+      node = node.add(vec4(wipeGrade, 0));
+
       // 2) VIGNETTE (hand-rolled — no `vignette` export in three/tsl). Mirrors
       //    `<Vignette offset={0.35} darkness={...}>`: darken from ~0.5 of the way
       //    out to the corners. `screenUV.distance(center)` is 0 at center, grows
@@ -561,6 +914,16 @@ export function PostFXNodes({
       bloomRef.current = null;
       burstRef.current = null;
       burstDampedRef.current = 0;
+      // W4 — drop the dead wipe uniforms and reset the driver so a rebuilt
+      // graph re-derives its boundaries (state objects survive; version −1
+      // forces the next frame's re-derivation).
+      wipeRef.current = null;
+      if (cutStateRef.current) {
+        cutStateRef.current.version = -1;
+        cutStateRef.current.activeIdx = -1;
+        cutStateRef.current.prevP = Number.NaN;
+      }
+      if (spikeRef.current) spikeRef.current.peak = 0;
       flowRef.current?.dispose();
       flowRef.current = null;
     };
@@ -614,16 +977,195 @@ export function PostFXNodes({
       });
     }
 
-    // C2 — warp-burst spike (round 3 §C2): seqStore.burst carries the GSAP
-    // envelope (0.5s in / 0.4s out, written by the home passage's one-shot);
-    // read via getState and DAMPED here (λ 18 — softens tween-tick stairs
-    // without stretching the igloo envelope), uniforms-only writes. Idle cost:
-    // one getState + two comparisons; the uniform sits at exactly 0 so the
-    // If-guarded burst branches never execute.
+    // W4 — section-cut wipe scrub + crossing detector (round 5, spec §C CPU
+    // half — see the SECTION-CUT WARP header note). Runs only on the home
+    // route with a built graph. Boundary fractions re-derive ONLY on a
+    // sectionStore.measureVersion bump (and are remapped to progress space
+    // there — see CutDriverState.cuts); per frame this is two ≤6-entry scans
+    // + guarded uniform writes, `uWipe` is written to a hard 0 exactly once
+    // on window exit, and there is ZERO allocation (hoisted typed arrays,
+    // refs + getState — the island commit-wedge rule).
+    const wp = wipeRef.current;
+    if (wp) {
+      const params = (cutParamsRef.current ??= makeCutParams());
+      const cs = (cutStateRef.current ??= makeCutState());
+      if (!params.enabled || pathnameRef.current !== CUT_BOUNDARY_ROUTE) {
+        // Interior routes / kill switch: settle once, then this whole
+        // branch is a couple of compares per frame (prevP stays NaN while
+        // disarmed, so re-entering home can never diff against a stale p).
+        if (cs.activeIdx !== -1 || !Number.isNaN(cs.prevP)) {
+          cs.activeIdx = -1;
+          cs.prevP = Number.NaN;
+          if (wp.wipe.value !== 0) wp.wipe.value = 0;
+        }
+      } else {
+        const sec = useSectionStore.getState();
+        if (sec.measureVersion !== cs.version) {
+          cs.version = sec.measureVersion;
+          cs.count = deriveCutBoundaries(cs.cuts, cs.pairIdx);
+          // Remap the boundary DOC fractions into LENIS-PROGRESS space and
+          // derive the scrub half-window — igloo §A-EXT exactly: the window
+          // opens when the boundary enters at the viewport BOTTOM (cut − h)
+          // and closes when it exits at the TOP (cut + h) — one viewport of
+          // scroll — so its midpoint (uWipe 0.5, the crossing instant) is
+          // the boundary passing the viewport CENTER (the .cut-tick
+          // coincidence contract). Raw progress runs over scrollHeight −
+          // innerHeight, so comparing it against doc fractions directly
+          // would skew every window toward the document edges. innerHeight
+          // is read here (measure cadence), never per frame.
+          const sH = sec.scrollHeight;
+          const iH = window.innerHeight;
+          const limit = sH - iH;
+          if (limit > 1 && iH > 0) {
+            cs.halfWindow = (0.5 * iH) / limit;
+            for (let i = 0; i < cs.count; i++) {
+              cs.cuts[i] = (cs.cuts[i] * sH - 0.5 * iH) / limit;
+            }
+            // Per-boundary window cap: half the distance to the nearest
+            // OTHER boundary → windows never overlap (see
+            // CutDriverState.maxH). O(count²) at measure cadence, count ≤ 8.
+            for (let i = 0; i < cs.count; i++) {
+              let gap = Infinity;
+              for (let j = 0; j < cs.count; j++) {
+                if (j === i) continue;
+                const g = Math.abs(cs.cuts[i] - cs.cuts[j]);
+                if (g < gap) gap = g;
+              }
+              cs.maxH[i] = gap * 0.5;
+            }
+          } else {
+            cs.halfWindow = 0;
+          }
+          cs.activeIdx = -1;
+          cs.prevP = Number.NaN;
+          if (wp.wipe.value !== 0) wp.wipe.value = 0;
+        }
+        if (cs.count > 0 && cs.halfWindow > 0) {
+          const p = useScrollStore.getState().progress;
+          // CROSSING DETECTOR — a prevP/p STRADDLE of any boundary, NOT an
+          // inside-window side latch: `(prevP ≥ cutᵢ) !== (p ≥ cutᵢ)`
+          // catches a slow scrub and a violent same-frame End/Home/anchor
+          // jump identically (either frame may sit outside every window). A
+          // multi-boundary jump fires exactly ONCE, for the crossed
+          // boundary nearest the landing point. The first frame after
+          // (re)arming only latches prevP — never a crossing.
+          if (Number.isNaN(cs.prevP)) {
+            cs.prevP = p;
+          } else if (p !== cs.prevP) {
+            const dir: 1 | -1 = p > cs.prevP ? 1 : -1;
+            // The band shove follows real frame-to-frame motion (the
+            // section bus direction can lag a one-frame jump). Written on
+            // flips only.
+            if (wp.dir.value !== dir) wp.dir.value = dir;
+            let crossed = -1;
+            let crossedD = Infinity;
+            for (let i = 0; i < cs.count; i++) {
+              const c = cs.cuts[i];
+              if ((cs.prevP >= c) === (p >= c)) continue;
+              const dd = p - c;
+              const ad = dd < 0 ? -dd : dd;
+              if (ad < crossedD) {
+                crossedD = ad;
+                crossed = i;
+              }
+            }
+            cs.prevP = p;
+            if (crossed !== -1) {
+              // THE CROSSING INSTANT — the boundary passed the viewport
+              // center. Event cadence (once per crossing): allocation and
+              // Math.random are allowed here, never per frame.
+              if (params.spike && levelRef.current === "full") {
+                const vel = useScrollStore.getState().velocity;
+                const av = vel < 0 ? -vel : vel;
+                const vn = av >= params.velNorm ? 1 : av / params.velNorm;
+                const sp = (spikeRef.current ??= makeSpikeState());
+                sp.peak = Math.min(
+                  1,
+                  params.spikeBase + params.spikeVelGain * vn,
+                );
+                sp.t = 0;
+                // Igloo s() semantics: fresh random seed per burst;
+                // intensity 1.0 scrolling up, 0.5 forward.
+                sp.seedX = Math.random() * 25.424;
+                sp.seedY = Math.random() * 64.453;
+                sp.seedZ = dir === -1 ? 1 : 0.5;
+              }
+              if (params.tick) {
+                const pair = CUT_BOUNDARY_PAIRS[cs.pairIdx[crossed]];
+                fireCutTick(pair[0], pair[1], dir);
+              }
+            }
+          }
+          // WINDOW SCRUB — nearest boundary, its window capped by maxH so
+          // neighbouring windows never overlap (h > 0 also guards the
+          // degenerate coincident-cuts case against a 0/0 NaN reaching the
+          // uniform). Outside every window uWipe settles to a hard 0,
+          // written once.
+          let best = 0;
+          let bestD = Infinity;
+          for (let i = 0; i < cs.count; i++) {
+            const dd = p - cs.cuts[i];
+            const ad = dd < 0 ? -dd : dd;
+            if (ad < bestD) {
+              bestD = ad;
+              best = i;
+            }
+          }
+          const hw = cs.halfWindow * params.windowScale;
+          const h = hw < cs.maxH[best] ? hw : cs.maxH[best];
+          if (h > 0 && bestD <= h) {
+            if (cs.activeIdx !== best) {
+              // Boundary-window ENTRY: reseed the band pattern once (spec
+              // §C: hash(i)·25.424 / hash(i)·64.453).
+              const hs = hash01(best);
+              wp.seedX.value = hs * 25.424;
+              wp.seedY.value = hs * 64.453;
+              cs.activeIdx = best;
+            }
+            wp.wipe.value = clamp01((p - cs.cuts[best] + h) / (2 * h));
+          } else if (cs.activeIdx !== -1 || wp.wipe.value !== 0) {
+            // Window exit: hard 0, written once (the guard above keeps this
+            // branch from re-firing while idle).
+            cs.activeIdx = -1;
+            wp.wipe.value = 0;
+          }
+        }
+      }
+    }
+
+    // C2 — warp-burst envelope (round 3 §C2, GENERALIZED by round 5 W4):
+    // seqStore.burst carries the passage's GSAP envelope (0.5s in / 0.4s out,
+    // written by the home one-shot); the section-cut crossing spike (armed
+    // above) rides its own 0.5s linear-in / 0.4s linear-out envelope (igloo's
+    // power1 pair IS linear), advanced here with wall-clock delta. The two
+    // sources max()-merge into the SAME damped uniform (λ 18 — softens
+    // tween-tick stairs without stretching the igloo envelope) and whichever
+    // dominates also contributes its seed trio. Uniforms-only writes. Idle
+    // cost: one getState + a few comparisons; the uniform sits at exactly 0
+    // so the If-guarded burst branches never execute.
     const bu = burstRef.current;
     if (bu) {
       const seq = useSeqStore.getState();
-      const target = seq.burst;
+      let target = seq.burst;
+      let sx = seq.burstSeedX;
+      let sy = seq.burstSeedY;
+      let sz = seq.burstSeedZ;
+      const sp = spikeRef.current;
+      if (sp && sp.peak > 0) {
+        sp.t += delta;
+        const env = sp.t < 0.5 ? sp.t / 0.5 : 1 - (sp.t - 0.5) / 0.4;
+        if (env <= 0) {
+          sp.peak = 0;
+        } else {
+          const v = env * sp.peak;
+          if (v > target) {
+            target = v;
+            sx = sp.seedX;
+            sy = sp.seedY;
+            sz = sp.seedZ;
+          }
+        }
+      }
       const cur = burstDampedRef.current;
       if (target > 0 || cur > 1e-4) {
         const k = 1 - Math.exp(-18 * Math.min(delta, 1 / 30));
@@ -631,9 +1173,9 @@ export function PostFXNodes({
         if (target === 0 && next < 1e-4) next = 0;
         burstDampedRef.current = next;
         bu.burst.value = next;
-        bu.seedX.value = seq.burstSeedX;
-        bu.seedY.value = seq.burstSeedY;
-        bu.seedZ.value = seq.burstSeedZ;
+        bu.seedX.value = sx;
+        bu.seedY.value = sy;
+        bu.seedZ.value = sz;
       } else if (bu.burst.value !== 0) {
         bu.burst.value = 0;
       }

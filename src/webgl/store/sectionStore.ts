@@ -13,6 +13,14 @@
  * - Reactive consumers (nav highlight, skip UI, snap rebuild): selector
  *   subscriptions on `active` / `index` / `measureVersion` — these change at
  *   section cadence (rare), never per scroll tick.
+ *
+ * ROUND 5 W4 (igloo section cuts): this module also owns the CUT-BOUNDARY
+ * derivation — the single tunable list of "big cut" section pairs
+ * (CUT_BOUNDARY_PAIRS) plus `deriveCutBoundaries`, which turns the measured
+ * spans into boundary doc-fractions `cutᵢ = (spans[a].end + spans[b].start)/2`.
+ * Consumed by PostFXNodes' useFrame driver, re-derived ONLY on a
+ * `measureVersion` bump (allocation-free: the caller passes hoisted typed
+ * arrays). See research/2026-08-21-igloo-cuts-spec.md §C.
  */
 import { create } from "zustand";
 
@@ -198,4 +206,75 @@ export function sectionProgress(
   const len = span.end - span.start;
   if (len <= 0) return centerFrac >= span.start ? 1 : 0;
   return Math.min(1, Math.max(0, (centerFrac - span.start) / len));
+}
+
+// === ROUND 5 W4 — section-cut boundaries (igloo seam-sweep wipe) ===========
+
+/**
+ * The route whose sections get the cut wipe. The pairs below name HOME
+ * anchors; other routes reuse some ids (`hero`, `founders`, `final-cta`), so
+ * consumers must gate on this route before deriving.
+ */
+export const CUT_BOUNDARY_ROUTE = "/";
+
+/**
+ * THE tunable boundary list — the "big cuts" only (ROUND5-SPEC §2 W4), as
+ * ordered [outgoing, incoming] pairs of home [data-line-anchor] ids. Skipped
+ * on purpose:
+ *  - hero→credibility (spine→passage) and credibility→problem: the
+ *    singularity passage owns both of its edges (its own warp one-shot).
+ *  - hero-fold→spine: NOT representable — the H1 fold and the pinned spine
+ *    share the single "hero" anchor, and a mid-anchor cut would fight the
+ *    spine's own scrubbed stage crossfades.
+ *  - founders→process, process→fit: small cuts, add here later if wanted.
+ * Decorative anchors between a pair (work-in-progress, gateway) don't break
+ * adjacency — `sections` already excludes them.
+ */
+export const CUT_BOUNDARY_PAIRS: readonly (readonly [string, string])[] = [
+  ["problem", "case-studies"], // problem → work
+  ["case-studies", "services"], // work → services
+  ["services", "production"], // services → production
+  ["production", "founders"], // production → founders
+  ["fit", "final-cta"], // fit → outro
+];
+
+/** Capacity hint for the caller's hoisted arrays. */
+export const MAX_CUT_BOUNDARIES = 8;
+
+/**
+ * Fills `outCuts`/`outPairIdx` with the boundary doc-fractions
+ * `cutᵢ = (spans[a].end + spans[b].start) / 2` for every CUT_BOUNDARY_PAIRS
+ * entry whose two anchors are measured AND adjacent in `sections`, in
+ * document order. Returns the count. Zero when the measured spans do not
+ * describe CUT_BOUNDARY_ROUTE (route-change race: `measuredPath` lags the
+ * live pathname until SectionBus re-measures — see the field's doc above).
+ *
+ * Allocation-free by contract: call it at `measureVersion`-bump cadence only
+ * (never per frame) with hoisted typed arrays.
+ *
+ * NOTE the output space: DOC fractions (of scrollHeight), like `spans` —
+ * NOT scrollStore.progress space (which runs over scrollHeight −
+ * innerHeight). Consumers comparing against scroll progress must remap
+ * (PostFXNodes does: cutP = (cut·sH − iH/2)/(sH − iH), which also centers
+ * the boundary on the viewport).
+ */
+export function deriveCutBoundaries(
+  outCuts: Float64Array,
+  outPairIdx: Int32Array,
+): number {
+  const { sections, spans, measuredPath } = useSectionStore.getState();
+  if (measuredPath !== CUT_BOUNDARY_ROUTE) return 0;
+  let n = 0;
+  for (let i = 0; i < CUT_BOUNDARY_PAIRS.length && n < outCuts.length; i++) {
+    const pair = CUT_BOUNDARY_PAIRS[i];
+    const ia = sections.indexOf(pair[0]);
+    if (ia === -1 || sections[ia + 1] !== pair[1]) continue;
+    const sa = spans[pair[0]];
+    const sb = spans[pair[1]];
+    if (!sa || !sb) continue;
+    outCuts[n] = (sa.end + sb.start) / 2;
+    outPairIdx[n] = i;
+    n++;
+  }
+  return n;
 }

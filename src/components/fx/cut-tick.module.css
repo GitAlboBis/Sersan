@@ -1,0 +1,35 @@
+/*
+ * .cut-tick — ROUND 5 W4, the DOM half of the igloo section-cut warp
+ * (research/2026-08-21-igloo-cuts-spec.md §C, "CSS half").
+ *
+ * A 140 ms micro-glitch applied to the FIRST heading of the two sections
+ * adjacent to a cut boundary at the crossing instant (class added/removed by
+ * components/fx/cut-tick.ts, fired from PostFXNodes' crossing detector —
+ * never scrubbed, never layout-affecting).
+ *
+ * Compositor-only properties by contract: text-shadow + the individual
+ * `translate` property + `transform: skewX`. `translate` (not transform) for
+ * the shove because GSAP reveals leave INLINE transforms on these headings
+ * and an inline `transform` always beats a class rule — the independent
+ * `translate` property COMPOSES with any inline transform, so the tick lands
+ * regardless of animation state. The skew rides on `transform` and simply
+ * loses when an inline transform is present (acceptable: transient garnish).
+ *
+ * `--cut-dir` is ±1, set inline by the driver — the two adjacent headings
+ * get OPPOSITE signs so they shear apart along the scroll direction.
+ *
+ * Palette rule (owner, standing): blue/cyan ONLY, never violet — the spec's
+ * example violet rgba(124,92,255) is shifted to deep blue rgba(43,116,255).
+ *
+ * No `filter` / `clip-path` on large containers (paint storms); wrapped in
+ * prefers-reduced-motion: no-preference so RM never sees it.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .cutTick {
+    text-shadow:
+      1px 0 rgba(59, 225, 255, 0.35),
+      -1px 0 rgba(43, 116, 255, 0.3);
+    translate: 0 calc(var(--cut-dir, 1) * 2px);
+    transform: skewX(0.2deg);
+  }
+}
