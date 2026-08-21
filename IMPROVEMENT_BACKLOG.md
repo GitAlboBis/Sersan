@@ -137,9 +137,15 @@ key files before implementing — §1.4):
   compact static-open ledger (hover brighten only); use cases → reduced-amplitude
   beats (new use-case-beats.tsx); deliverables → hairline table; related case
   studies → typographic link list (links preserved). One fix, four routes.
-- [ ] **C9 · P2/L — Home section-cut grammar (era-residence dossier):** first boundary
-  (pinned hero → credibility) gets the bottom-rising limb / aperture dive; propagate to
-  every hard cut. THE "immersive continuity" item.
+- [x] **C9 · P2/L — Home section-cut grammar.** (round 5 W4, 2026-08-21, `001877d`)
+  Shipped on the VERIFIED igloo composite math instead of the era-residence limb: a
+  scrubbed diagonal seam-sweep band (uWipe: falloff cascade, band-limited spectral CA,
+  block shove, 0.30 darkening, leading-edge lift) over one viewport of scroll per
+  boundary, a velocity-scaled uWarpBurst spike on crossings (straddle detector), and a
+  140ms `.cut-tick` on the adjacent headings. 5 boundaries in sectionStore
+  `CUT_BOUNDARY_PAIRS`. Residual: hero→credibility is NOT representable (the H1 fold
+  and pinned spine share the `hero` anchor — a mid-anchor cut would fight the spine's
+  stage crossfades); rest-snap deliberately not shipped (native-scroll expectations).
 - [ ] **C10 · P2/L — /case-studies index (noise-scale + pavel dossiers):** card wall →
   full-viewport inertial deck with contour-band hover, click-activate → [slug]
   transition. Big build; decide vs keeping the (good) existing FLIP grid.
