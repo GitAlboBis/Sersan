@@ -1,35 +1,58 @@
 /**
- * Neural-field particle build — FIX 3 v4 (3 card-anchored 3D hubs).
+ * Signal-stream particle build — the WebGL half of the 2026-08-21 "SIGNAL
+ * STREAM" refactor (replaces the FIX 3 orb-triangle/arc field; file name kept
+ * so NeuralLattice's lazy import stays put).
  *
- * Replaces the v2/v3 dense-cloud topology with a purposeful, LAYOUT-WIRED graph
- * of exactly 3 hubs (one per card) + 3 arcs (a triangle 0→1, 1→2, 0→2). The hub
- * LOCAL positions are NOT baked into the buffers — they are fed in as uniforms
- * `uHub0/1/2` (vec3) so a resize that moves the cards only updates uniforms (NO
- * buffer rebuild). Each particle's read-only `meta` encodes its role and its hub
- * assignment (node → hub index; flow → from/to hub pair). Homes are computed
- * IN-SHADER from the uHub uniforms.
+ * A braided river of particles flows left→right through the section rect.
+ * Per-particle homes are computed IN-SHADER from a Catmull-Rom spline of five
+ * control-point uniforms (uC0..uC4 — the uHub-style uniform-homes pattern):
+ * each particle advances a flow parameter t = fract(basePhase + uTime·speed),
+ * evaluates the spline, then offsets onto one of four twisting STRANDS plus
+ * per-particle thickness jitter → a braid, not a line. Nothing but `meta`,
+ * per-particle offsets and the reveal seed is baked into buffers, so a resize
+ * (or live re-authoring of the meander) is a uniform update — NO rebuild.
  *
- * STRONG-3D: hub node particles are distributed in a real-z SPHERE (a glowing
- * volume), the 3 hubs are z-layered (uHub.z distinct), and arcs bow toward the
- * camera (NEURAL_ARC_BOW). The hovered hub flares (uHovered) + its arcs converge;
- * others dim — damped per-hub glow (driven from the store via NeuralLattice).
+ *   - broken  (uBroken=1): past uFracture the particle loses the spline home
+ *     and disperses into slow drifting debris (analytic drift here; wander
+ *     force via unifiedForceStep on the compute tier), dimming cyan → ember.
+ *     uSurgeT/uSurgeAmp/uFlash paint the surge that rides in from the left and DIES at
+ *     the fracture with a >1.0 emissive flash that immediately decays.
+ *     uRecohere is the hover tease — debris briefly pulls back toward the
+ *     spline, then falls apart again.
+ *   - healthy (uBroken=0): a RING_FRACTION of the particles are GUIDE-RING
+ *     particles on three circles perpendicular to the flow at RING_T; stream
+ *     particles tighten (width envelope + spring gain) as they pass each
+ *     ring. uRingFlash[i] (bumpCluster / surge crossings) fires each ring's
+ *     >1.0 ignition flash; uRingGlow[i] is the damped hover flare.
  *
- * BACKEND CONTRACT (mirrors gpgpuNodeSim.ts):
- *   - True-WebGPU compute path: storage buffers (`instancedArray`) advanced by a
- *     compute kernel (`Fn(...)().compute(count)`, dispatched with `gl.compute()`
- *     once per frame). Render reads buffers via `.toAttribute().xyz` ONLY — the
- *     trailing `.xyz` is MANDATORY on a `"vec3"` buffer (padded to 16B, so
- *     `.toAttribute()` yields a 4-component node). `.element(i)` is COMPUTE-STAGE
- *     ONLY (breaks on the WebGL2 sub-backend, three #31221).
- *   - Non-compute path (WebGPURenderer WebGL2 sub-backend): a STATIC analytic
+ * BACKEND CONTRACT (unchanged, mirrors gpgpuNodeSim.ts):
+ *   - True-WebGPU compute path: storage buffers (`instancedArray`) advanced by
+ *     a compute kernel through the shared unifiedForceStep. Render reads
+ *     buffers via `.toAttribute().xyz` ONLY — the trailing `.xyz` is MANDATORY
+ *     on a `"vec3"` buffer (padded to 16B). `.element(i)` on STORAGE buffers is
+ *     COMPUTE-STAGE ONLY (three #31221); uniformArray `.element()` is fine in
+ *     any stage. Buffer budget: 4 storage buffers in compute, 3
+ *     `.toAttribute()` vertex-buffer slots in render — same footprint as the
+ *     lattice build this replaces, well inside the 8-slot walls.
+ *   - Non-compute path (WebGPURenderer WebGL2 sub-backend): the ANALYTIC
  *     build — particles sit at their reveal-blended home with a cheap shimmer.
+ *     Because the home is a pure function of uTime, the flow, surges, ring
+ *     flashes and fracture all still animate; only the physical debris
+ *     inertia and the pointer bend are compute-only.
  *
  * All `three/webgpu` + `three/tsl` symbols are passed IN (caller lazy-imports
- * the namespaces inside the webgpuEnabled()-gated effect — never module scope).
+ * inside the webgpuEnabled()-gated effect — never module scope).
  *
  * Material contract (selective bloom): `MeshBasicNodeMaterial`, additive,
  * `toneMapped:false`, `depthWrite:false`, `depthTest:false`; output color
  * exceeds luminance 1.0 (emissive >1.0) so the threshold≈1.0 bloom catches it.
+ *
+ * VARYING DISCIPLINE (load-bearing): every varying below is a SELF-CONTAINED
+ * expression (a pure function of attributes/storage reads + uniforms) fed
+ * straight into `varying(...)`, and the SAME nodes are reused by the vertex
+ * body — NEVER an outer `.toVar()` the vertex Fn `.assign()`s into. Three
+ * writes every varying at the TOP of vertex main(), so an outer-var varying is
+ * frozen at its initial value forever (VaryingNode hazard, gpgpuNodeSim.ts).
  */
 import {
   unifiedForceStep,
@@ -37,51 +60,51 @@ import {
 } from "../gpgpu/gpgpuNodeSim";
 import {
   COL_CYAN,
-  COL_VIOLET,
-  COL_DEAD,
-  HUB_COUNT,
-  HUB_ARCS,
-  HUB_Z,
-  HUB_Z_SPAN,
-  HUB_Z_MIN,
-  HUB_SPHERE_RADIUS,
-  NODE_FRACTION,
-  NODE_JITTER,
-  FLOW_JITTER,
-  NEURAL_ARC_BOW,
-  DISPERSE_SPREAD,
-  BREAK_T,
-  DISPERSE_WINDOW,
-  DISPERSE_FADE,
-  FIELD_NODE_EMISSIVE,
-  FIELD_FLOW_EMISSIVE,
-  FIELD_ALPHA_FLOOR,
-  FIELD_NODE_EMIS_FLOOR,
-  FIELD_FLOW_EMIS_FLOOR,
+  COL_BLUE,
+  COL_EMBER,
+  STREAM_CTRL,
+  STRAND_COUNT,
+  STRAND_RADIUS,
+  STRAND_THICKNESS,
+  BRAID_TURNS,
+  FLOW_SPEED,
+  RING_T,
+  RING_RADIUS,
+  RING_TUBE,
+  RING_FRACTION,
+  RING_SPIN,
+  TIGHTEN_PER_RING,
+  RING_SPRING_GAIN,
+  RING_PROX_K,
+  FRACTURE_T,
+  FRACTURE_WINDOW,
+  DEBRIS_SPREAD,
+  DEBRIS_FADE,
+  DEBRIS_WANDER_ACC,
+  SURGE_K,
+  SURGE_GAIN,
+  FLASH_K,
+  FLASH_GAIN,
+  RING_FLASH_GAIN,
+  STREAM_EMISSIVE,
+  RING_EMISSIVE,
+  STREAM_ALPHA,
   NEURAL_POINT_SIZE,
-  NEURAL_NODE_SIZE_BOOST,
+  RING_POINT_SIZE_BOOST,
   NEURAL_DEPTH_ATTEN,
+  DEPTH_Z_RANGE,
   NEURAL_SPRING,
   NEURAL_DAMPING,
   NEURAL_MAX_SPEED,
-  HUB_SPIN_SPEED,
-  SIGNAL_K,
-  SIGNAL_FLOOR,
-  SIGNAL_HEAD_SPEED,
-  SIGNAL_PULSE_SPEED,
-  SIGNAL_PULSE_GAIN,
-  HOVER_RADIUS_PULSE,
-  HOVER_ARC_BOOST,
-  HOVER_BURST_AMP,
-  HOVER_BURST_EMISSIVE,
-  HOVER_BURST_ARC,
-  HOVER_BURST_SHOCK,
+  POINTER_PUSH,
+  POINTER_RADIUS,
   SEED_SCATTER_XY,
   SEED_SCATTER_Z,
+  type LatticeMode,
 } from "./neuralLatticeConfig";
 
 // Loose structural typings — the real node/namespace types are vast & generic
-// (same rationale as gpgpuNodeSim.ts). We only need the shape we call.
+// (same rationale as gpgpuNodeSim.ts).
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Any = any;
 
@@ -91,24 +114,29 @@ export interface NeuralFieldUniforms {
   uReveal: { value: number };
   /** 0 healthy · 1 broken. */
   uBroken: { value: number };
-  /** Per-cluster (per-hub) eased pulse 0..1 (write to `.array`, NOT `.value`). */
-  uPulse: { array: number[] };
-  /** Base flow speed along the arcs. */
+  /** Base flow speed along the stream. */
   uFlowSpeed: { value: number };
-  /** 0→1 dispersal ramp while broken & in view (per-frame). */
-  uDisperse: { value: number };
-  /** The 3 hub LOCAL positions (vec3) — fed from the measured card centers. */
-  uHub0: { value: { set: (x: number, y: number, z: number) => unknown } };
-  uHub1: { value: { set: (x: number, y: number, z: number) => unknown } };
-  uHub2: { value: { set: (x: number, y: number, z: number) => unknown } };
-  /** Which hub is hovered (-1 none, 0..2). Drives the flare/dim ignition. */
-  uHovered: { value: number };
-  /** Per-hub damped glow 0..~HOVER_FLARE (write to `.array`). */
-  uHubGlow: { array: number[] };
-  /** Per-hub one-shot burst envelope 0..1 (write to `.array`). The hovered hub
-   * surges outward + spikes emissive on the rising edge of a hover, then decays.
-   * v5 particle effect on open. */
-  uHubBurst: { array: number[] };
+  /** Fracture flow-t position (broken). */
+  uFracture: { value: number };
+  /** 0→1 hover tease — debris re-coheres toward the spline (broken). */
+  uRecohere: { value: number };
+  /** Surge head flow-t (park < 0 when idle) + its 0..1 amplitude. */
+  uSurgeT: { value: number };
+  uSurgeAmp: { value: number };
+  /** 0→1 fracture death-flash envelope (broken). */
+  uFlash: { value: number };
+  /** Per-ring damped hover glow, 1 = neutral (write to `.array`). */
+  uRingGlow: { array: number[] };
+  /** Per-ring ignition flash 0..1 (write to `.array`). */
+  uRingFlash: { array: number[] };
+  /** The 5 spline control points (LOCAL space vec3). */
+  uC0: { value: { set: (x: number, y: number, z: number) => unknown } };
+  uC1: { value: { set: (x: number, y: number, z: number) => unknown } };
+  uC2: { value: { set: (x: number, y: number, z: number) => unknown } };
+  uC3: { value: { set: (x: number, y: number, z: number) => unknown } };
+  uC4: { value: { set: (x: number, y: number, z: number) => unknown } };
+  /** Cursor attractor in LOCAL space (park at 1e9 = off; compute tier only). */
+  uPointer: { value: { set: (x: number, y: number, z: number) => unknown } };
   uPixelRatio: { value: number };
   uViewport: { value: { set: (x: number, y: number) => unknown } };
 }
@@ -131,86 +159,76 @@ export interface NeuralFieldBuildArgs {
   /** True only on the genuine WebGPU compute sub-backend. */
   backendIsWebGPU: boolean;
   count: number;
+  /** Which stream this build paints — decides the ring-particle allocation. */
+  mode: LatticeMode;
 }
 
 const QUAD_CORNERS = [-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0];
 const QUAD_INDEX = [0, 1, 2, 0, 2, 3];
 
-/** Deterministic [0,1) hash from an integer (matches config hash1 family). */
-function h1(n: number): number {
-  const s = Math.sin(n * 127.1 + 311.7) * 43758.5453123;
+/** Deterministic [0,1) hash — the EXACT formula the compute kernel re-derives
+ * for the reveal seed (fract(sin(i·127.1 + 311.7)·43758.545) family), so the
+ * baked seed buffer and the kernel's analytic seed agree. */
+function h(i: number, mulA: number, addB: number): number {
+  const s = Math.sin(i * mulA + addB) * 43758.545;
   return s - Math.floor(s);
 }
 
 /**
- * Seed the read-only per-particle role buffers. v4: homes are NO LONGER baked
- * (they derive from the uHub uniforms in-shader), so we only bake `meta` and the
- * per-particle SPHERE/jitter offsets + arc parameters that the shader combines
- * with the live hub positions.
+ * Seed the read-only per-particle role buffers. Homes are NOT baked — they
+ * derive from the uC0..4 spline uniforms in-shader. Layout:
  *
  *   meta : vec4
- *     role  (0 node | 1 flow)
- *     hubA  (node: this hub index 0..2 ; flow: FROM hub index)
- *     hubB  (node: unused/=hubA       ; flow: TO   hub index)
- *     dead  (1 if this is a "dead" arc/node in broken mode)
- *   offA : vec3 (node: sphere/jitter offset around the hub center;
- *                flow: basePhase in .x, perpendicular jitter in .yz)
+ *     role     (0 stream | 1 ring)
+ *     aux      (stream: strand index 0..3 ; ring: ring index 0..2)
+ *     speedVar (stream: 0.7..1.3 flow-speed variance; ring: spin variance)
+ *     rnd      (0..1 — tint variance / debris hashes)
+ *   offA : vec3
+ *     stream: [basePhase 0..1, jitter magnitude 0..1, jitter angle 0..2π]
+ *     ring:   [base angle 0..2π, radial jitter −1..1, tube angle 0..2π]
  *   seed : vec3 scattered start (reveal coalesce)
  */
-function seedBuffers(count: number) {
+function seedBuffers(count: number, mode: LatticeMode) {
   const meta = new Float32Array(count * 4);
   const offA = new Float32Array(count * 3);
   const seed = new Float32Array(count * 3);
 
-  const nodeCutoff = Math.floor(count * NODE_FRACTION);
-  const arcCount = HUB_ARCS.length;
+  const ringCutoff =
+    mode === "healthy" ? Math.floor(count * (1 - RING_FRACTION)) : count;
 
   for (let i = 0; i < count; i++) {
-    const r0 = h1(i * 3 + 1);
-    const r1 = h1(i * 7 + 5);
-    const r2 = h1(i * 11 + 9);
-    const r3 = h1(i * 17 + 13);
+    const r0 = h(i, 12.9898, 78.233);
+    const r1 = h(i, 39.3467, 11.135);
+    const r2 = h(i, 73.156, 52.235);
+    const r3 = h(i, 91.318, 27.719);
 
-    if (i < nodeCutoff) {
-      // NODE particle → assigned to a hub; offset = a point in a real-z SPHERE
-      // (uniform-on-sphere via the standard z/azimuth parameterization) scaled
-      // to HUB_SPHERE_RADIUS, with a small radial jitter so the orb is FILLED
-      // (dense), not a hollow shell.
-      const hub = Math.floor(r0 * HUB_COUNT) % HUB_COUNT;
-      const az = r1 * Math.PI * 2;
-      const zc = (r2 - 0.5) * 2; // cos(polar) ∈ [-1,1]
-      const ring = Math.sqrt(Math.max(0, 1 - zc * zc));
-      // radius: bias toward the shell but fill the interior a bit (r3 sqrt).
-      const rad = HUB_SPHERE_RADIUS * (0.45 + 0.55 * Math.sqrt(r3));
-      offA[i * 3] = Math.cos(az) * ring * rad;
-      offA[i * 3 + 1] = Math.sin(az) * ring * rad;
-      offA[i * 3 + 2] = zc * rad;
-      meta[i * 4] = 0; // role = node
-      meta[i * 4 + 1] = hub;
-      meta[i * 4 + 2] = hub; // hubB = hubA for nodes
-      meta[i * 4 + 3] = 0; // hub nodes never "dead" in v4 (dispersal is arcs)
+    if (i < ringCutoff) {
+      // STREAM particle.
+      meta[i * 4] = 0;
+      meta[i * 4 + 1] = Math.floor(r0 * STRAND_COUNT) % STRAND_COUNT;
+      meta[i * 4 + 2] = 0.7 + r1 * 0.6; // flow-speed variance
+      meta[i * 4 + 3] = r3;
+      offA[i * 3] = r2; // basePhase
+      // Jitter magnitude biased toward the core (sqrt keeps a bright center,
+      // a softer fringe) — also the cyan→blue radial tint driver.
+      offA[i * 3 + 1] = Math.sqrt(r0);
+      offA[i * 3 + 2] = r1 * Math.PI * 2;
     } else {
-      // FLOW particle → assigned to an arc; rides the Bézier between its two
-      // hubs. offA.x = basePhase along the arc; offA.yz = perpendicular jitter.
-      const arc = Math.floor(r0 * arcCount) % arcCount;
-      const [fromHub, toHub] = HUB_ARCS[arc];
-      const ja = r1 * Math.PI * 2;
-      const jr = FLOW_JITTER * (0.2 + r3 * 0.8);
-      offA[i * 3] = r2; // basePhase ∈ [0,1)
-      offA[i * 3 + 1] = Math.cos(ja) * jr;
-      offA[i * 3 + 2] = Math.sin(ja) * jr;
-      meta[i * 4] = 1; // role = flow
-      meta[i * 4 + 1] = fromHub;
-      meta[i * 4 + 2] = toHub;
-      // The span arc (0→2) is the "dead" segment that fractures in broken mode.
-      meta[i * 4 + 3] = fromHub === 0 && toHub === 2 ? 1 : 0;
+      // RING particle (healthy only) — even thirds across the three rings.
+      const ring = (i - ringCutoff) % 3;
+      meta[i * 4] = 1;
+      meta[i * 4 + 1] = ring;
+      meta[i * 4 + 2] = 0.6 + r1 * 0.8; // spin variance
+      meta[i * 4 + 3] = r3;
+      offA[i * 3] = r0 * Math.PI * 2; // base angle on the ring
+      offA[i * 3 + 1] = (r2 - 0.5) * 2; // radial jitter
+      offA[i * 3 + 2] = r1 * Math.PI * 2; // tube angle
     }
 
-    // Scattered seed (loose cloud) — particles coalesce onto homes as uReveal
-    // rises.
-    seed[i * 3] = (r0 - 0.5) * SEED_SCATTER_XY;
-    seed[i * 3 + 1] = (r1 - 0.5) * SEED_SCATTER_XY;
-    seed[i * 3 + 2] = (r2 - 0.5) * SEED_SCATTER_Z;
+    // Scattered seed (loose cloud) — matches the kernel's analytic re-derive.
+    seed[i * 3] = (h(i, 127.1, 311.7) - 0.5) * SEED_SCATTER_XY;
+    seed[i * 3 + 1] = (h(i, 269.5, 183.3) - 0.5) * SEED_SCATTER_XY;
+    seed[i * 3 + 2] = (h(i, 419.2, 371.9) - 0.5) * SEED_SCATTER_Z;
   }
 
   return { meta, offA, seed };
@@ -219,7 +237,7 @@ function seedBuffers(count: number) {
 export function createNeuralFieldBuild(
   args: NeuralFieldBuildArgs,
 ): NeuralFieldBuild {
-  const { webgpu, tsl, gl, backendIsWebGPU, count } = args;
+  const { webgpu, tsl, gl, backendIsWebGPU, count, mode } = args;
   const {
     InstancedBufferGeometry,
     BufferAttribute,
@@ -251,50 +269,43 @@ export function createNeuralFieldBuild(
     clamp,
     sin,
     cos,
+    floor,
     fract,
     mix,
     smoothstep,
     Discard,
     varying,
     select,
-    pow,
-    abs,
     exp,
   } = tsl as Any;
 
-  const { meta, offA, seed } = seedBuffers(count);
+  const { meta, offA, seed } = seedBuffers(count, mode);
+  const ctrlInit = STREAM_CTRL[mode];
 
   // --- Shared uniforms ------------------------------------------------------
   const uTime = uniform(0);
   const uReveal = uniform(0);
-  const uBroken = uniform(0);
-  const uPulse = uniformArray([0, 0, 0]);
-  const uFlowSpeed = uniform(0.22);
-  const uDisperse = uniform(0);
-  // Hub LOCAL positions (default until the first measure).
-  const uHub0 = uniform(new Vector3(...(arrXY(0))));
-  const uHub1 = uniform(new Vector3(...(arrXY(1))));
-  const uHub2 = uniform(new Vector3(...(arrXY(2))));
-  const uHovered = uniform(-1);
-  const uHubGlow = uniformArray([1, 1, 1]);
-  const uHubBurst = uniformArray([0, 0, 0]);
+  const uBroken = uniform(mode === "broken" ? 1 : 0);
+  const uFlowSpeed = uniform(FLOW_SPEED);
+  const uFracture = uniform(FRACTURE_T);
+  const uRecohere = uniform(0);
+  const uSurgeT = uniform(-1);
+  const uSurgeAmp = uniform(0);
+  const uFlash = uniform(0);
+  const uRingGlow = uniformArray([1, 1, 1]);
+  const uRingFlash = uniformArray([0, 0, 0]);
+  const uC0 = uniform(new Vector3(...ctrlInit[0]));
+  const uC1 = uniform(new Vector3(...ctrlInit[1]));
+  const uC2 = uniform(new Vector3(...ctrlInit[2]));
+  const uC3 = uniform(new Vector3(...ctrlInit[3]));
+  const uC4 = uniform(new Vector3(...ctrlInit[4]));
+  const uPointer = uniform(new Vector3(1e9, 1e9, 1e9));
   const uPixelRatio = uniform(1);
   const uViewport = uniform(new Vector2(1, 1));
   const uColCyan = uniform(new Color(COL_CYAN));
-  const uColViolet = uniform(new Color(COL_VIOLET));
-  const uColDead = uniform(new Color(COL_DEAD));
+  const uColBlue = uniform(new Color(COL_BLUE));
+  const uColEmber = uniform(new Color(COL_EMBER));
   const uPointSize = uniform(NEURAL_POINT_SIZE);
-
-  function arrXY(hub: number): [number, number, number] {
-    // default fallback positions baked into the uniform initial values.
-    const xy: [number, number][] = [
-      [-0.34, 0],
-      [0, 0],
-      [0.34, 0],
-    ];
-    const [x, y] = xy[hub] ?? [0, 0];
-    return [x, y, HUB_Z[hub] ?? 0];
-  }
 
   // --- Geometry: shared billboard quad + per-instance role attributes -------
   const geometry = new InstancedBufferGeometry();
@@ -309,148 +320,316 @@ export function createNeuralFieldBuild(
   geometry.instanceCount = count;
 
   // ------------------------------------------------------------------------
-  // In-shader hub picker: returns hub center vec3 for index ∈ {0,1,2} from the
-  // live uHub uniforms (so resize = uniform update, no rebuild).
+  // In-shader spline: Catmull-Rom through the 5 control-point uniforms.
   // ------------------------------------------------------------------------
-  function hubPos(idx: Any): Any {
-    const is0 = idx.lessThan(float(0.5));
-    const is1 = idx.lessThan(float(1.5));
-    return select(is0, uHub0, select(is1, uHub1, uHub2));
+  function ctrl(idx: Any): Any {
+    const i0 = idx.lessThan(float(0.5));
+    const i1 = idx.lessThan(float(1.5));
+    const i2 = idx.lessThan(float(2.5));
+    const i3 = idx.lessThan(float(3.5));
+    return select(
+      i0,
+      uC0,
+      select(i1, uC1, select(i2, uC2, select(i3, uC3, uC4))),
+    );
   }
-  function hubGlow(idx: Any): Any {
-    const ci = int(clamp(idx, float(0), float(2)));
-    return uHubGlow.element(ci) as Any;
-  }
-  function hubBurst(idx: Any): Any {
-    const ci = int(clamp(idx, float(0), float(2)));
-    return uHubBurst.element(ci) as Any;
+  /** Catmull-Rom over 4 equal segments, t ∈ [0,1]. */
+  function splineCR(t: Any): Any {
+    const x = clamp(t, float(0), float(0.99999)).mul(4.0).toVar();
+    const seg = floor(x).toVar();
+    const u = x.sub(seg).toVar();
+    const p0 = ctrl(max(seg.sub(1.0), float(0))).toVar();
+    const p1 = ctrl(seg).toVar();
+    const p2 = ctrl(min(seg.add(1.0), float(4))).toVar();
+    const p3 = ctrl(min(seg.add(2.0), float(4))).toVar();
+    const u2 = u.mul(u);
+    const u3 = u2.mul(u);
+    return p1
+      .mul(2.0)
+      .add(p2.sub(p0).mul(u))
+      .add(
+        p0
+          .mul(2.0)
+          .sub(p1.mul(5.0))
+          .add(p2.mul(4.0))
+          .sub(p3)
+          .mul(u2),
+      )
+      .add(p3.sub(p0).add(p1.sub(p2).mul(3.0)).mul(u3))
+      .mul(0.5);
   }
 
-  function quadBezier(a: Any, c: Any, b: Any, t: Any): Any {
-    const omt = float(1).sub(t);
-    return a
-      .mul(omt.mul(omt))
-      .add(c.mul(float(2).mul(omt).mul(t)))
-      .add(b.mul(t.mul(t)));
+  function ringGlowAt(idx: Any): Any {
+    return uRingGlow.element(int(clamp(idx, float(0), float(2)))) as Any;
+  }
+  function ringFlashAt(idx: Any): Any {
+    return uRingFlash.element(int(clamp(idx, float(0), float(2)))) as Any;
+  }
+  /** Ring flow-t by index (config constants — fixed topology). */
+  function ringT(idx: Any): Any {
+    const i0 = idx.lessThan(float(0.5));
+    const i1 = idx.lessThan(float(1.5));
+    return select(
+      i0,
+      float(RING_T[0]),
+      select(i1, float(RING_T[1]), float(RING_T[2])),
+    );
   }
 
-  // Hub self-spin: rotate a node's sphere offset about Y so near/far particles
-  // parallax (the orb reads as a 3D volume). Per-hub phase from the hub index.
-  function spinOffset(off: Any, hubIdx: Any): Any {
-    const ang = uTime
-      .mul(float(HUB_SPIN_SPEED))
-      .add(hubIdx.mul(float(2.1)));
-    const ca = cos(ang);
-    const sa = sin(ang);
-    const x = off.x.mul(ca).add(off.z.mul(sa));
-    const z = off.z.mul(ca).sub(off.x.mul(sa));
-    return vec3(x, off.y, z);
+  /** Flow parameter of a stream particle — deterministic in uTime. */
+  function flowParam(basePhase: Any, speedVar: Any): Any {
+    return fract(basePhase.add(uTime.mul(uFlowSpeed).mul(speedVar)));
+  }
+
+  /** Laminar width envelope (healthy): 1 at entry, tightening past each ring.
+   * uBroken gates it off so the broken stream keeps its full braid width. */
+  function widthEnvelope(t: Any): Any {
+    let w: Any = float(1);
+    for (let i = 0; i < RING_T.length; i++) {
+      w = w.sub(
+        smoothstep(float(RING_T[i] - 0.05), float(RING_T[i] + 0.02), t).mul(
+          float(TIGHTEN_PER_RING),
+        ),
+      );
+    }
+    return mix(w, float(1), uBroken);
+  }
+
+  /** Fracture detachment factor 0..1 for a stream particle (broken only,
+   * softened by the hover re-cohere tease). */
+  function dispFactor(t: Any): Any {
+    const past = smoothstep(
+      uFracture,
+      uFracture.add(float(FRACTURE_WINDOW)),
+      t,
+    );
+    return clamp(
+      past.mul(uBroken).mul(float(1).sub(uRecohere.mul(0.9))),
+      float(0),
+      float(1),
+    );
   }
 
   /**
-   * The analytic anchor: where particle i WANTS to be, from the live uHub
-   * uniforms + its read-only role/offset buffers.
-   *   role 0 (node): anchor = hub[hubA] + spin(sphereOffset)
-   *   role 1 (flow): anchor = Bézier(hubFrom, control, hubTo) at
-   *                  t = fract(basePhase + uTime*uFlowSpeed*hubSpeed) + perp jitter
-   *                  ; dead+broken+t>BREAK_T → blend toward outward dispersal.
+   * The analytic anchor: where particle i WANTS to be, from the spline
+   * uniforms + its read-only role/offset attributes. Pure function of uTime →
+   * deterministic for any scrub state (the unified-force contract).
    */
   function anchorNode(opts: { metaN: Any; offN: Any }): Any {
     const { metaN, offN } = opts;
     const role = metaN.x;
-    const hubA = metaN.y;
-    const hubB = metaN.z;
-    const dead = metaN.w;
+    const aux = metaN.y;
+    const speedVar = metaN.z;
+    const rnd = metaN.w;
 
-    // -------- NODE branch --------
-    // v5 burst: on the rising edge of a hover the hovered hub's node particles
-    // SURGE outward along their sphere offset (a real expansion), then re-settle
-    // as the burst envelope decays. Steady radius pulse (glow) stays additive.
-    const hubC = hubPos(hubA).toVar();
-    const burst = hubBurst(hubA);
-    const surge = float(1).add(burst.mul(float(HOVER_BURST_AMP)));
-    const nodeAnchor = hubC.add(spinOffset(offN, hubA).mul(surge)).toVar();
-
-    // -------- FLOW branch --------
-    const aHub = hubPos(hubA).toVar();
-    const bHub = hubPos(hubB).toVar();
-    // Control = midpoint bowed toward the camera (+z) so the arc curves in 3D.
-    const mid = aHub.add(bHub).mul(0.5).toVar();
-    const ctrl = mid.add(vec3(0, 0, float(NEURAL_ARC_BOW))).toVar();
-
-    // Per-arc flow speed: base × the larger of the two hub glows (incident arcs
-    // of the hovered hub race) × the cluster pulse boost on the FROM hub × the
-    // burst surge (v5: signal accelerates toward the opening card).
-    const ci = int(clamp(hubA, float(0), float(2)));
-    const pulse = (uPulse.element(ci) as Any).mul(1.0);
-    const glowBoost = max(hubGlow(hubA), hubGlow(hubB));
-    const arcBurst = max(hubBurst(hubA), hubBurst(hubB));
-    const clusterSpeed = float(0.7)
-      .add(pulse.mul(0.9))
-      .mul(float(1).add(glowBoost.sub(1.0).mul(float(HOVER_ARC_BOOST - 1.0))))
-      .mul(float(1).add(arcBurst.mul(float(HOVER_BURST_ARC))));
-
-    const basePhase = offN.x;
-    const tFlow = fract(
-      basePhase.add(uTime.mul(uFlowSpeed).mul(clusterSpeed)),
-    ).toVar();
-    const bez = quadBezier(aHub, ctrl, bHub, tFlow).toVar();
-    // perpendicular jitter (offN.yz) gives the stream thickness.
-    const jit = vec3(offN.y, offN.z, float(0));
-    const flowOnArc = bez.add(jit).toVar();
-
-    // Broken dispersal: dead flow particles past BREAK_T detach outward.
-    const past = smoothstep(float(BREAK_T), float(BREAK_T).add(DISPERSE_WINDOW), tFlow);
-    const outDir = bHub.add(vec3(1e-5, 1e-5, 1e-5)).normalize();
-    const dispersed = bHub.add(
-      outDir.mul(uDisperse.mul(past).mul(dead).mul(uBroken).mul(DISPERSE_SPREAD)),
+    // -------- STREAM branch --------
+    const t = flowParam(offN.x, speedVar).toVar();
+    const center = splineCR(t).toVar();
+    const w = widthEnvelope(t).toVar();
+    // Strand orbit: the strand's sub-tube revolves around the spline as t
+    // advances → the braid. Fixed y/z frame (the meander is gentle enough
+    // that a true Frenet frame buys nothing visible).
+    const strandAng = aux
+      .mul(float((Math.PI * 2) / STRAND_COUNT))
+      .add(t.mul(float(BRAID_TURNS * Math.PI * 2)));
+    const strandOff = vec3(
+      float(0),
+      sin(strandAng).mul(float(STRAND_RADIUS)),
+      cos(strandAng).mul(float(STRAND_RADIUS)),
     );
-    const flowAnchor = mix(
-      flowOnArc,
-      dispersed,
-      clamp(uDisperse.mul(past).mul(dead).mul(uBroken), float(0), float(1)),
+    // Thickness jitter within the strand.
+    const jit = vec3(
+      float(0),
+      sin(offN.z).mul(offN.y).mul(float(STRAND_THICKNESS)),
+      cos(offN.z).mul(offN.y).mul(float(STRAND_THICKNESS)),
     );
+    const onStream = center.add(strandOff.add(jit).mul(w)).toVar();
 
-    return mix(nodeAnchor, flowAnchor, role);
+    // Broken: past the fracture the particle loses the spline home and
+    // becomes slow drifting debris from the fracture point.
+    const disp = dispFactor(t).toVar();
+    const fracPt = splineCR(uFracture).toVar();
+    const u = clamp(
+      t.sub(uFracture).div(float(1).sub(uFracture)),
+      float(0),
+      float(1),
+    ).toVar(); // debris life progress
+    const h1 = fract(sin(rnd.mul(137.9).add(offN.x.mul(311.7))).mul(43758.545));
+    const h2 = fract(sin(rnd.mul(269.5).add(offN.z.mul(183.3))).mul(43758.545));
+    const dir = vec3(
+      float(0.8).add(h1.mul(0.4)),
+      h1.sub(0.5).mul(1.5),
+      h2.sub(0.5).mul(1.1),
+    )
+      .normalize()
+      .toVar();
+    const wander = vec3(
+      sin(uTime.mul(0.5).add(h1.mul(21.0))),
+      sin(uTime.mul(0.42).add(h2.mul(17.0))),
+      sin(uTime.mul(0.36).add(h1.mul(13.0))),
+    ).mul(u.mul(0.06));
+    const debris = fracPt
+      .add(strandOff.add(jit).mul(0.5))
+      .add(dir.mul(u.mul(float(DEBRIS_SPREAD)).add(0.03)))
+      .add(wander);
+    const streamAnchor = mix(onStream, debris, disp).toVar();
+
+    // -------- RING branch (healthy) --------
+    const rC = splineCR(ringT(aux)).toVar();
+    const ang = offN.x.add(uTime.mul(float(RING_SPIN)).mul(speedVar));
+    const rr = float(RING_RADIUS).mul(
+      float(1).add(offN.y.mul(0.1)),
+    );
+    const tube = vec3(
+      sin(offN.z).mul(float(RING_TUBE)),
+      cos(offN.z).mul(float(RING_TUBE)),
+      float(0),
+    );
+    // The ring's circle lives in the y/z plane (perpendicular to the flow),
+    // with a slight x tube-jitter so it reads as a torus, not a flat washer.
+    const ringAnchor = rC
+      .add(vec3(tube.x, sin(ang).mul(rr).add(tube.y), cos(ang).mul(rr)))
+      .toVar();
+
+    return mix(streamAnchor, ringAnchor, role);
   }
 
-  /** Flow parameter t recomputed in render (matches anchor's fract). */
-  function flowParam(basePhase: Any, hubA: Any, hubB: Any): Any {
-    const ci = int(clamp(hubA, float(0), float(2)));
-    const pulse = (uPulse.element(ci) as Any).mul(1.0);
-    const glowBoost = max(hubGlow(hubA), hubGlow(hubB));
-    const arcBurst = max(hubBurst(hubA), hubBurst(hubB));
-    const clusterSpeed = float(0.7)
-      .add(pulse.mul(0.9))
-      .mul(float(1).add(glowBoost.sub(1.0).mul(float(HOVER_ARC_BOOST - 1.0))))
-      .mul(float(1).add(arcBurst.mul(float(HOVER_BURST_ARC))));
-    return fract(basePhase.add(uTime.mul(uFlowSpeed).mul(clusterSpeed)));
+  // === Shared fragment-bound scalar builders ================================
+  // (Self-contained expressions — see the VARYING DISCIPLINE header note.)
+
+  /** Surge brightness at flow-t (dies past the fracture when broken). */
+  function surgeAt(t: Any): Any {
+    const d = t.sub(uSurgeT);
+    const s = uSurgeAmp.mul(exp(float(SURGE_K).mul(d.mul(d)).negate()));
+    const past = smoothstep(
+      uFracture,
+      uFracture.add(float(FRACTURE_WINDOW)),
+      t,
+    );
+    return s.mul(float(1).sub(past.mul(uBroken)));
+  }
+  /** Fracture death-flash brightness at flow-t (broken only). */
+  function flashAt(t: Any): Any {
+    const d = t.sub(uFracture);
+    return uFlash
+      .mul(exp(float(FLASH_K).mul(d.mul(d)).negate()))
+      .mul(uBroken);
   }
 
-  /** Travelling SIGNAL: a moving gaussian brightness peak running hub→hub. */
-  function signalBrightness(tFlow: Any, hubA: Any, hubB: Any): Any {
-    const ci = int(clamp(hubA, float(0), float(2)));
-    const pulse = (uPulse.element(ci) as Any).mul(1.0);
-    const glowBoost = max(hubGlow(hubA), hubGlow(hubB));
-    const arcBurst = max(hubBurst(hubA), hubBurst(hubB));
-    const headSpeed = float(SIGNAL_HEAD_SPEED)
-      .mul(float(1).add(pulse.mul(float(SIGNAL_PULSE_SPEED))))
-      .mul(float(1).add(glowBoost.sub(1.0).mul(float(HOVER_ARC_BOOST - 1.0))))
-      .mul(float(1).add(arcBurst.mul(float(HOVER_BURST_ARC))));
-    const headT = fract(uTime.mul(headSpeed));
-    const d = fract(tFlow.sub(headT).add(1.0));
-    const dWrap = min(d, float(1).sub(d));
-    const peak = exp(float(SIGNAL_K).mul(dWrap.mul(dWrap)).negate());
-    const amp = float(1)
-      .add(pulse.mul(float(SIGNAL_PULSE_GAIN)))
-      .add(glowBoost.sub(1.0).mul(0.8))
-      .add(arcBurst.mul(0.9));
-    return float(SIGNAL_FLOOR).add(peak.mul(amp));
+  /** Build every per-particle scalar the fragment needs, from a meta/off pair
+   * (attributes on the static path, storage `.toAttribute()` reads on the
+   * compute path — identical math). */
+  function particleScalars(metaN: Any, offN: Any) {
+    const role = metaN.x;
+    const t = flowParam(offN.x, metaN.z);
+    const disp = dispFactor(t);
+    const u = clamp(
+      t.sub(uFracture).div(float(1).sub(uFracture)),
+      float(0),
+      float(1),
+    );
+    // Debris dims + fades with its drift progress (leaves a faint ember ghost).
+    const deadMix = clamp(disp.mul(float(0.4).add(u.mul(0.6))), float(0), float(1));
+    const alive = float(1).sub(disp.mul(u).mul(float(DEBRIS_FADE)));
+    // Radial fringe 0..1 → cyan core, blue fringe (+ per-particle variance).
+    const fringe = clamp(
+      offN.y.mul(0.85).add(metaN.w.mul(0.3)),
+      float(0),
+      float(1),
+    );
+    const surge = surgeAt(t);
+    const flash = flashAt(t);
+    const glow = ringGlowAt(metaN.y);
+    const ringFlash = ringFlashAt(metaN.y);
+    // Stream emissive: floor + surge + death-flash, dimmed on debris.
+    const emisStream = float(1)
+      .add(surge.mul(float(SURGE_GAIN)))
+      .add(flash.mul(float(FLASH_GAIN)))
+      .mul(float(STREAM_EMISSIVE))
+      .mul(float(1).sub(deadMix.mul(0.75)));
+    // Ring emissive: hover glow × ignition flash.
+    const emisRing = float(RING_EMISSIVE)
+      .mul(glow)
+      .mul(float(1).add(ringFlash.mul(float(RING_FLASH_GAIN))));
+    const emis = mix(emisStream, emisRing, role);
+    // Size: rings denser; surge fattens the stream head; flash pops the ring.
+    const sizeK = mix(
+      float(1).add(surge.mul(0.45)),
+      float(RING_POINT_SIZE_BOOST).add(ringFlash.mul(0.35)),
+      role,
+    );
+    return { role, t, disp, deadMix, alive, fringe, emis, sizeK };
   }
 
-  // Shared depthT: local z of an anchor mapped to [0,1] over the hub-z span.
-  function depthT(z: Any): Any {
-    return clamp(z.sub(float(HUB_Z_MIN)).div(float(HUB_Z_SPAN)), float(0), float(1));
+  /** Shared fragment shade — identical on both backends. */
+  function buildShade(v: {
+    vQuadUv: Any;
+    vFringe: Any;
+    vDead: Any;
+    vAlive: Any;
+    vEmis: Any;
+  }): Any {
+    return Fn(() => {
+      const disc = smoothstep(0.5, 0.12, length(v.vQuadUv)).toVar();
+      const grad = mix(
+        uColCyan,
+        uColBlue,
+        clamp(v.vFringe, float(0), float(1)),
+      );
+      const tone = mix(
+        grad,
+        uColEmber,
+        clamp(v.vDead, float(0), float(1)),
+      ).toVar();
+      const col = tone.toVec3().mul(v.vEmis);
+      const alpha = disc
+        .mul(float(STREAM_ALPHA))
+        .mul(v.vAlive)
+        .mul(uReveal)
+        .toVar();
+      Discard(alpha.lessThan(0.004));
+      return vec4(col, alpha);
+    })();
+  }
+
+  /** Shared vertex clip-position builder (billboard quad in device px). */
+  function buildVertex(center: Any, depthK: Any, sizeK: Any): Any {
+    return Fn(() => {
+      const mv = modelViewMatrix.mul(vec4(center, 1.0)).toVar();
+      const dist = mv.z.negate();
+      const clip = cameraProjectionMatrix.mul(mv).toVar();
+      const sizeNode = uPointSize
+        .mul(uPixelRatio)
+        .mul(sizeK)
+        .mul(depthK)
+        .div(max(dist, 0.001));
+      const corner = positionLocal.xy;
+      clip.xy.addAssign(
+        corner.mul(sizeNode).div(uViewport).mul(2.0).mul(clip.w),
+      );
+      return clip;
+    })();
+  }
+
+  /** Depth attenuation (nearer = slightly bigger/brighter) from local z. */
+  function depthAtten(z: Any): Any {
+    const zn = clamp(
+      z.div(float(DEPTH_Z_RANGE)).mul(0.5).add(0.5),
+      float(0),
+      float(1),
+    );
+    return float(1).add(zn.sub(0.5).mul(float(NEURAL_DEPTH_ATTEN)));
+  }
+
+  function configureMaterial(material: Any, shade: Any) {
+    material.colorNode = (shade as Any).xyz;
+    material.opacityNode = (shade as Any).w;
+    material.transparent = true;
+    material.depthWrite = false;
+    material.depthTest = false;
+    material.blending = AdditiveBlending;
+    material.toneMapped = false;
+    material.side = DoubleSide;
   }
 
   // === Static (no-compute) build ===========================================
@@ -460,20 +639,8 @@ export function createNeuralFieldBuild(
     const aOff = attribute("aOff");
     const aSeed = attribute("aSeed");
 
-    // --- Fragment-bound per-particle scalars ---------------------------------
-    // Every varying below is a SELF-CONTAINED expression (a pure function of
-    // the instance attributes + uniforms) fed straight into `varying(...)`, and
-    // the SAME nodes are reused by the vertex body where it needs the value —
-    // NEVER an outer `.toVar()` the vertex Fn `.assign()`s into. Three writes
-    // every varying at the TOP of vertex main(), BEFORE the vertexNode body
-    // runs, so an outer-var varying is frozen at its declared initial value
-    // forever (full VaryingNode hazard note on `portraitMorphExpr` in
-    // ../gpgpu/gpgpuNodeSim.ts) — which is exactly how this branch shipped a
-    // flat field: no depth gradient, no role shading, no dead-arc dimming, no
-    // hover glow, no burst flash, no dispersal fade, no travelling signal.
-
-    // Reveal-blended, shimmered instance center. The shimmer term reads the
-    // PRE-shimmer center — same semantics as the old `center += f(center)`.
+    // Reveal-blended, shimmered instance center (the shimmer reads the
+    // PRE-shimmer center — cheap life on the no-sim tier).
     const anchorS = anchorNode({ metaN: aMeta, offN: aOff });
     const rvS = smoothstep(float(0), float(1), uReveal);
     const centerBase = mix(aSeed, anchorS, rvS);
@@ -482,115 +649,22 @@ export function createNeuralFieldBuild(
         sin(centerBase.y.mul(7.0).add(uTime.mul(0.9))),
         sin(centerBase.z.mul(7.0).add(uTime.mul(1.1))),
         sin(centerBase.x.mul(7.0).add(uTime.mul(0.7))),
-      ).mul(0.004),
+      ).mul(0.003),
     );
-    const depthS = depthT(centerS.z);
-    // hub glow that this particle belongs to (node → its hub; flow → max of
-    // its two hubs, so an arc lights with the brighter endpoint).
-    const glowS = mix(
-      hubGlow(aMeta.y),
-      max(hubGlow(aMeta.y), hubGlow(aMeta.z)),
-      aMeta.x,
-    );
-    // v5 burst envelope for this particle (node → its hub; flow → max of arc
-    // endpoints) → emissive spike in the fragment shade.
-    const burstS = mix(
-      hubBurst(aMeta.y),
-      max(hubBurst(aMeta.y), hubBurst(aMeta.z)),
-      aMeta.x,
-    );
-    const tFlowS = flowParam(aOff.x, aMeta.y, aMeta.z);
-    const signalS = mix(
-      float(1),
-      signalBrightness(tFlowS, aMeta.y, aMeta.z),
-      aMeta.x,
-    );
-    // v6: static branch gains a dead-arc FADE envelope (it previously had none),
-    // mirroring the compute branch so both backends carve the same severed gap.
-    // Dead-arc dispersal FADE (broken·dead·flow only): past BREAK_T the dead
-    // span's flow particles fade toward a ghost so the severed segment vanishes
-    // into the void (carving the gap). uBroken-gated → healthy is untouched.
-    const pastS = smoothstep(
-      float(BREAK_T),
-      float(BREAK_T).add(DISPERSE_WINDOW),
-      tFlowS,
-    );
-    const dispS = clamp(
-      uDisperse.mul(pastS).mul(aMeta.w).mul(aMeta.x).mul(uBroken),
-      float(0),
-      float(1),
-    );
-    const aliveS = float(1).sub(dispS.mul(float(DISPERSE_FADE)));
+    const sc = particleScalars(aMeta, aOff);
 
-    material.vertexNode = Fn(() => {
-      const mv = modelViewMatrix.mul(vec4(centerS, 1.0)).toVar();
-      const dist = mv.z.negate();
-      const clip = cameraProjectionMatrix.mul(mv).toVar();
-      const roleBoost = mix(float(NEURAL_NODE_SIZE_BOOST), float(1.0), aMeta.x);
-      // hovered hub radius pulse + depth attenuation (nearer = bigger).
-      const depthAtten = float(1).add(depthS.sub(0.5).mul(float(NEURAL_DEPTH_ATTEN)));
-      const sizeNode = uPointSize
-        .mul(uPixelRatio)
-        .mul(roleBoost)
-        .mul(float(1).add(glowS.sub(1.0).mul(float(HOVER_RADIUS_PULSE))))
-        .mul(depthAtten)
-        .div(max(dist, 0.001));
-      const corner = positionLocal.xy;
-      clip.xy.addAssign(
-        corner.mul(sizeNode).div(uViewport).mul(2.0).mul(clip.w),
-      );
-      return clip;
-    })();
+    material.vertexNode = buildVertex(centerS, depthAtten(centerS.z), sc.sizeK);
 
     const vQuadUv = varying(positionLocal.xy);
-    const vDepthF = varying(depthS);
-    const vRoleF = varying(aMeta.x);
-    const vDeadF = varying(aMeta.w);
-    const vGlowF = varying(glowS);
-    const vBurstF = varying(burstS);
-    const vAliveF = varying(aliveS);
-    const vSignalF = varying(signalS);
+    const vFringe = varying(sc.fringe);
+    const vDead = varying(sc.deadMix);
+    const vAlive = varying(sc.alive);
+    const vEmis = varying(sc.emis);
 
-    const shade = Fn(() => {
-      const disc = smoothstep(0.5, 0.12, length(vQuadUv)).toVar();
-      const grad = mix(uColCyan, uColViolet, clamp(vDepthF, float(0), float(1)));
-      const deadMix = uBroken.mul(vDeadF);
-      const tone = mix(
-      grad,
-      uColDead,
-      clamp(deadMix.mul(0.6).add(float(1).sub(vAliveF).mul(0.4)), float(0), float(1)),
-    ).toVar();
-      const emis = mix(
-        float(FIELD_NODE_EMISSIVE).mul(float(FIELD_NODE_EMIS_FLOOR)),
-        float(FIELD_FLOW_EMISSIVE).mul(float(FIELD_FLOW_EMIS_FLOOR)),
-        vRoleF,
-      )
-        .mul(vGlowF)
-        .mul(float(1).add(vBurstF.mul(float(HOVER_BURST_EMISSIVE))))
-        // v6 shockwave: brief extra flash gated by vBurst² (transient peak only).
-        .mul(float(1).add(vBurstF.mul(vBurstF).mul(float(HOVER_BURST_SHOCK))))
-        .mul(float(1).sub(deadMix.mul(0.5)))
-        .mul(vSignalF);
-      const col = tone.toVec3().mul(emis);
-      const alpha = disc
-        .mul(float(FIELD_ALPHA_FLOOR))
-        .mul(vAliveF)
-        .mul(uReveal)
-        .toVar();
-      Discard(alpha.lessThan(0.004));
-      return vec4(col, alpha);
-    })();
-    material.colorNode = (shade as Any).xyz;
-    material.opacityNode = (shade as Any).w;
-    material.transparent = true;
-    material.depthWrite = false;
-    material.depthTest = false;
-    material.blending = AdditiveBlending;
-    material.toneMapped = false;
-    material.side = DoubleSide;
-
-    void pow;
-    void abs;
+    configureMaterial(
+      material,
+      buildShade({ vQuadUv, vFringe, vDead, vAlive, vEmis }),
+    );
 
     return {
       geometry,
@@ -622,7 +696,6 @@ export function createNeuralFieldBuild(
     const metaN = metaBuffer.element(instanceIndex);
 
     const role = metaN.x;
-    const dead = metaN.w;
 
     const liveAnchor = anchorNode({ metaN, offN }).toVar();
     // Reconstruct the scattered seed deterministically (matches seedBuffers).
@@ -638,15 +711,29 @@ export function createNeuralFieldBuild(
     const rv = smoothstep(float(0), float(1), uReveal);
     const anchor = mix(seedPos, liveAnchor, rv).toVar();
 
-    // Weaken the spring for dispersing dead flow particles (broken span arc).
-    const tFlowSim = flowParam(offN.x, metaN.y, metaN.z);
-    const past = smoothstep(float(BREAK_T), float(BREAK_T).add(DISPERSE_WINDOW), tFlowSim);
-    const dispersing = clamp(
-      uDisperse.mul(past).mul(dead).mul(role).mul(uBroken),
-      float(0),
-      float(1),
-    ).toVar();
-    const spring = SPRING.mul(float(1).sub(dispersing.mul(0.85)));
+    // Fracture: dispersing debris loses most of its spring and gains wander.
+    const tSim = flowParam(offN.x, metaN.z);
+    const dispersing = dispFactor(tSim)
+      .mul(float(1).sub(role)) // rings never disperse
+      .toVar();
+    // Laminar lock (healthy): spring gain near the guide rings, so the sim
+    // visibly snaps particles tighter as they cross each ring.
+    let ringProx: Any = float(0);
+    for (let i = 0; i < RING_T.length; i++) {
+      const d = tSim.sub(float(RING_T[i]));
+      ringProx = ringProx.add(exp(float(RING_PROX_K).mul(d.mul(d)).negate()));
+    }
+    const lockGain = float(1)
+      .add(
+        ringProx
+          .mul(float(RING_SPRING_GAIN))
+          .mul(float(1).sub(uBroken))
+          .mul(float(1).sub(role)),
+      )
+      .toVar();
+    const spring = SPRING.mul(lockGain).mul(
+      float(1).sub(dispersing.mul(0.85)),
+    );
 
     const vel = velH.toVar();
     unifiedForceStep(tsl as TslSymbolsGpgpu, {
@@ -657,13 +744,24 @@ export function createNeuralFieldBuild(
       spring: spring as Any,
       damping: DAMPING as Any,
       maxSpeed: MAX_SPEED as Any,
+      // Cursor bend: the pointer locally repels the river (parked at 1e9
+      // when idle/coarse → exactly zero at rest).
+      attractor: {
+        position: uPointer as Any,
+        push: float(POINTER_PUSH) as Any,
+        radius: float(POINTER_RADIUS) as Any,
+        orbit: float(0) as Any,
+        orbitFalloff: float(1) as Any,
+        axis: vec3(0.0, 0.0, 1.0) as Any,
+      },
       extraAcc: (acc: Any) => {
+        // Debris wander — slow turbulent drift on detached particles.
         const turb = vec3(
-          sin(pos.y.mul(6.0).add(uTime.mul(2.1))),
-          sin(pos.z.mul(6.0).add(uTime.mul(1.7))),
-          sin(pos.x.mul(6.0).add(uTime.mul(1.3))),
+          sin(pos.y.mul(6.0).add(uTime.mul(1.4))),
+          sin(pos.z.mul(6.0).add(uTime.mul(1.1))),
+          sin(pos.x.mul(6.0).add(uTime.mul(0.9))),
         );
-        acc.addAssign(turb.mul(dispersing.mul(6.0)));
+        acc.addAssign(turb.mul(dispersing.mul(float(DEBRIS_WANDER_ACC))));
       },
     });
 
@@ -674,115 +772,25 @@ export function createNeuralFieldBuild(
   // --- Render: instanced billboard reading the storage buffers --------------
   const material = new MeshBasicNodeMaterial();
 
-  // Storage reads shared by the vertex body AND the varyings below.
   // `.xyz` MANDATORY on a "vec3" storage buffer read (padded to 16B → 4-comp).
   const posR = positionBuffer.toAttribute().xyz;
   const metaR = metaBuffer.toAttribute();
   const offR = offBuffer.toAttribute().xyz;
 
-  // Fragment-bound per-particle scalars — SELF-CONTAINED expressions (pure
-  // functions of the storage reads + uniforms) fed straight into `varying(...)`
-  // and reused by the vertex body. NEVER an outer `.toVar()` the vertex Fn
-  // `.assign()`s into: three writes every varying at the TOP of vertex main(),
-  // BEFORE the vertexNode body runs, so an outer-var varying is frozen at its
-  // declared initial value forever (full VaryingNode hazard note on
-  // `portraitMorphExpr` in ../gpgpu/gpgpuNodeSim.ts) — which is exactly how
-  // this render shipped a flat field: no depth gradient, no role shading, no
-  // dead-arc dimming, no hover glow, no burst flash, no dispersal fade, no
-  // travelling signal.
-  const glowR = mix(
-    hubGlow(metaR.y),
-    max(hubGlow(metaR.y), hubGlow(metaR.z)),
-    metaR.x,
-  );
-  // v5 burst envelope (node → its hub; flow → max of arc endpoints).
-  const burstR = mix(
-    hubBurst(metaR.y),
-    max(hubBurst(metaR.y), hubBurst(metaR.z)),
-    metaR.x,
-  );
-  const depthR = depthT(posR.z);
-  const tF = flowParam(offR.x, metaR.y, metaR.z);
-  const pastR = smoothstep(float(BREAK_T), float(BREAK_T).add(DISPERSE_WINDOW), tF);
-  const dispR = clamp(
-    uDisperse.mul(pastR).mul(metaR.w).mul(metaR.x).mul(uBroken),
-    float(0),
-    float(1),
-  );
-  const aliveR = float(1).sub(dispR.mul(float(DISPERSE_FADE)));
-  const signalR = mix(float(1), signalBrightness(tF, metaR.y, metaR.z), metaR.x);
+  const scR = particleScalars(metaR, offR);
 
-  material.vertexNode = Fn(() => {
-    const mv = modelViewMatrix.mul(vec4(posR, 1.0)).toVar();
-    const dist = mv.z.negate();
-    const clip = cameraProjectionMatrix.mul(mv).toVar();
-    const roleBoost = mix(float(NEURAL_NODE_SIZE_BOOST), float(1.0), metaR.x);
-    const depthAtten = float(1).add(depthR.sub(0.5).mul(float(NEURAL_DEPTH_ATTEN)));
-    const sizeNode = uPointSize
-      .mul(uPixelRatio)
-      .mul(roleBoost)
-      .mul(float(1).add(glowR.sub(1.0).mul(float(HOVER_RADIUS_PULSE))))
-      .mul(depthAtten)
-      .div(max(dist, 0.001));
-    const corner = positionLocal.xy;
-    clip.xy.addAssign(
-      corner.mul(sizeNode).div(uViewport).mul(2.0).mul(clip.w),
-    );
-    return clip;
-  })();
+  material.vertexNode = buildVertex(posR, depthAtten(posR.z), scR.sizeK);
 
   const vQuadUv = varying(positionLocal.xy);
-  const vDepthF = varying(depthR);
-  const vRoleF = varying(metaR.x);
-  const vDeadF = varying(metaR.w);
-  const vGlowF = varying(glowR);
-  const vBurstF = varying(burstR);
-  const vAliveF = varying(aliveR);
-  const vSignalF = varying(signalR);
+  const vFringe = varying(scR.fringe);
+  const vDead = varying(scR.deadMix);
+  const vAlive = varying(scR.alive);
+  const vEmis = varying(scR.emis);
 
-  const shade = Fn(() => {
-    const disc = smoothstep(0.5, 0.12, length(vQuadUv)).toVar();
-    const grad = mix(uColCyan, uColViolet, clamp(vDepthF, float(0), float(1)));
-    // broken: the dead span arc desaturates toward COL_DEAD + dims.
-    const deadMix = uBroken.mul(vDeadF);
-    const tone = mix(
-      grad,
-      uColDead,
-      clamp(deadMix.mul(0.6).add(float(1).sub(vAliveF).mul(0.4)), float(0), float(1)),
-    ).toVar();
-    const emis = mix(
-      float(FIELD_NODE_EMISSIVE).mul(float(FIELD_NODE_EMIS_FLOOR)),
-      float(FIELD_FLOW_EMISSIVE).mul(float(FIELD_FLOW_EMIS_FLOOR)),
-      vRoleF,
-    )
-      .mul(vGlowF)
-      .mul(float(1).add(vBurstF.mul(float(HOVER_BURST_EMISSIVE))))
-      // v6 shockwave: a brief extra flash gated by vBurst² so it spikes only at
-      // the transient burst peak (reads as a pop, not a soft hold).
-      .mul(float(1).add(vBurstF.mul(vBurstF).mul(float(HOVER_BURST_SHOCK))))
-      .mul(float(1).sub(deadMix.mul(0.5)))
-      .mul(vSignalF);
-    const col = tone.toVec3().mul(emis);
-    const alpha = disc
-      .mul(float(FIELD_ALPHA_FLOOR))
-      .mul(vAliveF)
-      .mul(uReveal)
-      .toVar();
-    Discard(alpha.lessThan(0.004));
-    return vec4(col, alpha);
-  })();
-  material.colorNode = (shade as Any).xyz;
-  material.opacityNode = (shade as Any).w;
-  material.transparent = true;
-  material.depthWrite = false;
-  material.depthTest = false;
-  material.blending = AdditiveBlending;
-  material.toneMapped = false;
-  material.side = DoubleSide;
-
-  // avoid unused-import lint for symbols only used on one branch.
-  void pow;
-  void abs;
+  configureMaterial(
+    material,
+    buildShade({ vQuadUv, vFringe, vDead, vAlive, vEmis }),
+  );
 
   return {
     geometry,
@@ -804,15 +812,20 @@ export function createNeuralFieldBuild(
       uTime,
       uReveal,
       uBroken,
-      uPulse: uPulse as unknown as { array: number[] },
       uFlowSpeed,
-      uDisperse,
-      uHub0: uHub0 as Any,
-      uHub1: uHub1 as Any,
-      uHub2: uHub2 as Any,
-      uHovered: uHovered as Any,
-      uHubGlow: uHubGlow as unknown as { array: number[] },
-      uHubBurst: uHubBurst as unknown as { array: number[] },
+      uFracture,
+      uRecohere,
+      uSurgeT,
+      uSurgeAmp,
+      uFlash,
+      uRingGlow: uRingGlow as unknown as { array: number[] },
+      uRingFlash: uRingFlash as unknown as { array: number[] },
+      uC0: uC0 as Any,
+      uC1: uC1 as Any,
+      uC2: uC2 as Any,
+      uC3: uC3 as Any,
+      uC4: uC4 as Any,
+      uPointer: uPointer as Any,
       uPixelRatio,
       uViewport: uViewport as Any,
     };

@@ -3,60 +3,47 @@
 import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
-import { SectionHeading } from "@/components/ui/section-heading";
 import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
 import { useProductionPulseStore } from "@/webgl/store/productionPulseStore";
 import { useNeuralLatticeStore } from "@/webgl/store/neuralLatticeStore";
 import { useNeuralLatticeFallback } from "@/components/fx/use-neural-lattice-fallback";
-import { NeuralCard } from "@/components/fx/neural-card";
-import { NeuralCenterpiece } from "@/components/fx/neural-centerpiece";
+import { NeuralGraphFallback } from "@/components/fx/neural-graph-fallback";
+import { StreamPane } from "@/components/fx/stream-pane";
 
 /**
- * ProductionGradeSection — the SIGNATURE section.
+ * ProductionGradeSection — the SIGNATURE section, ProblemSection's twin.
  *
- * Three production-grade guarantees, rendered as a "network that is HEALTHY"
- * (FIX 3 v5): the neural NETWORK is the clearly-visible CENTERPIECE — dense
- * particle orbs + arcs + travelling signal, the 3 nodes pulsing in sequence
- * (eval baseline → trace propagation → guardrail clamp) — with the 3 cards
- * OFFSET to its side (never overlapping it). Heading on top; below = [network
- * centerpiece] beside [cards column]. The 3 focusable NODE MARKERS in the
- * centerpiece are the primary trigger: hovering/focusing node i flares + BURSTS
- * its hub (particle effect) and OPENS the matching side card; others dim. The
- * cards use the shared NeuralCard chrome (compact → expand, cyan→blue glass)
- * identical to the Problem section; only the copy + healthy accent differ. The
- * copy from getArtifacts() stays as accessible, selectable DOM at all times.
+ * SIGNAL STREAM refactor (2026-08-21): the same grammar as the Problem
+ * section, opposite narrative — the stream is HEALTHY here.
+ *   - Chapter heading at the shared chapter scale + the description (D-17
+ *     string, byte-identical) as the right-hung ~320px annotation.
+ *   - The FIELD BAND: `[data-lattice-anchor="production"]` as its background.
+ *     The WebGL stream (NeuralLattice, mode "healthy") threads THREE GUIDE
+ *     RINGS (eval baseline → trace propagation → guardrail clamp, left→right
+ *     across the band); particles tighten laminar past each ring; every ~6s
+ *     a surge rides the whole stream and SURVIVES. SVG stream twin when the
+ *     island is absent. Igloo garnish: dot-grid + the cluster-label ghost
+ *     callouts with leader lines near the rings (aria-hidden, max-sm:hidden,
+ *     `.eyebrow` → LabelScrambler decode).
+ *   - THREE GLASS PANES (StreamPane) z-cascaded on the band's LEFT — rings in
+ *     the open right two-thirds. ALWAYS-OPEN copy: mono cluster-label eyebrow,
+ *     claim in display serif, `why` body under a hairline. Hover/focus on
+ *     pane i → setHovered("healthy", i) → ring i flares in the WebGL field.
  *
- * ENTRANCE — the "systems come online" BOOT SEQUENCE. One GSAP timeline, owned
- * by the section row's in-view edge, replaces the three independent fade-ups
- * the cards used to carry. In pipeline order (eval → trace → guardrail), each
- * beat ignites system i on EVERY presentation tier at once:
- *   - the DOM marker dot pops 0→1 with a one-shot halo ring (.is-igniting);
- *   - the matching side card rises in sync with its marker;
- *   - WebGPU tier: bumpCluster("healthy", i) fires on the SAME beat, so the 3D
- *     lattice orbs pulse in phase with the DOM ignition;
- *   - fallback tier: the SVG hub pops and the pathway stroke DRAWS from the
- *     previous node (stroke-dashoffset), so the network visibly wires itself
- *     up — the narrative reads without WebGL.
- * The timeline is the SINGLE owner of the per-cluster bumps (the old per-card
- * IntersectionObservers double-fired under fast scroll); it plays exactly once,
- * tolerates mounting already in view (IO fires at observe time), and reverses
- * nothing on exit — systems that came online stay online. Reduced-motion:
- * nothing is ever primed hidden, no halo, no store bumps — the section rests in
- * its final state, exactly like the rest of the file's guards.
+ * ENTRANCE — replaces the old marker/halo/card boot timeline. ONE once-per-
+ * life in-view edge: the panes blur-up in from the left (staggered 90ms) and
+ * `bumpCluster("healthy", i)` fires sequentially ~0.35s apart — the WebGL
+ * rings ignite in pipeline order (igloo ring-seal ignite; on the fallback
+ * tier the SVG twin draws its own ring ignition on mount). Scroll-away/back
+ * never re-runs it. Reduced-motion: no reveal priming, no store bumps — the
+ * section rests in its final state.
  *
- * The three claims:
- *   - Every system ships with a regression set.   (eval baseline)
- *   - Traceable from input to action.              (trace propagation)
- *   - Boundaries before features.                  (guardrail clamp)
+ * `productionPulseStore.bump()` on every in-view edge is UNTOUCHED (the
+ * signature line's BEAT 1 emissive boost).
  *
- * COPY CONTRACT — the heading description says "Open a panel", not "Hover a
- * panel" (D-17, owner-approved 2026-08-11). NeuralCard toggles on click
- * wherever the pointer cannot hover (fx/neural-card.tsx), so the instruction
- * must name the intent, not the desktop gesture. It is one string per locale
- * and must NOT be forked by pointer type — the description is SSR'd, and an
- * instruction that rewrites itself after hydration is a worse defect than the
- * one it fixes.
+ * Copy is byte-identical to the pre-refactor section (EN + IT), including the
+ * D-17 "Open a panel…" description and the closing disclaimer.
  */
 
 // === Shared: run a quiet status pulse only while in view ==================
@@ -80,11 +67,7 @@ function useInView<T extends HTMLElement>(margin = "0px 0px -10% 0px") {
 // On each false→true edge it bumps the globalThis-pinned production pulse
 // store; SignatureLine (the lazy WebGL island) reads + decays it, lifting the
 // line's emissive above the bloom threshold near the production section
-// (BEAT 1). This used to ride the three per-card observers (three bumps per
-// pass); it now rides the ONE section-row observer — same 0..1 target, same
-// liveness on re-entry, one writer. Inert under reduced-motion (the WebGL
-// layer is unmounted at tier "off", and we early-return here too so the store
-// is never even touched).
+// (BEAT 1). Inert under reduced-motion.
 function useProductionPulseOnEnter(inView: boolean) {
   const bump = useProductionPulseStore((s) => s.bump);
   useEffect(() => {
@@ -133,28 +116,26 @@ function getArtifacts(isEn: boolean): Artifact[] {
   ];
 }
 
-// The label for each healthy cluster (JetBrains-mono caption). Copy is the
-// pipeline-stage name from PIANO_FIX_VISUAL §FIX 3, EN/IT.
+// The label for each healthy cluster (JetBrains-mono caption) — the
+// pipeline-stage names, EN/IT. Also the ghost callouts near the WebGL rings.
 function clusterLabel(index: number, isEn: boolean): string {
   if (index === 0) return isEn ? "eval baseline" : "baseline eval";
   if (index === 1) return isEn ? "trace propagation" : "propagazione trace";
   return isEn ? "guardrail clamp" : "clamp guardrail";
 }
 
-// Stable body id per index so the centerpiece node marker's aria-controls
-// resolves to the matching side card (SSR-stable, no useId).
-function bodyId(i: number) {
-  return `neural-production-card-${i}`;
-}
+/** Seconds between the sequential bumpCluster ring ignitions. */
+const IGNITE_BEAT = 0.35;
+/** Number of pipeline systems (panes = rings = store clusters). */
+const IGNITE_NODES = 3;
 
-// === Boot choreography constants ==========================================
-// Seconds between system ignitions, in pipeline order (eval → trace →
-// guardrail). Tight enough to read as ONE boot pass, wide enough that the
-// three halo pings and the lattice cluster pulses resolve as a sequence, not
-// a chord.
-const BOOT_BEAT = 0.15;
-/** Number of systems in the pipeline (markers = cards = lattice clusters). */
-const BOOT_NODES = 3;
+/** Ghost callout placement — mirrors RING_T (40/62/84% of the band) in
+ * webgl/neural/neuralLatticeConfig.ts; change them together. */
+const CALLOUT_POS: { left: string; edge: "top" | "bottom"; at: string }[] = [
+  { left: "43%", edge: "top", at: "14%" },
+  { left: "62%", edge: "bottom", at: "12%" },
+  { left: "84%", edge: "top", at: "22%" },
+];
 
 export default function ProductionGradeSection() {
   const { language } = useLanguage();
@@ -162,174 +143,67 @@ export default function ProductionGradeSection() {
   const artifacts = getArtifacts(isEn);
   const showFallback = useNeuralLatticeFallback();
 
-  // ONE in-view edge for the whole network row. It (a) re-bumps the
-  // signature-line pulse on every re-entry (tracking observer — preserves the
-  // section's historical liveness) and (b) arms the once-only boot timeline.
+  // ONE in-view edge for the whole field row. It (a) re-bumps the
+  // signature-line pulse on every re-entry (tracking observer) and (b) arms
+  // the once-only entrance below.
   const { ref: rowRef, inView } = useInView<HTMLDivElement>();
   useProductionPulseOnEnter(inView);
 
   const bumpCluster = useNeuralLatticeStore((s) => s.bumpCluster);
-  // The boot plays exactly once per page life; the observer keeps toggling for
-  // the pulse hook above, so this latch is what makes the timeline calm —
-  // scroll-away/scroll-back never re-runs (or reverses) the entrance.
+  // The entrance plays exactly once per page life; the observer keeps
+  // toggling for the pulse hook above, so this latch keeps it calm.
   const playedRef = useRef(false);
 
   useGSAP(
     () => {
       const row = rowRef.current;
       if (!row) return;
-      // Reduced-motion: never prime anything hidden, never stamp the halo,
-      // never touch the stores — the section simply rests in its final state
-      // (same early-return guard style as the hooks above).
+      // Reduced-motion: never prime anything hidden, never touch the stores —
+      // the section simply rests in its final state.
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
       if (playedRef.current) return;
 
-      // --- Collect the per-system targets (scoped to THIS section's row, so
-      // the Problem section's markers/SVG are never touched). The dot is the
-      // WebGL-measured node anchor; scaling it composes around its own center,
-      // so the hub pinning measure is unaffected even at scale 0.
-      const systems: {
-        dot: HTMLElement;
-        label: HTMLElement | null;
-        card: HTMLElement | null;
-      }[] = [];
-      for (let i = 0; i < BOOT_NODES; i++) {
-        const dot = row.querySelector<HTMLElement>(
-          `[data-lattice-node="production:${i}"]`,
-        );
-        if (!dot) return; // markers not mounted yet — a dep re-run retries
-        systems.push({
-          dot,
-          label: dot.parentElement?.querySelector<HTMLElement>(
-            ".neural-node-marker__label",
-          ) ?? null,
-          card: row.querySelector<HTMLElement>(`[data-boot-card="${i}"]`),
-        });
-      }
-
-      // --- Fallback-tier targets: the SVG pathways + hubs that will draw/pop
-      // on the same beats. Present only when the WebGL island is absent; the
-      // hook flips false→true after the tier probe, which re-runs this effect
-      // (pre-paint) so the freshly-mounted SVG is primed before it ever shows.
-      const svg = showFallback
-        ? row.querySelector<SVGSVGElement>(".neural-centerpiece svg")
-        : null;
-      const arcs = svg
-        ? Array.from(svg.querySelectorAll<SVGPathElement>("[data-arc]"))
-        : [];
-      // Hubs carry no data hook of their own: they are the only circles that
-      // are neither packets nor scatter dots (document order = hub index).
-      const hubs = svg
-        ? Array.from(
-            svg.querySelectorAll<SVGCircleElement>(
-              "circle:not([data-packet]):not([data-scatter])",
-            ),
-          )
-        : [];
-
-      // --- PRIME (idempotent across dep re-runs; useGSAP is a layout effect,
-      // so this lands before paint — no hidden-then-visible flash). `.is-booting`
-      // suspends the dot's 300ms hover transition while GSAP owns its transform
-      // (a CSS transition would re-ease every per-frame write and smear the
-      // pop); it is removed the moment the ignite tween completes.
-      for (const s of systems) {
-        s.dot.classList.add("is-booting");
-        gsap.set(s.dot, { scale: 0 });
-        if (s.label) gsap.set(s.label, { opacity: 0 });
-        if (s.card) gsap.set(s.card, { opacity: 0, y: 16 });
-      }
-      for (const p of arcs) {
-        const len = p.getTotalLength();
-        // opacity 0 as well: with the dash fully offset, round linecaps can
-        // still leak a cap-dot at the path start in some renderers; the
-        // timeline flips each arc visible exactly when its draw begins.
-        gsap.set(p, { strokeDasharray: len, strokeDashoffset: len, opacity: 0 });
-      }
-      if (hubs.length) {
-        gsap.set(hubs, { scale: 0, transformOrigin: "50% 50%" });
-      }
+      const panes = row.querySelectorAll<HTMLElement>("[data-stream-pane]");
+      if (!panes.length) return;
+      // PRIME (idempotent across dep re-runs; useGSAP is a layout effect, so
+      // this lands before paint — no hidden-then-visible flash).
+      gsap.set(panes, { opacity: 0, x: -28, y: 24, filter: "blur(6px)" });
 
       // Primed but not yet on screen: wait for the IO edge (the inView dep
       // re-runs this effect, falls through the guards above, and plays).
       if (!inView) return;
       playedRef.current = true;
 
-      // --- The boot. One timeline, one owner: every per-cluster store bump,
-      // every DOM ignition and every SVG draw fires from these beats, so the
-      // three presentation tiers can never drift out of phase (and fast scroll
-      // can never double-fire a cluster, which the old per-card observers
-      // could). Entrances ride expo.out; the node-to-node pathway draws ride
-      // expo.inOut (they are crossings, not arrivals).
-      const tl = gsap.timeline({ defaults: { ease: "expo.out" } });
-      systems.forEach(({ dot, label, card }, i) => {
-        const t = i * BOOT_BEAT;
-        // WebGPU tier: pulse lattice cluster i on this exact beat. Harmless
-        // no-op store write when the island is absent (fallback tier).
+      // ONE timeline: the panes blur-up in from the left while the three
+      // WebGL rings ignite in pipeline order — bumpCluster is the store
+      // signal each ring's >1.0 flash decays from. Harmless no-op writes on
+      // the fallback tier (the SVG twin runs its own ignition on mount).
+      const tl = gsap.timeline();
+      tl.to(
+        panes,
+        {
+          opacity: 1,
+          x: 0,
+          y: 0,
+          filter: "blur(0px)",
+          duration: 0.9,
+          ease: "expo.out",
+          stagger: 0.09,
+          clearProps: "filter",
+        },
+        0,
+      );
+      for (let i = 0; i < IGNITE_NODES; i++) {
         tl.call(
           () => {
             bumpCluster("healthy", i);
           },
           undefined,
-          t,
-        );
-        // Marker dot ignites. clearProps hands the transform back to the
-        // stylesheet at rest so the CSS hover surge (scale 1.18) keeps winning
-        // over what would otherwise be a stale inline transform.
-        tl.to(
-          dot,
-          {
-            scale: 1,
-            duration: 0.5,
-            onComplete: () => {
-              gsap.set(dot, { clearProps: "transform" });
-              dot.classList.remove("is-booting");
-            },
-          },
-          t,
-        );
-        // One-shot halo ring (globals.css keyframe). The class persists after
-        // its single run — the keyframe parks the ring invisible — so no
-        // remove-choreography is needed.
-        tl.call(
-          () => {
-            dot.classList.add("is-igniting");
-          },
-          undefined,
-          t + 0.1,
-        );
-        if (label) tl.to(label, { opacity: 1, duration: 0.3 }, t + 0.08);
-        // The card rises in sync with its marker. The tween rides the WRAPPER
-        // div, never the card itself, so NeuralCard's own hover/open
-        // transitions (box-shadow, grid-rows) stay CSS-owned throughout.
-        if (card) tl.to(card, { opacity: 1, y: 0, duration: 0.7 }, t);
-        // Fallback tier: the SVG hub pops on the beat, and the pathway from
-        // the previous node draws INTO this one — the wire arrives as the
-        // system comes online.
-        if (hubs[i]) tl.to(hubs[i], { scale: 1, duration: 0.5 }, t);
-        if (i > 0 && arcs[i - 1]) {
-          const drawAt = (i - 1) * BOOT_BEAT + 0.02;
-          tl.set(arcs[i - 1], { opacity: 1 }, drawAt);
-          tl.to(
-            arcs[i - 1],
-            { strokeDashoffset: 0, duration: 0.2, ease: "expo.inOut" },
-            drawAt,
-          );
-        }
-      });
-      // The 0→2 span closes the mesh last — the network is whole once every
-      // system is up (arc order mirrors ARCS in neural-graph-fallback.tsx:
-      // chain 0→1, 1→2, then the span).
-      if (arcs[2]) {
-        const spanAt = (BOOT_NODES - 1) * BOOT_BEAT + 0.12;
-        tl.set(arcs[2], { opacity: 1 }, spanAt);
-        tl.to(
-          arcs[2],
-          { strokeDashoffset: 0, duration: 0.5, ease: "expo.inOut" },
-          spanAt,
+          i * IGNITE_BEAT,
         );
       }
     },
-    { dependencies: [inView, showFallback, bumpCluster], scope: rowRef },
+    { dependencies: [inView, bumpCluster], scope: rowRef },
   );
 
   return (
@@ -341,105 +215,127 @@ export default function ProductionGradeSection() {
       <SectionGlow position="bottom-right" intensity={1.25} size="65rem" />
       <SectionGlow position="top-left" intensity={0.9} size="50rem" />
       <div className="container-px relative">
-        <SectionHeading
-          eyebrow={
-            isEn
-              ? "What production-grade actually means"
-              : "Cosa significa davvero production-grade"
-          }
-          title={
-            isEn ? (
-              <>
-                Three things every SerSan system ships with,
-                <br className="hidden sm:block" />
-                <span className="text-ink-mute"> before we call it done.</span>
-              </>
-            ) : (
-              <>
-                Tre cose che ogni sistema SerSan porta con sé,
-                <br className="hidden sm:block" />
-                <span className="text-ink-mute"> prima di dirlo finito.</span>
-              </>
-            )
-          }
-          description={
-            /* Device-neutral verb (D-17, owner-approved 2026-08-11): the tap
-               path genuinely works — neural-card toggles a panel on click
-               whenever the pointer can't hover — so the old "Hover a panel" /
-               "Passa sopra un pannello" told every phone user to do something
-               impossible. ONE string per locale, deliberately NOT forked by
-               pointer type: an SSR'd instruction that changes after hydration
-               is its own defect. */
-            isEn
+        {/* Chapter heading + right-hung annotation (the Problem section's
+            twin grammar). */}
+        <div className="grid gap-6 lg:grid-cols-[1fr_320px] lg:items-end lg:gap-10">
+          <div>
+            {/* Plain `.eyebrow` (no [data-eyebrow-text]) → the global
+                LabelScrambler owns its decode reveal. */}
+            <p className="eyebrow mb-5 inline-flex items-center gap-2 text-ink-mute">
+              <span
+                aria-hidden="true"
+                className="inline-block w-6 h-px bg-[hsl(var(--accent))]"
+              />
+              <span>
+                {isEn
+                  ? "What production-grade actually means"
+                  : "Cosa significa davvero production-grade"}
+              </span>
+            </p>
+            {/* max-sm override — the Problem chapter title's twin (same
+                budget arithmetic; presentation-only). */}
+            <h2 className="font-display text-[clamp(2.6rem,4.8vw,5.75rem)] max-sm:text-[2.1rem] leading-[0.98] tracking-[-0.02em] text-ink text-balance">
+              {isEn ? (
+                <>
+                  Three things every SerSan system ships with,
+                  <br className="hidden sm:block" />
+                  <span className="text-ink-mute"> before we call it done.</span>
+                </>
+              ) : (
+                <>
+                  Tre cose che ogni sistema SerSan porta con sé,
+                  <br className="hidden sm:block" />
+                  <span className="text-ink-mute"> prima di dirlo finito.</span>
+                </>
+              )}
+            </h2>
+          </div>
+          <p className="max-w-[320px] text-[13px] leading-relaxed text-ink-mute">
+            {/* Device-neutral verb (D-17, owner-approved 2026-08-11): ONE
+                string per locale, byte-identical under the copy freeze. */}
+            {isEn
               ? "Not a list of compliance buzzwords. These are artifacts you can ask to see in any scoping call. Open a panel to see why it matters."
-              : "Non un elenco di buzzword sulla compliance. Sono artefatti che puoi chiedere di vedere in qualsiasi call di scoping. Apri un pannello per capire perché conta."
-          }
-          /* MOBILE_HOME_SPEC §5.4: 48 → 32px below `sm`. `sm:mb-16` unchanged. */
-          className="mb-8 sm:mb-16"
-        />
+              : "Non un elenco di buzzword sulla compliance. Sono artefatti che puoi chiedere di vedere in qualsiasi call di scoping. Apri un pannello per capire perché conta."}
+          </p>
+        </div>
 
-        {/* FIX 3 v5 — RECOMPOSE: the healthy network is the clearly-visible
-            CENTERPIECE beside the cards column (network one side, cards the
-            other). The WebGL NeuralLattice (anchored to the centerpiece's
-            [data-lattice-anchor="production"]) paints the dense particle orbs +
-            arcs + travelling signal; the 3 focusable NODE MARKERS in the
-            centerpiece are the primary trigger (flare + BURST the hub + open the
-            matching side card). When WebGL is absent the SVG fallback shows the
-            three healthy pathways. Both aria-hidden. Stacks on narrow widths
-            (network on top, cards below). */}
-        {/* items-start (NOT center): a card expanding must not re-center this
-            row, or the %-anchored node markers would shift out from under a
-            still cursor and the hover would oscillate — the exact fix the
-            Problem section's twin rows already carry. */}
-        <div
-          ref={rowRef}
-          /* MOBILE_HOME_SPEC §2 row 6 — the last 8px of the 1312 → 1114
-             budget. Below `lg` this is a single column, so `gap-8` is the
-             vertical step between the centerpiece and the cards. `sm:gap-8`
-             restores it; `lg:gap-12` never moves. */
-          className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-6 sm:gap-8 lg:gap-12 items-start"
-        >
-          <NeuralCenterpiece
-            anchorId="production"
-            surface="healthy"
-            tone="healthy"
-            showFallback={showFallback}
-            /* MOBILE_HOME_SPEC §5.4: 300 → 190px below `sm` — the twin of the
-               Problem section's centerpiece, same reasoning. The lattice is
-               camera-locked and needs no DOM box; the %-placed node markers
-               (the cards' `aria-controls` triggers) scale with the box and are
-               unaffected. `sm:` restores 360px. */
-            className="min-h-[190px] sm:min-h-[360px]"
-            nodes={[
-              { label: clusterLabel(0, isEn), controls: bodyId(0) },
-              { label: clusterLabel(1, isEn), controls: bodyId(1) },
-              { label: clusterLabel(2, isEn), controls: bodyId(2) },
-            ]}
-          />
-
-          {/* Cards column — OFFSET from the network (never overlapping it).
-              Each wrapper is a boot-timeline target (opacity/y only; the card
-              inside keeps sole ownership of its hover/open transitions). */}
-          <div className="relative flex flex-col gap-5 sm:gap-6">
-            {artifacts.map((a, i) => (
-              <div key={i} data-boot-card={i}>
-                <NeuralCard
-                  index={i}
-                  surface="healthy"
-                  tone="healthy"
-                  bodyId={bodyId(i)}
-                  eyebrow={clusterLabel(i, isEn)}
-                  title={a.claim}
-                  body={a.why}
+        {/* The field row: the band (WebGL anchor as background) + the panes
+            cascaded over its LEFT side (lg+) / stacked below it (< lg) —
+            rings ignite in the open right two-thirds. On lg the band is the
+            ABSOLUTE background of the whole row, so its height tracks the
+            pane stack (no fixed-height overflow); below lg it is a
+            fixed-height block with the panes in flow underneath. */}
+        <div ref={rowRef} className="relative mt-8 sm:mt-12">
+          <div className="relative min-h-[280px] sm:min-h-[420px] lg:absolute lg:inset-0 lg:min-h-0">
+            <div
+              data-lattice-anchor="production"
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0"
+            >
+              {/* Faint blueprint dot-grid (igloo garnish). */}
+              <div className="absolute inset-0 bg-[radial-gradient(hsl(var(--ink)/0.05)_1px,transparent_1px)] [background-size:26px_26px]" />
+              {showFallback && (
+                <NeuralGraphFallback
+                  variant="healthy"
+                  className="absolute inset-0 h-full w-full opacity-90"
                 />
-              </div>
+              )}
+              {/* Ghost callouts — the EXISTING cluster-label strings near the
+                  rings, leader lines pointing into the field. */}
+              {Array.from({ length: IGNITE_NODES }, (_, i) => {
+                const pos = CALLOUT_POS[i];
+                return (
+                  <span
+                    key={i}
+                    className={
+                      "eyebrow max-sm:hidden absolute -translate-x-1/2 whitespace-nowrap text-[10px] tracking-[0.18em] text-ink-mute/80 " +
+                      (pos.edge === "top"
+                        ? "after:content-[''] after:absolute after:left-1/2 after:top-full after:mt-1 after:h-7 after:w-px after:bg-gradient-to-b after:from-[hsl(var(--accent)/0.45)] after:to-transparent"
+                        : "after:content-[''] after:absolute after:left-1/2 after:bottom-full after:mb-1 after:h-7 after:w-px after:bg-gradient-to-t after:from-[hsl(var(--accent)/0.45)] after:to-transparent")
+                    }
+                    style={{
+                      left: pos.left,
+                      [pos.edge]: pos.at,
+                    }}
+                  >
+                    {clusterLabel(i, isEn)}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* The panes — ONE container, responsive pose: below lg a flat
+              stack under the band; lg+ a z-cascade hugging the row's left
+              edge, the rings igniting in the open field to their right. */}
+          <div className="relative z-10 mt-4 flex flex-col gap-3 sm:gap-4 lg:mr-auto lg:mt-0 lg:min-h-[520px] lg:w-[380px] lg:justify-center lg:gap-4 lg:py-4 xl:w-[420px]">
+            {artifacts.map((a, i) => (
+              <StreamPane key={i} index={i} surface="healthy" side="left">
+                <span className="relative block font-mono text-[10px] uppercase tracking-[0.16em] text-[hsl(var(--accent)/0.85)]">
+                  <span className="tabular-nums">{`0${i + 1}`}</span>
+                  <span aria-hidden="true" className="px-1.5 text-ink-dim">
+                    ·
+                  </span>
+                  <span className="text-[hsl(var(--accent)/0.8)]">
+                    {clusterLabel(i, isEn)}
+                  </span>
+                </span>
+                <h3 className="relative mt-2.5 font-display text-[22px] leading-tight text-ink max-sm:text-[19px]">
+                  {a.claim}
+                </h3>
+                <div
+                  aria-hidden="true"
+                  className="relative my-3 h-px bg-[hsl(var(--rule)/0.6)]"
+                />
+                <p className="relative text-[13px] leading-relaxed text-ink-mute">
+                  {a.why}
+                </p>
+              </StreamPane>
             ))}
           </div>
         </div>
 
-        {/* MOBILE_HOME_SPEC §5.4: the closing disclaimer's lead-in goes 56 →
-            40px below `sm`; `sm:mt-14` restores the desktop value that was
-            previously unprefixed. */}
+        {/* Closing disclaimer — kept verbatim. */}
         <p className="mt-10 sm:mt-14 text-[12px] font-mono uppercase tracking-[0.14em] text-ink-mute max-w-2xl">
           {isEn ? (
             <>

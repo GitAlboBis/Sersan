@@ -1,36 +1,46 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { SectionHeading } from "@/components/ui/section-heading";
-import { Reveal } from "@/components/ui/reveal";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
 import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
-import { useScrollParallax } from "@/components/ui/use-scroll-parallax";
 import { useNeuralLatticeStore } from "@/webgl/store/neuralLatticeStore";
 import { useNeuralLatticeFallback } from "@/components/fx/use-neural-lattice-fallback";
-import { NeuralCard } from "@/components/fx/neural-card";
-import { NeuralCenterpiece } from "@/components/fx/neural-centerpiece";
+import { NeuralGraphFallback } from "@/components/fx/neural-graph-fallback";
+import { StreamPane } from "@/components/fx/stream-pane";
 
 /**
  * ProblemSection — names the pain (demo-to-production gap).
  *
- * Split layout, conforming to the shared section grammar:
- *   - Left: eyebrow + editorial headline + paragraph (SectionHeading).
- *   - Right: a row of [neural NETWORK centerpiece] + [cards column] (FIX 3 v5 —
- *     the "broken" surface). The network is the clearly-visible CENTERPIECE
- *     (dense particle orbs + arcs + travelling signal, the 3 nodes laid out as a
- *     3D graph) with the 3 cards OFFSET to its outer side (never overlapping it).
- *     The 3 focusable NODE MARKERS in the centerpiece are the primary trigger:
- *     hovering/focusing node i flares + BURSTS its hub (particle effect) and
- *     OPENS the matching side card; other nodes dim. The cards use the shared
- *     NeuralCard chrome (compact → expand, cyan→blue glass) identical to the
- *     ProductionGrade section; only the copy + the broken fracture cue differ.
- *     The copy from getFailures() stays as accessible, selectable DOM at all
- *     times; the SVG fallback carries the metaphor when WebGL is absent.
+ * SIGNAL STREAM refactor (2026-08-21, Lusion detail grammar + Noomo pairing):
+ *   - Chapter heading: the existing title promoted to chapter scale
+ *     (clamp(2.6rem, 4.8vw, 5.75rem) display serif, full container width,
+ *     italic span on the second sentence); the description moves to a
+ *     right-hung ~320px annotation. The `[data-emerge]` wrapper — the
+ *     singularity passage's zoom-in landing target — stays around this whole
+ *     heading block.
+ *   - The FIELD BAND below: a full-width band whose background is the
+ *     `[data-lattice-anchor="problem"]` rect. The WebGL SIGNAL STREAM
+ *     (NeuralLattice, mode "broken") flows left→right through it and
+ *     FRACTURES at ~55% — laminar signal decaying into ember debris, surges
+ *     that die on contact. When the island is absent the SVG stream twin
+ *     (neural-graph-fallback.tsx) carries the metaphor. Igloo garnish inside
+ *     the band (aria-hidden): a faint dot-grid + mono ghost callouts (the
+ *     EXISTING effect strings) with leader lines, scramble-decoded by the
+ *     global LabelScrambler (they carry `.eyebrow`), hidden below sm.
+ *   - THREE GLASS PANES (StreamPane chrome) z-cascaded on the band's right —
+ *     the stream flows toward/under them, the fracture visibly in the open
+ *     left two-thirds. ALWAYS-OPEN copy (cause -> effect eyebrow + body; the
+ *     accordion machinery is gone — the panes ARE the accessible content).
+ *     Hover/focus on pane i → setHovered("broken", i) → the WebGL debris
+ *     briefly re-coheres toward the spline then falls apart again. Below lg
+ *     the panes stack in normal flow under the band.
+ *   - In-view (once): bump("broken") — the WebGL stream fires the surge that
+ *     dies at the fracture — and the panes blur-up in from the right,
+ *     staggered 90ms. Reduced-motion: nothing primed hidden, no bumps.
  *
- * Three failure modes, deliberately framed as engineering problems rather than
- * business problems — because the buyer is technical and "we can't tell why our
- * agent is failing" lands harder than "AI ROI is unclear".
+ * Copy is byte-identical to the pre-refactor section (EN + IT).
  */
 
 type Failure = {
@@ -71,11 +81,10 @@ function getFailures(isEn: boolean): Failure[] {
 
 // === in-view bump =========================================================
 // On the false→true edge, bump the neural-lattice store's "broken" surface so
-// the WebGL lattice fires its three pathway packets (which then die at the
-// break). Inert under reduced-motion (the WebGL layer is unmounted at tier
-// "off" and we early-return so the store is never even touched). Pure
-// side-effect — no DOM copy/layout change.
-function useBrokenLatticeOnEnter(inView: boolean) {
+// the WebGL stream fires the surge that dies at the fracture. Inert under
+// reduced-motion (the island is unmounted at tier "off" and we early-return so
+// the store is never even touched). Pure side-effect — no DOM change.
+function useBrokenStreamOnEnter(inView: boolean) {
   const bump = useNeuralLatticeStore((s) => s.bump);
   useEffect(() => {
     if (!inView) return;
@@ -106,110 +115,55 @@ function useInView<T extends HTMLElement>(margin = "0px 0px -12% 0px") {
   return { ref, inView };
 }
 
-// Stable body id per (anchor, index) so the centerpiece node marker's
-// aria-controls resolves to the matching side card body (SSR-stable, no useId).
-function bodyId(anchorId: string, i: number) {
-  return `neural-${anchorId}-card-${i}`;
-}
-
-// === Failure network =======================================================
-// FIX 3 v5 — RECOMPOSE: the network is the clearly-visible CENTERPIECE; the 3
-// cards sit OFFSET to its outer side. The WebGL NeuralLattice (anchored to
-// [data-lattice-anchor="problem"]) paints the dense particle orbs + arcs +
-// travelling signal; the 3 focusable NODE MARKERS in the centerpiece are the
-// primary trigger — hovering/focusing node i flares + BURSTS its hub and opens
-// side card i (others dim). When the WebGL island is absent the SVG fallback
-// carries the same severed-pathway metaphor. The copy is byte-identical.
-function FailureLattice({
-  failures,
-}: {
-  failures: Failure[];
-}) {
-  const { ref, inView } = useInView<HTMLDivElement>();
-  useBrokenLatticeOnEnter(inView);
-  const showFallback = useNeuralLatticeFallback();
-  // A tiny scroll-linked Y drift, kept off the lattice anchor's measured rect
-  // so the WebGL placement stays stable (parallax lives on an outer wrapper).
-  const parallaxRef = useScrollParallax<HTMLDivElement>(5);
-
-  return (
-    <div ref={parallaxRef}>
-      {/* The in-view observer rides this outer wrapper so the rect that the
-          island measures (inside NeuralCenterpiece) is NOT affected by parallax. */}
-      <div ref={ref}>
-        {/* Network CENTERPIECE (~55%) beside the cards column (~45%); stacks on
-            narrow widths (network on top, cards below). The network area is
-            unobstructed — nothing overlaps it. */}
-        {/* items-start (NOT center): a card expanding must not re-center this row, or the %-anchored node markers would shift out from under a still cursor and the hover would oscillate. */}
-        {/* D-24 — the split is `lg:`, matching production-grade-section's twin
-            row, NOT `sm:`. At `sm` this row halved a ~600px column into two
-            ~285px ones, and the node markers' `whitespace-nowrap` labels —
-            centred at 24% / 78% of the centerpiece — overran both of its edges
-            and were cut by this section's `overflow-hidden`. Below `lg` the
-            centerpiece now takes the full column, which is the only width where
-            those labels are guaranteed to fit. ≥1024px is unchanged: the outer
-            row is already two columns there, so both breakpoints resolved to
-            the identical layout. */}
-        {/* MOBILE_HOME_SPEC §2 row 3 — the last 8px of the 1108 → 954 budget.
-            Below `lg` this row is a single column, so `gap-6` is the vertical
-            step between the centerpiece and the cards; 16px is enough at 390px
-            now that the centerpiece is 170px tall. `sm:gap-6` restores it, so
-            the 640px render is unchanged and `lg:gap-8` never moves. */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-4 sm:gap-6 lg:gap-8 items-start">
-          <NeuralCenterpiece
-            anchorId="problem"
-            surface="broken"
-            tone="broken"
-            showFallback={showFallback}
-            /* MOBILE_HOME_SPEC §5.4: 260 → 170px below `sm`. The WebGL lattice
-               is camera-locked in the persistent canvas and needs no DOM box at
-               all; this min-height only reserves room, and on a phone it was
-               reserving 90px more than the markers use. The three node markers
-               are placed in PERCENT of this box (MARKER_LAYOUT), so they scale
-               with it and survive intact — which matters because they are the
-               `aria-controls` triggers for the three cards, not decoration.
-               `sm:` restores 320px, so ≥640px does not move. */
-            className="min-h-[170px] sm:min-h-[320px]"
-            nodes={[
-              { label: failures[0].cause, controls: bodyId("problem", 0) },
-              { label: failures[1].cause, controls: bodyId("problem", 1) },
-              { label: failures[2].cause, controls: bodyId("problem", 2) },
-            ]}
-          />
-
-          {/* Cards column — OFFSET from the network (never overlapping it). */}
-          <div className="relative flex flex-col gap-4">
-            {failures.map((f, i) => (
-              <NeuralCard
-                key={f.num}
-                index={i}
-                surface="broken"
-                tone="broken"
-                bodyId={bodyId("problem", i)}
-                eyebrow={f.cause}
-                title={
-                  <>
-                    <span>{f.cause}</span>{" "}
-                    <span aria-hidden="true" className="text-[hsl(var(--accent-2)/0.9)]">
-                      {"→"}
-                    </span>{" "}
-                    <span className="text-ink-mute">{f.effect}.</span>
-                  </>
-                }
-                body={f.body}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+/** Ghost callout placement inside the band (≈ the WebGL fracture/debris zone:
+ * uFracture = 0.55 → band-x ~55%; debris drifts right of it). max-sm:hidden —
+ * aria-hidden garnish; the same strings live in the panes. */
+const CALLOUT_POS: { left: string; edge: "top" | "bottom"; at: string }[] = [
+  { left: "48%", edge: "top", at: "14%" },
+  { left: "54%", edge: "bottom", at: "12%" },
+  { left: "59%", edge: "top", at: "26%" },
+];
 
 export default function ProblemSection() {
   const { language } = useLanguage();
   const isEn = language === "en";
   const failures = getFailures(isEn);
+  const showFallback = useNeuralLatticeFallback();
+
+  // ONE latched in-view edge for the whole field row: fires the store bump
+  // and arms the pane reveal.
+  const { ref: rowRef, inView } = useInView<HTMLDivElement>();
+  useBrokenStreamOnEnter(inView);
+
+  // Once-per-life pane reveal: slide in from the right with blur-up,
+  // staggered 90ms. Primed idempotently on every dep re-run BEFORE the play
+  // guard (useGSAP is a layout effect — no hidden-then-visible flash);
+  // reduced-motion never primes anything hidden.
+  const playedRef = useRef(false);
+  useGSAP(
+    () => {
+      const row = rowRef.current;
+      if (!row) return;
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      if (playedRef.current) return;
+      const panes = row.querySelectorAll<HTMLElement>("[data-stream-pane]");
+      if (!panes.length) return;
+      gsap.set(panes, { opacity: 0, x: 28, y: 24, filter: "blur(6px)" });
+      if (!inView) return;
+      playedRef.current = true;
+      gsap.to(panes, {
+        opacity: 1,
+        x: 0,
+        y: 0,
+        filter: "blur(0px)",
+        duration: 0.9,
+        ease: "expo.out",
+        stagger: 0.09,
+        clearProps: "filter",
+      });
+    },
+    { dependencies: [inView], scope: rowRef },
+  );
 
   return (
     <section
@@ -220,52 +174,136 @@ export default function ProblemSection() {
       <SectionGlow position="top-right" intensity={1.2} />
       <SectionGlow position="bottom-left" intensity={0.8} size="50rem" />
       <div className="container-px relative">
-        {/* items-start here too: when a card expands, the FailureLattice column grows; with items-center the outer row re-centered it, nudging the %-anchored node markers ~9px out from under a still cursor (residual hover oscillation). Pinning the row top removes that residual. */}
-        {/* §2 row 3: `gap-10` → `gap-8` below `sm` (the heading-to-lattice step
-            when this row is stacked). `sm:gap-10` restores it verbatim. */}
-        <div className="grid grid-cols-1 lg:grid-cols-[0.9fr_1.1fr] gap-8 sm:gap-10 lg:gap-16 items-start">
-          {/* Left — headline + paragraph. The [data-emerge] wrapper is the
-              singularity passage's zoom-in landing target: the one-shot
-              plunge timeline drives this div transform-only (scale 0.8 + a
-              10% offset toward the tunnel's vanishing point → identity) so
-              the section materializes as a ZOOM as the black opens and the
-              light-speed streaks die. Inert on every path where the passage
-              never arms. */}
-          <div data-emerge style={{ willChange: "transform" }}>
-          <SectionHeading
-            eyebrow={isEn ? "The demo-to-production gap" : "Il divario tra demo e produzione"}
-            title={
-              isEn ? (
-                <>
-                  Most AI projects don&apos;t fail at the prototype.{" "}
-                  <span className="text-ink-mute">They fail two months after.</span>
-                </>
-              ) : (
-                <>
-                  La maggior parte dei progetti AI non fallisce al prototipo.{" "}
-                  <span className="text-ink-mute">Fallisce due mesi dopo.</span>
-                </>
-              )
-            }
-            description={
-              isEn
+        {/* Chapter heading — the [data-emerge] wrapper is the singularity
+            passage's zoom-in landing target: the one-shot plunge timeline
+            drives this div transform-only (scale 0.8 + a 10% offset toward
+            the tunnel's vanishing point → identity). Inert on every path
+            where the passage never arms. */}
+        <div data-emerge style={{ willChange: "transform" }}>
+          <div className="grid gap-6 lg:grid-cols-[1fr_320px] lg:items-end lg:gap-10">
+            <div>
+              {/* Plain `.eyebrow` (no [data-eyebrow-text]) → the global
+                  LabelScrambler owns its decode reveal. */}
+              <p className="eyebrow mb-5 inline-flex items-center gap-2 text-ink-mute">
+                <span
+                  aria-hidden="true"
+                  className="inline-block w-6 h-px bg-[hsl(var(--accent))]"
+                />
+                <span>
+                  {isEn
+                    ? "The demo-to-production gap"
+                    : "Il divario tra demo e produzione"}
+                </span>
+              </p>
+              {/* max-sm override: the chapter clamp's 2.6rem floor costs a
+                  full extra title line at 390px — 2.1rem keeps the chapter
+                  read while clawing ~80px back toward the §Mobile budget
+                  (presentation-only; copy untouched). */}
+              <h2 className="font-display text-[clamp(2.6rem,4.8vw,5.75rem)] max-sm:text-[2.1rem] leading-[0.98] tracking-[-0.02em] text-ink text-balance">
+                {isEn ? (
+                  <>
+                    Most AI projects don&apos;t fail at the prototype.{" "}
+                    <span className="font-display italic text-ink-mute">
+                      They fail two months after.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    La maggior parte dei progetti AI non fallisce al prototipo.{" "}
+                    <span className="font-display italic text-ink-mute">
+                      Fallisce due mesi dopo.
+                    </span>
+                  </>
+                )}
+              </h2>
+            </div>
+            {/* The right-hung annotation (~320px, Noomo/Lusion pairing). */}
+            <p className="max-w-[320px] text-[13px] leading-relaxed text-ink-mute">
+              {isEn
                 ? "The demo worked. The board nodded. Then real volume hit and the agent started lying, the retrieval drifted, cost-per-run tripled, and no-one on the team could tell which of the seven things you changed last week broke it."
-                : "La demo funzionava. Il consiglio ha annuito. Poi è arrivato il volume reale e l'agente ha iniziato a inventare, il retrieval è andato in deriva, il costo per esecuzione è triplicato e nessuno nel team sapeva quale delle sette cose cambiate la settimana scorsa l'avesse rotto."
-            }
-            className="max-w-xl"
-            // POSITIVE bottom margin: the cascade is already mid-composition
-            // while the singularity passage's sticky stage releases (behind
-            // the tunnel/veil overlay), so the incoming viewport is never an
-            // empty dark slab — exactly the pre-compose hook the plunge's
-            // emergence beat relies on.
-            ioRootMargin="0px 0px 15% 0px"
-          />
+                : "La demo funzionava. Il consiglio ha annuito. Poi è arrivato il volume reale e l'agente ha iniziato a inventare, il retrieval è andato in deriva, il costo per esecuzione è triplicato e nessuno nel team sapeva quale delle sette cose cambiate la settimana scorsa l'avesse rotto."}
+            </p>
+          </div>
+        </div>
+
+        {/* The field row: the band (WebGL anchor as background) + the panes
+            cascaded over its right side (lg+) / stacked below it (< lg).
+            On lg the band is the ABSOLUTE background of the whole row, so its
+            height tracks the pane stack (no fixed-height overflow); below lg
+            it is a fixed-height block with the panes in flow underneath. */}
+        <div ref={rowRef} className="relative mt-8 sm:mt-12">
+          <div className="relative min-h-[280px] sm:min-h-[420px] lg:absolute lg:inset-0 lg:min-h-0">
+            {/* The WebGL anchor rect — the stream is camera-locked to this box
+                (persistent canvas paints behind the DOM). Decorative layer:
+                aria-hidden, pointer-events-none. */}
+            <div
+              data-lattice-anchor="problem"
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0"
+            >
+              {/* Faint blueprint dot-grid (igloo garnish). */}
+              <div className="absolute inset-0 bg-[radial-gradient(hsl(var(--ink)/0.05)_1px,transparent_1px)] [background-size:26px_26px]" />
+              {showFallback && (
+                <NeuralGraphFallback
+                  variant="broken"
+                  className="absolute inset-0 h-full w-full opacity-90"
+                />
+              )}
+              {/* Ghost callouts — EXISTING effect strings only, leader lines
+                  pointing into the field. `.eyebrow` → LabelScrambler decode. */}
+              {failures.map((f, i) => {
+                const pos = CALLOUT_POS[i];
+                return (
+                  <span
+                    key={i}
+                    className={
+                      "eyebrow max-sm:hidden absolute -translate-x-1/2 whitespace-nowrap text-[10px] tracking-[0.18em] text-ink-mute/80 " +
+                      (pos.edge === "top"
+                        ? "after:content-[''] after:absolute after:left-1/2 after:top-full after:mt-1 after:h-7 after:w-px after:bg-gradient-to-b after:from-[hsl(var(--accent)/0.45)] after:to-transparent"
+                        : "after:content-[''] after:absolute after:left-1/2 after:bottom-full after:mb-1 after:h-7 after:w-px after:bg-gradient-to-t after:from-[hsl(var(--accent)/0.45)] after:to-transparent")
+                    }
+                    style={{
+                      left: pos.left,
+                      [pos.edge]: pos.at,
+                    }}
+                  >
+                    {f.effect}
+                  </span>
+                );
+              })}
+            </div>
+
           </div>
 
-          {/* Right — the network centerpiece + the three failure cards */}
-          <Reveal delay={120} ioRootMargin="0px 0px 15% 0px">
-            <FailureLattice failures={failures} />
-          </Reveal>
+          {/* The panes — ONE container, responsive pose: below lg a flat
+              stack in normal flow under the band (no cascade, no tilt;
+              max-sm tightens paddings — the mobile budget); lg+ a z-cascade
+              hugging the row's right edge, the stream flowing under them. */}
+          <div className="relative z-10 mt-4 flex flex-col gap-3 sm:gap-4 lg:ml-auto lg:mt-0 lg:min-h-[520px] lg:w-[380px] lg:justify-center lg:gap-4 lg:py-4 xl:w-[420px]">
+            {failures.map((f, i) => (
+              <StreamPane key={f.num} index={i} surface="broken" side="right">
+                <h3 className="relative font-mono text-[11px] uppercase leading-relaxed tracking-[0.16em] text-ink">
+                  <span className="tabular-nums text-[hsl(var(--accent)/0.9)]">
+                    {`0${i + 1}`}
+                  </span>
+                  <span aria-hidden="true" className="px-1.5 text-ink-dim">
+                    ·
+                  </span>
+                  <span>{f.cause}</span>{" "}
+                  <span
+                    aria-hidden="true"
+                    className="text-[hsl(var(--accent)/0.9)]"
+                  >
+                    {"->"}
+                  </span>{" "}
+                  <span className="text-ink-mute">{f.effect}</span>
+                </h3>
+                <p className="relative mt-3 text-[13px] leading-relaxed text-ink-mute">
+                  {f.body}
+                </p>
+              </StreamPane>
+            ))}
+          </div>
         </div>
       </div>
     </section>

@@ -1,34 +1,32 @@
 "use client";
 
 /**
- * NeuralGraphFallback — the DOM/SVG fallback for the FIX 3 neural network.
+ * NeuralGraphFallback — the DOM/SVG twin of the SIGNAL STREAM WebGL island
+ * (2026-08-21 refactor; export/file name kept so the fallback slot wiring in
+ * the two sections stays put).
  *
- * v6 RECONCEPTION: this now mirrors the SHIPPED WebGL look — a 3-HUB TRIANGLE
- * (one orb per card, matching the centerpiece node markers) wired by 3 bowed
- * Bézier arcs (0→1, 1→2 chain + the 0→2 span), with a travelling signal packet
- * riding each arc. It replaces the old 3×3 input/hidden/output feed-forward grid,
- * which no longer matched the network beside it.
+ * One thick braided stream — four parallel offset paths flowing left→right
+ * with a slow sine braid — filling the section's field band:
  *
- * This renders when the WebGL NeuralLattice island is ABSENT: classic flag-OFF
- * WebGLRenderer, lite/off tiers, no-WebGPU, and prefers-reduced-motion. It is the
- * flat, dependency-light cousin of the WebGL centerpiece.
+ *   variant "broken"  → the Problem section. The strands run laminar until
+ *     the FRACTURE (~55% of the width), then fray: short dashed diverging
+ *     tails + scattered ember dots drifting off. A surge packet rides the
+ *     stream and DIES at the fracture (small dot burst), looping every ~4s.
+ *   variant "healthy" → the ProductionGrade section. Full-length strands
+ *     threaded through THREE GUIDE RING outlines (at 40/62/84% — mirrors
+ *     RING_T in webgl/neural/neuralLatticeConfig.ts; change together). The
+ *     rings IGNITE in pipeline order on mount via stroke-dashoffset draws,
+ *     and a surge packet rides the whole stream every ~6s, pulsing each ring
+ *     as it passes — the packet that survives.
  *
- *   variant "broken"  → the Problem section. The 0→2 SPAN arc fractures: its
- *     packet dies at BREAK_T and scatters into fading dots (into the void), the
- *     arc reads severed (dashed + dim), and that span's far hub (hub2) goes dark.
- *     The other two arcs (0→1, 1→2) stay coherent and flow.
- *   variant "healthy" → the ProductionGrade section. All 3 arcs intact, all hubs
- *     glow, all 3 packets complete their arc.
+ * Renders when the WebGL island is ABSENT (use-neural-lattice-fallback.ts:
+ * classic flag-OFF, lite/off tiers, reduced-motion). Decorative only:
+ * aria-hidden — the real copy lives in the sections' glass panes.
  *
- * Geometry is in lockstep with the centerpiece: HUB_PCT mirrors MARKER_LAYOUT in
- * neural-centerpiece.tsx (itself derived from HUB_DEFAULT_XY), and the per-hub
- * cyan→violet tone reproduces the WebGL depthT(hubZ) ramp.
+ * Reduced-motion: the resting FINAL state — strands drawn, rings fully lit,
+ * fray + scatter shown statically. No packets, no timers.
  *
- * Reduced-motion: render the resting frame — no packets, no timeline; the broken
- * scatter is shown statically so the fracture still reads from styling alone.
- *
- * Decorative only: aria-hidden. The real copy lives as accessible DOM in the two
- * sections. No new dependency (GSAP + MotionPathPlugin are already bundled).
+ * No new dependency (GSAP + MotionPathPlugin already bundled).
  */
 import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
@@ -41,98 +39,82 @@ if (typeof window !== "undefined") {
 
 type Variant = "broken" | "healthy";
 
-// --- Geometry (viewBox space) ------------------------------------------------
-const VB_W = 460;
-const VB_H = 300;
+// --- Geometry (viewBox space; preserveAspectRatio="none" stretches to the
+// band, so shapes are authored forgiving) -----------------------------------
+const VB_W = 1000;
+const VB_H = 400;
+const MID_Y = VB_H / 2;
 
-/**
- * CSS-% of the centerpiece marker layout. MUST mirror MARKER_LAYOUT in
- * neural-centerpiece.tsx (itself derived from HUB_DEFAULT_XY: x% = 50 + localX·100,
- * y% = 50 − localY·100). Same percents → the SVG hub sits exactly where the DOM
- * marker / WebGL orb render. If you change MARKER_LAYOUT, update these.
- *   node0 upper-left (z=-0.18 → depthT 0.0 → cyan)
- *   node1 lower-center (z=+0.12 → depthT 1.0 → blue)
- *   node2 upper-right (z=-0.06 → depthT 0.4 → cyan→blue mid)
- */
-const HUB_PCT: readonly [number, number][] = [
-  [24, 32],
-  [50, 70],
-  [78, 34],
-];
-const HUBS = HUB_PCT.map(([px, py]) => ({
-  cx: Math.round((px / 100) * VB_W),
-  cy: Math.round((py / 100) * VB_H),
-}));
-const HUB_R = 9;
+/** Fracture x (≈ FRACTURE_T of the width — mirrors the WebGL uFracture). */
+const FRACTURE_X = 550;
+/** Ring centers (≈ RING_T of the width — mirrors the WebGL RING_T). */
+const RING_X = [400, 620, 840] as const;
 
-/** Per-hub fill = cyan→blue sampled at each hub's WebGL depthT (t = [0, 1, 0.4]). */
-const HUB_FILL = [
-  "hsl(var(--accent))", // t0  cyan
-  "hsl(var(--accent-2))", // t1  blue (var kept; --accent-2 now holds blue)
-  "hsl(204 95% 67%)", // t0.4 cyan→blue mid (hue moved 222→204; S/L tuning kept)
-] as const;
-
-/** The 3 arcs (mirror HUB_ARCS): chain 0→1, 1→2 + the span 0→2 (the fragile one). */
-const ARCS: readonly [number, number][] = [
-  [0, 1],
-  [1, 2],
-  [0, 2],
-];
-/** Mirror config BREAK_T — the dead span packet dies at this arc fraction. */
-const BREAK_T = 0.46;
-/** Bow (px) of each arc's quadratic control off the chord — the 2D projection of
- * the WebGL NEURAL_ARC_BOW (≈0.22 toward +z) on this 460-wide box. */
-const BOW = 50;
-
-interface Pt {
-  x: number;
-  y: number;
+/** Center meander of the stream (gentle, mirrors STREAM_CTRL's amplitudes). */
+function centerY(x: number): number {
+  const t = x / VB_W;
+  return (
+    MID_Y +
+    Math.sin(t * Math.PI * 2 * 1.1 + 0.6) * 18 +
+    Math.sin(t * Math.PI * 2 * 0.5 - 0.3) * 10
+  );
 }
-type Hub = { cx: number; cy: number };
 
-/** Quadratic control = chord midpoint pushed along the perpendicular so the arc
- * bows UPWARD (negative y) — reads as an open 3D curve like the WebGL bow. */
-function controlOf(a: Hub, b: Hub): Pt {
-  const mx = (a.cx + b.cx) / 2;
-  const my = (a.cy + b.cy) / 2;
-  const dx = b.cx - a.cx;
-  const dy = b.cy - a.cy;
-  const len = Math.hypot(dx, dy) || 1;
-  let px = -dy / len;
-  let py = dx / len;
-  if (py > 0) {
-    px = -px;
-    py = -py;
+const STRAND_BASE = [-13, -4.5, 4.5, 13] as const;
+const BRAID_TURNS = 2.6;
+
+/** Strand y at x — base offset modulated by the braid twist. */
+function strandY(x: number, s: number): number {
+  const t = x / VB_W;
+  const braid =
+    0.62 + 0.38 * Math.sin(t * Math.PI * 2 * BRAID_TURNS + s * 1.7);
+  return centerY(x) + STRAND_BASE[s] * braid;
+}
+
+/** Sampled polyline path for strand s over [x0, x1]. */
+function strandPath(s: number, x0: number, x1: number): string {
+  const STEP = 25;
+  let d = `M ${x0} ${strandY(x0, s).toFixed(1)}`;
+  for (let x = x0 + STEP; x <= x1; x += STEP) {
+    d += ` L ${x} ${strandY(x, s).toFixed(1)}`;
   }
-  return { x: mx + px * BOW, y: my + py * BOW };
-}
-function arcPath(a: Hub, b: Hub, c: Pt): string {
-  return `M ${a.cx} ${a.cy} Q ${Math.round(c.x)} ${Math.round(c.y)} ${b.cx} ${b.cy}`;
-}
-/** Quadratic Bézier point at t — locates where the dead span packet dies. */
-function quadAt(a: Hub, c: Pt, b: Hub, t: number): Pt {
-  const omt = 1 - t;
-  return {
-    x: omt * omt * a.cx + 2 * omt * t * c.x + t * t * b.cx,
-    y: omt * omt * a.cy + 2 * omt * t * c.y + t * t * b.cy,
-  };
+  if ((x1 - x0) % STEP !== 0) d += ` L ${x1} ${strandY(x1, s).toFixed(1)}`;
+  return d;
 }
 
-const ARC_CTRL = ARCS.map(([f, t]) => controlOf(HUBS[f], HUBS[t]));
-const ARC_D = ARCS.map(([f, t], i) => arcPath(HUBS[f], HUBS[t], ARC_CTRL[i]));
+/** Center path (the surge packet's motionPath rail). */
+function centerPath(x0: number, x1: number): string {
+  const STEP = 25;
+  let d = `M ${x0} ${centerY(x0).toFixed(1)}`;
+  for (let x = x0 + STEP; x <= x1; x += STEP) {
+    d += ` L ${x} ${centerY(x).toFixed(1)}`;
+  }
+  return d;
+}
 
-// Where the dead span (arc index 2 = [0,2]) packet dies, at BREAK_T, + a fan of
-// scatter targets dispersing outward/upward from that break point.
-const SPAN_BREAK = quadAt(HUBS[0], ARC_CTRL[2], HUBS[2], BREAK_T);
-const SPAN_BX = Math.round(SPAN_BREAK.x);
-const SPAN_BY = Math.round(SPAN_BREAK.y);
-const SCATTER = [0, 1, 2, 3, 4].map((k) => {
-  const ang = ((-60 + k * 30) * Math.PI) / 180; // fan upward/outward
+/** Broken fray tails: each strand continues past the fracture as a short
+ * diverging dashed tail. */
+function frayPath(s: number): string {
+  const y0 = strandY(FRACTURE_X, s);
+  const spread = (s - 1.5) * 34; // diverge away from the center line
+  const x1 = FRACTURE_X + 60;
+  const x2 = FRACTURE_X + 130;
+  return `M ${FRACTURE_X} ${y0.toFixed(1)} Q ${x1} ${(y0 + spread * 0.4).toFixed(1)} ${x2} ${(y0 + spread).toFixed(1)}`;
+}
+
+/** Scatter dots dispersing from the fracture (deterministic fan). */
+const SCATTER = Array.from({ length: 9 }, (_, k) => {
+  const ang = ((-55 + k * 14) * Math.PI) / 180;
+  const dist = 46 + (k % 3) * 30;
   return {
-    tx: Math.round(SPAN_BX + Math.cos(ang) * 26),
-    ty: Math.round(SPAN_BY + Math.sin(ang) * 26),
+    tx: Math.round(FRACTURE_X + 30 + Math.cos(ang) * dist),
+    ty: Math.round(centerY(FRACTURE_X) + Math.sin(ang) * dist),
   };
 });
+const SCATTER_ORIGIN = {
+  x: FRACTURE_X,
+  y: Math.round(centerY(FRACTURE_X)),
+};
 
 export function NeuralGraphFallback({
   variant,
@@ -143,13 +125,17 @@ export function NeuralGraphFallback({
 }) {
   const broken = variant === "broken";
   const rootRef = useRef<SVGSVGElement>(null);
-  const gradId = `neural-grad-${variant}`;
-  // Reduced-motion: show the resting frame (broken → static dispersed scatter).
+  const gradId = `stream-grad-${variant}`;
+  // Reduced-motion: render the resting final frame (rings lit, scatter shown).
   const [rest, setRest] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
     setRest(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
   }, []);
+
+  const strandEnd = broken ? FRACTURE_X : VB_W;
+  const strandDs = [0, 1, 2, 3].map((s) => strandPath(s, 0, strandEnd));
+  const railD = centerPath(0, broken ? FRACTURE_X : VB_W);
 
   useGSAP(
     () => {
@@ -158,72 +144,109 @@ export function NeuralGraphFallback({
       const root = rootRef.current;
       if (!root) return;
 
-      // One looping timeline: a packet per arc fades in, rides its Bézier via a
-      // single motionPath tween, then fades out. The broken SPAN packet only
-      // travels to BREAK_T then DIES — its scatter dots disperse from the break
-      // point and fade (the SVG echo of the WebGL dispersal). Staggered so the
-      // three fire in sequence.
-      const tl = gsap.timeline({ repeat: -1, repeatDelay: 0.6 });
-      for (let c = 0; c < 3; c++) {
-        const packet = root.querySelector<SVGCircleElement>(
-          `[data-packet="${c}"]`,
+      const packet = root.querySelector<SVGCircleElement>("[data-packet]");
+      const rail = root.querySelector<SVGPathElement>("[data-rail]");
+
+      if (!broken) {
+        // Ring ignition — pipeline order (eval → trace → guardrail), a
+        // stroke-dashoffset draw per ring, 0.35s apart, once on mount.
+        const rings = Array.from(
+          root.querySelectorAll<SVGEllipseElement>("[data-ring]"),
         );
-        const path = root.querySelector<SVGPathElement>(`[data-arc="${c}"]`);
-        if (!packet || !path) continue;
-        const at = c * 0.5;
-        const isDead = broken && c === 2; // the span arc fractures
-        const end = isDead ? BREAK_T : 1;
-        const travel = isDead ? 0.7 : 1.4;
-        tl.set(packet, { opacity: 0 }, at);
-        tl.to(packet, { opacity: 1, duration: 0.18, ease: "power1.out" }, at);
+        const igni = gsap.timeline();
+        rings.forEach((ring, i) => {
+          const len = ring.getTotalLength();
+          gsap.set(ring, {
+            strokeDasharray: len,
+            strokeDashoffset: len,
+            opacity: 1,
+          });
+          igni.to(
+            ring,
+            { strokeDashoffset: 0, duration: 0.7, ease: "expo.inOut" },
+            i * 0.35,
+          );
+        });
+      }
+
+      // The looping surge packet: rides the stream; broken → dies at the
+      // fracture with a scatter burst; healthy → survives, pulsing each ring.
+      if (!packet || !rail) return;
+      const period = broken ? 4 : 6;
+      const travel = broken ? 1.6 : 2.4;
+      const tl = gsap.timeline({
+        repeat: -1,
+        repeatDelay: Math.max(0.4, period - travel),
+      });
+      tl.set(packet, { opacity: 0 }, 0);
+      tl.to(packet, { opacity: 1, duration: 0.2, ease: "power1.out" }, 0);
+      tl.to(
+        packet,
+        {
+          duration: travel,
+          ease: broken ? "power1.in" : "none",
+          motionPath: {
+            path: rail,
+            align: rail,
+            alignOrigin: [0.5, 0.5],
+            start: 0,
+            end: 1,
+          },
+        },
+        0,
+      );
+      if (broken) {
+        // DIE at the fracture: packet snuffs, scatter dots disperse.
         tl.to(
           packet,
-          {
-            duration: travel,
-            ease: isDead ? "power1.in" : "none",
-            motionPath: {
-              path,
-              align: path,
-              alignOrigin: [0.5, 0.5],
-              start: 0,
-              end,
-            },
-          },
-          at,
+          { opacity: 0, duration: 0.25, ease: "power1.in" },
+          travel - 0.05,
         );
-        if (isDead) {
-          // DIE at the break: the packet fades out and a fan of scatter dots
-          // disperses outward from the break point (each tweened individually —
-          // NOT via a function-valued attr, which GSAP does not support).
-          tl.to(
-            packet,
-            { opacity: 0, duration: 0.3, ease: "power1.in" },
-            at + travel - 0.04,
+        const dots = root.querySelectorAll<SVGCircleElement>("[data-scatter]");
+        dots.forEach((dot, k) => {
+          const target = SCATTER[k] ?? SCATTER[0];
+          tl.fromTo(
+            dot,
+            {
+              opacity: 0.85,
+              attr: { cx: SCATTER_ORIGIN.x, cy: SCATTER_ORIGIN.y },
+            },
+            {
+              opacity: 0,
+              attr: { cx: target.tx, cy: target.ty },
+              duration: 0.6,
+              ease: "power2.out",
+            },
+            travel - 0.05 + k * 0.03,
           );
-          const dots = root.querySelectorAll<SVGCircleElement>(
-            `[data-scatter="${c}"]`,
-          );
-          dots.forEach((dot, k) => {
-            const target = SCATTER[k] ?? SCATTER[0];
+        });
+      } else {
+        // SURVIVE: pulse each ring as the packet passes it, fade out at the end.
+        const rings = Array.from(
+          root.querySelectorAll<SVGEllipseElement>("[data-ring]"),
+        );
+        RING_X.forEach((rx, i) => {
+          const at = (rx / VB_W) * travel;
+          if (rings[i]) {
             tl.fromTo(
-              dot,
-              { opacity: 0.9, attr: { cx: SPAN_BX, cy: SPAN_BY } },
+              rings[i],
+              { strokeOpacity: 0.75 },
               {
-                opacity: 0,
-                attr: { cx: target.tx, cy: target.ty },
-                duration: 0.5,
+                strokeOpacity: 1,
+                duration: 0.16,
+                yoyo: true,
+                repeat: 1,
                 ease: "power2.out",
               },
-              at + travel - 0.04 + k * 0.04,
+              at,
             );
-          });
-        } else {
-          tl.to(
-            packet,
-            { opacity: 0, duration: 0.25, ease: "power1.in" },
-            at + travel - 0.05,
-          );
-        }
+          }
+        });
+        tl.to(
+          packet,
+          { opacity: 0, duration: 0.25, ease: "power1.in" },
+          travel - 0.1,
+        );
       }
     },
     { scope: rootRef, dependencies: [broken] },
@@ -234,97 +257,114 @@ export function NeuralGraphFallback({
       ref={rootRef}
       aria-hidden="true"
       viewBox={`0 0 ${VB_W} ${VB_H}`}
+      preserveAspectRatio="none"
       className={className}
-      style={{ width: "100%", height: "auto", display: "block" }}
+      style={{ display: "block" }}
     >
       <defs>
         <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor="hsl(var(--accent))" />
           <stop offset="100%" stopColor="hsl(var(--accent-2))" />
         </linearGradient>
-        <filter
-          id={`${gradId}-glow`}
-          x="-60%"
-          y="-60%"
-          width="220%"
-          height="220%"
-        >
-          <feGaussianBlur stdDeviation="3" result="b" />
-          <feMerge>
-            <feMergeNode in="b" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
+        {/* Soft radial halo for the surge packet — the glow is a gradient
+            FILL, not a filter: this fallback runs precisely on the weak /
+            reduced tiers where an animated feGaussianBlur would hurt most
+            (no SVG filters anywhere in the twin — spec). */}
+        <radialGradient id={`${gradId}-halo`}>
+          <stop offset="0%" stopColor="hsl(var(--accent))" stopOpacity="1" />
+          <stop offset="45%" stopColor="hsl(var(--accent))" stopOpacity="0.5" />
+          <stop offset="100%" stopColor="hsl(var(--accent))" stopOpacity="0" />
+        </radialGradient>
       </defs>
 
-      {/* Arcs (mirror HUB_ARCS): 0→1 and 1→2 live; the 0→2 span fractures in
-          broken (dashed + dim = severed). Each data-arc path IS its packet's
-          motionPath target. */}
+      {/* The braided strands. Glow = a wide translucent UNDERLAY stroke per
+          strand beneath the crisp core stroke (filter-free bloom). */}
       <g fill="none" strokeLinecap="round">
-        {ARC_D.map((d, c) => {
-          const dead = broken && c === 2;
-          return (
-            <path
-              key={`arc-${c}`}
-              data-arc={c}
-              d={d}
-              stroke={dead ? "hsl(var(--ink-dim))" : `url(#${gradId})`}
-              strokeWidth={dead ? 1.5 : 2}
-              strokeOpacity={dead ? 0.4 : 0.7}
-              strokeDasharray={dead ? "4 6" : undefined}
-              filter={dead ? undefined : `url(#${gradId}-glow)`}
-            />
-          );
-        })}
-      </g>
-
-      {/* Hubs — the far hub of the severed span (hub2) goes dark in broken. */}
-      <g>
-        {HUBS.map((h, i) => {
-          const dead = broken && i === 2;
-          return (
-            <circle
-              key={`hub-${i}`}
-              cx={h.cx}
-              cy={h.cy}
-              r={HUB_R}
-              fill={dead ? "hsl(var(--ink-dim))" : HUB_FILL[i]}
-              fillOpacity={dead ? 0.4 : 0.95}
-              filter={dead ? undefined : `url(#${gradId}-glow)`}
-            />
-          );
-        })}
-      </g>
-
-      {/* Travelling packets (one per arc), hidden at rest; + the broken span's
-          scatter dots. Under reduced motion (rest) the scatter shows statically
-          at its dispersed targets so the fracture reads with no animation. */}
-      <g>
-        {ARCS.map(([f], c) => (
-          <circle
-            key={`packet-${c}`}
-            data-packet={c}
-            r={4.5}
-            cx={HUBS[f].cx}
-            cy={HUBS[f].cy}
-            fill={`url(#${gradId})`}
-            opacity={0}
-            filter={`url(#${gradId}-glow)`}
+        {strandDs.map((d, s) => (
+          <path
+            key={`strand-under-${s}`}
+            d={d}
+            stroke={`url(#${gradId})`}
+            strokeWidth={s === 1 || s === 2 ? 7 : 5.5}
+            strokeOpacity={s === 1 || s === 2 ? 0.16 : 0.1}
           />
         ))}
-        {broken &&
-          SCATTER.map((s, k) => (
-            <circle
-              key={`scatter-${k}`}
-              data-scatter={2}
-              cx={rest ? s.tx : SPAN_BX}
-              cy={rest ? s.ty : SPAN_BY}
-              r={2.4}
-              fill="hsl(var(--ink-dim))"
-              opacity={rest ? 0.5 : 0}
+        {strandDs.map((d, s) => (
+          <path
+            key={`strand-${s}`}
+            d={d}
+            stroke={`url(#${gradId})`}
+            strokeWidth={s === 1 || s === 2 ? 2.4 : 1.8}
+            strokeOpacity={s === 1 || s === 2 ? 0.8 : 0.55}
+          />
+        ))}
+        {/* The surge packet's invisible rail (also the fracture-side spine). */}
+        <path data-rail d={railD} stroke="none" />
+      </g>
+
+      {broken ? (
+        <>
+          {/* Fray: dashed diverging tails past the fracture. */}
+          <g fill="none" strokeLinecap="round">
+            {[0, 1, 2, 3].map((s) => (
+              <path
+                key={`fray-${s}`}
+                d={frayPath(s)}
+                stroke="hsl(var(--ink-dim))"
+                strokeWidth={1.4}
+                strokeOpacity={0.45}
+                strokeDasharray="3 7"
+              />
+            ))}
+          </g>
+          {/* Scattered ember debris. Under reduced motion (rest) the dots sit
+              statically at their dispersed targets so the fracture reads with
+              no animation at all. */}
+          <g>
+            {SCATTER.map((p, k) => (
+              <circle
+                key={`scatter-${k}`}
+                data-scatter={k}
+                cx={rest ? p.tx : SCATTER_ORIGIN.x}
+                cy={rest ? p.ty : SCATTER_ORIGIN.y}
+                r={2.2}
+                fill="hsl(var(--ink-dim))"
+                opacity={rest ? 0.5 : 0}
+              />
+            ))}
+          </g>
+        </>
+      ) : (
+        // The three guide rings — narrow ellipses (perpendicular to the flow),
+        // drawn by the ignition timeline (reduced motion: fully lit at rest).
+        // Filter-free: the gradient stroke alone carries the glow read.
+        <g fill="none">
+          {RING_X.map((rx, i) => (
+            <ellipse
+              key={`ring-${i}`}
+              data-ring={i}
+              cx={rx}
+              cy={centerY(rx)}
+              rx={13}
+              ry={52}
+              stroke={`url(#${gradId})`}
+              strokeWidth={2.4}
+              strokeOpacity={0.85}
             />
           ))}
-      </g>
+        </g>
+      )}
+
+      {/* The travelling surge packet (hidden at rest / reduced motion).
+          The halo is baked into the radial-gradient fill — no filter. */}
+      <circle
+        data-packet
+        r={8}
+        cx={0}
+        cy={MID_Y}
+        fill={`url(#${gradId}-halo)`}
+        opacity={0}
+      />
     </svg>
   );
 }

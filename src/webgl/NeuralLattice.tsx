@@ -1,50 +1,47 @@
 "use client";
 
 /**
- * NeuralLattice — the FIX 3 v4 unified neural-network WebGL island.
+ * NeuralLattice — the SIGNAL STREAM WebGL island (2026-08-21 refactor; the
+ * component/file name is kept so Scene.tsx's mount gate stays byte-identical).
  *
- * RECONCEPTION (v4): the network is EXACTLY 3 nodes — one per card (1:1) — each
- * a dense glowing particle ORB anchored to its card's measured screen position.
- * Hovering/focusing a card flares its hub (and the card opens); the other hubs
- * dim. Arcs wire the hubs as a triangle (0→1, 1→2, 0→2) with the travelling
- * signal. Applies to BOTH sections:
- *   mode "broken"  (Problem, anchor "problem"): resting look is fractured/dim,
- *     the span arc (0→2) is the "dead" segment whose flow particles disperse.
- *   mode "healthy" (ProductionGrade, anchor "production"): all arcs live; the 3
- *     hubs pulse in sequence (eval baseline → trace → guardrail) as the resting
- *     animation. Hover still flares the hovered hub + opens its card in both.
+ * A braided river of ~9000 particles (3200 compact tier) flows left→right
+ * through the section's `[data-lattice-anchor]` rect. Two instances mount on
+ * home:
+ *   mode "broken"  (Problem, anchor "problem"): laminar until the FRACTURE at
+ *     ~55% of the rect, then dispersal into drifting ember debris. Surges ride
+ *     in from the left every ~4s (and on the DOM's in-view `bump("broken")`)
+ *     and DIE at the fracture with a >1.0 emissive flash that decays at once.
+ *     Pane hover → the debris briefly re-coheres toward the spline then falls
+ *     apart again (the "what if it were fixed" tease).
+ *   mode "healthy" (ProductionGrade, anchor "production"): the same stream
+ *     threaded through THREE GUIDE RINGS (eval → trace → guardrail at 40/62/
+ *     84% of the rect); particles tighten past each ring. The DOM's sequenced
+ *     `bumpCluster("healthy", i)` ignites ring i (>1.0 ring-flash); every ~6s
+ *     a surge rides the WHOLE stream and SURVIVES, ringing each ring as it
+ *     passes. Pane hover → ring i flares.
  *
- * ANCHORING — camera-LOCKED screen-space placement (same contract as before):
- *   - The OUTER group is camera-locked to the SECTION rect [data-lattice-anchor]
- *     (position from rect center, quaternion = camera.quaternion). It is NEVER
- *     rotated (that would break rect registration). v4: scale is REVERTED to
- *     rect-mapped `(w·k, h·k, zScale)` (zScale ≈ h·k) — no isotropic squish
- *     problem now because the content is 3 compact orbs + arcs mapped to the
- *     actual card positions, not a full-rect cloud.
- *   - The 3 hubs map to the measured `[data-lattice-node]` card centers, each
- *     converted to LOCAL space and fed in as uniforms uHub0/1/2 (vec3 + the
- *     STRONG-3D z-depths). On measureVersion bumps we re-measure the section rect
- *     AND the 3 card centers; resize updates ONLY these uniforms (no rebuild).
- *   - A small whole-group damped pointer parallax + faint auto-orbit (inner
- *     group) keeps the depth layering legible. Hub orbs self-rotate in-shader.
+ * ANCHORING — camera-LOCKED screen-space placement (contract unchanged): the
+ * OUTER group is positioned from the anchor rect's center, quaternion =
+ * camera.quaternion, scale = (w·k, h·k, h·k). The spline control points are
+ * mode-config uniforms in LOCAL space, so resize = re-measure rect only — no
+ * per-particle re-anchoring, no buffer rebuild.
  *
- * HOVER: the DOM cards write useNeuralLatticeStore.setHovered(surface, i|null);
- * this island reads hovered[surface] each frame → uHovered + a damped per-hub
- * glow (uHubGlow) that flares the hovered hub and dims the rest. The in-view
- * bump/bumpCluster pulse remains the resting animation (additive).
+ * STORES (the ONLY cross-layer channel): useNeuralLatticeStore —
+ * bump/bumpCluster (DOM in-view writers) + hovered (DOM pane hover/focus) are
+ * READ here via getState() in useFrame; pulse decay is written back with the
+ * same damp discipline as before. No React commits drive per-frame visuals
+ * inside this island (refs + getState only).
  *
- * GATING: Scene.tsx mounts this on `pathname === "/" && island && webgpu`, where
- * `island = tier === "full" || phoneGL` — so a full-tier desktop OR a CAPABLE
- * PHONE (MOBILE_HOME_SPEC §4.2; this is the only island the capability axis
- * opens). Lazy TSL import is still fenced by webgpuEnabled(). The DOM SVG
- * fallback (use-neural-lattice-fallback.ts, the exact complement of that gate)
- * carries the metaphor everywhere else.
+ * GATING: Scene.tsx mounts this on `pathname === "/" && island && webgpu`
+ * (island = fxBudget.level >= 2) — unchanged. Non-compute backends get the
+ * analytic static build from neuralFieldCompute (rest-pose stream, rings lit,
+ * fracture dispersed — still uniform-animated). The DOM SVG fallback
+ * (use-neural-lattice-fallback.ts, the exact complement) carries the metaphor
+ * everywhere else.
  *
- * PHONE BUDGET: on `tier === "lite"` the field builds at
- * NEURAL_PARTICLE_COUNT_COMPACT instead of NEURAL_PARTICLE_COUNT (§4.4) — same
- * topology, ~1/10th the additive fill at DPR 1. The tier is read with
- * `getState()` in the build effect and NEVER subscribed: a subscription here
- * would be a React commit inside the <Canvas> island, which can wedge.
+ * PHONE BUDGET: `tier === "lite"` builds at NEURAL_PARTICLE_COUNT_COMPACT.
+ * The tier is read with `getState()` in the build effect and NEVER subscribed
+ * (a subscription here would be a React commit inside the <Canvas> island).
  */
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -58,32 +55,36 @@ import { useNeuralLatticeStore } from "./store/neuralLatticeStore";
 import { useTierStore } from "./store/tierStore";
 import {
   CLUSTER_COUNT,
-  HUB_COUNT,
-  HUB_Z,
-  HUB_DEFAULT_XY,
   FLOW_SPEED,
+  FRACTURE_T,
   NEURAL_PARTICLE_COUNT,
   NEURAL_PARTICLE_COUNT_COMPACT,
-  NEURAL_Y_OFFSET,
   NEURAL_DEPTH_SCALE_FACTOR,
   NEURAL_PARALLAX,
   NEURAL_AUTO_ORBIT,
   NEURAL_ORBIT_FREQ_Y,
   NEURAL_ORBIT_FREQ_X,
   NEURAL_Z_BREATHE,
-  HOVER_FLARE,
-  HOVER_DIM,
-  HOVER_GLOW_DAMP,
-  HOVER_BURST_ATTACK,
-  HOVER_BURST_DECAY,
-  DISPERSE_BASELINE,
-  cardCenterToLocal,
+  RING_T,
+  RING_GLOW_FLARE,
+  RING_GLOW_DIM,
+  RING_GLOW_DAMP,
+  RECOHERE_ATTACK,
+  RECOHERE_DECAY,
+  SURGE_PERIOD_BROKEN,
+  SURGE_PERIOD_HEALTHY,
+  SURGE_SPEED,
+  FLASH_DECAY,
   type LatticeMode,
 } from "./neural/neuralLatticeConfig";
 import type { NeuralFieldBuild } from "./neural/neuralFieldCompute";
 
 /** Off-screen cull margin in CSS px. */
 const CULL_PAD = 220;
+
+/** Where a surge starts (just off the left edge) and overshoots the end. */
+const SURGE_START_T = -0.08;
+const SURGE_END_HEALTHY = 1.08;
 
 interface SectionRect {
   /** Viewport-x center of the section anchor. */
@@ -92,8 +93,6 @@ interface SectionRect {
   h: number;
   /** Document-space top of the anchor. */
   docTop: number;
-  /** The 3 hub LOCAL positions [x,y,z] derived from the card centers. */
-  hubs: [number, number, number][];
 }
 
 export function NeuralLattice({
@@ -132,11 +131,7 @@ export function NeuralLattice({
         typeof (gl as unknown as { compute?: unknown }).compute === "function";
       backendIsWebGPURef.current = backendIsWebGPU;
 
-      // Phone budget (MOBILE_HOME_SPEC §4.4). `getState()`, never a
-      // subscription: this is inside the <Canvas> island, where depending on a
-      // React commit can wedge. The tier is resolved once before Scene mounts
-      // (CanvasHost's effect) and only ever moves DOWN via degrade(), which
-      // unmounts this island anyway — so a one-shot read is sound.
+      // Phone budget: `getState()`, never a subscription (island commit wedge).
       const count =
         useTierStore.getState().tier === "lite"
           ? NEURAL_PARTICLE_COUNT_COMPACT
@@ -150,9 +145,10 @@ export function NeuralLattice({
         gl: gl as never,
         backendIsWebGPU,
         count,
+        mode,
       });
-      built.uniforms.uBroken.value = broken ? 1 : 0;
       built.uniforms.uFlowSpeed.value = FLOW_SPEED;
+      built.uniforms.uFracture.value = FRACTURE_T;
       setBuild(built);
     });
 
@@ -162,9 +158,9 @@ export function NeuralLattice({
       setBuild(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [broken, gl]);
+  }, [mode, gl]);
 
-  // --- Section rect + 3 card centers: measured on measureVersion bumps ------
+  // --- Section rect: measured on measureVersion bumps -----------------------
   const [rect, setRect] = useState<SectionRect | null>(null);
   useEffect(() => {
     const el = document.querySelector<HTMLElement>(
@@ -175,78 +171,49 @@ export function NeuralLattice({
       return;
     }
     const r = el.getBoundingClientRect();
-    const scrollY = window.scrollY;
-    const sectionCx = r.left + r.width / 2;
-    const sectionCy = r.top + r.height / 2;
-
-    // Measure the 3 card centers; convert each to LOCAL space. Missing anchor →
-    // sensible evenly-spread default (HUB_DEFAULT_XY + HUB_Z).
-    const hubs: [number, number, number][] = [];
-    for (let i = 0; i < HUB_COUNT; i++) {
-      const node = el.querySelector<HTMLElement>(
-        `[data-lattice-node="${anchorId}:${i}"]`,
-      );
-      if (node) {
-        const nr = node.getBoundingClientRect();
-        const cardCx = nr.left + nr.width / 2;
-        const cardCy = nr.top + nr.height / 2;
-        hubs.push(
-          cardCenterToLocal(cardCx, cardCy, sectionCx, sectionCy, r.width, r.height, i),
-        );
-      } else {
-        const [dx, dy] = HUB_DEFAULT_XY[i] ?? [0, 0];
-        hubs.push([dx, dy, HUB_Z[i] ?? 0]);
-      }
-    }
-
     setRect({
-      cxBase: sectionCx,
+      cxBase: r.left + r.width / 2,
       w: r.width,
       h: r.height,
-      docTop: r.top + scrollY,
-      hubs,
+      docTop: r.top + window.scrollY,
     });
     // size.* is included DELIBERATELY: everything stored above is a PIXEL
-    // quantity (cxBase/w/h/docTop + the card-derived hub locals), but
-    // sectionStore.setMeasured skips the measureVersion bump when the
-    // NORMALIZED spans are unchanged — which is exactly what a width-only
-    // resize produces (docking devtools as a side panel, widening past the
-    // container max-width, some tablet rotations). measureVersion alone
-    // therefore leaves this rect stale and the hub orbs detach from their
-    // cards. Cheap to re-run: this effect only setRect()s, and the downstream
-    // effect writes uniforms only — no buffer/geometry rebuild, matching the
-    // header's "resize updates ONLY these uniforms (no rebuild)" contract.
-    // (Same pattern as FounderPortraitMorph's measure deps.)
+    // quantity, but sectionStore.setMeasured skips the measureVersion bump
+    // when the NORMALIZED spans are unchanged — exactly what a width-only
+    // resize produces. Cheap to re-run: this effect only setRect()s; the
+    // stream re-anchors through the group transform alone (no rebuild).
   }, [measureVersion, anchorId, size.width, size.height]);
 
-  // Push the measured hub LOCAL positions into the build uniforms whenever the
-  // rect (or build) changes — resize = uniform update, no buffer rebuild.
-  useEffect(() => {
-    if (!build || !rect) return;
-    const u = build.uniforms;
-    u.uHub0.value.set(rect.hubs[0][0], rect.hubs[0][1], rect.hubs[0][2]);
-    u.uHub1.value.set(rect.hubs[1][0], rect.hubs[1][1], rect.hubs[1][2]);
-    u.uHub2.value.set(rect.hubs[2][0], rect.hubs[2][1], rect.hubs[2][2]);
-  }, [build, rect]);
-
-  // --- Per-frame: camera-lock placement + parallax + uniforms ---------------
+  // --- Per-frame driver ------------------------------------------------------
   const groupRef = useRef<THREE.Group>(null);
   const innerRef = useRef<THREE.Group>(null);
   const scratch = useRef(new THREE.Vector3());
   const revealDamped = useRef(0);
   const clock = useRef(0);
-  const pulseEased = useRef<number[]>(new Array(CLUSTER_COUNT).fill(0));
-  const disperseRef = useRef(0);
   const parallaxRef = useRef({ x: 0, y: 0 });
-  // Per-hub damped glow toward its hover target (1 = neutral).
-  const hubGlow = useRef<number[]>(new Array(HUB_COUNT).fill(1));
-  // Per-hub one-shot BURST envelope (0..1). Triggered to 1 on the rising edge of
-  // a hover (attack), then decays back to 0 (resettle) — the v5 particle effect.
-  const hubBurst = useRef<number[]>(new Array(HUB_COUNT).fill(0));
-  // Per-hub burst "target": 1 while this hub is freshly hovered, decaying to 0.
-  const burstTarget = useRef<number[]>(new Array(HUB_COUNT).fill(0));
+  // Store-pulse decay (bumpCluster targets → ring flashes on healthy; the
+  // all-cluster bump("broken") doubles as the surge trigger on broken).
+  const pulseEased = useRef<number[]>(new Array(CLUSTER_COUNT).fill(0));
+  // Hoisted decay scratch — reused every frame, never allocated in the loop.
+  // Safe to hand to setPulse by reference: bump() always REPLACES the store
+  // array and bumpCluster() slices before writing, so aliasing cannot corrupt
+  // a writer, and this island is the array's only per-frame reader.
+  const decayScratch = useRef<number[]>(new Array(CLUSTER_COUNT).fill(0));
+  const prevMaxPulse = useRef(0);
+  // Surge state machine.
+  const surge = useRef({ active: false, t: SURGE_START_T, amp: 0, timer: 0 });
+  // Fracture death-flash envelope (broken).
+  const flashEnv = useRef(0);
+  // Internal ring-flash targets (surge crossings) + the eased uniform values.
+  const ringFlashTarget = useRef<number[]>(new Array(CLUSTER_COUNT).fill(0));
+  const ringFlashEased = useRef<number[]>(new Array(CLUSTER_COUNT).fill(0));
+  // Per-ring damped hover glow (1 = neutral).
+  const ringGlow = useRef<number[]>(new Array(CLUSTER_COUNT).fill(1));
+  // Broken hover tease — one-shot re-cohere envelope.
+  const recohereTarget = useRef(0);
+  const recohereEnv = useRef(0);
   const prevHovered = useRef<number | null>(null);
-  const surfaceKey = broken ? "broken" : "healthy";
+  const surfaceKey = broken ? ("broken" as const) : ("healthy" as const);
 
   useFrame((_, rawDelta) => {
     const group = groupRef.current;
@@ -269,44 +236,21 @@ export function NeuralLattice({
     }
     group.visible = true;
 
-    // Camera-locked placement of the OUTER group. v4: REVERTED to rect-mapped
-    // scale `(w·k, h·k, zScale)` because the hubs map to actual card screen
-    // positions inside the rect — no squish problem (the content is 3 compact
-    // orbs + arcs, not a full-rect cloud). zScale uses the rect HEIGHT (× a
-    // factor) so the hub z-layering + arc bow have honest depth.
+    // Camera-locked placement of the OUTER group, scaled to the anchor rect.
     const wWorld = rect.w * k;
     const hWorld = rect.h * k;
     const zWorld = hWorld * NEURAL_DEPTH_SCALE_FACTOR;
     scratch.current
-      .set(
-        (cx - vw / 2) * k,
-        (ih / 2 - cy) * k + NEURAL_Y_OFFSET * hWorld,
-        -CAMERA_Z,
-      )
+      .set((cx - vw / 2) * k, (ih / 2 - cy) * k, -CAMERA_Z)
       .applyQuaternion(camera.quaternion)
       .add(camera.position);
     group.position.copy(scratch.current);
     group.quaternion.copy(camera.quaternion);
     group.scale.set(wWorld, hWorld, zWorld);
 
-    // --- Arrival ramp: assemble when the READER arrives, not at route load --
-    // scrollStore.reveal stays the MASTER gate (preloader / route beat), but on
-    // its own it flips to 1 while this section is still a viewport below the
-    // fold — the seed-cloud→network coalesce (uReveal lerps seed→anchor AND
-    // multiplies alpha, on both sub-backends) would play entirely off-screen
-    // and the reader would only ever meet a finished, static lattice. So the
-    // gate is multiplied by a per-section visibility ramp derived from numbers
-    // already on hand (vpTop/ih): 0 while the section top sits ~half a cull
-    // pad below the bottom edge, 1 once it has risen to ~70% up the screen.
-    // The damp is deliberately slower than the old route-beat chase (2.5 vs 8
-    // → ~95% in ~1.2s) so the 9000 particles visibly COALESCE as the section
-    // scrolls into view; the same ramp runs in reverse when the section sinks
-    // back below the fold, so re-entry from below replays the assembly
-    // (scroll-direction awareness), while re-entry from ABOVE keeps vis=1 —
-    // the network stays built when the reader merely backtracks past it.
-    // While hard-culled (early return above) the ref freezes at its last
-    // value, so scrolling far past never pops it in either direction. Both
-    // lattice instances (broken/healthy) share this path.
+    // Arrival ramp: assemble when the READER arrives (same shape as the
+    // lattice build this replaces — scrollStore.reveal gated by a per-section
+    // visibility ramp, damped slow enough that the coalesce reads on entry).
     const vis = THREE.MathUtils.clamp(
       (ih + CULL_PAD / 2 - vpTop) / (ih * 0.7),
       0,
@@ -318,27 +262,22 @@ export function NeuralLattice({
       2.5,
       delta,
     );
-    const reveal = revealDamped.current;
 
     clock.current += delta;
     const t = clock.current;
 
-    // --- Cluster ignition: decay the DOM-bumped targets, ease toward them ----
+    // --- Store pulses: decay the DOM-bumped targets, ease toward them -------
     const store = useNeuralLatticeStore.getState();
-    const surface = broken ? store.broken : store.healthy;
+    const surface = store[surfaceKey];
     let anyPulse = false;
-    const decayed: number[] = new Array(CLUSTER_COUNT);
+    const decayed = decayScratch.current;
     for (let i = 0; i < CLUSTER_COUNT; i++) {
       const target = surface[i] ?? 0;
-      decayed[i] = THREE.MathUtils.damp(target, 0, 4, delta);
+      const d = THREE.MathUtils.damp(target, 0, 4, delta);
+      decayed[i] = d < 0.001 ? 0 : d;
       if (target !== 0) anyPulse = true;
     }
-    if (anyPulse) {
-      store.setPulse(
-        surfaceKey,
-        decayed.map((d) => (d < 0.001 ? 0 : d)),
-      );
-    }
+    if (anyPulse) store.setPulse(surfaceKey, decayed);
     let maxPulse = 0;
     for (let i = 0; i < CLUSTER_COUNT; i++) {
       pulseEased.current[i] = THREE.MathUtils.damp(
@@ -350,68 +289,103 @@ export function NeuralLattice({
       if (pulseEased.current[i] > maxPulse) maxPulse = pulseEased.current[i];
     }
 
-    // --- Hover ignition: damp a per-hub glow toward its target. The hovered hub
-    // flares (×HOVER_FLARE); while one is hovered the others dim (×HOVER_DIM);
-    // neutral resting glow = 1. Non-decaying source (store.hovered[surface]). --
-    const hoveredIdx = store.hovered[surfaceKey];
-    for (let i = 0; i < HUB_COUNT; i++) {
-      let target = 1;
-      if (hoveredIdx !== null && hoveredIdx >= 0) {
-        target = hoveredIdx === i ? HOVER_FLARE : HOVER_DIM;
-      }
-      hubGlow.current[i] = THREE.MathUtils.damp(
-        hubGlow.current[i],
-        target,
-        HOVER_GLOW_DAMP,
-        delta,
-      );
+    // --- Surge state machine -------------------------------------------------
+    const s = surge.current;
+    const period = broken ? SURGE_PERIOD_BROKEN : SURGE_PERIOD_HEALTHY;
+    // Trigger = the rising edge of the DOM's in-view bump("broken") (all three
+    // clusters snap to 1 — the packet that dies on cue) ∨ the mode's own
+    // automatic period. No closure — this runs every frame.
+    const bumpEdge = broken && maxPulse > 0.5 && prevMaxPulse.current <= 0.5;
+    prevMaxPulse.current = maxPulse;
+    s.timer += delta;
+    if ((bumpEdge || s.timer >= period) && !s.active) {
+      s.active = true;
+      s.t = SURGE_START_T;
+      s.timer = 0;
     }
 
-    // --- Hover BURST (the v5 "particle effect on open"): on the RISING edge of a
-    // hover (a NEW hub becomes hovered), fire that hub's one-shot burst — its
-    // burstTarget snaps to 1, then immediately decays toward 0; hubBurst attacks
-    // fast toward the (decaying) target then resettles. Net = a quick surge that
-    // expands+resettles the orb + spikes its emissive + accelerates its arcs. ---
-    if (hoveredIdx !== prevHovered.current) {
-      if (hoveredIdx !== null && hoveredIdx >= 0 && hoveredIdx < HUB_COUNT) {
-        burstTarget.current[hoveredIdx] = 1;
+    if (s.active) {
+      const prevT = s.t;
+      s.t += delta * SURGE_SPEED;
+      s.amp = Math.min(s.amp + delta * 5, 1);
+      if (broken) {
+        // The surge dies at the fracture: small burst, flash decays at once.
+        if (s.t >= FRACTURE_T) {
+          s.active = false;
+          flashEnv.current = 1;
+        }
+      } else {
+        // The surge survives — ring each guide ring as the head crosses it.
+        for (let i = 0; i < RING_T.length; i++) {
+          if (prevT < RING_T[i] && s.t >= RING_T[i]) {
+            ringFlashTarget.current[i] = 1;
+          }
+        }
+        if (s.t >= SURGE_END_HEALTHY) s.active = false;
       }
-      prevHovered.current = hoveredIdx;
+    } else {
+      s.amp = THREE.MathUtils.damp(s.amp, 0, 10, delta);
     }
-    for (let i = 0; i < HUB_COUNT; i++) {
-      // target decays first (so the surge is a transient, not a sustained hold).
-      burstTarget.current[i] = THREE.MathUtils.damp(
-        burstTarget.current[i],
+    flashEnv.current = THREE.MathUtils.damp(flashEnv.current, 0, FLASH_DECAY, delta);
+
+    // --- Ring flashes: DOM bumpCluster (store pulse) ∨ surge crossings ------
+    for (let i = 0; i < CLUSTER_COUNT; i++) {
+      ringFlashTarget.current[i] = THREE.MathUtils.damp(
+        ringFlashTarget.current[i],
         0,
-        HOVER_BURST_DECAY,
+        2.6,
         delta,
       );
-      if (burstTarget.current[i] < 0.001) burstTarget.current[i] = 0;
-      // envelope attacks fast toward the (decaying) target → expand then resettle.
-      hubBurst.current[i] = THREE.MathUtils.damp(
-        hubBurst.current[i],
-        burstTarget.current[i],
-        HOVER_BURST_ATTACK,
+      if (ringFlashTarget.current[i] < 0.001) ringFlashTarget.current[i] = 0;
+      const target = Math.max(pulseEased.current[i], ringFlashTarget.current[i]);
+      ringFlashEased.current[i] = THREE.MathUtils.damp(
+        ringFlashEased.current[i],
+        target,
+        8,
         delta,
       );
-      if (hubBurst.current[i] < 0.001) hubBurst.current[i] = 0;
     }
 
-    // --- Dispersal ramp (broken only) ---------------------------------------
-    // v6: a resting BASELINE floor so the dead span reads SEVERED even with no
-    // in-view pulse; a pulse drives it toward 1.0 for a stronger scatter.
-    const disperseTarget = broken ? Math.max(DISPERSE_BASELINE, maxPulse) : 0;
-    disperseRef.current = THREE.MathUtils.damp(
-      disperseRef.current,
-      disperseTarget,
-      2.5,
-      delta,
-    );
+    // --- Hover link (store.hovered — DOM panes are the only writer) ----------
+    const hoveredIdx = store.hovered[surfaceKey];
+    if (broken) {
+      // Rising edge (a pane becomes hovered) → one-shot re-cohere tease: the
+      // debris pulls toward the spline, then falls apart again on its own.
+      if (hoveredIdx !== prevHovered.current && hoveredIdx !== null) {
+        recohereTarget.current = 1;
+      }
+      recohereTarget.current = THREE.MathUtils.damp(
+        recohereTarget.current,
+        0,
+        RECOHERE_DECAY,
+        delta,
+      );
+      if (recohereTarget.current < 0.001) recohereTarget.current = 0;
+      recohereEnv.current = THREE.MathUtils.damp(
+        recohereEnv.current,
+        recohereTarget.current,
+        RECOHERE_ATTACK,
+        delta,
+      );
+    } else {
+      for (let i = 0; i < CLUSTER_COUNT; i++) {
+        let target = 1;
+        if (hoveredIdx !== null && hoveredIdx >= 0) {
+          target = hoveredIdx === i ? RING_GLOW_FLARE : RING_GLOW_DIM;
+        }
+        ringGlow.current[i] = THREE.MathUtils.damp(
+          ringGlow.current[i],
+          target,
+          RING_GLOW_DAMP,
+          delta,
+        );
+      }
+    }
+    prevHovered.current = hoveredIdx;
 
-    // --- Subtle whole-group life: damped pointer parallax + faint auto-orbit +
-    // z-breathe. NO free tumble (hubs are layout-pinned to their cards). --------
+    // --- Subtle whole-group life: damped pointer parallax + faint orbit -----
     const ptr = usePointerStore.getState();
-    const px = (ptr.smooth.x - 0.5) * 2; // [-1,1]
+    const px = (ptr.smooth.x - 0.5) * 2;
     const py = (ptr.smooth.y - 0.5) * 2;
     parallaxRef.current.x = THREE.MathUtils.damp(
       parallaxRef.current.x,
@@ -425,11 +399,11 @@ export function NeuralLattice({
       4,
       delta,
     );
-    const orbitY = Math.sin(t * NEURAL_ORBIT_FREQ_Y) * NEURAL_AUTO_ORBIT;
-    const orbitX = Math.sin(t * NEURAL_ORBIT_FREQ_X) * NEURAL_AUTO_ORBIT;
     inner.rotation.set(
-      orbitX + parallaxRef.current.y,
-      orbitY + parallaxRef.current.x,
+      Math.sin(t * NEURAL_ORBIT_FREQ_X) * NEURAL_AUTO_ORBIT +
+        parallaxRef.current.y,
+      Math.sin(t * NEURAL_ORBIT_FREQ_Y) * NEURAL_AUTO_ORBIT +
+        parallaxRef.current.x,
       0,
     );
     inner.position.z = Math.sin(t * 0.21) * NEURAL_Z_BREATHE;
@@ -437,13 +411,29 @@ export function NeuralLattice({
     // --- Drive the field uniforms -------------------------------------------
     const u = build.uniforms;
     u.uTime.value = t;
-    u.uReveal.value = reveal;
-    for (let i = 0; i < CLUSTER_COUNT; i++) u.uPulse.array[i] = pulseEased.current[i];
-    for (let i = 0; i < HUB_COUNT; i++) u.uHubGlow.array[i] = hubGlow.current[i];
-    for (let i = 0; i < HUB_COUNT; i++) u.uHubBurst.array[i] = hubBurst.current[i];
-    u.uHovered.value = hoveredIdx === null ? -1 : hoveredIdx;
-    u.uFlowSpeed.value = FLOW_SPEED;
-    u.uDisperse.value = disperseRef.current;
+    u.uReveal.value = revealDamped.current;
+    u.uSurgeT.value = s.t;
+    u.uSurgeAmp.value = s.amp;
+    u.uFlash.value = flashEnv.current;
+    u.uRecohere.value = recohereEnv.current;
+    for (let i = 0; i < CLUSTER_COUNT; i++) {
+      u.uRingGlow.array[i] = ringGlow.current[i];
+      u.uRingFlash.array[i] = ringFlashEased.current[i];
+    }
+    // Cursor bend (compute tier): pointer → LOCAL rect space; parked at 1e9
+    // when idle, coarse, or outside the band's influence zone. Pure math on
+    // the cached rect — zero layout reads in this loop.
+    if (ptr.active) {
+      const lx = (ptr.smooth.x * vw - cx) / rect.w;
+      const ly = (cy - ptr.smooth.y * ih) / rect.h;
+      if (lx > -0.75 && lx < 0.75 && ly > -0.75 && ly < 0.75) {
+        u.uPointer.value.set(lx, ly, 0);
+      } else {
+        u.uPointer.value.set(1e9, 1e9, 1e9);
+      }
+    } else {
+      u.uPointer.value.set(1e9, 1e9, 1e9);
+    }
     const dpr = Math.min(gl.getPixelRatio(), 2);
     u.uPixelRatio.value = dpr;
     u.uViewport.value.set(size.width * dpr, size.height * dpr);
@@ -452,7 +442,7 @@ export function NeuralLattice({
     if (backendIsWebGPURef.current) build.compute(delta);
   });
 
-  // Dev-only debug handle: project the group center + expose hover/hub state.
+  // Dev-only debug handle.
   if (process.env.NODE_ENV !== "production" && typeof window !== "undefined") {
     const key = `__sersanNeuralLattice_${anchorId}`;
     (window as unknown as Record<string, unknown>)[key] = {
@@ -466,14 +456,20 @@ export function NeuralLattice({
       get hovered() {
         return useNeuralLatticeStore.getState().hovered[surfaceKey];
       },
-      get hubGlow() {
-        return hubGlow.current.slice();
+      get surge() {
+        return { ...surge.current };
       },
-      get hubBurst() {
-        return hubBurst.current.slice();
+      get flash() {
+        return flashEnv.current;
       },
-      get hubs() {
-        return rect?.hubs ?? null;
+      get recohere() {
+        return recohereEnv.current;
+      },
+      get ringFlash() {
+        return ringFlashEased.current.slice();
+      },
+      get ringGlow() {
+        return ringGlow.current.slice();
       },
       get count() {
         return countRef.current;
