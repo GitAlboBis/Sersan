@@ -16,27 +16,42 @@ if (typeof window !== "undefined") {
 }
 
 /**
- * FitSection — "Verdict beats" (cards/scroll refactor, V3 addendum).
+ * FitSection — "Verdict wall" (2026-08-21 home refactor, Noomo grammar).
  *
- * A triage sequence: SIX scrubbed beats, one per GOOD-FIT / NOT-A-FIT pair
- * (index i pairs GOOD_FIT[i] with NOT_A_FIT[i]). "Selective on purpose"
- * made cinematic — every beat delivers one verdict:
+ * "Selective on purpose" as a pinned chapter statement: the title holds the
+ * frame in giant display serif while SIX frosted-glass panes — one per
+ * GOOD-FIT / NOT-A-FIT pair (index i pairs GOOD_FIT[i] with NOT_A_FIT[i]) —
+ * fly through the frame at depth, in FRONT of the type. The backdrop-blur
+ * pane crossing the statement IS the money shot: the serif blurs behind the
+ * glass as a pane passes. Reference: noomoagency.com "GREAT WORK CAN'T
+ * HAPPEN WITHOUT TEAM A."
  *
- *   - LEFT (the star): the good-fit statement in LARGE display serif,
- *     revealed with y/opacity inside the beat's window; its ✓ medallion
- *     boils open through an SVG displacement mask (feTurbulence →
- *     feDisplacementMap over a white circle whose radius is scrubbed
- *     0→final; cyan glow ring is a static box-shadow, no extra filter).
- *   - RIGHT (the judgment): the counterpart in mono, appears mid-window
- *     already readable, then a TORN REDACTION BAR (same displacement chain
- *     + feMorphology dilate for the chunky edge) sweeps across it late in
- *     the window; the row tilts ~−2°, dims to ~0.45 and a small mono ✗
- *     medallion stamps in — struck.
- *   - ACCUMULATION (the payoff): when beat i completes, its pair collapses
- *     upward into two compact ledger rows (small mono, ✓ cyan / ✗ struck)
- *     stacked under the "Good fit" / "Not a fit" labels at the top of each
- *     half. By the final beat both ledgers are complete on screen — the
- *     section's final state IS the summary. Ledger entrances are filter-free.
+ *   - THE STATEMENT (z-10): eyebrow + the section title re-set as chapter
+ *     type (clamp(3rem, 6.5vw, 7.5rem), ~11ch so it breaks into 3–4 lines,
+ *     left at the container gutter, sat slightly below center). It does NOT
+ *     scrub or pose-morph — painted at full opacity from SSR. Its only life
+ *     is ONE slow scrub-driven drift (y +14px → −14px across the runway via
+ *     a quickTo chaser): parallax, not choreography. The eyebrow is a plain
+ *     `.eyebrow` (no [data-eyebrow-text]), so the global LabelScrambler
+ *     gives it the mono decode treatment for free.
+ *   - THE ANNOTATION (z-10): the description string hung top-right as a
+ *     small ~300px column (the Noomo/Lusion pairing). Static.
+ *   - THE PANE FIELD (z-20, in front of the type): a perspective layer
+ *     holding the six [data-fit-pane] glass panes (chrome-less: backdrop
+ *     blur, top hairline, soft shadow, NO border). Each pane carries the
+ *     REAL copy — ✓ + GOOD_FIT[i] over a hairline over the mono ✗-prefixed
+ *     NOT_A_FIT[i] — and beat window i (u∈[i, i+1] of bp = progress ×
+ *     (6 + 0.35)) drives it through ENTER u∈[−0.12, 0.28] (from off-frame,
+ *     alternating sides, yaw/roll-rotated, transparent, 0.94 scale) → HOLD
+ *     u∈[0.28, 0.72] (parked on a right-of-center slot over the statement's
+ *     right half; `.is-held` toggles ONCE at the window's threshold
+ *     crossings and a CSS rule draws the strike through the ✗ line) → EXIT
+ *     u∈[0.72, 1.12] (continues along its travel vector, up and out, fading
+ *     to 1.02 scale — overlapping the next pane's enter: crossfade, never a
+ *     hard cut). Panes alternate z-20/z-30 so consecutive panes cross at
+ *     different depths. Blur is constant per pane (`backdrop-filter` is
+ *     never animated — paint storm) and panes are small (≤30rem), so the
+ *     blur-region budget holds; never blur a full-bleed layer.
  *
  * MECHANICS (same binding contract as case-studies-rail / services-section):
  *   - CSS `position: sticky` pins the viewport frame; the runway height is a
@@ -47,40 +62,41 @@ if (typeof window !== "undefined") {
  *     "top top", end "bottom bottom", invalidateOnRefresh,
  *     onRefreshInit: measure, onRefresh → immediate snap.
  *   - POV smoothing (template-2 discipline, same idiom as the services POV
- *     pan): the scrub NEVER writes block transforms directly — it feeds
- *     windowed targets into per-block gsap.quickTo chasers (y/opacity/
- *     rotation/scale, ~0.8s expo) with identical-value skipping.
- *     Discontinuities (refresh, restored scroll) go through the immediate
- *     path (quickTo's `start` parameter parks the chaser AT the value).
- *   - SVG attribute writes (medallion radius, bar x) are integer-quantized
- *     direct writes with identical-value skipping — every accepted write
- *     re-rasterizes the displacement filter on the CPU. Windows are laid
- *     out so at most the ACTIVE beat's medallion OR bar animates at any
- *     playhead position (filter concurrency ≤ 2 site budget: honored with
- *     room to spare); completed beats' values park and stop writing.
+ *     pan): the scrub NEVER writes pane transforms directly — it feeds
+ *     windowed targets into per-pane gsap.quickTo chasers (x/y/rotation/
+ *     rotationY/opacity/scaleX+scaleY — never the `scale` shorthand, ~0.8s
+ *     expo) with identical-value skipping. Discontinuities (refresh,
+ *     restored scroll) go through the immediate path (quickTo's `start`
+ *     parameter parks the chaser AT the value).
  *   - ALL per-frame values derive analytically from the single trigger
- *     progress — zero getBoundingClientRect in the loop.
- *   - Velocity skew: the center stage shears skewX = clamp(v·k, ±3°),
- *     damped to 0 at rest by a gsap.ticker writer that early-returns once
- *     parked (velocity-derived → damped; position-derived → direct).
+ *     progress; vw/vh pose units are converted through measure()-cached
+ *     viewport units — zero getBoundingClientRect in the loop. No SVG
+ *     filters anywhere in the pinned path.
+ *   - Velocity skew: the pane field (never the statement) shears
+ *     skewX = clamp(v·k, ±3°), damped to 0 at rest by a gsap.ticker writer
+ *     that early-returns once parked (velocity-derived → damped;
+ *     position-derived → direct).
  *   - Chrome: big mono counter "01 / 06" + a thin scrub progress line with
- *     beat ticks track the active beat.
+ *     `+` beat ticks (AT/igloo garnish) track the active beat.
  *
- * SEMANTICS / A11Y: the LEDGER is the real, screen-reader-facing content
- * (two labelled lists — exactly the v1 structure); the center-stage theater
- * is aria-hidden (it duplicates the same 12 strings visually). SSR renders
- * the pinned markup with the beat-0 pose painted inline (good statement 0
- * visible, its medallion open; everything else parked hidden), so the first
- * pinned frame is never empty. Copy is byte-identical to v1 (12 statements,
+ * SEMANTICS / A11Y: the PANES are the real, screen-reader-facing content —
+ * no aria-hidden theater, no duplicate strings. Each pane row carries the
+ * same sr-only "Good fit:" / "Not a fit:" prefixes as the native paired
+ * rows, so AT hears the PAIRING. Counter/progress chrome stays aria-hidden.
+ * SSR renders the pinned markup with the beat-0 pane at its HOLD pose
+ * painted inline (statement fully visible, pane 0 parked with the strike
+ * drawn; every other pane parked at enter-rest), so the first pinned frame
+ * is never empty. Copy is byte-identical to v1 (12 statements,
  * eyebrow/title/description, column labels, closing line).
  *
  * MODES: pinned (SSR default — desktop, fine pointer, no reduced-motion) /
- * native (≤768px, coarse pointer, prefers-reduced-motion): no bars, no
- * filters animating, no pinning — the settled, fully readable state.
- * Keyboard: focusin inside a beat converts to the beat's lock scroll
- * position through Lenis (null-guarded) — same convention as the rails. The
- * `id="fit"` anchor + page.tsx [data-line-anchor="fit"] wrapper semantics
- * are unchanged.
+ * native (≤768px, coarse pointer, prefers-reduced-motion): no panes flying,
+ * no filters animating, no pinning — the settled, fully readable state.
+ * Keyboard: focusin inside a pane converts to the beat's lock scroll
+ * position through Lenis (null-guarded) — same convention as the rails.
+ * Panes contain no focusables today; the handler stays wired for future
+ * links. The `id="fit"` anchor + page.tsx [data-line-anchor="fit"] wrapper
+ * semantics are unchanged.
  *
  * NATIVE LAYOUTS (MOBILE_HOME_SPEC §5.3 — the phone reads 1.90 viewports of
  * Fit and must read 1.30). The native branch serves two, chosen off a
@@ -109,11 +125,6 @@ if (typeof window !== "undefined") {
  *     the hook's `static` mode (reduced motion) every row is focused at
  *     once, so a cover would redact all six counterparts permanently.
  *     Content reachability never depends on motion.
- *
- * The title's italic span keeps the v1 pose transition (invisible centered
- * proxy → real layout slot, measured once per refresh, never per frame): the
- * heading lives in normal flow ABOVE the runway, so the pose scrub composes
- * cleanly with the pin.
  */
 
 const GOOD_FIT_EN = [
@@ -153,10 +164,10 @@ const NOT_A_FIT_IT = [
 ];
 
 /* ------------------------------------------------------------------ *
- *  Beat choreography constants.
+ *  Pane choreography constants.
  *
  *  Beat space: progress × BP_MAX, where beat i owns [i, i+1] plus the
- *  shared overlap margins. TAIL gives beat 6's collapse room to finish
+ *  shared overlap margins. TAIL gives pane 6's exit room to finish
  *  before the sticky releases (it does NOT change the runway height —
  *  each beat simply gets 6/6.35 of its nominal 70vh of scroll).
  * ------------------------------------------------------------------ */
@@ -167,88 +178,58 @@ const BEAT_VH = 0.7;
 const TAIL = 0.35;
 const BP_MAX = BEATS + TAIL;
 
-/** Beat i's GOOD statement enters this early (overlaps the previous
- *  beat's collapse so the sequence flows rather than steps). Beat 0 is
- *  pre-entered (SSR paints it) — the stage is never empty at pin-in. */
-const IN_LEAD = 0.12;
-const IN_DUR = 0.4;
-/** Medallion opens inside the enter window (after the block is moving). */
-const MED_START = 0.04;
-/** BAD statement appears mid-window, already readable... */
-const BAD_IN_START = 0.2;
-const BAD_IN_DUR = 0.28;
-/** ...then the torn bar sweeps it late in the window. */
-const STRIKE_START = 0.56;
-const STRIKE_DUR = 0.3;
-const STRIKE_DIM = 0.55; // struck row settles at opacity ≈ 0.45
-const STRIKE_TILT_DEG = 2;
-/** The mono ✗ stamps as the bar lands. */
-const X_START = 0.68;
-const X_DUR = 0.2;
-/** Collapse window — overlaps the NEXT beat's enter ([0.88, 1.22] vs the
- *  next beat's [0.88, 1.28] enter span): crossfade, never a hard cut. */
-const OUT_START = 0.88;
-const OUT_DUR = 0.34;
-/** Ledger rows pop as the pair flies out (filter-free entrances). */
-const LEDGER_START = 0.96;
-const LEDGER_DUR = 0.26;
+/** Pane windows in beat-local u. ENTER starts early (−0.12) so it overlaps
+ *  the previous pane's EXIT tail (which runs to u=1.12 ≡ next-beat u=0.12):
+ *  crossfade, never a hard cut. Pane 0's enter is pre-completed — SSR
+ *  paints it at HOLD, so the first pinned frame is never empty. */
+const ENTER_START = -0.12;
+const ENTER_DUR = 0.4; // ENTER u∈[−0.12, 0.28]
+const HOLD_START = 0.28;
+const HOLD_END = 0.72; // HOLD u∈[0.28, 0.72] — `.is-held`, the strike draws
+const EXIT_START = 0.72;
+const EXIT_DUR = 0.4; // EXIT u∈[0.72, 1.12]
 
-/** Block travel (px): enter rises from below, collapse flies up toward
- *  the ledger at the top of the frame. */
-const GOOD_Y_IN = 44;
-const BAD_Y_IN = 28;
-const Y_OUT = 52;
-/** Blocks shrink slightly as they collapse into the ledger. */
-const COLLAPSE_SCALE = 0.08;
+/** Pane poses, authored in vw/vh and converted to px through the
+ *  measure()-cached viewport units (never a layout read in the frame
+ *  loop). Even panes enter from the right/bottom, odd from the left;
+ *  hold slots alternate around a right-of-center column so panes overlap
+ *  the statement's right half (the Noomo money shot: the giant serif
+ *  blurs behind the glass as a pane parks). EXIT continues each pane's
+ *  travel vector — further across, up and out — while it fades. */
+const PANE_ENTER_X_VW = 54;
+const PANE_ENTER_Y_VH = 18;
+const PANE_ENTER_ROT_Z = 4; // deg, roll (sign alternates per pane)
+const PANE_ENTER_ROT_Y = 16; // deg, yaw (opposite sign to the roll)
+const PANE_ENTER_SCALE = 0.94;
+const PANE_HOLD_X_EVEN_VW = 8;
+const PANE_HOLD_X_ODD_VW = -2;
+const PANE_HOLD_Y_VH = -2;
+const PANE_HOLD_ROT = 1.5; // deg — rotations decay here at hold
+const PANE_EXIT_DRIFT_VW = 10;
+const PANE_EXIT_Y_VH = -20;
+const PANE_EXIT_SCALE = 1.02;
+
+/** The statement's one scrub-driven drift: y +14px → −14px across the
+ *  whole runway — parallax, not choreography. */
+const STATEMENT_DRIFT_PX = 14;
 
 /** Medallion viewBox is 200×200; the disc is r=88. Final mask radius must
- *  cover disc + stroke + the ±40 displacement excursion of the edge. */
+ *  cover disc + stroke + the ±40 displacement excursion of the edge.
+ *  (Native branches only — the pinned path renders no medallions.) */
 const MEDALLION_R_FINAL = 140;
 
-/** Redaction bar viewBox (stretched over the row pill, aspect-agnostic).
- *  The rect is wider than the viewBox by BAR_PAD per side so the resting
- *  cover clips straight at both viewBox edges; only the LEADING (right)
- *  edge is ever the visible torn one while it sweeps left→right in. */
-const BAR_W = 400;
-const BAR_H = 64;
-const BAR_PAD = 48;
-const BAR_RECT_W = BAR_W + BAR_PAD * 2;
-/** Rest-out x: fully off-left including the displacement excursion. */
-const BAR_X_START = -(BAR_RECT_W + 40);
-/** Swept-in x: covers the viewBox with torn-edge margin on both sides. */
-const BAR_X_END = -BAR_PAD;
-
-/** Velocity skew on the center stage (rail idiom: clamped, ticker-damped). */
+/** Velocity skew on the pane field (rail idiom: clamped, ticker-damped). */
 const SKEW_MAX_DEG = 3;
 const SKEW_DEG_PER_PXS = 0.0015;
 
-/** focusin → scroll lock point inside a beat (bad row revealed, pre-strike). */
+/** focusin → scroll lock point inside a beat (pane parked at HOLD). */
 const FOCUS_LOCK_AT = 0.5;
-
-/** Title pose: starting scale of the italic span at the centered proxy. */
-const POSE_SCALE = 1.4;
-/** Pose scrub window as a viewport-height fraction (explicit px `end`). */
-const POSE_WINDOW_VH = 0.35;
 
 /** Clamped smoothstep — C1 at both ends of every window (repo convention:
  *  scrubbed beats must be C1 at their boundaries). */
 function ss01(t: number) {
   const c = t < 0 ? 0 : t > 1 ? 1 : t;
   return c * c * (3 - 2 * c);
-}
-
-/** Integer-quantized SVG attribute writer. Quantizing (a) matches the
- *  template's discrete attr interpolation and (b) lets us skip identical
- *  writes — every accepted write re-rasterizes the displacement filter. */
-function quantizedAttrWriter(el: Element | null, attr: string) {
-  if (!el) return () => {};
-  let last = Number.NaN;
-  return (value: number) => {
-    const q = Math.round(value);
-    if (q === last) return;
-    last = q;
-    el.setAttribute(attr, String(q));
-  };
 }
 
 type ChaseWriter = (value: number, immediate?: boolean) => void;
@@ -277,10 +258,9 @@ function makeChase(
 
 /**
  * ✓/✗ medallion. A white circle inside a <mask>, displaced by a static
- * fractal-noise field; the scrub grows `r` from `initialRadius` so the
- * medallion boils into existence. Ids sanitized from useId (duplicated ids
- * silently break masks). The native fallback keeps the default (open) —
- * only the pinned stage arms closed medallions (beats 1+).
+ * fractal-noise field. Ids sanitized from useId (duplicated ids silently
+ * break masks). NATIVE BRANCHES ONLY: nothing arms it closed or animates
+ * the mask any more — the verdict wall's pinned path is filter-free.
  */
 function FitMedallion({
   kind,
@@ -365,63 +345,6 @@ function FitMedallion({
   );
 }
 
-/**
- * Torn redaction bar (built locally; the old shared fx/redacted-reveal it
- * deliberately did NOT reuse has since been deleted as dead code). An ink
- * rect stretched over the bad statement; the scrub
- * slides `x` from off-left to covering, through turbulence → displacement
- * → feMorphology(dilate 2), so the advancing RIGHT edge reads as paper
- * tearing across the sentence. SSR ships x = BAR_X_START (bar off, text
- * readable — the beat block's own opacity hides it pre-window anyway).
- */
-function TornStrikeBar() {
-  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const filterId = `fit-tear-${uid}`;
-  return (
-    <svg
-      aria-hidden="true"
-      className="pointer-events-none absolute inset-0 h-full w-full"
-      viewBox={`0 0 ${BAR_W} ${BAR_H}`}
-      preserveAspectRatio="none"
-    >
-      <defs>
-        <filter id={filterId} x="-15%" y="-15%" width="130%" height="130%">
-          <feTurbulence
-            type="fractalNoise"
-            baseFrequency="0.06"
-            numOctaves="2"
-            result="noise"
-          />
-          {/* Displacement is tuned below the medallion's 40: the bar's
-              viewBox is non-uniformly stretched over a shallow pill, so 40
-              user-units would shred half the bar height. */}
-          <feDisplacementMap
-            in="SourceGraphic"
-            in2="noise"
-            scale="28"
-            xChannelSelector="R"
-            yChannelSelector="G"
-            result="displacement"
-          />
-          <feMorphology operator="dilate" radius="2" in="displacement" />
-        </filter>
-      </defs>
-      <rect
-        data-fit-bar
-        x={BAR_X_START}
-        y="3"
-        width={BAR_RECT_W}
-        height={BAR_H - 6}
-        rx="4"
-        style={{
-          fill: "hsl(var(--ink) / 0.92)",
-          filter: `url(#${filterId})`,
-        }}
-      />
-    </svg>
-  );
-}
-
 export default function FitSection() {
   const { language } = useLanguage();
   const isEn = language === "en";
@@ -445,8 +368,6 @@ export default function FitSection() {
   // zero re-renders.
   const pairFocusRef = useCentreFocus();
 
-  const headingRef = useRef<HTMLDivElement | null>(null);
-  const poseProxyRef = useRef<HTMLSpanElement | null>(null);
   const runwayRef = useRef<HTMLDivElement | null>(null);
   const stickyRef = useRef<HTMLDivElement | null>(null);
   const skewRef = useRef<HTMLDivElement | null>(null);
@@ -512,130 +433,95 @@ export default function FitSection() {
     return () => cancelAnimationFrame(raf);
   }, [detected, mode]);
 
-  // Verdict-beats scrub — pinned mode only, after detection settles.
-  // isEn is a dep on purpose: the EN↔IT toggle swaps copy in place (and
-  // remounts the SectionHeading <h2>), so the whole choreography rebuilds,
-  // re-resolves the pose span and re-measures (cheap, rare).
+  // Verdict-wall scrub — pinned mode only, after detection settles.
+  // isEn is a dep on purpose: the EN↔IT toggle swaps copy in place, so the
+  // whole choreography rebuilds and re-measures (cheap, rare).
   useEffect(() => {
     if (!detected || mode !== "pinned") return;
-    const headingWrap = headingRef.current;
-    const proxy = poseProxyRef.current;
     const runway = runwayRef.current;
     const sticky = stickyRef.current;
     const skewWrap = skewRef.current;
-    if (!headingWrap || !runway || !sticky || !skewWrap) return;
+    if (!runway || !sticky || !skewWrap) return;
     // Handle for the mode-flip effect above (React's ref is already detached
     // by the time that effect runs on a pinned→native flip).
     runwayNodeRef.current = runway;
 
     /* ---- Collect targets ONCE (no per-frame queries) ----------------- */
 
-    const beatEls = Array.from(
-      sticky.querySelectorAll<HTMLElement>("[data-fit-beat]"),
+    const paneEls = Array.from(
+      sticky.querySelectorAll<HTMLElement>("[data-fit-pane]"),
     );
-    const lgEls = Array.from(
-      sticky.querySelectorAll<HTMLElement>("[data-fit-ledger-good]"),
-    );
-    const lwEls = Array.from(
-      sticky.querySelectorAll<HTMLElement>("[data-fit-ledger-warn]"),
-    );
+    const statementEl =
+      sticky.querySelector<HTMLElement>("[data-fit-statement]");
     const counterEl = sticky.querySelector<HTMLElement>("[data-fit-counter]");
     const lineEl = sticky.querySelector<HTMLElement>("[data-fit-line]");
-    if (beatEls.length === 0) return;
+    if (paneEls.length === 0) return;
 
-    interface BeatCtl {
-      els: (HTMLElement | null)[];
-      writeMask: (v: number) => void;
-      writeBar: (v: number) => void;
-      goodO: ChaseWriter;
-      goodY: ChaseWriter;
-      goodSX: ChaseWriter;
-      goodSY: ChaseWriter;
-      badO: ChaseWriter;
-      badY: ChaseWriter;
-      badR: ChaseWriter;
-      badSX: ChaseWriter;
-      badSY: ChaseWriter;
-      xO: ChaseWriter;
-      xSX: ChaseWriter;
-      xSY: ChaseWriter;
-      lgO: ChaseWriter;
-      lgY: ChaseWriter;
-      lwO: ChaseWriter;
-      lwY: ChaseWriter;
+    // Viewport units for the vw/vh-authored poses — cached here and
+    // refreshed by measure(), never read in the frame loop.
+    let vwUnit = window.innerWidth / 100;
+    let vhUnit = window.innerHeight / 100;
+
+    interface PaneCtl {
+      el: HTMLElement;
+      /** +1 = even pane (enters right), −1 = odd pane (enters left). */
+      sign: 1 | -1;
+      /** `.is-held` shadow — class writes happen on threshold crossings
+       *  only, never per frame. */
+      held: boolean;
+      x: ChaseWriter;
+      y: ChaseWriter;
+      rz: ChaseWriter;
+      ry: ChaseWriter;
+      o: ChaseWriter;
+      sx: ChaseWriter;
+      sy: ChaseWriter;
     }
 
-    const beats: BeatCtl[] = beatEls.map((el, i) => {
-      const goodEl = el.querySelector<HTMLElement>("[data-fit-good]");
-      const badEl = el.querySelector<HTMLElement>("[data-fit-bad]");
-      const xEl = el.querySelector<HTMLElement>("[data-fit-x]");
-      const mask = el.querySelector<SVGCircleElement>("[data-fit-mask]");
-      const bar = el.querySelector<SVGRectElement>("[data-fit-bar]");
-      const lgEl = lgEls[i] ?? null;
-      const lwEl = lwEls[i] ?? null;
+    const panes: PaneCtl[] = paneEls.map((el, i) => {
+      const sign: 1 | -1 = i % 2 === 0 ? 1 : -1;
+      const holdX =
+        (sign > 0 ? PANE_HOLD_X_EVEN_VW : PANE_HOLD_X_ODD_VW) * vwUnit;
 
       // Prime the FULL transform of every chaser target BEFORE creating the
       // quickTo writers (repo convention: unrecorded components trip "not
-      // eligible for reset"). This is also the arm: the SSR markup ships the
-      // beat-0 pose; every other beat parks at its progress-0 pose here, and
-      // the init snap below re-syncs any restored mid-page scroll position.
-      if (goodEl) {
-        gsap.set(goodEl, {
-          y: i === 0 ? 0 : GOOD_Y_IN,
-          opacity: i === 0 ? 1 : 0,
-          scaleX: 1,
-          scaleY: 1,
-          transformOrigin: "50% 50%",
-        });
-      }
-      if (badEl) {
-        gsap.set(badEl, {
-          y: BAD_Y_IN,
-          opacity: 0,
-          rotation: 0,
-          scaleX: 1,
-          scaleY: 1,
-          transformOrigin: "50% 50%",
-        });
-      }
-      if (xEl) {
-        gsap.set(xEl, {
-          opacity: 0,
-          scaleX: 0.6,
-          scaleY: 0.6,
-          transformOrigin: "50% 50%",
-        });
-      }
-      if (lgEl) gsap.set(lgEl, { y: 10, opacity: 0 });
-      if (lwEl) gsap.set(lwEl, { y: 10, opacity: 0 });
-
-      const writeMask = quantizedAttrWriter(mask, "r");
-      const writeBar = quantizedAttrWriter(bar, "x");
-      writeMask(i === 0 ? MEDALLION_R_FINAL : 0);
-      writeBar(BAR_X_START);
+      // eligible for reset"; the REAL scaleX/scaleY props, never the `scale`
+      // shorthand). xPercent/yPercent center the pane on its base slot —
+      // the chasers compose x/y on top and never touch the percents. This
+      // is also the arm: the SSR markup ships pane 0 at HOLD; every other
+      // pane parks at enter-rest here, and the init snap below re-syncs any
+      // restored mid-page scroll position.
+      gsap.set(el, {
+        xPercent: -50,
+        yPercent: -50,
+        x: i === 0 ? holdX : PANE_ENTER_X_VW * sign * vwUnit,
+        y: (i === 0 ? PANE_HOLD_Y_VH : PANE_ENTER_Y_VH) * vhUnit,
+        rotation: (i === 0 ? PANE_HOLD_ROT : PANE_ENTER_ROT_Z) * sign,
+        rotationY: (i === 0 ? -PANE_HOLD_ROT : -PANE_ENTER_ROT_Y) * sign,
+        opacity: i === 0 ? 1 : 0,
+        scaleX: i === 0 ? 1 : PANE_ENTER_SCALE,
+        scaleY: i === 0 ? 1 : PANE_ENTER_SCALE,
+        transformOrigin: "50% 50%",
+      });
 
       return {
-        els: [goodEl, badEl, xEl, lgEl, lwEl],
-        writeMask,
-        writeBar,
-        goodO: makeChase(goodEl, "opacity", 0.8, "expo"),
-        goodY: makeChase(goodEl, "y", 0.8, "expo"),
-        goodSX: makeChase(goodEl, "scaleX", 0.8, "expo"),
-        goodSY: makeChase(goodEl, "scaleY", 0.8, "expo"),
-        badO: makeChase(badEl, "opacity", 0.8, "expo"),
-        badY: makeChase(badEl, "y", 0.8, "expo"),
-        badR: makeChase(badEl, "rotation", 0.8, "expo"),
-        badSX: makeChase(badEl, "scaleX", 0.8, "expo"),
-        badSY: makeChase(badEl, "scaleY", 0.8, "expo"),
-        xO: makeChase(xEl, "opacity", 0.4, "power2.out"),
-        xSX: makeChase(xEl, "scaleX", 0.5, "back.out(2)"),
-        xSY: makeChase(xEl, "scaleY", 0.5, "back.out(2)"),
-        lgO: makeChase(lgEl, "opacity", 0.5, "power2.out"),
-        lgY: makeChase(lgEl, "y", 0.5, "power2.out"),
-        lwO: makeChase(lwEl, "opacity", 0.5, "power2.out"),
-        lwY: makeChase(lwEl, "y", 0.5, "power2.out"),
+        el,
+        sign,
+        held: el.classList.contains("is-held"),
+        x: makeChase(el, "x", 0.8, "expo"),
+        y: makeChase(el, "y", 0.8, "expo"),
+        rz: makeChase(el, "rotation", 0.8, "expo"),
+        ry: makeChase(el, "rotationY", 0.8, "expo"),
+        o: makeChase(el, "opacity", 0.8, "expo"),
+        sx: makeChase(el, "scaleX", 0.8, "expo"),
+        sy: makeChase(el, "scaleY", 0.8, "expo"),
       };
     });
+
+    // The statement's single parallax drift (never a pose morph). Primed
+    // to match the SSR inline translateY before its chaser is created.
+    if (statementEl) gsap.set(statementEl, { y: STATEMENT_DRIFT_PX });
+    const stmtY = makeChase(statementEl, "y", 0.8, "expo");
 
     /* ---- Chrome writers (direct, identical-value skipped) ------------ */
 
@@ -646,54 +532,70 @@ export default function FitSection() {
 
     /* ---- The one analytic frame function ------------------------------ *
      * Everything derives from the single trigger progress. quickTo chasers
-     * + quantized attr writers both skip identical values, so parked beats
-     * cost a handful of float compares per frame and zero writes.          */
+     * skip identical values, so parked panes cost a handful of float
+     * compares per frame and zero writes.                                  */
     const applyAll = (progress: number, immediate: boolean) => {
       const bp = progress * BP_MAX;
-      for (let i = 0; i < beats.length; i++) {
-        const b = beats[i];
+      for (let i = 0; i < panes.length; i++) {
+        const p = panes[i];
         const u = bp - i;
+        const s = p.sign;
 
-        // GOOD — enter from below, hold, collapse up into the ledger.
-        const eIn = i === 0 ? 1 : ss01((u + IN_LEAD) / IN_DUR);
-        const eOut = ss01((u - OUT_START) / OUT_DUR);
-        const collapse = 1 - COLLAPSE_SCALE * eOut;
-        b.goodO(eIn * (1 - eOut), immediate);
-        b.goodY((1 - eIn) * GOOD_Y_IN - eOut * Y_OUT, immediate);
-        b.goodSX(collapse, immediate);
-        b.goodSY(collapse, immediate);
-        // Medallion boils open inside the enter window (beat 0 ships open —
-        // its SSR pose is the painted first frame). Monotonic in u: it stays
-        // open through the collapse and reverses cleanly when scrubbing up.
-        b.writeMask(
-          i === 0
-            ? MEDALLION_R_FINAL
-            : MEDALLION_R_FINAL * ss01((u - MED_START) / IN_DUR),
+        // Windowed pose scalars (C1 smoothstep at every boundary — repo
+        // convention). Pane 0's enter is pre-completed: SSR paints it at
+        // HOLD, so scrubbing to the very top parks it there, never empty.
+        const eIn = i === 0 ? 1 : ss01((u - ENTER_START) / ENTER_DUR);
+        const eOut = ss01((u - EXIT_START) / EXIT_DUR);
+
+        // Poses in px from the measure()-cached viewport units. EXIT
+        // continues the entry travel vector: further across, up and out.
+        const xEnter = PANE_ENTER_X_VW * s * vwUnit;
+        const xHold =
+          (s > 0 ? PANE_HOLD_X_EVEN_VW : PANE_HOLD_X_ODD_VW) * vwUnit;
+        const xExit = xHold - PANE_EXIT_DRIFT_VW * s * vwUnit;
+        const yEnter = PANE_ENTER_Y_VH * vhUnit;
+        const yHold = PANE_HOLD_Y_VH * vhUnit;
+        const yExit = PANE_EXIT_Y_VH * vhUnit;
+
+        p.x(xEnter + (xHold - xEnter) * eIn + (xExit - xHold) * eOut, immediate);
+        p.y(yEnter + (yHold - yEnter) * eIn + (yExit - yHold) * eOut, immediate);
+        // Rotations decay to ±PANE_HOLD_ROT at hold, then rotate back out
+        // toward their entry attitude as the pane leaves.
+        p.rz(
+          s *
+            (PANE_ENTER_ROT_Z +
+              (PANE_HOLD_ROT - PANE_ENTER_ROT_Z) * eIn +
+              (PANE_ENTER_ROT_Z - PANE_HOLD_ROT) * eOut),
+          immediate,
         );
+        p.ry(
+          -s *
+            (PANE_ENTER_ROT_Y +
+              (PANE_HOLD_ROT - PANE_ENTER_ROT_Y) * eIn +
+              (PANE_ENTER_ROT_Y - PANE_HOLD_ROT) * eOut),
+          immediate,
+        );
+        p.o(eIn * (1 - eOut), immediate);
+        const sc =
+          PANE_ENTER_SCALE +
+          (1 - PANE_ENTER_SCALE) * eIn +
+          (PANE_EXIT_SCALE - 1) * eOut;
+        p.sx(sc, immediate);
+        p.sy(sc, immediate);
 
-        // BAD — readable mid-window, then torn-redacted + tilted + dimmed.
-        const bIn = ss01((u - BAD_IN_START) / BAD_IN_DUR);
-        const sT = ss01((u - STRIKE_START) / STRIKE_DUR);
-        b.badO(bIn * (1 - STRIKE_DIM * sT) * (1 - eOut), immediate);
-        b.badY((1 - bIn) * BAD_Y_IN - eOut * Y_OUT, immediate);
-        b.badR(-STRIKE_TILT_DEG * sT, immediate);
-        b.badSX(collapse, immediate);
-        b.badSY(collapse, immediate);
-        b.writeBar(BAR_X_START + (BAR_X_END - BAR_X_START) * sT);
-
-        // ✗ stamp — filter-free pop as the bar lands.
-        const xT = ss01((u - X_START) / X_DUR);
-        b.xO(xT, immediate);
-        b.xSX(0.6 + 0.4 * xT, immediate);
-        b.xSY(0.6 + 0.4 * xT, immediate);
-
-        // Ledger rows — the accumulation payoff (filter-free entrances).
-        const lT = ss01((u - LEDGER_START) / LEDGER_DUR);
-        b.lgO(lT, immediate);
-        b.lgY((1 - lT) * 10, immediate);
-        b.lwO(lT, immediate);
-        b.lwY((1 - lT) * 10, immediate);
+        // `.is-held` — written ONCE per threshold crossing (never per
+        // frame): inside the HOLD window the CSS strike draws through the
+        // ✗ line. Pane 0's window opens at u=0 (its enter is pre-done), so
+        // the class agrees with the SSR markup at progress 0.
+        const held = u < HOLD_END && (i === 0 || u >= HOLD_START);
+        if (held !== p.held) {
+          p.held = held;
+          p.el.classList.toggle("is-held", held);
+        }
       }
+
+      // Statement parallax: one slow drift across the whole runway.
+      stmtY(STATEMENT_DRIFT_PX * (1 - 2 * progress), immediate);
 
       // Counter tracks the active beat; textContent swap only on change.
       const active = Math.min(BEATS - 1, Math.max(0, Math.floor(bp)));
@@ -748,6 +650,10 @@ export default function FitSection() {
       skewValue = 0;
       velTarget = 0;
       const vh = window.innerHeight;
+      // Refresh the pose units the frame loop converts through (its only
+      // viewport dependency — never read inside the loop itself).
+      vwUnit = window.innerWidth / 100;
+      vhUnit = vh / 100;
       // Content-agnostic runway: 100vh + 6×70vh in px (a font swap can
       // never change document height → no downstream anchor drift).
       travel = Math.round(vh * BEATS * BEAT_VH);
@@ -755,74 +661,6 @@ export default function FitSection() {
       secTop = runway.getBoundingClientRect().top + window.scrollY;
     };
     measure();
-
-    /* ---- Title pose: centered/1.4× proxy → real layout slot ----------- */
-
-    // The italic span lives inside SectionHeading's <h2>, which SplitText
-    // temporarily rewraps (and may orphan on revert / language swap), so the
-    // node is re-resolved whenever the cached one leaves the document —
-    // an O(1) isConnected check per write, never a per-frame rect read.
-    let poseSpan: HTMLElement | null = null;
-    let setPose: ReturnType<typeof gsap.quickSetter> | null = null;
-    const ensureSpan = () => {
-      if (poseSpan && poseSpan.isConnected) return;
-      poseSpan = headingWrap.querySelector<HTMLElement>("[data-fit-pose]");
-      setPose = poseSpan ? gsap.quickSetter(poseSpan, "css") : null;
-    };
-
-    const pose = { dx: 0, dy: 0 };
-    const poseProps = { x: 0, y: 0, scale: 1 };
-    const applyPose = (p: number) => {
-      ensureSpan();
-      if (!setPose) return;
-      const inv = 1 - p;
-      poseProps.x = pose.dx * inv;
-      poseProps.y = pose.dy * inv;
-      poseProps.scale = 1 + (POSE_SCALE - 1) * inv;
-      setPose(poseProps);
-    };
-
-    // Measured ONCE per refresh (onRefreshInit), with the span's transform
-    // flattened first — rects include transforms. Scaling happens about the
-    // span's center, so the deltas are scale-independent.
-    const measurePose = () => {
-      ensureSpan();
-      if (!poseSpan || !proxy) return;
-      gsap.set(poseSpan, { x: 0, y: 0, scale: 1 });
-      const sr = poseSpan.getBoundingClientRect();
-      const pr = proxy.getBoundingClientRect();
-      pose.dx = pr.left + pr.width / 2 - (sr.left + sr.width / 2);
-      pose.dy = pr.top + pr.height / 2 - (sr.top + sr.height / 2);
-    };
-    measurePose();
-
-    // Arm the starting pose imperatively BEFORE the trigger exists — a scrub
-    // sync onto a playhead already at the target progress never renders, so
-    // applyPose would not run until the first tick past `start` (a visible
-    // teleport of the italic span). The trigger below re-syncs any restored
-    // mid-page scroll position.
-    applyPose(0);
-
-    const poseState = { p: 0 };
-    const poseTween = gsap.fromTo(
-      poseState,
-      { p: 0 },
-      { p: 1, ease: "none", onUpdate: () => applyPose(poseState.p) },
-    );
-
-    const stPose = ScrollTrigger.create({
-      trigger: headingWrap,
-      start: "clamp(top bottom-=10%)",
-      end: () => "+=" + Math.round(window.innerHeight * POSE_WINDOW_VH),
-      scrub: true, // raw — Lenis is the only smoother (double-smoothing gotcha)
-      animation: poseTween,
-      invalidateOnRefresh: true,
-      onRefreshInit: measurePose,
-      // measurePose flattens the span's transform to read clean rects; if the
-      // refresh leaves progress unchanged the scrub never re-renders, so
-      // re-apply the last scrubbed pose explicitly (idempotent with onUpdate).
-      onRefresh: () => applyPose(poseState.p),
-    });
 
     /* ---- The runway trigger (ONE, no pin:, no scrub tween) ------------ */
 
@@ -856,8 +694,8 @@ export default function FitSection() {
 
     // Site-wide snap stations (lib/scroll-snap): the runway start + each
     // beat's LOCK position — the same Ys the focusin handler computes
-    // (FOCUS_LOCK_AT inside the beat window), where the verdict row is fully
-    // revealed. Lazy getters over the live measure() vars.
+    // (FOCUS_LOCK_AT inside the beat window), where the pane is parked at
+    // HOLD with the strike drawn. Lazy getters over the live measure() vars.
     const clearSnapPoints: Array<() => void> = [
       snapPoint(() => secTop),
       ...Array.from({ length: BEATS }, (_, i) =>
@@ -865,18 +703,22 @@ export default function FitSection() {
       ),
     ];
 
-    /* ---- Keyboard: focusin inside a beat → its lock scroll position ---- */
+    /* ---- Keyboard: focusin inside a pane → its lock scroll position --- *
+     * Panes contain no focusables today (the strike row is plain text);
+     * the handler stays wired so any future link inside a pane converts
+     * focus into the pane's HOLD scroll position instead of the browser
+     * scrolling the overflow:hidden sticky frame off its pin.             */
 
     const onFocusIn = (e: FocusEvent) => {
-      const beat = (e.target as HTMLElement | null)?.closest<HTMLElement>(
-        "[data-fit-beat]",
+      const pane = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+        "[data-fit-pane]",
       );
-      if (!beat) return;
+      if (!pane) return;
       // Undo the browser's auto-scroll of the overflow:hidden sticky frame
       // BEFORE anything reads layout.
       sticky.scrollTop = 0;
       sticky.scrollLeft = 0;
-      const idx = Number(beat.dataset.fitBeat ?? 0);
+      const idx = Number(pane.dataset.fitPane ?? 0);
       const targetY = secTop + travel * ((idx + FOCUS_LOCK_AT) / BP_MAX);
       if (Math.abs(window.scrollY - targetY) < 2) return;
       const lenis = getLenis();
@@ -885,9 +727,9 @@ export default function FitSection() {
     };
     sticky.addEventListener("focusin", onFocusIn);
 
-    // Late re-measure once webfonts land AND SectionHeading's SplitText
-    // intro has reverted (~1.6s): the display serif changes both the pose
-    // span's slot and the heading's height above the runway. The provider
+    // Late re-measure once webfonts land (~1.6s guard for other sections'
+    // SplitText intros): the runway itself is pure-vh, but the CONTENT ABOVE
+    // this section reflows on the font swap, which moves secTop. The provider
     // deliberately never refreshes ScrollTrigger on "/", so the section owns
     // this one-shot (refresh() is global and idempotent — the rails' own
     // onRefreshInit measures self-heal on the same pass).
@@ -909,23 +751,19 @@ export default function FitSection() {
       clearSnapPoints.forEach((off) => off());
       gsap.ticker.remove(skewTick);
       st.kill();
-      stPose.kill();
-      poseTween.kill();
-      // Settle to a readable state (masks open, bars off, writes cleared) —
-      // the next arm (language toggle re-run) re-primes everything anyway.
-      beats.forEach((b) => {
-        b.writeMask(MEDALLION_R_FINAL);
-        b.writeBar(BAR_X_START);
-        b.els.forEach((el) => {
-          if (!el) return;
-          gsap.killTweensOf(el);
-          gsap.set(el, { clearProps: "transform,opacity" });
-        });
+      // Settle to a readable state — the next arm (language toggle re-run)
+      // re-primes every pose anyway. `.is-held` classes are left as-is: the
+      // re-arm's init snap re-derives them from the restored progress.
+      panes.forEach((p) => {
+        gsap.killTweensOf(p.el);
+        gsap.set(p.el, { clearProps: "transform,opacity" });
       });
+      if (statementEl) {
+        gsap.killTweensOf(statementEl);
+        gsap.set(statementEl, { clearProps: "transform" });
+      }
       gsap.set(skewWrap, { skewX: 0 });
       if (lineEl) gsap.set(lineEl, { clearProps: "transform" });
-      ensureSpan();
-      if (poseSpan) gsap.set(poseSpan, { clearProps: "transform" });
       // The px runway height is deliberately NOT cleared here. This cleanup
       // runs on every EN↔IT toggle too (isEn is a dep), and collapsing the
       // runway mid-read clamps the scroll position and ejects the reader out
@@ -934,56 +772,42 @@ export default function FitSection() {
     };
   }, [detected, mode, isEn]);
 
-  /* ---- Shared blocks (heading / closing — copy byte-identical) -------- */
+  /* ---- Shared strings / blocks (copy byte-identical) ------------------ */
 
-  // `mb-6` is the base-only value: the pinned branch never renders below
-  // 769px (its own media gate), so `sm:mb-16` is the only rule it can ever
-  // see and the desktop rhythm is untouched. Below 640px the 48px gap under
-  // the heading is a third of a paired row — chrome the phone cannot afford.
+  // Single-sourced: the native branch renders it through SectionHeading,
+  // the pinned branch hangs it top-right as the annotation.
+  const description = isEn
+    ? "A clear no protects both of us. About a third of scoping calls end with us recommending you don't engage SerSan: sometimes because it's the wrong moment, sometimes because we're the wrong studio."
+    : "Un no chiaro tutela entrambi. Circa un terzo delle scoping call si chiude con la nostra raccomandazione di non ingaggiare SerSan: a volte perché è il momento sbagliato, a volte perché siamo lo studio sbagliato.";
+
+  // NATIVE BRANCHES ONLY (the pinned branch sets the title as the in-frame
+  // chapter statement instead). `mb-6` is the base-only value: below 640px
+  // the 48px `sm:mb-16` gap under the heading is a third of a paired row —
+  // chrome the phone cannot afford.
   const headingBlock = (
-    <div ref={headingRef} className="relative mb-6 sm:mb-16">
+    <div className="relative mb-6 sm:mb-16">
       <SectionHeading
         eyebrow={isEn ? "Selective on purpose" : "Selettivi per scelta"}
         title={
           isEn ? (
             <>
               We are honest about{" "}
-              <span
-                data-fit-pose
-                className="inline-block will-change-transform font-display italic text-ink"
-              >
+              <span className="inline-block font-display italic text-ink">
                 who we work with.
               </span>
             </>
           ) : (
             <>
               Siamo onesti su{" "}
-              <span
-                data-fit-pose
-                className="inline-block will-change-transform font-display italic text-ink"
-              >
+              <span className="inline-block font-display italic text-ink">
                 con chi lavoriamo.
               </span>
             </>
           )
         }
-        description={
-          isEn
-            ? "A clear no protects both of us. About a third of scoping calls end with us recommending you don't engage SerSan: sometimes because it's the wrong moment, sometimes because we're the wrong studio."
-            : "Un no chiaro tutela entrambi. Circa un terzo delle scoping call si chiude con la nostra raccomandazione di non ingaggiare SerSan: a volte perché è il momento sbagliato, a volte perché siamo lo studio sbagliato."
-        }
+        description={description}
         className="max-w-3xl"
       />
-      {/* Invisible proxy — the "before" pose the italic span scrubs in
-          from. Measured, never shown; copy duplicated here is aria-hidden
-          and invisible (not user-facing). */}
-      <span
-        ref={poseProxyRef}
-        aria-hidden="true"
-        className="invisible pointer-events-none absolute left-1/2 top-[58%] -translate-x-1/2 whitespace-nowrap heading-2 font-display italic text-ink"
-      >
-        {isEn ? "who we work with." : "con chi lavoriamo."}
-      </span>
     </div>
   );
 
@@ -1261,16 +1085,13 @@ export default function FitSection() {
     );
   }
 
-  /* ---- Pinned "Verdict beats" layout (SSR default) --------------------- *
+  /* ---- Pinned "Verdict wall" layout (SSR default) ---------------------- *
    * NO overflow-hidden on the section — an ancestor overflow-hidden would
-   * defeat position: sticky; clipping lives on the sticky frame itself.     */
+   * defeat position: sticky; clipping lives on the sticky frame itself.
+   * No heading above the runway: the title IS the pinned chapter statement
+   * inside the frame.                                                       */
   return (
     <section id="fit" className="section-accent-tint relative scroll-mt-24">
-      {/* Heading — normal flow, above the runway. */}
-      <div className="container-px relative pt-20 sm:pt-[6.5rem] lg:pt-32">
-        {headingBlock}
-      </div>
-
       {/* The tall scroll runway: height = 100vh + 6×70vh, set in px by
           measure(). minHeight is the SSR placeholder before JS measures.
           The key is load-bearing: both branches render a <div> in this slot,
@@ -1288,152 +1109,135 @@ export default function FitSection() {
         <div ref={stickyRef} className="sticky top-0 h-screen overflow-hidden">
           <SectionGlow position="top-left" intensity={1} size="50rem" />
 
-          <div className="container-px relative flex h-full flex-col pt-24 pb-8 sm:pt-28 sm:pb-10">
-            {/* ---- Accumulation ledgers — the REAL (screen-reader-facing)
-                 content: two labelled lists, exactly the v1 semantic
-                 structure. Rows fade/slide in as their beat completes; the
-                 empty ruled slots read as a checklist waiting to be filled. */}
-            <div className="grid shrink-0 grid-cols-[1.15fr_1fr] gap-x-10 xl:gap-x-16">
-              <div>
-                <h3 className="flex items-center gap-2 font-mono text-[11px] tracking-[0.18em] uppercase text-ink">
+          {/* ---- The statement (z-10) — the chapter type. Painted at full
+               opacity from SSR; its only motion is the slow parallax drift
+               the scrub feeds through [data-fit-statement]'s y chaser
+               (SSR ships y = +14px, the drift's progress-0 value). Sat
+               slightly below center — the Noomo pose. */}
+          <div className="absolute inset-x-0 top-[52%] z-10 -translate-y-1/2">
+            <div
+              data-fit-statement
+              className="container-px will-change-transform"
+              style={{ transform: "translateY(14px)" }}
+            >
+              {/* Plain `.eyebrow` (no [data-eyebrow-text]) → the global
+                  LabelScrambler owns its decode reveal. */}
+              <p className="eyebrow mb-6">
+                {isEn ? "Selective on purpose" : "Selettivi per scelta"}
+              </p>
+              <h2 className="max-w-[11ch] font-display font-medium text-[clamp(3rem,6.5vw,7.5rem)] leading-[0.98] tracking-[-0.02em] text-ink">
+                {isEn ? (
+                  <>
+                    We are honest about{" "}
+                    <span className="font-display italic text-ink">
+                      who we work with.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Siamo onesti su{" "}
+                    <span className="font-display italic text-ink">
+                      con chi lavoriamo.
+                    </span>
+                  </>
+                )}
+              </h2>
+            </div>
+          </div>
+
+          {/* ---- The annotation (z-10) — the description hung top-right as
+               a small column (the Noomo/Lusion pairing). Static. */}
+          <div className="container-px absolute inset-x-0 top-[12vh] z-10">
+            <p className="ml-auto w-[300px] max-w-[38vw] text-[13px] leading-relaxed text-ink-mute">
+              {description}
+            </p>
+          </div>
+
+          {/* ---- The pane field (z-20, in FRONT of the type) — REAL copy,
+               NOT aria-hidden. Velocity skew lives on this wrapper only
+               (never the statement); panes are absolutely stacked on the
+               frame center (xPercent/yPercent −50) and driven by their
+               windowed POV chasers. The constant perspective gives the yaw
+               poses their depth; backdrop-blur is constant per pane (never
+               animated). SSR paints pane 0 at HOLD, the rest at enter-rest,
+               so the first pinned frame is never empty. */}
+          <div
+            ref={skewRef}
+            className="absolute inset-0 z-20 will-change-transform"
+            style={{ perspective: "1200px" }}
+          >
+            {goodFit.map((line, i) => (
+              <div
+                key={i}
+                data-fit-pane={i}
+                className={`fit-pane absolute left-1/2 top-1/2 w-[min(30rem,38vw)] rounded-2xl bg-[hsl(216_30%_10%/0.55)] p-6 shadow-[0_24px_80px_-32px_hsl(220_60%_2%/0.8)] backdrop-blur-xl will-change-transform ${
+                  i % 2 === 0 ? "z-20" : "z-30"
+                }${i === 0 ? " is-held" : ""}`}
+                style={
+                  i === 0
+                    ? {
+                        // Must agree with the runtime's u=0 pose (the arm's
+                        // gsap.set + applyAll at progress 0): HOLD slot,
+                        // rotations decayed to ±PANE_HOLD_ROT. GSAP's
+                        // transform order is translate → rotate → rotateY.
+                        transform:
+                          "translate(calc(-50% + 8vw), calc(-50% - 2vh)) rotate(1.5deg) rotateY(-1.5deg)",
+                      }
+                    : {
+                        opacity: 0,
+                        transform: `translate(calc(-50% ${
+                          i % 2 === 0 ? "+ 54vw" : "- 54vw"
+                        }), calc(-50% + 18vh))`,
+                      }
+                }
+              >
+                {/* Top hairline — the pane's only chrome (NO border). */}
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-x-0 top-0 h-px rounded-full bg-gradient-to-r from-[hsl(var(--accent)/0.7)] via-[hsl(var(--accent)/0.25)] to-transparent"
+                />
+                <div className="flex items-start gap-3">
                   <Check
-                    className="h-3 w-3 text-[hsl(var(--accent))]"
+                    className="mt-[3px] h-4 w-4 shrink-0 text-[hsl(var(--accent))]"
                     aria-hidden="true"
                   />
-                  {isEn ? "Good fit" : "Buon fit"}
-                </h3>
-                <ul className="mt-3">
-                  {goodFit.map((line, i) => (
-                    <li
-                      key={i}
-                      className="border-b border-[hsl(var(--rule)/0.45)] py-[0.32rem]"
-                    >
-                      <div
-                        data-fit-ledger-good
-                        className="flex items-center gap-2 font-mono text-[11px] leading-snug text-ink-mute will-change-transform"
-                        style={{ opacity: 0, transform: "translateY(10px)" }}
-                      >
-                        <Check
-                          className="h-3 w-3 shrink-0 text-[hsl(var(--accent))]"
-                          aria-hidden="true"
-                        />
-                        <span className="min-w-0 flex-1 truncate">{line}</span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h3 className="flex items-center gap-2 font-mono text-[11px] tracking-[0.18em] uppercase text-ink-mute">
-                  <X
-                    className="h-3 w-3 text-[hsl(36_84%_62%)]"
-                    aria-hidden="true"
-                  />
-                  {isEn ? "Not a fit" : "Non è un fit"}
-                </h3>
-                <ul className="mt-3">
-                  {notAFit.map((line, i) => (
-                    <li
-                      key={i}
-                      className="border-b border-[hsl(var(--rule)/0.45)] py-[0.32rem]"
-                    >
-                      <div
-                        data-fit-ledger-warn
-                        className="flex items-center gap-2 font-mono text-[11px] leading-snug text-ink-dim will-change-transform"
-                        style={{ opacity: 0, transform: "translateY(10px)" }}
-                      >
-                        <X
-                          className="h-3 w-3 shrink-0 text-[hsl(36_84%_62%/0.8)]"
-                          aria-hidden="true"
-                        />
-                        <span className="min-w-0 flex-1 truncate line-through decoration-[hsl(36_84%_56%/0.55)]">
-                          {line}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-
-            {/* ---- Center stage — the verdict theater (visual duplicate of
-                 the ledger strings → aria-hidden). Velocity skew lives on
-                 this wrapper only; beats are absolutely stacked and driven
-                 by their windowed POV chasers. */}
-            <div
-              ref={skewRef}
-              aria-hidden="true"
-              className="relative min-h-0 flex-1 will-change-transform"
-            >
-              {goodFit.map((line, i) => (
-                <div
-                  key={i}
-                  data-fit-beat={i}
-                  className="absolute inset-0 grid grid-cols-[1.15fr_1fr] items-center gap-x-10 xl:gap-x-16"
-                >
-                  {/* GOOD — the star of the beat. Beat 0 pose ships in the
-                      SSR HTML (visible, medallion open) so the first pinned
-                      frame is never empty. */}
-                  <div
-                    data-fit-good
-                    className="will-change-transform"
-                    style={
-                      i === 0
-                        ? undefined
-                        : { opacity: 0, transform: "translateY(44px)" }
-                    }
-                  >
-                    <div className="mb-6 inline-flex items-center justify-center rounded-full shadow-[0_0_32px_-6px_hsl(var(--accent)/0.55)]">
-                      <FitMedallion
-                        kind="good"
-                        className="h-12 w-12"
-                        initialRadius={i === 0 ? MEDALLION_R_FINAL : 0}
-                      />
-                    </div>
-                    <p className="max-w-[24ch] font-display text-[clamp(1.9rem,1.1rem+1.9vw,2.6rem)] leading-[1.14] tracking-[-0.02em] text-ink text-balance">
-                      {line}
-                    </p>
-                  </div>
-
-                  {/* BAD — revealed readable, then torn-redacted, tilted,
-                      dimmed and stamped with the mono ✗. Static top margin
-                      offsets the verdict below the statement's center line
-                      (editorial asymmetry — margin, never transform: GSAP
-                      owns the transform). */}
-                  <div
-                    data-fit-bad
-                    className="relative mt-10 will-change-transform"
-                    style={{ opacity: 0, transform: "translateY(28px)" }}
-                  >
-                    <div className="flex items-start gap-3.5">
-                      <span
-                        data-fit-x
-                        className="mt-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[hsl(36_84%_56%/0.4)] bg-[hsl(36_84%_56%/0.08)] will-change-transform"
-                        style={{ opacity: 0, transform: "scale(0.6)" }}
-                      >
-                        <X className="h-3 w-3 text-[hsl(36_84%_62%)]" />
-                      </span>
-                      <div className="relative min-w-0 flex-1">
-                        <p className="fit-warn rounded-md px-3 py-2 font-mono text-[13px] sm:text-[14px] leading-relaxed text-ink-mute">
-                          {notAFit[i]}
-                        </p>
-                        {/* The torn redaction bar sweeps in OVER the text —
-                            the strike. Overlay only; the string stays in
-                            the DOM untouched. */}
-                        <TornStrikeBar />
-                      </div>
-                    </div>
-                  </div>
+                  <p className="text-[17px] leading-snug text-ink">
+                    <span className="sr-only">
+                      {isEn ? "Good fit" : "Buon fit"}:{" "}
+                    </span>
+                    {line}
+                  </p>
                 </div>
-              ))}
-            </div>
+                <div
+                  aria-hidden="true"
+                  className="my-4 h-px bg-[hsl(var(--rule)/0.6)]"
+                />
+                <p className="fit-pane__bad relative font-mono text-[12px] leading-tight text-ink-mute">
+                  <span className="sr-only">
+                    {isEn ? "Not a fit" : "Non è un fit"}:{" "}
+                  </span>
+                  <span aria-hidden="true">✗ </span>
+                  {notAFit[i]}
+                </p>
+                <div
+                  aria-hidden="true"
+                  className="mt-4 text-right font-mono text-[10px] tracking-[0.18em] text-ink-dim"
+                >
+                  {`0${i + 1}`}
+                </div>
+              </div>
+            ))}
+          </div>
 
-            {/* ---- Chrome: big mono counter + scrub progress line with
-                 beat ticks. Pure presentation → aria-hidden. */}
-            <div
-              aria-hidden="true"
-              className="flex shrink-0 items-end gap-6 pb-1 pt-4 sm:gap-8"
-            >
+          {/* ---- Chrome: big mono counter + scrub progress line with `+`
+               beat ticks (AT/igloo garnish). Pure presentation →
+               aria-hidden. Above the pane plane so progress stays legible
+               while a pane passes. */}
+          <div
+            aria-hidden="true"
+            className="container-px absolute inset-x-0 bottom-8 z-40 sm:bottom-10"
+          >
+            <div className="flex items-end gap-6 sm:gap-8">
               <div className="flex items-baseline gap-2 font-mono tabular-nums">
                 <span
                   data-fit-counter
@@ -1454,15 +1258,53 @@ export default function FitSection() {
                 {Array.from({ length: BEATS }, (_, i) => (
                   <span
                     key={i}
-                    className="absolute top-1/2 h-[5px] w-px -translate-y-1/2 bg-[hsl(var(--ink-dim)/0.6)]"
+                    className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 font-mono text-[9px] leading-none text-ink-dim"
                     style={{
                       left: `${(((i + 1) / BP_MAX) * 100).toFixed(2)}%`,
                     }}
-                  />
+                  >
+                    +
+                  </span>
                 ))}
               </div>
             </div>
           </div>
+
+          {/* Verdict strike — same grammar as the paired rows (a wash + a
+              strike rule, never a cover). `.is-held` is toggled by the
+              scrub at the HOLD window's threshold crossings (one class
+              write per crossing, never per frame); the 560ms draw is
+              CSS-owned, so scrubbing back up reverses it just as cleanly. */}
+          <style>{`
+            .fit-pane__bad {
+              text-decoration-line: line-through;
+              text-decoration-color: transparent;
+              text-decoration-thickness: 1px;
+              transition: text-decoration-color 560ms var(--ease-lusion);
+            }
+            .fit-pane__bad::after {
+              content: "";
+              position: absolute;
+              inset: -2px -5px;
+              border-radius: 3px;
+              background: hsl(36 84% 56% / 0.1);
+              border-right: 1px solid hsl(36 84% 62% / 0.45);
+              transform: scaleX(0);
+              transform-origin: 0% 50%;
+              transition: transform 560ms var(--ease-lusion);
+              pointer-events: none;
+            }
+            .fit-pane.is-held .fit-pane__bad {
+              text-decoration-color: hsl(36 84% 56% / 0.6);
+            }
+            .fit-pane.is-held .fit-pane__bad::after {
+              transform: scaleX(1);
+            }
+            @media (prefers-reduced-motion: reduce) {
+              .fit-pane__bad,
+              .fit-pane__bad::after { transition: none; }
+            }
+          `}</style>
         </div>
       </div>
 
