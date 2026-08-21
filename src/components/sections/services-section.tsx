@@ -56,7 +56,12 @@ if (typeof window !== "undefined") {
  * MODES: pinned (SSR default — desktop, fine pointer, no reduced-motion) /
  * native (≤768px, coarse pointer, prefers-reduced-motion): the unpinned
  * stacked grid, same cards, no transforms. Heading + closing line live in
- * normal flow OUTSIDE the runway in both modes.
+ * normal flow OUTSIDE the runway in both modes. Detection is a LIVE
+ * media-query subscription (B15, fit-section's D-18 idiom), not a one-shot
+ * sample: a window snapped narrow, a devtools dock, or an OS reduced-motion
+ * toggle after mount flips pinned↔native without a reload — old-mode GSAP /
+ * ScrollTrigger state tears down through the effects' own cleanups and the
+ * mode-flip effect issues a deferred ScrollTrigger.refresh().
  *
  * KEYBOARD: focusin on a card converts to the equivalent vertical scroll
  * (segment lock position) through Lenis — same convention as the work rail.
@@ -634,13 +639,32 @@ export default function ServicesSection() {
     };
   }, [detected, mode, isEn]);
 
+  // Mode detection is a SUBSCRIPTION, not a one-shot sample (B15, D-18 —
+  // fit-section's idiom): a window snapped narrow, a devtools dock, or an OS
+  // reduced-motion toggle after mount must flip pinned↔native live. Sampling
+  // once kept the pinned path alive with measurements taken against a
+  // viewport that no longer exists. On a flip the old mode's state tears
+  // down through the existing effect discipline — the scrub effect's cleanup
+  // (closure-captured nodes, so the by-then-detached runway still releases
+  // its px height) kills the ScrollTrigger/tweens/snap points, the native
+  // effects (stepper sync, rail overscroll) unhook via their own cleanups —
+  // and the mode-flip effect below re-measures with a deferred
+  // ScrollTrigger.refresh(). When the queries never flip, sync() computes
+  // the exact same value as the old one-shot: no behavior change.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const mobile = window.matchMedia("(max-width: 768px)").matches;
-    const coarse = window.matchMedia("(pointer: coarse)").matches;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    setMode(mobile || coarse || reduced ? "native" : "pinned");
-    setDetected(true);
+    const queries = [
+      window.matchMedia("(max-width: 768px)"),
+      window.matchMedia("(pointer: coarse)"),
+      window.matchMedia("(prefers-reduced-motion: reduce)"),
+    ];
+    const sync = () => {
+      setMode(queries.some((q) => q.matches) ? "native" : "pinned");
+      setDetected(true);
+    };
+    sync();
+    queries.forEach((q) => q.addEventListener("change", sync));
+    return () => queries.forEach((q) => q.removeEventListener("change", sync));
   }, []);
 
   // A mode flip swaps the pinned runway (vh + travel px) for the unpinned
