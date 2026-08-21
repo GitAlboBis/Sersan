@@ -196,6 +196,7 @@ export const caseStudies: CaseStudy[] = [
   {
     id: "domus-tua",
     featured: 3,
+    depthImage: "/case-studies/depth/domus-tua-depth.webp",
     client: "Domus Tua",
     engagement: "Real-estate agency digital platform (Sersan Build)",
     engagementIt: "Piattaforma digitale per agenzia immobiliare (Build Sersan)",
