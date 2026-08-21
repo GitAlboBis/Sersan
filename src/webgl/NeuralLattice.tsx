@@ -1,61 +1,63 @@
 "use client";
 
 /**
- * NeuralLattice — the SIGNAL STREAM WebGL island (2026-08-21 refactor; the
- * component/file name is kept so Scene.tsx's mount gate stays byte-identical).
- * Round-2 "life pass": the look lives in neuralFieldCompute (phase-separated
- * braid, velocity streaks, clean fracture + spark burst on uFlash, ring
- * shockwaves on uRingFlash, idle breathing) — this driver's state machines
- * are unchanged; it only gained the dev-handle tunables surface below.
+ * NeuralLattice — the NEURAL CONSTELLATION WebGL island (2026-08-21 round-6
+ * re-author; the component/file name is kept so Scene.tsx's mount gate stays
+ * byte-identical). The look lives in neuralFieldCompute: a LAYERED
+ * FEED-FORWARD NETWORK — 12 nodes in 5 layers, 21 braided edge filaments, a
+ * bright orbiting halo per node — replacing the demoted horizontal river.
+ * This driver's state machines are UNCHANGED from the stream rounds; only
+ * the mapping constants (RING_T/FRACTURE_T semantics) moved.
  *
- * A braided river of ~9000 particles (3200 compact tier) flows left→right
- * through the section's `[data-lattice-anchor]` rect. Two instances mount on
- * home:
- *   mode "broken"  (Problem, anchor "problem"): laminar until the FRACTURE at
- *     ~55% of the rect, then dispersal into drifting ember debris. Surges ride
- *     in from the left every ~4s (and on the DOM's in-view `bump("broken")`)
- *     and DIE at the fracture with a >1.0 emissive flash that decays at once.
- *     Row ignition (round-3 de-card: the ledger ROWS replaced the panes;
- *     same setHovered store call) → a BIGGER re-cohere tease at the fracture
- *     + a localized uRowGlow brightness/thickness swell in the row's zone.
- *   mode "healthy" (ProductionGrade, anchor "production"): the same stream
- *     threaded through THREE GUIDE RINGS (eval → trace → guardrail at 40/62/
- *     84% of the rect); particles tighten past each ring. The DOM's sequenced
- *     `bumpCluster("healthy", i)` ignites ring i (>1.0 ring-flash); every ~6s
- *     a surge rides the WHOLE stream and SURVIVES, ringing each ring as it
- *     passes. Row ignition → ring i flares + the segment between ring i-1
- *     and i tightens/brightens (uRowGlow).
+ * ~9000 particles (3200 compact tier) fill the section's
+ * `[data-lattice-anchor]` rect. Two instances mount on home:
+ *   mode "broken"  (Problem, anchor "problem"): the net is intact through
+ *     its first three layers, then DEGRADED past the fracture (t 0.62,
+ *     between the 3rd and 4th layer — spatially AT the fractured crystal):
+ *     edges fray into ember debris, far nodes drift off station. A PULSE
+ *     rides input→output every ~4s (and on the DOM's in-view
+ *     `bump("broken")`) and DIES at the fracture with a >1.0 emissive flash
+ *     + spark burst + nebula flare. Row ignition (setHovered) → a BIGGER
+ *     re-cohere tease (frayed edges re-connect, nodes pull back) + a
+ *     localized uRowGlow swell in the row's region of the net.
+ *   mode "healthy" (ProductionGrade, anchor "production"): all edges intact;
+ *     the three MIDDLE layers are eval → trace → guardrail (membrane discs
+ *     at their centroids). The DOM's sequenced `bumpCluster("healthy", i)`
+ *     ignites layer i+1's halos (>1.0 flash + shockwave); every ~6s a pulse
+ *     traverses the WHOLE net and SURVIVES, flashing each middle layer as it
+ *     crosses (RING_T = [.25,.5,.75] — the layer depths). Row ignition →
+ *     layer i+1's halos flare + its region tightens/brightens (uRowGlow).
  *
  * ANCHORING — camera-LOCKED screen-space placement (contract unchanged): the
  * OUTER group is positioned from the anchor rect's center, quaternion =
- * camera.quaternion, scale = (w·k, h·k, h·k). The spline control points are
- * mode-config uniforms in LOCAL space, so resize = re-measure rect only — no
- * per-particle re-anchoring, no buffer rebuild.
+ * camera.quaternion, scale = (w·k, h·k, h·k). The node/edge tables are
+ * mode-config uniformArrays in LOCAL space, so resize = re-measure rect only
+ * — no per-particle re-anchoring, no buffer rebuild.
  *
  * STORES (the ONLY cross-layer channel): useNeuralLatticeStore —
- * bump/bumpCluster (DOM in-view writers) + hovered (DOM pane hover/focus) are
+ * bump/bumpCluster (DOM in-view writers) + hovered (DOM row hover/focus) are
  * READ here via getState() in useFrame; pulse decay is written back with the
  * same damp discipline as before. No React commits drive per-frame visuals
  * inside this island (refs + getState only).
  *
  * GATING: Scene.tsx mounts this on `pathname === "/" && island && webgpu`
  * (island = fxBudget.level >= 2) — unchanged. Non-compute backends get the
- * analytic static build from neuralFieldCompute (rest-pose stream, rings lit,
- * fracture dispersed — still uniform-animated). The DOM SVG fallback
- * (use-neural-lattice-fallback.ts, the exact complement) carries the metaphor
- * everywhere else.
+ * analytic static build from neuralFieldCompute (a still-but-igniting
+ * constellation: homes at rest, pulses/flashes/fray all uniform-animated).
+ * The DOM SVG fallback (use-neural-lattice-fallback.ts, the exact
+ * complement) carries the same layered-graph metaphor everywhere else.
  *
  * PHONE BUDGET: `tier === "lite"` builds at NEURAL_PARTICLE_COUNT_COMPACT.
  * The tier is read with `getState()` in the build effect and NEVER subscribed
  * (a subscription here would be a React commit inside the <Canvas> island).
  *
- * ROUND-4 §B (2026-08-21, igloo-mined effects): this driver additionally
+ * ROUND-4 §B carried forward (igloo-mined effects): this driver additionally
  *   - integrates the FLOW CLOCK (uFlowTime += dt·(1 + uVelFlow·vel)) and the
- *     damped uScrollVel from scrollStore velocity (§B.3 — the river swells,
- *     streaks longer, curls harder and flows faster while you scroll, calm at
- *     rest; velocity is 0 under RM/native scroll so RM stays calm by
+ *     damped uScrollVel from scrollStore velocity (§B.3 — the net swells,
+ *     streaks longer, curls harder and flows faster while you scroll, calm
+ *     at rest; velocity is 0 under RM/native scroll so RM stays calm by
  *     construction);
- *   - latches + damps each healthy ring's MEMBRANE seal (0→1 on first
+ *   - latches + damps each middle LAYER's MEMBRANE seal (0→1 on first
  *     ignition) and integrates its band phase (ripple = ×3 phase speed while
  *     uRingFlash burns — integration, never a backwards jump) (§B.1);
  *   - integrates the broken NEBULA wisp drift (igloo t·0.05, kicked +0.3
@@ -216,7 +218,7 @@ export function NeuralLattice({
     // quantity, but sectionStore.setMeasured skips the measureVersion bump
     // when the NORMALIZED spans are unchanged — exactly what a width-only
     // resize produces. Cheap to re-run: this effect only setRect()s; the
-    // stream re-anchors through the group transform alone (no rebuild).
+    // net re-anchors through the group transform alone (no rebuild).
   }, [measureVersion, anchorId, size.width, size.height]);
 
   // --- Per-frame driver ------------------------------------------------------
@@ -357,13 +359,15 @@ export function NeuralLattice({
       s.t += delta * SURGE_SPEED;
       s.amp = Math.min(s.amp + delta * 5, 1);
       if (broken) {
-        // The surge dies at the fracture: small burst, flash decays at once.
+        // The pulse dies at the fracture (before the 4th layer ever lights):
+        // small burst, flash decays at once.
         if (s.t >= FRACTURE_T) {
           s.active = false;
           flashEnv.current = 1;
         }
       } else {
-        // The surge survives — ring each guide ring as the head crosses it.
+        // The pulse survives — flash each MIDDLE LAYER (eval → trace →
+        // guardrail, RING_T = the layer depths) as the head crosses it.
         for (let i = 0; i < RING_T.length; i++) {
           if (prevT < RING_T[i] && s.t >= RING_T[i]) {
             ringFlashTarget.current[i] = 1;
@@ -483,7 +487,7 @@ export function NeuralLattice({
       u.uRowGlow.array[i] = rowGlow.current[i];
     }
 
-    // --- Round-4 §B.3: scroll-velocity river --------------------------------
+    // --- Round-4 §B.3: scroll-velocity net ----------------------------------
     // scrollStore velocity is px/frame-ish (0 under RM/native scroll — the
     // fields stay calm there by construction). Damped so the swell/streak/
     // curl response is C1 and only a genuine flick registers.

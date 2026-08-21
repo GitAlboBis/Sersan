@@ -223,13 +223,15 @@ const PLROW_CSS = `
 }
 `;
 
-/** Ghost callout placement — tracks the §B stream-v3 WEAVE (coordination
- * data 2026-08-21): the broken river enters HIGH (band-y +0.18 → css top
- * ~32%), dips through the mid (−0.08 → ~58%), fractures at x≈55% y≈−0.12,
- * debris descending right of it. Callouts ride that descent: "no signal"
- * upstream high, "no debugging" near the dip, "no trust" in the debris zone.
+/** Ghost callout placement — HISTORIC stream-v3 WEAVE values (the broken
+ * river entered high, dipped, fractured at x≈55%). ROUND-6 replaced the
+ * river with the layered constellation (fracture at topological t 0.62,
+ * spatially at the broken crystal ≈ x 65%); these values stay as the var()
+ * FALLBACKS only — SSR / fallback tier / RM placement, drift measured
+ * acceptable in the round-6 spec §6: "no signal" over the input layers,
+ * "no debugging" mid-net, "no trust" near the fracture/debris.
  * (band-y is a fraction of band height, 0 = center, + = up; css top =
- * 50% − y·100. Leader lines point INTO the path: edge "top" hangs the label
+ * 50% − y·100. Leader lines point INTO the graph: edge "top" hangs the label
  * above its target, "bottom" below it.)
  * max-sm:hidden — aria-hidden garnish; the same strings live in the rows.
  *

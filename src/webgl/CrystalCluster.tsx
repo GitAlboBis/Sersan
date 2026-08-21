@@ -504,8 +504,8 @@ export function CrystalCluster({
 
   return (
     <group ref={groupRef} renderOrder={-3} visible={false}>
-      {/* renderOrder −3: painted before the stream layers (−2/−1) — the
-          additive river reads as current flowing in FRONT of the crystal. */}
+      {/* renderOrder −3: painted before the constellation layers (−2/−1) —
+          the additive net reads as current flowing in FRONT of the crystal. */}
       <mesh
         ref={meshRef}
         geometry={build.geometry}

@@ -1,41 +1,51 @@
 /**
- * Signal-stream particle build — the WebGL half of the 2026-08-21 "SIGNAL
- * STREAM" refactor (replaces the FIX 3 orb-triangle/arc field; file name kept
- * so NeuralLattice's lazy import stays put). Round-2 "life pass" (owner:
- * beauty pass — AT luminous nebula streaks + igloo crisp ignition rings):
- * phase-separated braid, flow-t edge fades, velocity-stretched sprites,
- * white-cyan→cyan→blue ramp, asymmetric surge head with comet tail, clean
- * fracture gap + spark burst (role 2), ring shockwave, idle breathing/shimmer.
+ * NEURAL-CONSTELLATION particle build — the WebGL half of the 2026-08-21
+ * ROUND-6 re-author (owner: "prima erano fatte tipo a triangolo, non una
+ * linea dritta in orizzontale" — the demoted river read as a flat line under
+ * the crystal). The braided RIVER is gone; the SAME machinery (sim, stores,
+ * uniforms, band anchoring) now renders a LAYERED FEED-FORWARD CONSTELLATION
+ * — the canonical NN diagram made cinematic. File name kept so
+ * NeuralLattice's lazy import stays put; see
+ * research/2026-08-21-round6-neural-constellation.md for the layout numbers.
  *
- * A braided river of particles flows left→right through the section rect.
- * Per-particle homes are computed IN-SHADER from a Catmull-Rom spline of five
- * control-point uniforms (uC0..uC4 — the uHub-style uniform-homes pattern):
- * each particle advances a flow parameter t = fract(basePhase + uTime·speed),
- * evaluates the spline (plus a slight z-bow toward camera at t=0.5), then
- * offsets onto one of four PHASE-SEPARATED twisting STRANDS plus per-particle
- * thickness jitter → a braid, not a line. Nothing but `meta`, per-particle
- * offsets and the reveal seed is baked into buffers, so a resize (or live
- * re-authoring of the meander) is a uniform update — NO rebuild.
+ * THE GRAPH: 12 nodes in 5 layers (x −0.42..+0.52, counts [2,3,3,2,2]) and
+ * 21 edges (each node feeds 2–3 of the next layer), authored per mode in
+ * neuralLatticeConfig (NODES/EDGES). Node positions, topological depths and
+ * edge endpoint indices ride in uniformArrays (uNodePos/uNodeT/uEdgeA/uEdgeB
+ * — `.element()` is legal in any stage, zero buffer-slot cost), so a live
+ * re-author of the layout is a uniform write, NO rebuild. Flow-t is now
+ * TOPOLOGICAL DEPTH: t = mix(nodeT_A, nodeT_B, s) with s the per-edge flow
+ * parameter — the surge/flash/row/width-envelope machinery transfers
+ * verbatim; the input→output pulse lights the net LAYER BY LAYER.
  *
- *   - broken  (uBroken=1): past uFracture the particle loses the spline home
- *     and disperses into slow drifting debris (analytic drift here; wander
- *     force via unifiedForceStep on the compute tier), dimming through the
- *     ember ramp at ≤ DEBRIS_ALPHA_MAX. The break is CLEAN: a FRACTURE_GAP_T
- *     wide zero-alpha gap separates the last coherent x from the debris
- *     field. uSurgeT/uSurgeAmp/uFlash paint the surge that rides in from the
- *     left and DIES at the fracture with a >1.0 emissive flash — which also
- *     fires the SPARK BURST: SPARK_COUNT dedicated role-2 particles take a
- *     ~0.5s analytic outward kick + bright white-cyan flash, then die (park
- *     invisibly until the next flash). uRecohere is the hover tease — debris
- *     briefly pulls back toward the spline, then falls apart again.
- *   - healthy (uBroken=0): a RING_FRACTION of the particles are GUIDE-RING
- *     particles on three CRISP tori perpendicular to the flow at RING_T
- *     (halved tube, doubled density, slightly whiter than the stream); stream
- *     particles tighten stepwise (width envelope 1→~0.61 + spring gain) as
- *     they pass each ring. uRingFlash[i] (bumpCluster / surge crossings)
- *     fires each ring's >1.0 ignition flash AND a radial shockwave (ring
- *     radius ripples 1→1.25 as the flash decays); uRingGlow[i] is the damped
- *     hover flare.
+ * ROLES (baked into the same meta/off/seed buffers — layout below):
+ *   0 EDGE  — home = mix(A,B,s) + a 2-strand braided cross-section in a real
+ *     perpendicular frame (cross(dir, ẑ)) + thickness jitter + curl shred
+ *     (compute tier). Per-edge golden-angle phase offsets decorrelate the
+ *     filaments; per-edge s fade-in/out dissolves the tips into the node
+ *     halos (and hides the flow-wrap).
+ *   1 NODE HALO — a crisp orbiting ring per node (camera-facing; x is
+ *     aspect-corrected by uPlaneAspect), whiter than the edges. Middle-layer
+ *     halos read uRingFlash/uRingGlow (index = nodeT·4−1, gated to layers
+ *     1..3) → ignition flash + radial shockwave + hover flare; the pulse
+ *     adds an emissive kiss as it crosses the node's depth.
+ *   2 SPARK — broken-only burst on pulse death (unchanged).
+ *
+ *   - broken  (uBroken=1): past uFracture (t 0.62, between the 3rd and 4th
+ *     layer) the net is DEGRADED — edge particles fray off their line into
+ *     ember debris (small DEBRIS_SPREAD: edges gone wrong, not a detached
+ *     cloud), and frayed-edge ENDPOINTS + node halos drift with a per-NODE
+ *     coherent wander (nodeDrift) so the far layers read knocked off
+ *     station. The break stays CLEAN (FRACTURE_GAP_T zero-alpha cut on every
+ *     crossing filament). The pulse rides in from the input and DIES at the
+ *     fracture with the >1.0 flash — which fires the SPARK BURST and flares
+ *     the nebula. uRecohere is the hover tease — frayed edges re-connect and
+ *     drifted nodes pull back on station, then fall apart again.
+ *   - healthy (uBroken=0): all edges intact; the three MIDDLE layers are
+ *     eval → trace → guardrail — membrane discs at their centroids, halos
+ *     flash (+ shockwave ripple) as the pulse crosses each layer, filaments
+ *     tighten stepwise past each one (widthEnvelope 1→~0.61), and the pulse
+ *     SURVIVES to the output layer. uRingGlow[i] is the damped hover flare.
  *
  * BACKEND CONTRACT (unchanged, mirrors gpgpuNodeSim.ts):
  *   - True-WebGPU compute path: storage buffers (`instancedArray`) advanced by
@@ -49,7 +59,7 @@
  *     quad position, still well inside the walls.
  *   - Non-compute path (WebGPURenderer WebGL2 sub-backend): the ANALYTIC
  *     build — particles sit at their reveal-blended home with a cheap shimmer
- *     and a mild fixed tangent elongation. Because the home is a pure
+ *     and a mild fixed edge-direction elongation. Because the home is a pure
  *     function of uTime, the flow, surges, ring flashes/shockwaves, fracture
  *     and spark burst all still animate; only the physical debris inertia and
  *     the pointer bend are compute-only.
@@ -71,49 +81,50 @@
  * anyway): the fragment receives vColor (premultiplied tone×emissive), vAlpha
  * and the quad UV — fewer scalars than the draft's five varyings.
  *
- * ROUND-3 "DE-CARD" STREAM v3 (2026-08-21 §B — the panes are gone, the river
- * owns the whole rows-stack band). Everything below is UNIFORMS + one new
- * float varying — the 4-storage-buffer / 5-vertex-slot budget is untouched:
- *   1. VERTICAL WEAVE — mode-authored y on the spline control points (config;
- *      pure uC0..4 re-author, zero shader change) + the ~44px envelope
- *      rescale for the taller band.
- *   2. CURL MICRO-TURBULENCE (compute tier only) — analytic 2-octave curl of
- *      a sin/cos vector potential displaces the strand offsets so filaments
- *      shred organically; the static tier keeps the analytic twist.
- *   3. ROW-REACTIVE CURRENT — uRowGlow[3] (uniformArray, driven from the DOM
- *      rows' setHovered): broken = gaussian brightness+thickness swell at the
- *      row's stream zone; healthy = the segment between ring i-1 and i
- *      tightens + brightens. The driver also fires a BIGGER re-cohere tease
- *      on broken row ignition (RECOHERE_ROW_BOOST).
- *   4. DEPTH-DOF ILLUSION — size × alpha modulated by the z-bow (far =
- *      smaller/dimmer; near = bigger + a SOFTER disc falloff via the new
- *      vSoft varying) — a cheap bokeh read, no post.
+ * REGISTRATION SPINE (round-6): the uC0..uC4 Catmull-Rom control points are
+ * now the five LAYER CENTROIDS (derived in config — STREAM_CTRL name kept).
+ * NO particles ride the spline any more; streamCenter() only registers the
+ * membranes (streamCenter(RING_T[i]) = middle-layer centroid i+1 — Catmull-
+ * Rom passes through its control points at segment boundaries), the fracture
+ * nebula + spark origin (streamCenter(uFracture), which the round-6 spine
+ * puts AT the broken crystal), and the row attention windows.
  *
- * ROUND-4 "BEST MINED EFFECTS" (2026-08-21 §B — igloo dossier ports; see
- * research/2026-08-21-igloo-tunnel-mining.md for the source GLSL anchors):
- *   B1. RING MEMBRANES (healthy) — three camera-facing disc quads inside the
- *       guide rings running igloo §5's forcefield recipe verbatim (banded
- *       noise `sin(noise·13 + phase − y·10)`, aastep(0.2)·(1−n·0.75), the
- *       mask·base + mask⁵·0.5 + rim·0.5 alpha sum) with procedural value
+ * CARRIED-FORWARD MACHINERY (rounds 2–4, remapped, not rewritten):
+ *   1. CURL MICRO-TURBULENCE (compute tier only) — analytic 2-octave curl
+ *      displaces the strand offsets so the edge filaments shred organically;
+ *      the static tier keeps the analytic twist.
+ *   2. ROW-REACTIVE ATTENTION — uRowGlow[3] (driven from the DOM rows'
+ *      setHovered): broken = gaussian brightness+thickness swell at
+ *      ROW_ZONE_T[i] (input region / mid net / the fracture zone); healthy =
+ *      gaussian at RING_T[i] — row i attaches to layer i+1's nodes and the
+ *      adjacent edge halves. The driver also fires the BIGGER re-cohere
+ *      tease on broken row ignition (RECOHERE_ROW_BOOST).
+ *   3. DEPTH-DOF ILLUSION — size × alpha modulated by local z (the node
+ *      table authors ±0.12 of real depth; far = smaller/dimmer, near =
+ *      bigger + a softer disc via the vSoft varying) — cheap bokeh, no post.
+ *   B1. LAYER MEMBRANES (healthy) — three camera-facing disc quads at the
+ *       middle-layer centroids running igloo §5's forcefield recipe verbatim
+ *       (banded noise `sin(noise·13 + phase − y·10)`, aastep(0.2)·(1−n·0.75),
+ *       the mask·base + mask⁵·0.5 + rim·0.5 alpha sum) with procedural value
  *       noise for tWind. Positions derive from the SAME streamCenter/RING_T
- *       math as the ring particles → registration for free. Seal (0→1 on
- *       first ignition), ripple (uRingFlash) and bulge (uRowGlow) are all
- *       uniform-driven; the band phase is DRIVER-INTEGRATED per ring so the
- *       ripple's ×3 speed never runs the phase backwards.
+ *       math as ever → the round-6 re-registration onto the layers was free.
+ *       Seal (0→1 on first ignition), ripple (uRingFlash) and bulge
+ *       (uRowGlow) are uniform-driven; the band phase is DRIVER-INTEGRATED
+ *       per layer so the ripple's ×3 speed never runs the phase backwards.
  *   B2. FRACTURE NEBULA (broken) — three soft quads at streamCenter(uFracture)
  *       running igloo §4's tunnel-smoke recipe verbatim (sheared uv, triple-
  *       multiplied value noise at ×3/×4/×6, pow(v,3)·3 × radial). Ember core,
  *       faint cyan upstream rim; flares on uFlash, thins on uRowGlow[2].
- *   B3. SCROLL-VELOCITY RIVER (both modes) — uScrollVel (0..1, damped driver-
+ *   B3. SCROLL-VELOCITY NET (both modes) — uScrollVel (0..1, damped driver-
  *       side): width +25%·vel, streak stretch gain +60%·vel, curl +30%·vel,
- *       debris wander +20%·vel, and flow +40%·vel via the NEW uFlowTime clock
+ *       fray wander +20%·vel, and flow +40%·vel via the uFlowTime clock
  *       (driver-integrated; flowParam reads it instead of uTime so a velocity
  *       change bends the flow RATE without teleporting phases).
- *   Both layers are pure vertex/fragment materials (no storage buffers, no
- *   compute, no textures) built for BOTH backends before the backend split —
- *   the 4-storage-buffer / 5-vertex-slot budget of the particle material is
- *   untouched; each layer's own geometry uses 2 slots (quad + 1 instanced
- *   attribute).
+ *   The membrane/nebula layers are pure vertex/fragment materials (no
+ *   storage buffers, no compute, no textures) built for BOTH backends before
+ *   the backend split — the 4-storage-buffer / 5-vertex-slot budget of the
+ *   particle material is untouched; each layer's own geometry uses 2 slots
+ *   (quad + 1 instanced attribute).
  */
 import {
   unifiedForceStep,
@@ -126,6 +137,17 @@ import {
   COL_EMBER,
   COL_EMBER2,
   STREAM_CTRL,
+  NODES,
+  EDGES,
+  NODE_T,
+  NODE_COUNT,
+  NODE_RADIUS,
+  NODE_TUBE,
+  NODE_RADIAL_JITTER,
+  NODE_SPIN,
+  NODE_FRACTION,
+  NODE_DRIFT,
+  NODE_DEGRADE,
   STRAND_COUNT,
   STRAND_RADIUS,
   STRAND_THICKNESS,
@@ -149,10 +171,6 @@ import {
   SHIMMER_AMP,
   RING_T,
   RING_RADIUS,
-  RING_TUBE,
-  RING_RADIAL_JITTER,
-  RING_FRACTION,
-  RING_SPIN,
   RING_WHITE,
   RING_SHOCKWAVE,
   TIGHTEN_PER_RING,
@@ -183,8 +201,7 @@ import {
   DEPTH_Z_RANGE,
   ROW_ZONE_T,
   ROW_ZONE_K,
-  ROW_SEG_START,
-  ROW_SEG_FEATHER,
+  ROW_LAYER_K,
   ROW_GAIN,
   ROW_SWELL,
   ROW_TIGHTEN_RATIO,
@@ -242,7 +259,7 @@ export interface NeuralFieldUniforms {
   uReveal: { value: number };
   /** 0 healthy · 1 broken. */
   uBroken: { value: number };
-  /** Base flow speed along the stream. */
+  /** Base flow speed along an edge (cycles/sec of the per-edge s). */
   uFlowSpeed: { value: number };
   /** Fracture flow-t position (broken). */
   uFracture: { value: number };
@@ -259,12 +276,21 @@ export interface NeuralFieldUniforms {
   /** Per-ring ignition flash 0..1 (write to `.array`) — also drives the
    * ring's radial shockwave expansion. */
   uRingFlash: { array: number[] };
-  /** The 5 spline control points (LOCAL space vec3). */
+  /** The 5 registration-spine control points (LOCAL space vec3) — the layer
+   * CENTROIDS since round-6. Only membranes/nebula/sparks/row windows read
+   * the spline; no particles ride it. */
   uC0: { value: { set: (x: number, y: number, z: number) => unknown } };
   uC1: { value: { set: (x: number, y: number, z: number) => unknown } };
   uC2: { value: { set: (x: number, y: number, z: number) => unknown } };
   uC3: { value: { set: (x: number, y: number, z: number) => unknown } };
   uC4: { value: { set: (x: number, y: number, z: number) => unknown } };
+  /** Round-6 constellation tables (live-tunable layout — write entries of
+   * `.array`): node centers (LOCAL-space Vector3s), per-node topological
+   * depth (layer/4), per-edge endpoint node indices. */
+  uNodePos: { array: { set: (x: number, y: number, z: number) => unknown }[] };
+  uNodeT: { array: number[] };
+  uEdgeA: { array: number[] };
+  uEdgeB: { array: number[] };
   /** Cursor attractor in LOCAL space (park at 1e9 = off; compute tier only). */
   uPointer: { value: { set: (x: number, y: number, z: number) => unknown } };
   uPixelRatio: { value: number };
@@ -306,7 +332,7 @@ export interface NeuralFieldUniforms {
   uRowGain: { value: number };
   /** Row-glow width response (broken swell + / healthy tighten −·ratio). */
   uRowSwell: { value: number };
-  // --- Round-4 §B.3 — scroll-velocity river ---------------------------------
+  // --- Round-4 §B.3 — scroll-velocity net -----------------------------------
   /** Damped, normalized |scroll velocity| 0..1 (driver-written). */
   uScrollVel: { value: number };
   /** Driver-integrated flow clock: += dt·(1 + uVelFlow·uScrollVel). flowParam
@@ -391,29 +417,56 @@ function h(i: number, mulA: number, addB: number): number {
 
 /**
  * Seed the read-only per-particle role buffers. Homes are NOT baked — they
- * derive from the uC0..4 spline uniforms in-shader. Layout:
+ * derive from the uNodePos/uEdge* + uC0..4 uniforms in-shader. Layout:
  *
  *   meta : vec4
- *     role     (0 stream | 1 ring | 2 spark — spark is broken-only, round-2)
- *     aux      (stream: strand index 0..3 ; ring: ring index 0..2 ; spark: 0)
- *     speedVar (stream: 0.7..1.3 flow-speed variance; ring: spin variance;
+ *     role     (0 edge | 1 node halo | 2 spark — spark is broken-only)
+ *     aux      (edge: edgeIdx·2 + strand (strand 0..1) ; node: node index
+ *               0..11 ; spark: 0 — small ints, exact in fp32)
+ *     speedVar (edge: 0.7..1.3 flow-speed variance; node: spin variance;
  *               spark: 0.6..1.4 kick variance)
- *     rnd      (0..1 — tint variance / debris hashes)
+ *     rnd      (0..1 — tint variance / fray hashes)
  *   offA : vec3
- *     stream: [basePhase 0..1, jitter magnitude 0..1, jitter angle 0..2π]
- *     ring:   [base angle 0..2π, radial jitter −1..1, tube angle 0..2π]
- *     spark:  [burst azimuth 0..2π, spare, elevation −1..1]
+ *     edge:  [basePhase 0..1, jitter magnitude 0..1, jitter angle 0..2π]
+ *     node:  [base angle 0..2π, radial jitter −1..1, tube z angle 0..2π]
+ *     spark: [burst azimuth 0..2π, spare, elevation −1..1]
  *   seed : vec3 scattered start (reveal coalesce)
+ *
+ * Order: [edge particles | node halos | sparks]. Edge particles distribute
+ * across the 21 edges ∝ edge LENGTH (uniform visual density); node halos
+ * round-robin the 12 nodes. Role budget: NODE_FRACTION (20%) halos, the rest
+ * edges (broken gives SPARK_COUNT of it to the burst) — the brief's "~15%
+ * debris on broken" is carried by the edge particles whose edges cross/sit
+ * past the fracture (see the round-6 spec §2).
  */
 function seedBuffers(count: number, mode: LatticeMode) {
   const meta = new Float32Array(count * 4);
   const offA = new Float32Array(count * 3);
   const seed = new Float32Array(count * 3);
 
-  const ringCutoff =
-    mode === "healthy" ? Math.floor(count * (1 - RING_FRACTION)) : count;
-  // Broken builds dedicate the allocation tail to the surge-death SPARK BURST.
-  const sparkStart = mode === "broken" ? count - SPARK_COUNT : count;
+  const nodesTbl = NODES[mode];
+  const edgesTbl = EDGES[mode];
+  const sparkCount = mode === "broken" ? SPARK_COUNT : 0;
+  const nodeCount = Math.floor(count * NODE_FRACTION);
+  const edgeTotal = count - nodeCount - sparkCount;
+
+  // Length-proportional per-edge particle counts (remainder → last edge).
+  const lens = edgesTbl.map(([a, b]) => {
+    const dx = nodesTbl[b][0] - nodesTbl[a][0];
+    const dy = nodesTbl[b][1] - nodesTbl[a][1];
+    const dz = nodesTbl[b][2] - nodesTbl[a][2];
+    return Math.hypot(dx, dy, dz);
+  });
+  const lenSum = lens.reduce((s, l) => s + l, 0);
+  const perEdge = lens.map((l) => Math.floor((edgeTotal * l) / lenSum));
+  let assigned = perEdge.reduce((s, n) => s + n, 0);
+  for (let e = 0; assigned < edgeTotal; e = (e + 1) % perEdge.length) {
+    perEdge[e]++;
+    assigned++;
+  }
+
+  let edgeIdx = 0;
+  let edgeFill = 0;
 
   for (let i = 0; i < count; i++) {
     const r0 = h(i, 12.9898, 78.233);
@@ -421,7 +474,7 @@ function seedBuffers(count: number, mode: LatticeMode) {
     const r2 = h(i, 73.156, 52.235);
     const r3 = h(i, 91.318, 27.719);
 
-    if (i >= sparkStart) {
+    if (i >= edgeTotal + nodeCount) {
       // SPARK particle (broken only) — analytic burst from the fracture pt.
       meta[i * 4] = 2;
       meta[i * 4 + 1] = 0;
@@ -430,10 +483,16 @@ function seedBuffers(count: number, mode: LatticeMode) {
       offA[i * 3] = r0 * Math.PI * 2; // burst azimuth
       offA[i * 3 + 1] = r2; // spare
       offA[i * 3 + 2] = (r1 - 0.5) * 2; // elevation −1..1
-    } else if (i < ringCutoff) {
-      // STREAM particle.
+    } else if (i < edgeTotal) {
+      // EDGE particle — advance the ∝-length edge assignment.
+      while (edgeFill >= perEdge[edgeIdx] && edgeIdx < perEdge.length - 1) {
+        edgeIdx++;
+        edgeFill = 0;
+      }
+      edgeFill++;
+      const strand = Math.floor(r0 * STRAND_COUNT) % STRAND_COUNT;
       meta[i * 4] = 0;
-      meta[i * 4 + 1] = Math.floor(r0 * STRAND_COUNT) % STRAND_COUNT;
+      meta[i * 4 + 1] = edgeIdx * 2 + strand;
       meta[i * 4 + 2] = 0.7 + r1 * 0.6; // flow-speed variance
       meta[i * 4 + 3] = r3;
       offA[i * 3] = r2; // basePhase
@@ -442,15 +501,15 @@ function seedBuffers(count: number, mode: LatticeMode) {
       offA[i * 3 + 1] = Math.sqrt(r0);
       offA[i * 3 + 2] = r1 * Math.PI * 2;
     } else {
-      // RING particle (healthy only) — even thirds across the three rings.
-      const ring = (i - ringCutoff) % 3;
+      // NODE-HALO particle — round-robin across the 12 nodes.
+      const node = (i - edgeTotal) % NODE_COUNT;
       meta[i * 4] = 1;
-      meta[i * 4 + 1] = ring;
+      meta[i * 4 + 1] = node;
       meta[i * 4 + 2] = 0.6 + r1 * 0.8; // spin variance
       meta[i * 4 + 3] = r3;
-      offA[i * 3] = r0 * Math.PI * 2; // base angle on the ring
+      offA[i * 3] = r0 * Math.PI * 2; // base angle on the halo
       offA[i * 3 + 1] = (r2 - 0.5) * 2; // radial jitter
-      offA[i * 3 + 2] = r1 * Math.PI * 2; // tube angle
+      offA[i * 3 + 2] = r1 * Math.PI * 2; // tube z angle
     }
 
     // Scattered seed (loose cloud) — matches the kernel's analytic re-derive.
@@ -509,6 +568,7 @@ export function createNeuralFieldBuild(
     select,
     exp,
     fwidth,
+    cross,
   } = tsl as Any;
 
   const { meta, offA, seed } = seedBuffers(count, mode);
@@ -531,6 +591,19 @@ export function createNeuralFieldBuild(
   const uC2 = uniform(new Vector3(...ctrlInit[2]));
   const uC3 = uniform(new Vector3(...ctrlInit[3]));
   const uC4 = uniform(new Vector3(...ctrlInit[4]));
+  // Round-6 constellation tables — uniformArray `.element()` is legal in any
+  // stage and costs no storage-buffer / vertex-slot budget, so the whole
+  // graph layout stays a live-tunable uniform write (never a rebuild).
+  const nodeTbl = NODES[mode];
+  const edgeTbl = EDGES[mode];
+  const uNodePos = uniformArray(
+    nodeTbl.map((p: [number, number, number]) => new Vector3(...p)),
+  );
+  const uNodeT = uniformArray([...NODE_T]);
+  const uEdgeA = uniformArray(edgeTbl.map((e: [number, number]) => e[0]));
+  const uEdgeB = uniformArray(edgeTbl.map((e: [number, number]) => e[1]));
+  /** Edge count of THIS build's mode (clamp ceiling for aux decode). */
+  const EDGE_N = edgeTbl.length;
   const uPointer = uniform(new Vector3(1e9, 1e9, 1e9));
   const uPixelRatio = uniform(1);
   const uViewport = uniform(new Vector2(1, 1));
@@ -559,7 +632,7 @@ export function createNeuralFieldBuild(
   const uDof = uniform(1);
   const uRowGain = uniform(ROW_GAIN);
   const uRowSwell = uniform(ROW_SWELL);
-  // Round-4 (§B): scroll-velocity river + membrane/nebula layers. All plain
+  // Round-4 (§B): scroll-velocity net + membrane/nebula layers. All plain
   // uniforms/uniformArrays again — the storage-buffer and particle-material
   // vertex-slot budgets stay untouched. The layers only referenced by the
   // OTHER mode's build are dead nodes (never compiled into any material).
@@ -630,9 +703,10 @@ export function createNeuralFieldBuild(
       .add(p3.sub(p0).add(p1.sub(p2).mul(3.0)).mul(u3))
       .mul(0.5);
   }
-  /** The bowed stream center: spline + a slight z-bow toward the camera at
-   * t=0.5 (round-2 dimensionality). Every consumer (stream, fracture point,
-   * ring centers, spark origin) reads THIS so registration stays exact. */
+  /** The bowed REGISTRATION SPINE: the centroid spline + a slight z-bow
+   * toward the camera at t=0.5. Round-6: no particles ride it — only the
+   * membranes (layer centroids), the fracture point (nebula + spark origin)
+   * and the row windows read it, so their registration stays exact. */
   function streamCenter(t: Any): Any {
     const tc = clamp(t, float(0), float(1));
     return splineCR(tc).add(
@@ -652,6 +726,82 @@ export function createNeuralFieldBuild(
   function strandThickAt(idx: Any): Any {
     return uStrandThick.element(int(clamp(idx, float(0), float(3)))) as Any;
   }
+  /** Node center by index node (uniformArray element — legal in any stage). */
+  function nodeAt(idx: Any): Any {
+    return uNodePos.element(
+      int(clamp(idx, float(0), float(NODE_COUNT - 1))),
+    ) as Any;
+  }
+  /** Node topological depth (= layer/4) by index node. */
+  function nodeTAt(idx: Any): Any {
+    return uNodeT.element(
+      int(clamp(idx, float(0), float(NODE_COUNT - 1))),
+    ) as Any;
+  }
+  /** Middle-layer gate 0/1 for a node depth — layers 1..3 (t .25/.5/.75) own
+   * the uRingFlash/uRingGlow slots; the input/output layers stay neutral. */
+  function midLayerGate(nT: Any): Any {
+    return smoothstep(float(0.05), float(0.15), nT).mul(
+      float(1).sub(smoothstep(float(0.85), float(0.95), nT)),
+    );
+  }
+  /** uRingFlash/uRingGlow slot for a node depth: index = nodeT·4 − 1 (the
+   * ringFlashAt/ringGlowAt clamp handles the ends; pair with midLayerGate). */
+  function layerSlot(nT: Any): Any {
+    return nT.mul(4.0).sub(1.0);
+  }
+  /** Per-NODE coherent degradation drift (broken, node depth past the
+   * fracture): a static hashed displacement + slow wander, gated by uBroken
+   * and pulled back by the uRecohere hover tease. Whole nodes read knocked
+   * off station — and frayed edges follow, because edgeFrame's endpoints
+   * read THIS too. Pure function of uTime (unified-force contract). */
+  function nodeDrift(idx: Any, nT: Any): Any {
+    const hn = fract(sin(idx.mul(91.7).add(13.1)).mul(43758.545)).toVar();
+    const hn2 = fract(sin(idx.mul(41.3).add(57.9)).mul(43758.545)).toVar();
+    const staticDir = vec3(
+      hn.sub(0.35),
+      hn2.sub(0.5).mul(1.4),
+      hn.mul(hn2).sub(0.3),
+    ).normalize();
+    const wander = vec3(
+      sin(uTime.mul(0.31).add(hn.mul(19.0))),
+      sin(uTime.mul(0.26).add(hn2.mul(23.0))),
+      sin(uTime.mul(0.22).add(hn.mul(31.0))),
+    );
+    const gate = smoothstep(uFracture, uFracture.add(float(0.02)), nT)
+      .mul(uBroken)
+      .mul(float(1).sub(uRecohere.mul(0.9)));
+    return staticDir
+      .mul(0.7)
+      .add(wander.mul(0.35))
+      .mul(float(NODE_DRIFT))
+      .mul(gate);
+  }
+  /** Decode an EDGE particle's baked aux + flow state into the shared frame:
+   * edge index, strand (0..1), per-edge flow s, TOPOLOGICAL depth t =
+   * mix(tA, tB, s), drift-corrected endpoints and the normalized edge
+   * direction. Pure function of attributes + uniforms — every stage, both
+   * backends. (For node/spark roles the values are finite garbage; every
+   * consumer gates by role.) */
+  function edgeFrame(metaN: Any, offN: Any) {
+    const aux = metaN.y;
+    const edgeIdx = clamp(
+      floor(aux.mul(0.5)),
+      float(0),
+      float(EDGE_N - 1),
+    ).toVar();
+    const strand = aux.sub(edgeIdx.mul(2.0)).toVar();
+    const s = flowParam(offN.x, metaN.z).toVar();
+    const ia = uEdgeA.element(int(edgeIdx)) as Any;
+    const ib = uEdgeB.element(int(edgeIdx)) as Any;
+    const tA = nodeTAt(ia).toVar();
+    const tB = nodeTAt(ib).toVar();
+    const A = nodeAt(ia).add(nodeDrift(ia, tA)).toVar();
+    const B = nodeAt(ib).add(nodeDrift(ib, tB)).toVar();
+    const t = mix(tA, tB, s).toVar();
+    const dir = B.sub(A).normalize().toVar();
+    return { edgeIdx, strand, s, t, A, B, dir };
+  }
   /** Round-3 row glow by JS-literal row index (uniformArray element — legal
    * in any stage, costs no buffer slot). */
   function rowGlowAt(i: number): Any {
@@ -669,24 +819,15 @@ export function createNeuralFieldBuild(
     return uMembranePhase.element(int(clamp(idx, float(0), float(2)))) as Any;
   }
   /** Row i's attention window over flow-t — mode-blended by uBroken:
-   * broken = gaussian at ROW_ZONE_T[i] (the stream zone nearest the row;
-   * row 2 sits ON the fracture), healthy = smooth box over the segment
-   * between ring i-1 (or the entry) and ring i (§B.3). */
+   * broken = gaussian at ROW_ZONE_T[i] (input region / mid net / the
+   * fracture zone — row 2 sits ON the fracture), healthy = gaussian at
+   * RING_T[i] (layer i+1's nodes + the near halves of its edges). */
   function rowWin(t: Any, i: number): Any {
-    const dz = t.sub(float(ROW_ZONE_T[i]));
-    const gauss = exp(float(ROW_ZONE_K).mul(dz.mul(dz)).negate());
-    const lo = i === 0 ? ROW_SEG_START : RING_T[i - 1];
-    const hi = RING_T[i];
-    const seg = smoothstep(
-      float(lo - ROW_SEG_FEATHER),
-      float(lo + ROW_SEG_FEATHER),
-      t,
-    ).mul(
-      float(1).sub(
-        smoothstep(float(hi - ROW_SEG_FEATHER), float(hi + ROW_SEG_FEATHER), t),
-      ),
-    );
-    return mix(seg, gauss, uBroken);
+    const dzB = t.sub(float(ROW_ZONE_T[i]));
+    const gaussB = exp(float(ROW_ZONE_K).mul(dzB.mul(dzB)).negate());
+    const dzH = t.sub(float(RING_T[i]));
+    const gaussH = exp(float(ROW_LAYER_K).mul(dzH.mul(dzH)).negate());
+    return mix(gaussH, gaussB, uBroken);
   }
   /** Σ rowGlow[i] · window_i(t) — 0..~1 "attention at t" (rows are mutually
    * exclusive hover targets, so the sum never stacks in practice). */
@@ -757,22 +898,23 @@ export function createNeuralFieldBuild(
     );
   }
 
-  /** Flow parameter of a stream particle — deterministic in uFlowTime, the
-   * round-4 driver-integrated flow clock (advances at 1×/s at rest, up to
-   * 1+uVelFlow× while scrolling; identical to the old uTime read at vel 0).
-   * Integrating driver-side is what lets velocity bend the flow RATE without
-   * the phase jump that scaling uTime in-shader would cause. */
+  /** Per-EDGE flow parameter s of an edge particle — deterministic in
+   * uFlowTime, the driver-integrated flow clock (advances at 1×/s at rest,
+   * up to 1+uVelFlow× while scrolling). Integrating driver-side is what lets
+   * velocity bend the flow RATE without the phase jump that scaling uTime
+   * in-shader would cause. */
   function flowParam(basePhase: Any, speedVar: Any): Any {
     return fract(basePhase.add(uFlowTime.mul(uFlowSpeed).mul(speedVar)));
   }
 
-  /** Laminar width envelope: 1 at entry, tightening STEPWISE past each ring
-   * (healthy; 1 → ~0.61 after all three — the igloo lock), times the idle
-   * BREATHING (±uBreathe over BREATHE_PERIOD s) and the master uEnvelope.
-   * uBroken gates the ring tightening off; breathing applies to both modes.
-   * Round-3: times the ROW-REACTIVE width response — the ignited row's zone
-   * SWELLS on broken (+uRowSwell) and TIGHTENS on healthy
-   * (−uRowSwell·ROW_TIGHTEN_RATIO, the laminar squeeze). */
+  /** Laminar width envelope over topological depth: 1 at the input,
+   * tightening STEPWISE past each MIDDLE LAYER (healthy; 1 → ~0.61 after
+   * eval/trace/guardrail — the igloo lock), times the idle BREATHING
+   * (±uBreathe over BREATHE_PERIOD s) and the master uEnvelope. uBroken
+   * gates the layer tightening off; breathing applies to both modes. Times
+   * the ROW-REACTIVE width response — the ignited row's region SWELLS on
+   * broken (+uRowSwell) and TIGHTENS on healthy (−uRowSwell·
+   * ROW_TIGHTEN_RATIO, the laminar squeeze). */
   function widthEnvelope(t: Any): Any {
     let w: Any = float(1);
     for (let i = 0; i < RING_T.length; i++) {
@@ -790,7 +932,7 @@ export function createNeuralFieldBuild(
         mix(uRowSwell.mul(-ROW_TIGHTEN_RATIO), uRowSwell, uBroken),
       ),
     );
-    // Round-4 §B.3: the river SWELLS +uVelSwell·vel while you scroll and
+    // Round-4 §B.3: the net SWELLS +uVelSwell·vel while you scroll and
     // relaxes back to the calm braid at rest (uScrollVel is damped driver-
     // side, so the envelope stays C1).
     const velW = float(1).add(uScrollVel.mul(uVelSwell));
@@ -801,8 +943,8 @@ export function createNeuralFieldBuild(
       .mul(uEnvelope);
   }
 
-  /** Fracture detachment factor 0..1 for a stream particle (broken only,
-   * softened by the hover re-cohere tease). */
+  /** Fracture detachment factor 0..1 for an edge particle at depth t
+   * (broken only, softened by the hover re-cohere tease). */
   function dispFactor(t: Any): Any {
     const past = smoothstep(
       uFracture,
@@ -827,7 +969,7 @@ export function createNeuralFieldBuild(
   }
 
   /**
-   * The analytic anchor: where particle i WANTS to be, from the spline
+   * The analytic anchor: where particle i WANTS to be, from the constellation
    * uniforms + its read-only role/offset attributes. Pure function of uTime →
    * deterministic for any scrub state (the unified-force contract; the curl
    * field is a pure function of position+uTime, so the contract holds).
@@ -841,43 +983,50 @@ export function createNeuralFieldBuild(
     const speedVar = metaN.z;
     const rnd = metaN.w;
 
-    // -------- STREAM branch --------
-    const t = flowParam(offN.x, speedVar).toVar();
-    const center = streamCenter(t).toVar();
+    // -------- EDGE branch --------
+    const ef = edgeFrame(metaN, offN);
+    const t = ef.t;
     const w = widthEnvelope(t).toVar();
-    // PHASE-SEPARATED braid (round-2): per-strand twist phase (uniformArray,
-    // live-tunable) + slightly different twist RATES so the four filaments
-    // visibly cross like a braided river instead of running as one fused
-    // tube. Fixed y/z frame (the meander is gentle enough that a true Frenet
-    // frame buys nothing visible).
-    const strandAng = strandPhaseAt(aux).add(
-      t
-        .mul(float(Math.PI * 2))
-        .mul(
-          float(BRAID_TURNS).mul(
-            float(STRAND_RATE_BASE).add(aux.mul(float(STRAND_RATE_STEP))),
+    // Perpendicular frame around the edge line. Layers are ≥0.22 apart in x,
+    // so dir is never parallel to ẑ — the cross is always well-conditioned.
+    const n1 = cross(ef.dir, vec3(0.0, 0.0, 1.0)).normalize().toVar();
+    const n2 = cross(ef.dir, n1).toVar();
+    // 2-strand braid in the (n1, n2) plane: per-strand twist phase + rate
+    // (uniformArrays, live-tunable — entries 2/3 unused since round-6) plus
+    // a per-edge golden-angle offset so the 21 filament pairs decorrelate.
+    const strandAng = strandPhaseAt(ef.strand)
+      .add(ef.edgeIdx.mul(2.39996))
+      .add(
+        ef.s
+          .mul(float(Math.PI * 2))
+          .mul(
+            float(BRAID_TURNS).mul(
+              float(STRAND_RATE_BASE).add(
+                ef.strand.mul(float(STRAND_RATE_STEP)),
+              ),
+            ),
           ),
-        ),
-    );
-    const strandOff = vec3(
-      float(0),
-      sin(strandAng).mul(float(STRAND_RADIUS)),
-      cos(strandAng).mul(float(STRAND_RADIUS)),
-    );
+      );
+    const strandOff = n1
+      .mul(sin(strandAng))
+      .add(n2.mul(cos(strandAng)))
+      .mul(float(STRAND_RADIUS));
     // Thickness jitter within the strand — per-strand thickness BIAS keeps
-    // the filaments individually legible (thick lead strand, thin satellites).
-    const jit = vec3(
-      float(0),
-      sin(offN.z).mul(offN.y).mul(float(STRAND_THICKNESS)),
-      cos(offN.z).mul(offN.y).mul(float(STRAND_THICKNESS)),
-    ).mul(strandThickAt(aux));
-    // Round-3 curl micro-turbulence (compute tier only): displace the strand
-    // offset with the analytic curl field sampled AT the braid position, so
-    // the field varies along the stream AND across the cross-section.
-    // Round-4 §B.3: +uVelCurl·vel gain while scrolling (turbulence answers
-    // motion; amplitude-only, so no phase discontinuity).
-    const preStream = center.add(strandOff.add(jit).mul(w)).toVar();
-    const onStream = (
+    // the two filaments individually legible (thick lead, thin satellite).
+    const jit = n1
+      .mul(sin(offN.z))
+      .add(n2.mul(cos(offN.z)))
+      .mul(offN.y)
+      .mul(float(STRAND_THICKNESS))
+      .mul(strandThickAt(ef.strand));
+    // Curl micro-turbulence (compute tier only): displace the strand offset
+    // with the analytic curl field sampled AT the braid position, so the
+    // field varies along the edge AND across the cross-section; +uVelCurl·
+    // vel gain while scrolling (amplitude-only, no phase discontinuity).
+    const preStream = mix(ef.A, ef.B, ef.s)
+      .add(strandOff.add(jit).mul(w))
+      .toVar();
+    const onEdge = (
       opts.curl
         ? preStream.add(
             curlAt(preStream)
@@ -888,16 +1037,17 @@ export function createNeuralFieldBuild(
         : preStream
     ).toVar();
 
-    // Broken: past the fracture the particle loses the spline home and
-    // becomes slow drifting debris — offset past the CLEAN-BREAK gap so the
-    // debris field starts visibly beyond the empty band.
+    // Broken: past the fracture the particle FRAYS off its edge line — a
+    // small hashed scatter + wander AROUND the (already endpoint-drifted)
+    // edge, so degraded edges read as edges gone wrong, not a detached
+    // cloud. The clean-break alpha gap (particleScalars) hides the detach
+    // window; uRecohere re-connects everything via dispFactor.
     const disp = dispFactor(t).toVar();
-    const fracPt = streamCenter(uFracture).toVar();
     const u = clamp(
       t.sub(uFracture).div(float(1).sub(uFracture)),
       float(0),
       float(1),
-    ).toVar(); // debris life progress
+    ).toVar(); // fray life progress
     const h1 = fract(sin(rnd.mul(137.9).add(offN.x.mul(311.7))).mul(43758.545));
     const h2 = fract(sin(rnd.mul(269.5).add(offN.z.mul(183.3))).mul(43758.545));
     const dir = vec3(
@@ -907,9 +1057,8 @@ export function createNeuralFieldBuild(
     )
       .normalize()
       .toVar();
-    // Round-4 §B.3: debris drifts +uVelDebris·vel faster while scrolling
-    // (amplitude boost on the wander — the flow clock already carries the
-    // +40% baseline through u).
+    // Fray wander drifts +uVelDebris·vel faster while scrolling (amplitude
+    // boost only — the flow clock already carries the +40% baseline).
     const wander = vec3(
       sin(uTime.mul(0.5).add(h1.mul(21.0))),
       sin(uTime.mul(0.42).add(h2.mul(17.0))),
@@ -917,35 +1066,41 @@ export function createNeuralFieldBuild(
     )
       .mul(u.mul(0.06))
       .mul(float(1).add(uScrollVel.mul(uVelDebris)));
-    const debris = fracPt
-      .add(strandOff.add(jit).mul(0.5))
+    const frayed = onEdge
       .add(dir.mul(u.mul(float(DEBRIS_SPREAD)).add(float(DEBRIS_GAP))))
       .add(wander);
-    const streamAnchor = mix(onStream, debris, disp).toVar();
+    const streamAnchor = mix(onEdge, frayed, disp).toVar();
 
-    // -------- RING branch (healthy) --------
-    const rC = streamCenter(ringT(aux)).toVar();
-    const ang = offN.x.add(uTime.mul(float(RING_SPIN)).mul(speedVar));
-    // Crisp torus (halved tube/jitter) + the ignition SHOCKWAVE: the radius
-    // ripples out 1 → 1+RING_SHOCKWAVE while the flash envelope decays.
-    const rr = float(RING_RADIUS)
-      .mul(float(1).add(offN.y.mul(float(RING_RADIAL_JITTER))))
-      .mul(float(1).add(ringFlashAt(aux).mul(float(RING_SHOCKWAVE))));
-    const tube = vec3(
-      sin(offN.z).mul(float(RING_TUBE)),
-      cos(offN.z).mul(float(RING_TUBE)),
-      float(0),
-    );
-    // The ring's circle lives in the y/z plane (perpendicular to the flow),
-    // with a slight x tube-jitter so it reads as a torus, not a flat washer.
-    const ringAnchor = rC
-      .add(vec3(tube.x, sin(ang).mul(rr).add(tube.y), cos(ang).mul(rr)))
+    // -------- NODE-HALO branch --------
+    const nT = nodeTAt(aux).toVar();
+    const nC = nodeAt(aux).add(nodeDrift(aux, nT)).toVar();
+    const ang = offN.x.add(uTime.mul(float(NODE_SPIN)).mul(speedVar));
+    // Crisp orbiting halo + the ignition SHOCKWAVE: the radius ripples out
+    // 1 → 1+RING_SHOCKWAVE while the middle layer's flash envelope decays.
+    const haloFlash = ringFlashAt(layerSlot(nT)).mul(midLayerGate(nT));
+    const rr = float(NODE_RADIUS)
+      .mul(float(1).add(offN.y.mul(float(NODE_RADIAL_JITTER))))
+      .mul(float(1).add(haloFlash.mul(float(RING_SHOCKWAVE))));
+    // CAMERA-FACING circle in the x/y plane: the group is anisotropically
+    // scaled (w·k, h·k), so the x component is aspect-corrected by
+    // uPlaneAspect to keep the halo screen-circular (the membrane discs'
+    // exact discipline). Slight z tube jitter → a ring, not a washer.
+    const ringAnchor = nC
+      .add(
+        vec3(
+          cos(ang).mul(rr).mul(uPlaneAspect),
+          sin(ang).mul(rr),
+          sin(offN.z).mul(float(NODE_TUBE)),
+        ),
+      )
       .toVar();
 
     // -------- SPARK branch (broken, role 2) --------
-    // Analytic burst: the uFlash 1→0 decay maps to outward flight 0→1 — a
-    // pure function of the flash uniform, identical on both backends. Idle
-    // (uFlash 0) parks the spark at full reach with zero alpha.
+    // Analytic burst from the fracture point (the registration spine puts it
+    // AT the broken crystal): the uFlash 1→0 decay maps to outward flight
+    // 0→1 — a pure function of the flash uniform, identical on both
+    // backends. Idle (uFlash 0) parks the spark at full reach, zero alpha.
+    const fracPt = streamCenter(uFracture).toVar();
     const prog = pow(clamp(float(1).sub(uFlash), float(0), float(1)), 0.6);
     const sparkAnchor = fracPt
       .add(sparkDir(offN).mul(prog.mul(float(SPARK_REACH)).mul(speedVar)))
@@ -989,30 +1144,22 @@ export function createNeuralFieldBuild(
       .mul(uBroken);
   }
 
-  /** Spline tangent at flow-t (central difference over the bowed center) —
-   * the static tier's elongation axis + the surge advection direction. */
-  function tangentAt(t: Any): Any {
-    return streamCenter(t.add(float(0.015)))
-      .sub(streamCenter(t.sub(float(0.015))))
-      .normalize();
-  }
-
   /** Screen-motion vector (local units/s) feeding the velocity stretch.
-   * Compute tier passes the LIVE velocity (plus the analytic surge advection
-   * on stream particles); the static tier derives a mild fixed tangent
-   * elongation + surge/spark boosts — parity of look, not of physics. */
+   * Compute tier passes the LIVE velocity (plus the analytic pulse advection
+   * on edge particles); the static tier derives a mild fixed elongation
+   * along the EDGE DIRECTION + pulse/spark boosts — parity of look, not of
+   * physics. Node halos carry no analytic motion (their orbit is slow). */
   function motionNode(metaN: Any, offN: Any, physVel: Any | null): Any {
     const role = metaN.x;
-    const t = flowParam(offN.x, metaN.z);
-    const tan = tangentAt(t);
-    const surge = surgeAt(t);
+    const ef = edgeFrame(metaN, offN);
+    const surge = surgeAt(ef.t);
     const streamGate = float(1).sub(clamp(role, float(0), float(1)));
     if (physVel) {
       return physVel.add(
-        tan.mul(surge).mul(float(SURGE_ADVECT)).mul(streamGate),
+        ef.dir.mul(surge).mul(float(SURGE_ADVECT)).mul(streamGate),
       );
     }
-    const streamMotion = tan.mul(
+    const streamMotion = ef.dir.mul(
       float(STATIC_ELONG).add(surge.mul(float(SURGE_ADVECT))),
     );
     const sparkMotion = sparkDir(offN).mul(uFlash.mul(1.2));
@@ -1029,7 +1176,8 @@ export function createNeuralFieldBuild(
    * so the whole ramp lives in the vertex stage (round-2). */
   function particleScalars(metaN: Any, offN: Any) {
     const role = metaN.x;
-    const t = flowParam(offN.x, metaN.z);
+    const ef = edgeFrame(metaN, offN);
+    const t = ef.t;
     const disp = dispFactor(t);
     const u = clamp(
       t.sub(uFracture).div(float(1).sub(uFracture)),
@@ -1042,13 +1190,14 @@ export function createNeuralFieldBuild(
       float(0),
       float(1),
     );
-    // Flow-t edge fades — soft band entry/exit AND the recycle-pop killer
-    // (a particle wraps flow-t at zero alpha on both sides of the seam).
-    const edge = smoothstep(float(0), float(EDGE_FADE_IN), t).mul(
-      float(1).sub(smoothstep(float(1 - EDGE_FADE_OUT), float(1), t)),
+    // Per-edge s fades — the filament TIPS dissolve into the node halos AND
+    // the recycle-pop killer (a particle wraps s at near-zero alpha; the
+    // wrap-snap in the kernel handles the anchor teleport).
+    const edge = smoothstep(float(0), float(EDGE_FADE_IN), ef.s).mul(
+      float(1).sub(smoothstep(float(1 - EDGE_FADE_OUT), float(1), ef.s)),
     );
-    // CLEAN BREAK (broken): zero alpha between the last coherent x and the
-    // debris field — a gap, not mush.
+    // CLEAN BREAK (broken): zero alpha right past the fracture depth on
+    // every crossing filament — a visible cut, not mush.
     const gap = float(1).sub(
       smoothstep(uFracture.sub(float(0.008)), uFracture, t)
         .mul(
@@ -1071,8 +1220,8 @@ export function createNeuralFieldBuild(
     const surge = surgeAt(t);
     const flash = flashAt(t);
 
-    // --- STREAM: white-cyan core → cyan body → blue fringe; ember debris;
-    //     white-cyan surge head with its trailing gradient. ---
+    // --- EDGE: white-cyan core → cyan body → blue fringe; ember fray;
+    //     white-cyan pulse head with its trailing gradient. ---
     const coreMix = float(1).sub(smoothstep(float(0), float(0.3), fringe));
     const bodyCol = mix(
       uColCyan,
@@ -1124,18 +1273,35 @@ export function createNeuralFieldBuild(
       fringe,
     ).mul(float(1).add(surge.mul(0.45)));
 
-    // --- RING: igloo crisp/white; ignition flash pushes whiter + pops. ---
-    const glow = ringGlowAt(metaN.y);
-    const ringFlash = ringFlashAt(metaN.y);
+    // --- NODE HALO: igloo crisp/white at node scale. Middle-layer halos
+    //     read uRingFlash/uRingGlow (layerSlot + midLayerGate); the pulse
+    //     adds an emissive kiss as it crosses the node's depth; degraded
+    //     nodes (broken, past the fracture) dim toward ember — pulled back
+    //     by the uRecohere hover tease. ---
+    const nT = nodeTAt(metaN.y);
+    const midGate = midLayerGate(nT);
+    const glow = mix(float(1), ringGlowAt(layerSlot(nT)), midGate);
+    const ringFlash = ringFlashAt(layerSlot(nT)).mul(midGate);
+    const nodePast = smoothstep(uFracture, uFracture.add(float(0.02)), nT)
+      .mul(uBroken)
+      .mul(float(1).sub(uRecohere.mul(0.9)));
     const emisRing = float(RING_EMISSIVE)
       .mul(glow)
-      .mul(float(1).add(ringFlash.mul(float(RING_FLASH_GAIN))));
+      .mul(float(1).add(ringFlash.mul(float(RING_FLASH_GAIN))))
+      .mul(float(1).add(surgeAt(nT).mul(0.6)))
+      .mul(float(1).sub(nodePast.mul(0.5)));
     const toneRing = mix(
-      uColCyan,
-      uColCore,
-      clamp(float(RING_WHITE).add(ringFlash.mul(0.5)), float(0), float(1)),
+      mix(
+        uColCyan,
+        uColCore,
+        clamp(float(RING_WHITE).add(ringFlash.mul(0.5)), float(0), float(1)),
+      ),
+      uColEmber2,
+      nodePast.mul(0.7),
     );
-    const alphaRing = float(STREAM_ALPHA);
+    const alphaRing = float(STREAM_ALPHA).mul(
+      float(1).sub(nodePast.mul(float(NODE_DEGRADE))),
+    );
     const sizeRing = float(RING_POINT_SIZE_BOOST).add(ringFlash.mul(0.35));
 
     // --- SPARK: white-hot burst, alive only while uFlash burns. ---
@@ -1149,7 +1315,7 @@ export function createNeuralFieldBuild(
     );
     const sizeSpark = float(0.9).add(metaN.w.mul(0.5));
 
-    // --- Combine by role (0 stream · 1 ring · 2 spark). ---
+    // --- Combine by role (0 edge · 1 node halo · 2 spark). ---
     const isStream = role.lessThan(float(0.5));
     const isRing = role.lessThan(float(1.5));
     const tone = select(
@@ -1299,16 +1465,18 @@ export function createNeuralFieldBuild(
   }
 
   /**
-   * B1 — ring forcefield MEMBRANES (healthy). Three camera-facing discs, one
-   * inside each guide ring, running igloo §5's forcefield recipe verbatim
-   * (dossier L41583):  n = sin(noise·13 + time − y·10)·.5+.5;
+   * B1 — LAYER MEMBRANES (healthy). Three camera-facing discs, one at each
+   * MIDDLE-LAYER centroid (eval → trace → guardrail — the processing planes
+   * the filaments visibly pierce), running igloo §5's forcefield recipe
+   * verbatim (dossier L41583):  n = sin(noise·13 + time − y·10)·.5+.5;
    * mask = aastep(0.2, n)·(1 − n·.75);  alpha = mask·base + mask⁵·.5 + rim·.5.
    * Deviations from igloo, both per the round-4 brief: camera-facing quads
    * (igloo's view-dependent tilt dropped) and value noise for the triangles/
-   * noise textures. The disc center reads the SAME streamCenter(RING_T[i])
-   * as the ring particles, so registration (and the group's camera lock) is
-   * free. The band phase arrives pre-integrated per ring (uMembranePhase) —
-   * the surge ripple is a ×3 phase-SPEED, driver-side, never a jump.
+   * noise textures. The disc center reads streamCenter(RING_T[i]) — with the
+   * round-6 centroid spine that IS layer i+1's centroid, so the constellation
+   * re-registration was free. The band phase arrives pre-integrated per
+   * layer (uMembranePhase) — the pulse ripple is a ×3 phase-SPEED,
+   * driver-side, never a jump.
    */
   function buildMembraneLayer(): { geometry: Any; material: Any } {
     const geo = layerGeometry("aRing", new Float32Array([0, 1, 2]), 1);
@@ -1510,7 +1678,7 @@ export function createNeuralFieldBuild(
       ).mul(0.003),
     );
     const sc = particleScalars(aMeta, aOff);
-    // Static-tier streaks: mild fixed elongation along the spline tangent,
+    // Static-tier streaks: mild fixed elongation along the edge direction,
     // boosted by the surge head / the spark burst.
     const motionS = motionNode(aMeta, aOff, null);
 
@@ -1569,7 +1737,7 @@ export function createNeuralFieldBuild(
     const metaN = metaBuffer.element(instanceIndex);
 
     const role = metaN.x;
-    // 0 on stream, 1 on ring AND spark — the "not a stream particle" gate
+    // 0 on edge, 1 on halo AND spark — the "not an edge particle" gate
     // (role 2 must never read as −1 through a `1 − role` term).
     const nonStream = clamp(role, float(0), float(1)).toVar();
 
@@ -1589,12 +1757,13 @@ export function createNeuralFieldBuild(
     const rv = smoothstep(float(0), float(1), uReveal);
     const anchor = mix(seedPos, liveAnchor, rv).toVar();
 
-    // RECYCLE / RE-PARK SNAP (round-2 streak fix): a flow-t wrap teleports a
-    // stream particle's anchor across the whole band (and a fresh flash
-    // re-parks a spark). The wrap happens at ZERO alpha (EDGE_FADE_*), so
-    // instead of a bright spring-flight streak the particle hard-resets onto
-    // its anchor — an offset reset, always legal per the unified-force
-    // contract. Rings never jump (their anchor is continuous → huge bound).
+    // RECYCLE / RE-PARK SNAP (streak fix): a flow-s wrap teleports an edge
+    // particle's anchor ONE EDGE LENGTH back (min ≈ 0.22 local — see the
+    // WRAP_SNAP_DIST config note; and a fresh flash re-parks a spark). The
+    // wrap happens inside the EDGE_FADE tips (near-zero alpha), so instead
+    // of a bright spring-flight streak the particle hard-resets onto its
+    // anchor — an offset reset, always legal per the unified-force contract.
+    // Node halos never jump (their anchor is continuous → huge bound).
     const snapDist = select(
       role.lessThan(float(0.5)),
       float(WRAP_SNAP_DIST),
@@ -1605,13 +1774,14 @@ export function createNeuralFieldBuild(
       velH.assign(vec3(0.0, 0.0, 0.0));
     });
 
-    // Fracture: dispersing debris loses most of its spring and gains wander.
-    const tSim = flowParam(offN.x, metaN.z);
+    // Fracture: fraying edge particles lose most of their spring and gain
+    // wander. tSim is TOPOLOGICAL depth (edge-frame derived, round-6).
+    const tSim = edgeFrame(metaN, offN).t;
     const dispersing = dispFactor(tSim)
-      .mul(float(1).sub(nonStream)) // rings/sparks never disperse
+      .mul(float(1).sub(nonStream)) // halos/sparks never disperse
       .toVar();
-    // Laminar lock (healthy): spring gain near the guide rings, so the sim
-    // visibly snaps particles tighter as they cross each ring.
+    // Laminar lock (healthy): spring gain near the middle layers, so the sim
+    // visibly snaps filaments tighter as they cross each processing layer.
     let ringProx: Any = float(0);
     for (let i = 0; i < RING_T.length; i++) {
       const d = tSim.sub(float(RING_T[i]));
@@ -1638,7 +1808,7 @@ export function createNeuralFieldBuild(
       spring: spring as Any,
       damping: DAMPING as Any,
       maxSpeed: MAX_SPEED as Any,
-      // Cursor bend: the pointer locally repels the river (parked at 1e9
+      // Cursor bend: the pointer locally repels nearby filaments (at 1e9
       // when idle/coarse → exactly zero at rest).
       attractor: {
         position: uPointer as Any,
@@ -1740,6 +1910,10 @@ export function createNeuralFieldBuild(
       uC2: uC2 as Any,
       uC3: uC3 as Any,
       uC4: uC4 as Any,
+      uNodePos: uNodePos as unknown as NeuralFieldUniforms["uNodePos"],
+      uNodeT: uNodeT as unknown as { array: number[] },
+      uEdgeA: uEdgeA as unknown as { array: number[] },
+      uEdgeB: uEdgeB as unknown as { array: number[] },
       uPointer: uPointer as Any,
       uPixelRatio,
       uViewport: uViewport as Any,

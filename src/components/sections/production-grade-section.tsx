@@ -63,9 +63,11 @@ import {
  *     field (existing store link, untouched).
  *   - BAND GEOMETRY CONTRACT (§A round 3, shared with the stream agent): the
  *     `[data-lattice-anchor="production"]` rect stays the FULL-BLEED -z-10
- *     background of the rows stack. Ring registration UNCHANGED (40/62/84%
- *     of band x — RING_T in webgl/neural/neuralLatticeConfig.ts; the ghost
- *     callout x mirrors it). Ghost callouts + dot grid KEPT.
+ *     background of the rows stack. ROUND-6: the WebGL "rings" are now the
+ *     three MIDDLE LAYERS of the constellation (RING_T = [.25,.5,.75]
+ *     topological depth, membranes at the layer centroids); the ghost
+ *     callout x values below stay as the historic var() FALLBACKS (round-6
+ *     spec §6 accepts the small drift). Ghost callouts + dot grid KEPT.
  *   - `productionPulseStore.bump()` on every in-view edge is UNTOUCHED (the
  *     signature line's BEAT 1 emissive boost).
  *   - Guards: SSR/no-JS renders everything settled and visible (solid ink
@@ -161,12 +163,13 @@ function clusterLabel(index: number, isEn: boolean): string {
 /** Number of pipeline systems (rows = rings = store clusters). */
 const IGNITE_NODES = 3;
 
-/** Ghost callout placement — x mirrors RING_T (40/62/84% of the band) in
- * webgl/neural/neuralLatticeConfig.ts; change them together (registration
- * contract, round 3 §A). Vertical `at` tracks the §B stream-v3 WEAVE
- * (coordination data 2026-08-21): the healthy river enters LOW and RISES
- * through the rings at band-y ≈ −0.05 / +0.06 / +0.17 (0 = center, + = up
- * → css top ≈ 55% / 44% / 33%). Each label hangs off its ring with the
+/** Ghost callout placement — HISTORIC round-3 values (x mirrored the old
+ * RING_T 40/62/84% band-x; the vertical `at` tracked the stream-v3 weave).
+ * ROUND-6 moved the WebGL registration to the constellation's middle-layer
+ * centroids (RING_T is topological depth now), but these values stay as the
+ * var() FALLBACKS only — SSR / fallback tier / RM placement, where the
+ * round-6 spec §6 measured the drift vs the new layer x's as acceptable.
+ * Each label hangs off its ring with the
  * leader line pointing at it (edge "top" = label above, "bottom" = below).
  *
  * ROUND-5 W3 (2026-08-21): when the crystal island mounts, its driver
