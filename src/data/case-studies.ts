@@ -167,7 +167,7 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     id: "terra-noa",
-    featured: 3,
+    featured: 4,
     palette: { highlight: "#58C97B" },
     depthImage: "/case-studies/depth/terranoa-depth.webp",
     client: "Terra Noa",
@@ -195,6 +195,7 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     id: "domus-tua",
+    featured: 3,
     client: "Domus Tua",
     engagement: "Real-estate agency digital platform (Sersan Build)",
     engagementIt: "Piattaforma digitale per agenzia immobiliare (Build Sersan)",
@@ -226,7 +227,7 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     id: "revolut",
-    featured: 4,
+    featured: 5,
     palette: { highlight: "#8AB8FF" },
     client: "Revolut",
     engagement: "Real-Time Anti-Fraud ML Platform",
@@ -251,7 +252,7 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     id: "jp-morgan",
-    featured: 5,
+    featured: 6,
     palette: { highlight: "#9DB7D9" },
     client: "J.P. Morgan",
     engagement: "Quantitative ML across Treasury, Credit & Aerospace Research",
@@ -277,7 +278,7 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     id: "apple-uk",
-    featured: 6,
+    featured: 7,
     palette: { highlight: "#B8C4D4" },
     client: "Apple UK (via Deloitte)",
     engagement: "Retail Demand & Allocation Forecasting",
@@ -395,6 +396,7 @@ export const caseStudies: CaseStudy[] = [
   },
   {
     id: "who",
+    featured: 8,
     palette: { highlight: "#4AA6DE" },
     client: "World Health Organization (Freelance Research Grant)",
     engagement: "Early-Stage Breast-Cancer Nodule Detection",
