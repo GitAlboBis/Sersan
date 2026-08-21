@@ -305,6 +305,107 @@ export const CURL_AMP_2 = 0.5;
 export const CURL_SPEED = 0.55;
 export const CURL_SPEED_2 = 0.9;
 
+// --- Round-4 §B.1 — ring forcefield MEMBRANES (healthy; igloo §5) ------------
+/**
+ * Each guide ring gets a translucent banded-noise membrane disc the stream
+ * visibly pierces — the igloo forcefield recipe VERBATIM (dossier
+ * 2026-08-21-igloo-tunnel-mining.md §5, pretty-bundle L41583):
+ *   n    = sin(noise·13 + phase − y·10)·0.5 + 0.5      (banded noise)
+ *   mask = aastep(0.2, n) · (1 − n·0.75)
+ *   a    = mask·base + pow(mask,5)·0.5 + radialRim·0.5
+ * with procedural 2D value noise standing in for igloo's tWind texture (the
+ * no-textures contract) and the view-dependent tilt dropped (our quads are
+ * camera-facing per the round-4 brief). LIFE: seals 0→1 on first ignition,
+ * ripples on surge passage (band phase ×3 + alpha +40% via uRingFlash),
+ * bulges +8% on row hover (uRowGlow).
+ */
+/** Quad half-size ÷ ring radius — margin covers the shockwave + hover bulge. */
+export const MEMBRANE_MARGIN = 1.35;
+/** Value-noise frequency over the disc (vUv units where r=1 = ring radius). */
+export const MEMBRANE_NOISE_SCALE = 2.2;
+/** aastep threshold of the band mask (igloo: aastep(0.2, n)). */
+export const MEMBRANE_BAND_THRESH = 0.2;
+/** The `mask·base` weight of the igloo alpha sum. */
+export const MEMBRANE_BAND_BASE = 0.5;
+/** Peak membrane alpha — subtle glass, not a wall (~0.22 per the brief). */
+export const MEMBRANE_ALPHA = 0.22;
+/** Membrane emissive — just over the bloom floor so the glass haloes faintly;
+ * the ignition flash pushes it further. */
+export const MEMBRANE_EMISSIVE = 1.35;
+/** Band phase speed at rest (rad/s — driver-integrated so the surge ripple
+ * never runs the phase backwards). */
+export const MEMBRANE_PHASE_SPEED = 0.8;
+/** Extra phase-speed × per unit ring flash (2 → ×3 total at full flash —
+ * the brief's "band phase speed ×3" ripple). */
+export const MEMBRANE_RIPPLE_SPEED = 2.0;
+/** Alpha boost at full ring flash (+40%). */
+export const MEMBRANE_RIPPLE_ALPHA = 0.4;
+/** Radial-mask expansion at full row hover (+8% — the bulge). */
+export const MEMBRANE_BULGE = 0.08;
+/** Damp rate of the 0→1 seal envelope once ring i first ignites (the igloo
+ * ring-seal read: the disc grows closed while the ignition flash decays). */
+export const MEMBRANE_SEAL_DAMP = 5.0;
+
+// --- Round-4 §B.2 — fracture NEBULA (broken; igloo §4) -----------------------
+/**
+ * The break smokes: soft quads clustered at the fracture point running the
+ * igloo tunnel-smoke recipe VERBATIM (dossier §4, L41275):
+ *   uv.x += uv.y (shear → streaking wisps)
+ *   v = noise(uv·3+d) · noise(uv·4+d) · noise(uv·6+d),  d = (−t, 0.7t), t slow
+ *   alpha = pow(v,3)·3 × radial falloff
+ * again with procedural value noise for tWind. Ember-tinted (COL_EMBER2 core →
+ * transparent) with a faint cyan rim on the upstream side (the last healthy
+ * light). Flares on surge death (uFlash), thins on the row-2 re-cohere tease.
+ */
+/** Per-quad [dx, dy, size, seed] in LOCAL units, offsets from the fracture
+ * point (downstream-biased — the smoke hangs over the debris side). */
+export const NEBULA_QUADS: readonly [number, number, number, number][] = [
+  [0.045, -0.015, 0.34, 0.13],
+  [-0.02, 0.035, 0.26, 0.57],
+  [0.095, -0.065, 0.42, 0.86],
+];
+/** Resting alpha ceiling (≤0.3 per the brief; the flare rides above it). */
+export const NEBULA_ALPHA = 0.3;
+/** Ember emissive — sub-bloom by design (smoke, not signal). */
+export const NEBULA_EMISSIVE = 1.0;
+/** uv.x += uv.y·this (igloo shear = 1). */
+export const NEBULA_SHEAR = 1.0;
+/** Wisp drift speed at rest (igloo t·0.05). */
+export const NEBULA_DRIFT_SPEED = 0.05;
+/** Drift-speed kick per unit uFlash (+0.3 while the death-flash burns —
+ * FLASH_DECAY 4.0 ≈ the brief's 0.5s window). */
+export const NEBULA_DRIFT_KICK = 0.3;
+/** Alpha × (1 + this·uFlash) — the surge-death FLARE (×1.8 at peak). */
+export const NEBULA_FLARE = 0.8;
+/** Alpha × (1 − this·uRowGlow[2]) — the re-cohere tease thins the smoke 30%. */
+export const NEBULA_THIN = 0.3;
+/** Cyan mix weight of the upstream rim. */
+export const NEBULA_RIM_GAIN = 0.35;
+
+// --- Round-4 §B.3 — scroll-velocity reactive river (both modes) --------------
+/**
+ * uScrollVel (0..1) = damped min(|scrollStore.velocity| / VEL_NORM, 1). The
+ * brief said /3000, but this codebase's Lenis velocity is px/FRAME-ish
+ * (heading-choreographer.tsx norms at 45, SignatureLine.tsx at ×0.01 = 100) —
+ * /3000 would never register. 100 matches the SignatureLine comet precedent:
+ * reading-speed scrolls stay imperceptible, a genuine flick saturates.
+ */
+export const VEL_NORM = 100;
+/** Damp λ of uScrollVel toward the normalized target (brief: ~6). */
+export const VEL_DAMP = 6;
+/** Braid thickness envelope +25%·vel (the river swells while you scroll). */
+export const VEL_SWELL = 0.25;
+/** Streak stretch gain +60%·vel (faster scroll = longer light streaks). */
+export const VEL_STRETCH = 0.6;
+/** Flow speed +40%·vel — applied by INTEGRATING a separate flow clock
+ * driver-side (uFlowTime += dt·(1 + this·vel)), never by scaling uTime in-
+ * shader (that would jump every particle's phase when vel changes). */
+export const VEL_FLOW = 0.4;
+/** Curl-turbulence gain +30%·vel (compute tier). */
+export const VEL_CURL = 0.3;
+/** Debris wander amplitude/acceleration +20%·vel (broken). */
+export const VEL_DEBRIS = 0.2;
+
 // --- Round-3 depth-DOF illusion (§B.4) ---------------------------------------
 /** Alpha multiplier at the FAR extreme of the z-bow (far = smaller/dimmer). */
 export const DOF_FAR_DIM = 0.55;

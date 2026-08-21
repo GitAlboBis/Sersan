@@ -88,6 +88,32 @@
  *   4. DEPTH-DOF ILLUSION — size × alpha modulated by the z-bow (far =
  *      smaller/dimmer; near = bigger + a SOFTER disc falloff via the new
  *      vSoft varying) — a cheap bokeh read, no post.
+ *
+ * ROUND-4 "BEST MINED EFFECTS" (2026-08-21 §B — igloo dossier ports; see
+ * research/2026-08-21-igloo-tunnel-mining.md for the source GLSL anchors):
+ *   B1. RING MEMBRANES (healthy) — three camera-facing disc quads inside the
+ *       guide rings running igloo §5's forcefield recipe verbatim (banded
+ *       noise `sin(noise·13 + phase − y·10)`, aastep(0.2)·(1−n·0.75), the
+ *       mask·base + mask⁵·0.5 + rim·0.5 alpha sum) with procedural value
+ *       noise for tWind. Positions derive from the SAME streamCenter/RING_T
+ *       math as the ring particles → registration for free. Seal (0→1 on
+ *       first ignition), ripple (uRingFlash) and bulge (uRowGlow) are all
+ *       uniform-driven; the band phase is DRIVER-INTEGRATED per ring so the
+ *       ripple's ×3 speed never runs the phase backwards.
+ *   B2. FRACTURE NEBULA (broken) — three soft quads at streamCenter(uFracture)
+ *       running igloo §4's tunnel-smoke recipe verbatim (sheared uv, triple-
+ *       multiplied value noise at ×3/×4/×6, pow(v,3)·3 × radial). Ember core,
+ *       faint cyan upstream rim; flares on uFlash, thins on uRowGlow[2].
+ *   B3. SCROLL-VELOCITY RIVER (both modes) — uScrollVel (0..1, damped driver-
+ *       side): width +25%·vel, streak stretch gain +60%·vel, curl +30%·vel,
+ *       debris wander +20%·vel, and flow +40%·vel via the NEW uFlowTime clock
+ *       (driver-integrated; flowParam reads it instead of uTime so a velocity
+ *       change bends the flow RATE without teleporting phases).
+ *   Both layers are pure vertex/fragment materials (no storage buffers, no
+ *   compute, no textures) built for BOTH backends before the backend split —
+ *   the 4-storage-buffer / 5-vertex-slot budget of the particle material is
+ *   untouched; each layer's own geometry uses 2 slots (quad + 1 instanced
+ *   attribute).
  */
 import {
   unifiedForceStep,
@@ -172,6 +198,27 @@ import {
   DOF_FAR_DIM,
   DOF_SOFT_MIN,
   DOF_SIZE_GAIN,
+  MEMBRANE_MARGIN,
+  MEMBRANE_NOISE_SCALE,
+  MEMBRANE_BAND_THRESH,
+  MEMBRANE_BAND_BASE,
+  MEMBRANE_ALPHA,
+  MEMBRANE_EMISSIVE,
+  MEMBRANE_RIPPLE_ALPHA,
+  MEMBRANE_BULGE,
+  NEBULA_QUADS,
+  NEBULA_ALPHA,
+  NEBULA_EMISSIVE,
+  NEBULA_SHEAR,
+  NEBULA_FLARE,
+  NEBULA_THIN,
+  NEBULA_RIM_GAIN,
+  VEL_NORM,
+  VEL_SWELL,
+  VEL_STRETCH,
+  VEL_FLOW,
+  VEL_CURL,
+  VEL_DEBRIS,
   NEURAL_SPRING,
   NEURAL_DAMPING,
   NEURAL_MAX_SPEED,
@@ -259,12 +306,60 @@ export interface NeuralFieldUniforms {
   uRowGain: { value: number };
   /** Row-glow width response (broken swell + / healthy tighten −·ratio). */
   uRowSwell: { value: number };
+  // --- Round-4 §B.3 — scroll-velocity river ---------------------------------
+  /** Damped, normalized |scroll velocity| 0..1 (driver-written). */
+  uScrollVel: { value: number };
+  /** Driver-integrated flow clock: += dt·(1 + uVelFlow·uScrollVel). flowParam
+   * reads THIS (not uTime), so velocity bends the flow rate C1-continuously. */
+  uFlowTime: { value: number };
+  /** Width envelope gain per unit vel (+25% default). */
+  uVelSwell: { value: number };
+  /** Streak stretch-gain boost per unit vel (+60% default). */
+  uVelStretch: { value: number };
+  /** DRIVER-READ ONLY (never in a shader): flow-clock gain per unit vel. Lives
+   * in the bag so the dev handle tunes it like every other knob. */
+  uVelFlow: { value: number };
+  /** Curl-turbulence gain boost per unit vel (compute tier). */
+  uVelCurl: { value: number };
+  /** Debris wander boost per unit vel (broken). */
+  uVelDebris: { value: number };
+  /** DRIVER-READ ONLY: |velocity| that maps to uScrollVel = 1. */
+  uVelNorm: { value: number };
+  // --- Round-4 §B.1 — ring membranes (healthy builds; dead nodes on broken) --
+  /** Per-ring 0→1 seal envelope (driver-latched on first ignition). */
+  uMembraneSeal: { array: number[] };
+  /** Per-ring driver-integrated band phase (rad — ripple = faster integration
+   * while uRingFlash burns, never a backwards jump). */
+  uMembranePhase: { array: number[] };
+  /** Peak membrane alpha (subtle glass ≈ 0.22). */
+  uMembraneAlpha: { value: number };
+  /** Radial bulge per unit row hover (+8% default). */
+  uMembraneBulge: { value: number };
+  /** rect height/width — corrects the camera-facing quads to screen-circular
+   * inside the anisotropically scaled (w·k, h·k) group. Driver-written. */
+  uPlaneAspect: { value: number };
+  // --- Round-4 §B.2 — fracture nebula (broken builds; dead nodes on healthy) -
+  /** Driver-integrated wisp drift (igloo t·0.05, kicked by uFlash). */
+  uNebulaDrift: { value: number };
+  /** Resting nebula alpha ceiling (≤0.3). */
+  uNebulaAlpha: { value: number };
+}
+
+/** A subordinate fullscreen-quad layer (membranes / nebula) sharing the
+ * particle build's uniforms — pure vertex/fragment, both backends. */
+export interface NeuralFieldLayer {
+  geometry: Any;
+  material: Any;
 }
 
 export interface NeuralFieldBuild {
   geometry: Any;
   material: Any;
   uniforms: NeuralFieldUniforms;
+  /** Round-4 §B.1: ring forcefield membranes — healthy builds only. */
+  membrane: NeuralFieldLayer | null;
+  /** Round-4 §B.2: fracture nebula — broken builds only. */
+  nebula: NeuralFieldLayer | null;
   /** Dispatch the compute step with a clamped frame delta (no-op on static). */
   compute: (delta: number) => void;
   dispose: () => void;
@@ -413,6 +508,7 @@ export function createNeuralFieldBuild(
     varying,
     select,
     exp,
+    fwidth,
   } = tsl as Any;
 
   const { meta, offA, seed } = seedBuffers(count, mode);
@@ -463,6 +559,25 @@ export function createNeuralFieldBuild(
   const uDof = uniform(1);
   const uRowGain = uniform(ROW_GAIN);
   const uRowSwell = uniform(ROW_SWELL);
+  // Round-4 (§B): scroll-velocity river + membrane/nebula layers. All plain
+  // uniforms/uniformArrays again — the storage-buffer and particle-material
+  // vertex-slot budgets stay untouched. The layers only referenced by the
+  // OTHER mode's build are dead nodes (never compiled into any material).
+  const uScrollVel = uniform(0);
+  const uFlowTime = uniform(0);
+  const uVelSwell = uniform(VEL_SWELL);
+  const uVelStretch = uniform(VEL_STRETCH);
+  const uVelFlow = uniform(VEL_FLOW); // driver-read only (flow-clock gain)
+  const uVelCurl = uniform(VEL_CURL);
+  const uVelDebris = uniform(VEL_DEBRIS);
+  const uVelNorm = uniform(VEL_NORM); // driver-read only (normalization)
+  const uMembraneSeal = uniformArray([0, 0, 0]);
+  const uMembranePhase = uniformArray([0, 0, 0]);
+  const uMembraneAlpha = uniform(MEMBRANE_ALPHA);
+  const uMembraneBulge = uniform(MEMBRANE_BULGE);
+  const uPlaneAspect = uniform(0.5);
+  const uNebulaDrift = uniform(0);
+  const uNebulaAlpha = uniform(NEBULA_ALPHA);
 
   // --- Geometry: shared billboard quad + per-instance role attributes -------
   const geometry = new InstancedBufferGeometry();
@@ -541,6 +656,17 @@ export function createNeuralFieldBuild(
    * in any stage, costs no buffer slot). */
   function rowGlowAt(i: number): Any {
     return uRowGlow.element(int(i)) as Any;
+  }
+  /** Round-4: row glow by NODE index (membrane bulge — vertex stage, mirrors
+   * ringGlowAt's clamp-int discipline). */
+  function rowGlowAtNode(idx: Any): Any {
+    return uRowGlow.element(int(clamp(idx, float(0), float(2)))) as Any;
+  }
+  function membraneSealAt(idx: Any): Any {
+    return uMembraneSeal.element(int(clamp(idx, float(0), float(2)))) as Any;
+  }
+  function membranePhaseAt(idx: Any): Any {
+    return uMembranePhase.element(int(clamp(idx, float(0), float(2)))) as Any;
   }
   /** Row i's attention window over flow-t — mode-blended by uBroken:
    * broken = gaussian at ROW_ZONE_T[i] (the stream zone nearest the row;
@@ -631,9 +757,13 @@ export function createNeuralFieldBuild(
     );
   }
 
-  /** Flow parameter of a stream particle — deterministic in uTime. */
+  /** Flow parameter of a stream particle — deterministic in uFlowTime, the
+   * round-4 driver-integrated flow clock (advances at 1×/s at rest, up to
+   * 1+uVelFlow× while scrolling; identical to the old uTime read at vel 0).
+   * Integrating driver-side is what lets velocity bend the flow RATE without
+   * the phase jump that scaling uTime in-shader would cause. */
   function flowParam(basePhase: Any, speedVar: Any): Any {
-    return fract(basePhase.add(uTime.mul(uFlowSpeed).mul(speedVar)));
+    return fract(basePhase.add(uFlowTime.mul(uFlowSpeed).mul(speedVar)));
   }
 
   /** Laminar width envelope: 1 at entry, tightening STEPWISE past each ring
@@ -660,7 +790,15 @@ export function createNeuralFieldBuild(
         mix(uRowSwell.mul(-ROW_TIGHTEN_RATIO), uRowSwell, uBroken),
       ),
     );
-    return mix(w, float(1), uBroken).mul(breathe).mul(rowW).mul(uEnvelope);
+    // Round-4 §B.3: the river SWELLS +uVelSwell·vel while you scroll and
+    // relaxes back to the calm braid at rest (uScrollVel is damped driver-
+    // side, so the envelope stays C1).
+    const velW = float(1).add(uScrollVel.mul(uVelSwell));
+    return mix(w, float(1), uBroken)
+      .mul(breathe)
+      .mul(rowW)
+      .mul(velW)
+      .mul(uEnvelope);
   }
 
   /** Fracture detachment factor 0..1 for a stream particle (broken only,
@@ -736,10 +874,17 @@ export function createNeuralFieldBuild(
     // Round-3 curl micro-turbulence (compute tier only): displace the strand
     // offset with the analytic curl field sampled AT the braid position, so
     // the field varies along the stream AND across the cross-section.
+    // Round-4 §B.3: +uVelCurl·vel gain while scrolling (turbulence answers
+    // motion; amplitude-only, so no phase discontinuity).
     const preStream = center.add(strandOff.add(jit).mul(w)).toVar();
     const onStream = (
       opts.curl
-        ? preStream.add(curlAt(preStream).mul(uCurl).mul(float(CURL_SCALE)))
+        ? preStream.add(
+            curlAt(preStream)
+              .mul(uCurl)
+              .mul(float(1).add(uScrollVel.mul(uVelCurl)))
+              .mul(float(CURL_SCALE)),
+          )
         : preStream
     ).toVar();
 
@@ -762,11 +907,16 @@ export function createNeuralFieldBuild(
     )
       .normalize()
       .toVar();
+    // Round-4 §B.3: debris drifts +uVelDebris·vel faster while scrolling
+    // (amplitude boost on the wander — the flow clock already carries the
+    // +40% baseline through u).
     const wander = vec3(
       sin(uTime.mul(0.5).add(h1.mul(21.0))),
       sin(uTime.mul(0.42).add(h2.mul(17.0))),
       sin(uTime.mul(0.36).add(h1.mul(13.0))),
-    ).mul(u.mul(0.06));
+    )
+      .mul(u.mul(0.06))
+      .mul(float(1).add(uScrollVel.mul(uVelDebris)));
     const debris = fracPt
       .add(strandOff.add(jit).mul(0.5))
       .add(dir.mul(u.mul(float(DEBRIS_SPREAD)).add(float(DEBRIS_GAP))))
@@ -1065,7 +1215,16 @@ export function createNeuralFieldBuild(
         .mul(depthK)
         .div(max(dist, 0.001));
       const spd = length(motion);
-      const stretch = float(1).add(min(spd.mul(uStretchGain), uStretchMax));
+      // Round-4 §B.3: streak stretch gain +uVelStretch·vel — faster scroll =
+      // longer light streaks (the AT read). The uStretchMax cap still rules.
+      const stretch = float(1).add(
+        min(
+          spd
+            .mul(uStretchGain)
+            .mul(float(1).add(uScrollVel.mul(uVelStretch))),
+          uStretchMax,
+        ),
+      );
       // The 1e-4 x-bias makes zero motion degrade to the unrotated quad
       // (stretch ≈ 1 there, so the orientation is invisible anyway).
       const mView = modelViewMatrix.mul(vec4(motion, 0.0)).toVar();
@@ -1103,6 +1262,233 @@ export function createNeuralFieldBuild(
     material.toneMapped = false;
     material.side = DoubleSide;
   }
+
+  // === Round-4 §B.1/§B.2 — mined-effect layers ==============================
+  // Pure fragment math on tiny instanced quads — no textures (procedural
+  // value noise stands in for igloo's tWind), no storage buffers, identical
+  // node graphs on both backends. Each layer's geometry uses 2 vertex slots
+  // (quad position + one instanced attribute) on its OWN material.
+
+  /** Deterministic [0,1) 2D hash — same sin-dot family as the debris hashes. */
+  function hash2(p: Any): Any {
+    return fract(sin(p.x.mul(127.1).add(p.y.mul(311.7))).mul(43758.5453));
+  }
+  /** Bilinear 2D value noise with smoothstep fade — the procedural stand-in
+   * for igloo's 128px tileable noise texture (no-textures contract). */
+  function vnoise2(p: Any): Any {
+    const ip = floor(p).toVar();
+    const fp = fract(p).toVar();
+    const wf = fp.mul(fp).mul(float(3.0).sub(fp.mul(2.0))).toVar();
+    const n00 = hash2(ip);
+    const n10 = hash2(ip.add(vec2(1.0, 0.0)));
+    const n01 = hash2(ip.add(vec2(0.0, 1.0)));
+    const n11 = hash2(ip.add(vec2(1.0, 1.0)));
+    return mix(mix(n00, n10, wf.x), mix(n01, n11, wf.x), wf.y);
+  }
+  /** Shared quad-layer geometry: the billboard quad + one instanced attr. */
+  function layerGeometry(name: string, data: Float32Array, itemSize: number) {
+    const geo = new InstancedBufferGeometry();
+    geo.setAttribute(
+      "position",
+      new BufferAttribute(new Float32Array(QUAD_CORNERS), 3),
+    );
+    geo.setIndex(new BufferAttribute(new Uint16Array(QUAD_INDEX), 1));
+    geo.setAttribute(name, new InstancedBufferAttribute(data, itemSize));
+    geo.instanceCount = data.length / itemSize;
+    return geo;
+  }
+
+  /**
+   * B1 — ring forcefield MEMBRANES (healthy). Three camera-facing discs, one
+   * inside each guide ring, running igloo §5's forcefield recipe verbatim
+   * (dossier L41583):  n = sin(noise·13 + time − y·10)·.5+.5;
+   * mask = aastep(0.2, n)·(1 − n·.75);  alpha = mask·base + mask⁵·.5 + rim·.5.
+   * Deviations from igloo, both per the round-4 brief: camera-facing quads
+   * (igloo's view-dependent tilt dropped) and value noise for the triangles/
+   * noise textures. The disc center reads the SAME streamCenter(RING_T[i])
+   * as the ring particles, so registration (and the group's camera lock) is
+   * free. The band phase arrives pre-integrated per ring (uMembranePhase) —
+   * the surge ripple is a ×3 phase-SPEED, driver-side, never a jump.
+   */
+  function buildMembraneLayer(): { geometry: Any; material: Any } {
+    const geo = layerGeometry("aRing", new Float32Array([0, 1, 2]), 1);
+    const mat = new MeshBasicNodeMaterial();
+    const aRing = attribute("aRing");
+
+    // Quad spans the ring diameter × margin (covers shockwave + bulge); the
+    // x half-extent is aspect-corrected so the disc is screen-circular inside
+    // the anisotropically scaled group.
+    const quadSize = float(RING_RADIUS * 2 * MEMBRANE_MARGIN);
+    mat.vertexNode = Fn(() => {
+      const center = streamCenter(ringT(aRing)).toVar();
+      const local = center.add(
+        vec3(
+          positionLocal.x.mul(quadSize).mul(uPlaneAspect),
+          positionLocal.y.mul(quadSize),
+          float(0),
+        ),
+      );
+      return cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(local, 1.0)));
+    })();
+
+    // Varying discipline: self-contained expressions only. vUv is scaled so
+    // r = 1 at the ring radius (quad edge lands at r = MEMBRANE_MARGIN).
+    const vUv = varying(positionLocal.xy.mul(2 * MEMBRANE_MARGIN));
+    // Per-ring scalars resolved in the vertex stage (uniformArray element by
+    // attribute-derived int — the exact ringGlowAt/particleScalars pattern).
+    const vAux = varying(
+      vec4(
+        membraneSealAt(aRing),
+        ringFlashAt(aRing),
+        rowGlowAtNode(aRing),
+        membranePhaseAt(aRing),
+      ),
+    );
+    const vSeed = varying(aRing);
+
+    const shade = Fn(() => {
+      const seal = vAux.x;
+      const flash = vAux.y;
+      const bulge = vAux.z;
+      const phase = vAux.w;
+      const r = length(vUv).toVar();
+      // --- Igloo banded noise, verbatim: sin(noise·13 + time − y·10) -------
+      const noi = vnoise2(
+        vUv
+          .mul(float(MEMBRANE_NOISE_SCALE))
+          .add(vec2(vSeed.mul(7.31), vSeed.mul(3.17))),
+      );
+      const band = sin(noi.mul(13.0).add(phase).sub(vUv.y.mul(10.0)))
+        .mul(0.5)
+        .add(0.5)
+        .toVar();
+      // aastep(0.2, band): fwidth-feathered step (igloo's aastep helper).
+      const aaw = max(fwidth(band).mul(0.8), float(1e-3));
+      const mask = smoothstep(
+        float(MEMBRANE_BAND_THRESH).sub(aaw),
+        float(MEMBRANE_BAND_THRESH).add(aaw),
+        band,
+      )
+        .mul(float(1).sub(band.mul(0.75)))
+        .toVar();
+      // --- Seal radial mask: grows 0→1 on ignition, bulges on row hover ----
+      const sealR = max(seal, float(1e-3))
+        .mul(float(1).add(uMembraneBulge.mul(bulge)))
+        .toVar();
+      const contain = float(1)
+        .sub(smoothstep(sealR.mul(0.82), sealR, r))
+        .toVar();
+      // Igloo's radialMask·.5 term, read as the rim glow where the membrane
+      // meets the ring.
+      const rim = smoothstep(sealR.mul(0.55), sealR.mul(0.95), r).mul(contain);
+      const aBand = mask
+        .mul(float(MEMBRANE_BAND_BASE))
+        .add(pow(mask, 5.0).mul(0.5))
+        .add(rim.mul(0.5));
+      const alpha = aBand
+        .mul(contain)
+        .mul(uMembraneAlpha)
+        .mul(float(1).add(flash.mul(float(MEMBRANE_RIPPLE_ALPHA))))
+        .mul(smoothstep(float(0), float(0.05), seal))
+        .mul(uReveal)
+        .toVar();
+      Discard(alpha.lessThan(0.003));
+      // White-cyan at the ring tone; the flash pushes whiter + brighter.
+      const tone = mix(
+        uColCyan,
+        uColCore,
+        clamp(float(RING_WHITE).add(flash.mul(0.4)), float(0), float(1)),
+      );
+      const emis = float(MEMBRANE_EMISSIVE).add(flash.mul(0.8));
+      return vec4(tone.toVec3().mul(emis), alpha);
+    })();
+
+    configureMaterial(mat, shade);
+    return { geometry: geo, material: mat };
+  }
+
+  /**
+   * B2 — fracture NEBULA (broken). Three soft quads clustered at the fracture
+   * point running igloo §4's tunnel-smoke recipe verbatim (dossier L41275):
+   * sheared uv (uv.x += uv.y), v = noise(uv·3+d)·noise(uv·4+d)·noise(uv·6+d)
+   * with the SAME drift vector d = (−t, 0.7t) on all three taps, alpha =
+   * pow(v,3)·3 × radial falloff. Ember core (COL_EMBER2) → transparent, a
+   * faint cyan rim on the upstream (−x) side. The drift clock arrives
+   * pre-integrated (uNebulaDrift — uFlash kicks its speed driver-side); the
+   * flare (×1+NEBULA_FLARE·uFlash) and the row-2 re-cohere thinning
+   * (×1−NEBULA_THIN·uRowGlow[2]) fold into one vertex-computed varying.
+   */
+  function buildNebulaLayer(): { geometry: Any; material: Any } {
+    const quadData = new Float32Array(NEBULA_QUADS.length * 4);
+    NEBULA_QUADS.forEach((q, i) => quadData.set(q, i * 4));
+    const geo = layerGeometry("aQuad", quadData, 4);
+    const mat = new MeshBasicNodeMaterial();
+    const aQuad = attribute("aQuad");
+
+    mat.vertexNode = Fn(() => {
+      const center = streamCenter(uFracture)
+        .add(vec3(aQuad.x, aQuad.y, float(0)))
+        .toVar();
+      const local = center.add(
+        vec3(
+          positionLocal.x.mul(aQuad.z).mul(uPlaneAspect),
+          positionLocal.y.mul(aQuad.z),
+          float(0),
+        ),
+      );
+      return cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(local, 1.0)));
+    })();
+
+    const vUv = varying(positionLocal.xy.mul(2.0));
+    const vSeed = varying(aQuad.w);
+    // Flare × thin modulator — pure uniforms, vertex-computed (discipline).
+    const vMod = varying(
+      float(1)
+        .add(uFlash.mul(float(NEBULA_FLARE)))
+        .mul(float(1).sub(rowGlowAt(2).mul(float(NEBULA_THIN)))),
+    );
+
+    const shade = Fn(() => {
+      const r = length(vUv).toVar();
+      // Igloo shear: uv.x += uv.y → the streaking-smoke read.
+      const suv = vec2(vUv.x.add(vUv.y.mul(float(NEBULA_SHEAR))), vUv.y).toVar();
+      const dv = vec2(uNebulaDrift.negate(), uNebulaDrift.mul(0.7)).toVar();
+      const so = vec2(vSeed.mul(17.13), vSeed.mul(9.7));
+      // Igloo triple-multiplied noise at ×3 / ×4 / ×6, same drift on all taps.
+      const v1 = vnoise2(suv.mul(3.0).add(dv).add(so));
+      const v2 = vnoise2(suv.mul(4.0).add(dv).add(so));
+      const v3 = vnoise2(suv.mul(6.0).add(dv).add(so));
+      // Igloo: alpha = pow(v,3)·3 — sparse organic wisps.
+      const wisp = pow(v1.mul(v2).mul(v3), 3.0).mul(3.0).toVar();
+      const radial = float(1).sub(smoothstep(float(0.35), float(1.0), r));
+      const alpha = wisp
+        .mul(radial)
+        .mul(uNebulaAlpha)
+        .mul(vMod)
+        .mul(uReveal)
+        .toVar();
+      Discard(alpha.lessThan(0.003));
+      // Ember core → transparent; faint cyan rim upstream (−x, the last
+      // healthy light). smoothstep edges kept ascending (edge0 < edge1).
+      const rimUp = float(1)
+        .sub(smoothstep(float(-0.7), float(0.1), vUv.x))
+        .mul(smoothstep(float(0.2), float(0.75), r));
+      const tone = mix(
+        uColEmber2.toVec3().mul(float(NEBULA_EMISSIVE).add(uFlash.mul(0.6))),
+        uColCyan.toVec3().mul(1.3),
+        rimUp.mul(float(NEBULA_RIM_GAIN)),
+      );
+      return vec4(tone, alpha);
+    })();
+
+    configureMaterial(mat, shade);
+    return { geometry: geo, material: mat };
+  }
+
+  // Mode-gated layer builds (shared by BOTH backend branches below — pure
+  // vertex/fragment materials, no compute dependency).
+  const membrane = mode === "healthy" ? buildMembraneLayer() : null;
+  const nebula = mode === "broken" ? buildNebulaLayer() : null;
 
   // === Static (no-compute) build ===========================================
   if (!backendIsWebGPU) {
@@ -1151,10 +1537,16 @@ export function createNeuralFieldBuild(
       geometry,
       material,
       uniforms: buildUniforms(),
+      membrane,
+      nebula,
       compute: () => {},
       dispose() {
         geometry.dispose();
         material.dispose();
+        membrane?.geometry.dispose();
+        membrane?.material.dispose();
+        nebula?.geometry.dispose();
+        nebula?.material.dispose();
       },
     } satisfies NeuralFieldBuild;
   }
@@ -1263,7 +1655,14 @@ export function createNeuralFieldBuild(
           sin(pos.z.mul(6.0).add(uTime.mul(1.1))),
           sin(pos.x.mul(6.0).add(uTime.mul(0.9))),
         );
-        acc.addAssign(turb.mul(dispersing.mul(float(DEBRIS_WANDER_ACC))));
+        // Round-4 §B.3: the wander force also answers scroll velocity.
+        acc.addAssign(
+          turb.mul(
+            dispersing
+              .mul(float(DEBRIS_WANDER_ACC))
+              .mul(float(1).add(uScrollVel.mul(uVelDebris))),
+          ),
+        );
       },
     });
 
@@ -1306,6 +1705,8 @@ export function createNeuralFieldBuild(
     geometry,
     material,
     uniforms: buildUniforms(),
+    membrane,
+    nebula,
     compute(delta: number) {
       uDelta.value = delta;
       gl.compute(simulate);
@@ -1313,6 +1714,10 @@ export function createNeuralFieldBuild(
     dispose() {
       geometry.dispose();
       material.dispose();
+      membrane?.geometry.dispose();
+      membrane?.material.dispose();
+      nebula?.geometry.dispose();
+      nebula?.material.dispose();
     },
   } satisfies NeuralFieldBuild;
 
@@ -1354,6 +1759,21 @@ export function createNeuralFieldBuild(
       uDof,
       uRowGain,
       uRowSwell,
+      uScrollVel,
+      uFlowTime,
+      uVelSwell,
+      uVelStretch,
+      uVelFlow,
+      uVelCurl,
+      uVelDebris,
+      uVelNorm,
+      uMembraneSeal: uMembraneSeal as unknown as { array: number[] },
+      uMembranePhase: uMembranePhase as unknown as { array: number[] },
+      uMembraneAlpha,
+      uMembraneBulge,
+      uPlaneAspect,
+      uNebulaDrift,
+      uNebulaAlpha,
     };
   }
 }

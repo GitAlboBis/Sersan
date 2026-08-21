@@ -48,6 +48,21 @@
  * PHONE BUDGET: `tier === "lite"` builds at NEURAL_PARTICLE_COUNT_COMPACT.
  * The tier is read with `getState()` in the build effect and NEVER subscribed
  * (a subscription here would be a React commit inside the <Canvas> island).
+ *
+ * ROUND-4 §B (2026-08-21, igloo-mined effects): this driver additionally
+ *   - integrates the FLOW CLOCK (uFlowTime += dt·(1 + uVelFlow·vel)) and the
+ *     damped uScrollVel from scrollStore velocity (§B.3 — the river swells,
+ *     streaks longer, curls harder and flows faster while you scroll, calm at
+ *     rest; velocity is 0 under RM/native scroll so RM stays calm by
+ *     construction);
+ *   - latches + damps each healthy ring's MEMBRANE seal (0→1 on first
+ *     ignition) and integrates its band phase (ripple = ×3 phase speed while
+ *     uRingFlash burns — integration, never a backwards jump) (§B.1);
+ *   - integrates the broken NEBULA wisp drift (igloo t·0.05, kicked +0.3
+ *     while the death-flash burns) (§B.2);
+ *   - renders the mode's extra layer mesh (membrane / nebula) inside the SAME
+ *     camera-locked inner group at renderOrder −2 (behind the particles; both
+ *     additive, so ordering is cosmetic).
  */
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -84,6 +99,12 @@ import {
   SURGE_PERIOD_HEALTHY,
   SURGE_SPEED,
   FLASH_DECAY,
+  MEMBRANE_SEAL_DAMP,
+  MEMBRANE_PHASE_SPEED,
+  MEMBRANE_RIPPLE_SPEED,
+  NEBULA_DRIFT_SPEED,
+  NEBULA_DRIFT_KICK,
+  VEL_DAMP,
   type LatticeMode,
 } from "./neural/neuralLatticeConfig";
 import type { NeuralFieldBuild } from "./neural/neuralFieldCompute";
@@ -94,6 +115,11 @@ const CULL_PAD = 220;
 /** Where a surge starts (just off the left edge) and overshoots the end. */
 const SURGE_START_T = -0.08;
 const SURGE_END_HEALTHY = 1.08;
+
+/** Membrane band-phase wrap — an EXACT multiple of 2π (the shader only reads
+ * the phase through sin(), so subtracting it is invisible) that keeps the
+ * accumulator inside fp32-comfortable range on long sessions. */
+const MEMBRANE_PHASE_WRAP = Math.PI * 2 * 512;
 
 interface SectionRect {
   /** Viewport-x center of the section anchor. */
@@ -226,6 +252,15 @@ export function NeuralLattice({
   const recohereTarget = useRef(0);
   const recohereEnv = useRef(0);
   const prevHovered = useRef<number | null>(null);
+  // Round-4 §B.3: damped scroll velocity + the integrated flow clock.
+  const scrollVel = useRef(0);
+  const flowTime = useRef(0);
+  // Round-4 §B.1 (healthy): per-ring membrane seal latch + integrated band
+  // phase. §B.2 (broken): integrated nebula wisp drift.
+  const membraneSealTarget = useRef<number[]>(new Array(CLUSTER_COUNT).fill(0));
+  const membraneSeal = useRef<number[]>(new Array(CLUSTER_COUNT).fill(0));
+  const membranePhase = useRef<number[]>(new Array(CLUSTER_COUNT).fill(0));
+  const nebulaDrift = useRef(0);
   const surfaceKey = broken ? ("broken" as const) : ("healthy" as const);
 
   useFrame((_, rawDelta) => {
@@ -447,6 +482,65 @@ export function NeuralLattice({
       u.uRingFlash.array[i] = ringFlashEased.current[i];
       u.uRowGlow.array[i] = rowGlow.current[i];
     }
+
+    // --- Round-4 §B.3: scroll-velocity river --------------------------------
+    // scrollStore velocity is px/frame-ish (0 under RM/native scroll — the
+    // fields stay calm there by construction). Damped so the swell/streak/
+    // curl response is C1 and only a genuine flick registers.
+    const velNorm = Math.min(
+      Math.abs(useScrollStore.getState().velocity) /
+        Math.max(u.uVelNorm.value, 1),
+      1,
+    );
+    scrollVel.current = THREE.MathUtils.damp(
+      scrollVel.current,
+      velNorm,
+      VEL_DAMP,
+      delta,
+    );
+    u.uScrollVel.value = scrollVel.current;
+    // The flow clock: 1×/s at rest, up to (1 + uVelFlow)× while scrolling.
+    // Integrated HERE (not scaled in-shader) so a velocity change bends the
+    // flow rate without teleporting every particle's phase.
+    flowTime.current += delta * (1 + u.uVelFlow.value * scrollVel.current);
+    u.uFlowTime.value = flowTime.current;
+
+    // --- Round-4 §B.1/§B.2: membrane seal+phase / nebula drift --------------
+    // Aspect correction for both quad layers (screen-circular discs inside
+    // the (w·k, h·k)-scaled group). Pure math on the cached rect.
+    u.uPlaneAspect.value = rect.h / Math.max(rect.w, 1);
+    if (!broken) {
+      for (let i = 0; i < CLUSTER_COUNT; i++) {
+        // Seal latch: the first ignition (bumpCluster or a surge crossing —
+        // both land in ringFlashEased) closes membrane i for good; the damp
+        // makes the disc visibly grow shut while the flash decays (igloo
+        // ring-seal read).
+        if (ringFlashEased.current[i] > 0.15) membraneSealTarget.current[i] = 1;
+        membraneSeal.current[i] = THREE.MathUtils.damp(
+          membraneSeal.current[i],
+          membraneSealTarget.current[i],
+          MEMBRANE_SEAL_DAMP,
+          delta,
+        );
+        // Band phase: ×(1 + RIPPLE·flash) speed while the flash burns — the
+        // surge passage visibly ripples the membrane, and because this is an
+        // integral the decay never runs the bands backwards.
+        membranePhase.current[i] +=
+          delta *
+          MEMBRANE_PHASE_SPEED *
+          (1 + MEMBRANE_RIPPLE_SPEED * ringFlashEased.current[i]);
+        if (membranePhase.current[i] > MEMBRANE_PHASE_WRAP)
+          membranePhase.current[i] -= MEMBRANE_PHASE_WRAP;
+        u.uMembraneSeal.array[i] = membraneSeal.current[i];
+        u.uMembranePhase.array[i] = membranePhase.current[i];
+      }
+    } else {
+      // Nebula wisp drift: igloo's slow t·0.05, kicked +NEBULA_DRIFT_KICK
+      // while the surge death-flash burns (~0.5s at FLASH_DECAY 4).
+      nebulaDrift.current +=
+        delta * (NEBULA_DRIFT_SPEED + NEBULA_DRIFT_KICK * flashEnv.current);
+      u.uNebulaDrift.value = nebulaDrift.current;
+    }
     // Cursor bend (compute tier): pointer → LOCAL rect space; parked at 1e9
     // when idle, coarse, or outside the band's influence zone. Pure math on
     // the cached rect — zero layout reads in this loop.
@@ -504,6 +598,19 @@ export function NeuralLattice({
       get count() {
         return countRef.current;
       },
+      // Round-4 §B live state.
+      get scrollVel() {
+        return scrollVel.current;
+      },
+      get flowTime() {
+        return flowTime.current;
+      },
+      get membraneSeal() {
+        return membraneSeal.current.slice();
+      },
+      get nebulaDrift() {
+        return nebulaDrift.current;
+      },
       /** The live uniform bag — set `.value` (or `.array` entries) from the
        * console for zero-recompile tuning of anything the shader reads. */
       get uniforms() {
@@ -535,6 +642,18 @@ export function NeuralLattice({
           dof: u.uDof.value,
           rowGain: u.uRowGain.value,
           rowSwell: u.uRowSwell.value,
+          // Round-4 §B knobs (write via `uniforms`): the uScrollVel response
+          // gains + the membrane / nebula looks. velFlow + velNorm are
+          // driver-read (they shape the integration, not a shader).
+          velNorm: u.uVelNorm.value,
+          velSwell: u.uVelSwell.value,
+          velStretch: u.uVelStretch.value,
+          velFlow: u.uVelFlow.value,
+          velCurl: u.uVelCurl.value,
+          velDebris: u.uVelDebris.value,
+          membraneAlpha: u.uMembraneAlpha.value,
+          membraneBulge: u.uMembraneBulge.value,
+          nebulaAlpha: u.uNebulaAlpha.value,
         };
       },
       project: () => {
@@ -551,6 +670,24 @@ export function NeuralLattice({
   return (
     <group ref={groupRef} renderOrder={-1} visible={false}>
       <group ref={innerRef}>
+        {/* Round-4 mined-effect layers — same camera-locked frame, behind the
+            particles (additive → ordering is cosmetic, never occluding). */}
+        {build.membrane && (
+          <mesh
+            geometry={build.membrane.geometry}
+            material={build.membrane.material}
+            renderOrder={-2}
+            frustumCulled={false}
+          />
+        )}
+        {build.nebula && (
+          <mesh
+            geometry={build.nebula.geometry}
+            material={build.nebula.material}
+            renderOrder={-2}
+            frustumCulled={false}
+          />
+        )}
         <mesh
           geometry={build.geometry}
           material={build.material}
