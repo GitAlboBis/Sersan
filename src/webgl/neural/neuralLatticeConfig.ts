@@ -416,15 +416,23 @@ export const DOF_SOFT_MIN = 0.03;
 export const DOF_SIZE_GAIN = 0.6;
 
 // --- Emissive / render (>1.0 selective-bloom contract) -----------------------
-export const STREAM_EMISSIVE = 2.6;
+/** ROUND-5 W3 STREAM DEMOTION (2026-08-21): the crystal cluster
+ * (CrystalCluster.tsx) is now the band's centerpiece and the stream recedes
+ * to ambient current flowing around/behind it — config-level default changes
+ * only (2.6 → 2.1): still over the bloom floor, but the river no longer
+ * competes with the crystal's ignition rim. Live-tunable via the dev handle;
+ * the owner judges the final values in-browser. */
+export const STREAM_EMISSIVE = 2.1;
 export const RING_EMISSIVE = 3.0;
-/** At-rest alpha of a stream particle disc. */
-export const STREAM_ALPHA = 0.8;
+/** At-rest alpha of a stream particle disc. Round-5 W3 demotion: 0.8 → 0.65
+ * (ambient current — see STREAM_EMISSIVE note). */
+export const STREAM_ALPHA = 0.65;
 /** Billboard size in device px (perspective-scaled in the shader; the round-2
  * CORE_SIZE_BOOST/FRINGE_SIZE_DROP falloff rides on top). Round-3: bumped
- * 7 → 8 so the same particle count keeps its fill density across the taller
- * rows-stack band + the vertical weave's longer arc. */
-export const NEURAL_POINT_SIZE = 8.0;
+ * 7 → 8 for fill density across the taller band; round-5 W3 demotion: back
+ * 8 → 7 — a slightly thinner river under the crystal (conservative; see
+ * STREAM_EMISSIVE note). */
+export const NEURAL_POINT_SIZE = 7.0;
 /** Ring particles read slightly denser. */
 export const RING_POINT_SIZE_BOOST = 1.3;
 /** Depth size/brightness attenuation keyed on local z (aerial depth cue). */

@@ -167,7 +167,17 @@ const IGNITE_NODES = 3;
  * (coordination data 2026-08-21): the healthy river enters LOW and RISES
  * through the rings at band-y ≈ −0.05 / +0.06 / +0.17 (0 = center, + = up
  * → css top ≈ 55% / 44% / 33%). Each label hangs off its ring with the
- * leader line pointing at it (edge "top" = label above, "bottom" = below). */
+ * leader line pointing at it (edge "top" = label above, "bottom" = below).
+ *
+ * ROUND-5 W3 (2026-08-21): when the crystal island mounts, its driver
+ * (webgl/CrystalCluster.tsx) writes `--callout-N-left`/`--callout-N-top`
+ * custom properties on the [data-lattice-anchor] element — the labels then
+ * ride the intact crystal's bbox anchors (damped, jitter-free). The values
+ * below stay as the var() FALLBACKS, so SSR / fallback tier / RM keep
+ * exactly this placement. The `edge` column must stay in sync with
+ * webgl/neural/crystalConfig.ts CALLOUT_EDGE (`--callout-N-top` feeds
+ * whichever edge property the callout uses). Placement only — strings are
+ * byte-identical under the copy freeze. */
 const CALLOUT_POS: { left: string; edge: "top" | "bottom"; at: string }[] = [
   { left: "40%", edge: "top", at: "46%" },
   { left: "62%", edge: "bottom", at: "47%" },
@@ -390,8 +400,8 @@ export default function ProductionGradeSection() {
                       : "after:content-[''] after:absolute after:left-1/2 after:bottom-full after:mb-1 after:h-7 after:w-px after:bg-gradient-to-t after:from-[hsl(var(--accent)/0.45)] after:to-transparent")
                   }
                   style={{
-                    left: pos.left,
-                    [pos.edge]: pos.at,
+                    left: `var(--callout-${i}-left, ${pos.left})`,
+                    [pos.edge]: `var(--callout-${i}-top, ${pos.at})`,
                   }}
                 >
                   {clusterLabel(i, isEn)}

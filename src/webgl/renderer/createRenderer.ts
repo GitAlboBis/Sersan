@@ -32,6 +32,8 @@
 // `GLProps` factory branch without a deep-path import, we type `canvas` as
 // `unknown` here (a supertype of R3F's canvas union) and narrow it at use.
 // R3F's `GLProps` Promise branch accepts the `Renderer` we return regardless.
+import { devOverridesAllowed } from "../store/tierStore";
+
 type GLFactoryDefaults = {
   canvas: unknown;
 } & Record<string, unknown>;
@@ -60,6 +62,27 @@ export function forceWebGLFlag(): boolean {
 }
 
 /**
+ * Dev/preview-only `?backend=webgl2` URL override (ROUND-5 W3 — the WebGL2
+ * fallback proof enabler): forces the WebGL backend of WebGPURenderer in a
+ * single session WITHOUT rebuilding with NEXT_PUBLIC_WEBGPU_FORCE_WEBGL, so
+ * the fallback path can finally be proven in-browser. Gated on the SAME
+ * `devOverridesAllowed()` predicate as `?fx=`/`?dpr=` (tierStore) — false in
+ * production hosts and during SSR, so the real domain is untouched. The
+ * import is value-safe: tierStore only type-imports from this module (the
+ * type is erased), so no runtime cycle exists, and tierStore pulls no three
+ * build — this module stays free of the heavy chunk.
+ */
+function backendUrlOverride(): "webgl2" | null {
+  if (!devOverridesAllowed()) return null;
+  try {
+    const v = new URLSearchParams(window.location.search).get("backend");
+    return v === "webgl2" ? "webgl2" : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * R3F 9.6 async `gl` factory: construct WebGPURenderer + await init().
  *
  * MUST only be passed to `<Canvas gl={...}>` when `webgpuEnabled()` is true —
@@ -75,7 +98,8 @@ export async function createWebGPURenderer(defaults: GLFactoryDefaults) {
   const { WebGPURenderer } = await import("three/webgpu");
 
   const hasGpu = typeof navigator !== "undefined" && "gpu" in navigator;
-  const forceWebGL = forceWebGLFlag() || !hasGpu;
+  const forceWebGL =
+    forceWebGLFlag() || !hasGpu || backendUrlOverride() === "webgl2";
 
   const props = {
     // R3F always passes a real HTMLCanvasElement here (the Canvas DOM node);

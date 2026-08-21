@@ -231,7 +231,17 @@ const PLROW_CSS = `
  * (band-y is a fraction of band height, 0 = center, + = up; css top =
  * 50% − y·100. Leader lines point INTO the path: edge "top" hangs the label
  * above its target, "bottom" below it.)
- * max-sm:hidden — aria-hidden garnish; the same strings live in the rows. */
+ * max-sm:hidden — aria-hidden garnish; the same strings live in the rows.
+ *
+ * ROUND-5 W3 (2026-08-21): when the crystal island mounts, its driver
+ * (webgl/CrystalCluster.tsx) writes `--callout-N-left`/`--callout-N-top`
+ * custom properties on the [data-lattice-anchor] element — the labels then
+ * ride the fractured cluster's shards (damped, jitter-free). The values
+ * below stay as the var() FALLBACKS, so SSR / fallback tier / RM keep
+ * exactly this placement. The `edge` column must stay in sync with
+ * webgl/neural/crystalConfig.ts CALLOUT_EDGE (`--callout-N-top` feeds
+ * whichever edge property the callout uses). Placement only — strings are
+ * byte-identical under the copy freeze. */
 const CALLOUT_POS: { left: string; edge: "top" | "bottom"; at: string }[] = [
   { left: "30%", edge: "top", at: "23%" },
   { left: "45%", edge: "bottom", at: "31%" },
@@ -391,8 +401,8 @@ export default function ProblemSection() {
                       : "after:content-[''] after:absolute after:left-1/2 after:bottom-full after:mb-1 after:h-7 after:w-px after:bg-gradient-to-t after:from-[hsl(var(--accent)/0.45)] after:to-transparent")
                   }
                   style={{
-                    left: pos.left,
-                    [pos.edge]: pos.at,
+                    left: `var(--callout-${i}-left, ${pos.left})`,
+                    [pos.edge]: `var(--callout-${i}-top, ${pos.at})`,
                   }}
                 >
                   {f.effect}

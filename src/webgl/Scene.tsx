@@ -35,6 +35,7 @@ import { FeaturedWorkPlanes } from "./FeaturedWorkPlanes";
 import { FounderPortraitMorph } from "./FounderPortraitMorph";
 import { ResourcePreviewPlane } from "./ResourcePreviewPlane";
 import { NeuralLattice } from "./NeuralLattice";
+import { CrystalCluster } from "./CrystalCluster";
 import { AuditSingularity } from "./AuditSingularity";
 import { HomeSingularity } from "./HomeSingularity";
 import { SequenceSingularity } from "./SequenceSingularity";
@@ -488,11 +489,26 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
 
           use-neural-lattice-fallback.ts is DEFINED as the exact complement of
           this line. The two must never diverge or a capable phone paints the SVG
-          graph AND the WebGL lattice stacked on each other. */}
+          graph AND the WebGL lattice stacked on each other.
+
+          ROUND-5 W3 (2026-08-21): the CrystalCluster pair rides the SAME gate
+          — one igloo-style hero crystal per neural band (broken = fractured
+          shard cluster, healthy = intact sealed crystal), camera-locked to the
+          same [data-lattice-anchor] rects, with the stream demoted to ambient
+          current (config defaults in neuralLatticeConfig). Pure node material,
+          no compute — it renders on the WebGL2 fallback backend too. MUST stay
+          mounted AFTER SignatureLine (camera-locked placement; the single
+          camera authority writes the pose earlier in the same priority-0
+          pass) and NEVER writes the camera. It also re-anchors the DOM ghost
+          callouts by writing --callout-N-left/top CSS vars on the anchor
+          element (sections keep hardcoded fallbacks for every non-island
+          tier). */}
       {pathname === "/" && island && webgpu && (
         <>
           <NeuralLattice mode="broken" anchorId="problem" />
           <NeuralLattice mode="healthy" anchorId="production" />
+          <CrystalCluster mode="broken" anchorId="problem" />
+          <CrystalCluster mode="healthy" anchorId="production" />
         </>
       )}
       {/* /resources article-hover signal plane (BEAT 3). Same gates as
