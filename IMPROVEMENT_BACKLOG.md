@@ -169,7 +169,11 @@ key files before implementing — §1.4):
   existing mark fold→zoom→streak choreography. Keep: truthful readiness signals,
   watchdog, reduced-motion skip, single rAF, Lenis parking. → ITERATION 2
 
-- [ ] **B14 · P2/S — Native instant-scroll desyncs Lenis and wedges the hero.** A native
+- [x] **B14 · P2/S — Native instant-scroll desyncs Lenis and wedges the hero.** (eaf0190,
+  2026-08-21) Fixed in lenis-singleton (the seam both pump paths share): passive
+  flag + guarded pre-raf resync (smooth-skip / stopped-skip / 1px epsilon), forced
+  immediate scrollTo with velocity-0 emit. Verified against lenis@1.3.23 source.
+  Residual corner documented in-code: stale-limit clamp needs a double failure. A native
   scroll teleport (keyboard Ctrl+Home/End, scrollbar drag, find-in-page jump) moves
   `window.scrollY` without Lenis: its virtual value stays where it was, so the
   scrollStore-driven WebGL keeps the lockup dissolved and the eclipse at fade 0 while
@@ -180,12 +184,17 @@ key files before implementing — §1.4):
   Lenis and re-sync (`lenis.scrollTo(window.scrollY, {immediate: true, force: true})`),
   or enable Lenis keyboard handling.
 
-- [ ] **B15 · P3/S — Services mode detection is a one-shot matchMedia sample**
-  (services-section.tsx, detection effect): unlike fit-section's subscribed queries, a
-  window snapped narrow / devtools dock / OS reduced-motion toggle after mount never
-  flips pinned↔native without a reload. Pre-existing at HEAD, deliberately left out of
-  the 2026-08-21 slab restyle (spec scoped to card composition only). Convert to the
-  fit-section subscription pattern + mode-flip refresh guard (MOBILE_TODO B1 twin).
+- [x] **B15 · P3/S — Services mode detection is a one-shot matchMedia sample.** (eaf0190,
+  2026-08-21) Converted to the fit-section D-18 subscription (three queries, change
+  listeners, cleanup); flips ride the pre-existing mode-flip teardown + deferred
+  ScrollTrigger.refresh. Zero behavior change at rest.
+
+- [ ] **B16 · P3/S — Services runway release rides the scrub cleanup with `isEn` deps**
+  (services-section.tsx ~L996, found by the B15 adversarial check): an EN↔IT toggle
+  mid-runway momentarily sets `height:""` before measure() re-sets it — if anything
+  forces layout in that gap the scroll position can clamp. Fit-section fixed this exact
+  hazard with `runwayNodeRef` + flip-only release (fit-section.tsx ~L411–449). Port the
+  same pattern. Pre-existing at HEAD; not touched by B15 (detection-only diff).
 
 ## Iteration log
 
