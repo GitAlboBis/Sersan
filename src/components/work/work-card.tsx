@@ -49,6 +49,7 @@ export const INDUSTRY_COLOR: Record<CaseStudy["industry"], string> = {
   Industrial: "text-[hsl(30_70%_65%)]",
   Energy: "text-[hsl(140_50%_60%)]",
   Agritech: "text-[hsl(100_45%_60%)]",
+  "Real Estate": "text-[hsl(350_55%_68%)]",
 };
 
 export const prefersReducedMotion = () =>

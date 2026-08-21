@@ -58,7 +58,7 @@ export interface CaseStudy {
   roleIt: string;
   domain: string;
   domainIt: string;
-  industry: "FinTech" | "Healthcare" | "Aerospace" | "Public Sector" | "Industrial" | "Energy" | "Agritech";
+  industry: "FinTech" | "Healthcare" | "Aerospace" | "Public Sector" | "Industrial" | "Energy" | "Agritech" | "Real Estate";
   summary: string;
   summaryIt: string;
   techStack: string[];
@@ -192,6 +192,37 @@ export const caseStudies: CaseStudy[] = [
     liveUrl: "https://terranoa.it",
     previewImage: "/case-studies/terranoa-preview.webp",
 
+  },
+  {
+    id: "domus-tua",
+    client: "Domus Tua",
+    engagement: "Real-estate agency digital platform (Sersan Build)",
+    engagementIt: "Piattaforma digitale per agenzia immobiliare (Build Sersan)",
+    role: "Sersan Team. Design, Engineering & Motion",
+    roleIt: "Team Sersan. Design, Engineering & Motion",
+    domain: "Real Estate · Brand Site · Motion Design · Lead Generation",
+    domainIt: "Real Estate · Sito Brand · Motion Design · Lead Generation",
+    industry: "Real Estate",
+    summary:
+      "Cinematic brand platform for Domus Tua, the Tradate (VA) real-estate agency led by Raffaela Rezza, operating since 2007. A session intro presents the founder hand-building the wordmark before an arched portal opens onto the hero; below it, the agency's method (data-driven valuation, documents verified before listing, Open Domus format) drives a single conversion path — the property-valuation request. Built and shipped by Sersan on the live deploy.",
+    summaryIt:
+      "Piattaforma brand cinematica per Domus Tua, l'agenzia immobiliare di Tradate (VA) guidata da Raffaela Rezza, attiva dal 2007. Un'intro di sessione presenta la fondatrice che costruisce il wordmark prima che un portale ad arco si apra sull'hero; sotto, il metodo dell'agenzia (valutazione sui dati, documenti verificati prima del mercato, formato Open Domus) guida un solo percorso di conversione — la richiesta di valutazione dell'immobile. Costruita e pubblicata da Sersan.",
+    techStack: ["Next.js", "TypeScript", "Tailwind CSS", "Lenis", "Vercel"],
+    metrics: [
+      { value: "4.9/5", label: "531 Google reviews", labelIt: "531 recensioni Google" },
+      { value: "Top 400", label: "among Italy's best agencies, 3 years running", labelIt: "fra le migliori agenzie d'Italia, 3 anni consecutivi" },
+      { value: "2007", label: "serving Tradate and the Varese province since", labelIt: "al servizio di Tradate e provincia di Varese dal" },
+      { value: "1 path", label: "every page funnels to the valuation request", labelIt: "ogni pagina converge sulla richiesta di valutazione" },
+    ],
+    liveUrl: "https://domus-tua-ten.vercel.app/",
+    previewImage: "/case-studies/domus-tua-preview.webp",
+    /* Detail rail: the session intro IS the story — it leads the media after
+       the flip-landing still; the page sweep closes fullscreen. */
+    railItems: [
+      { type: "image", src: "/case-studies/domus-tua-preview.webp", width: 1600, height: 940 },
+      { type: "video", src: "/case-studies/domus-tua/preloader.mp4", poster: "/case-studies/domus-tua/preloader-poster.webp", width: 1280, height: 720 },
+      { type: "video", src: "/case-studies/domus-tua/sweep.mp4", poster: "/case-studies/domus-tua/sweep-poster.webp", width: 1280, height: 720, fullscreen: true },
+    ],
   },
   {
     id: "revolut",
