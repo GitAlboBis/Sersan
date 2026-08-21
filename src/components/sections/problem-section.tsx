@@ -8,54 +8,55 @@ import { useLanguage } from "@/components/language-provider";
 import { useNeuralLatticeStore } from "@/webgl/store/neuralLatticeStore";
 import { useNeuralLatticeFallback } from "@/components/fx/use-neural-lattice-fallback";
 import { NeuralGraphFallback } from "@/components/fx/neural-graph-fallback";
-import {
-  StreamPane,
-  ChapterAnnotation,
-  scramblePaneEyebrow,
-} from "@/components/fx/stream-pane";
+import { ChapterAnnotation } from "@/components/fx/chapter-annotation";
+import { RollLetters, rollDelay } from "@/components/fx/roll-letters";
+import { useLedgerIgnition } from "@/components/fx/use-ledger-ignition";
 
 /**
  * ProblemSection — names the pain (demo-to-production gap).
  *
- * SIGNAL STREAM refactor (2026-08-21, Lusion detail grammar + Noomo pairing):
- *   - Chapter heading: the existing title promoted to chapter scale
- *     (clamp(2.6rem, 4.8vw, 5.75rem) display serif, full container width,
- *     italic span on the second sentence); the description moves to a
- *     right-hung ~320px annotation. The `[data-emerge]` wrapper — the
- *     singularity passage's zoom-in landing target — stays around this whole
- *     heading block.
- *   - The FIELD BAND below: a full-width band whose background is the
- *     `[data-lattice-anchor="problem"]` rect. The WebGL SIGNAL STREAM
- *     (NeuralLattice, mode "broken") flows left→right through it and
- *     FRACTURES at ~55% — laminar signal decaying into ember debris, surges
- *     that die on contact. When the island is absent the SVG stream twin
- *     (neural-graph-fallback.tsx) carries the metaphor. Igloo garnish inside
- *     the band (aria-hidden): a faint dot-grid + mono ghost callouts (the
- *     EXISTING effect strings) with leader lines, scramble-decoded by the
- *     global LabelScrambler (they carry `.eyebrow`), hidden below sm.
- *   - THREE GLASS PANES (StreamPane chrome) z-cascaded on the band's right —
- *     the stream flows toward/under them, the fracture visibly in the open
- *     left two-thirds. ALWAYS-OPEN copy (cause -> effect eyebrow + body; the
- *     accordion machinery is gone — the panes ARE the accessible content).
- *     Hover/focus on pane i → setHovered("broken", i) → the WebGL debris
- *     briefly re-coheres toward the spline then falls apart again. Below lg
- *     the panes stack in normal flow under the band.
- *   - In-view (once): bump("broken") — the WebGL stream fires the surge that
- *     dies at the fracture — and the panes play the ROUND-2 award-grammar
- *     reveal (2026-08-21 life pass): each pane slides from its side (+48px x)
- *     with a rotateZ settle (2.5°→ rest tilt) + blur 8→0 + opacity, staggered
- *     120ms expo.out; the pane's mono eyebrow scramble-decodes as it lands
- *     (local scrambler, sequenced by the timeline); the body copy masked-
- *     rises 60ms-staggered after the pane lands (clip windows are GSAP-owned:
- *     set at prime, cleared once everything settles, so SSR/no-JS/RM never
- *     clip anything). Reduced-motion: nothing primed hidden, no bumps, no
- *     timers.
- *   - Chapter type (round 2): the h2 carries data-split-reveal (Heading-
- *     Choreographer masked line-rise, key={language} remount contract) and
- *     the annotation is ChapterAnnotation (blur-fade ~0.3s behind the title).
- *   - Pane LIFE (round 2, in StreamPane itself): per-pane scroll parallax at
- *     alternating depths, fine-pointer spring hover tilt (±3.5° quickTo,
- *     back.out release), idle sine micro-float phase-offset per pane.
+ * TYPOGRAPHIC LEDGER ROWS (round 3 de-card, 2026-08-21 — the glass panes are
+ * GONE; the reference grammar is Noomo's ghost display words + award list
+ * rows, AT's `->` mono lists, Lusion's chrome-less rule):
+ *   - Chapter heading (round 2, unchanged): chapter-scale display serif h2
+ *     with data-split-reveal + key={language} (HeadingChoreographer masked
+ *     line-rise) and the description as the right-hung ChapterAnnotation.
+ *     The `[data-emerge]` wrapper — the singularity passage's zoom-in landing
+ *     target — stays around the whole heading block.
+ *   - Each failure is a FULL-WIDTH row over a hairline (no box, no bg, no
+ *     radius): `[mono index 01·] [CAUSE display serif] [-> accent mono]
+ *     [EFFECT ghost display serif]` on one big line, the body as a small mono
+ *     annotation in the right cell (grid [1fr_minmax(280px,34%)] — Lusion
+ *     big-left/small-right pairing).
+ *   - GHOST TYPE = the z-interleave illusion: the EFFECT word renders as
+ *     outlined/transparent serif (text-stroke; plain low-alpha ink where
+ *     unsupported) so the WebGL river flowing BEHIND the DOM shines through
+ *     the glyphs. On IGNITION (fine-pointer hover, keyboard focus, or the
+ *     touch centre-band via use-centre-focus) the ghost FILLS amber-tinged
+ *     (it names the failure), the `->` slides +6px, the index brightens, and
+ *     setHovered("broken", i) fires the existing store link (the debris
+ *     re-cohere tease in the WebGL field).
+ *   - BAND GEOMETRY CONTRACT (§A round 3, shared with the stream agent): the
+ *     `[data-lattice-anchor="problem"]` rect is now the FULL-BLEED background
+ *     of the rows stack — absolute inset-y-0, x bled edge-to-edge past the
+ *     container gutter, -z-10 inside the isolated rows container. The river
+ *     runs edge-to-edge behind the type; the fracture registration (~55% of
+ *     band x) is unchanged. Ghost callouts + dot grid KEPT, callouts
+ *     repositioned into the inter-row gaps.
+ *   - Reveal (IO once, RM never primes anything): the display words play the
+ *     LUSION LETTER-ROLL (RollLetters — per-letter columns streaming through
+ *     a clip, yPercent −500→0 expo.inOut, center-out cosine stagger; the
+ *     work section's RollingTitle grammar), rows staggered 110ms. The ghost
+ *     EFFECT word rolls in ALREADY-SCRAMBLED (deterministic decode decoys)
+ *     and lands decoded — roll + AT glyph-decode composed, zero timers. The
+ *     mono index and `->` blur-free fade in behind the roll; annotations
+ *     fade 150ms later. bump("broken") on the in-view edge is untouched
+ *     (the surge that dies at the fracture).
+ *   - A11y: strings in source order (index → cause → effect → body), ghost
+ *     styling is pure CSS on real text (SR-transparent), rows are tabIndex=0
+ *     with the global :focus-visible ring; focus = ignition (hover parity).
+ *     Reduced motion: solid-ink readable static — no ghost outline, no
+ *     transitions, no timers.
  *
  * Copy is byte-identical to the pre-refactor section (EN + IT).
  */
@@ -132,13 +133,90 @@ function useInView<T extends HTMLElement>(margin = "0px 0px -12% 0px") {
   return { ref, inView };
 }
 
-/** Ghost callout placement inside the band (≈ the WebGL fracture/debris zone:
- * uFracture = 0.55 → band-x ~55%; debris drifts right of it). max-sm:hidden —
- * aria-hidden garnish; the same strings live in the panes. */
+/**
+ * Ignition CSS — file-scoped (no globals.css edits, parallel-agent rule).
+ * Three visual triggers, one per input class: `:hover` (fine pointer only,
+ * media-gated), `:focus-visible` (keyboard), `[data-focus="true"]` (touch
+ * centre-band, written by lib/use-centre-focus). The store twin lives in
+ * useLedgerIgnition. Transitions are color / stroke-color / transform only.
+ * Reduced motion: the ghost is solid readable ink-mute, nothing transitions.
+ */
+const PLROW_CSS = `
+.plrow__ghost {
+  color: hsl(var(--ink) / 0.25);
+  transition: color 0.6s var(--ease-lusion);
+}
+@supports (-webkit-text-stroke-width: 1px) {
+  .plrow__ghost {
+    color: transparent;
+    -webkit-text-stroke: 1px hsl(var(--ink) / 0.35);
+    transition:
+      color 0.6s var(--ease-lusion),
+      -webkit-text-stroke-color 0.6s var(--ease-lusion);
+  }
+}
+.plrow__arrow {
+  display: inline-block;
+  transition: transform 0.6s var(--ease-lusion);
+}
+.plrow__index {
+  color: hsl(var(--accent) / 0.6);
+  transition: color 0.6s var(--ease-lusion);
+}
+.plrow:focus-visible .plrow__ghost,
+.plrow[data-focus="true"] .plrow__ghost {
+  color: hsl(36 60% 72%);
+  -webkit-text-stroke-color: hsl(36 60% 72% / 0.45);
+}
+.plrow:focus-visible .plrow__arrow,
+.plrow[data-focus="true"] .plrow__arrow { transform: translateX(6px); }
+.plrow:focus-visible .plrow__index,
+.plrow[data-focus="true"] .plrow__index { color: hsl(var(--accent)); }
+@media (hover: hover) and (pointer: fine) {
+  .plrow:hover .plrow__ghost {
+    color: hsl(36 60% 72%);
+    -webkit-text-stroke-color: hsl(36 60% 72% / 0.45);
+  }
+  .plrow:hover .plrow__arrow { transform: translateX(6px); }
+  .plrow:hover .plrow__index { color: hsl(var(--accent)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Solid-ink readable static in EVERY state: use-centre-focus's static
+     mode marks all rows [data-focus="true"] on touch+RM, and the ignition
+     selectors above out-specify the bare class — so the RM pin must carry
+     the state selectors too. */
+  .plrow__ghost,
+  .plrow:hover .plrow__ghost,
+  .plrow:focus-visible .plrow__ghost,
+  .plrow[data-focus="true"] .plrow__ghost {
+    color: hsl(var(--ink-mute));
+    -webkit-text-stroke-width: 0;
+    transition: none;
+  }
+  .plrow__arrow,
+  .plrow:hover .plrow__arrow,
+  .plrow:focus-visible .plrow__arrow,
+  .plrow[data-focus="true"] .plrow__arrow {
+    transform: none;
+    transition: none;
+  }
+  .plrow__index { transition: none; }
+}
+`;
+
+/** Ghost callout placement — tracks the §B stream-v3 WEAVE (coordination
+ * data 2026-08-21): the broken river enters HIGH (band-y +0.18 → css top
+ * ~32%), dips through the mid (−0.08 → ~58%), fractures at x≈55% y≈−0.12,
+ * debris descending right of it. Callouts ride that descent: "no signal"
+ * upstream high, "no debugging" near the dip, "no trust" in the debris zone.
+ * (band-y is a fraction of band height, 0 = center, + = up; css top =
+ * 50% − y·100. Leader lines point INTO the path: edge "top" hangs the label
+ * above its target, "bottom" below it.)
+ * max-sm:hidden — aria-hidden garnish; the same strings live in the rows. */
 const CALLOUT_POS: { left: string; edge: "top" | "bottom"; at: string }[] = [
-  { left: "48%", edge: "top", at: "14%" },
-  { left: "54%", edge: "bottom", at: "12%" },
-  { left: "59%", edge: "top", at: "26%" },
+  { left: "30%", edge: "top", at: "23%" },
+  { left: "45%", edge: "bottom", at: "31%" },
+  { left: "62%", edge: "top", at: "71%" },
 ];
 
 export default function ProblemSection() {
@@ -147,19 +225,25 @@ export default function ProblemSection() {
   const failures = getFailures(isEn);
   const showFallback = useNeuralLatticeFallback();
 
-  // ONE latched in-view edge for the whole field row: fires the store bump
-  // and arms the pane reveal.
+  // ONE latched in-view edge for the whole ledger: fires the store bump and
+  // arms the row reveal.
   const { ref: rowRef, inView } = useInView<HTMLDivElement>();
   useBrokenStreamOnEnter(inView);
 
-  // Once-per-life pane reveal — the ROUND-2 award grammar: side slide (+48px,
-  // the panes live on the row's right) + rotateZ 2.5°→rest settle + blur-up,
-  // staggered 120ms; eyebrow scramble-decode + body masked-rise sequenced per
-  // pane. Primed idempotently on every dep re-run BEFORE the play guard
-  // (useGSAP is a layout effect — no hidden-then-visible flash); reduced-
-  // motion never primes anything hidden. The GSAP `x`/`rotation`/`y-free`
-  // channel split is deliberate: StreamPane's idle float owns the article's
-  // `y`, its parallax wrapper owns its own transform — nothing fights.
+  // Ignition driver: centre-band on touch (data-focus), hover/focus on fine
+  // pointer — visual is CSS above; the store link (debris re-cohere tease)
+  // rides the same edges via setHovered("broken", i).
+  const { rowRefs, rowHandlers } = useLedgerIgnition("broken", failures.length);
+
+  // Once-per-life ledger reveal — the LUSION LETTER-ROLL on the display
+  // words (rows staggered 110ms; per-word columns roll yPercent −500→0
+  // expo.inOut with the center-out cosine stagger — the work RollingTitle
+  // math), the mono index/arrow fade in behind, annotations fade 150ms
+  // later. The ghost EFFECT word's decoy copies are pre-scrambled glyphs, so
+  // the roll IS the decode. Primed idempotently on every dep re-run BEFORE
+  // the play guard (useGSAP is a layout effect — no hidden-then-visible
+  // flash); reduced-motion never primes anything hidden and never starts a
+  // timer.
   const playedRef = useRef(false);
   useGSAP(
     () => {
@@ -167,56 +251,62 @@ export default function ProblemSection() {
       if (!row) return;
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
       if (playedRef.current) return;
-      const panes = row.querySelectorAll<HTMLElement>("[data-stream-pane]");
-      if (!panes.length) return;
-      const masks = row.querySelectorAll<HTMLElement>("[data-pane-mask]");
-      const rises = row.querySelectorAll<HTMLElement>("[data-pane-rise]");
-      gsap.set(panes, { opacity: 0, x: 48, rotation: 2.5, filter: "blur(8px)" });
-      // Clip windows are JS-owned: overflow set here, cleared after the
-      // timeline settles — SSR/no-JS/RM never clip a descender.
-      if (masks.length) gsap.set(masks, { overflow: "hidden" });
-      if (rises.length) gsap.set(rises, { yPercent: 115 });
+      const rows = row.querySelectorAll<HTMLElement>("[data-ledger-row]");
+      if (!rows.length) return;
+      const cols = row.querySelectorAll<HTMLElement>("[data-roll-col]");
+      const fades = row.querySelectorAll<HTMLElement>("[data-row-fade]");
+      const notes = row.querySelectorAll<HTMLElement>("[data-row-note]");
+      if (cols.length) gsap.set(cols, { yPercent: -500 });
+      if (fades.length) gsap.set(fades, { autoAlpha: 0, y: 8 });
+      if (notes.length) gsap.set(notes, { autoAlpha: 0, y: 12 });
       if (!inView) return;
       playedRef.current = true;
       const tl = gsap.timeline();
-      tl.to(
-        panes,
-        {
-          opacity: 1,
-          x: 0,
-          rotation: 0,
-          filter: "blur(0px)",
-          duration: 0.9,
-          ease: "expo.out",
-          stagger: 0.12,
-          clearProps: "filter",
-        },
-        0,
-      );
-      panes.forEach((pane, i) => {
-        const at = i * 0.12;
-        const eyebrow = pane.querySelector<HTMLElement>("[data-pane-eyebrow]");
-        if (eyebrow) {
-          tl.call(
-            () => {
-              scramblePaneEyebrow(eyebrow);
-            },
-            undefined,
-            at + 0.1,
-          );
-        }
-        const paneRises = pane.querySelectorAll<HTMLElement>("[data-pane-rise]");
-        if (paneRises.length) {
+      rows.forEach((r, i) => {
+        const at = i * 0.11;
+        // Letter-roll per word: cause leads, the ghost effect follows a
+        // beat later (it lands already-decoded — the decoys carry the
+        // scramble).
+        r.querySelectorAll<HTMLElement>("[data-roll-word]").forEach(
+          (word, wi) => {
+            const wordCols = word.querySelectorAll<HTMLElement>(
+              "[data-roll-col]",
+            );
+            const n = wordCols.length;
+            wordCols.forEach((col, ci) => {
+              tl.fromTo(
+                col,
+                { yPercent: -500 },
+                { yPercent: 0, duration: 1.25, ease: "expo.inOut" },
+                at + wi * 0.12 + rollDelay(ci, n),
+              );
+            });
+          },
+        );
+        const rowFades = r.querySelectorAll<HTMLElement>("[data-row-fade]");
+        if (rowFades.length) {
           tl.to(
-            paneRises,
-            { yPercent: 0, duration: 0.7, ease: "expo.out", stagger: 0.06 },
+            rowFades,
+            { autoAlpha: 1, y: 0, duration: 0.5, ease: "expo.out" },
             at + 0.35,
           );
         }
+        const note = r.querySelector<HTMLElement>("[data-row-note]");
+        if (note) {
+          tl.to(
+            note,
+            { autoAlpha: 1, y: 0, duration: 0.6, ease: "expo.out" },
+            at + 0.45,
+          );
+        }
       });
-      if (masks.length) tl.set(masks, { clearProps: "overflow" });
     },
-    { dependencies: [inView], scope: rowRef },
+    // `language` is a dep so an EN/IT toggle BEFORE the reveal re-primes the
+    // fresh roll columns (a longer word renders NEW cols; without a re-run
+    // they'd sit unprimed-visible next to hidden siblings while the section
+    // scrolls in). After the play the played guard returns early — settled
+    // visible, no replay.
+    { dependencies: [inView, language], scope: rowRef },
   );
 
   return (
@@ -225,6 +315,7 @@ export default function ProblemSection() {
       data-snap
       className="section-accent-tint relative section-lg scroll-mt-24 overflow-hidden"
     >
+      <style>{PLROW_CSS}</style>
       <SectionGlow position="top-right" intensity={1.2} />
       <SectionGlow position="bottom-left" intensity={0.8} size="50rem" />
       <div className="container-px relative">
@@ -288,94 +379,101 @@ export default function ProblemSection() {
           </div>
         </div>
 
-        {/* The field row: the band (WebGL anchor as background) + the panes
-            cascaded over its right side (lg+) / stacked below it (< lg).
-            On lg the band is the ABSOLUTE background of the whole row, so its
-            height tracks the pane stack (no fixed-height overflow); below lg
-            it is a fixed-height block with the panes in flow underneath. */}
-        <div ref={rowRef} className="relative mt-8 sm:mt-12">
-          <div className="relative min-h-[280px] sm:min-h-[420px] lg:absolute lg:inset-0 lg:min-h-0">
-            {/* The WebGL anchor rect — the stream is camera-locked to this box
-                (persistent canvas paints behind the DOM). Decorative layer:
-                aria-hidden, pointer-events-none. */}
-            <div
-              data-lattice-anchor="problem"
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-0"
-            >
-              {/* Faint blueprint dot-grid (igloo garnish). */}
-              <div className="absolute inset-0 bg-[radial-gradient(hsl(var(--ink)/0.05)_1px,transparent_1px)] [background-size:26px_26px]" />
-              {showFallback && (
-                <NeuralGraphFallback
-                  variant="broken"
-                  className="absolute inset-0 h-full w-full opacity-90"
-                />
-              )}
-              {/* Ghost callouts — EXISTING effect strings only, leader lines
-                  pointing into the field. `.eyebrow` → LabelScrambler decode. */}
-              {failures.map((f, i) => {
-                const pos = CALLOUT_POS[i];
-                return (
-                  <span
-                    key={i}
-                    className={
-                      "eyebrow max-sm:hidden absolute -translate-x-1/2 whitespace-nowrap text-[10px] tracking-[0.18em] text-ink-mute/80 " +
-                      (pos.edge === "top"
-                        ? "after:content-[''] after:absolute after:left-1/2 after:top-full after:mt-1 after:h-7 after:w-px after:bg-gradient-to-b after:from-[hsl(var(--accent)/0.45)] after:to-transparent"
-                        : "after:content-[''] after:absolute after:left-1/2 after:bottom-full after:mb-1 after:h-7 after:w-px after:bg-gradient-to-t after:from-[hsl(var(--accent)/0.45)] after:to-transparent")
-                    }
-                    style={{
-                      left: pos.left,
-                      [pos.edge]: pos.at,
-                    }}
-                  >
-                    {f.effect}
-                  </span>
-                );
-              })}
-            </div>
-
-          </div>
-
-          {/* The panes — ONE container, responsive pose: below lg a flat
-              stack in normal flow under the band (no cascade, no tilt;
-              max-sm tightens paddings — the mobile budget); lg+ a z-cascade
-              hugging the row's right edge, the stream flowing under them. */}
-          <div className="relative z-10 mt-4 flex flex-col gap-3 sm:gap-4 lg:ml-auto lg:mt-0 lg:min-h-[520px] lg:w-[380px] lg:justify-center lg:gap-4 lg:py-4 xl:w-[420px]">
-            {failures.map((f, i) => (
-              <StreamPane key={f.num} index={i} surface="broken" side="right">
-                {/* data-pane-eyebrow → timeline-sequenced scramble decode
-                    (aria-hidden separators never scramble). */}
-                <h3
-                  data-pane-eyebrow
-                  className="relative font-mono text-[11px] uppercase leading-relaxed tracking-[0.16em] text-ink"
+        {/* THE LEDGER — a stack of full-width typographic rows; the WebGL
+            band is its full-bleed -z-10 background (BAND GEOMETRY CONTRACT).
+            `isolate` pins the negative-z band inside this container so it
+            paints above the section wash but below every row. */}
+        <div ref={rowRef} className="relative isolate mt-6 sm:mt-12">
+          {/* The WebGL anchor rect — the stream is camera-locked to this box
+              (persistent canvas paints behind the DOM). Full-bleed: the x
+              inset escapes the container gutter to the viewport edges (the
+              section's overflow-hidden trims the scrollbar sliver).
+              Decorative layer: aria-hidden, pointer-events-none. */}
+          <div
+            data-lattice-anchor="problem"
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0 left-[calc(50%-50vw)] right-[calc(50%-50vw)] -z-10"
+          >
+            {/* Faint blueprint dot-grid (igloo garnish). */}
+            <div className="absolute inset-0 bg-[radial-gradient(hsl(var(--ink)/0.05)_1px,transparent_1px)] [background-size:26px_26px]" />
+            {showFallback && (
+              <NeuralGraphFallback
+                variant="broken"
+                className="absolute inset-0 h-full w-full opacity-90"
+              />
+            )}
+            {/* Ghost callouts — EXISTING effect strings only, leader lines
+                pointing into the field. `.eyebrow` → LabelScrambler decode. */}
+            {failures.map((f, i) => {
+              const pos = CALLOUT_POS[i];
+              return (
+                <span
+                  key={i}
+                  className={
+                    "eyebrow max-sm:hidden absolute -translate-x-1/2 whitespace-nowrap text-[10px] tracking-[0.18em] text-ink-mute/80 " +
+                    (pos.edge === "top"
+                      ? "after:content-[''] after:absolute after:left-1/2 after:top-full after:mt-1 after:h-7 after:w-px after:bg-gradient-to-b after:from-[hsl(var(--accent)/0.45)] after:to-transparent"
+                      : "after:content-[''] after:absolute after:left-1/2 after:bottom-full after:mb-1 after:h-7 after:w-px after:bg-gradient-to-t after:from-[hsl(var(--accent)/0.45)] after:to-transparent")
+                  }
+                  style={{
+                    left: pos.left,
+                    [pos.edge]: pos.at,
+                  }}
                 >
-                  <span className="tabular-nums text-[hsl(var(--accent)/0.9)]">
-                    {`0${i + 1}`}
-                  </span>
-                  <span aria-hidden="true" className="px-1.5 text-ink-dim">
-                    ·
-                  </span>
-                  <span>{f.cause}</span>{" "}
-                  <span
-                    aria-hidden="true"
-                    className="text-[hsl(var(--accent)/0.9)]"
-                  >
-                    {"->"}
-                  </span>{" "}
-                  <span className="text-ink-mute">{f.effect}</span>
-                </h3>
-                {/* Masked line-rise after the pane lands: the wrapper's clip
-                    window is GSAP-owned (overflow set at prime, cleared once
-                    settled) so SSR/no-JS/RM never clip anything. */}
-                <div data-pane-mask className="relative mt-3">
-                  <p data-pane-rise className="text-[13px] leading-relaxed text-ink-mute">
-                    {f.body}
-                  </p>
-                </div>
-              </StreamPane>
-            ))}
+                  {f.effect}
+                </span>
+              );
+            })}
           </div>
+
+          {/* The rows — full-width, chrome-less, each closed by a hairline.
+              tabIndex + the global :focus-visible ring; hover/focus/centre
+              ignite (CSS) and fire the store link (useLedgerIgnition). */}
+          {failures.map((f, i) => (
+            <article
+              key={f.num}
+              ref={rowRefs[i]}
+              tabIndex={0}
+              data-ledger-row={i}
+              {...rowHandlers[i]}
+              className="plrow grid gap-x-10 gap-y-3 border-b border-[hsl(var(--rule)/0.5)] py-8 max-sm:py-5 lg:py-10 sm:grid-cols-[1fr_minmax(280px,34%)] sm:items-end"
+            >
+              {/* The cause/effect line — CAUSE letter-rolls in (pure Lusion),
+                  the ghost EFFECT rolls in pre-scrambled and lands decoded
+                  (the river window). Index and `->` fade behind the roll. */}
+              <h3 className="font-display text-[clamp(1.9rem,3.2vw,3.4rem)] leading-[1.05] tracking-[-0.01em] text-ink">
+                <span
+                  data-row-fade
+                  className="plrow__index font-mono text-[0.38em] align-middle tracking-[0.16em] tabular-nums"
+                >
+                  {`0${i + 1}`}
+                  <span aria-hidden="true">·</span>
+                </span>{" "}
+                <RollLetters text={f.cause} />{" "}
+                <span
+                  data-row-fade
+                  aria-hidden="true"
+                  className="plrow__arrow font-mono text-[0.55em] align-middle text-[hsl(var(--accent)/0.9)]"
+                >
+                  {"->"}
+                </span>{" "}
+                <RollLetters
+                  text={f.effect}
+                  decoys="decode"
+                  className="plrow__ghost"
+                />
+              </h3>
+              {/* The body as the right-cell mono annotation (Lusion pairing).
+                  Fades in 150ms behind the row's rise; never primed under
+                  RM/no-JS. */}
+              <p
+                data-row-note
+                className="font-mono text-[13px] leading-relaxed text-ink-mute max-w-[44ch] sm:justify-self-end"
+              >
+                {f.body}
+              </p>
+            </article>
+          ))}
         </div>
       </div>
     </section>
