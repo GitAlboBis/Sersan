@@ -174,6 +174,13 @@ key files before implementing — §1.4):
   Lenis and re-sync (`lenis.scrollTo(window.scrollY, {immediate: true, force: true})`),
   or enable Lenis keyboard handling.
 
+- [ ] **B15 · P3/S — Services mode detection is a one-shot matchMedia sample**
+  (services-section.tsx, detection effect): unlike fit-section's subscribed queries, a
+  window snapped narrow / devtools dock / OS reduced-motion toggle after mount never
+  flips pinned↔native without a reload. Pre-existing at HEAD, deliberately left out of
+  the 2026-08-21 slab restyle (spec scoped to card composition only). Convert to the
+  fit-section subscription pattern + mode-flip refresh guard (MOBILE_TODO B1 twin).
+
 ## Iteration log
 
 | # | Item | Commit | Verified |
