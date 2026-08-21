@@ -70,30 +70,35 @@ export function CaseStudiesClient() {
       gsap.set(titleChars, { yPercent: 100, rotation: 30 });
       gsap.set(countChars, { yPercent: 100 });
       if (arrow) gsap.set(arrow, { scale: 0 });
+      /* Exact port timings (ProjectsMainSection, fidelity pass):
+         title runs on a 1.5× clock → per-char start (i/20 + 0.2)/1.5,
+         duration 1/1.5 s; the count runs on the real clock → 0.5 + i/20,
+         1 s; the arrow is elasticOut (amplitude 1, period 0.4) over 1 s
+         from t = 0.6. */
       const play = () => {
         titleChars.forEach((ch, i) => {
           gsap.to(ch, {
             yPercent: 0,
             rotation: 0,
-            duration: 0.67,
+            duration: 0.667,
             ease: lusion,
-            delay: 0.2 + i / 30,
+            delay: 0.133 + i / 30,
           });
         });
         countChars.forEach((ch, i) => {
           gsap.to(ch, {
             yPercent: 0,
-            duration: 0.6,
+            duration: 1,
             ease: lusion,
-            delay: 0.55 + i / 30,
+            delay: 0.5 + i / 20,
           });
         });
         if (arrow)
           gsap.to(arrow, {
             scale: 1,
-            duration: 1.1,
-            ease: "elastic.out(1, 0.5)",
-            delay: 0.65,
+            duration: 1,
+            ease: "elastic.out(1, 0.4)",
+            delay: 0.6,
           });
       };
       const st = ScrollTrigger.create({

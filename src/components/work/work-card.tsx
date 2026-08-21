@@ -160,12 +160,17 @@ export function WorkCard({
     const inner = card.querySelector<HTMLElement>(
       ".fw-media > img.fw-still, .fw-media > .fw-logo-panel",
     );
+    const line1 = card.querySelector<HTMLElement>(".fw-line-1");
     const n = cols.length;
+    let line1Timer = 0;
 
     const ctx = gsap.context(() => {
-      /* −400%: one slot ABOVE the top copy, so the 1em clip is EMPTY at
-         rest and the roll streams all four copies through. */
-      gsap.set(cols, { yPercent: -400 });
+      /* −500%: the port source parks columns at −400% but its first update
+         frame writes −500% (fit(0,0,1,500,0)) — five slots above the clip,
+         so the roll streams ALL four copies through plus one empty slot of
+         lead-in. Verified against the bundle (ProjectItemList builder +
+         ProjectItem.update). */
+      gsap.set(cols, { yPercent: -500 });
       const play = () => {
         if (inner && !planeOwnedRef.current)
           gsap.fromTo(
@@ -183,7 +188,7 @@ export function WorkCard({
         cols.forEach((col, i) => {
           gsap.fromTo(
             col,
-            { yPercent: -400 },
+            { yPercent: -500 },
             {
               yPercent: 0,
               duration: 1.25,
@@ -193,6 +198,42 @@ export function WorkCard({
             },
           );
         });
+        /* line-1 TYPE-ON (exact port, ProjectItem.update): the categories
+           line types at LETTER_PER_SECOND=40 with the trailing
+           MAX_RAND_LETTER_COUNT=5 chars cycling random printable ASCII
+           (charCode 33+⌊rand·93⌋) — text GROWS, unlike the house
+           scrambler's full-width settle, so the card opts out of that
+           (data-scramble-done). Aborts if React swaps the text under it
+           (language toggle mid-decode). */
+        if (line1) {
+          const final = line1.textContent ?? "";
+          const startedAt = performance.now();
+          let written: string | null = null;
+          line1Timer = window.setInterval(() => {
+            if (written !== null && line1.textContent !== written) {
+              window.clearInterval(line1Timer);
+              return;
+            }
+            /* Wall-clock, not per-tick accumulation: background tabs clamp
+               timers to ≥1s — an accumulator would crawl; elapsed time
+               catches up on the first visible tick. */
+            const t = (performance.now() - startedAt) / 1000;
+            const shown = Math.min(final.length, Math.floor(40 * t));
+            const settled = Math.max(
+              0,
+              Math.min(final.length, Math.floor(40 * t) - 5),
+            );
+            let out = final.slice(0, settled);
+            for (let k = 0; k < shown - settled; k++)
+              out += String.fromCharCode(33 + ~~(Math.random() * 93));
+            if (settled >= final.length) {
+              out = final;
+              window.clearInterval(line1Timer);
+            }
+            line1.textContent = out;
+            written = out;
+          }, 33);
+        }
       };
       const st = ScrollTrigger.create({
         trigger: card,
@@ -209,13 +250,27 @@ export function WorkCard({
         play();
       }
     }, card);
-    return () => ctx.revert();
+    return () => {
+      window.clearInterval(line1Timer);
+      ctx.revert();
+    };
   }, [side, study.id]);
 
-  /* Hover — store-driven (see header). */
+  /* Hover — TWO surfaces, exactly as the port source splits them:
+       - MEDIA box (`.project-item-main` there, `.fw-media` here) enter/leave
+         drives the WebGL zoom + parallax via featuredStore (ProjectItem's
+         `isHover`; also where Lusion fires its "focus" audio sample — our
+         delegated AudioTriggers tick covers the card link).
+       - The whole CARD (`isHoverDom` there) drives the DOM text shift:
+         letters 1.5em over 0.4s (2.5/s ratio integrator), 4ms/letter
+         staggered from the END; the arrow maps the [0.3 → 1] band of the
+         same ratio — in 0.12s late, 0.28s long; on leave it returns first.
+     Sweeping the title must NOT zoom the image — that separation is a big
+     part of the Lusion feel (fidelity pass, bundle ~734k). */
   useEffect(() => {
     const card = cardRef.current;
     if (!card || prefersReducedMotion()) return;
+    const media = card.querySelector<HTMLElement>(".fw-media");
     const cols = Array.from(card.querySelectorAll<HTMLElement>("[data-fw-col]"));
     const icon = card.querySelector<HTMLElement>("[data-fw-icon]");
     const lusion = lusionEase();
@@ -225,7 +280,7 @@ export function WorkCard({
     const play = (on: boolean) => {
       gsap.to(cols, {
         x: on ? () => em() * 1.5 : 0,
-        duration: 0.55,
+        duration: 0.4,
         ease: lusion,
         stagger: { each: 0.004, from: "end" },
         overwrite: "auto",
@@ -233,30 +288,34 @@ export function WorkCard({
       if (icon)
         gsap.to(icon, {
           x: on ? () => em() : 0,
-          duration: 0.55,
+          duration: 0.28,
+          delay: on ? 0.12 : 0,
           ease: lusion,
           overwrite: "auto",
         });
     };
-    let wasHover = false;
-    const unsub = useFeaturedStore.subscribe((s) => {
-      const isHover = s.hoverId === study.id;
-      if (isHover !== wasHover) {
-        wasHover = isHover;
-        play(isHover);
-      }
-    });
-    const enter = () => {
+    const cardEnter = () => {
+      if (fine.matches) play(true);
+    };
+    const cardLeave = () => play(false);
+    const mediaEnter = () => {
       if (fine.matches) useFeaturedStore.getState().setHover(study.id);
     };
-    const leave = () => useFeaturedStore.getState().clearHover(study.id);
-    card.addEventListener("pointerenter", enter);
-    card.addEventListener("pointerleave", leave);
+    const mediaLeave = () => useFeaturedStore.getState().clearHover(study.id);
+    card.addEventListener("pointerenter", cardEnter);
+    card.addEventListener("pointerleave", cardLeave);
+    media?.addEventListener("pointerenter", mediaEnter);
+    media?.addEventListener("pointerleave", mediaLeave);
     return () => {
-      unsub();
-      card.removeEventListener("pointerenter", enter);
-      card.removeEventListener("pointerleave", leave);
+      card.removeEventListener("pointerenter", cardEnter);
+      card.removeEventListener("pointerleave", cardLeave);
+      media?.removeEventListener("pointerenter", mediaEnter);
+      media?.removeEventListener("pointerleave", mediaLeave);
       useFeaturedStore.getState().clearHover(study.id);
+      gsap.killTweensOf(cols);
+      if (icon) gsap.killTweensOf(icon);
+      gsap.set(cols, { x: 0 });
+      if (icon) gsap.set(icon, { x: 0 });
     };
   }, [study.id]);
 
@@ -301,9 +360,13 @@ export function WorkCard({
         )}
       </div>
 
-      {/* line-1: mono categories eyebrow — `.eyebrow` opts into the
-          site-wide LabelScrambler decode (Lusion's §2.4 scramble idiom). */}
-      <p className={cn("eyebrow fw-line-1", INDUSTRY_COLOR[study.industry])}>
+      {/* line-1: mono categories line. data-scramble-done opts OUT of the
+          house LabelScrambler — the entrance runs Lusion's exact type-on
+          instead (40 chars/s + 5-glyph random head, fidelity pass). */}
+      <p
+        className={cn("eyebrow fw-line-1", INDUSTRY_COLOR[study.industry])}
+        data-scramble-done="1"
+      >
         {domain}
       </p>
 
@@ -349,11 +412,13 @@ export function WorkGrid({
       raf = 0;
       const { hoverId, clearHover } = useFeaturedStore.getState();
       if (!hoverId || px < 0) return;
-      const card = gridRef.current?.querySelector<HTMLElement>(
-        `[data-flip-source="${hoverId}"]`,
+      /* The claim is a MEDIA-box hover (fidelity pass: the WebGL zoom keys
+         on `.fw-media`, not the card) — validate against the media rect. */
+      const media = gridRef.current?.querySelector<HTMLElement>(
+        `[data-featured-media="${hoverId}"]`,
       );
-      if (!card) return clearHover(hoverId);
-      const r = card.getBoundingClientRect();
+      if (!media) return clearHover(hoverId);
+      const r = media.getBoundingClientRect();
       if (px < r.left || px > r.right || py < r.top || py > r.bottom)
         clearHover(hoverId);
     };
