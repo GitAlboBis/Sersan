@@ -9,7 +9,11 @@ import { useProductionPulseStore } from "@/webgl/store/productionPulseStore";
 import { useNeuralLatticeStore } from "@/webgl/store/neuralLatticeStore";
 import { useNeuralLatticeFallback } from "@/components/fx/use-neural-lattice-fallback";
 import { NeuralGraphFallback } from "@/components/fx/neural-graph-fallback";
-import { StreamPane } from "@/components/fx/stream-pane";
+import {
+  StreamPane,
+  ChapterAnnotation,
+  scramblePaneEyebrow,
+} from "@/components/fx/stream-pane";
 
 /**
  * ProductionGradeSection — the SIGNATURE section, ProblemSection's twin.
@@ -32,12 +36,23 @@ import { StreamPane } from "@/components/fx/stream-pane";
  *     pane i → setHovered("healthy", i) → ring i flares in the WebGL field.
  *
  * ENTRANCE — replaces the old marker/halo/card boot timeline. ONE once-per-
- * life in-view edge: the panes blur-up in from the left (staggered 90ms) and
- * `bumpCluster("healthy", i)` fires sequentially ~0.35s apart — the WebGL
- * rings ignite in pipeline order (igloo ring-seal ignite; on the fallback
- * tier the SVG twin draws its own ring ignition on mount). Scroll-away/back
- * never re-runs it. Reduced-motion: no reveal priming, no store bumps — the
- * section rests in its final state.
+ * life in-view edge, ROUND-2 award grammar (2026-08-21 life pass): each pane
+ * slides in from its side (−48px x, the panes live on the row's LEFT) with a
+ * rotateZ settle (−2.5°→ rest tilt) + blur 8→0 + opacity, staggered 120ms
+ * expo.out; `bumpCluster("healthy", i)` fires ON THE SAME BEAT as pane i's
+ * landing — DOM pane and WebGL ring ignite together, in pipeline order
+ * (igloo ring-seal ignite; on the fallback tier the SVG twin draws its own
+ * ring ignition on mount). As each pane lands its mono eyebrow scramble-
+ * decodes, the claim + body masked-rise 60ms apart and the hairline divider
+ * draws (scaleX). Scroll-away/back never re-runs it. Reduced-motion: no
+ * reveal priming, no store bumps, no timers — the section rests in its
+ * final state.
+ *
+ * Pane LIFE (round 2, in StreamPane itself): per-pane scroll parallax at
+ * alternating depths, fine-pointer spring hover tilt (±3.5° quickTo,
+ * back.out release), idle sine micro-float phase-offset per pane. Chapter
+ * type: h2 data-split-reveal (HeadingChoreographer line-rise, key={language})
+ * + ChapterAnnotation blur-fade.
  *
  * `productionPulseStore.bump()` on every in-view edge is UNTOUCHED (the
  * signature line's BEAT 1 emissive boost).
@@ -124,8 +139,12 @@ function clusterLabel(index: number, isEn: boolean): string {
   return isEn ? "guardrail clamp" : "clamp guardrail";
 }
 
-/** Seconds between the sequential bumpCluster ring ignitions. */
-const IGNITE_BEAT = 0.35;
+/** Pane reveal stagger (round-2 award grammar) — the bumpCluster ring
+ * ignitions ride the SAME beats so DOM and WebGL ignite together. */
+const PANE_STAGGER = 0.12;
+/** Offset into each pane's 0.9s expo.out slide at which it reads as
+ * "landed" — the ring ignition + eyebrow decode fire here. */
+const IGNITE_OFFSET = 0.25;
 /** Number of pipeline systems (panes = rings = store clusters). */
 const IGNITE_NODES = 3;
 
@@ -165,43 +184,84 @@ export default function ProductionGradeSection() {
 
       const panes = row.querySelectorAll<HTMLElement>("[data-stream-pane]");
       if (!panes.length) return;
+      const masks = row.querySelectorAll<HTMLElement>("[data-pane-mask]");
+      const rises = row.querySelectorAll<HTMLElement>("[data-pane-rise]");
+      const dividers = row.querySelectorAll<HTMLElement>("[data-pane-divider]");
       // PRIME (idempotent across dep re-runs; useGSAP is a layout effect, so
-      // this lands before paint — no hidden-then-visible flash).
-      gsap.set(panes, { opacity: 0, x: -28, y: 24, filter: "blur(6px)" });
+      // this lands before paint — no hidden-then-visible flash). The award
+      // grammar: side slide (−48px, panes live LEFT) + rotateZ −2.5° + blur.
+      // Clip windows are JS-owned: overflow set here, cleared after the
+      // timeline settles — SSR/no-JS/RM never clip a Fraunces descender.
+      gsap.set(panes, { opacity: 0, x: -48, rotation: -2.5, filter: "blur(8px)" });
+      if (masks.length) gsap.set(masks, { overflow: "hidden" });
+      if (rises.length) gsap.set(rises, { yPercent: 115 });
+      if (dividers.length) {
+        gsap.set(dividers, { scaleX: 0, transformOrigin: "left center" });
+      }
 
       // Primed but not yet on screen: wait for the IO edge (the inView dep
       // re-runs this effect, falls through the guards above, and plays).
       if (!inView) return;
       playedRef.current = true;
 
-      // ONE timeline: the panes blur-up in from the left while the three
-      // WebGL rings ignite in pipeline order — bumpCluster is the store
-      // signal each ring's >1.0 flash decays from. Harmless no-op writes on
-      // the fallback tier (the SVG twin runs its own ignition on mount).
+      // ONE timeline: pane i slides/settles in and, ON THE SAME BEAT, ring i
+      // ignites (bumpCluster is the store signal each ring's >1.0 flash
+      // decays from — harmless no-op writes on the fallback tier, where the
+      // SVG twin runs its own ignition on mount). Then the pane's content
+      // sequences: eyebrow decode → claim/body masked-rise → divider draw.
       const tl = gsap.timeline();
       tl.to(
         panes,
         {
           opacity: 1,
           x: 0,
-          y: 0,
+          rotation: 0,
           filter: "blur(0px)",
           duration: 0.9,
           ease: "expo.out",
-          stagger: 0.09,
+          stagger: PANE_STAGGER,
           clearProps: "filter",
         },
         0,
       );
-      for (let i = 0; i < IGNITE_NODES; i++) {
+      panes.forEach((pane, i) => {
+        const at = i * PANE_STAGGER;
+        // Ring i ignites exactly as pane i lands — DOM and WebGL together.
         tl.call(
           () => {
             bumpCluster("healthy", i);
           },
           undefined,
-          i * IGNITE_BEAT,
+          at + IGNITE_OFFSET,
         );
-      }
+        const eyebrow = pane.querySelector<HTMLElement>("[data-pane-eyebrow]");
+        if (eyebrow) {
+          tl.call(
+            () => {
+              scramblePaneEyebrow(eyebrow);
+            },
+            undefined,
+            at + 0.1,
+          );
+        }
+        const paneRises = pane.querySelectorAll<HTMLElement>("[data-pane-rise]");
+        if (paneRises.length) {
+          tl.to(
+            paneRises,
+            { yPercent: 0, duration: 0.7, ease: "expo.out", stagger: 0.06 },
+            at + 0.35,
+          );
+        }
+        const divider = pane.querySelector<HTMLElement>("[data-pane-divider]");
+        if (divider) {
+          tl.to(
+            divider,
+            { scaleX: 1, duration: 0.6, ease: "expo.out" },
+            at + 0.42,
+          );
+        }
+      });
+      if (masks.length) tl.set(masks, { clearProps: "overflow" });
     },
     { dependencies: [inView, bumpCluster], scope: rowRef },
   );
@@ -233,8 +293,15 @@ export default function ProductionGradeSection() {
               </span>
             </p>
             {/* max-sm override — the Problem chapter title's twin (same
-                budget arithmetic; presentation-only). */}
-            <h2 className="font-display text-[clamp(2.6rem,4.8vw,5.75rem)] max-sm:text-[2.1rem] leading-[0.98] tracking-[-0.02em] text-ink text-balance">
+                budget arithmetic; presentation-only).
+                data-split-reveal → HeadingChoreographer masked line-rise;
+                key={language}: SplitText owns the subtree once split, a
+                language swap must remount it (SectionHeading contract). */}
+            <h2
+              key={language}
+              data-split-reveal
+              className="font-display text-[clamp(2.6rem,4.8vw,5.75rem)] max-sm:text-[2.1rem] leading-[0.98] tracking-[-0.02em] text-ink text-balance"
+            >
               {isEn ? (
                 <>
                   Three things every SerSan system ships with,
@@ -250,13 +317,14 @@ export default function ProductionGradeSection() {
               )}
             </h2>
           </div>
-          <p className="max-w-[320px] text-[13px] leading-relaxed text-ink-mute">
+          {/* Blur-fades in ~0.3s behind the title's line-rise. */}
+          <ChapterAnnotation>
             {/* Device-neutral verb (D-17, owner-approved 2026-08-11): ONE
                 string per locale, byte-identical under the copy freeze. */}
             {isEn
               ? "Not a list of compliance buzzwords. These are artifacts you can ask to see in any scoping call. Open a panel to see why it matters."
               : "Non un elenco di buzzword sulla compliance. Sono artefatti che puoi chiedere di vedere in qualsiasi call di scoping. Apri un pannello per capire perché conta."}
-          </p>
+          </ChapterAnnotation>
         </div>
 
         {/* The field row: the band (WebGL anchor as background) + the panes
@@ -311,7 +379,12 @@ export default function ProductionGradeSection() {
           <div className="relative z-10 mt-4 flex flex-col gap-3 sm:gap-4 lg:mr-auto lg:mt-0 lg:min-h-[520px] lg:w-[380px] lg:justify-center lg:gap-4 lg:py-4 xl:w-[420px]">
             {artifacts.map((a, i) => (
               <StreamPane key={i} index={i} surface="healthy" side="left">
-                <span className="relative block font-mono text-[10px] uppercase tracking-[0.16em] text-[hsl(var(--accent)/0.85)]">
+                {/* data-pane-eyebrow → timeline-sequenced scramble decode
+                    (aria-hidden separators never scramble). */}
+                <span
+                  data-pane-eyebrow
+                  className="relative block font-mono text-[10px] uppercase tracking-[0.16em] text-[hsl(var(--accent)/0.85)]"
+                >
                   <span className="tabular-nums">{`0${i + 1}`}</span>
                   <span aria-hidden="true" className="px-1.5 text-ink-dim">
                     ·
@@ -320,16 +393,27 @@ export default function ProductionGradeSection() {
                     {clusterLabel(i, isEn)}
                   </span>
                 </span>
-                <h3 className="relative mt-2.5 font-display text-[22px] leading-tight text-ink max-sm:text-[19px]">
-                  {a.claim}
-                </h3>
+                {/* Masked line-rises after the pane lands: clip windows are
+                    GSAP-owned (overflow set at prime, cleared once settled)
+                    so SSR/no-JS/RM never clip anything. */}
+                <div data-pane-mask className="relative mt-2.5">
+                  <h3
+                    data-pane-rise
+                    className="font-display text-[22px] leading-tight text-ink max-sm:text-[19px]"
+                  >
+                    {a.claim}
+                  </h3>
+                </div>
                 <div
                   aria-hidden="true"
+                  data-pane-divider
                   className="relative my-3 h-px bg-[hsl(var(--rule)/0.6)]"
                 />
-                <p className="relative text-[13px] leading-relaxed text-ink-mute">
-                  {a.why}
-                </p>
+                <div data-pane-mask className="relative">
+                  <p data-pane-rise className="text-[13px] leading-relaxed text-ink-mute">
+                    {a.why}
+                  </p>
+                </div>
               </StreamPane>
             ))}
           </div>

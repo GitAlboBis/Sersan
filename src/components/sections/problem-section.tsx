@@ -8,7 +8,11 @@ import { useLanguage } from "@/components/language-provider";
 import { useNeuralLatticeStore } from "@/webgl/store/neuralLatticeStore";
 import { useNeuralLatticeFallback } from "@/components/fx/use-neural-lattice-fallback";
 import { NeuralGraphFallback } from "@/components/fx/neural-graph-fallback";
-import { StreamPane } from "@/components/fx/stream-pane";
+import {
+  StreamPane,
+  ChapterAnnotation,
+  scramblePaneEyebrow,
+} from "@/components/fx/stream-pane";
 
 /**
  * ProblemSection — names the pain (demo-to-production gap).
@@ -37,8 +41,21 @@ import { StreamPane } from "@/components/fx/stream-pane";
  *     briefly re-coheres toward the spline then falls apart again. Below lg
  *     the panes stack in normal flow under the band.
  *   - In-view (once): bump("broken") — the WebGL stream fires the surge that
- *     dies at the fracture — and the panes blur-up in from the right,
- *     staggered 90ms. Reduced-motion: nothing primed hidden, no bumps.
+ *     dies at the fracture — and the panes play the ROUND-2 award-grammar
+ *     reveal (2026-08-21 life pass): each pane slides from its side (+48px x)
+ *     with a rotateZ settle (2.5°→ rest tilt) + blur 8→0 + opacity, staggered
+ *     120ms expo.out; the pane's mono eyebrow scramble-decodes as it lands
+ *     (local scrambler, sequenced by the timeline); the body copy masked-
+ *     rises 60ms-staggered after the pane lands (clip windows are GSAP-owned:
+ *     set at prime, cleared once everything settles, so SSR/no-JS/RM never
+ *     clip anything). Reduced-motion: nothing primed hidden, no bumps, no
+ *     timers.
+ *   - Chapter type (round 2): the h2 carries data-split-reveal (Heading-
+ *     Choreographer masked line-rise, key={language} remount contract) and
+ *     the annotation is ChapterAnnotation (blur-fade ~0.3s behind the title).
+ *   - Pane LIFE (round 2, in StreamPane itself): per-pane scroll parallax at
+ *     alternating depths, fine-pointer spring hover tilt (±3.5° quickTo,
+ *     back.out release), idle sine micro-float phase-offset per pane.
  *
  * Copy is byte-identical to the pre-refactor section (EN + IT).
  */
@@ -135,10 +152,14 @@ export default function ProblemSection() {
   const { ref: rowRef, inView } = useInView<HTMLDivElement>();
   useBrokenStreamOnEnter(inView);
 
-  // Once-per-life pane reveal: slide in from the right with blur-up,
-  // staggered 90ms. Primed idempotently on every dep re-run BEFORE the play
-  // guard (useGSAP is a layout effect — no hidden-then-visible flash);
-  // reduced-motion never primes anything hidden.
+  // Once-per-life pane reveal — the ROUND-2 award grammar: side slide (+48px,
+  // the panes live on the row's right) + rotateZ 2.5°→rest settle + blur-up,
+  // staggered 120ms; eyebrow scramble-decode + body masked-rise sequenced per
+  // pane. Primed idempotently on every dep re-run BEFORE the play guard
+  // (useGSAP is a layout effect — no hidden-then-visible flash); reduced-
+  // motion never primes anything hidden. The GSAP `x`/`rotation`/`y-free`
+  // channel split is deliberate: StreamPane's idle float owns the article's
+  // `y`, its parallax wrapper owns its own transform — nothing fights.
   const playedRef = useRef(false);
   useGSAP(
     () => {
@@ -148,19 +169,52 @@ export default function ProblemSection() {
       if (playedRef.current) return;
       const panes = row.querySelectorAll<HTMLElement>("[data-stream-pane]");
       if (!panes.length) return;
-      gsap.set(panes, { opacity: 0, x: 28, y: 24, filter: "blur(6px)" });
+      const masks = row.querySelectorAll<HTMLElement>("[data-pane-mask]");
+      const rises = row.querySelectorAll<HTMLElement>("[data-pane-rise]");
+      gsap.set(panes, { opacity: 0, x: 48, rotation: 2.5, filter: "blur(8px)" });
+      // Clip windows are JS-owned: overflow set here, cleared after the
+      // timeline settles — SSR/no-JS/RM never clip a descender.
+      if (masks.length) gsap.set(masks, { overflow: "hidden" });
+      if (rises.length) gsap.set(rises, { yPercent: 115 });
       if (!inView) return;
       playedRef.current = true;
-      gsap.to(panes, {
-        opacity: 1,
-        x: 0,
-        y: 0,
-        filter: "blur(0px)",
-        duration: 0.9,
-        ease: "expo.out",
-        stagger: 0.09,
-        clearProps: "filter",
+      const tl = gsap.timeline();
+      tl.to(
+        panes,
+        {
+          opacity: 1,
+          x: 0,
+          rotation: 0,
+          filter: "blur(0px)",
+          duration: 0.9,
+          ease: "expo.out",
+          stagger: 0.12,
+          clearProps: "filter",
+        },
+        0,
+      );
+      panes.forEach((pane, i) => {
+        const at = i * 0.12;
+        const eyebrow = pane.querySelector<HTMLElement>("[data-pane-eyebrow]");
+        if (eyebrow) {
+          tl.call(
+            () => {
+              scramblePaneEyebrow(eyebrow);
+            },
+            undefined,
+            at + 0.1,
+          );
+        }
+        const paneRises = pane.querySelectorAll<HTMLElement>("[data-pane-rise]");
+        if (paneRises.length) {
+          tl.to(
+            paneRises,
+            { yPercent: 0, duration: 0.7, ease: "expo.out", stagger: 0.06 },
+            at + 0.35,
+          );
+        }
       });
+      if (masks.length) tl.set(masks, { clearProps: "overflow" });
     },
     { dependencies: [inView], scope: rowRef },
   );
@@ -198,8 +252,15 @@ export default function ProblemSection() {
               {/* max-sm override: the chapter clamp's 2.6rem floor costs a
                   full extra title line at 390px — 2.1rem keeps the chapter
                   read while clawing ~80px back toward the §Mobile budget
-                  (presentation-only; copy untouched). */}
-              <h2 className="font-display text-[clamp(2.6rem,4.8vw,5.75rem)] max-sm:text-[2.1rem] leading-[0.98] tracking-[-0.02em] text-ink text-balance">
+                  (presentation-only; copy untouched).
+                  data-split-reveal → HeadingChoreographer masked line-rise;
+                  key={language}: SplitText owns the subtree once split, a
+                  language swap must remount it (SectionHeading contract). */}
+              <h2
+                key={language}
+                data-split-reveal
+                className="font-display text-[clamp(2.6rem,4.8vw,5.75rem)] max-sm:text-[2.1rem] leading-[0.98] tracking-[-0.02em] text-ink text-balance"
+              >
                 {isEn ? (
                   <>
                     Most AI projects don&apos;t fail at the prototype.{" "}
@@ -217,12 +278,13 @@ export default function ProblemSection() {
                 )}
               </h2>
             </div>
-            {/* The right-hung annotation (~320px, Noomo/Lusion pairing). */}
-            <p className="max-w-[320px] text-[13px] leading-relaxed text-ink-mute">
+            {/* The right-hung annotation (~320px, Noomo/Lusion pairing) —
+                blur-fades in ~0.3s behind the title's line-rise. */}
+            <ChapterAnnotation>
               {isEn
                 ? "The demo worked. The board nodded. Then real volume hit and the agent started lying, the retrieval drifted, cost-per-run tripled, and no-one on the team could tell which of the seven things you changed last week broke it."
                 : "La demo funzionava. Il consiglio ha annuito. Poi è arrivato il volume reale e l'agente ha iniziato a inventare, il retrieval è andato in deriva, il costo per esecuzione è triplicato e nessuno nel team sapeva quale delle sette cose cambiate la settimana scorsa l'avesse rotto."}
-            </p>
+            </ChapterAnnotation>
           </div>
         </div>
 
@@ -282,7 +344,12 @@ export default function ProblemSection() {
           <div className="relative z-10 mt-4 flex flex-col gap-3 sm:gap-4 lg:ml-auto lg:mt-0 lg:min-h-[520px] lg:w-[380px] lg:justify-center lg:gap-4 lg:py-4 xl:w-[420px]">
             {failures.map((f, i) => (
               <StreamPane key={f.num} index={i} surface="broken" side="right">
-                <h3 className="relative font-mono text-[11px] uppercase leading-relaxed tracking-[0.16em] text-ink">
+                {/* data-pane-eyebrow → timeline-sequenced scramble decode
+                    (aria-hidden separators never scramble). */}
+                <h3
+                  data-pane-eyebrow
+                  className="relative font-mono text-[11px] uppercase leading-relaxed tracking-[0.16em] text-ink"
+                >
                   <span className="tabular-nums text-[hsl(var(--accent)/0.9)]">
                     {`0${i + 1}`}
                   </span>
@@ -298,9 +365,14 @@ export default function ProblemSection() {
                   </span>{" "}
                   <span className="text-ink-mute">{f.effect}</span>
                 </h3>
-                <p className="relative mt-3 text-[13px] leading-relaxed text-ink-mute">
-                  {f.body}
-                </p>
+                {/* Masked line-rise after the pane lands: the wrapper's clip
+                    window is GSAP-owned (overflow set at prime, cleared once
+                    settled) so SSR/no-JS/RM never clip anything. */}
+                <div data-pane-mask className="relative mt-3">
+                  <p data-pane-rise className="text-[13px] leading-relaxed text-ink-mute">
+                    {f.body}
+                  </p>
+                </div>
               </StreamPane>
             ))}
           </div>

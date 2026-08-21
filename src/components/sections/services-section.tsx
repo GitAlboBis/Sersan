@@ -46,9 +46,10 @@ if (typeof window !== "undefined") {
  *     per segment (sine.inOut chase). scaleX/scaleY quickTo pair, never the
  *     `scale` shorthand (repo-wide "not eligible for reset" gotcha).
  *   - Focus states: the segment's target card brightens to full opacity +
- *     accent left-edge glow, the card being left dims back (opacity 0.5,
- *     scale 0.96) — per-card quickTo writers on an INNER wrapper, no React
- *     state per frame.
+ *     CONTOUR IGNITION (a gradient SVG perimeter that draws around the slab
+ *     via a strokeDashoffset quickTo, completing at lock), the card being
+ *     left dims back (opacity 0.5, scale 0.96) — per-card quickTo writers on
+ *     an INNER wrapper, no React state per frame.
  *   - ALL per-frame math is analytic from measure()-cached untransformed
  *     offsetLeft/offsetTop centers — zero getBoundingClientRect in the loop.
  *
@@ -260,6 +261,9 @@ const ROT_MAX_DEG = 2.5;
 /** Unfocused-card dim pose (opacity / scale on the inner wrapper). */
 const DIM_OPACITY = 0.5;
 const DIM_SCALE = 0.96;
+/** Contour-draw dash length — the rect's pathLength, so offset CONTOUR_LEN
+ *  is fully undrawn and 0 is a complete perimeter (resolution-independent). */
+const CONTOUR_LEN = 1000;
 
 /** Organic diagonal card placements, % of the 150vw × 140vh stage. */
 const STAGE_POS: { left: string; top: string }[] = [
@@ -296,27 +300,77 @@ function ServiceCard({
     // lift + hairline brighten + ghost number up — 500ms --ease-lusion,
     // transform/opacity/color only.
     <article className="group isolate relative flex h-full flex-col overflow-hidden rounded-2xl bg-[hsl(216_30%_9%/0.55)] p-7 sm:p-9 backdrop-blur-md shadow-[0_28px_90px_-40px_hsl(220_60%_2%/0.85)] transition-transform duration-500 ease-[var(--ease-lusion)] hover:-translate-y-1 motion-reduce:transition-none motion-reduce:transform-none">
-      {/* POV focus EDGE GLOW (restyled from the full border ring — same
-          element, same data attribute, same quickTo opacity contract) — a 2px
-          accent bar down the left edge plus a soft radial wash (::after, so
-          bar + wash ride ONE opacity). Opacity is driven to the card's focus
-          value by a quickTo writer in pinned mode; inert (opacity 0) in the
-          native grid. On the rail it is lit by `data-focus` on the CENTRED
-          station (written by the stepper sync below): the touch answer to
-          `:hover`, which on a phone is a gesture that does not exist. Scoped
-          `max-sm:` so the ≥640px native branch (coarse tablet) stays inert —
-          GSAP owns this opacity as an inline style in pinned mode and must
-          never race a CSS transition. */}
+      {/* POV focus CONTOUR IGNITION (round-2 life pass — restyled from the
+          left-edge glow: same element, same data attribute, same GSAP-owned
+          opacity contract, PLUS a draw channel). The span is an inset-0 gate
+          whose opacity a quickTo drives to the card's focus value g in pinned
+          mode; inside it one SVG <rect> traces the slab's perimeter. The SAME
+          g also drives strokeDashoffset 1000→0 through a second quickTo
+          ([data-pov-draw]), so the contour DRAWS around the card as the POV
+          camera arrives and completes exactly at lock. pathLength=1000 makes
+          the dash math resolution-independent; vector-effect keeps the stroke
+          1.5 screen-px under the stage's 0.75→1 zoom. The glow is a STATIC
+          drop-shadow on the rect — never animated (zero filter-animation
+          cost); only the parent span's opacity gates it. The svg is inset by
+          half the stroke (0.75px) so the edge-centred stroke renders fully
+          INSIDE the article's overflow-hidden clip; rx 15.25 keeps the drawn
+          corner concentric with rounded-2xl (16px − 0.75). On the rail
+          (<640px) a CSS-only twin lights it: `data-focus` on the CENTRED
+          station (written by the stepper sync below) transitions the span's
+          opacity AND the rect's stroke-dashoffset (560ms --ease-lusion) —
+          scoped `max-sm:` exactly as before, so the ≥640px native branch
+          (coarse tablet) stays inert and GSAP's inline styles never race a
+          CSS transition in pinned mode. The un-focused state keeps its edge
+          via the always-on top hairline below. */}
       <span
         data-pov-focus
         aria-hidden="true"
         className={
-          "pointer-events-none absolute left-0 top-6 bottom-6 w-[2px] rounded-full bg-[hsl(var(--accent))] opacity-0 shadow-[0_0_24px_2px_hsl(var(--accent)/0.5)] after:absolute after:inset-y-0 after:left-0 after:w-64 after:content-[''] after:[background:radial-gradient(60%_40%_at_0%_50%,hsl(var(--accent)/0.07),transparent_70%)]" +
+          "pointer-events-none absolute inset-0 opacity-0" +
           (compact
             ? " max-sm:transition-opacity max-sm:duration-500 max-sm:group-data-[focus=true]:opacity-100 motion-reduce:transition-none"
             : "")
         }
-      />
+      >
+        <svg
+          className="absolute inset-[0.75px] h-[calc(100%-1.5px)] w-[calc(100%-1.5px)] overflow-visible"
+          aria-hidden="true"
+        >
+          <defs>
+            <linearGradient
+              id={`pov-contour-${service.num}`}
+              x1="0%"
+              y1="0%"
+              x2="100%"
+              y2="100%"
+            >
+              <stop offset="0%" stopColor="#3BE1FF" />
+              <stop offset="100%" stopColor="#2A7FFF" />
+            </linearGradient>
+          </defs>
+          <rect
+            data-pov-draw
+            x="0"
+            y="0"
+            width="100%"
+            height="100%"
+            rx="15.25"
+            fill="none"
+            stroke={`url(#pov-contour-${service.num})`}
+            strokeWidth="1.5"
+            vectorEffect="non-scaling-stroke"
+            pathLength={1000}
+            strokeDasharray="1000"
+            strokeDashoffset="1000"
+            style={{ filter: "drop-shadow(0 0 12px hsl(var(--accent)/0.55))" }}
+            className={
+              compact
+                ? "max-sm:transition-[stroke-dashoffset] max-sm:duration-[560ms] max-sm:ease-[var(--ease-lusion)] max-sm:group-data-[focus=true]:[stroke-dashoffset:0] motion-reduce:transition-none"
+                : undefined
+            }
+          />
+        </svg>
+      </span>
       {/* Top hairline — the slab's only edge. Cyan→transparent, always on,
           brightens on hover (opacity only). */}
       <span
@@ -347,9 +401,23 @@ function ServiceCard({
         {isEn ? "Service" : "Servizio"} {service.num}
       </p>
 
-      <h3 className="font-display text-[30px] sm:text-[34px] leading-[1.02] tracking-[-0.025em] text-ink mb-2">
-        {service.title}
-      </h3>
+      {/* Slab title — wrapped in an overflow clip so the pinned type
+          choreography can play a masked single-line rise on first stage
+          entry (round-2 type pass). The paddings extend the clip window for
+          serif descenders/overshoot (same trick as .split-line-mask) and the
+          negative/compensating margins cancel them, so layout is
+          byte-identical: −4px top margin + 4px top padding lands the h3 on
+          the same pixel, and 4px bottom padding + 4px bottom margin equals
+          the old mb-2 (8px). Inert on the native branch — no transform is
+          ever written there. */}
+      <div className="overflow-hidden pt-1 -mt-1 px-1 -mx-1 pb-1 mb-1">
+        <h3
+          data-slab-title
+          className="font-display text-[30px] sm:text-[34px] leading-[1.02] tracking-[-0.025em] text-ink"
+        >
+          {service.title}
+        </h3>
+      </div>
       <p
         className={
           compact
@@ -376,6 +444,7 @@ function ServiceCard({
           {service.includes.map((line) => (
             <li
               key={line}
+              data-slab-include
               className="flex items-start gap-2 font-mono text-[12px] leading-relaxed text-ink-mute"
             >
               <span
@@ -460,6 +529,14 @@ export default function ServicesSection() {
   const railRef = useRef<HTMLDivElement | null>(null);
   const readoutRef = useRef<HTMLSpanElement | null>(null);
   const stepperRef = useRef<HTMLDivElement | null>(null);
+
+  // ---- Round-2 type choreography ----------------------------------------
+  // The annotation blur-fade and the slab-title stage entry are each
+  // replay-free for the page's life (played refs survive re-renders and the
+  // pinned↔native branch swap at detection time).
+  const annotationRef = useRef<HTMLParagraphElement | null>(null);
+  const annotationPlayedRef = useRef(false);
+  const slabTypePlayedRef = useRef(false);
 
   /** Centre the i-th station. Native `scrollTo` — never a transform. */
   const scrollToStation = useCallback((index: number) => {
@@ -661,10 +738,15 @@ export default function ServicesSection() {
       ease: "sine.inOut",
     });
 
-    // ---- Per-card focus writers (quickTo, no React state per frame).
+    // ---- Per-card focus writers (quickTo, no React state per frame). The
+    // focus value g drives THREE channels per card: the inner dim/brighten,
+    // the contour gate's opacity (ring), and the contour draw itself — a
+    // strokeDashoffset quickTo on the [data-pov-draw] rect (CONTOUR_LEN→0 as
+    // g goes 0→1, so the perimeter completes exactly at lock).
     const fxCards = cardEls.map((el) => {
       const inner = el.querySelector<HTMLElement>("[data-pov-inner]");
       const ring = el.querySelector<HTMLElement>("[data-pov-focus]");
+      const draw = el.querySelector<SVGRectElement>("[data-pov-draw]");
       if (inner) {
         gsap.set(inner, {
           opacity: DIM_OPACITY,
@@ -674,9 +756,11 @@ export default function ServicesSection() {
         });
       }
       if (ring) gsap.set(ring, { opacity: 0 });
+      if (draw) gsap.set(draw, { strokeDashoffset: CONTOUR_LEN });
       return {
         inner,
         ring,
+        draw,
         opacityTo: inner
           ? gsap.quickTo(inner, "opacity", { duration: 0.6, ease: "power2.out" })
           : null,
@@ -688,6 +772,12 @@ export default function ServicesSection() {
           : null,
         ringTo: ring
           ? gsap.quickTo(ring, "opacity", { duration: 0.6, ease: "power2.out" })
+          : null,
+        drawTo: draw
+          ? gsap.quickTo(draw, "strokeDashoffset", {
+              duration: 0.6,
+              ease: "power2.out",
+            })
           : null,
         last: -1,
       };
@@ -772,14 +862,17 @@ export default function ServicesSection() {
         fx.last = g;
         const op = DIM_OPACITY + (1 - DIM_OPACITY) * g;
         const sc = DIM_SCALE + (1 - DIM_SCALE) * g;
+        const dash = CONTOUR_LEN * (1 - g);
         if (immediate) {
           if (fx.inner) gsap.set(fx.inner, { opacity: op, scaleX: sc, scaleY: sc });
           if (fx.ring) gsap.set(fx.ring, { opacity: g });
+          if (fx.draw) gsap.set(fx.draw, { strokeDashoffset: dash });
         } else {
           fx.opacityTo?.(op);
           fx.sxTo?.(sc);
           fx.syTo?.(sc);
           fx.ringTo?.(g);
+          fx.drawTo?.(dash);
         }
       }
     };
@@ -869,22 +962,167 @@ export default function ServicesSection() {
           gsap.killTweensOf(fx.ring);
           gsap.set(fx.ring, { clearProps: "opacity" });
         }
+        if (fx.draw) {
+          gsap.killTweensOf(fx.draw);
+          // Clearing the inline style resurfaces the SVG attribute
+          // (strokeDashoffset=1000) — the undrawn rest state.
+          gsap.set(fx.draw, { clearProps: "strokeDashoffset" });
+        }
       });
       runway.style.height = "";
     };
   }, [detected, mode, isEn]);
+
+  // ---- Annotation blur-fade (round-2 type pass) --------------------------
+  // The right-hung annotation focuses in ~0.3s after the chapter title's
+  // masked line-rise fires (the h2 is owned by HeadingChoreographer, whose
+  // trigger and this IO's -18% rootMargin resolve to the same scroll beat).
+  // Mirrors the `Reveal` idiom: hidden only from this effect (SSR/no-JS/RM
+  // paint stays visible), IO-triggered so SPA-nav mounts that land in view
+  // still play, once per page life. Deps re-arm it on the detection-time
+  // branch swap (the node remounts); the played ref keeps it replay-free.
+  useEffect(() => {
+    const el = annotationRef.current;
+    if (!el || annotationPlayedRef.current) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      annotationPlayedRef.current = true;
+      return;
+    }
+    gsap.set(el, { autoAlpha: 0, y: 14, filter: "blur(10px)" });
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            annotationPlayedRef.current = true;
+            gsap.to(el, {
+              autoAlpha: 1,
+              y: 0,
+              filter: "blur(0px)",
+              duration: 0.9,
+              delay: 0.3,
+              ease: "expo.out",
+              // Drop the settled filter/transform so the static element costs
+              // nothing after the reveal.
+              onComplete: () => gsap.set(el, { clearProps: "filter,transform" }),
+            });
+            io.disconnect();
+            break;
+          }
+        }
+      },
+      { rootMargin: "0px 0px -18% 0px", threshold: 0 },
+    );
+    io.observe(el);
+    return () => {
+      io.disconnect();
+      gsap.killTweensOf(el);
+      // Never leave the copy hidden on teardown if the reveal hasn't played.
+      if (!annotationPlayedRef.current) {
+        gsap.set(el, { clearProps: "opacity,visibility,transform,filter" });
+      }
+    };
+  }, [detected, mode]);
+
+  // ---- Slab type choreography (round-2 type pass, pinned mode only) ------
+  // First stage entry (IO-once on the sticky frame): each card's serif title
+  // plays a masked single-line rise inside its overflow clip (yPercent 115 —
+  // clears the wrapper's 4px descender window, same margin the
+  // heading-choreographer documents), staggered 90ms by card index; the
+  // card's `includes` lines fade up behind it at a 40ms stagger. Ghost
+  // numbers get NO animation (they are watermarks). Replay-free; native mode
+  // (which covers reduced-motion by construction) never primes, and an extra
+  // RM guard covers an OS toggle between detection and entry. Hiding happens
+  // only here (JS-on, motion-on), so SSR/no-JS/RM paint is always settled.
+  useEffect(() => {
+    if (!detected || mode !== "pinned") return;
+    if (slabTypePlayedRef.current) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const sticky = stickyRef.current;
+    const stage = stageRef.current;
+    if (!sticky || !stage) return;
+
+    const cardEls = Array.from(
+      stage.querySelectorAll<HTMLElement>("[data-pov-card]"),
+    );
+    if (cardEls.length === 0) return;
+
+    const primed: HTMLElement[] = [];
+    const tl = gsap.timeline({ paused: true });
+    cardEls.forEach((card, i) => {
+      const title = card.querySelector<HTMLElement>("[data-slab-title]");
+      const includes = Array.from(
+        card.querySelectorAll<HTMLElement>("[data-slab-include]"),
+      );
+      if (title) {
+        primed.push(title);
+        gsap.set(title, { yPercent: 115 });
+        tl.to(
+          title,
+          { yPercent: 0, duration: 0.85, ease: "expo.out" },
+          i * 0.09,
+        );
+      }
+      if (includes.length > 0) {
+        primed.push(...includes);
+        gsap.set(includes, { autoAlpha: 0, y: 10 });
+        tl.to(
+          includes,
+          {
+            autoAlpha: 1,
+            y: 0,
+            duration: 0.5,
+            ease: "expo.out",
+            stagger: 0.04,
+          },
+          i * 0.09 + 0.3,
+        );
+      }
+    });
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            slabTypePlayedRef.current = true;
+            tl.play();
+            io.disconnect();
+            break;
+          }
+        }
+      },
+      { threshold: 0 },
+    );
+    io.observe(sticky);
+
+    return () => {
+      io.disconnect();
+      tl.kill();
+      // Teardown before entry (branch swap / unmount): restore the settled
+      // paint — content must never stay hidden without a pending reveal.
+      if (!slabTypePlayedRef.current && primed.length > 0) {
+        gsap.set(primed, { clearProps: "transform,opacity,visibility" });
+      }
+    };
+  }, [detected, mode]);
 
   // Chapter heading (2026-08-21 restyle, shared grammar): the title is
   // promoted to a chapter statement and the description moves to a right-hung
   // ~320px annotation on lg:. SectionHeading cannot express the two-column
   // pairing (its description is hard-wired under the title at paragraph
   // width), so the heading is composed locally — per the slab spec — instead
-  // of forking the site-wide component. The eyebrow keeps the `.eyebrow`
-  // class WITHOUT [data-eyebrow-text], so the root-layout LabelScrambler
-  // gives it the mono decode reveal; the block entrance rides the same
-  // `Reveal` primitive the cards already use. All strings byte-identical.
+  // of forking the site-wide component. Round-2 type pass: the block no
+  // longer rides `Reveal` — ONE reveal owner per element (the site rule):
+  //   - eyebrow: `.eyebrow` WITHOUT [data-eyebrow-text] → the root-layout
+  //     LabelScrambler mono decode;
+  //   - h2: `data-split-reveal` → HeadingChoreographer's masked SplitText
+  //     line-rise (yPercent 115→0, 90ms stagger, expo.out). key={language}:
+  //     SplitText owns the subtree once split; an EN/IT swap must remount it
+  //     or React reconciles against orphaned nodes (same contract as
+  //     SectionHeading's h2);
+  //   - annotation: the local blur-fade effect above (~0.3s after the title).
+  // All strings byte-identical.
   const heading = (
-    <Reveal className="mb-8 sm:mb-16 grid gap-8 lg:grid-cols-[1fr_320px] lg:items-end">
+    <div className="mb-8 sm:mb-16 grid gap-8 lg:grid-cols-[1fr_320px] lg:items-end">
       <div>
         <p className="eyebrow mb-5 inline-flex items-center gap-2 text-ink-mute">
           <span
@@ -893,7 +1131,11 @@ export default function ServicesSection() {
           />
           <span>{isEn ? "What SerSan builds" : "Cosa costruisce SerSan"}</span>
         </p>
-        <h2 className="font-display text-[clamp(2.75rem,4.6vw,5.5rem)] leading-[0.98] tracking-[-0.02em] text-ink text-balance">
+        <h2
+          key={language}
+          data-split-reveal
+          className="font-display text-[clamp(2.75rem,4.6vw,5.5rem)] leading-[0.98] tracking-[-0.02em] text-ink text-balance"
+        >
           {isEn ? (
             <>
               Four services.{" "}
@@ -907,12 +1149,15 @@ export default function ServicesSection() {
           )}
         </h2>
       </div>
-      <p className="max-w-md text-[13px] leading-relaxed text-ink-mute">
+      <p
+        ref={annotationRef}
+        className="max-w-md text-[13px] leading-relaxed text-ink-mute"
+      >
         {isEn
           ? "Every engagement is delivered by senior engineers from scoping to handover. No account layer, no junior bench, no roadmap that quietly becomes a multi-year retainer."
           : "Ogni ingaggio è seguito da ingegneri senior, dallo scoping al passaggio di consegne. Nessun livello di account management, nessuna panchina di junior, nessuna roadmap che si trasforma silenziosamente in un retainer pluriennale."}
       </p>
-    </Reveal>
+    </div>
   );
 
   // Section closer — plain text only. The /start CTA that lived here was

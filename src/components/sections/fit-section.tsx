@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { SplitText } from "gsap/SplitText";
 import { Check, X } from "lucide-react";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { SectionGlow } from "@/components/ui/section-glow";
@@ -12,7 +13,7 @@ import { snapPoint } from "@/lib/scroll-snap";
 import { useCentreFocus } from "@/lib/use-centre-focus";
 
 if (typeof window !== "undefined") {
-  gsap.registerPlugin(ScrollTrigger);
+  gsap.registerPlugin(ScrollTrigger, SplitText);
 }
 
 /**
@@ -29,11 +30,19 @@ if (typeof window !== "undefined") {
  *   - THE STATEMENT (z-10): eyebrow + the section title re-set as chapter
  *     type (clamp(3rem, 6.5vw, 7.5rem), ~11ch so it breaks into 3–4 lines,
  *     left at the container gutter, sat slightly below center). It does NOT
- *     scrub or pose-morph — painted at full opacity from SSR. Its only life
- *     is ONE slow scrub-driven drift (y +14px → −14px across the runway via
- *     a quickTo chaser): parallax, not choreography. The eyebrow is a plain
- *     `.eyebrow` (no [data-eyebrow-text]), so the global LabelScrambler
- *     gives it the mono decode treatment for free.
+ *     scrub or pose-morph — painted at full opacity from SSR. Its scrubbed
+ *     life is ONE slow drift (y +14px → −14px across the runway via a
+ *     quickTo chaser): parallax, not choreography. On the FIRST entry of
+ *     the pinned frame (IO on the runway, once per arm — round-2 life
+ *     pass) it additionally plays a masked SplitText line-rise: the SSR
+ *     text is primed hidden ONLY inside play() (set → play in the same
+ *     tick, so the statement is never parked hidden waiting on a trigger;
+ *     RM never reaches the pinned path and is guarded anyway), and the
+ *     annotation blur-fades in after it. The h2 carries key={language} —
+ *     SplitText owns its subtree once split, so the EN↔IT toggle must
+ *     remount it (heading-choreographer contract); cleanup revert()s.
+ *     The eyebrow is a plain `.eyebrow` (no [data-eyebrow-text]), so the
+ *     global LabelScrambler gives it the mono decode treatment for free.
  *   - THE ANNOTATION (z-10): the description string hung top-right as a
  *     small ~300px column (the Noomo/Lusion pairing). Static.
  *   - THE PANE FIELD (z-20, in front of the type): a perspective layer
@@ -45,7 +54,13 @@ if (typeof window !== "undefined") {
  *     alternating sides, yaw/roll-rotated, transparent, 0.94 scale) → HOLD
  *     u∈[0.28, 0.72] (parked on a right-of-center slot over the statement's
  *     right half; `.is-held` toggles ONCE at the window's threshold
- *     crossings and a CSS rule draws the strike through the ✗ line) → EXIT
+ *     crossings and a CSS rule draws the strike through the ✗ line. The
+ *     FIRST hold also lands the add-only `.is-lit` at the same single
+ *     write point, and a CSS transition-delay chain stagger-plays the
+ *     pane's content: ✓ row masked-rise → divider scaleX draw → ✗ row
+ *     rise → the existing strike → index fade. `.is-lit` is never
+ *     removed, so scrub-out reverses NOTHING — the content stays; only
+ *     the strike stays reversible on `.is-held`) → EXIT
  *     u∈[0.72, 1.12] (continues along its travel vector, up and out, fading
  *     to 1.02 scale — overlapping the next pane's enter: crossfade, never a
  *     hard cut). Panes alternate z-20/z-30 so consecutive panes cross at
@@ -77,7 +92,13 @@ if (typeof window !== "undefined") {
  *     that early-returns once parked (velocity-derived → damped;
  *     position-derived → direct).
  *   - Chrome: big mono counter "01 / 06" + a thin scrub progress line with
- *     `+` beat ticks (AT/igloo garnish) track the active beat.
+ *     `+` beat ticks (AT/igloo garnish) track the active beat. The counter
+ *     readout ROLLS vertically on beat change (the preloader's rolling-
+ *     digit flavour, local): a clipped box with a current + incoming layer
+ *     translateY-rolled by a transform-only helper — up on a forward beat,
+ *     down on a backward scrub; init/refresh snaps hard-set. clip-path
+ *     (not overflow:hidden) does the clipping so the box keeps a real text
+ *     baseline against the "/ 06" label.
  *
  * SEMANTICS / A11Y: the PANES are the real, screen-reader-facing content —
  * no aria-hidden theater, no duplicate strings. Each pane row carries the
@@ -212,6 +233,22 @@ const PANE_EXIT_SCALE = 1.02;
 /** The statement's one scrub-driven drift: y +14px → −14px across the
  *  whole runway — parallax, not choreography. */
 const STATEMENT_DRIFT_PX = 14;
+
+/** Statement intro (round-2 life pass): masked line-rise on the first
+ *  entry of the pinned frame. Same feel tokens as heading-choreographer
+ *  (yPercent 115 rise, ~0.85s, 90ms stagger, expo.out). 115 is load-bearing:
+ *  the `.split-line-mask` clip window is extended by 0.12em of padding
+ *  (globals.css headroom rule), and only a rise ≥ 115% of the ~0.98 line
+ *  height clears it — at 110 a sliver of each waiting line's top edge would
+ *  peek through the extended window during the stagger. */
+const INTRO_Y_PERCENT = 115;
+const INTRO_DURATION = 0.85;
+const INTRO_STAGGER = 0.09;
+/** Annotation blur-fade starts this long after the title rise begins. */
+const INTRO_ANNOT_DELAY = 0.35;
+
+/** Beat-counter vertical digit roll (s). */
+const COUNTER_ROLL_S = 0.5;
 
 /** Medallion viewBox is 200×200; the disc is r=88. Final mask radius must
  *  cover disc + stroke + the ±40 displacement excursion of the edge.
@@ -454,6 +491,10 @@ export default function FitSection() {
     const statementEl =
       sticky.querySelector<HTMLElement>("[data-fit-statement]");
     const counterEl = sticky.querySelector<HTMLElement>("[data-fit-counter]");
+    const counterCur =
+      counterEl?.querySelector<HTMLElement>("[data-fit-counter-cur]") ?? null;
+    const counterInc =
+      counterEl?.querySelector<HTMLElement>("[data-fit-counter-inc]") ?? null;
     const lineEl = sticky.querySelector<HTMLElement>("[data-fit-line]");
     if (paneEls.length === 0) return;
 
@@ -526,6 +567,50 @@ export default function FitSection() {
     /* ---- Chrome writers (direct, identical-value skipped) ------------ */
 
     let lastActive = -1;
+
+    /** Counter digit roll (the preloader's rolling-digit flavour, local):
+     *  the two-digit readout rolls vertically inside its clipped box —
+     *  the current layer rolls out while the incoming layer (carrying the
+     *  new value) rolls in, up on a forward beat, down on a backward
+     *  scrub. Transform-only. An in-flight roll is killed and re-parked
+     *  first, so a fast scrub across several beats can never stack
+     *  tweens (worst case: the readout snaps to rest, then rolls to the
+     *  newest value). The immediate path (init/refresh snaps) hard-sets —
+     *  a restored scroll or a resize never plays a roll. */
+    const rollCounter = (text: string, dir: 1 | -1, immediate: boolean) => {
+      if (!counterCur || !counterInc) {
+        if (counterEl) counterEl.textContent = text;
+        return;
+      }
+      gsap.killTweensOf([counterCur, counterInc]);
+      if (immediate) {
+        counterCur.textContent = text;
+        gsap.set(counterCur, { yPercent: 0 });
+        gsap.set(counterInc, { yPercent: 100 });
+        return;
+      }
+      counterInc.textContent = text;
+      gsap.set(counterCur, { yPercent: 0 });
+      gsap.set(counterInc, { yPercent: 100 * dir });
+      gsap.to(counterCur, {
+        yPercent: -100 * dir,
+        duration: COUNTER_ROLL_S,
+        ease: "expo.out",
+      });
+      gsap.to(counterInc, {
+        yPercent: 0,
+        duration: COUNTER_ROLL_S,
+        ease: "expo.out",
+        onComplete: () => {
+          // Promote the incoming value to the in-flow layer and re-park
+          // the roller so the next change starts from a clean rest state.
+          counterCur.textContent = text;
+          gsap.set(counterCur, { yPercent: 0 });
+          gsap.set(counterInc, { yPercent: 100 });
+        },
+      });
+    };
+
     const setLine = lineEl ? gsap.quickSetter(lineEl, "scaleX") : null;
     if (lineEl) gsap.set(lineEl, { transformOrigin: "0% 50%", scaleX: 0 });
     let lastLineQ = -1;
@@ -591,17 +676,26 @@ export default function FitSection() {
         if (held !== p.held) {
           p.held = held;
           p.el.classList.toggle("is-held", held);
+          // First-ever hold ALSO lands the add-only `.is-lit` at this same
+          // single write point: the pane-content transition-delay chain
+          // (✓ rise → divider → ✗ rise → index) plays ONCE and never
+          // reverses — scrub-out keeps the content (round-2 §C2). A pure
+          // `.is-held` keying cannot express "reverse nothing" (removing
+          // the class reverts the computed styles), hence the companion.
+          if (held) p.el.classList.add("is-lit");
         }
       }
 
       // Statement parallax: one slow drift across the whole runway.
       stmtY(STATEMENT_DRIFT_PX * (1 - 2 * progress), immediate);
 
-      // Counter tracks the active beat; textContent swap only on change.
+      // Counter tracks the active beat; the roll fires only on change
+      // (direction follows the scrub), and snaps on the immediate path.
       const active = Math.min(BEATS - 1, Math.max(0, Math.floor(bp)));
       if (active !== lastActive && counterEl) {
+        const dir: 1 | -1 = active > lastActive ? 1 : -1;
         lastActive = active;
-        counterEl.textContent = String(active + 1).padStart(2, "0");
+        rollCounter(String(active + 1).padStart(2, "0"), dir, immediate);
       }
       // Progress line — quantized so parked frames write nothing.
       if (setLine) {
@@ -764,11 +858,114 @@ export default function FitSection() {
       }
       gsap.set(skewWrap, { skewX: 0 });
       if (lineEl) gsap.set(lineEl, { clearProps: "transform" });
+      // Park the counter roller mid-flight or not: current layer in flow,
+      // incoming layer off below (its SSR rest pose) — the re-arm's init
+      // snap re-writes the text through the immediate path anyway.
+      if (counterCur && counterInc) {
+        gsap.killTweensOf([counterCur, counterInc]);
+        gsap.set(counterCur, { clearProps: "transform" });
+        gsap.set(counterInc, { yPercent: 100 });
+      }
       // The px runway height is deliberately NOT cleared here. This cleanup
       // runs on every EN↔IT toggle too (isEn is a dep), and collapsing the
       // runway mid-read clamps the scroll position and ejects the reader out
       // of the section. Release lives in the mode-flip effect above; the
       // re-arm below re-measures it in place.
+    };
+  }, [detected, mode, isEn]);
+
+  // Statement intro (round-2 life pass) — pinned mode only. On the FIRST
+  // entry of the pinned frame (IO on the runway, once per arm) the giant
+  // title plays a masked SplitText line-rise and the annotation blur-fades
+  // in after it. The statement is SSR-painted at full opacity: the hidden
+  // prime happens ONLY inside play() — set → play in the SAME tick — so the
+  // SSR text is never parked hidden waiting on a trigger, and a no-JS page
+  // never hides it at all. RM never reaches the pinned path (mode detection
+  // flips it to native) but is guarded here anyway. The h2 carries
+  // key={language}: SplitText owns the subtree once split (revert()
+  // restores an innerHTML snapshot), so the EN↔IT toggle must remount it —
+  // this effect's cleanup reverts the old (then detached) split harmlessly
+  // and the re-arm splits the fresh node (heading-choreographer contract).
+  useEffect(() => {
+    if (!detected || mode !== "pinned") return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const runway = runwayRef.current;
+    if (!runway) return;
+
+    let cancelled = false;
+    let played = false;
+    let split: SplitText | null = null;
+    const tweens: gsap.core.Tween[] = [];
+
+    const play = () => {
+      if (played || cancelled) return;
+      played = true;
+      const title = runway.querySelector<HTMLElement>("[data-fit-title]");
+      const annot = runway.querySelector<HTMLElement>("[data-fit-annotation]");
+      if (title) {
+        split = new SplitText(title, {
+          type: "lines",
+          mask: "lines",
+          linesClass: "split-line",
+        });
+        // Prime hidden and play in the SAME tick — no hidden rest state.
+        gsap.set(split.lines, { yPercent: INTRO_Y_PERCENT });
+        tweens.push(
+          gsap.to(split.lines, {
+            yPercent: 0,
+            duration: INTRO_DURATION,
+            stagger: INTRO_STAGGER,
+            ease: "expo.out",
+          }),
+        );
+      }
+      if (annot) {
+        tweens.push(
+          gsap.fromTo(
+            annot,
+            { autoAlpha: 0, filter: "blur(10px)" },
+            {
+              autoAlpha: 1,
+              filter: "blur(0px)",
+              duration: 0.7,
+              delay: INTRO_ANNOT_DELAY,
+              ease: "power2.out",
+            },
+          ),
+        );
+      }
+    };
+
+    // Fire once the statement is actually ARRIVING in the frame: the runway
+    // top crossing ~65% of the viewport puts the title's first lines in the
+    // frame's lower third, so the rise is seen rather than spent off-screen.
+    // A restored scroll / anchor jump landing inside the runway intersects
+    // immediately and plays on arrival.
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        io.disconnect();
+        // Fonts must be settled or the line boxes split wrong mid-swap
+        // (heading-choreographer rule). Already-loaded fonts resolve in a
+        // microtask, so prime + play still land before the next paint.
+        const ready = document.fonts?.ready;
+        if (ready) {
+          ready.then(() => play()).catch(() => play());
+        } else {
+          play();
+        }
+      },
+      { rootMargin: "0px 0px -35% 0px" },
+    );
+    io.observe(runway);
+
+    return () => {
+      cancelled = true;
+      io.disconnect();
+      tweens.forEach((t) => t.kill());
+      split?.revert();
+      const annot = runway.querySelector<HTMLElement>("[data-fit-annotation]");
+      if (annot) gsap.set(annot, { clearProps: "opacity,visibility,filter" });
     };
   }, [detected, mode, isEn]);
 
@@ -1125,7 +1322,13 @@ export default function FitSection() {
               <p className="eyebrow mb-6">
                 {isEn ? "Selective on purpose" : "Selettivi per scelta"}
               </p>
-              <h2 className="max-w-[11ch] font-display font-medium text-[clamp(3rem,6.5vw,7.5rem)] leading-[0.98] tracking-[-0.02em] text-ink">
+              {/* key={language}: SplitText remount discipline — see the
+                  statement-intro effect. */}
+              <h2
+                key={language}
+                data-fit-title
+                className="max-w-[11ch] font-display font-medium text-[clamp(3rem,6.5vw,7.5rem)] leading-[0.98] tracking-[-0.02em] text-ink"
+              >
                 {isEn ? (
                   <>
                     We are honest about{" "}
@@ -1146,9 +1349,13 @@ export default function FitSection() {
           </div>
 
           {/* ---- The annotation (z-10) — the description hung top-right as
-               a small column (the Noomo/Lusion pairing). Static. */}
+               a small column (the Noomo/Lusion pairing). Static in the
+               scrub; blur-fades in after the statement's intro rise. */}
           <div className="container-px absolute inset-x-0 top-[12vh] z-10">
-            <p className="ml-auto w-[300px] max-w-[38vw] text-[13px] leading-relaxed text-ink-mute">
+            <p
+              data-fit-annotation
+              className="ml-auto w-[300px] max-w-[38vw] text-[13px] leading-relaxed text-ink-mute"
+            >
               {description}
             </p>
           </div>
@@ -1172,7 +1379,7 @@ export default function FitSection() {
                 data-fit-pane={i}
                 className={`fit-pane absolute left-1/2 top-1/2 w-[min(30rem,38vw)] rounded-2xl bg-[hsl(216_30%_10%/0.55)] p-6 shadow-[0_24px_80px_-32px_hsl(220_60%_2%/0.8)] backdrop-blur-xl will-change-transform ${
                   i % 2 === 0 ? "z-20" : "z-30"
-                }${i === 0 ? " is-held" : ""}`}
+                }${i === 0 ? " is-held is-lit" : ""}`}
                 style={
                   i === 0
                     ? {
@@ -1196,32 +1403,43 @@ export default function FitSection() {
                   aria-hidden="true"
                   className="absolute inset-x-0 top-0 h-px rounded-full bg-gradient-to-r from-[hsl(var(--accent)/0.7)] via-[hsl(var(--accent)/0.25)] to-transparent"
                 />
-                <div className="flex items-start gap-3">
-                  <Check
-                    className="mt-[3px] h-4 w-4 shrink-0 text-[hsl(var(--accent))]"
-                    aria-hidden="true"
-                  />
-                  <p className="text-[17px] leading-snug text-ink">
+                {/* ✓ row — masked rise on first HOLD (the `.is-lit` chain).
+                    The mask wrapper is layout-neutral; the inner row is the
+                    riser. */}
+                <div className="overflow-hidden">
+                  <div className="fit-pane__rise flex items-start gap-3">
+                    <Check
+                      className="mt-[3px] h-4 w-4 shrink-0 text-[hsl(var(--accent))]"
+                      aria-hidden="true"
+                    />
+                    <p className="text-[17px] leading-snug text-ink">
+                      <span className="sr-only">
+                        {isEn ? "Good fit" : "Buon fit"}:{" "}
+                      </span>
+                      {line}
+                    </p>
+                  </div>
+                </div>
+                <div
+                  aria-hidden="true"
+                  className="fit-pane__divider my-4 h-px bg-[hsl(var(--rule)/0.6)]"
+                />
+                {/* ✗ row — same masked rise, delayed. The mask pads out by
+                    the strike wash's ::after excursion (−2px/−5px inset) so
+                    the drawn strike never clips; padding + negative margin
+                    cancel, so the layout is byte-identical. */}
+                <div className="fit-pane__row--bad -mx-[5px] -my-[2px] overflow-hidden px-[5px] py-[2px]">
+                  <p className="fit-pane__bad fit-pane__rise relative font-mono text-[12px] leading-tight text-ink-mute">
                     <span className="sr-only">
-                      {isEn ? "Good fit" : "Buon fit"}:{" "}
+                      {isEn ? "Not a fit" : "Non è un fit"}:{" "}
                     </span>
-                    {line}
+                    <span aria-hidden="true">✗ </span>
+                    {notAFit[i]}
                   </p>
                 </div>
                 <div
                   aria-hidden="true"
-                  className="my-4 h-px bg-[hsl(var(--rule)/0.6)]"
-                />
-                <p className="fit-pane__bad relative font-mono text-[12px] leading-tight text-ink-mute">
-                  <span className="sr-only">
-                    {isEn ? "Not a fit" : "Non è un fit"}:{" "}
-                  </span>
-                  <span aria-hidden="true">✗ </span>
-                  {notAFit[i]}
-                </p>
-                <div
-                  aria-hidden="true"
-                  className="mt-4 text-right font-mono text-[10px] tracking-[0.18em] text-ink-dim"
+                  className="fit-pane__index mt-4 text-right font-mono text-[10px] tracking-[0.18em] text-ink-dim"
                 >
                   {`0${i + 1}`}
                 </div>
@@ -1239,11 +1457,29 @@ export default function FitSection() {
           >
             <div className="flex items-end gap-6 sm:gap-8">
               <div className="flex items-baseline gap-2 font-mono tabular-nums">
+                {/* Rolling readout: two stacked layers inside a clipped box.
+                    clip-path (never overflow:hidden — that synthesizes the
+                    baseline from the box bottom and would misalign the
+                    "/ 06" label) keeps the real text baseline; the scrub's
+                    rollCounter helper translateY-rolls the layers. */}
                 <span
                   data-fit-counter
-                  className="text-[1.9rem] leading-none tracking-tight text-ink"
+                  className="relative inline-block text-[1.9rem] leading-none tracking-tight text-ink"
+                  style={{ clipPath: "inset(0)" }}
                 >
-                  01
+                  <span
+                    data-fit-counter-cur
+                    className="block will-change-transform"
+                  >
+                    01
+                  </span>
+                  <span
+                    data-fit-counter-inc
+                    className="absolute inset-0 will-change-transform"
+                    style={{ transform: "translateY(100%)" }}
+                  >
+                    01
+                  </span>
                 </span>
                 <span className="text-[11px] tracking-[0.18em] text-ink-dim">
                   / {String(BEATS).padStart(2, "0")}
@@ -1274,13 +1510,37 @@ export default function FitSection() {
               strike rule, never a cover). `.is-held` is toggled by the
               scrub at the HOLD window's threshold crossings (one class
               write per crossing, never per frame); the 560ms draw is
-              CSS-owned, so scrubbing back up reverses it just as cleanly. */}
+              CSS-owned, so scrubbing back up reverses it just as cleanly.
+              Round-2 §C2: the FIRST hold also lands the add-only `.is-lit`
+              (same write point), and a transition-delay chain stagger-plays
+              the pane content — ✓ row masked-rise (0ms) → divider scaleX
+              (140ms) → ✗ row rise (240ms) → the strike (620ms, forward
+              only) → index fade (420ms). `.is-lit` never comes off, so
+              scrub-out reverses nothing; only the strike stays reversible
+              on `.is-held` (its reverse keeps the base zero delay). Pane 0
+              ships `.is-lit` from SSR — parked at HOLD, content settled —
+              so the first pinned frame (and the no-JS page) is never
+              empty. */}
           <style>{`
+            /* SplitText margin-collapse guard for the statement intro. The
+               global headroom rule pads every .split-line-mask (0.12em block
+               padding + equal negative margins), but its companion flex rule
+               is keyed on [data-split-reveal], which this h2 deliberately
+               does NOT carry (the intro is IO-timed locally, not owned by
+               HeadingChoreographer). In normal block flow the adjacent
+               masks' negative block margins would COLLAPSE (-0.12em +
+               -0.12em -> a single -0.12em), growing the split statement by
+               0.12em per line junction (~14px/line at 7.5rem) the moment
+               the split lands. Flex items never collapse margins — same fix,
+               same shape, scoped to this h2 while masks exist. */
+            [data-fit-title]:has(> .split-line-mask) {
+              display: flex;
+              flex-direction: column;
+            }
             .fit-pane__bad {
               text-decoration-line: line-through;
               text-decoration-color: transparent;
               text-decoration-thickness: 1px;
-              transition: text-decoration-color 560ms var(--ease-lusion);
             }
             .fit-pane__bad::after {
               content: "";
@@ -1294,15 +1554,58 @@ export default function FitSection() {
               transition: transform 560ms var(--ease-lusion);
               pointer-events: none;
             }
+            /* The chain (forward-only, keyed on the add-only .is-lit). */
+            .fit-pane__rise {
+              transform: translateY(110%);
+              transition: transform 640ms var(--ease-lusion);
+            }
+            /* The ✗ p carries BOTH .fit-pane__bad and .fit-pane__rise — one
+               combined shorthand owns the element (two competing shorthands
+               would drop whichever loses the cascade). Property order is
+               load-bearing: the .is-held delay list below maps onto it. */
+            .fit-pane__bad.fit-pane__rise {
+              transition:
+                transform 640ms var(--ease-lusion) 240ms,
+                text-decoration-color 560ms var(--ease-lusion);
+            }
+            .fit-pane__divider {
+              transform: scaleX(0);
+              transform-origin: 0% 50%;
+              transition: transform 560ms var(--ease-lusion) 140ms;
+            }
+            .fit-pane__index {
+              opacity: 0;
+              transition: opacity 480ms var(--ease-lusion) 420ms;
+            }
+            .fit-pane.is-lit .fit-pane__rise { transform: translateY(0); }
+            .fit-pane.is-lit .fit-pane__divider { transform: scaleX(1); }
+            .fit-pane.is-lit .fit-pane__index { opacity: 1; }
+            /* Strike — reversible on .is-held (existing behavior). Forward
+               draw waits for the ✗ row to land (620ms); the reverse keeps
+               the base zero delay. The delay list is [transform 240ms,
+               text-decoration-color 620ms] against the combined shorthand's
+               property order, so the row's rise timing never inherits the
+               strike's delay. */
             .fit-pane.is-held .fit-pane__bad {
               text-decoration-color: hsl(36 84% 56% / 0.6);
+              transition-delay: 240ms, 620ms;
             }
             .fit-pane.is-held .fit-pane__bad::after {
               transform: scaleX(1);
+              transition-delay: 620ms;
             }
             @media (prefers-reduced-motion: reduce) {
               .fit-pane__bad,
-              .fit-pane__bad::after { transition: none; }
+              .fit-pane__bad.fit-pane__rise,
+              .fit-pane__bad::after,
+              .fit-pane__rise,
+              .fit-pane__divider,
+              .fit-pane__index { transition: none; }
+              /* Settled, visible, motionless — covers the pre-detection SSR
+                 frame on an RM device (detection then flips to native). */
+              .fit-pane__rise { transform: none; }
+              .fit-pane__divider { transform: scaleX(1); }
+              .fit-pane__index { opacity: 1; }
             }
           `}</style>
         </div>
