@@ -107,7 +107,33 @@
  * scan + guarded uniform writes, and `uWipe` is written to a hard 0 exactly
  * ONCE when the window is left, so the `If(uWipe > 0.001)` graph branch
  * skips all texture math at rest (same idiom as the burst — idle cost ≈ one
- * guarded branch). The crossing detector is the prevP/p STRADDLE of a
+ * guarded branch).
+ * ROUND 6-A (owner: the band read as a visible STRIP on the near-black
+ * starfield): igloo's darkening masks a REAL two-scene switch, but ours
+ * modulates ONE image — on flat near-black pixels the flat 0.30 darkening
+ * and the unconditional +0.075 leading-edge lift manufactured a grey/light
+ * strip where there is no content. Two independent in-band fixes:
+ *   • CONTENT-LUMA MASK — the darkening AND the leading-edge lift are
+ *     scaled by mask = smoothstep(uWipeLumaLo 0.02, uWipeLumaHi 0.12,
+ *     luma(scene at the shoved uv)), REUSING the one existing scene sample
+ *     inside the guarded branch (no extra fetch). Empty space (the star
+ *     field sits at ~0.01–0.03 luma) stays untouched; text glow, the
+ *     stream, cards and images get the full sweep. The CA taps and the
+ *     block shove stay UNMASKED — they are content-dependent and self-mask
+ *     on flat pixels.
+ *   • VELOCITY-GATED AMPLITUDE — the driver damps `state.amp` toward
+ *     min(|lenis velocity| / ampVelNorm, 1) (λ 6 rising / λ 3 falling ⇒
+ *     assembles fast, dissolves in ~0.3–0.5 s once you stop) and mirrors it
+ *     to `uWipeAmp`, which multiplies ALL band terms (shove, darkening, CA,
+ *     lift). The band exists only while actually scrubbing; parking
+ *     mid-window fades it out completely — the honest native-scroll answer
+ *     to igloo's autoCenter (deliberately not shipped). Once the amp
+ *     settles below 0.001 the driver ALSO hard-zeros uWipe (write-once), so
+ *     the guarded branch skips while parked mid-window. uWipe itself stays
+ *     scrubbed (recomputed from progress on resume): geometry unchanged —
+ *     only the amplitude gates. The crossing spike is untouched (it rides
+ *     its own envelope).
+ * The crossing detector is the prevP/p STRADDLE of a
  * boundary (jump-proof: a same-frame End/Home/anchor jump across one or
  * more cuts fires exactly once, for the boundary nearest the landing
  * point). At the crossing instant it fires:
@@ -272,6 +298,10 @@ interface CutDriverState {
   maxH: Float64Array;
   /** Boundary whose window the scroll sits inside (−1 = none). */
   activeIdx: number;
+  /** ROUND 6-A — damped velocity-gated band amplitude (0..1), mirrored to
+   *  `uWipeAmp` while a window is active. 0 while parked (settled),
+   *  exited, disarmed or re-measured. */
+  amp: number;
   /** Previous frame's scroll progress (NaN = disarmed sentinel — set on
    *  mount, re-measure, route exit and kill-switch). The crossing detector
    *  is the prevP/p STRADDLE of a boundary, so a same-frame End/Home/anchor
@@ -287,6 +317,7 @@ const makeCutState = (): CutDriverState => ({
   halfWindow: 0,
   maxH: new Float64Array(MAX_CUT_BOUNDARIES),
   activeIdx: -1,
+  amp: 0,
   prevP: Number.NaN,
 });
 
@@ -305,6 +336,14 @@ interface CutParams {
   /** |lenis velocity| (px/frame-ish) that maps to a full-strength spike —
    *  the normalizer for the spec's 0..1 `scrollVelocity`. */
   velNorm: number;
+  /** ROUND 6-A — |lenis velocity| that maps to full BAND amplitude (the
+   *  velocity gate's normalizer; same scale/default as velNorm). */
+  ampVelNorm: number;
+  /** ROUND 6-A — amp damping λ while rising (fast assemble, τ ≈ 0.17 s). */
+  ampLambdaUp: number;
+  /** ROUND 6-A — amp damping λ while falling (band dissolves in ~0.3–0.5 s
+   *  once you stop scrubbing). */
+  ampLambdaDown: number;
   /** Master switch for the DOM .cut-tick heading micro-glitch. */
   tick: boolean;
 }
@@ -315,6 +354,9 @@ const makeCutParams = (): CutParams => ({
   spikeBase: 0.35,
   spikeVelGain: 0.65,
   velNorm: 50,
+  ampVelNorm: 50,
+  ampLambdaUp: 6,
+  ampLambdaDown: 3,
   tick: true,
 });
 
@@ -335,8 +377,11 @@ const makeSpikeState = (): SpikeState => ({
   seedZ: 1,
 });
 
-/** The wipe uniform set (built with the graph). shove/dark/ca are tuning
- *  uniforms written only from the dev handle — never per frame. */
+/** The wipe uniform set (built with the graph). shove/dark/ca and the
+ *  round 6-A lumaLo/lumaHi mask bounds are tuning uniforms written only from
+ *  the dev handle — never per frame. The driver's only PER-FRAME writes are
+ *  `wipe` (the scrub) and `amp` (the round 6-A velocity gate); dir + the
+ *  seeds are event-cadence writes (direction flips / window entry). */
 interface WipeUniforms {
   wipe: UniformNode;
   dir: UniformNode;
@@ -346,6 +391,9 @@ interface WipeUniforms {
   shoveY: UniformNode;
   dark: UniformNode;
   ca: UniformNode;
+  amp: UniformNode;
+  lumaLo: UniformNode;
+  lumaHi: UniformNode;
 }
 
 export function PostFXNodes({
@@ -409,8 +457,10 @@ export function PostFXNodes({
     const w = window as unknown as Record<string, unknown>;
     w.__sersanPostFx = { rig: "nodes", level };
     // W4 — section-cut live-tuning handle (same neural-handles idiom): CPU
-    // knobs are plain mutable fields; `uniforms.current.*.value` reaches the
-    // GL band amplitudes (shove/dark/ca) directly from the console.
+    // knobs are plain mutable fields (incl. the round 6-A amp envelope:
+    // ampVelNorm / ampLambdaUp / ampLambdaDown); `uniforms.current.*.value`
+    // reaches the GL band amplitudes (shove/dark/ca) and the round 6-A
+    // content-luma mask bounds (lumaLo/lumaHi) directly from the console.
     w.__sersanSectionCuts = {
       params: (cutParamsRef.current ??= makeCutParams()),
       state: (cutStateRef.current ??= makeCutState()),
@@ -525,7 +575,11 @@ export function PostFXNodes({
           z?: TslNode | number,
           w?: TslNode | number,
         ) => TslNode;
-        smoothstep: (a: number, b: number, x: TslNode) => TslNode;
+        smoothstep: (
+          a: TslNode | number,
+          b: TslNode | number,
+          x: TslNode,
+        ) => TslNode;
         clamp: (x: TslNode, lo: number, hi: number) => TslNode;
         mix: (a: TslNode, b: TslNode, t: TslNode) => TslNode;
         float: (v: number) => TslNode;
@@ -618,6 +672,11 @@ export function PostFXNodes({
       //     `mix(1−uv.x+wob, uv.x+wob, step(slope,0))` statically resolves
       //     to the `uv.x + wob` branch. shove/dark/ca amplitudes are tuning
       //     uniforms written only from the dev handle, never per frame.
+      //     ROUND 6-A adds uWipeAmp — the driver's velocity-gated amplitude,
+      //     the ONE extra per-frame-written uniform, multiplying EVERY band
+      //     term (shove here, darkening/CA/lift in wipeGrade) — and the
+      //     tuning-only uWipeLumaLo/Hi content-luma mask bounds (see the
+      //     SECTION-CUT WARP header note).
       const uWipe = uniform(0);
       const uWipeDir = uniform(1);
       const uWipeSeedX = uniform(0);
@@ -626,6 +685,9 @@ export function PostFXNodes({
       const uWipeShoveY = uniform(0.012);
       const uWipeDark = uniform(0.3);
       const uWipeCA = uniform(0.12);
+      const uWipeAmp = uniform(0);
+      const uWipeLumaLo = uniform(0.02);
+      const uWipeLumaHi = uniform(0.12);
       wipeRef.current = {
         wipe: uWipe,
         dir: uWipeDir,
@@ -635,6 +697,9 @@ export function PostFXNodes({
         shoveY: uWipeShoveY,
         dark: uWipeDark,
         ca: uWipeCA,
+        amp: uWipeAmp,
+        lumaLo: uWipeLumaLo,
+        lumaHi: uWipeLumaHi,
       };
       // |slope| with slope = −0.2·aspect, and the scrub remap
       // incP = fit(uWipe, 0, 1, 0, 1 + |slope|).
@@ -679,7 +744,10 @@ export function PostFXNodes({
       // 0.9→1.0): uv += (0.006·(dispB·2−1), uWipeDir·0.012·dispB) — igloo's
       // 0.025 halved because we self-sample a single scene. Level "lite"
       // drops this whole branch (one noise fetch fewer, per the tier spec);
-      // the darkening + CA in wipeGrade below stay.
+      // the darkening + CA in wipeGrade below stay. ROUND 6-A: the shove is
+      // scaled by uWipeAmp (the velocity gate) but stays luma-UNMASKED — a
+      // uv shove on flat content moves identical pixels onto themselves, so
+      // it self-masks in empty space.
       let wipeUv: TslNode = baseUv;
       if (!lite) {
         wipeUv = Fn(() => {
@@ -695,7 +763,7 @@ export function PostFXNodes({
                 vec2(
                   dispB.mul(2).sub(1).mul(uWipeShoveX),
                   dispB.mul(uWipeShoveY).mul(uWipeDir),
-                ),
+                ).mul(uWipeAmp),
               ),
             );
           });
@@ -808,6 +876,24 @@ export function PostFXNodes({
       //     Fields are computed at the un-shoved uv (igloo evaluates them at
       //     vUv); the CA taps sample at the final displaced uv ± the barrel
       //     offset. If-guarded on the same uniform → idle cost ≈ 0.
+      //     ROUND 6-A (the visible-strip fix, see the header note):
+      //     • content-luma mask — darkening AND leading-edge lift are scaled
+      //       by mask = smoothstep(uWipeLumaLo, uWipeLumaHi, luma), where
+      //       luma is the ALREADY-COMPUTED luminance of `base` (the one
+      //       existing scene sample at the shoved uv — no extra fetch, and
+      //       it stays inside this guarded branch). Near-black empty space
+      //       no longer receives the flat darken/lift that manufactured the
+      //       strip; the CA delta stays UNMASKED (rS/bS − base ≈ 0 on flat
+      //       pixels — it self-masks).
+      //     • the whole delta is multiplied by uWipeAmp (the driver's
+      //       velocity-gated amplitude) so the band only exists while
+      //       actually scrubbing.
+      //     UNDERSHOOT BOUND (there is no clamp before the tonemap): both
+      //     round 6-A factors (mask, amp) are in [0,1] and multiply the
+      //     approved W4 delta, so its magnitude can only SHRINK; the masked
+      //     darkening alone is bounded by 0.30·base (core·(1−core)·4 ≤ 1),
+      //     i.e. base·(1 − dark·mask·amp) ≥ 0.7·base ≥ 0 — it can never
+      //     push the composite negative by itself.
       const wipeGrade = Fn(() => {
         const d = vec3(0, 0, 0).toVar();
         If(uWipe.greaterThan(0.001), () => {
@@ -839,12 +925,21 @@ export function PostFXNodes({
             smoothstep(0.5, 0.65, core).oneMinus(),
           );
           const luma = dot(base, vec3(0.2125, 0.7154, 0.0721));
+          const mask = smoothstep(uWipeLumaLo, uWipeLumaHi, luma);
           d.assign(
             base
               .mul(dark)
               .mul(-1)
+              .mul(mask)
               .add(vec3(rS.r.sub(base.r), 0, bS.b.sub(base.b)))
-              .add(base.sub(luma).mul(edge.mul(0.35)).add(edge.mul(0.075))),
+              .add(
+                base
+                  .sub(luma)
+                  .mul(edge.mul(0.35))
+                  .add(edge.mul(0.075))
+                  .mul(mask),
+              )
+              .mul(uWipeAmp),
           );
         });
         return d;
@@ -921,6 +1016,7 @@ export function PostFXNodes({
       if (cutStateRef.current) {
         cutStateRef.current.version = -1;
         cutStateRef.current.activeIdx = -1;
+        cutStateRef.current.amp = 0;
         cutStateRef.current.prevP = Number.NaN;
       }
       if (spikeRef.current) spikeRef.current.peak = 0;
@@ -995,8 +1091,10 @@ export function PostFXNodes({
         // disarmed, so re-entering home can never diff against a stale p).
         if (cs.activeIdx !== -1 || !Number.isNaN(cs.prevP)) {
           cs.activeIdx = -1;
+          cs.amp = 0;
           cs.prevP = Number.NaN;
           if (wp.wipe.value !== 0) wp.wipe.value = 0;
+          if (wp.amp.value !== 0) wp.amp.value = 0;
         }
       } else {
         const sec = useSectionStore.getState();
@@ -1037,11 +1135,17 @@ export function PostFXNodes({
             cs.halfWindow = 0;
           }
           cs.activeIdx = -1;
+          cs.amp = 0;
           cs.prevP = Number.NaN;
           if (wp.wipe.value !== 0) wp.wipe.value = 0;
+          if (wp.amp.value !== 0) wp.amp.value = 0;
         }
         if (cs.count > 0 && cs.halfWindow > 0) {
-          const p = useScrollStore.getState().progress;
+          // One getState serves the scrub (progress), the round 6-A amp
+          // gate (velocity, per frame) and the crossing spike (velocity,
+          // event cadence).
+          const ss = useScrollStore.getState();
+          const p = ss.progress;
           // CROSSING DETECTOR — a prevP/p STRADDLE of any boundary, NOT an
           // inside-window side latch: `(prevP ≥ cutᵢ) !== (p ≥ cutᵢ)`
           // catches a slow scrub and a violent same-frame End/Home/anchor
@@ -1075,7 +1179,7 @@ export function PostFXNodes({
               // center. Event cadence (once per crossing): allocation and
               // Math.random are allowed here, never per frame.
               if (params.spike && levelRef.current === "full") {
-                const vel = useScrollStore.getState().velocity;
+                const vel = ss.velocity;
                 const av = vel < 0 ? -vel : vel;
                 const vn = av >= params.velNorm ? 1 : av / params.velNorm;
                 const sp = (spikeRef.current ??= makeSpikeState());
@@ -1122,12 +1226,46 @@ export function PostFXNodes({
               wp.seedY.value = hs * 64.453;
               cs.activeIdx = best;
             }
-            wp.wipe.value = clamp01((p - cs.cuts[best] + h) / (2 * h));
+            // ROUND 6-A — velocity-gated amplitude: damp cs.amp toward
+            // min(|vel|/ampVelNorm, 1) (λ up 6 = fast assemble, λ down 3 =
+            // ~0.3–0.5 s dissolve at rest). Sub-1% targets clamp to 0 so a
+            // residual Lenis settle velocity can never hold the band (or
+            // the GPU branch) alive. When settled (< 0.001) BOTH uniforms
+            // hard-zero once — the `If(uWipe > 0.001)` branch skips while
+            // parked mid-window and this path costs scalar math + two
+            // compares per frame. uWipe stays scrubbed otherwise
+            // (recomputed from p on resume — geometry unchanged, only the
+            // amplitude gates). Zero allocation.
+            const av = ss.velocity < 0 ? -ss.velocity : ss.velocity;
+            const norm = params.ampVelNorm;
+            let target = av >= norm ? 1 : av / norm;
+            if (target < 0.01) target = 0;
+            let amp = cs.amp;
+            if (target !== amp) {
+              const lam =
+                target > amp ? params.ampLambdaUp : params.ampLambdaDown;
+              const k = 1 - Math.exp(-lam * Math.min(delta, 1 / 30));
+              amp += (target - amp) * k;
+              if (target === 0 && amp < 0.001) amp = 0;
+              cs.amp = amp;
+            }
+            if (amp < 0.001) {
+              // Parked mid-window (amp settled): write the hard 0 once —
+              // same write-once idiom as the window exit below.
+              if (wp.wipe.value !== 0) wp.wipe.value = 0;
+              if (wp.amp.value !== 0) wp.amp.value = 0;
+            } else {
+              wp.wipe.value = clamp01((p - cs.cuts[best] + h) / (2 * h));
+              wp.amp.value = amp;
+            }
           } else if (cs.activeIdx !== -1 || wp.wipe.value !== 0) {
             // Window exit: hard 0, written once (the guard above keeps this
-            // branch from re-firing while idle).
+            // branch from re-firing while idle). The amp resets with it so
+            // the next window assembles from 0.
             cs.activeIdx = -1;
+            cs.amp = 0;
             wp.wipe.value = 0;
+            if (wp.amp.value !== 0) wp.amp.value = 0;
           }
         }
       }
