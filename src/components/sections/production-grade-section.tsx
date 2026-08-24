@@ -17,6 +17,14 @@ import {
 /**
  * ProductionGradeSection — the SIGNATURE section, ProblemSection's twin.
  *
+ * ROUND 10 (2026-08-24) — THE GHOST TYPE IS DEAD. The owner rejected the
+ * outlined/hollow display type ("le scritte vuote dentro azzure non mi
+ * piacciono"): the CLAIM is now painted SOLID ink (see the PGROW_CSS note
+ * below). Only the PAINT changed — the H3 claim entrance, the R1 label roll,
+ * the B1 body wave, the hairline draw, the per-row replay, the drift, the
+ * bumpCluster latch and every focus/centre-band state are byte-for-byte the
+ * behaviour they were. Copy untouched.
+ *
  * TYPOGRAPHIC LEDGER, TEXT v3 (round 5, 2026-08-21 — the round-4 scrubbed
  * fill-wipe and the right-hung mono annotations are DEAD, owner call; same
  * Lusion pair as the Problem ledger — replayable viewport-entry choreography
@@ -31,16 +39,16 @@ import {
  *     column at BODY scale (`[data-chapter-desc]`), revealed in B3 spirit
  *     cascaded after the title, drifting at k=1.25. Byte-identical string.
  *   - Each artifact is a FULL-WIDTH row over a hairline (no right cell): a
- *     mono kicker line `[01·] [cluster label]`, the CLAIM in display serif
- *     as GHOST type (outlined/transparent — the river threading the guide
- *     rings shines through), then the WHY as a Switzer body-scale block
- *     (`[data-row-body]`, max-width 34em) UNDER the claim, then the
- *     hairline. Row = [kicker + claim] over [body] over [hairline].
+ *     mono kicker line `[01·] [cluster label]`, the CLAIM in SOLID display
+ *     serif (round 10 — the WebGL field flows behind it, not through it),
+ *     then the WHY as a Switzer body-scale block (`[data-row-body]`,
+ *     max-width 34em) UNDER the claim, then the hairline.
+ *     Row = [kicker + claim] over [body] over [hairline].
  *   - ENTRANCES (useLedgerReveal, per row, replayable): the cluster label's
  *     RollLetters plays recipe R1 exactly (per-char column, yPercent −500→0,
  *     expo.inOut, 1.25s, center-out cosine); the index settles
  *     (autoAlpha+rise); the CLAIM plays recipe H3 (`[data-claim]` — SplitText
- *     words in line masks, y then x trailing +0.4s; the ghost stroke
+ *     words in line masks, y then x trailing +0.4s; the claim colour
  *     inherits through the split wrappers; key={language} remounts it); the
  *     hairline draws scaleX; the body plays recipe B1 (words, opacity .1→1 +
  *     y 100→0, 0.01s/word) cascaded +0.3s after the roll starts. Everything
@@ -56,10 +64,13 @@ import {
  *     chapter desc at 1.25. One shared ticker, transform-only, zero
  *     per-frame gBCR. Hairlines never drift. No arrows here → no Hv1 wave.
  *   - IGNITION (fine-pointer hover, keyboard focus, touch centre-band) stays
- *     the CSS accent — brightness + glyph-shaped accent drop-shadow glow +
- *     stroke hue shift, the cluster eyebrow goes accent, the index
- *     brightens — and setHovered("healthy", i) flares ring i in the WebGL
- *     field (existing store link, untouched).
+ *     the CSS accent, now expressed in ink: the claim lifts from ink to an
+ *     icy cyan-white hsl(189 100% 96%) — BRIGHTER than rest, never dimmer
+ *     (round-10 check fix; the first pass dimmed it — measurements in the
+ *     PGROW_CSS note) — inside a two-layer glyph-shaped accent glow; the
+ *     cluster eyebrow goes accent, the index brightens — same 0.6s
+ *     var(--ease-lusion) — and setHovered("healthy", i) flares ring i in the
+ *     WebGL field (existing store link, untouched).
  *   - BAND GEOMETRY CONTRACT (§A round 3, shared with the stream agent): the
  *     `[data-lattice-anchor="production"]` rect stays the FULL-BLEED -z-10
  *     background of the rows stack. ROUND-6: the WebGL "rings" are now the
@@ -69,13 +80,15 @@ import {
  *     spec §6 accepts the small drift). Ghost callouts + dot grid KEPT.
  *   - `productionPulseStore.bump()` on every in-view edge is UNTOUCHED (the
  *     signature line's BEAT 1 emissive boost).
- *   - Guards: SSR/no-JS renders everything settled and visible (solid ink
- *     fallback where stroke is unsupported — @supports guard); FROM poses
- *     primed only by GSAP at arm (D-10). Reduced motion: static solid ink,
+ *   - Guards: SSR/no-JS renders everything settled and visible (the rest pose
+ *     IS the finished look — solid ink, no primed-hidden classes); FROM poses
+ *     primed only by GSAP at arm (D-10). Reduced motion: the solid rest
+ *     colour in every state (the ignited pose is neutralised because
+ *     use-centre-focus's static mode pins [data-focus="true"] on touch+RM),
  *     zero choreography, no drift, no store bumps from the entrance path.
- *   - A11y: strings in source order (index → label → claim → why), ghost
- *     styling is pure CSS on real text, rows are tabIndex=0 with the global
- *     :focus-visible ring; focus = ignition.
+ *   - A11y: strings in source order (index → label → claim → why), the claim
+ *     styling is pure CSS colour on real text, rows are tabIndex=0 with the
+ *     global :focus-visible ring; focus = ignition.
  *
  * Copy is byte-identical to the pre-refactor section (EN + IT), including the
  * D-17 "Open a panel…" description and the closing disclaimer.
@@ -187,26 +200,66 @@ const CALLOUT_POS: { left: string; edge: "top" | "bottom"; at: string }[] = [
 ];
 
 /**
- * Ghost + ignition CSS — file-scoped (no globals.css edits, parallel-agent
- * rule). Same rest grammar as the Problem ledger (see its header note): the
- * claim is permanently outlined — transparent fill + stroke — so the river
- * shines through; the @supports guard keeps non-supporting browsers on solid
- * ink. Ignition = accent glow on top (drop-shadow, NOT text-shadow — the
- * glow must wrap the glyph shapes, not the text box). Reduced motion: solid
- * readable ink, static, state selectors carried.
+ * CLAIM + ignition CSS — file-scoped (no globals.css edits, parallel-agent
+ * rule). Same rest grammar as the Problem ledger (see its header note):
+ * round 10 (2026-08-24) killed the outlined/ghost pose — transparent fill,
+ * -webkit-text-stroke and the @supports guard that gated them are all
+ * DELETED (owner rejection: "le scritte vuote dentro azzure non mi
+ * piacciono"). The claim is SOLID hsl(var(--ink)), 17.0:1 on --bg against
+ * the body's 6.1:1 — the claim is the dominant line by a wide margin.
+ *
+ * IGNITION is the same event re-expressed in ink, same 0.6s
+ * var(--ease-lusion) as the index/label.
+ *
+ * ROUND-10 CHECK FIX (2026-08-24) — THE IGNITION WAS A DIMMING. The first
+ * pass ignited to hsl(189 80% 84%) #B6EDF7. Measured against the rest ink
+ * #F4F6FA over --bg #0B1523: relative luminance 0.9205 → 0.7723 (−16.1%),
+ * CIELAB L* 96.84 → 90.43 (−6.41), contrast 16.94:1 → 14.35:1. The glyph got
+ * DARKER on hover — it read as fading to cyan, not igniting — while the
+ * Problem ledger's twin word ROSE (+8.20 L*, 10.61 → 13.34:1). Twins cannot
+ * ignite in opposite directions. The ignited colour is now hsl(189 100% 96%)
+ * #EBFCFF: L* 97.83 (+0.99), Y +2.7%, 17.37:1 — it never dims — and it still
+ * carries a real cyan cast (ΔE76 5.3 vs the rest ink, ~2× the ~2.3 JND), so
+ * the hue event survives.
+ *
+ * Because the rest ink already sits at the luminance ceiling (L* 96.84 —
+ * there is no headroom above it inside the palette), the EMPHASIS is carried
+ * by the GLOW, and one 14px/0.35 halo could not carry it at
+ * clamp(1.9rem,3.6vw,3.9rem): that is a hairline next to a 52–62px stem.
+ * Two CHAINED drop-shadows now — a 10px tight rim + a 28px soft field.
+ * Chained filters compose (the second samples the first's output, halo
+ * included), so the rim reaches ~0.69 accent alpha instead of 0.35 and the
+ * halo reads 6.04:1 against --bg instead of 2.49:1. drop-shadow, NOT
+ * text-shadow: the glow must wrap the glyph shapes, not the text box.
+ *
+ * The old `brightness(1.12)` is gone — on already-white solid type it
+ * clipped to nothing. It never touched the GLOW either: brightness() is an
+ * RGB component transfer that leaves ALPHA alone, and drop-shadow paints its
+ * own declared colour through the source alpha. What did change the glow is
+ * the fill — a solid glyph hands the shadow a solid mask where the dead
+ * ghost pose handed it only a 1px outline.
+ *
+ * The mono kicker (index + label) still goes full accent (L* 83.2 at 11px)
+ * while the claim holds the luminance top at 52–62px display: the two ignite
+ * in DIFFERENT channels (chroma vs light), so the row's three-element
+ * hierarchy resolves instead of two elements competing.
+ *
+ * Reduced motion: transitions off, and the ignited pose neutralised back to
+ * rest in EVERY state — not stroke leftovers, but because use-centre-focus's
+ * static mode pins every row [data-focus="true"] on touch+RM and would
+ * otherwise paint all three claims permanently lifted + glowing. SCOPE NOTE
+ * (honest, checked 2026-08-24): only the CLAIM is neutralised —
+ * `.pgrow__index` / `.pgrow__label` still take their [data-focus] accent, so
+ * on touch+RM all three mono kickers read full accent. That is unchanged
+ * HEAD behaviour, not a round-10 regression; it is written down here so the
+ * next reader does not have to re-derive it.
  */
 const PGROW_CSS = `
-.pgrow__ghost {
+.pgrow__claim {
   color: hsl(var(--ink));
   transition:
-    filter 0.6s var(--ease-lusion),
-    -webkit-text-stroke-color 0.6s var(--ease-lusion);
-}
-@supports ((-webkit-text-fill-color: transparent) and (-webkit-text-stroke-width: 1px)) {
-  .pgrow__ghost {
-    -webkit-text-fill-color: transparent;
-    -webkit-text-stroke: 1px hsl(var(--ink) / 0.35);
-  }
+    color 0.6s var(--ease-lusion),
+    filter 0.6s var(--ease-lusion);
 }
 .pgrow__index {
   color: hsl(var(--accent) / 0.6);
@@ -216,32 +269,34 @@ const PGROW_CSS = `
   color: hsl(var(--ink-mute));
   transition: color 0.6s var(--ease-lusion);
 }
-.pgrow:focus-visible .pgrow__ghost,
-.pgrow[data-focus="true"] .pgrow__ghost {
-  filter: brightness(1.12) drop-shadow(0 0 14px hsl(var(--accent) / 0.35));
-  -webkit-text-stroke-color: hsl(var(--accent) / 0.4);
+.pgrow:focus-visible .pgrow__claim,
+.pgrow[data-focus="true"] .pgrow__claim {
+  color: hsl(189 100% 96%);
+  filter:
+    drop-shadow(0 0 10px hsl(var(--accent) / 0.55))
+    drop-shadow(0 0 28px hsl(var(--accent) / 0.3));
 }
 .pgrow:focus-visible .pgrow__label,
 .pgrow[data-focus="true"] .pgrow__label { color: hsl(var(--accent)); }
 .pgrow:focus-visible .pgrow__index,
 .pgrow[data-focus="true"] .pgrow__index { color: hsl(var(--accent)); }
 @media (hover: hover) and (pointer: fine) {
-  .pgrow:hover .pgrow__ghost {
-    filter: brightness(1.12) drop-shadow(0 0 14px hsl(var(--accent) / 0.35));
-    -webkit-text-stroke-color: hsl(var(--accent) / 0.4);
+  .pgrow:hover .pgrow__claim {
+    color: hsl(189 100% 96%);
+    filter:
+      drop-shadow(0 0 10px hsl(var(--accent) / 0.55))
+      drop-shadow(0 0 28px hsl(var(--accent) / 0.3));
   }
   .pgrow:hover .pgrow__label { color: hsl(var(--accent)); }
   .pgrow:hover .pgrow__index { color: hsl(var(--accent)); }
 }
 @media (prefers-reduced-motion: reduce) {
-  /* Solid-ink readable static in EVERY state (see header note). */
-  .pgrow__ghost,
-  .pgrow:hover .pgrow__ghost,
-  .pgrow:focus-visible .pgrow__ghost,
-  .pgrow[data-focus="true"] .pgrow__ghost {
+  /* Rest colour in EVERY state, no transitions (see header note). */
+  .pgrow__claim,
+  .pgrow:hover .pgrow__claim,
+  .pgrow:focus-visible .pgrow__claim,
+  .pgrow[data-focus="true"] .pgrow__claim {
     color: hsl(var(--ink));
-    -webkit-text-fill-color: currentColor;
-    -webkit-text-stroke-width: 0;
     filter: none;
     transition: none;
   }
@@ -455,13 +510,14 @@ export default function ProductionGradeSection() {
                     className="pgrow__label"
                   />
                 </p>
-                {/* The CLAIM — ghost display serif (the river shines through
-                    the outlined glyphs), recipe H3 entrance (data-claim;
-                    key={language}: SplitText owns the subtree once split). */}
+                {/* The CLAIM — solid display serif (round 10; the outlined
+                    ghost pose is dead), recipe H3 entrance (data-claim;
+                    key={language}: SplitText owns the subtree once split —
+                    the colour inherits through the split wrappers). */}
                 <h3
                   key={language}
                   data-claim
-                  className="pgrow__ghost mt-2 sm:mt-3 font-display text-[clamp(1.9rem,3.6vw,3.9rem)] leading-[1.05] tracking-[-0.01em] text-balance"
+                  className="pgrow__claim mt-2 sm:mt-3 font-display text-[clamp(1.9rem,3.6vw,3.9rem)] leading-[1.05] tracking-[-0.01em] text-balance"
                 >
                   {a.claim}
                 </h3>

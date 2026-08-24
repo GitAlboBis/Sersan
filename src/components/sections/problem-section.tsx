@@ -17,6 +17,14 @@ import {
 /**
  * ProblemSection — names the pain (demo-to-production gap).
  *
+ * ROUND 10 (2026-08-24) — THE GHOST TYPE IS DEAD. The owner rejected the
+ * outlined/hollow display word ("le scritte vuote dentro azzure non mi
+ * piacciono"): the EFFECT word is now painted SOLID (see the PLROW_CSS note
+ * below). Only the PAINT changed — every entrance (R1 rolls, line masks,
+ * word waves, per-row replay, trailing offsets), the Hv1 ignition wave, the
+ * drift, the focus/centre-band states, the leader lines and the callouts are
+ * byte-for-byte the behaviour they were. Copy untouched.
+ *
  * TYPOGRAPHIC LEDGER, TEXT v3 (round 5, 2026-08-21 — the round-4 scrubbed
  * fill-wipe and the right-hung mono annotations are DEAD, owner call; the
  * grammar is now the real Lusion pair: replayable viewport-entry
@@ -36,11 +44,12 @@ import {
  *     INSIDE it, never sharing its transform.
  *   - Each failure is a FULL-WIDTH row over a hairline (no box, no bg, no
  *     right cell): `[mono index 01·] [CAUSE roll] [-> accent mono] [EFFECT
- *     ghost roll]` on one big display line, the BODY as a Switzer body-scale
- *     block (`[data-row-body]`, max-width 34em) directly UNDER it, then the
- *     hairline. Row = [index+display line] over [body] over [hairline].
- *   - ENTRANCES (useLedgerReveal, per row, replayable): CAUSE and ghost
- *     EFFECT words are both RollLetters → recipe R1 exactly (per-char column
+ *     roll, solid amber]` on one big display line, the BODY as a Switzer
+ *     body-scale block (`[data-row-body]`, max-width 34em) directly UNDER it,
+ *     then the hairline. Row = [index+display line] over [body] over
+ *     [hairline].
+ *   - ENTRANCES (useLedgerReveal, per row, replayable): CAUSE and EFFECT
+ *     words are both RollLetters → recipe R1 exactly (per-char column
  *     through the 1em clip, yPercent −500→0, expo.inOut, 1.25s, center-out
  *     cosine stagger); index + arrow wrapper settle (autoAlpha+rise, lusion);
  *     the hairline draws scaleX; the body plays recipe B1 (SplitText words,
@@ -51,12 +60,17 @@ import {
  *     k=1.5, the chapter desc at 1.25 — translateY by distance from viewport
  *     center, zero when the row is centered, subtle at the edges. One shared
  *     ticker, transform-only, zero per-frame gBCR. Hairlines never drift.
- *   - GHOST TYPE = the z-interleave illusion (round-3 rest grammar): the
- *     EFFECT word is permanently outlined serif (-webkit-text-stroke,
- *     transparent fill) so the WebGL river flowing BEHIND the DOM shines
- *     through. IGNITION (fine-pointer hover, keyboard focus, touch
- *     centre-band) is the accent — brightness + glyph-shaped drop-shadow
- *     glow + stroke hue shift (CSS) — and now also plays recipe Hv1 (the
+ *   - SOLID DISPLAY TYPE (round 10 — replaces the round-3 z-interleave
+ *     illusion, owner-rejected): the EFFECT word is filled serif in the
+ *     sanctioned ember amber hsl(36 60% 72%) — 10.7:1 on --bg vs the body's
+ *     6.1:1, so the display line is unambiguously the dominant one. No
+ *     -webkit-text-stroke, no transparent fill, no @supports fallback dance
+ *     (there is no longer a look to fall back FROM). The WebGL field no
+ *     longer reads through the glyphs; it flows behind them.
+ *     IGNITION (fine-pointer hover, keyboard focus, touch centre-band) is the
+ *     same event in ink: a colour lift inside the amber hue family
+ *     (→ hsl(36 75% 82%), 13.4:1) + the glyph-shaped drop-shadow glow, on the
+ *     unchanged 0.6s var(--ease-lusion) — and it still plays recipe Hv1 (the
  *     GSAP wave in lusion-type): the EFFECT chars slide x 0→1.5em
  *     right-to-left and the `->` arrow slides into the vacated space
  *     (`data-wave-arrow`; GSAP owns the arrow transform — the old 6px CSS
@@ -69,12 +83,14 @@ import {
  *     background of the rows stack; fracture registration unchanged. Ghost
  *     callouts + dot grid KEPT. bump("broken") on the in-view edge is
  *     untouched (the surge that dies at the fracture).
- *   - Guards: SSR/no-JS renders everything settled and visible (solid amber
- *     fallback where stroke is unsupported — @supports guard); FROM poses
- *     are primed only by GSAP at arm (D-10). Reduced motion: static solid
- *     ink-mute, zero choreography, no drift, no wave.
- *   - A11y: strings in source order (index → cause → effect → body), ghost
- *     styling is pure CSS on real text (SR-transparent), rows are tabIndex=0
+ *   - Guards: SSR/no-JS renders everything settled and visible (the rest pose
+ *     IS the finished look — solid amber, no primed-hidden classes); FROM
+ *     poses are primed only by GSAP at arm (D-10). Reduced motion: the solid
+ *     rest colour in every state (the ignited pose is neutralised because
+ *     use-centre-focus's static mode pins [data-focus="true"] on touch+RM),
+ *     zero choreography, no drift, no wave.
+ *   - A11y: strings in source order (index → cause → effect → body), the
+ *     EFFECT styling is pure CSS colour on real text, rows are tabIndex=0
  *     with the global :focus-visible ring; focus = ignition (hover parity).
  *
  * Copy is byte-identical to the pre-refactor section (EN + IT).
@@ -153,37 +169,61 @@ function useInView<T extends HTMLElement>(margin = "0px 0px -12% 0px") {
 }
 
 /**
- * Ghost + ignition CSS — file-scoped (no globals.css edits, parallel-agent
- * rule).
+ * EFFECT-word + ignition CSS — file-scoped (no globals.css edits,
+ * parallel-agent rule).
  *
- * REST STATE (round-3 grammar, restored in round 5 — the scrub fill-wipe and
- * its background-clip machinery are gone): the ghost EFFECT word is
- * permanently outlined — transparent fill + -webkit-text-stroke — so the
- * WebGL river behind the DOM shines through the glyphs. The @supports guard
- * keeps non-supporting browsers on solid readable amber.
+ * REST STATE (round 10, 2026-08-24): SOLID ember amber, hsl(36 60% 72%).
+ * The outlined/ghost pose — transparent fill + -webkit-text-stroke, and the
+ * @supports guard that gated it — is DELETED (owner rejection: "le scritte
+ * vuote dentro azzure non mi piacciono"). Nothing paints the glyphs but
+ * `color`, so there is no unsupported-browser branch left to guard. Amber on
+ * --bg measures 10.7:1 (body ink-mute is 6.1:1) — the display line reads as
+ * the dominant one, both well clear of AA.
  *
- * IGNITION (hover / :focus-visible / [data-focus] centre-band) is an accent:
- * brightness + glyph-shaped drop-shadow glow + stroke hue shift. The arrow's
- * ignited slide is GSAP-owned now (Hv1 wave in lusion-type — one transform
- * owner), so no arrow transition lives here.
+ * IGNITION (hover / :focus-visible / [data-focus] centre-band) is the same
+ * event re-expressed in ink, on the same 0.6s var(--ease-lusion) as the
+ * index: a colour lift INSIDE the sanctioned amber hue family — rest
+ * hsl(36 60% 72%) #E2C08D (L* 79.50, 10.61:1) → ignited hsl(36 75% 82%)
+ * #F4D8AF (L* 87.70, 13.34:1). Measured: ΔL* +8.20, ΔE76 10.5, relative
+ * luminance +28%. The word RISES on ignition — that is the direction the
+ * Production twin had to be fixed to match in the same round (its first
+ * round-10 pass DIMMED; see its PGROW_CSS note).
  *
- * Reduced motion: the ghost is solid readable ink-mute, no stroke, nothing
- * transitions (the state selectors must be carried too — use-centre-focus's
- * static mode marks all rows [data-focus="true"] on touch+RM and would
- * out-specify the bare class).
+ * The glow is TWO chained drop-shadows (round-10 check fix): a 10px tight
+ * rim + a 28px soft field, hue 36 throughout. One 14px/0.4 halo is a
+ * hairline next to a 52–62px display stem; chained filters compose (the wide
+ * layer blurs the rim too), so the rim reaches ~0.63 amber alpha and the
+ * halo reads 4.85:1 against --bg instead of 2.66:1. drop-shadow, not
+ * text-shadow — it must wrap the glyph shapes, not the text box.
+ *
+ * The old `brightness(1.3)` is gone: on solid type the lift is the colour,
+ * not a filter washing it toward white. It never touched the GLOW either —
+ * brightness() is an RGB component transfer that leaves ALPHA alone, and
+ * drop-shadow paints its own declared colour through the source alpha; what
+ * strengthened the glow is the solid fill replacing the 1px ghost outline as
+ * the shadow's mask. The arrow's ignited slide stays GSAP-owned (Hv1 wave in
+ * lusion-type — one transform owner), so no arrow transition lives here.
+ *
+ * Reduced motion: transitions off, and the ignited pose is neutralised back
+ * to rest in EVERY state. That is NOT stroke leftovers — use-centre-focus's
+ * static mode marks all rows [data-focus="true"] on touch+RM, which would
+ * otherwise paint all three rows permanently lifted + glowing; the state
+ * selectors must be carried or the bare class is out-specified. Note the
+ * rest colour under RM is the AMBER, not `--ink-mute`: the pre-round-10 RM
+ * block forced ink-mute only to undo the stroke, which flattened the display
+ * word to the body's own 6.07:1. Holding amber keeps 10.61:1 vs the body's
+ * 6.07:1, so the RM hierarchy is stronger than it was, not weaker. SCOPE
+ * NOTE (honest, checked 2026-08-24): only the EFFECT word is neutralised —
+ * `.plrow__index` still takes its [data-focus] accent, so on touch+RM all
+ * three indices read full accent. Unchanged HEAD behaviour, not a round-10
+ * regression.
  */
 const PLROW_CSS = `
-.plrow__ghost {
+.plrow__effect {
   color: hsl(36 60% 72%);
   transition:
-    filter 0.6s var(--ease-lusion),
-    -webkit-text-stroke-color 0.6s var(--ease-lusion);
-}
-@supports ((-webkit-text-fill-color: transparent) and (-webkit-text-stroke-width: 1px)) {
-  .plrow__ghost {
-    -webkit-text-fill-color: transparent;
-    -webkit-text-stroke: 1px hsl(var(--ink) / 0.35);
-  }
+    color 0.6s var(--ease-lusion),
+    filter 0.6s var(--ease-lusion);
 }
 .plrow__arrow {
   display: inline-block;
@@ -192,29 +232,31 @@ const PLROW_CSS = `
   color: hsl(var(--accent) / 0.6);
   transition: color 0.6s var(--ease-lusion);
 }
-.plrow:focus-visible .plrow__ghost,
-.plrow[data-focus="true"] .plrow__ghost {
-  filter: brightness(1.3) drop-shadow(0 0 14px hsl(36 60% 72% / 0.4));
-  -webkit-text-stroke-color: hsl(36 60% 72% / 0.5);
+.plrow:focus-visible .plrow__effect,
+.plrow[data-focus="true"] .plrow__effect {
+  color: hsl(36 75% 82%);
+  filter:
+    drop-shadow(0 0 10px hsl(36 60% 72% / 0.5))
+    drop-shadow(0 0 28px hsl(36 60% 72% / 0.26));
 }
 .plrow:focus-visible .plrow__index,
 .plrow[data-focus="true"] .plrow__index { color: hsl(var(--accent)); }
 @media (hover: hover) and (pointer: fine) {
-  .plrow:hover .plrow__ghost {
-    filter: brightness(1.3) drop-shadow(0 0 14px hsl(36 60% 72% / 0.4));
-    -webkit-text-stroke-color: hsl(36 60% 72% / 0.5);
+  .plrow:hover .plrow__effect {
+    color: hsl(36 75% 82%);
+    filter:
+      drop-shadow(0 0 10px hsl(36 60% 72% / 0.5))
+      drop-shadow(0 0 28px hsl(36 60% 72% / 0.26));
   }
   .plrow:hover .plrow__index { color: hsl(var(--accent)); }
 }
 @media (prefers-reduced-motion: reduce) {
-  /* Solid-ink readable static in EVERY state (see header note). */
-  .plrow__ghost,
-  .plrow:hover .plrow__ghost,
-  .plrow:focus-visible .plrow__ghost,
-  .plrow[data-focus="true"] .plrow__ghost {
-    color: hsl(var(--ink-mute));
-    -webkit-text-fill-color: currentColor;
-    -webkit-text-stroke-width: 0;
+  /* Rest colour in EVERY state, no transitions (see header note). */
+  .plrow__effect,
+  .plrow:hover .plrow__effect,
+  .plrow:focus-visible .plrow__effect,
+  .plrow[data-focus="true"] .plrow__effect {
+    color: hsl(36 60% 72%);
     filter: none;
     transition: none;
   }
@@ -446,8 +488,9 @@ export default function ProblemSection() {
                   entry (inline-block wrappers: GSAP transforms are no-ops on
                   plain inline boxes); the arrow's IGNITED slide is GSAP-owned
                   (data-wave-arrow, Hv1) — the entrance owns only the outer
-                  wrapper, never the same element. The ghost EFFECT rolls like
-                  the cause and carries the wave clip escape (inset(0 -2em)). */}
+                  wrapper, never the same element. The EFFECT word (solid
+                  amber since round 10) rolls like the cause and carries the
+                  wave clip escape (inset(0 -2em)). */}
               <div data-drift="0.5">
                 <h3 className="font-display text-[clamp(1.9rem,3.6vw,3.9rem)] leading-[1.05] tracking-[-0.01em] text-ink">
                   <span
@@ -472,7 +515,7 @@ export default function ProblemSection() {
                   </span>{" "}
                   <RollLetters
                     text={f.effect}
-                    className="plrow__ghost"
+                    className="plrow__effect"
                     clipInset="inset(0 -2em)"
                     wave
                   />
