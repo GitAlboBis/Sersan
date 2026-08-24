@@ -50,9 +50,39 @@
  *
  * STORES: read-only — useNeuralLatticeStore pulses/hovered via getState() in
  * useFrame (NeuralLattice owns the pulse-decay write-back; this island NEVER
- * calls setPulse), scrollStore.reveal for the arrival ramp. Refs + getState
- * only inside useFrame; zero per-frame allocation (the only guarded
- * exception: a short `toFixed` string when a CSS var actually changes).
+ * calls setPulse), scrollStore.reveal for the arrival ramp + .velocity for
+ * the §B-f speed compression. Refs + getState only inside useFrame; zero
+ * per-frame allocation (the only guarded exceptions: a short `toFixed`
+ * string when a CSS var actually changes, and a CustomEvent on the RARE
+ * callout-window rising edge).
+ *
+ * ROUND 7-2b (research/2026-08-22-round7-stones-v2-anatomy.md, Part B):
+ *   - §B-a INNER OBJECT — healthy + full tier + true-WebGPU backend builds
+ *     the SERSAN-mark transmission RT (crystalMarkRT.ts): the shared
+ *     RouteHeroLogo mark geometry rendered unlit into a mipmapped RT from
+ *     THIS island's existing useFrame (no new loops — the PointerFlowmap
+ *     idiom), sampled by crystalBuild's dispersion ladder (+2 fragment
+ *     bindings, the material's ONLY texture). MARK_SPIN=0 default → the RT
+ *     renders ONCE (igloo-rigid); a dev-handle spin re-renders per visible
+ *     frame. WebGL2 fallback: branch not built until the ?backend=webgl2
+ *     proof (MARK_RT_WEBGL2). Broken instead gets the in-shader amber ember
+ *     core (zero bindings — all in crystalBuild).
+ *   - §B-c PLEXUS — healthy + full tier only (restraint): the igloo net
+ *     (crystalPlexus.ts), 2 position-only draw calls mounted in this group,
+ *     advanced from this useFrame; its connect gate |a| < 0.30 makes it
+ *     dissolve itself between sections via the 0.35 s tweens.
+ *   - §B-d CALLOUT GATING — per-callout visibility windows over the same
+ *     centering scalar `a`, damped asymmetrically (0.4 s in / 0.2 s out) and
+ *     written as `--callout-N-vis` CSS vars (globals.css maps them to
+ *     opacity; fallback 1 keeps SSR/fallback tiers always-visible). A rising
+ *     edge re-triggers the LabelScrambler decode via a bubbling
+ *     "sersan:scramble" CustomEvent on the callout span.
+ *   - §B-f SCROLL FEEL — tumble reads the deadzone-remapped a′ (settles
+ *     upright through a ±0.08 window, the no-hijack autoCenter twin) and the
+ *     group scale compresses with damped |velocity| (the camera-write-free
+ *     twin of igloo's fov coupling; PostFXNodes already consumes the same
+ *     velocity channel for warp/vignette — nothing new there). NO camera
+ *     writes, ever.
  */
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -89,8 +119,23 @@ import {
   CALLOUT_LEFT_MAX,
   CALLOUT_EDGE_MIN,
   CALLOUT_EDGE_MAX,
+  // Round 7-2b (anatomy pass)
+  MARK_RT_WEBGL2,
+  PLEXUS_CONNECT_WINDOW,
+  CALLOUT_VIS_WINDOWS,
+  CALLOUT_VIS_IN_LAMBDA,
+  CALLOUT_VIS_OUT_LAMBDA,
+  CALLOUT_VIS_EPS,
+  TUMBLE_DEADZONE,
+  CRYSTAL_VEL_NORM,
+  CRYSTAL_VEL_SCALE_K,
+  CRYSTAL_VEL_LAMBDA_UP,
+  CRYSTAL_VEL_LAMBDA_DOWN,
 } from "./neural/crystalConfig";
 import type { CrystalBuild } from "./neural/crystalBuild";
+import type { MarkRTRig } from "./neural/crystalMarkRT";
+import type { CrystalPlexus } from "./neural/crystalPlexus";
+import { loadMarkGeometry } from "./RouteHeroLogo";
 
 /** Off-screen cull margin in CSS px (the NeuralLattice value). */
 const CULL_PAD = 220;
@@ -109,45 +154,81 @@ export function CrystalCluster({
   mode: LatticeMode;
   anchorId: string;
 }) {
-  const { size, camera } = useThree();
+  const { size, camera, gl } = useThree();
   const measureVersion = useSectionStore((s) => s.measureVersion);
   const broken = mode === "broken";
   const surfaceKey = broken ? ("broken" as const) : ("healthy" as const);
 
   // --- Lazy build (three/webgpu chunk loads ONLY here) ----------------------
   const [build, setBuild] = useState<CrystalBuild | null>(null);
+  const [plexus, setPlexus] = useState<CrystalPlexus | null>(null);
+  const markRigRef = useRef<MarkRTRig | null>(null);
   const liteRef = useRef(false);
 
   useEffect(() => {
     if (!webgpuEnabled()) return;
     let cancelled = false;
     let built: CrystalBuild | null = null;
+    let markRig: MarkRTRig | null = null;
+    let plexusBuilt: CrystalPlexus | null = null;
 
     void Promise.all([
       import("three/webgpu"),
       import("three/tsl"),
       import("./neural/crystalBuild"),
-    ]).then(([webgpu, tslNs, mod]) => {
+      import("./neural/crystalMarkRT"),
+      import("./neural/crystalPlexus"),
+    ]).then(([webgpu, tslNs, mod, markMod, plexusMod]) => {
       if (cancelled) return;
       // Phone budget: `getState()`, never a subscription (commit wedge).
       const lite = useTierStore.getState().fxBudget.level <= 2;
       liteRef.current = lite;
+      // Round 7-2b §B-a — the mark transmission RT (healthy + full tier).
+      // Backend probe (NeuralLattice idiom): the WebGL2 fallback compiles
+      // the node material unchanged, but the mark-RT branch stays UN-BUILT
+      // there (procedural backdrop only — graceful, no black frame) until
+      // the repo-wide ?backend=webgl2 proof passes (flip MARK_RT_WEBGL2).
+      const bk = (gl as unknown as { backend?: { isWebGLBackend?: boolean } })
+        .backend;
+      const backendIsWebGPU = !!bk && bk.isWebGLBackend !== true;
+      if (!broken && !lite && (backendIsWebGPU || MARK_RT_WEBGL2)) {
+        markRig = markMod.createMarkRT(webgpu as never);
+        markRigRef.current = markRig;
+        // The SAME session-shared normalized mark geometry RouteHeroLogo
+        // preloads at module eval — virtually always resolved already.
+        void loadMarkGeometry().then((geo) => {
+          if (!cancelled && geo) markRig?.setGeometry(geo);
+        });
+      }
       built = mod.createCrystalBuild({
         webgpu: webgpu as never,
         tsl: tslNs as never,
         mode,
         lite,
+        markTexture: markRig ? markRig.texture : undefined,
       });
+      // Round 7-2b §B-c — the plexus net (healthy + full tier; restraint).
+      if (!broken && !lite) {
+        plexusBuilt = plexusMod.createCrystalPlexus(
+          webgpu as never,
+          tslNs as never,
+        );
+      }
       setBuild(built);
+      setPlexus(plexusBuilt);
     });
 
     return () => {
       cancelled = true;
       built?.dispose();
+      markRig?.dispose();
+      plexusBuilt?.dispose();
+      markRigRef.current = null;
       setBuild(null);
+      setPlexus(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, [mode, gl]);
 
   // --- Section rect + the callout CSS-var host ------------------------------
   const [rect, setRect] = useState<SectionRect | null>(null);
@@ -182,6 +263,7 @@ export function CrystalCluster({
       for (let i = 0; i < CLUSTER_COUNT; i++) {
         el.style.removeProperty(`--callout-${i}-left`);
         el.style.removeProperty(`--callout-${i}-top`);
+        el.style.removeProperty(`--callout-${i}-vis`);
       }
     };
   }, []);
@@ -206,6 +288,24 @@ export function CrystalCluster({
     new Array(CLUSTER_COUNT * 2).fill(-1e9),
   );
   const calloutInit = useRef(false);
+  // Round 7-2b §B-d — per-callout gating (target, damped value, last write).
+  const visTargets = useRef<number[]>(new Array(CLUSTER_COUNT).fill(0));
+  const visVals = useRef<number[]>(new Array(CLUSTER_COUNT).fill(0));
+  const visWritten = useRef<number[]>(new Array(CLUSTER_COUNT).fill(-1));
+  // §B-f — damped normalized |velocity| for the scale compression.
+  const velEased = useRef(0);
+  // Live-tunable FEEL knobs (dev handle `feel` — mutate from the console;
+  // config constants are the defaults, spec: dev-handle tunables for every
+  // new knob, including the JS-side ones).
+  const feel = useRef({
+    deadzone: TUMBLE_DEADZONE,
+    velNorm: CRYSTAL_VEL_NORM,
+    velScaleK: CRYSTAL_VEL_SCALE_K,
+    connectWindow: PLEXUS_CONNECT_WINDOW,
+    visWindows: CALLOUT_VIS_WINDOWS.map(
+      (w) => [w[0], w[1]] as [number, number],
+    ),
+  });
 
   useFrame((_, rawDelta) => {
     const group = groupRef.current;
@@ -237,16 +337,38 @@ export function CrystalCluster({
       0,
       1,
     );
+    const ss = useScrollStore.getState();
     revealDamped.current = THREE.MathUtils.damp(
       revealDamped.current,
-      useScrollStore.getState().reveal * vis,
+      ss.reveal * vis,
       2.5,
       delta,
     );
     const reveal = revealDamped.current;
+    const feelC = feel.current;
+
+    // --- Round 7-2b §B-f — velocity → scale compression: the camera-write-
+    // free twin of igloo's fov = 45 − 5·vel (SignatureLine owns the camera).
+    // Damped with the PostFXNodes λ 6/3 grammar so both speed-compressions
+    // read as one system; PostFXNodes already consumes the same velocity
+    // channel for warp/vignette — nothing to feed there. -------------------
+    const velTarget = Math.min(
+      (ss.velocity < 0 ? -ss.velocity : ss.velocity) / feelC.velNorm,
+      1,
+    );
+    velEased.current = THREE.MathUtils.damp(
+      velEased.current,
+      velTarget,
+      velTarget > velEased.current
+        ? CRYSTAL_VEL_LAMBDA_UP
+        : CRYSTAL_VEL_LAMBDA_DOWN,
+      delta,
+    );
+    const scaleMul =
+      (0.8 + 0.2 * reveal) * (1 - feelC.velScaleK * velEased.current);
 
     // Camera-locked placement, UNIFORM scale (see header).
-    const s = rect.h * k * CRYSTAL_SCALE * (0.8 + 0.2 * reveal);
+    const s = rect.h * k * CRYSTAL_SCALE * scaleMul;
     scratch.current
       .set((cx - vw / 2) * k, (ih / 2 - cy) * k, -CAMERA_Z)
       .applyQuaternion(camera.quaternion)
@@ -263,14 +385,23 @@ export function CrystalCluster({
     // sin(t·0.3 + seed)·0.1. Centering derives from the SAME vpTop/rect math
     // as the placement (no gBCR, no scroll listeners). ---------------------
     const a = (vpTop + rect.h / 2 - ih / 2) / ih;
+    // Round 7-2b §B-f — settle deadzone: the TUMBLE reads a′ (remapped so a
+    // ±deadzone window around center holds exactly upright) — native scroll
+    // never rests at exact center, this is the no-hijack twin of igloo's
+    // autoCenter outcome. Gating (callout windows, plexus) keeps the raw a.
+    const dz = feelC.deadzone;
+    const aT =
+      dz > 0 && dz < 1
+        ? (Math.sign(a) * Math.max(Math.abs(a) - dz, 0)) / (1 - dz)
+        : a;
     const gain = TUMBLE_GAIN[mode];
     const rnd = TUMBLE_RAND[mode];
     mesh.rotation.set(
-      TUMBLE_K[0] * rnd[0] * gain * a +
+      TUMBLE_K[0] * rnd[0] * gain * aT +
         Math.sin(t * WOBBLE_FREQ + WOBBLE_SEEDS[0]) * WOBBLE_AMP,
-      TUMBLE_K[1] * rnd[1] * gain * a +
+      TUMBLE_K[1] * rnd[1] * gain * aT +
         Math.sin(t * WOBBLE_FREQ + WOBBLE_SEEDS[1]) * WOBBLE_AMP,
-      TUMBLE_K[2] * rnd[2] * gain * a +
+      TUMBLE_K[2] * rnd[2] * gain * aT +
         Math.sin(t * WOBBLE_FREQ + WOBBLE_SEEDS[2]) * WOBBLE_AMP,
     );
 
@@ -332,13 +463,36 @@ export function CrystalCluster({
     u.uCamDist0.value = camera.position.distanceTo(group.position);
     u.uWorldScale.value = s;
 
+    // --- Round 7-2b §B-a — the mark transmission RT (healthy full only;
+    // markRigRef is null otherwise). Driven from THIS existing useFrame —
+    // no new loops (PointerFlowmap idiom); the cull early-return above
+    // already gates it to "band inside the cull window". With the default
+    // MARK_SPIN 0 this is a one-time render, then a no-op every frame. -----
+    const rig = markRigRef.current;
+    if (rig) rig.render(gl, t);
+
+    // --- Round 7-2b §B-c — advance the plexus (healthy full only). The
+    // tumble quaternion just written above is applied to the point positions
+    // CPU-side (the igloo group-rotation copy); the |a| gate makes the net
+    // tween itself out between sections. ----------------------------------
+    if (plexus) {
+      plexus.uniforms.uPlexusAlpha.value = reveal;
+      plexus.update(
+        delta,
+        t,
+        Math.abs(a) < feelC.connectWindow,
+        mesh.quaternion,
+      );
+    }
+
     // --- Callout re-anchoring: project 3 anchors → CSS vars ----------------
     // Pure math on the cached rect + the rotation just written; damped so
     // the labels never jitter; written only on >CALLOUT_WRITE_EPS% change.
     const el = anchorElRef.current;
     if (el) {
-      // px-per-crystal-unit at the group's depth plane (== s / k).
-      const pxScale = rect.h * CRYSTAL_SCALE * (0.8 + 0.2 * reveal);
+      // px-per-crystal-unit at the group's depth plane (== s / k — includes
+      // the §B-f velocity compression so the projection twin stays exact).
+      const pxScale = rect.h * CRYSTAL_SCALE * scaleMul;
       const rectLeft = rect.cxBase - rect.w / 2;
       const offPct = (CALLOUT_LABEL_OFFSET_PX / rect.h) * 100;
       for (let i = 0; i < CLUSTER_COUNT; i++) {
@@ -430,6 +584,53 @@ export function CrystalCluster({
           );
         }
       }
+
+      // --- Round 7-2b §B-d — gating windows: each callout is visible only
+      // while `a` sits inside ITS window (staggered arrive/leave — the igloo
+      // life-giver), damped asymmetrically (λ 8 in ≈ 0.4 s, λ 16 out ≈
+      // 0.2 s) and written as --callout-N-vis (globals.css → opacity;
+      // fallback 1 keeps SSR / fallback tiers always-visible). A rising
+      // edge re-fires the LabelScrambler decode on the span (bubbling
+      // CustomEvent — the scrambler's document listener; edge-only, the
+      // sanctioned rare allocation). --------------------------------------
+      for (let i = 0; i < CLUSTER_COUNT; i++) {
+        const w = feelC.visWindows[i] ?? feelC.visWindows[0];
+        const target = a > w[0] && a < w[1] ? 1 : 0;
+        if (
+          target === 1 &&
+          visTargets.current[i] === 0 &&
+          calloutInit.current
+        ) {
+          const span = el.querySelector<HTMLElement>(
+            `span[style*="--callout-${i}-"]`,
+          );
+          span?.dispatchEvent(
+            new CustomEvent("sersan:scramble", { bubbles: true }),
+          );
+        }
+        visTargets.current[i] = target;
+        const prevVis = visVals.current[i];
+        visVals.current[i] = calloutInit.current
+          ? THREE.MathUtils.damp(
+              prevVis,
+              target,
+              target > prevVis
+                ? CALLOUT_VIS_IN_LAMBDA
+                : CALLOUT_VIS_OUT_LAMBDA,
+              delta,
+            )
+          : target;
+        if (
+          Math.abs(visVals.current[i] - visWritten.current[i]) >
+          CALLOUT_VIS_EPS
+        ) {
+          visWritten.current[i] = visVals.current[i];
+          el.style.setProperty(
+            `--callout-${i}-vis`,
+            visVals.current[i].toFixed(3),
+          );
+        }
+      }
       calloutInit.current = true;
     }
   });
@@ -474,6 +675,36 @@ export function CrystalCluster({
       get shardCentrs() {
         return build ? build.shardCentrs : null;
       },
+      /** Round 7-2b — mark-RT state + the QA perf counter (lastMs = CPU
+       * encode time of the last RT render; spin.value is the live yaw knob,
+       * 0 = igloo-rigid render-once). Null on broken / lite / WebGL2. */
+      get markRt() {
+        const r = markRigRef.current;
+        return r
+          ? {
+              ready: r.ready,
+              renders: r.renders,
+              lastMs: r.lastMs,
+              spin: r.spin,
+            }
+          : null;
+      },
+      /** Round 7-2b — plexus state (healthy full only). */
+      get plexusInfo() {
+        return plexus
+          ? {
+              connections: plexus.activeConnections,
+              alpha: plexus.uniforms.uPlexusAlpha.value,
+            }
+          : null;
+      },
+      /** Round 7-2b — live FEEL knobs (mutate from the console): deadzone,
+       * velNorm, velScaleK, connectWindow, visWindows[[min,max]×3]. */
+      feel: feel.current,
+      /** Round 7-2b — damped callout visibilities (0..1 per index). */
+      get calloutVis() {
+        return visVals.current.slice();
+      },
       /** The live uniform bag — set `.value` from the console for
        * zero-recompile tuning (ior/CA/thickness/rough/rim/alpha/fade/spots/
        * drift/spin — igloo numbers as defaults). */
@@ -504,6 +735,12 @@ export function CrystalCluster({
           caEdge: u.uCAEdge.value,
           sparkleGain: u.uSparkleGain.value, // dead node on lite builds
           frostAmp: u.uFrostAmp.value, // dead node on lite builds
+          // round-7-2b anatomy pass (crystalBuild header):
+          rippleAmp: u.uRippleAmp.value, // dead node on lite
+          warmGain: u.uWarmGain.value, // dead node on lite
+          emberGain: u.uEmberGain.value, // dead node on healthy / lite
+          markGain: u.uMarkGain.value, // dead node unless mark branch built
+          markScale: u.uMarkScale.value, // dead node unless mark branch built
         };
       },
     };
@@ -522,6 +759,18 @@ export function CrystalCluster({
         renderOrder={-3}
         frustumCulled={false}
       />
+      {/* Round 7-2b §B-c — the plexus net (healthy + full tier only; null
+          otherwise). Two position-only LineSegments at renderOrder −2
+          (between crystal −3 and the constellation), positions rewritten
+          CPU-side in the useFrame above. Mounted in the CAMERA-LOCKED group
+          (not the tumbling mesh): the tumble is applied to the point
+          positions CPU-side so the marker crosses stay screen-facing. */}
+      {plexus && (
+        <>
+          <primitive object={plexus.lines} />
+          <primitive object={plexus.cross} />
+        </>
+      )}
     </group>
   );
 }

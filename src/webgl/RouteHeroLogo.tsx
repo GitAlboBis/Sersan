@@ -56,7 +56,10 @@ const TARGET_HEIGHT = 2;
  */
 let markGeometryPromise: Promise<THREE.BufferGeometry | null> | null = null;
 
-function loadMarkGeometry(): Promise<THREE.BufferGeometry | null> {
+// Exported (round 7-2b): CrystalCluster's mark-in-ice RT renders the SAME
+// shared normalized geometry — one fetch/parse/normalize for the session.
+// Consumers must NEVER dispose the resolved geometry (module singleton).
+export function loadMarkGeometry(): Promise<THREE.BufferGeometry | null> {
   if (!markGeometryPromise) {
     markGeometryPromise = import("three/examples/jsm/loaders/GLTFLoader.js")
       .then(

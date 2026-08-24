@@ -241,7 +241,23 @@ export function LabelScrambler() {
     });
     mo.observe(document.body, { childList: true, subtree: true });
 
+    // ROUND 7-2b (§B-d, crystal callout gating): external re-trigger. The
+    // CrystalCluster driver dispatches a bubbling "sersan:scramble"
+    // CustomEvent on a ghost-callout label when its gating window re-opens —
+    // the label decodes again on each arrival (igloo's per-reveal glyph
+    // scramble). RM never installs this listener (early return above), so
+    // reduced motion stays static; a decode already in flight is left alone.
+    const onRetrigger = (e: Event) => {
+      const el = e.target as HTMLElement | null;
+      if (!el || !el.classList?.contains("eyebrow")) return;
+      if (running.has(el)) return;
+      delete el.dataset.scrambleDone;
+      scramble(el);
+    };
+    document.addEventListener("sersan:scramble", onRetrigger);
+
     return () => {
+      document.removeEventListener("sersan:scramble", onRetrigger);
       io.disconnect();
       mo.disconnect();
       // Settle any in-flight decode on its real text before leaving.

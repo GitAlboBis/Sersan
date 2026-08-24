@@ -1999,3 +1999,24 @@ html.cursor-none [contenteditable="true"] {
     transform: scale(1);
   }
 }
+
+/* === ROUND 7-2b (§B-d) — crystal ghost-callout gating windows ==============
+   The CrystalCluster driver writes damped `--callout-N-vis` (0..1) custom
+   properties on the [data-lattice-anchor] element (asymmetric 0.4s in /
+   0.2s out is done driver-side — no CSS transition needed). Custom props
+   inherit, so the callout spans read them here. Selector contract: each
+   ghost callout is the span whose inline style consumes the matching
+   `--callout-N-left/top` var (problem-section / production-grade-section) —
+   the [style*=] attribute match binds by that existing contract without
+   touching the section markup. Fallback 1 keeps SSR / fallback tier / RM
+   (island never mounts → var never written) always-visible, exactly the
+   historic behavior. */
+[data-lattice-anchor] > span[style*="--callout-0-"] {
+  opacity: var(--callout-0-vis, 1);
+}
+[data-lattice-anchor] > span[style*="--callout-1-"] {
+  opacity: var(--callout-1-vis, 1);
+}
+[data-lattice-anchor] > span[style*="--callout-2-"] {
+  opacity: var(--callout-2-vis, 1);
+}

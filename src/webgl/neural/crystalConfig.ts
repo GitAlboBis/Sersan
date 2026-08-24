@@ -24,13 +24,22 @@
  * dimensions are in "crystal units" (unit icosahedron radius before the
  * squash / noise displacement).
  *
- * BINDING BUDGET: zero storage buffers, zero textures (hash/value noise
- * in-shader — the no-textures contract). Vertex-buffer slots: broken uses 5
+ * BINDING BUDGET: zero storage buffers. Vertex-buffer slots: broken uses 5
  * (position, normal, aCentr, aRand, aFacet), healthy 3 (position, normal,
  * aFacet) — well inside the 8-slot wall (gpgpuNodeSim.ts). aFacet (round 7)
  * is a per-FACE random vec3, constant across each triangle of the non-indexed
  * soup — attributes are vertex-buffer slots, NOT bindings. No compute: the
  * same node material compiles on the WebGL2 fallback backend of three/webgpu.
+ *
+ * ROUND 7-2b (§B-a, 2026-08-22-round7-stones-v2-anatomy.md): the HEALTHY
+ * crystal on the FULL tier + true-WebGPU backend adds the SERSAN-mark
+ * transmission RT — exactly +1 sampled texture +1 sampler = +2 FRAGMENT
+ * bindings on that one build (base TextureNode shared by every ladder tap via
+ * `.sample().level()` reference chaining, so the count stays 2 regardless of
+ * sample count). Storage wall (8) and vertex slots (5/3 of 8) UNTOUCHED.
+ * Broken / lite / WebGL2-fallback builds stay zero-texture (the ember core is
+ * pure ALU). The plexus (§B-c) is 2 extra position-only draw calls on its own
+ * geometries — no crystal slots, no bindings beyond its own material uniforms.
  */
 import type { LatticeMode } from "./neuralLatticeConfig";
 
@@ -331,3 +340,175 @@ export const CALLOUT_LEFT_MIN = 4;
 export const CALLOUT_LEFT_MAX = 96;
 export const CALLOUT_EDGE_MIN = 2;
 export const CALLOUT_EDGE_MAX = 88;
+
+// === ROUND 7-2b — igloo stones v2 anatomy transplant ========================
+// research/2026-08-22-round7-stones-v2-anatomy.md, Part B. Everything below is
+// full-tier only unless noted; the ember + mark are the "inner object" pair.
+
+// --- §B-a (i) — healthy: the SERSAN mark inside the ice (transmission RT) ---
+/** RT edge (square, power-of-two for the mip chain). NOT canvas-coupled: the
+ * mark is sampled in CRYSTAL-LOCAL space (not screen space like igloo), so the
+ * RT resolution is decoupled from the viewport — 512 + mips out-resolves the
+ * lod ≥ ~1 the igloo lod law ever samples at our roughness. */
+export const MARK_RT_SIZE = 512;
+/** Ortho half-extent framing the ~2-unit-tall normalized mark (margin so the
+ * clamp-to-edge border texels stay transparent black). */
+export const MARK_RT_FRAME = 1.15;
+/** Unlit mark tint — white-cyan ≤ 1.0 (palette contract; toneMapped:false).
+ * The RT content never crosses 1.0 → the mark itself can't trip bloom; the
+ * body/rim keep owning the bloom budget. */
+export const MARK_COLOR = "#D8F4FF";
+/** Additive gain on the mark taps INSIDE the dispersion ladder (pre
+ * uBodyDarken — the mark rides the dark-glass multiply + frost veining like
+ * igloo's transmission sample, so > 1 here lands ~0.75 post-darken). */
+export const MARK_GAIN = 1.6;
+/** Refraction-coordinate → RT-UV scale: uv = coord·this + 0.5. Sizes the mark
+ * to ~0.9 crystal units inside the body (dev-tunable, uMarkScale). */
+export const MARK_COORD_SCALE = 0.55;
+/** Igloo lod law (§A1 verbatim): lod = log2(rtSize)·roughness·clamp(2·ior−2,
+ * 0,1); at ior 1.18 the ior factor is 0.36 — folded in here. roughEff (frost-
+ * veined) drives it, so the veins modulate the mark's softness for free. */
+export const MARK_LOD_K = 0.36;
+/** Yaw of the mark INSIDE the ice (rad/s). 0 = igloo-rigid (the penguin
+ * never spins in the cube) → the RT renders ONCE and per-frame cost is zero;
+ * > 0 re-renders per visible frame (≤ the 0.8 ms QA budget). Dev-tunable. */
+export const MARK_SPIN = 0;
+/** GATE — the three/webgpu WebGL2 fallback backend. RT + texture().level()
+ * are core on that path too, but the repo-wide `?backend=webgl2` proof is
+ * still open (memory: round-7 QA item): until it passes, the mark branch is
+ * NOT BUILT on the fallback backend — procedural backdrop only, today's look,
+ * no black frame. Flip to true after the proof. */
+export const MARK_RT_WEBGL2 = false;
+
+// --- §B-a (ii) — broken: the amber ember core (procedural SDF, zero
+// bindings). Colored the sanctioned desaturated amber (#886a3d — §A3 pinned
+// igloo's interior warmth as env-side amber), sub-bloom by construction. ----
+export const EMBER_COLOR = "#886a3d";
+/** Master ember gain (uEmberGain). ≤ 0.35 keeps the peak channel far under
+ * the bloom threshold at any gap/flicker phase (sub-bloom rule). */
+export const EMBER_GAIN = 0.3;
+/** How far the k=0 refracted direction pushes the ember sample point into the
+ * body (crystal units) — the "inside, not painted on" parallax. */
+export const EMBER_DEPTH = 0.35;
+/** Blob radii (crystal units): center ellipsoid + the two shard-riders. */
+export const EMBER_R0 = 0.55;
+export const EMBER_R1 = 0.32;
+/** Which shards the two small blobs ride (indices into shardCentrs — 0/1 are
+ * the two LARGE bodies of SHARD_SIZES; both < SHARD_COUNT_LITE). */
+export const EMBER_SHARDS: readonly [number, number] = [0, 1];
+/** Gap → dimming: env = 1/(1 + gap·this). Exploded wide = dim ember, hover
+ * re-cohere (gap→0) = brightest — "something still alive inside". */
+export const EMBER_GAP_DIM = 0.6;
+/** Slow two-sine flicker amplitude around 1.0 (life at rest). */
+export const EMBER_FLICKER = 0.15;
+
+// --- §B-b — wet-ice ripple (procedural normal band, full tier only) ---------
+/** Ripple carrier frequency over vLocal — a clearly separate band ABOVE
+ * CRYSTAL_NOISE_FREQ (1.6) and BELOW SPARKLE_FREQ (15). */
+export const RIPPLE_FREQ = 8.0;
+/** Normal-perturbation amplitude (uRippleAmp; spec 0.10–0.15). 0 = off. */
+export const RIPPLE_AMP = 0.12;
+/** vnoise3 phase-warp of the first wave train (breaks the straight rulings). */
+export const RIPPLE_WARP = 1.5;
+/** Two fixed skew directions (normalized at build) — the crossed wave trains. */
+export const RIPPLE_DIR1: [number, number, number] = [0.81, 0.33, 0.48];
+export const RIPPLE_DIR2: [number, number, number] = [-0.29, 0.77, -0.56];
+/** Second train: frequency ratio + amplitude (spec: ×1.7, ×0.6). */
+export const RIPPLE_F2 = 1.7;
+export const RIPPLE_A2 = 0.6;
+
+// --- Rollout item 4 — warm glint lobe (§A3 mechanism twin, full tier) -------
+/** View-space direction of the warm env patch — deliberately far from
+ * FACET_KEY_DIR so the amber flash fires at DIFFERENT tumble angles. */
+export const WARM_DIR: [number, number, number] = [-0.58, 0.18, 0.62];
+/** Desaturated amber (#886a3d family — the sanctioned warm allowance). */
+export const WARM_COLOR = "#886a3d";
+/** Narrow gate: pow(max(dot(Nf, WARM_DIR), 0), this) — spec verbatim 24. */
+export const WARM_POW = 24.0;
+/** Warm gain (uWarmGain; spec ≤ 0.25) — sub-bloom at any angle. */
+export const WARM_GAIN = 0.25;
+
+// --- §B-c — plexus (HEALTHY only, full tier; restraint: broken already
+// carries shards + chips + the fracture field — a second net there muds).
+// Igloo's sF/ZL/$L construction scaled to 12 points; all in crystal units. --
+export const PLEXUS_POINTS = 12;
+/** Cylinder radius ≈ 0.9 × crystal bound (~1.6 units). */
+export const PLEXUS_RADIUS = 1.45;
+/** Per-point radius jitter: r × [1−this, 1] (igloo ×[0.8, 1]). */
+export const PLEXUS_RADIUS_JIT = 0.2;
+/** Vertical treadmill span (wrap into ±half). */
+export const PLEXUS_TREADMILL = 3.0;
+/** Orbit rate: (rand − .5)·this rad/s (igloo verbatim .5). */
+export const PLEXUS_ORBIT = 0.5;
+/** xz wobble: ±this·sin(t·0.5 + seed) (igloo verbatim .1). */
+export const PLEXUS_WOBBLE = 0.1;
+/** Climb rate: rand·this /s, treadmill-wrapped (igloo verbatim .25). */
+export const PLEXUS_CLIMB = 0.25;
+/** Connection rules (igloo: dist < 3, SHUFFLED candidates, max 3/point,
+ * 0.35 s linear connect/disconnect tweens). */
+export const PLEXUS_CONNECT_DIST = 3.0;
+export const PLEXUS_BREAK_DIST = 3.2;
+export const PLEXUS_MAX_PER_POINT = 3;
+export const PLEXUS_MAX_LINES = 24;
+export const PLEXUS_TWEEN = 0.35;
+/** Connection eligibility: |treadmill y| < this (igloo 1.125) + a short
+ * block after a wrap (igloo's not-just-wrapped rule). */
+export const PLEXUS_Y_GATE = 1.125;
+export const PLEXUS_WRAP_BLOCK = 0.3;
+/** Scroll gate: _canConnect only while |a| < this (igloo |r|<1.25 ≈ ±0.30
+ * viewport) — the net dissolves itself between sections via the tweens. */
+export const PLEXUS_CONNECT_WINDOW = 0.3;
+/** White-cyan linework (palette contract) + alpha ceilings. Igloo's additive
+ * black-mask trick is replaced by the SAME masks driving ALPHA (transparent
+ * canvas — honest fade over any DOM). */
+export const PLEXUS_COLOR = "#D8F4FF";
+export const PLEXUS_LINE_ALPHA = 0.5;
+export const PLEXUS_CROSS_ALPHA = 0.85;
+/** Plus-sign marker arm half-length (igloo point sprite size .1). Igloo's
+ * screen-facing POINT sprites don't exist on WebGPU (no point size in WGSL) —
+ * the markers are 2-segment crosses in the camera-locked group frame, same
+ * read, one draw call. */
+export const PLEXUS_CROSS_SIZE = 0.1;
+/** Radial fade — segments near the crystal body dissolve (igloo's
+ * mix-to-black + additive; here the same smoothstep drives alpha). */
+export const PLEXUS_MASK_IN = 1.1;
+export const PLEXUS_MASK_OUT = 1.9;
+/** Broken-dash mask frequency: smoothstep(.4,.5, sinenoise(pos·this)). */
+export const PLEXUS_DASH_FREQ = 10.1;
+
+// --- §B-d — callout gating windows (staggered arrive/leave) -----------------
+/**
+ * Per-callout visibility window over the SAME centering scalar `a` the tumble
+ * uses — visible while a ∈ (min, max). SIGN NOTE: our `a` is positive while
+ * the band is BELOW viewport center (approaching) and negative once passed —
+ * the OPPOSITE of igloo's r — so the spec's widened igloo windows (r-space
+ * (−0.55,+0.25) / (−0.30,+0.45) / (−0.45,+0.25)) are sign-flipped here to
+ * keep igloo's temporal asymmetry (long approach lead, short exit tail).
+ * Start values; tune by feel via the dev handle (`feel.visWindows`).
+ */
+export const CALLOUT_VIS_WINDOWS: readonly [number, number][] = [
+  [-0.25, 0.55],
+  [-0.45, 0.3],
+  [-0.25, 0.45],
+];
+/** Asymmetric damp: reveal ~0.4 s (λ 8), hide ~0.2 s (λ 16) — igloo's
+ * 0.4 s in / 0.2 s out, done driver-side (no CSS transitions to fight). */
+export const CALLOUT_VIS_IN_LAMBDA = 8;
+export const CALLOUT_VIS_OUT_LAMBDA = 16;
+/** Write-on-change threshold for the --callout-N-vis var (opacity units). */
+export const CALLOUT_VIS_EPS = 0.015;
+
+// --- §B-f — scroll feel (no-hijack transfers) -------------------------------
+/** Settle deadzone (viewport fractions): a′ = sign(a)·max(|a|−DZ,0)/(1−DZ)
+ * feeds the tumble, so the crystal reads "settled upright" through a window
+ * around center — the native-scroll twin of igloo's autoCenter outcome. */
+export const TUMBLE_DEADZONE = 0.08;
+/** |lenis velocity| mapping to full strength — the PostFXNodes velNorm scale
+ * (its default 50), so the two speed-compressions read as one system. */
+export const CRYSTAL_VEL_NORM = 50;
+/** Group scale × (1 − this·vel) — the camera-write-free twin of igloo's
+ * fov = 45 − 5·velocity (SignatureLine owns the camera; never write it). */
+export const CRYSTAL_VEL_SCALE_K = 0.03;
+/** Velocity damp λ (rising/falling — the PostFXNodes 6/3 grammar). */
+export const CRYSTAL_VEL_LAMBDA_UP = 6;
+export const CRYSTAL_VEL_LAMBDA_DOWN = 3;

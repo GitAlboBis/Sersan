@@ -50,6 +50,32 @@
  *      thickness / body density → internal veins instead of uniform glass.
  *      FULL TIER ONLY (lite keeps the cheap facet lobe, drops sparkle+frost).
  *
+ * ROUND 7-2b — the igloo ANATOMY pass (research/2026-08-22-round7-stones-v2-
+ * anatomy.md, Part B). On top of the R7-2 realism pass:
+ *   a. INNER OBJECT (§B-a) — healthy + full tier + proven backend: the SERSAN
+ *      mark rendered unlit into a mipmapped RT (crystalMarkRT.ts, driven from
+ *      CrystalCluster's existing useFrame) and sampled ADDITIVELY inside the
+ *      dispersion ladder at the per-channel refracted coords with igloo's
+ *      exact lod law — lod = log2(rtSize)·roughEff·0.36 — so the frost veins
+ *      modulate its softness and tumbling swims it through the relief (the
+ *      brand-in-ice twin of igloo's penguin). ONE TextureNode base shared by
+ *      every tap via .sample().level() (reference chaining) = exactly +2
+ *      fragment bindings (texture + sampler); no other build gets the branch.
+ *      Broken + full tier instead gets the EMBER CORE — a 2–3-blob gaussian
+ *      SDF (cluster center + two blobs riding the LARGE shards' centroids,
+ *      explode-tracking) evaluated at the k=0 refracted point, desaturated
+ *      amber, dimming as the gap explodes / brightening on re-cohere,
+ *      sub-bloom by construction. Zero bindings.
+ *   b. WET-ICE RIPPLE (§B-b, full tier) — two crossed sine wave trains +
+ *      vnoise3 phase-warp over vLocal perturb the SHARED shading normal
+ *      (analytic tangential gradient, view-space dirs via constant varyings)
+ *      BEFORE fresnel/lobes/refraction — igloo's authored normal map feeds
+ *      both, so the key lobe shimmers across facets AND the inner world
+ *      (backdrop + mark) wobbles through the relief. Nj jitter rides ON TOP.
+ *   c. WARM GLINT LOBE (rollout 4, full tier) — a third, narrow env lobe
+ *      (pow 24) in desaturated amber, gain ≤0.25: the §A3 mechanism twin of
+ *      igloo's env-map warm patches sweeping the ripple. Sub-bloom.
+ *
  * FOG ADAPTATION (dossier §5): igloo's opaque mix(bg, color, vFade) repaint
  * would paint solid navy over the DOM (our canvas is transparent) — instead
  * the SAME `falloffsmooth(camDist…)` window fades ALPHA, in crystal-local
@@ -132,6 +158,30 @@ import {
   FADE_MARGIN,
   FADE_PROGRESS,
   FADE_MAX,
+  // Round 7-2b (anatomy pass)
+  MARK_RT_SIZE,
+  MARK_GAIN,
+  MARK_COORD_SCALE,
+  MARK_LOD_K,
+  EMBER_COLOR,
+  EMBER_GAIN,
+  EMBER_DEPTH,
+  EMBER_R0,
+  EMBER_R1,
+  EMBER_SHARDS,
+  EMBER_GAP_DIM,
+  EMBER_FLICKER,
+  RIPPLE_FREQ,
+  RIPPLE_AMP,
+  RIPPLE_WARP,
+  RIPPLE_DIR1,
+  RIPPLE_DIR2,
+  RIPPLE_F2,
+  RIPPLE_A2,
+  WARM_DIR,
+  WARM_COLOR,
+  WARM_POW,
+  WARM_GAIN,
 } from "./crystalConfig";
 import type { LatticeMode } from "./neuralLatticeConfig";
 
@@ -183,6 +233,18 @@ export interface CrystalUniforms {
   uSparkleGain: { value: number };
   /** Frost-grain master amplitude (dead node on lite). */
   uFrostAmp: { value: number };
+  // --- round-7-2b anatomy tunables (dev-handle surfaced) --------------------
+  /** Wet-ice ripple normal amplitude (dead node on lite). */
+  uRippleAmp: { value: number };
+  /** Warm glint lobe gain (dead node on lite). */
+  uWarmGain: { value: number };
+  /** Broken ember-core gain (dead node on healthy / lite). */
+  uEmberGain: { value: number };
+  /** Mark additive gain inside the ladder (dead node unless the mark branch
+   * is built — healthy + full + markTexture). */
+  uMarkGain: { value: number };
+  /** Refraction-coord → mark-RT-UV scale (dead node like uMarkGain). */
+  uMarkScale: { value: number };
 }
 
 export interface CrystalBuild {
@@ -204,6 +266,11 @@ export interface CrystalBuildArgs {
   /** fxBudget level 2 build: 1 dispersion sample, single-octave noise
    * (geometry + backdrop), lower subdivision detail. */
   lite: boolean;
+  /** Round 7-2b §B-a — the SERSAN-mark transmission RT texture
+   * (crystalMarkRT.ts). Provided ONLY for healthy + full tier + proven
+   * backend; absent → the mark branch is not built (procedural backdrop
+   * only) and the material stays zero-texture. */
+  markTexture?: Any;
 }
 
 /** Deterministic [0,1) hash — the repo's sin-dot family (neuralFieldCompute
@@ -211,6 +278,14 @@ export interface CrystalBuildArgs {
 function h(i: number, mulA: number, addB: number): number {
   const s = Math.sin(i * mulA + addB) * 43758.545;
   return s - Math.floor(s);
+}
+
+/** JS-side vec3 normalize (config direction constants → unit dirs). */
+function normJs(
+  v: readonly [number, number, number],
+): [number, number, number] {
+  const l = Math.hypot(v[0], v[1], v[2]) || 1;
+  return [v[0] / l, v[1] / l, v[2] / l];
 }
 
 /** Continuous [-1,1] 3D "sinenoise" for the CPU displacement — any smooth
@@ -292,7 +367,7 @@ function bakeFacetRand(
 }
 
 export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
-  const { webgpu, tsl, mode, lite } = args;
+  const { webgpu, tsl, mode, lite, markTexture } = args;
   const {
     IcosahedronGeometry,
     BufferGeometry,
@@ -330,6 +405,7 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     normalize,
     sqrt,
     Discard,
+    texture,
   } = tsl as Any;
 
   const broken = mode === "broken";
@@ -462,6 +538,12 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
   const uCAEdge = uniform(CA_EDGE_BOOST);
   const uSparkleGain = uniform(SPARKLE_GAIN);
   const uFrostAmp = uniform(FROST_AMP);
+  // Round-7-2b anatomy tunables (dev handle; dead nodes on unbuilt branches).
+  const uRippleAmp = uniform(RIPPLE_AMP);
+  const uWarmGain = uniform(WARM_GAIN);
+  const uEmberGain = uniform(EMBER_GAIN);
+  const uMarkGain = uniform(MARK_GAIN);
+  const uMarkScale = uniform(MARK_COORD_SCALE);
   const uColNavy = uniform(new Color(BACKDROP_NAVY));
   const uColNavy2 = uniform(new Color(BACKDROP_NAVY2));
   const uColCyan = uniform(new Color(BACKDROP_CYAN));
@@ -469,6 +551,9 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
   // handle exposes the scalar gains; hue stays the white-cyan/navy contract.
   const keyCol = new Color(FACET_KEY_COLOR);
   const fillCol = new Color(FACET_FILL_COLOR);
+  // Round 7-2b — the sanctioned desaturated-amber pair (warm lobe + ember).
+  const warmCol = new Color(WARM_COLOR);
+  const emberCol = new Color(EMBER_COLOR);
 
   // === Shared TSL helpers ===================================================
   /** Rodrigues rotation of p about unit axis by angle. */
@@ -626,16 +711,61 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
   // Round 7 — per-face random (constant across each soup triangle, so the
   // interpolation is bit-stable; see bakeFacetRand).
   const vFacet = varying(attribute("aFacet"));
+  // Round 7-2b §B-b — the two ripple skew directions, transformed to VIEW
+  // space in the VERTEX stage (varying discipline: self-contained constant
+  // expressions of uniforms; w=0 rotation-only + uniform group scale keep
+  // directions honest). Constant across the mesh → interpolation is exact,
+  // no fragment re-normalize needed. Lite never builds the ripple branch.
+  const rd1 = normJs(RIPPLE_DIR1);
+  const rd2 = normJs(RIPPLE_DIR2);
+  const vD1 = lite
+    ? null
+    : varying(
+        normalize(modelViewMatrix.mul(vec4(rd1[0], rd1[1], rd1[2], 0.0)).xyz),
+      );
+  const vD2 = lite
+    ? null
+    : varying(
+        normalize(modelViewMatrix.mul(vec4(rd2[0], rd2[1], rd2[2], 0.0)).xyz),
+      );
 
   // === Fragment =============================================================
   // Lobe colors as constant vec3 nodes (linear, via Color) — round 7.
   const keyC = vec3(keyCol.r, keyCol.g, keyCol.b);
   const fillC = vec3(fillCol.r, fillCol.g, fillCol.b);
+  // Round 7-2b — desaturated amber constants (warm lobe + broken ember).
+  const warmC = vec3(warmCol.r, warmCol.g, warmCol.b);
+  const emberC = vec3(emberCol.r, emberCol.g, emberCol.b);
 
   const shade = Fn(() => {
     const N = normalize(vNrmView).toVar();
     const V = normalize(vPosView.negate()).toVar();
     const I = V.negate().toVar(); // incident, camera → surface
+
+    // --- Round 7-2b §B-b — wet-ice ripple: perturb the SHARED normal BEFORE
+    // fresnel / lobes / refraction (igloo's authored normal map feeds both).
+    // Two crossed sine wave trains over the stable LOCAL position (+ vnoise3
+    // phase warp on the first), applied as the analytic TANGENTIAL gradient
+    // in VIEW space (constant vD1/vD2 varyings). The Nj refraction jitter
+    // below rides ON TOP (igloo's blue-noise grain twin). Full tier only. ---
+    if (!lite) {
+      const arg1 = dot(vLocal, vec3(rd1[0], rd1[1], rd1[2]))
+        .mul(RIPPLE_FREQ)
+        .add(vnoise3(vLocal.mul(RIPPLE_FREQ * 0.6)).mul(RIPPLE_WARP))
+        .toVar();
+      const arg2 = dot(vLocal, vec3(rd2[0], rd2[1], rd2[2]))
+        .mul(RIPPLE_FREQ * RIPPLE_F2)
+        .add(2.7)
+        .toVar();
+      const grad = (vD1 as Any)
+        .mul(cos(arg1).mul(RIPPLE_FREQ))
+        .add(
+          (vD2 as Any).mul(cos(arg2).mul(RIPPLE_FREQ * RIPPLE_F2 * RIPPLE_A2)),
+        )
+        .toVar();
+      const gradT = grad.sub(N.mul(dot(N, grad)));
+      N.assign(normalize(N.add(gradT.mul(uRippleAmp))));
+    }
 
     // Fresnel FIRST (round 7: it now feeds the CA edge boost + the rim).
     const f1 = clamp(float(1).sub(dot(N, V)), float(0), float(1)).toVar();
@@ -684,26 +814,68 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     const smear = thickEff.mul(pow(roughEff, 0.33)).toVar();
     const base = vLocal.xy.mul(BACKDROP_COORD_SCALE).toVar();
     const inv = float(1).div(uIor);
+    // k = 0 (red) eta is iteration-invariant → its refracted direction is
+    // hoisted out of the ladder (also feeds the broken ember core below).
+    const refrR = refractDir(I, Nj, inv).toVar();
+    // --- Round 7-2b §B-a (i) — the SERSAN mark inside the ice. ONE base
+    // TextureNode owns the binding (+1 texture +1 sampler — the ONLY texture
+    // bindings this material ever has); every tap is .sample(uv).level(lod),
+    // a clone referencing the base, so the count stays 2 at any sample
+    // count. Igloo's exact lod law: log2(rtSize)·roughness·0.36 — roughEff
+    // is the frost-veined roughness, so the veins modulate the mark's blur.
+    // Sampled INSIDE the ladder at the per-channel refracted coords → the
+    // mark disperses/swims exactly like the procedural backdrop. UVs are
+    // crystal-local (base is vLocal.xy-derived) → the mark tumbles RIGIDLY
+    // with the crystal, igloo's sibling-mesh arrangement. ------------------
+    const markOn = markTexture != null && !broken && !lite;
+    const markBase = markOn ? texture(markTexture) : null;
+    const markLod = markOn
+      ? roughEff.mul(Math.log2(MARK_RT_SIZE) * MARK_LOD_K).toVar()
+      : null;
     let accR: Any = float(0);
     let accG: Any = float(0);
     let accB: Any = float(0);
+    let mAccR: Any = float(0);
+    let mAccG: Any = float(0);
+    let mAccB: Any = float(0);
     for (let i = 0; i < samples; i++) {
       const fi = float(i);
       const th = thickEff
         .add(smear.mul(fi.add(nz.y).div(3.0)))
         .mul(REFR_OFFSET_SCALE);
-      const etaR = inv; // k = 0
       const etaG = float(1).div(
         uIor.mul(float(1).add(caEff.mul(fi.add(nz.x)).div(3.0))),
       );
       const etaB = float(1).div(
         uIor.mul(float(1).add(caEff.mul(2.0).mul(fi.add(nz.z)).div(3.0))),
       );
-      accR = accR.add(backdrop(base.add(refractDir(I, Nj, etaR).xy.mul(th))).x);
-      accG = accG.add(backdrop(base.add(refractDir(I, Nj, etaG).xy.mul(th))).y);
-      accB = accB.add(backdrop(base.add(refractDir(I, Nj, etaB).xy.mul(th))).z);
+      const cR = base.add(refrR.xy.mul(th)).toVar();
+      const cG = base.add(refractDir(I, Nj, etaG).xy.mul(th)).toVar();
+      const cB = base.add(refractDir(I, Nj, etaB).xy.mul(th)).toVar();
+      accR = accR.add(backdrop(cR).x);
+      accG = accG.add(backdrop(cG).y);
+      accB = accB.add(backdrop(cB).z);
+      if (markBase) {
+        mAccR = mAccR.add(
+          markBase.sample(cR.mul(uMarkScale).add(0.5)).level(markLod).x,
+        );
+        mAccG = mAccG.add(
+          markBase.sample(cG.mul(uMarkScale).add(0.5)).level(markLod).y,
+        );
+        mAccB = mAccB.add(
+          markBase.sample(cB.mul(uMarkScale).add(0.5)).level(markLod).z,
+        );
+      }
     }
     const trans = vec3(accR, accG, accB).div(samples).toVar();
+    if (markBase) {
+      // Additive over the procedural backdrop, PRE body-darken — the mark
+      // rides the dark-glass multiply + frost density veining like igloo's
+      // transmission sample (MARK_GAIN compensates; see config).
+      trans.assign(
+        trans.add(vec3(mAccR, mAccG, mAccB).div(samples).mul(uMarkGain)),
+      );
+    }
 
     // --- Round 7 §2 — DARK GLASS BODY: transmitted color × uBodyDarken (the
     // stone reads darker than the backdrop mid-tone — the meteorite read),
@@ -714,6 +886,45 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
       .mul(fJit.y.mul(FACET_VALUE_JIT).add(1 - FACET_VALUE_JIT / 2));
     if (frost !== null) {
       col = col.mul(frost.mul(FROST_DENSITY_K).add(1.0));
+    }
+
+    // --- Round 7-2b §B-a (ii) — the BROKEN ember core: a 3-blob gaussian
+    // SDF (cluster-center ellipsoid + two blobs riding the LARGE shards'
+    // centroids, tracking the explode exactly like the vertex path), sampled
+    // at the k=0 refracted point pushed EMBER_DEPTH into the body — the
+    // "something still alive inside" read. Desaturated amber, gain ≤0.35 →
+    // sub-bloom at any phase; dims as the gap explodes, brightens on the
+    // hover re-cohere, plus a slow two-sine flicker. Zero bindings. Full
+    // tier only (lite compiles no new branches — QA gate). ------------------
+    if (broken && !lite) {
+      const pE = vLocal.add(refrR.mul(EMBER_DEPTH)).toVar();
+      let ember: Any = exp(
+        dot(pE, pE).mul(-2.0 / (EMBER_R0 * EMBER_R0)),
+      );
+      for (const si of EMBER_SHARDS) {
+        const c = shardCentrs[si];
+        const r = shardRands[si];
+        if (!c || !r) continue;
+        // Centroid = centr·(1 + gap + idle drift) — the vertex-explode twin
+        // (r[0]/r[1] are the shard's baked rand.x/rand.y, JS constants).
+        const drift = float(r[1])
+          .mul(sin(float(r[0] * 5).add(uTime.mul(0.5))))
+          .mul(uDrift);
+        const m = uGap.add(1.0).add(drift);
+        const bc = vec3(c[0], c[1], c[2]).mul(m);
+        const dv = pE.sub(bc).toVar();
+        ember = ember.add(
+          exp(dot(dv, dv).mul(-2.0 / (EMBER_R1 * EMBER_R1))),
+        );
+      }
+      const breathe = float(1.0).div(uGap.mul(EMBER_GAP_DIM).add(1.0));
+      const flicker = sin(uTime.mul(1.3))
+        .mul(sin(uTime.mul(2.7).add(1.7)))
+        .mul(EMBER_FLICKER)
+        .add(1.0);
+      col = col.add(
+        emberC.mul(ember).mul(uEmberGain).mul(breathe).mul(flicker),
+      );
     }
 
     // --- Round 7 §1 — 2-lobe environment: white-cyan key spec lobe + navy
@@ -728,6 +939,20 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     const specAmp = fJit.x.mul(FACET_SPEC_JIT).add(1 - FACET_SPEC_JIT / 2);
     col = col.add(keyC.mul(spec).mul(uSpecGain).mul(specAmp));
     col = col.add(fillC.mul(max(dot(N, fill), 0.0)).mul(uFillGain));
+
+    // --- Round 7-2b rollout 4 — WARM GLINT LOBE (§A3 mechanism twin): a
+    // third, NARROW env lobe in desaturated amber. Gated on the facet-tilted,
+    // ripple-perturbed Nf with a tight pow → it flashes only at specific
+    // tumble angles, the mid-tumble bronze patch of igloo's env EXR. Gain
+    // ≤0.25 keeps it sub-bloom always. Full tier only. ----------------------
+    if (!lite) {
+      const wd = normJs(WARM_DIR);
+      const warm = pow(
+        max(dot(Nf, vec3(wd[0], wd[1], wd[2])), 0.0),
+        float(WARM_POW),
+      );
+      col = col.add(warmC.mul(warm).mul(uWarmGain));
+    }
 
     // --- Round 7 §3 — sparkle glints (FULL tier): hash cells over the
     // stable local position; each live cell owns a micro-normal, its glint
@@ -841,6 +1066,11 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     uCAEdge,
     uSparkleGain,
     uFrostAmp,
+    uRippleAmp,
+    uWarmGain,
+    uEmberGain,
+    uMarkGain,
+    uMarkScale,
   };
 
   return {
