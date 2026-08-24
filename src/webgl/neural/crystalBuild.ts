@@ -16,10 +16,12 @@
  *     faces 6.22 %, dihedral p99 123.5°). THE point of the swap: it carries
  *     **34 planar patches, six of which cover 50 % of the surface, the largest
  *     19 %**, where `IcosahedronGeometry(1,12)` has ZERO coplanar patches (all
- *     3 380 triangles are their own facet). Refraction — and with it the
- *     in-ice SERSAN mark — needs contiguous constant-normal regions to carry a
- *     coherent image; that is why MARK_GAIN 0.35 → 2.4 only ever produced
- *     confetti (crystalConfig MARK_GAIN).
+ *     3 380 triangles are their own facet). Refraction needs contiguous
+ *     constant-normal regions to read as glass rather than as noise. ⚠ ROUND
+ *     9-C AMENDS THE MARK HALF OF THIS CLAIM: the in-ice mark's confetti was
+ *     the SAMPLING MAP, not the tessellation (see the ROUND 9-C block below and
+ *     crystalConfig MARK_GAIN). The slab still earns its keep on the material —
+ *     it just was not what MARK_GAIN 0.35 → 2.4 was fighting.
  *   broken  → `public/models/crystal-fractured.glb` (1 114 tris, 160 KB): the
  *     SAME slab partitioned by an exact power/Laguerre diagram into 8 pieces
  *     whose volumes match SHARD_SIZES³ (46/30/10/6.3/2.7/2.4/1.2/0.7 %),
@@ -92,13 +94,13 @@
  * anatomy.md, Part B). On top of the R7-2 realism pass:
  *   a. INNER OBJECT (§B-a) — healthy + full tier + proven backend: the SERSAN
  *      mark rendered unlit into a mipmapped RT (crystalMarkRT.ts, driven from
- *      CrystalCluster's existing useFrame) and sampled ADDITIVELY inside the
- *      dispersion ladder at the per-channel refracted coords with igloo's
+ *      CrystalCluster's existing useFrame) and sampled ADDITIVELY with igloo's
  *      exact lod law — lod = log2(rtSize)·roughEff·0.36 — so the frost veins
- *      modulate its softness and tumbling swims it through the relief (the
- *      brand-in-ice twin of igloo's penguin). ONE TextureNode base shared by
- *      every tap via .sample().level() (reference chaining) = exactly +2
- *      fragment bindings (texture + sampler); no other build gets the branch.
+ *      modulate its softness and refraction swims it through the relief (the
+ *      brand-in-ice twin of igloo's penguin). ONE TextureNode base, tapped via
+ *      .sample().level() (reference chaining) = exactly +2 fragment bindings
+ *      (texture + sampler); no other build gets the branch. ⚠ ROUND 9-C
+ *      rewrote WHERE it is sampled — see below.
  *      Broken + full tier instead gets the EMBER CORE — a 2–3-blob gaussian
  *      SDF (cluster center + two blobs riding the LARGE shards' centroids,
  *      explode-tracking) evaluated at the k=0 refracted point, desaturated
@@ -168,6 +170,40 @@
  * all functions of vLocal, not of tessellation; the fade + Discard contract
  * reads alpha only. The body's typical value is unchanged at 0.0396 (the
  * facet-value-jitter MEAN stays 1.0 by construction).
+ *
+ * ROUND 9-C — THE IN-ICE MARK GETS IGLOO'S ACTUAL MAP (research/2026-08-22-
+ * round9-inner-object-mechanism.md, Variant A). Owner: "voglio che si veda il
+ * logo, devi capire come è fatto quello di igloo." The bundle answers it: igloo
+ * samples its transmission RT in SCREEN SPACE — refract the view ray, walk
+ * `thickness·modelScale`, project the exit point through proj·view, /w,
+ * ·0.5+0.5, sample there. Coherence is STRUCTURAL, because projecting kills the
+ * along-ray component exactly (project(p + λ·Î) ≡ project(p)); only `T·sin δ`
+ * survives, and the subject lands where the subject is.
+ * Ours did the opposite: `uv = vLocal.xy·0.22 + refrDirView.xy·0.495 + 0.5` —
+ * an ORTHOGRAPHIC projection along the crystal's own LOCAL Z (which FOLDS once
+ * the tumble swings that axis past ~75° of the view axis, and it reaches 90°
+ * inside a normal scroll pass) plus an un-cancelled view-space direction, in
+ * mixed bases: ±117 px of facet-to-facet jump on a ~500 px mark. THAT was the
+ * confetti — not the subject, and not the facet count (round 8-I's "34 planes =
+ * 34 independent images" is retracted at crystalConfig MARK_GAIN).
+ * The replacement, in the `if (markBase)` block below: project BOTH the exit
+ * point and the crystal origin, difference them, normalise by the mark's
+ * projected half-extent — i.e. intersect each fragment's view ray with a
+ * screen-facing billboard of half-extent `uMarkHalf` pinned at the crystal's
+ * centre. Model scale, fov, aspect, viewport and DPR all cancel (the depth
+ * RATIO does not — that is the perspective, and the off-axis parallax it gives
+ * the mark is wanted); the refraction survives as a bounded displacement
+ * `Δ(markUv) = uMarkThick·sin δ/(2·uMarkHalf) ≤ 0.152 uv`. The full algebra is
+ * written out at the block itself. New knobs MARK_THICKNESS
+ * 0.35 (decoupled from CRYSTAL_THICKNESS — the facet-to-facet swim drops from
+ * 4–15 % of the mark's own height to 1.5–6 %) and MARK_WORLD_HALF 1.15 (mark at
+ * 60 % of the slab's height instead of a cropped 119 %), plus MARK_FLIP_Y −1
+ * (three's RT-texture uv convention is y-DOWN on both backends — derived from
+ * the three source at the config constant, NOT left to the browser). Both
+ * figures are viewport-invariant by the cancellation above; the pixel forms are
+ * on the config constants. The mark takes ONE tap instead of nine; the
+ * backdrop's dispersion is untouched. Compositing is byte-identical, so the
+ * 8-E/8-F/8-H/8-I value world stands unchanged.
  *
  * FOG ADAPTATION (dossier §5): igloo's opaque mix(bg, color, vFade) repaint
  * would paint solid navy over the DOM (our canvas is transparent) — instead
@@ -255,8 +291,12 @@ import {
   // Round 7-2b (anatomy pass)
   MARK_RT_SIZE,
   MARK_GAIN,
-  MARK_COORD_SCALE,
   MARK_LOD_K,
+  // Round 9-C — the origin-registered perspective map (MARK_COORD_SCALE and
+  // the mark's use of REFR_OFFSET_SCALE are REMOVED; see the config).
+  MARK_THICKNESS,
+  MARK_WORLD_HALF,
+  MARK_FLIP_Y,
   EMBER_COLOR,
   EMBER_GAIN,
   EMBER_DEPTH,
@@ -407,11 +447,23 @@ export interface CrystalUniforms {
   uWarmGain: { value: number };
   /** Broken ember-core gain (dead node on healthy / lite). */
   uEmberGain: { value: number };
-  /** Mark additive gain inside the ladder (dead node unless the mark branch
-   * is built — healthy + full + markTexture). */
+  /** Mark additive gain (dead node unless the mark branch is built — healthy
+   * + full + markTexture). */
   uMarkGain: { value: number };
-  /** Refraction-coord → mark-RT-UV scale (dead node like uMarkGain). */
-  uMarkScale: { value: number };
+  /** ROUND 9-C — the mark's transmission-ray length in CRYSTAL units (igloo's
+   * `thickness`, scaled by modelScale in-shader). THE swim knob: it moves the
+   * refractive DISPLACEMENT only, Δ(markUv) = uMarkThick·sin δ/(2·uMarkHalf) uv
+   * ≤ 0.152 — the mark's placement is the projective identity and is
+   * independent of it. Dead node like uMarkGain. */
+  uMarkThick: { value: number };
+  /** ROUND 9-C — crystal-unit half-extent mapped to the RT's uv edge (LOWER =
+   * BIGGER mark). Dead node like uMarkGain. */
+  uMarkHalf: { value: number };
+  /** ROUND 9-C — RT origin-convention flag. **−1**, derived from the three
+   * source (three's RT-texture uv convention is y-DOWN on both backends; see
+   * config MARK_FLIP_Y). +1 renders the mark upside-down. Dead node like
+   * uMarkGain. */
+  uMarkFlipY: { value: number };
   // --- round 8-E value-world tunables (dev-handle surfaced) ----------------
   /** ROUND 8-E §B4.2 part 2 — gain on `backdrop()`'s navy field. Default 1
    * (exact back-compat); CrystalCluster ramps it to BACKDROP_GAIN from the
@@ -714,6 +766,12 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     normalLocal,
     modelViewMatrix,
     cameraProjectionMatrix,
+    // Round 9-C — igloo's transmission-ray recipe needs the model's
+    // rotation-independent scale (thickness is a LOCAL quantity) and the
+    // object's view-space origin (the registration point that cancels the
+    // along-ray term). Both are plain per-object uniforms — no new bindings.
+    modelScale,
+    modelViewPosition,
     Fn,
     vec2,
     vec3,
@@ -760,9 +818,11 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     for (const r of authored.shardRands) shardRands.push(r);
   } else if (!broken) {
     // FALLBACK — ONE intact crystal: displaced, squashed, flat-shaded. Note
-    // this path has NO coplanar patches, so the in-ice mark degrades to the
-    // pre-round-8-H confetti read on it; that is accepted for an asset-failure
-    // fallback and is why the mark's dev-handle gain stays live.
+    // this path has NO coplanar patches. ROUND 9-C: that is now much less
+    // costly for the in-ice mark than it was — the base map is the projective
+    // identity and does not depend on the mesh having coplanar patches at all,
+    // so the fallback loses only the per-patch coherence of the PERTURBATION (a
+    // per-triangle 5–18 px jitter), not the placement of the image.
     geometry = new IcosahedronGeometry(
       1,
       lite ? CRYSTAL_DETAIL_LITE : CRYSTAL_DETAIL,
@@ -900,7 +960,13 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
   const uWarmGain = uniform(WARM_GAIN);
   const uEmberGain = uniform(EMBER_GAIN);
   const uMarkGain = uniform(MARK_GAIN);
-  const uMarkScale = uniform(MARK_COORD_SCALE);
+  // Round 9-C — the three knobs of the origin-registered perspective map.
+  // uMarkThick is a LOCAL (crystal-unit) length like igloo's `thickness`;
+  // uMarkHalf is the crystal-unit half-extent that maps to the RT's uv edge;
+  // uMarkFlipY is the §3.6 backend flag (expected +1 — we sample our own RT).
+  const uMarkThick = uniform(MARK_THICKNESS);
+  const uMarkHalf = uniform(MARK_WORLD_HALF);
+  const uMarkFlipY = uniform(MARK_FLIP_Y);
   // Round 8-E value-world tunables. uBackdropGain DEFAULTS TO 1 (not
   // BACKDROP_GAIN): a build whose driver never ramps it — or a dev handle set
   // back to 0 energy — renders exactly the pre-round-8 body, so the coupling
@@ -1220,14 +1286,18 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     const refrR = refractDir(I, Nj, inv).toVar();
     // --- Round 7-2b §B-a (i) — the SERSAN mark inside the ice. ONE base
     // TextureNode owns the binding (+1 texture +1 sampler — the ONLY texture
-    // bindings this material ever has); every tap is .sample(uv).level(lod),
-    // a clone referencing the base, so the count stays 2 at any sample
-    // count. Igloo's exact lod law: log2(rtSize)·roughness·0.36 — roughEff
-    // is the frost-veined roughness, so the veins modulate the mark's blur.
-    // Sampled INSIDE the ladder at the per-channel refracted coords → the
-    // mark disperses/swims exactly like the procedural backdrop. UVs are
-    // crystal-local (base is vLocal.xy-derived) → the mark tumbles RIGIDLY
-    // with the crystal, igloo's sibling-mesh arrangement. ------------------
+    // bindings this material ever has); the tap is .sample(uv).level(lod), a
+    // clone referencing the base, so the count stays 2. Igloo's exact lod law:
+    // log2(rtSize)·roughness·0.36 — roughEff is the frost-veined roughness, so
+    // the veins modulate the mark's blur.
+    //
+    // ROUND 9-C — the mark is LIFTED OUT OF THE DISPERSION LADDER. It used to
+    // be sampled inside it at the per-channel refracted coords; that cost 9
+    // texture fetches per fragment and split every hairline stroke into three
+    // offset coloured copies — the exact opposite of legibility on a
+    // thin-stroked logo (a chunky subject like igloo's penguin gets a nice
+    // fringe from it; a wordmark does not). The backdrop keeps ALL of its
+    // dispersion; the mark takes exactly ONE tap. −8 fetches/fragment.
     const markOn = markTexture != null && !broken && !lite;
     const markBase = markOn ? texture(markTexture) : null;
     const markLod = markOn
@@ -1236,9 +1306,6 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     let accR: Any = float(0);
     let accG: Any = float(0);
     let accB: Any = float(0);
-    let mAccR: Any = float(0);
-    let mAccG: Any = float(0);
-    let mAccB: Any = float(0);
     for (let i = 0; i < samples; i++) {
       const fi = float(i);
       const th = thickEff
@@ -1256,29 +1323,136 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
       accR = accR.add(backdrop(cR).x);
       accG = accG.add(backdrop(cG).y);
       accB = accB.add(backdrop(cB).z);
-      if (markBase) {
-        mAccR = mAccR.add(
-          markBase.sample(cR.mul(uMarkScale).add(0.5)).level(markLod).x,
-        );
-        mAccG = mAccG.add(
-          markBase.sample(cG.mul(uMarkScale).add(0.5)).level(markLod).y,
-        );
-        mAccB = mAccB.add(
-          markBase.sample(cB.mul(uMarkScale).add(0.5)).level(markLod).z,
-        );
-      }
     }
     const trans = vec3(accR, accG, accB).div(samples).toVar();
     if (markBase) {
-      // Additive over the procedural backdrop, PRE body-darken — the mark
-      // rides the dark-glass multiply + frost density veining like igloo's
-      // transmission sample (MARK_GAIN compensates; see config). ROUND 8-H:
-      // with the authored slab's large planes each finally refracting ONE
-      // coherent patch of this RT, the gain is unblocked and doubles to 0.70
-      // — the full derivation (and the ordering constraint that caps it) is
-      // on MARK_GAIN in crystalConfig.
+      // === ROUND 9-C — THE ORIGIN-REGISTERED PERSPECTIVE MAP =================
+      // (research/2026-08-22-round9-inner-object-mechanism.md §3.2, Variant A.)
+      //
+      // igloo's mechanism, verbatim: refract the view ray, walk `thickness ·
+      // modelScale`, then PROJECT the exit point (proj·view, /w, ·0.5+0.5) and
+      // sample the transmission RT there. The projection is what does the work:
+      // moving along a ray through the camera does not move NDC.xy at all
+      //     project(p + λ·Î) ≡ project(p)   for every λ
+      // so the ENTIRE cos δ component of the transmission ray — 95–99 % of its
+      // length — contributes exactly zero screen displacement, and what is left
+      // is the lateral `T·sin δ`. The base map is therefore the projective
+      // IDENTITY: the subject lands where the subject is, perturbed by a few
+      // percent. That is the whole reason igloo's penguin is legible, and its
+      // absence is the whole reason ours was confetti (config, the
+      // MARK_COORD_SCALE removal note: an ORTHOGRAPHIC projection along the
+      // tumbling crystal's LOCAL Z, which FOLDS past ~75°, plus an uncancelled
+      // view-space direction worth ±117 px of facet-to-facet jump).
+      //
+      // Our RT holds ONLY the subject (igloo's holds the whole scene), so we do
+      // not need a screen-sized RT: we need the SAME projective map, re-centred
+      // on the mark and normalised by its extent. Hence "origin-registered" —
+      // project the exit point AND the crystal origin (`modelViewPosition`,
+      // which is the mark's centre: the slab GLB is exactly origin-centred and
+      // the mesh carries no offset, igloo's sibling arrangement) and take the
+      // difference.
+      //
+      // THE ALGEBRA, WRITTEN OUT (check-round correction — an earlier draft of
+      // this comment compressed it to "markUv − 0.5 = uMarkThick·sin δ/(2·
+      // uMarkHalf)", which is the DISPLACEMENT term alone and would describe a
+      // mark collapsed to a point). With the camera at the view-space origin,
+      // the crystal origin at view z = −D, the fragment at view z = −(D−d) and
+      // q = exitView − origin, the P00/P11 of a symmetric frustum cancel
+      // against halfNdc and what is left is
+      //     markUv − 0.5 = [ q.xy·D/(D−d) + o.xy·d/(D−d) ] / (2·uMarkHalf·scale)
+      // i.e. exactly "intersect this fragment's view ray with a screen-facing
+      // billboard of half-extent uMarkHalf pinned at the crystal's centre".
+      //   · term 1 is the BASE MAP: injective in screen space by construction
+      //     (one ray ⇒ one billboard point), so it cannot fold at any tumble.
+      //     Two surface fragments can only share a uv if they share a view
+      //     ray, i.e. if one is behind the other — and this material never sets
+      //     `side`, so it is FrontSide: back faces are culled outright. What
+      //     survives that is only a CONCAVE front surface, and the mark branch
+      //     is `!broken && !lite`: it runs solely on the intact convex-ish slab
+      //     (34 patches, no reflex dihedrals), never on the fractured build
+      //     where shards genuinely overlap in screen space.
+      //   · term 2 is the PARALLAX of an off-axis stone (o.xy ≠ 0): the mark
+      //     sits at mid-depth, so the near cap sees it shifted outward. Real,
+      //     wanted, and what igloo's sibling penguin does too.
+      //   · what genuinely cancels: fov, aspect, viewport size, DPR, and the
+      //     model scale (h is scaled by the same `modelScale`). The DEPTH RATIO
+      //     D/(D−d) survives — it IS the perspective, ~1.15–1.3 across the cap.
+      // The refraction rides on top of term 1 as a bounded displacement:
+      //     Δ(markUv) = uMarkThick · sin δ · D/(D−d) / (2 · uMarkHalf)
+      // ≤ uMarkThick/(2·uMarkHalf) = 0.152 uv even at total-deviation δ = 90°
+      // (unreachable: eta = 1/1.18 < 1 ⇒ no TIR, δ ≤ 32.1° at grazing).
+      //
+      // SAFE FORM: the half-extent is obtained by projecting a SECOND point
+      // (origin + (h,h,0)) rather than indexing `cameraProjectionMatrix[0].x`
+      // — matrix element access on this node is not verified on the WGSL
+      // backend (round-9 doc §3.2 + Caveats). It is also EXACT rather than an
+      // approximation: adding (h,h,0) leaves the view z untouched, so
+      // ndcH.w ≡ ndcO.w and halfNdc = (P00·h, P11·h)/w with no error term.
+      // (Verified for THIS camera: Scene.tsx mounts one symmetric
+      // PerspectiveCamera — fov 50, near 0.1, far 200 — and nothing in the repo
+      // calls setViewOffset/filmOffset, so row 4 of P is (0,0,−1,0) and
+      // w ≡ −z_view. P00, P11 > 0 at every aspect and w = D > 0 for the
+      // camera-locked band, so halfNdc is strictly positive and the 1e-6 floor
+      // is a NaN guard that never fires in a reachable pose.)
+      // Cost: 3 mat4·vec4 + 3 divides, of which the origin/half pair are
+      // fragment-invariant per draw (pure uniform expressions — hoisted by any
+      // uniform-expression folding, and ~60 ALU even if not).
+      //
+      // Y-FLIP: `uMarkFlipY` is **−1**, derived from the three source, not left
+      // to the browser — three's own transmission does the same `ndc/w·0.5+0.5`
+      // and then `y.oneMinus()  // webgpu` (PhysicalLightingModel.js:133-136),
+      // and RT textures share the framebuffer-texture uv convention
+      // (TextureNode.js:853): uv.y = 0 is the TOP of the rendered image on BOTH
+      // backends. Full derivation on crystalConfig MARK_FLIP_Y.
+      //
+      // TRADE-OFF, taken deliberately: the mark is SCREEN-UPRIGHT, not tumbling
+      // in 3D. The tumble reaches 90° off the view axis inside a normal scroll
+      // pass and a logo rotated 90° is unreadable however correct its
+      // refraction is — "si vede il logo" requires upright. The re-enable path
+      // is one flag: MARK_TUMBLE in the config (crystalMarkRT copies the mesh
+      // quaternion into the RT scene).
+      const mScale = modelScale.y; // group scale is uniform
+      const exitView = vPosView
+        .add(refrR.mul(uMarkThick.mul(mScale)))
+        .toVar();
+      const hOff = uMarkHalf.mul(mScale).toVar();
+      const ndcE = cameraProjectionMatrix.mul(vec4(exitView, 1.0)).toVar();
+      const ndcO = cameraProjectionMatrix
+        .mul(vec4(modelViewPosition, 1.0))
+        .toVar();
+      const ndcH = cameraProjectionMatrix
+        .mul(vec4(modelViewPosition.add(vec3(hOff, hOff, 0.0)), 1.0))
+        .toVar();
+      const ndcO2 = ndcO.xy.div(ndcO.w).toVar();
+      const dNdc = ndcE.xy.div(ndcE.w).sub(ndcO2).toVar();
+      // P00/P11 > 0 and w = −z_view > 0 for anything in front of a standard
+      // symmetric frustum, so halfNdc is strictly positive at every aspect and
+      // this `max` is a no-op in every reachable pose (the group's scale is
+      // `(0.8 + 0.2·reveal)·(1 − velScaleK·vel) · …` and never reaches 0). It
+      // is a pure NaN/÷0 guard for a degenerate matrix; note it clamps rather
+      // than inverts — a negative or vanishing half-extent yields a huge uv,
+      // which lands on the transparent clamp border, i.e. additive-zero.
+      const halfNdc = max(
+        ndcH.xy.div(ndcH.w).sub(ndcO2),
+        vec2(1e-6, 1e-6),
+      ).toVar();
+      const markUv = dNdc
+        .div(halfNdc.mul(2.0))
+        .mul(vec2(1.0, uMarkFlipY))
+        .add(0.5)
+        .toVar();
+      // Out-of-frame samples land on the RT's clamp-to-edge border, which is
+      // transparent black by construction (MARK_RT_FRAME keeps 0.15 / 0.336 of
+      // margin around the mark) → additive-zero, no smear.
+      //
+      // Additive over the procedural backdrop, PRE body-darken — UNCHANGED
+      // compositing site, so the mark still rides the dark-glass multiply +
+      // frost density veining like igloo's transmission sample, and the whole
+      // 8-H/8-I gain arithmetic on MARK_GAIN (ordering tie 0.822 against the
+      // brightest frost vein, bloom headroom, CRYSTAL_CEIL) survives verbatim:
+      // at full coverage the mean of three saturated taps IS the single tap.
       trans.assign(
-        trans.add(vec3(mAccR, mAccG, mAccB).div(samples).mul(uMarkGain)),
+        trans.add(markBase.sample(markUv).level(markLod).xyz.mul(uMarkGain)),
       );
     }
 
@@ -1545,7 +1719,9 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     uWarmGain,
     uEmberGain,
     uMarkGain,
-    uMarkScale,
+    uMarkThick,
+    uMarkHalf,
+    uMarkFlipY,
     uBackdropGain,
     uAmbGain,
     uCeil,

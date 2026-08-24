@@ -39,9 +39,10 @@
  * ROUND 7-2b (§B-a, 2026-08-22-round7-stones-v2-anatomy.md): the HEALTHY
  * crystal on the FULL tier + true-WebGPU backend adds the SERSAN-mark
  * transmission RT — exactly +1 sampled texture +1 sampler = +2 FRAGMENT
- * bindings on that one build (base TextureNode shared by every ladder tap via
- * `.sample().level()` reference chaining, so the count stays 2 regardless of
- * sample count). Storage wall (8) and vertex slots (5/3 of 8) UNTOUCHED.
+ * bindings on that one build (base TextureNode tapped via `.sample().level()`
+ * reference chaining, so the count stays 2 regardless of tap count — and since
+ * ROUND 9-C there is exactly ONE tap). Storage wall (8) and vertex slots
+ * (5/3 of 8) UNTOUCHED.
  * Broken / lite / WebGL2-fallback builds stay zero-texture (the ember core is
  * pure ALU). The plexus (§B-c) is 2 extra position-only draw calls on its own
  * geometries — no crystal slots, no bindings beyond its own material uniforms.
@@ -100,7 +101,10 @@
  * ghiaccio del sito igloo." The measured cause was the mesh, not the material:
  * `IcosahedronGeometry(1,12) + smooth radial noise` has **no coplanar patches
  * at all**, so every one of its 3 380 triangles refracts its own patch of the
- * inner world and the in-ice mark shatters into per-facet confetti. The
+ * inner world and the in-ice mark shatters into per-facet confetti. [⚠ ROUND
+ * 9-C AMENDS THE MARK HALF OF THAT SENTENCE: the confetti was the mark's
+ * SAMPLING MAP, and patch size only compensated for it — see the ROUND 9-C
+ * block below and MARK_GAIN. The material half stands.] The
  * Blender-authored replacement (`public/models/crystal-intact.glb` 450 tris /
  * `crystal-fractured.glb` 1 114 tris, loaded by crystalBuild's module-cached
  * non-suspending loader) hits all four igloo silhouette gates AND carries 34
@@ -113,7 +117,10 @@
  *      now including the per-patch jitter, which the old ceiling silently
  *      pushed to 0.388. Body typical unchanged at 0.0396.
  *   2. MARK_GAIN is UNBLOCKED and doubles to 0.70 (2.01:1 → 3.03:1 WCAG-form
- *      against the body, capped by the ordering rule at ~0.88). The ═══ block
+ *      against the body, capped by the ordering rule — this line used to say
+ *      "~0.88", the 8-H first pass's bound-with-a-margin; the solved ties are
+ *      0.91 typical-body and **0.82** on the brightest frost vein, and 0.82 is
+ *      the operational ceiling. See MARK_GAIN check 1). The ═══ block
  *      below is replaced accordingly.
  *   3. HEALTHY_CALLOUT_ANCHORS re-fitted to the new surface (one of the three
  *      was floating 27 % OUTSIDE it) and BROKEN_CALLOUT_SHARDS re-picked for
@@ -176,6 +183,43 @@
  * 8-E/F/H standing.
  * BONUS, measured while re-deriving: the frost cut also closes a latent ordering
  * violation the 8-H mark level had on the brightest frost vein — see MARK_GAIN.
+ *
+ * ROUND 9-C — THE IN-ICE MARK: IT WAS THE SAMPLING MAP, NOT THE SUBJECT
+ * (research/2026-08-22-round9-inner-object-mechanism.md; owner, verbatim: "no,
+ * voglio che si veda il logo, devi capire come è fatto quello di igloo").
+ * 8-I closed with "the mark is a FORM problem — 34 planes = 34 independent
+ * refracted images, a hairline logo cannot survive being cut into 34 pieces".
+ * **That conclusion is now RETRACTED.** The bundle forensics settle it: igloo
+ * refracts the view ray, walks `thickness`, and PROJECTS the exit point through
+ * proj·view, /w, *0.5+0.5 — it samples its transmission RT in SCREEN SPACE. The
+ * projection cancels the along-ray component EXACTLY (project(p + λ·Î) ≡
+ * project(p)), so only `T·sin δ` survives and the base map is the projective
+ * IDENTITY: the penguin lands where the penguin is. 34 facets then give 34
+ * slightly-SHIFTED copies of the same correctly-placed image, never 34
+ * independent ones — coherence there is structural, not a property of the
+ * subject's mass. Our map was `uv = vLocal.xy·0.22 + refrDirView.xy·0.495 +
+ * 0.5`: an ORTHOGRAPHIC projection along the crystal's LOCAL Z (on a mesh that
+ * tumbles to 90° off the view axis, where that map FOLDS) plus an
+ * un-cancelled view-space direction, in mixed bases — ±117 px facet jumps on a
+ * ~500 px mark. That is the confetti, and it was ours alone.
+ * The fix (Variant A, implemented at MARK_THICKNESS / MARK_WORLD_HALF /
+ * MARK_FLIP_Y): project BOTH the refracted exit point AND the crystal origin,
+ * take the difference, normalise by the mark's projected half-extent — which is
+ * exactly "intersect each fragment's view ray with a screen-facing billboard of
+ * half-extent uMarkHalf pinned at the crystal's centre". Model scale, fov,
+ * aspect, viewport and DPR all cancel; the depth RATIO does not (that is the
+ * perspective, and the off-axis parallax it gives the mark is wanted), and the
+ * refraction survives as ONE dimensionless displacement,
+ * `Δ(markUv) = uMarkThick·sin δ / (2·uMarkHalf)` ≤ 0.152 uv. **The value world
+ * is untouched** — the compositing site (additive into `trans`, PRE
+ * `uBodyDarken`) and MARK_GAIN 0.70 are both unchanged, so every row of the
+ * table above still stands. The one number that MOVES is the sampling-loss
+ * floor (MARK_GAIN check 3): the 3-tap ladder spread is gone, so any stroke
+ * wider than the lod-1.17 mip footprint now reaches full coverage and the
+ * realistic contrast rises 2.42:1 → the full 3.03:1.
+ * ⚠ CHECK-ROUND: the round-9 doc's §3.6 y-flip reasoning did NOT survive
+ * re-derivation from the three source — the flag ships at **−1**, not +1. See
+ * MARK_FLIP_Y; +1 would have shipped the logo upside-down.
  */
 import type { LatticeMode } from "./neuralLatticeConfig";
 
@@ -776,21 +820,43 @@ export const CALLOUT_EDGE_MAX = 88;
 // full-tier only unless noted; the ember + mark are the "inner object" pair.
 
 // --- §B-a (i) — healthy: the SERSAN mark inside the ice (transmission RT) ---
-/** RT edge (square, power-of-two for the mip chain). NOT canvas-coupled: the
- * mark is sampled in CRYSTAL-LOCAL space (not screen space like igloo), so the
- * RT resolution is decoupled from the viewport — 512 + mips out-resolves the
- * lod ≥ ~1 the igloo lod law ever samples at our roughness. */
+/**
+ * RT edge (square, power-of-two for the mip chain).
+ *
+ * ROUND 9-C — the comment that used to live here read "NOT canvas-coupled: the
+ * mark is sampled in CRYSTAL-LOCAL space (not screen space like igloo)". The
+ * first clause survives and is now a VIRTUE; the parenthesis WAS the bug (see
+ * the ROUND 9-C block in the file header and MARK_THICKNESS below). The mark is
+ * now sampled through igloo's projective map, re-centred on the crystal origin
+ * — and precisely because our RT holds ONLY the subject (igloo's holds the
+ * whole scene) the map needs no viewport coupling at all: viewport, DPR, fov,
+ * depth and model scale ALL cancel in the shader, so this stays a 512² ortho
+ * image rendered ONCE per session.
+ * 512 still out-resolves what the igloo lod law ever asks for. At roughEff 0.36
+ * the lod is log2(512)·0.36·0.36 = 1.17, a ~2.25-texel footprint. The mark's
+ * content spans 0.87 uv = 445 texels; at the 8-I LIVE-MEASURED band (123 px per
+ * crystal unit) it lands on 246 screen px, so 1 RT texel = 0.55 px — the RT is
+ * **1.81× oversampled** and the lod blur is a ~1.2 px soft edge. Crisp, with
+ * mip headroom left over.
+ */
 export const MARK_RT_SIZE = 512;
 /** Ortho half-extent framing the ~2-unit-tall normalized mark (margin so the
- * clamp-to-edge border texels stay transparent black). */
+ * clamp-to-edge border texels stay transparent black). `sersan-mark.glb`
+ * normalizes to ±1.0 tall × ±0.814 wide, so at 1.15 the frame keeps 0.15 /
+ * 0.336 of transparent margin on every side — the shader's out-of-frame
+ * samples clamp to additive-zero instead of smearing an edge texel.
+ * ⚠ This is the RT-SIDE half-extent (what is IN the texture). Its shader-side
+ * twin is MARK_WORLD_HALF (how big that texture reads on the stone); they are
+ * independent knobs and are only equal by choice at the shipped default. */
 export const MARK_RT_FRAME = 1.15;
 /** Unlit mark tint — white-cyan ≤ 1.0 (palette contract; toneMapped:false).
  * The RT content never crosses 1.0 → the mark itself can't trip bloom; the
  * body/rim keep owning the bloom budget. */
 export const MARK_COLOR = "#D8F4FF";
-/** Additive gain on the mark taps INSIDE the dispersion ladder (pre
- * uBodyDarken — the mark rides the dark-glass multiply + frost veining like
- * igloo's transmission sample). ROUND 8-E re-levelling (the round-8 doc flags
+/** Additive gain on the mark tap (ROUND 9-C: ONE tap, outside the dispersion
+ * ladder, which is the backdrop's alone; pre uBodyDarken — the mark rides the
+ * dark-glass multiply + frost veining like igloo's transmission sample).
+ * ROUND 8-E re-levelling (the round-8 doc flags
  * MARK_* and EMBER_* as additive terms that must be re-levelled once the body
  * rises ~8×): at 1.6 the mark landed at ~0.71 lumLin post-darken against a
  * 0.005 body — a **133×** blob, one of the terms making the stone read as a
@@ -798,18 +864,30 @@ export const MARK_COLOR = "#D8F4FF";
  * clearly visible INSIDE the ice (igloo's penguin read) without leaving the
  * compressed window or approaching the ceiling.
  *
- * ═══ ROUND 8-H — UNBLOCKED BY THE AUTHORED SLAB. 0.35 → **0.70**. ═══
+ * ═══ ROUND 8-H — 0.35 → **0.70**. THE LEVEL SURVIVES; ITS STATED CAUSE DOES
+ * NOT — SEE THE 9-C AMENDMENT AT THE END OF THIS PARAGRAPH. ═══
  *
  * The history this replaces: the owner A/B'd 0.35 → 1.4 → 2.4 live at
  * `__sersanCrystal_healthy.uniforms` and at NO gain did the mark become
- * legible — it only filled the stone with confetti. The cause was never LEVEL,
- * it was SPATIAL COHERENCE: the mark is sampled through the per-fragment
- * refracted direction, so every facet taps a different patch of the RT, and
- * the procedural icosahedron had **zero coplanar patches** (all 3 380
- * triangles are their own facet, largest-1 %-faces 2.3 % vs igloo's 6–20 %).
- * The authored slab (`crystal-intact.glb`) carries **34 planar patches, six of
- * which cover half the surface, the largest 19 %** — each of those refracts
- * ONE coherent image. That is the fix; this constant is now free to move.
+ * legible — it only filled the stone with confetti. The cause was never LEVEL.
+ * 8-H diagnosed it as SPATIAL COHERENCE: the mark is sampled through the
+ * per-fragment refracted direction, so every facet taps a different patch of
+ * the RT, and the procedural icosahedron had **zero coplanar patches** (all
+ * 3 380 triangles are their own facet, largest-1 %-faces 2.3 % vs igloo's
+ * 6–20 %), where the authored slab (`crystal-intact.glb`) carries **34 planar
+ * patches, six of which cover half the surface, the largest 19 %** — "each of
+ * those refracts ONE coherent image. That is the fix."
+ * ⚠ **ROUND 9-C AMENDS THAT LAST SENTENCE.** Patch size was never the
+ * mechanism, only a partial COMPENSATION for a broken base map: under a
+ * projective base map (which is what igloo has and what 9-C implements) the
+ * patches are not independent images at all — each shows the same,
+ * correctly-placed image displaced by a bounded `T·sin δ`, so coherence is
+ * structural and survives even a 3 380-facet mesh (which is why the procedural
+ * fallback is no longer a disaster; see the NOTE at the end). What 8-H got
+ * right is that the OLD map's per-facet re-indexing was the confetti, and that
+ * bigger patches reduced it. The slab still earns its keep on the MATERIAL
+ * (dihedral variety, facet flashes) — just not as the mark's fix.
+ * Either way this constant is free to move, and the arithmetic below stands.
  *
  * WHY 0.70 (the arithmetic, since this was levelled without a browser — the
  * main session owns the visual A/B). The mark is added PRE `uBodyDarken`, so
@@ -844,58 +922,228 @@ export const MARK_COLOR = "#D8F4FF";
  *      Δuv ≈ 0.024 (≈12 px of the 512 RT) and blurs at lod ≈ 1.17, so a stroke
  *      narrower than that spread lands at ~0.7 of full coverage: 2.42:1 rather
  *      than 3.03:1. That is the realistic floor, and it is why the value was
- *      not set at the 3:1 minimum.
- * ═══ ROUND 8-I (LIVE) — THE LEVEL WAS NEVER THE PROBLEM, AND NEITHER, IT TURNS
- * OUT, WAS THE GEOMETRY ALONE. THIS IS AN OWNER DECISION FROM HERE. ═══
+ *      not set at the 3:1 minimum. **ROUND 9-C RETIRES THIS CLAUSE**: the mark
+ *      now takes exactly ONE tap (the dispersion ladder is the backdrop's
+ *      alone), so there is no 0.024-uv ladder spread to lose coverage to and
+ *      the realistic floor rises back to the full **3.03:1**. What REMAINS is
+ *      the lod-1.17 mip blur alone — a ~2.25-texel footprint on the 512² — so
+ *      the honest condition is "any stroke wider than ~4 RT texels
+ *      (≈0.008 uv ≈ 2 screen px at the measured band) reaches full coverage";
+ *      below that the peak still rolls off with the kernel. Checks 1 and 2 are
+ *      untouched — the peak, and therefore the ordering tie (0.822 on the
+ *      brightest frost vein) and the bloom headroom (0.197 post-blend), are
+ *      identical, because at full coverage the mean of three saturated taps IS
+ *      the single tap (and BELOW full coverage the single tap is strictly
+ *      BRIGHTER than the old 3-tap mean — the change can only move the mark up
+ *      toward its ceiling, never past the peak checks 1/2 bound).
+ * ═══ ROUND 8-I (LIVE) — "THE SUBJECT IS WRONG". **RETRACTED BY ROUND 9-C.** ═══
  *
  * The 8-H bet was that spatial coherence would make the mark legible and that
  * the gain was then free to move. Half of it held: on the authored slab the
  * mark is a coherent luminous presence instead of confetti. The other half did
  * not. A/B'd live on the clean stone at **uMarkGain 0.7 → 1.1 with uMarkScale
- * 0.6**, it is still NOT recognizable as the SERSAN mark.
+ * 0.6**, it was still NOT recognizable as the SERSAN mark — and 8-I concluded
+ * that this was a FORM problem: "34 planar patches means 34 independent
+ * refracted images … cut a hairline stroke into 34 offset pieces and there is
+ * no stroke left to follow."
  *
- * WHY — a FORM problem, not a number one. 34 planar patches means 34
- * independent refracted images: each patch taps its own region of the RT
- * through its own refracted direction, so the subject arrives cut into 34
- * offset pieces. A CHUNKY SOLID SILHOUETTE survives that — igloo's penguin is
- * legible by MASS and shading, and a few offset pieces of a solid body still
- * read as that body. A THIN-STROKED GEOMETRIC LOGO does not: cut a hairline
- * stroke into 34 offset pieces and there is no stroke left to follow. Raising
- * the gain only brightens the pieces, which is exactly what both live A/Bs
- * measured (0.35 → 2.4 on the old mesh, 0.7 → 1.1 on the slab).
+ * THAT DIAGNOSIS WAS WRONG, and the bundle forensics say so precisely
+ * (research/2026-08-22-round9-inner-object-mechanism.md §1.5): under igloo's
+ * SCREEN-SPACE map the patches are NOT independent images. Because the exit
+ * point is projected, the base map is the projective identity and every patch
+ * shows a slightly-SHIFTED copy of the SAME, correctly-placed image; the
+ * per-patch perturbation is bounded by `T·sin δ` and cannot re-index the
+ * subject. "34 independent images" was a true description of OUR map — an
+ * orthographic projection along the tumbling crystal's LOCAL Z, plus an
+ * un-cancelled view-space direction — and of nothing else. Coplanar patch size
+ * was a partial compensation for a broken base map, never the mechanism.
+ * The three options 8-I put to the owner (accept / swap the subject for a
+ * chunky solid / drop the inner object) are therefore NOT the live decision any
+ * more. Option (b) survives only as an optional legibility upgrade (see
+ * MARK_THICKNESS's "levers still on the shelf"), not as the fix.
  *
- * MARK_GAIN THEREFORE STAYS AT 0.70. Nothing above is retracted — the ordering,
- * bloom and sampling arithmetic all still hold; it is the SUBJECT that is
- * wrong. The options are the owner's, and NONE of them is implemented here:
- *   (a) ACCEPT — keep this subject and read it as a soft luminous presence
- *       inside the ice rather than as a readable logo. Zero work, zero risk;
- *       the stone already looks like this.
- *   (b) SWAP THE RT SUBJECT for a CHUNKY SOLID FORM whose silhouette survives
- *       refraction — a simplified solid mark (filled counters, heavy weight, no
- *       hairlines) or an abstract solid core. The igloo-faithful path, and the
- *       only one that can plausibly yield a READABLE inclusion. Cost is
- *       authoring the subject, not code: the RT rig, its +2 fragment bindings,
- *       the lod law and MARK_RT_* are all unchanged by it.
- *   (c) DROP THE INNER OBJECT — MARK_GAIN 0, the mark branch stops compiling on
- *       the healthy build (−1 texture −1 sampler), and the stone reads as pure
- *       ice. Cheapest, and defensible: an empty stone is not a defect.
- * Until that call is made the live A/B range stands at 0.55 – 0.82 (ceiling per
- * check 1) — but the honest expectation is that NO value in it makes the mark
- * readable, so spending a browser pass on this knob is not recommended.
+ * MARK_GAIN STAYS AT 0.70 THROUGH ROUND 9-C — and this time because nothing in
+ * its derivation moved: the compositing site is byte-identical (additive into
+ * `trans`, PRE `uBodyDarken`, riding the dark-glass multiply and the frost
+ * density veining), so checks 1 and 2 above hold verbatim and the live A/B
+ * range stands at 0.55 – 0.82 (ceiling per check 1). Unlike 8-I, spending a
+ * browser pass on this knob IS now worth it: the map underneath it changed.
  *
  * NOTE the fallback: if the GLB ever fails to load, crystalBuild rebuilds the
- * procedural icosahedron, on which this gain will look like confetti again.
- * That is an asset-failure path, not a tuning state. */
+ * procedural icosahedron. ROUND 9-C makes that path far less bad than it was —
+ * the base map no longer depends on the mesh having coplanar patches at all, so
+ * the fallback loses only the per-patch coherence of the PERTURBATION (a
+ * per-triangle 5–18 px jitter), not the placement of the image. */
 export const MARK_GAIN = 0.7;
-/** Refraction-coordinate → RT-UV scale: uv = coord·this + 0.5. Sizes the mark
- * to ~0.9 crystal units inside the body (dev-tunable, uMarkScale).
- * ROUND 8-H — left alone on purpose. The mapping is uv = vLocal.xy·0.22 + 0.5
- * and the slab's HEIGHT is identical to the old mesh's (3.32 by construction),
- * so the mark's relationship to the stone's vertical extent is unchanged; only
- * x grew 15.7 %, i.e. the silhouette now reveals a little more of the mark's
- * width. If the browser pass wants the mark bigger on the stone, this is the
- * knob (lower = larger), not MARK_GAIN. */
-export const MARK_COORD_SCALE = 0.55;
+/* ─── REMOVED IN ROUND 9-C: `MARK_COORD_SCALE` (was 0.55) ────────────────────
+ * It was the second half of the broken map, `uv = vLocal.xy·BACKDROP_COORD_
+ * SCALE(0.4)·MARK_COORD_SCALE(0.55) + refrDirView.xy·thickEff·REFR_OFFSET_
+ * SCALE + 0.5` = `vLocal.xy·0.22 + refrDirView.xy·0.495 + 0.5`. Both terms are
+ * gone from the mark path (the BACKDROP keeps its own, unchanged):
+ *   · `vLocal.xy·0.22` was an ORTHOGRAPHIC projection along the crystal's LOCAL
+ *     Z. `CrystalCluster` writes the tumble on the MESH (group.quaternion is
+ *     the camera's), and the tumble swings local +Z to ~29° off the view axis
+ *     at band position a = ±0.25, ~67° at ±0.5 and 90° at ±0.79 — all of them
+ *     INSIDE the cull window. Past ~75° the visible cap stops being a graph
+ *     over local XY and the map FOLDS: two screen-separated pieces of the
+ *     surface index the same uv from opposite sides. Mirrored, creased pieces.
+ *   · `refrDirView.xy·0.495` never had its along-ray component cancelled
+ *     (nothing was projected), so it carried the whole obliquity of the view
+ *     ray — a constant 0.31 floor from the stone's 18.2° off-axis placement
+ *     plus the deviation term, reaching 0.168 uv ≈ **±117 px** of facet-to-
+ *     facet jump on a ~500 px mark. And it was a VIEW-space direction added to
+ *     a CRYSTAL-LOCAL position: mixed bases, so the perturbation field rotated
+ *     relative to the image it was perturbing.
+ * Its doc-comment also claimed the mapping sized "the mark to ~0.9 crystal
+ * units inside the body", which does not follow from `uv = vLocal.xy·0.22 +
+ * 0.5` — that mapping showed the stone a 0.73-uv window of a 0.87-uv-tall mark,
+ * i.e. the mark rendered 19 % LARGER than the window and cropped top and
+ * bottom. Its replacement, MARK_WORLD_HALF, is a real world half-extent with a
+ * derivation, and lands the mark at 60 % of the slab's height, inside it.
+ * The mark's use of REFR_OFFSET_SCALE is likewise removed — MARK_THICKNESS is
+ * an independent length, see there. ─────────────────────────────────────────*/
+/**
+ * ROUND 9-C — the mark's transmission-ray length, in CRYSTAL units, and THE one
+ * knob that sets how much the logo swims inside the ice.
+ *
+ * igloo's `getVolumeTransmissionRay` returns `normalize(refract(…)) · thickness
+ * · modelScale`; we do the same in view space, then project both the exit point
+ * and the crystal origin and take the difference (crystalBuild, the mark
+ * block). Model scale, fov, aspect, viewport and DPR all cancel, leaving
+ *
+ *     Δ(markUv)  =  MARK_THICKNESS · sin δ / (2 · MARK_WORLD_HALF)
+ *
+ * a dimensionless DISPLACEMENT, where δ is the facet's refractive deviation.
+ * ⚠ Read the symbol: this is the amount the refraction MOVES the sample, not
+ * `markUv − 0.5` itself. `markUv` is the projective identity — the fragment's
+ * own view ray intersected with a billboard of half-extent MARK_WORLD_HALF at
+ * the crystal's centre — so it sweeps the whole 0…1 range across the stone and
+ * the term above rides on top of it (full algebra in crystalBuild's mark
+ * block). The only depth term that does NOT cancel is the ratio D/(D−d), the
+ * ordinary perspective of a mid-depth inclusion seen through the near cap.
+ * At CRYSTAL_IOR 1.18: δ = 4.9° at 30° incidence, 8.2° at 45°, 12.8° at 60°,
+ * 20.1° at 75°, 32.1° at grazing (eta = 1/1.18 < 1 ⇒ no TIR, so 32.1° is the
+ * hard maximum and Δ ≤ 0.35·0.531/2.30 = 0.081 uv in any REACHABLE pose;
+ * 0.152 uv is the unreachable sin δ = 1 bound).
+ *
+ * NOTE the on-screen displacement is `MARK_THICKNESS · sin δ` CRYSTAL UNITS —
+ * MARK_WORLD_HALF cancels out of it (it only rescales the image, not the
+ * lateral ray), which is why these two knobs are genuinely independent.
+ *
+ * WHY IT IS DECOUPLED FROM CRYSTAL_THICKNESS (2.0) AND REFR_OFFSET_SCALE
+ * (0.45). Those two drive the PROCEDURAL BACKDROP, whose "subject" is a
+ * low-frequency navy gradient that wants a long ray; the mark is a
+ * thin-stroked logo. At the 8-I LIVE-MEASURED band (123 px per crystal unit,
+ * mark 246 px tall) the old effective 0.9 swims 9.7 / 24 / 38 px at δ = 5 / 13
+ * / 20° — 4 / 10 / 15 % of the mark's own height, and strokes break between
+ * patches. At 0.35 it is **3.8 / 9.4 / 14.8 px = 1.5 / 3.8 / 6.0 %** — clearly
+ * legible and still visibly refracted. (Those percentages are the
+ * viewport-invariant form; the round-9 doc quotes 12/30/47 and 4.6/12/18 px on
+ * a 305-px mark because it assumed a 1440×900 canvas. Same ratios.)
+ * Physically this is not a fudge: the mark is an INCLUSION near the stone's
+ * mid-depth, not the far wall, and a shorter transmission ray is the more
+ * correct model for it (igloo's `uThickness = 2` is calibrated to a subject
+ * that fills its cube).
+ *
+ * ⚠ The HIGH-FREQUENCY half of the swim is the wet-ice ripple, not the facets:
+ * RIPPLE_AMP delivers ~25° of surface tilt at ~10 screen px per cycle, which
+ * rotates and rescales the lateral term by roughly ±4 px at 0.35 (it would have
+ * been ±10 px at 0.9). That is the intended "seen through rippled ice" read;
+ * `uRippleAmp` is the knob if the owner wants the logo flatter.
+ * Dev-tunable 0.15 (reads like a decal, ice character lost) … 0.9 (today's
+ * effective, strokes break) via `__sersanCrystal_healthy.uniforms.uMarkThick`.
+ *
+ * LEVERS STILL ON THE SHELF if the owner wants more legibility after the live
+ * pass, cheapest first: (1) RT DILATE — render the mark mesh twice into the
+ * 512², once at scale 1.06 at ~0.3 gain (a soft shoulder ≈7 screen px, i.e.
+ * most of the worst-case swim) then once at 1.0 at full gain; still
+ * render-once, one extra draw, and it cannot raise the peak because the second
+ * draw overwrites the first (the RT has no depth buffer). (2) A solid-silhouette
+ * variant of the mark authored as a second GLB used only by the RT. (3) Variant
+ * B of the round-9 doc — a full-viewport, per-frame, main-camera RT, which buys
+ * real 3D tumble and perspective of the mark for ~0.1–0.3 ms/frame.
+ */
+export const MARK_THICKNESS = 0.35;
+/**
+ * ROUND 9-C — the crystal-space half-extent that maps to the RT's uv edge; the
+ * shader-side twin of MARK_RT_FRAME. LOWER = BIGGER MARK.
+ *
+ * At 1.15 (= MARK_RT_FRAME) one mark unit is one crystal unit, so the
+ * height-2-normalized mark is 2 of the slab's 3.32 units = **60 % of the
+ * slab's height** (and its ±0.814 width is 58 % of the slab's ±1.3945), with
+ * margin at every tumble angle on the axis-wise test: the slab's smallest
+ * support half-extent over all rotations is its z half-depth 1.079, still
+ * larger than the mark's 1.0.
+ * ⚠ That test is axis-wise, not a containment PROOF — the mark's bounding-box
+ * CORNER sits at 1.29, and the off-axis parallax term (see MARK_THICKNESS)
+ * slides the sampled window by up to ~0.5 crystal units on the near cap. So at
+ * some poses the outermost few percent of the mark's frame falls outside the
+ * silhouette. Nothing clips it — there is simply no geometry there to sample
+ * (the `Discard` in crystalBuild is the alpha/fade guard, NOT a silhouette
+ * cut) — the mark just runs off the edge of the stone, which is what looking
+ * through a stone does. The logo's own strokes stay well inside; keep the mark
+ * at ≲0.75 of the slab's height if that margin is ever spent.
+ * (The old map, for the record, ran the mark at 119 % of the window it was
+ * shown through — cropped top and bottom. See the MARK_COORD_SCALE removal
+ * note above.)
+ * Dev-tunable 0.7 … 1.6 via `…uniforms.uMarkHalf`.
+ */
+export const MARK_WORLD_HALF = 1.15;
+/**
+ * ROUND 9-C — the y-flip. **SETTLED FROM THE THREE SOURCE, NOT LEFT TO THE
+ * BROWSER: it is −1.** (`markUv.y = 0.5 − dNdc.y/(2·halfNdc.y)`.)
+ *
+ * ⚠ CHECK-ROUND CORRECTION. The round-9 doc §3.6 — and the comment that used to
+ * sit here — reasoned: "three flips y on the WebGPU path because it samples a
+ * FRAMEBUFFER COPY whose origin convention is flipped; igloo, on WebGL against
+ * its own RenderTarget, does not flip; we sample our OWN RenderTarget.texture,
+ * so no flip, +1." Every clause of that is wrong for three 0.184, and the
+ * source settles it three ways:
+ *   1. `nodes/functions/PhysicalLightingModel.js:133-136` — three's own
+ *      `getIBLVolumeRefraction` does `ndc.xy/w`, `+1`, `/2`, then
+ *      `vec2(x, y.oneMinus())  // webgpu`. That flip is in the TSL GRAPH, i.e.
+ *      it runs on BOTH backends — it is not a WebGPU-only correction.
+ *   2. `nodes/accessors/TextureNode.js:853` — the compensating uv flip is
+ *      enabled for `isRenderTargetTexture === true` **and**
+ *      `isFramebufferTexture === true` in the SAME predicate. A framebuffer
+ *      copy and our own RenderTarget are the same case; the distinction the
+ *      doc leaned on does not exist.
+ *   3. `WGSLNodeBuilder.isFlipY() → false`, `GLSLNodeBuilder.isFlipY() → true`
+ *      (which then applies `uv.y → 1 − uv.y` for RT textures), and
+ *      `ScreenNode.generate` flips `screenCoordinate` on GL "// follow webgpu
+ *      standards". Net: on BOTH backends three's convention for an RT texture
+ *      is **uv.y = 0 at the TOP of the rendered image** (NDC y = +1), y-DOWN —
+ *      while `ndc·0.5 + 0.5` is y-UP. So the flip is required, backend-
+ *      independently, and it stays required if MARK_RT_WEBGL2 is ever flipped
+ *      on. `RenderTarget` sets `texture.isRenderTargetTexture = true`
+ *      (`core/RenderTarget.js:142`), so we are squarely in that predicate.
+ * Shipping +1 would have put the logo UPSIDE-DOWN — i.e. it would have failed
+ * the owner's one acceptance test ("voglio che si veda il logo") for a reason
+ * that has nothing to do with the map this round fixed.
+ *
+ * The knob survives as a knob (console: `…uniforms.uMarkFlipY`) because it
+ * costs nothing, but its value is derived, not guessed: −1.
+ */
+export const MARK_FLIP_Y = -1;
+/**
+ * ROUND 9-C — the documented re-enable path for a mark that TUMBLES in 3D with
+ * the stone instead of standing screen-upright.
+ *
+ * Variant A's one design consequence: because the RT is a subject-local ortho
+ * image and all the camera/placement dependence lives in the shader's
+ * projection, the mark is screen-upright. That is deliberate, not a
+ * limitation-by-accident — the tumble reaches 90° off the view axis inside a
+ * normal scroll pass (see the MARK_COORD_SCALE removal note), and a logo
+ * rotated 90° is unreadable however correct its refraction is. "Si vede il
+ * logo" requires screen-upright.
+ * Flip this to `true` and crystalMarkRT copies the crystal mesh's quaternion
+ * into the RT scene each frame (`mesh.quaternion.copy(q)`), which turns the RT
+ * from render-once into a per-frame 512² render: one clear + one draw of a
+ * ~15 KB unlit mesh + mip gen, ≈0.05 ms — real, but far under the 0.8 ms QA
+ * budget. The full-3D-with-perspective version is Variant B of the round-9 doc
+ * and is a different (per-frame, viewport-sized) rig.
+ */
+export const MARK_TUMBLE: boolean = false;
 /** Igloo lod law (§A1 verbatim): lod = log2(rtSize)·roughness·clamp(2·ior−2,
  * 0,1); at ior 1.18 the ior factor is 0.36 — folded in here. roughEff (frost-
  * veined) drives it, so the veins modulate the mark's softness for free. */

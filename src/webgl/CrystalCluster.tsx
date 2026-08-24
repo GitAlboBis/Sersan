@@ -80,12 +80,16 @@
  *     the SERSAN-mark transmission RT (crystalMarkRT.ts): the shared
  *     RouteHeroLogo mark geometry rendered unlit into a mipmapped RT from
  *     THIS island's existing useFrame (no new loops — the PointerFlowmap
- *     idiom), sampled by crystalBuild's dispersion ladder (+2 fragment
- *     bindings, the material's ONLY texture). MARK_SPIN=0 default → the RT
- *     renders ONCE (igloo-rigid); a dev-handle spin re-renders per visible
- *     frame. WebGL2 fallback: branch not built until the ?backend=webgl2
- *     proof (MARK_RT_WEBGL2). Broken instead gets the in-shader amber ember
- *     core (zero bindings — all in crystalBuild).
+ *     idiom), sampled by crystalBuild (+2 fragment bindings, the material's
+ *     ONLY texture). MARK_SPIN=0 default → the RT renders ONCE (igloo-rigid);
+ *     a dev-handle spin re-renders per visible frame. WebGL2 fallback: branch
+ *     not built until the ?backend=webgl2 proof (MARK_RT_WEBGL2). Broken
+ *     instead gets the in-shader amber ember core (zero bindings — all in
+ *     crystalBuild). ROUND 9-C moved the SAMPLING (crystal-local ortho map →
+ *     igloo's origin-registered projective one) entirely inside crystalBuild's
+ *     fragment; this island is unchanged except that it now hands the mesh
+ *     quaternion to `rig.render()` for the documented MARK_TUMBLE flag, which
+ *     is false by default and leaves the RT render-once.
  *   - §B-c PLEXUS — healthy + full tier only (restraint): the igloo net
  *     (crystalPlexus.ts), 2 position-only draw calls mounted in this group,
  *     advanced from this useFrame; its connect gate |a| < 0.30 makes it
@@ -639,9 +643,15 @@ export function CrystalCluster({
     // markRigRef is null otherwise). Driven from THIS existing useFrame —
     // no new loops (PointerFlowmap idiom); the cull early-return above
     // already gates it to "band inside the cull window". With the default
-    // MARK_SPIN 0 this is a one-time render, then a no-op every frame. -----
+    // MARK_SPIN 0 this is a one-time render, then a no-op every frame.
+    //
+    // ROUND 9-C: the mesh quaternion is handed over for the documented
+    // MARK_TUMBLE path only — the rig ignores it while the flag is false (the
+    // shipped default), so this stays render-once. Variant A's mark is
+    // screen-upright by design; the tumble reaches 90° off the view axis inside
+    // a normal scroll pass, at which point no logo is readable. --------------
     const rig = markRigRef.current;
-    if (rig) rig.render(gl, t);
+    if (rig) rig.render(gl, t, mesh.quaternion);
 
     // --- Round 7-2b §B-c — advance the plexus (healthy full only). The
     // tumble quaternion just written above is applied to the point positions
@@ -942,7 +952,23 @@ export function CrystalCluster({
           warmGain: u.uWarmGain.value, // dead node on lite
           emberGain: u.uEmberGain.value, // dead node on healthy / lite
           markGain: u.uMarkGain.value, // dead node unless mark branch built
-          markScale: u.uMarkScale.value, // dead node unless mark branch built
+          // ROUND 9-C — the origin-registered perspective map's three knobs
+          // (crystalConfig MARK_THICKNESS / MARK_WORLD_HALF / MARK_FLIP_Y); all
+          // dead nodes unless the mark branch is built. `markScale` is GONE —
+          // the crystal-local ortho map it scaled IS the defect 9-C removed.
+          //   markThick — THE swim knob, 0.15 (reads like a decal) … 0.9
+          //     (today's old effective, strokes break between patches). It
+          //     moves the REFRACTIVE DISPLACEMENT only: Δuv = markThick·sin δ /
+          //     (2·markHalf); the mark's placement is the projective identity
+          //     and does not depend on it.
+          //   markHalf  — size, LOWER = BIGGER (0.7 … 1.6). 1.15 puts the mark
+          //     at 60 % of the slab's height, inside the silhouette.
+          //   markFlipY — **−1**, derived from the three source, not guessed
+          //     (config MARK_FLIP_Y: three's RT-texture uv convention is
+          //     y-DOWN on both backends). +1 renders the logo upside-down.
+          markThick: u.uMarkThick.value,
+          markHalf: u.uMarkHalf.value,
+          markFlipY: u.uMarkFlipY.value,
           // round-8-E value world (crystalBuild header §1–§4):
           backdropGain: u.uBackdropGain.value, // coupled to feel.fogEnergy
           ambGain: u.uAmbGain.value,
