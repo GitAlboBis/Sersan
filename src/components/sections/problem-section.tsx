@@ -12,6 +12,7 @@ import {
   useLedgerReveal,
   useTextDrift,
   useIgnitionWave,
+  rowDriftK,
 } from "@/components/fx/lusion-type";
 
 /**
@@ -56,10 +57,18 @@ import {
  *     opacity .1→1 + y 100→0, expo.out, 0.01s/word) cascaded +0.3s after the
  *     roll starts. Everything resets when the row fully leaves the viewport
  *     and replays on re-entry (Lusion `_needsReset`).
- *   - DRIFT (useTextDrift): the display line drifts at k=0.5, the body at
- *     k=1.5, the chapter desc at 1.25 — translateY by distance from viewport
- *     center, zero when the row is centered, subtle at the edges. One shared
- *     ticker, transform-only, zero per-frame gBCR. Hairlines never drift.
+ *   - DRIFT (useTextDrift, round-11 pairing): each row is ONE plane — its
+ *     display line and its body share `rowDriftK(i)` (0.5 / 0.66 / 0.82 down
+ *     the stack), so their gap is monotone in the block center and can only
+ *     grow. The body's old k=1.5 counter-drift is DEAD: it pulled the
+ *     paragraph up while the headline went down and, with the pre-round-11
+ *     unbounded dCenter, closed the 12–20px gap to −44px (solid ink over
+ *     solid ink once the round-10 type went opaque). The depth now lives
+ *     BETWEEN rows, where the py-8/py-10 gutter can absorb it, and the
+ *     chapter desc keeps its 1.25 counter-drift. Every dy is saturated at
+ *     ±DRIFT_MAX (24px ≥lg / 8px below) — see THE COLLISION ALGEBRA in
+ *     fx/lusion-type.ts. One shared ticker, transform-only, zero per-frame
+ *     gBCR. Hairlines never drift.
  *   - SOLID DISPLAY TYPE (round 10 — replaces the round-3 z-interleave
  *     illusion, owner-rejected): the EFFECT word is filled serif in the
  *     sanctioned ember amber hsl(36 60% 72%) — 10.7:1 on --bg vs the body's
@@ -484,14 +493,18 @@ export default function ProblemSection() {
               {...rowHandlers[i]}
               className="plrow relative py-8 max-sm:py-4 lg:py-10"
             >
-              {/* The display line — drift k=0.5. Index and arrow settle on
-                  entry (inline-block wrappers: GSAP transforms are no-ops on
-                  plain inline boxes); the arrow's IGNITED slide is GSAP-owned
-                  (data-wave-arrow, Hv1) — the entrance owns only the outer
-                  wrapper, never the same element. The EFFECT word (solid
-                  amber since round 10) rolls like the cause and carries the
-                  wave clip escape (inset(0 -2em)). */}
-              <div data-drift="0.5">
+              {/* The display line — drift rowDriftK(i), the SAME k the body
+                  below it uses (round-11 pairing rule: identical k makes the
+                  gap between them monotone in the block center, so it can
+                  only grow — the paragraph can never climb into the headline
+                  again). Index and arrow settle on entry (inline-block
+                  wrappers: GSAP transforms are no-ops on plain inline boxes);
+                  the arrow's IGNITED slide is GSAP-owned (data-wave-arrow,
+                  Hv1) — the entrance owns only the outer wrapper, never the
+                  same element. The EFFECT word (solid amber since round 10)
+                  rolls like the cause and carries the wave clip escape
+                  (inset(0 -2em)). */}
+              <div data-drift={rowDriftK(i)}>
                 <h3 className="font-display text-[clamp(1.9rem,3.6vw,3.9rem)] leading-[1.05] tracking-[-0.01em] text-ink">
                   <span
                     data-row-rise
@@ -523,10 +536,15 @@ export default function ProblemSection() {
               </div>
               {/* The body — UNDER the display line (W2), Switzer at body
                   scale, left-aligned to the line start, ~34em measure.
-                  B1 word-wave entrance (split → remount on language);
-                  drift k=1.5. max-sm 0.875rem/1.45 + mt-3: §Mobile budget
-                  trim (still body Switzer, clearly not a caption). */}
-              <div data-drift="1.5" className="mt-3 sm:mt-5">
+                  B1 word-wave entrance (split → remount on language).
+                  DRIFT: rowDriftK(i) — the display line's k, not a deeper
+                  one. It used to be 1.5, i.e. it counter-drifted UP while the
+                  headline drifted DOWN, and with an unbounded dCenter that
+                  differential ate the whole 12–20px gap (measured −44px).
+                  The row now moves as ONE plane; the depth is between rows.
+                  max-sm 0.875rem/1.45 + mt-3: §Mobile budget trim (still body
+                  Switzer, clearly not a caption). */}
+              <div data-drift={rowDriftK(i)} className="mt-3 sm:mt-5">
                 <p
                   key={language}
                   data-row-body

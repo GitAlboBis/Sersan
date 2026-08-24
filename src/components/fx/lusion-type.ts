@@ -51,19 +51,37 @@
  *
  * `useTextDrift(scope, language)` — the per-frame parallax (dossier §0/§4
  *   `showScreenOffset`). Every `[data-drift="<k>"]` wrapper translates
- *   dy = (1−k)·dCenter·DRIFT_SCALE where dCenter = block center − viewport
- *   center (px): zero when the row is centered/readable, peaking subtly
- *   (~16–32px at DRIFT_SCALE 0.12) at the viewport edges — depth layering,
- *   never collision. ONE module-level gsap.ticker driver serves every
- *   registered block across both sections. Per frame: one window.scrollY
- *   read + pure arithmetic + a transform write per visible block — ZERO
- *   getBoundingClientRect in the loop (rects cached at register and
- *   re-measured on every ScrollTrigger refresh, drift-corrected so the
- *   applied transform never feeds back into the measurement). Blocks whose
- *   section is fully off-screen are skipped. The drift wrapper's transform
- *   is owned EXCLUSIVELY by this driver — entrances animate inner elements,
- *   and the problem heading's drift wrapper nests INSIDE `[data-emerge]`
- *   (the passage's transform target), never shares it.
+ *   dy = sat((1−k)·dCenter·DRIFT_SCALE) where dCenter = block center −
+ *   viewport center (px): zero when the row is centered/readable, peaking
+ *   subtly at the viewport edges — depth layering, never collision. ONE
+ *   module-level gsap.ticker driver serves every registered block across both
+ *   sections. Per frame: one window.scrollY read + pure arithmetic + a
+ *   transform write per visible block — ZERO getBoundingClientRect in the
+ *   loop (rects cached at register and re-measured on every ScrollTrigger
+ *   refresh, drift-corrected so the applied transform never feeds back into
+ *   the measurement). Blocks whose section is fully off-screen are skipped.
+ *   The drift wrapper's transform is owned EXCLUSIVELY by this driver —
+ *   entrances animate inner elements, and the problem heading's drift
+ *   wrapper nests INSIDE `[data-emerge]` (the passage's transform target),
+ *   never shares it.
+ *
+ *   ROUND 11 (2026-08-24) — THE COLLISION FIX. Two invariants now make text
+ *   overlap structurally impossible; both are proved in the driver's own
+ *   block comment below (§ Per-frame parallax drift), and every consumer
+ *   must honour them:
+ *     (1) SATURATION. `dy` is soft-clamped to ±DRIFT_MAX (tanh), so the
+ *         separation two blocks can lose is bounded by DRIFT_MAX (same-sign
+ *         (1−k)) or 2·DRIFT_MAX (opposite sign) — never by the section's
+ *         height. Before this, dCenter was unbounded inside a tall section:
+ *         a block 1,500px down a 2,400px section drifted ~90px, blowing
+ *         straight through the 20px the layout puts between a headline and
+ *         its own paragraph. That was the measured defect (−44px gaps).
+ *     (2) PAIRING. A block and the block DIRECTLY BELOW it in the same flow
+ *         may only carry different k if the layout gap between them can
+ *         absorb the bound in (1). A row's display line and its own body
+ *         cannot (20px desktop / 12px phone), so they share ONE k via
+ *         `rowDriftK(i)` — identical k ⇒ the gap is monotone in the block
+ *         center ⇒ it can only ever GROW. See `rowDriftK` below.
  *
  * `useIgnitionWave(scope)` — recipe Hv1 for rows with arrows (problem only):
  *   on ignition the EFFECT word's `[data-wave-word] [data-roll-col]` chars
@@ -142,9 +160,29 @@ const ARROW_SHIFT_EM = 1.8;
 const ARROW_DELAY = 0.12;
 const ARROW_DUR = 0.28;
 
-/** Differential drift: dy = (1−k)·dCenter·DRIFT_SCALE. 0.12 puts the peak
- * offset at the viewport edge around 32px for k 0.5/1.5 and ~16px for 1.25. */
+/** Differential drift: dy = (1−k)·dCenter·DRIFT_SCALE, then saturated. */
 const DRIFT_SCALE = 0.12;
+
+/** Saturation ceiling for |dy| (px). THE number the collision proof rests on:
+ * a stacked pair loses at most DRIFT_MAX of its layout gap (both (1−k) the
+ * same sign) or 2·DRIFT_MAX (opposite sign — the k=1.25 chapter description
+ * counter-drifting against a k<1 neighbour). Two tiers, keyed to the ledger
+ * sections' OWN whitespace budget, which is itself breakpoint-dependent:
+ *   ≥1024 (lg): rows are py-10 (40px each side), the chapter is two side-by-
+ *     side columns 48px above the ledger (+40px row padding = 88px of air).
+ *     Binding pairs: body↔its own hairline 39px (the 40px pad less the
+ *     hairline's own h-px, loss ≤ 24 → 15px left; measured 15.1),
+ *     chapter desc↔row 1 88px (loss ≤ 48 → 40px left; measured 41.7).
+ *   <1024: rows are py-8/py-4 and the chapter columns STACK with gap-6 (24px)
+ *     — the tightest opposite-sign pair on the page. Binding: 2·8 = 16 < 24
+ *     (8px left; measured 8.1) and body↔hairline 15px at max-sm (loss ≤ 8 →
+ *     7px left; measured 7.0).
+ * Re-tiered on the raw `resize` event (see syncDriftViewport), never in the
+ * tick. */
+const DRIFT_MAX_WIDE = 24;
+const DRIFT_MAX_COMPACT = 8;
+/** Tailwind's `lg` — where both ledger sections change their spacing scale. */
+const DRIFT_WIDE_MIN_W = 1024;
 
 // === Shared plumbing =======================================================
 
@@ -512,6 +550,70 @@ export function useLedgerReveal(
 // section's doc-space band for the off-screen skip); the tick is pure
 // arithmetic + a quickSetter write. Rects re-measure on every ScrollTrigger
 // refresh (resize, fonts, layout changes) — never in the loop.
+//
+// THE COLLISION ALGEBRA (round 11 — read this before changing any k).
+// Write a = 1−k, S = DRIFT_SCALE, M = DRIFT_MAX, u = center − viewCenter:
+//
+//     dy(a, u) = M · tanh(a·u·S / M)
+//
+// For an upper block i and the block j directly below it, the rendered gap is
+//     gap = G0 + dy_j − dy_i          (G0 = the authored layout gap)
+// and the three facts that matter are:
+//
+//   (1) |dy| < M  for every block, at every scroll position, always.
+//   (2) a_i = a_j > 0  ⇒  gap ≥ G0. dy is strictly increasing in the block
+//       center (a > 0 and tanh is strictly increasing), and both blocks read
+//       the same viewCenter, so center_j > center_i ⇒ dy_j > dy_i. The gap
+//       can only GROW — and note this holds even if the cached centers are
+//       stale, since only their ORDER matters. This is why a row's display
+//       line and its own body must share one k (`rowDriftK`, all values < 1)
+//       — it makes the defect impossible rather than merely small.
+//       Exactly: gap ≥ G0 − 2·0.05px. The tick's 0.05px write dead-band
+//       below means each block's APPLIED dy trails its ideal dy by < 0.05px,
+//       and the two blocks can be on opposite sides of their dead-bands.
+//       Measured worst case at 390px: 11.99 against an authored 12. That is
+//       the entire error budget of (2) — it is sub-pixel by construction and
+//       cannot accumulate, because the dead-band is absolute, not relative.
+//   (3) a_i ≠ a_j ⇒ gap ≥ G0 − M when a_i, a_j have the SAME sign (both dy
+//       then share u's sign, so the loss is one-sided), and ≥ G0 − 2M when
+//       the signs differ (k>1 counter-drift). So a differential k between two
+//       stacked blocks is only legal when their layout gap exceeds that
+//       bound — see DRIFT_MAX for the per-breakpoint budget.
+//
+// The pre-round-11 driver had no (1): u ran to the whole section height, so
+// dy reached ±90px inside a 20px gap and the paragraph climbed into its own
+// headline. tanh rather than a hard Math.min/max clamp: both are monotone
+// (so both would satisfy (2)), but a clamp freezes the block dead once it
+// saturates — it then scrolls glued to the page while its neighbours keep
+// moving, and the derivative jump reads as a snap. tanh is C¹, compresses
+// only the far field (−8% at half the ceiling, where the reading happens) and
+// approaches M without ever reaching it.
+//
+// WHAT (2) IS IMMUNE TO — verified live in Chrome, not just argued, because
+// the first cut of this proof was quoted against samples it could not explain:
+//   - STALE CENTERS of any size. `#trust` was shoved down 700px with a style
+//     write (a reflow that fires no resize and therefore no refresh, so the
+//     cache stayed 700px behind); every display↔body gap in the section
+//     still measured ≥ 20.02px. (2) reads the cached centers only through
+//     their order, and no layout ever puts a row's body above its own
+//     display line, so the order survives arbitrary staleness. The unbounded
+//     bounds in (1)/(3) never depended on the centers at all.
+//   - A LAGGING SCROLL READ. Both blocks are evaluated against the same
+//     viewCenter in the same tick, so a transform computed one frame (or one
+//     720px jump) behind the rects is just (2) evaluated at a different
+//     viewCenter — still monotone. Measured: a 697px jump read in the same
+//     frame moved the row-0 transform by 31px and the GAP by +2.05px, i.e.
+//     it grew. This is also the explanation for the "unexplained −33.7 vs
+//     +50 measured" sample in the round-11 handoff: under the OLD opposite-
+//     sign law the same one-frame lag lands as (a_disp − a_body)·S·step =
+//     0.12 × 697 = 83.6px of gap error — the exact size of the anomaly. It
+//     was never a stale centre; it was a harness reading rects before the
+//     tick caught up. Same-k makes that whole failure class second-order.
+// What (2) is NOT immune to is two blocks of one pair being measured in
+// DIFFERENT layout snapshots. They are not: useTextDrift registers a whole
+// scope in one synchronous loop and measureAllDrift re-measures every entry
+// in one, with no DOM writes in between. Any future partial re-registration
+// would have to preserve that.
 
 interface DriftEntry {
   el: HTMLElement;
@@ -532,6 +634,39 @@ interface DriftEntry {
 const driftEntries: DriftEntry[] = [];
 let driftArmed = false;
 let driftWinH = 0;
+/** Saturation ceiling in force (px) — re-tiered on refresh, read in the tick.
+ * Seeded with the tighter tier so a pre-measure frame can never overshoot. */
+let driftMax = DRIFT_MAX_COMPACT;
+
+/** Viewport-derived constants. Event-driven (register + the raw `resize`
+ * event + ScrollTrigger refresh) — never called from the tick.
+ *
+ * It is bound to raw `resize` and NOT only to ScrollTrigger's refresh, which
+ * is what the first cut of this did: smooth-scroll-provider debounces that
+ * refresh 150ms and RESTARTS the timer on every resize event (and gsap's own
+ * internal `_onResize` does the same), so during a continuous window drag
+ * neither one fires until the drag STOPS. A drag from ≥1024 down to phone
+ * width would then run the WIDE ceiling (24px) against the COMPACT layout's
+ * budget for the whole drag — the 24px stacked chapter pair (needs 2M ≤ 24)
+ * and the 15px body↔hairline (needs M ≤ 15) both go negative, i.e. the bounds
+ * in THE COLLISION ALGEBRA get quoted against a budget that no longer exists.
+ * Re-tiering here is two viewport reads and zero rect reads, so the ceiling
+ * tracks the live breakpoint with no debounce. The cached CENTERS stay stale
+ * until the refresh lands — which fact (2) proves harmless for a same-k pair,
+ * since it depends on their ORDER and not on their value (verified live: a
+ * 700px injected reflow with no refresh left every display↔body gap ≥ 20px).
+ *
+ * This does NOT re-open D-9. That contract gates `ScrollTrigger.refresh()` on
+ * a phone because re-measuring every trigger under the user's thumb makes
+ * pins jump; it says nothing about reading two viewport numbers. A URL-bar
+ * collapse now moves viewCenter by Δh/2 immediately instead of holding a
+ * stale innerHeight until some unrelated refresh — worth ≤2.5px of dy, in the
+ * correct direction, during a frame where the viewport is already resizing. */
+function syncDriftViewport(): void {
+  driftWinH = window.innerHeight;
+  driftMax =
+    window.innerWidth >= DRIFT_WIDE_MIN_W ? DRIFT_MAX_WIDE : DRIFT_MAX_COMPACT;
+}
 
 function measureDriftEntry(en: DriftEntry, scrollY: number): void {
   const r = en.el.getBoundingClientRect();
@@ -545,7 +680,7 @@ function measureDriftEntry(en: DriftEntry, scrollY: number): void {
 
 function measureAllDrift(): void {
   if (typeof window === "undefined") return;
-  driftWinH = window.innerHeight;
+  syncDriftViewport();
   const sy = window.scrollY;
   for (let i = 0; i < driftEntries.length; i++) {
     measureDriftEntry(driftEntries[i], sy);
@@ -560,7 +695,10 @@ function driftTick(): void {
     const en = driftEntries[i];
     // Skip writes while the block's section is fully off-screen.
     if (en.secBottom < sy || en.secTop > viewBottom) continue;
-    const dy = (1 - en.k) * (en.center - viewCenter) * DRIFT_SCALE;
+    // Saturated at ±driftMax — see THE COLLISION ALGEBRA above. Math.tanh is
+    // a plain numeric intrinsic: no allocation, ~a dozen calls per frame.
+    const raw = (1 - en.k) * (en.center - viewCenter) * DRIFT_SCALE;
+    const dy = driftMax * Math.tanh(raw / driftMax);
     if (Math.abs(dy - en.dy) < 0.05) continue;
     en.dy = dy;
     en.set(dy);
@@ -573,6 +711,9 @@ function armDriftDriver(): void {
   measureAllDrift();
   gsap.ticker.add(driftTick);
   ScrollTrigger.addEventListener("refresh", measureAllDrift);
+  // Ceiling re-tier only — no rect reads, no refresh, no debounce. See
+  // syncDriftViewport for why the refresh listener above is not enough.
+  window.addEventListener("resize", syncDriftViewport, { passive: true });
 }
 
 function disarmDriftDriverIfEmpty(): void {
@@ -580,6 +721,7 @@ function disarmDriftDriverIfEmpty(): void {
   driftArmed = false;
   gsap.ticker.remove(driftTick);
   ScrollTrigger.removeEventListener("refresh", measureAllDrift);
+  window.removeEventListener("resize", syncDriftViewport);
 }
 
 function registerDrift(
@@ -597,7 +739,7 @@ function registerDrift(
     dy: 0,
     set: gsap.quickSetter(el, "y", "px") as (value: number) => void,
   };
-  if (!driftWinH) driftWinH = window.innerHeight;
+  if (!driftWinH) syncDriftViewport();
   measureDriftEntry(en, window.scrollY);
   driftEntries.push(en);
   armDriftDriver();
@@ -607,6 +749,27 @@ function registerDrift(
     gsap.set(el, { clearProps: "transform" });
     disarmDriftDriverIfEmpty();
   };
+}
+
+/** Per-ROW drift depth for a ledger stack (a = 1−k → 0.50 / 0.34 / 0.18: the
+ * top row is the nearest plane, each row below it sits further back). All
+ * three are < 1, so no row ever counter-drifts against its neighbour — fact
+ * (3) above then bounds an inter-row loss at DRIFT_MAX (24px desktop) against
+ * the 80px py-10 gutter between rows. */
+const ROW_DRIFT_K = [0.5, 0.66, 0.82];
+
+/**
+ * THE PAIRING RULE, in one function. Both blocks of ledger row `i` — the
+ * display line and the paragraph under it — must call this and get the SAME
+ * number, which is what makes `bodyTop − claimBottom` monotone (fact (2)
+ * above) and therefore never smaller than the authored gap. Do NOT hand the
+ * body a different k "for depth": the intra-row gap is 20px on desktop and
+ * 12px on a phone, and the drift budget that fits inside it is not worth
+ * having. The depth lives BETWEEN rows instead, which is where there are 80px
+ * to spend.
+ */
+export function rowDriftK(index: number): number {
+  return ROW_DRIFT_K[index % ROW_DRIFT_K.length];
 }
 
 /**

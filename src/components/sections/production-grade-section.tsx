@@ -12,6 +12,7 @@ import {
   useChapterReveal,
   useLedgerReveal,
   useTextDrift,
+  rowDriftK,
 } from "@/components/fx/lusion-type";
 
 /**
@@ -37,7 +38,10 @@ import {
  *     replay on re-entry). key={language} + revert discipline unchanged. The
  *     D-17 description is no longer a 13px caption — a structural right grid
  *     column at BODY scale (`[data-chapter-desc]`), revealed in B3 spirit
- *     cascaded after the title, drifting at k=1.25. Byte-identical string.
+ *     cascaded after the title, drifting at k=1.25. Two sentences since
+ *     2026-08-24 (see the D-17 note at the string): the "Open a panel…"
+ *     pointer was cut with owner approval — the panels are gone and the
+ *     artifacts it pointed at render right below it.
  *   - Each artifact is a FULL-WIDTH row over a hairline (no right cell): a
  *     mono kicker line `[01·] [cluster label]`, the CLAIM in SOLID display
  *     serif (round 10 — the WebGL field flows behind it, not through it),
@@ -60,9 +64,18 @@ import {
  *     immediately (the field must read "already landed"). On the fallback
  *     tier the SVG twin draws its own ring ignition on mount; the store
  *     write is a harmless no-op there.
- *   - DRIFT (useTextDrift): kicker+claim block at k=0.5, body at k=1.5,
- *     chapter desc at 1.25. One shared ticker, transform-only, zero
- *     per-frame gBCR. Hairlines never drift. No arrows here → no Hv1 wave.
+ *   - DRIFT (useTextDrift, round-11 pairing): each row is ONE plane — its
+ *     kicker+claim block and its body share `rowDriftK(i)` (0.5 / 0.66 /
+ *     0.82 down the stack), so their gap is monotone in the block center and
+ *     can only grow. The body's old k=1.5 counter-drift is DEAD: measured
+ *     live at 1920×935, `bodyTop − claimBottom` on these three rows swung
+ *     from +151px to −44px across 840px of scroll — solid paragraph ink
+ *     inside solid claim ink once the round-10 type went opaque. The depth
+ *     now lives BETWEEN rows, where the py-8/py-10 gutter can absorb it; the
+ *     chapter desc keeps its 1.25 counter-drift. Every dy is saturated at
+ *     ±DRIFT_MAX (24px ≥lg / 8px below) — see THE COLLISION ALGEBRA in
+ *     fx/lusion-type.ts. One shared ticker, transform-only, zero per-frame
+ *     gBCR. Hairlines never drift. No arrows here → no Hv1 wave.
  *   - IGNITION (fine-pointer hover, keyboard focus, touch centre-band) stays
  *     the CSS accent, now expressed in ink: the claim lifts from ink to an
  *     icy cyan-white hsl(189 100% 96%) — BRIGHTER than rest, never dimmer
@@ -90,8 +103,10 @@ import {
  *     styling is pure CSS colour on real text, rows are tabIndex=0 with the
  *     global :focus-visible ring; focus = ignition.
  *
- * Copy is byte-identical to the pre-refactor section (EN + IT), including the
- * D-17 "Open a panel…" description and the closing disclaimer.
+ * Copy is byte-identical to the pre-refactor section (EN + IT) — the closing
+ * disclaimer included — with ONE owner-approved exception, 2026-08-24: the
+ * D-17 description's trailing "Open a panel…" sentence is deleted in both
+ * locales (see the note at the string).
  */
 
 // === Shared: run a quiet status pulse only while in view ==================
@@ -419,11 +434,19 @@ export default function ProductionGradeSection() {
               data-chapter-desc
               className="max-w-[34em] text-[clamp(1rem,1.2vw,1.3rem)] max-sm:text-[0.9rem] leading-[1.5] text-ink-mute"
             >
-              {/* Device-neutral verb (D-17, owner-approved 2026-08-11): ONE
-                  string per locale, byte-identical under the copy freeze. */}
+              {/* D-17, owner-approved 2026-08-24: the third sentence
+                  ("Open a panel to see why it matters." / "Apri un pannello
+                  per capire perché conta.") is CUT. It promised a panel
+                  interaction this section no longer has, and the three
+                  artifacts it pointed at now render directly below this
+                  description — the pointer was both wrong and redundant. The
+                  earlier D-17 note here recorded the choice of a
+                  device-neutral verb inside that sentence; that decision has
+                  no subject left. ONE string per locale; the remaining two
+                  sentences are byte-identical under the copy freeze. */}
               {isEn
-                ? "Not a list of compliance buzzwords. These are artifacts you can ask to see in any scoping call. Open a panel to see why it matters."
-                : "Non un elenco di buzzword sulla compliance. Sono artefatti che puoi chiedere di vedere in qualsiasi call di scoping. Apri un pannello per capire perché conta."}
+                ? "Not a list of compliance buzzwords. These are artifacts you can ask to see in any scoping call."
+                : "Non un elenco di buzzword sulla compliance. Sono artefatti che puoi chiedere di vedere in qualsiasi call di scoping."}
             </p>
           </div>
         </div>
@@ -491,8 +514,12 @@ export default function ProductionGradeSection() {
               {...rowHandlers[i]}
               className="pgrow relative py-8 max-sm:py-4 lg:py-10"
             >
-              {/* Kicker + claim — drift k=0.5. */}
-              <div data-drift="0.5">
+              {/* Kicker + claim — drift rowDriftK(i), the SAME k the body
+                  below it uses (round-11 pairing rule: identical k makes the
+                  gap between them monotone in the block center, so it can
+                  only grow — the paragraph can never climb into the claim
+                  again). */}
+              <div data-drift={rowDriftK(i)}>
                 {/* Kicker line: the mono index settles on entry (inline-block:
                     GSAP transforms are no-ops on plain inline boxes); the
                     cluster label's letter-roll is recipe R1 (goes accent on
@@ -524,9 +551,14 @@ export default function ProductionGradeSection() {
               </div>
               {/* The why — UNDER the claim (W2), Switzer at body scale,
                   ~34em measure. B1 word-wave entrance (split → remount on
-                  language); drift k=1.5. max-sm 0.875rem/1.45 + mt-3:
+                  language). DRIFT: rowDriftK(i) — the claim's k, not a
+                  deeper one. It used to be 1.5, i.e. it counter-drifted UP
+                  while the claim drifted DOWN, and with an unbounded dCenter
+                  that differential ate the whole 12–20px gap (measured
+                  −44px on these very rows). The row now moves as ONE plane;
+                  the depth is between rows. max-sm 0.875rem/1.45 + mt-3:
                   §Mobile budget trim (still body Switzer, not a caption). */}
-              <div data-drift="1.5" className="mt-3 sm:mt-5">
+              <div data-drift={rowDriftK(i)} className="mt-3 sm:mt-5">
                 <p
                   key={language}
                   data-row-body
