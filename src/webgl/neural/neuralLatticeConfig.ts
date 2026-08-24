@@ -117,6 +117,20 @@
  * time (1.029 vs the 0.707 it had) — the derivation and the tie point are at
  * STAR_CORE_EMIS.
  *
+ * ROUND 9-B (2026-08-24) — THE NET SITS UNDER THE COPY. Owner: "la rete
+ * neurale ora sta sopra le scritte, deve stare sotto, le scritte non si
+ * leggono." Round 8-G/8-I made the plexus crisp and bright, and it now runs
+ * across the ledger copy. This is a CONTRAST fix, not a stacking one (the
+ * canvas is behind the DOM): a single 2D MASK — an x ramp derived from the real
+ * `container-px` / `max-w-[34em]` geometry, times a gentler y term over the
+ * text band — multiplies the OUTPUT ALPHA of the star/dust particles and of the
+ * LineSegments layer, with a separate floor per layer. Both layers evaluate the
+ * IDENTICAL pure function of LOCAL x/y at their own live position, so they
+ * cannot disagree. Right of the ramp the mask is exactly 1 and every number
+ * below is byte-identical. The derivation, the per-viewport table and the WCAG
+ * arithmetic (5.38:1 at the brightest remaining pixel, AA 4.5:1) live at the
+ * COPY-COLUMN MASK section at the bottom of this file.
+ *
  * ROUND-8-F (2026-08-22) — BAKE THE LIVE TUNING. Round-8-D's LOOK numbers were
  * derived arithmetically and never eyeballed; shipped, the plexus read as faint
  * dust with dotted link trails instead of the reference's star-mesh. The owner
@@ -1565,3 +1579,277 @@ export const NEURAL_ORBIT_FREQ_X = 0.13;
 export const NEURAL_Z_BREATHE = 0.015;
 /** group.scale.z = rect-height·k · this factor (honest depth for the net). */
 export const NEURAL_DEPTH_SCALE_FACTOR = 1.0;
+
+// === ROUND 9-B — THE COPY-COLUMN MASK =======================================
+// Owner, verbatim (2026-08-24): "la rete neurale ora sta sopra le scritte, deve
+// stare sotto, le scritte non si leggono."
+//
+// NOT A STACKING BUG. The canvas is behind the DOM; this is a CONTRAST bug that
+// round 8-G/8-I created by design — the plexus became crisp and bright (star
+// core post-blend 10.67, links 0.568 under a soft knee) and it runs straight
+// across the ledger copy in both neural bands.
+//
+// THE GEOMETRY, DERIVED FROM THE DOM (not guessed). The `[data-lattice-anchor]`
+// band is FULL-BLEED — `left-[calc(50%-50vw)] right-[calc(50%-50vw)]` on a
+// container that is itself centred — so rect.w = 100vw and LOCAL x = 0 is the
+// viewport centre-line. The ledger body copy is `max-w-[34em]`, left-aligned
+// inside `container-px` (`padding-inline: --margin`, 10rem ≥1280; `max-width:
+// 1600px`, `margin-inline: auto`) at `clamp(0.95rem, 1.05vw, 1.15rem)`. Its
+// RIGHT bound, as a fraction of the band width (the same derivation crystalFog
+// / FOG_CLEAR runs, re-run here for the copy box instead of the fog radius):
+//
+//   W      --margin  content-left  font px  34em px  copy right  Δ vs centre   local x
+//   1280   160       160           15.20    516.8    676.8       +36.8  CROSSES  +0.0287
+//   1366   160       160           15.20    516.8    676.8        −6.2           −0.0045
+//   1440   160       160           15.20    516.8    676.8       −43.2           −0.0300
+//   1500   160       160           15.75    535.5    695.5       −54.5           −0.0363
+//   1600   160       160           16.80    571.2    731.2       −68.8           −0.0430
+//   1728   160       224           18.14    616.9    840.9       −23.1           −0.0134
+//   1920   160       320           18.40    625.6    945.6       −14.4           −0.0075
+//
+// (font px = clamp(15.2, 1.05·W/100, 18.4) — note 1.05vw is still UNDER the
+// 0.95rem floor at 1440, which is why the measure does not move until 1500;
+// content-left = (W − min(W,1600))/2 + 160; centre = W/2. Assumes overlay
+// scrollbars — a classic 15 px scrollbar shifts every Δ by ≈ ±7 px ≈ ±0.006 of
+// local x, which COPY_EDGE_PAD absorbs.)
+//
+// CROSS-CHECK: this column reproduces crystalConfig's FOG_CLEAR table EXACTLY
+// (−37 / +6 / +43 / +55 / +69 / +23 / +14 px) — same derivation, same measure,
+// independently re-run for the copy box rather than the fog radius.
+//
+// So the copy is NOT always left of the centre-line: at 1280 it CROSSES it by
+// 37 px. Among DESKTOP widths the worst case is therefore local x **+0.029**,
+// and the mask's floor bound has to sit right of THAT, not of the centre-line.
+// The table does NOT stop there, though — see WHAT IT COSTS below: the gutter
+// narrows under 1280 and the copy keeps growing rightward (+0.098 at 1024,
+// +0.256 at 768, +0.418 at 390). The driver measures the real
+// `[data-row-body]` boxes per band and writes the result into `uCopyEdge`;
+// `copyEdgeFallback(bandWidth)` re-derives this same table in code for the case
+// where no body box is measurable, and COPY_EDGE_LOCAL is only the build-time
+// uniform default.
+//
+// THE MASK (one pure function of LOCAL x/y, evaluated by BOTH layers at their
+// own live local position — `posL` on the LineSegments layer, the simulated /
+// analytic particle position on the particle layer — so the two cannot
+// disagree by construction):
+//
+//   gate   = smoothstep(uCopyEdge, uCopyEdge + uCopySoft, x)     // 0 → 1
+//   yTerm  = mix(1, uCopyYFloor, 1 − smoothstep(Y_IN, Y_OUT, |y|))
+//   mask   = mix(FLOOR, 1, gate) · yTerm
+//
+// with a SEPARATE floor per layer (same ramp, different depth — see
+// COPY_MASK_FLOOR vs COPY_MASK_FLOOR_LINE; the star cores are 18.8× the lines,
+// so one shared floor would either blind the copy or delete the mesh).
+//
+// THE ACCEPTANCE TEST IS ARITHMETIC, NOT TASTE. `--ink-mute` #8A94A6 has
+// relative luminance 0.2935; `--bg` #0B1422 has 0.00686 ⇒ the bare page is
+// 6.04:1. The canvas composites ADDITIVELY under the DOM, so WCAG AA (4.5:1)
+// breaks when the mesh adds
+//     ΔL_max = (0.29336 + 0.05)/4.5 − 0.05 − 0.00687 = **0.01943**.
+// Delivered at the floor (yTerm taken as 1 — the conservative end):
+//     star node CENTRE   6.5 · 10.67 · 1e-4 = 0.00694   (the overlap is real:
+//        12.05 core particles/node, 70.6 % of them inside one 2.19 px sprite
+//        radius, mean disc 0.73 ⇒ ≈6.5 sprites on the centre pixel)
+//     single star fragment  10.67 · 1e-4    = 0.00107
+//     link LINE (own floor, own LINE_LUM_MAX ceiling): rest 0.568 · 3e-3 =
+//        0.0017, ABSOLUTE ceiling 0.97 · 3e-3 = 0.00291
+//     resting dust 0.018 · 1e-4 = 1.8e-6, resting packet bead 3.65 · 1e-4 =
+//        0.00037 — but a bead is NOT gated the way the star's ignition is, so
+//        its reachable peak is the honest number: under the surge head, on a
+//        HOVERED row, emissive (1 + surge·2.2 + packet·1.2)·2.1·mid 1.15·
+//        shimmer 1.04·rowBright 2.0 = 22.1 at COL_CORE (lum 0.9371) × bead
+//        alpha 0.9 ⇒ **18.6 post-blend**, i.e. 0.00186 at the floor. Left
+//        ungated on purpose: at 1/10 of the AA budget the traffic reads as a
+//        faint travelling grain instead of vanishing, and the row-reactive
+//        current stays legible where the reader's own hover put it.
+//   ⇒ brightest remaining pixel 0.00694  →  **5.38:1** (AA pass, 2.80× the
+//     added light still available before the gate). 6.5 is a deliberate
+//     OVER-estimate of the sprite overlap: re-derived from the real chain
+//     (ρ = STAR_CORE_R·STAR_SPREAD·U^2.4 in local units × band height for the
+//     aspect-corrected star, against a sprite whose device-px diameter is
+//     uPointSize·sizeK/CAMERA_Z) the sum of disc at the centre pixel is ≈3.9
+//     on the full tier and ≈2.5 on lite (fewer stars per node, same sprite
+//     size), i.e. the real figure is 0.0040 → 5.65:1.
+//   ⇒ pathological superposition (a capped line crossing a node centre, a bead
+//     riding it) 0.00694 + 0.00291 + 0.00186 = 0.0117  →  **5.05:1**
+//     (AA pass, 1.66× headroom on the conservative overlap; 5.32:1 on the
+//     re-derived one)
+//   ⇒ the nebula smoke (broken only) rides the LINE floor too — 1.6e-4 — and
+//     since it is a QUAD, not a point, its mask is evaluated per FRAGMENT (see
+//     neuralFieldCompute C5): per-vertex it would be a chord through the ramp,
+//     which at phone aspects reads gate 0.80 where the truth is 0.
+// Nothing in the copy column reaches 1/150 of the ≈1.0 bloom threshold either,
+// so the column receives no smeared bloom light on top.
+//
+// WHAT STAYS INTACT: right of the ramp the GATE is exactly 1 and every round-8
+// ratio is preserved — crisp lines, bright stars, the fracture (measured
+// streamCenter(FRACTURE_T).x = +0.139 → gate 0.85 at 1280, 1.0 at ≥1366), the
+// debris and the packet beads. The vertical term still multiplies on top
+// (0.6 across the reading zone), so "gate 1" is "mask 0.6" at the band's
+// middle — a uniform 40 % ceiling drop that scales every element identically.
+// Set COPY_MASK_FLOOR / COPY_MASK_FLOOR_LINE / COPY_Y_FLOOR to 1 for exactly
+// the round-8-I look.
+//
+// The CRYSTAL is NOT masked — CrystalCluster is a separate island with its own
+// build and reads none of these uniforms. At desktop widths it sits at local x
+// ∈ [+0.08, +0.26], entirely right of the copy, so that is free. It is NOT
+// free below ~1100 px (next paragraph).
+//
+// WHAT IT COSTS — MEASURED, not estimated (per-viewport, broken/full: 103
+// nodes, 227 links; "@floor" = gate exactly 0, "<full" = anywhere in the ramp):
+//
+//   W      uCopyEdge   nodes@floor   links@floor   mean node mask   mean link
+//   390      0.4529      97 %          98 %          0.002           0.003
+//   768      0.2912      84 %          85 %          0.066           0.059
+//   1024     0.1334      78 %          82 %          0.125           0.098
+//   1280     0.0637      70 %          74 %          0.147           0.108
+//   1366     0.0305      66 %          70 %          0.172           0.126
+//   1440     0.0050      60 %          65 %          0.199           0.150
+//   1600    −0.0080      59 %          63 %          0.215           0.165
+//   1920     0.0275      63 %          68 %          0.174           0.128
+//
+// (healthy/full and broken/lite are within ±6 points of these at every width.)
+// So the trade is 59–70 % of the cloud at desktop widths, not half — and it is
+// NOT bounded there. `container-px` narrows the gutter and the copy stops being
+// a left column: at 768 the copy ends at local +0.256 and at 390 at +0.418,
+// where the mask floors essentially the ENTIRE plexus (mean node mask 0.002 —
+// invisible). A capable phone mounts this island (fxBudget level 2), so on a
+// phone the Problem/ProductionGrade bands keep the dot-grid and the (unmasked)
+// crystal and lose the net.
+//
+// THAT IS THE DECLARED DESIGN'S HONEST CONSEQUENCE, NOT AN IMPLEMENTATION BUG:
+// where the copy spans the band, "dim everything left of the copy" means "dim
+// everything". Fixing it needs a DIFFERENT instrument below ~1100 px (a global
+// dim + the vertical term rather than an x gate, or a narrow-viewport cloud) —
+// an owner call, not a constant tweak. Recorded here so the next reader is not
+// surprised by an empty phone band.
+/** BUILD-TIME default for `uCopyEdge` — the 1280 case from the table above, so
+ * a field that is built but never driven (no NeuralLattice, a measure that has
+ * not run yet) starts SAFE at desktop widths rather than at full strength. The
+ * driver overwrites it on every measure: the real `[data-row-body]` bound when
+ * one is measurable, `copyEdgeFallback(bandWidth)` when none is. */
+export const COPY_EDGE_LOCAL = 0.03;
+/**
+ * The copy bound DERIVED from the viewport — the fallback the driver uses when
+ * no `[data-row-body]` box is measurable (a section rename, an anchor that is
+ * not inside its `<section>`). It re-runs the table above in code:
+ * `container-px` = `padding-inline: --margin` (2/4/6/10 rem at 0/768/1024/1280),
+ * `max-width: 1600px`, `margin-inline: auto`; the ledger body is `max-w-[34em]`
+ * at `clamp(0.95rem, 1.05vw, 1.15rem)`, stepping down to `0.875rem` under
+ * Tailwind's `sm` (640 px). Root font-size is assumed 16 px (the site never
+ * changes it).
+ *
+ * WHY NOT JUST COPY_EDGE_LOCAL: +0.029 is the worst case only among DESKTOP
+ * widths. Below 1280 the gutter narrows and the copy keeps growing rightward —
+ * +0.098 at 1024, +0.256 at 768, +0.418 at 390 — so a constant fallback would
+ * leave the net at FULL strength over the copy on exactly the viewports where
+ * the copy fills the band. Under-protecting is the one direction a readability
+ * guard must never fail in, and this costs one arithmetic call per measure.
+ *
+ * Accuracy: `bandWidth` is the full-bleed band (100vw), while the container's
+ * centring uses `clientWidth`; with a classic scrollbar the two differ by ~15 px
+ * ⇒ ~0.012 of local x, comfortably inside COPY_EDGE_PAD. This is a fallback,
+ * not the measure — when the DOM box exists it always wins.
+ */
+export function copyEdgeFallback(bandWidth: number): number {
+  const W = Math.max(bandWidth, 1);
+  const margin = W >= 1280 ? 160 : W >= 1024 ? 96 : W >= 768 ? 64 : 32;
+  const contentW = Math.min(W, 1600);
+  const left = (W - contentW) / 2 + margin;
+  const avail = Math.max(contentW - 2 * margin, 0);
+  const fontPx = W < 640 ? 14 : Math.min(18.4, Math.max(15.2, 0.0105 * W));
+  return (left + Math.min(34 * fontPx, avail) - W / 2) / W;
+}
+/**
+ * Safety margin added to the MEASURED copy edge before it becomes the mask's
+ * floor bound. It pays for two things:
+ *   - the inner group's LIFE. `inner.rotation.y` reaches NEURAL_AUTO_ORBIT +
+ *     NEURAL_PARALLAX = 0.09 rad, and the mask is evaluated on the UNROTATED
+ *     local position, so a node at local z = PLEXUS_RZ 0.2 can DRAW up to
+ *     0.2·sin(0.09) = **0.018** of band width left of where it is masked. (The
+ *     drift is identical for both layers — the group rotates rigidly — so this
+ *     is a DOM-registration margin, never a line/particle disagreement.)
+ *   - measure slack: scrollbar presence (±0.006), sub-pixel layout, font
+ *     fallback before Switzer lands.
+ * 0.035 clears the steady-state drift by 1.9×. During the ~0.9 s reveal
+ * coalesce a seed-scattered particle sits at |z| ≤ SEED_SCATTER_Z/2 = 0.35 and
+ * can drift 0.031 — still inside the pad, and its alpha is scaled by uReveal
+ * the whole way in.
+ */
+export const COPY_EDGE_PAD = 0.035;
+/**
+ * Width of the floor→full ramp in local x (band-width fractions). Checked at
+ * the shipped edge (measured copy bound + COPY_EDGE_PAD) across the table
+ * above — the thing that must survive and the one that must not start. The
+ * numbers below are the GATE (the x term); the vertical term multiplies 0.6–1.0
+ * on top, so the delivered mask at the band's middle is 0.6× these:
+ *
+ *   W      uCopyEdge   gate at the fracture (x = +0.139)   bloom onset
+ *   1280     0.0637              0.850                      +69 px
+ *   1366     0.0305              0.997                      +74 px
+ *   1440     0.0050              1.000                      +78 px
+ *   1600    −0.0080              1.000                      +86 px
+ *   1728     0.0216              1.000                      +93 px
+ *   1920     0.0275              1.000                     +103 px
+ *
+ * "bloom onset" is the first x at which a star core can exceed the ≈1.0
+ * threshold (mask ≥ 1/10.67 = 0.0937 ⇒ gate ≥ 0.0937 ⇒ x ≥ uCopyEdge +
+ * 0.021·SOFT/0.1), expressed as its distance RIGHT of the measured copy edge.
+ * It is 69–103 px at every width — and it is the CONSERVATIVE end, because the
+ * vertical term pushes the real onset further right across the reading zone —
+ * so the copy column receives no smeared bloom light either; the AA ledger is
+ * the whole story, not half of it.
+ *
+ * Widening this softens the transition but pulls the fracture down at 1280;
+ * narrowing it sharpens the boundary into something the eye can find.
+ */
+export const COPY_RAMP_SOFT = 0.1;
+/**
+ * Mask floor for the PARTICLE layer (stars, link dust/beads, debris, sparks).
+ * Sized on the star core, which is the brightest thing in the band and the
+ * acceptance test's subject: 6.5 (centre overlap) × 10.67 (post-blend) × this
+ * = 0.00694 ⇒ 5.38:1. There is no gentler number available. An UNMASKED star
+ * centre pixel delivers 6.5 × 10.67 = 69.4 against an AA budget of 0.01943 —
+ * **3,570×** (549× for a single fragment) — so the ceiling on this constant is
+ * 0.01943/69.4 = 2.8e-4 and anything above it fails outright. (Re-derived from
+ * the seeding chain the overlap is ≈3.9 on the full tier and ≈2.5 on lite,
+ * which would put the ceiling at 4.7e-4; 6.5 is kept as the conservative end.)
+ *
+ * The ignition machinery is gated OFF at the floor rather than being paid for
+ * here (see neuralFieldCompute's `cGate` on zGate / surge / kiss): a fully
+ * ignited star core reaches ≈165 post-blend (×15.5 its rest value — glow 1.9 ×
+ * flash 3.4 × surge 1.6 × kiss 1.5), and sizing this floor for THAT would have
+ * cost the resting star field its last 15× of visibility.
+ */
+export const COPY_MASK_FLOOR = 0.0001;
+/**
+ * Mask floor for the LINE layer. 30× the particle floor ON PURPOSE: the star
+ * core is 18.8× the link line, so a single shared floor either blinds the copy
+ * column (sized on the line) or deletes the mesh from it (sized on the star).
+ * Two floors on ONE ramp keep the reference grammar — faint threads with faint
+ * nodes — at ~1 % strength instead of collapsing it to points.
+ *
+ * Bounded by construction, not by hope: the line's delivered post-blend
+ * luminance is already ≤ LINE_LUM_MAX 0.97 at every gain and every tone (the
+ * round-8-G soft knee), and the mask multiplies the OUTPUT alpha only — the
+ * cap arithmetic upstream is untouched — so the copy column's line ceiling is
+ * exactly 0.97 × this = 0.00291.
+ */
+export const COPY_MASK_FLOOR_LINE = 0.003;
+/**
+ * The gentler VERTICAL term (task item 2 — "even outside the copy column the
+ * mesh should read as background"). A broad bell centred on the band's middle,
+ * where the ledger rows are densest: mask ×= mix(1, this, bell). 0.6 is a 40 %
+ * reduction across the reading zone, relaxing to 1.0 at the band's top/bottom
+ * edges — a falloff, NOT a global dim: it scales every element by the same
+ * factor at a given y, so the star/line/dust ratios (18.8× / 593×) that the
+ * owner just approved are preserved exactly, and the star core stays 6.4×
+ * the bloom threshold at the band centre.
+ */
+export const COPY_Y_FLOOR = 0.6;
+/** Bell bounds of the vertical term in |local y| (band-height fractions). The
+ * cloud reaches PLEXUS_RY 0.42, so its vertical extremes keep 98 % while the
+ * middle takes the full COPY_Y_FLOOR. Baked as shader literals (shape, not a
+ * look knob) — an edit + reload, unlike the four uniforms above. */
+export const COPY_Y_IN = 0.18;
+export const COPY_Y_OUT = 0.46;

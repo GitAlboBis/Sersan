@@ -19,6 +19,18 @@
  * which rides the existing build.dispose()) and the new dev-handle tunables —
  * no state-machine change, no new per-frame work, no new store reads.
  *
+ * ROUND 9-B (2026-08-24) — THE NET SITS UNDER THE COPY. Owner: "la rete
+ * neurale ora sta sopra le scritte, deve stare sotto, le scritte non si
+ * leggono." The look fix is entirely in neuralFieldCompute (a 2D mask on both
+ * layers' output alpha); THIS FILE contributes the one thing a shader cannot
+ * know — WHERE the copy column is. The rect effect now also measures the real
+ * `[data-row-body]` boxes of the owning section and stores their right bound in
+ * the band's LOCAL x (`rect.copyEdge`); a small effect publishes it, plus
+ * COPY_EDGE_PAD, into `uCopyEdge` on every measure. No per-frame work is added,
+ * no store read, no state machine change — and because the write is on measure
+ * rather than in useFrame, the dev handle's `uCopyEdge` stays tunable from the
+ * console between layout changes.
+ *
  * ~9000 particles (3200 compact tier) fill the section's
  * `[data-lattice-anchor]` rect. Two instances mount on home:
  *   mode "broken"  (Problem, anchor "problem"): the cloud is intact left of
@@ -127,6 +139,8 @@ import {
   NEBULA_DRIFT_SPEED,
   NEBULA_DRIFT_KICK,
   VEL_DAMP,
+  copyEdgeFallback,
+  COPY_EDGE_PAD,
   type LatticeMode,
 } from "./neural/neuralLatticeConfig";
 import type { NeuralFieldBuild } from "./neural/neuralFieldCompute";
@@ -150,6 +164,19 @@ interface SectionRect {
   h: number;
   /** Document-space top of the anchor. */
   docTop: number;
+  /**
+   * ROUND 9-B — the copy column's RIGHT bound in the band's LOCAL x (fractions
+   * of rect.w, 0 = the band centre-line). Measured off the real
+   * `[data-row-body]` boxes of the owning section — the ledger body copy that
+   * has to stay readable — so the mask boundary tracks the actual
+   * `container-px` gutter, the `max-w-[34em]` measure and the `clamp()` font
+   * size at every viewport instead of a guessed fraction. Falls back to
+   * `copyEdgeFallback(bandWidth)` — the same geometry derived from the viewport
+   * — when no body box is measurable, NOT to a constant: below 1280 the copy
+   * grows rightward (+0.098 at 1024, +0.418 at 390) and a desktop-sized
+   * constant would leave the net at full strength over a phone's copy.
+   */
+  copyEdge: number;
 }
 
 export function NeuralLattice({
@@ -228,11 +255,33 @@ export function NeuralLattice({
       return;
     }
     const r = el.getBoundingClientRect();
+    const cxBase = r.left + r.width / 2;
+    // ROUND 9-B: the copy column, measured rather than assumed. The band is
+    // FULL-BLEED (rect.w = 100vw, so local x = 0 IS the viewport centre-line)
+    // while the ledger body copy is `max-w-[34em]` inside `container-px` — the
+    // two only line up at one width, and at 1280 the copy actually crosses the
+    // centre-line. Reading the real boxes makes the mask boundary correct at
+    // every viewport, font size and gutter without a per-width table in the
+    // shader. Runs in the SAME effect as the rect measure (measureVersion /
+    // resize), never per frame.
+    let copyRight = Number.NEGATIVE_INFINITY;
+    const owner = el.closest("section");
+    if (owner) {
+      const bodies = owner.querySelectorAll<HTMLElement>("[data-row-body]");
+      bodies.forEach((b) => {
+        const br = b.getBoundingClientRect();
+        if (br.width > 0) copyRight = Math.max(copyRight, br.right);
+      });
+    }
     setRect({
-      cxBase: r.left + r.width / 2,
+      cxBase,
       w: r.width,
       h: r.height,
       docTop: r.top + window.scrollY,
+      copyEdge:
+        copyRight > Number.NEGATIVE_INFINITY
+          ? (copyRight - cxBase) / Math.max(r.width, 1)
+          : copyEdgeFallback(r.width),
     });
     // size.* is included DELIBERATELY: everything stored above is a PIXEL
     // quantity, but sectionStore.setMeasured skips the measureVersion bump
@@ -240,6 +289,18 @@ export function NeuralLattice({
     // resize produces. Cheap to re-run: this effect only setRect()s; the
     // net re-anchors through the group transform alone (no rebuild).
   }, [measureVersion, anchorId, size.width, size.height]);
+
+  // --- ROUND 9-B: publish the measured copy-column boundary -----------------
+  // Written HERE (on measure) rather than in useFrame on purpose: it only
+  // changes when the layout does, it costs nothing per frame, and it leaves the
+  // uniform writable from the dev handle between measures (a per-frame write
+  // would stomp every console tune of `uCopyEdge`). COPY_EDGE_PAD is the margin
+  // for the inner group's ±0.018 rotation drift plus scrollbar/measure slack —
+  // see the constant.
+  useEffect(() => {
+    if (!build || !rect) return;
+    build.uniforms.uCopyEdge.value = rect.copyEdge + COPY_EDGE_PAD;
+  }, [build, rect]);
 
   // --- Per-frame driver ------------------------------------------------------
   const groupRef = useRef<THREE.Group>(null);
@@ -675,6 +736,17 @@ export function NeuralLattice({
           lineRowGain: u.uLineRowGain.value,
           dustAlpha: u.uDustAlpha.value,
           beadAlpha: u.uBeadAlpha.value,
+          // ROUND 9-B — the copy-column mask. copyEdge is DRIVER-WRITTEN on
+          // every measure (it is the measured `[data-row-body]` right bound +
+          // COPY_EDGE_PAD, reported raw as copyEdgeMeasured); a console write
+          // survives until the next resize/measureVersion bump. Set copyFloor /
+          // copyLineFloor / copyYFloor to 1 for exactly the round-8-I look.
+          copyEdge: u.uCopyEdge.value,
+          copyEdgeMeasured: rect?.copyEdge ?? null,
+          copySoft: u.uCopySoft.value,
+          copyFloor: u.uCopyFloor.value,
+          copyLineFloor: u.uCopyLineFloor.value,
+          copyYFloor: u.uCopyYFloor.value,
           strandPhase: [...u.uStrandPhase.array],
           strandThick: [...u.uStrandThick.array],
           sparkCount: mode === "broken" ? SPARK_COUNT : 0,

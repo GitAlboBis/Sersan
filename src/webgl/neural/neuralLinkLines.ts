@@ -40,6 +40,34 @@
  * wavefront (SURGE_K 150 ⇒ gaussian half-width 0.068 of nodeT) and the
  * fracture death-flash (FLASH_K 500 ⇒ 0.037).
  *
+ * ROUND 9-B — NOTHING IS BAKED FOR THE COPY-COLUMN MASK, deliberately. The
+ * mask is a pure function of the LIVE local position, and the vertex stage
+ * already re-derives that (`posL` = the drifted chord point) — so it is
+ * evaluated there, per vertex, exactly as the particle layer evaluates it at
+ * its own live position. Baking a per-link mask value here would freeze it at
+ * the REST chord and, worse, give the two layers different sample points the
+ * moment an endpoint drifts (broken) or `uNodePos` is tuned live: the boundary
+ * would then sit in two different places for lines and stars. The `position`
+ * attribute stays what it always was — the draw-count carrier and the dash
+ * anchor.
+ *
+ * THE ONE RESIDUAL DIFFERENCE, MEASURED. A particle evaluates the mask once,
+ * per instance; a line evaluates it at LINK_SEGMENTS + 1 vertices and the
+ * rasteriser interpolates between them — and a linear interpolation of a
+ * smoothstep is not the smoothstep. Over the real tables (all six mode×density
+ * builds) the per-link |Δx| is mean 0.031 / max 0.106, so one SUB-SEGMENT spans
+ * at most 0.0176 of the band against a COPY_RAMP_SOFT of 0.10: the worst-case
+ * gate overshoot is **+0.013** (healthy/full, x ≈ +0.069), and the worst value
+ * that leaks LEFT of uCopyEdge — where the true gate is exactly 0 — is gate
+ * **0.0058**, i.e. line mask 0.0088 instead of the 0.003 floor. That sits 0.035
+ * of band width (COPY_EDGE_PAD ≈ 45 px at 1280) to the RIGHT of the last glyph,
+ * never on the copy, and it delivers ≤ 0.0085 where the AA budget is 0.0194.
+ * Invisible in both senses: no contrast cost, and a 0.013 wobble inside a ramp
+ * whose neighbouring values sweep 0 → 1 over 128 px has nothing to read against.
+ * (The NEBULA quads are the case where this does NOT hold — half-extent 0.39 of
+ * the band at phone aspects — which is why that layer masks per fragment; see
+ * neuralFieldCompute C5.)
+ *
  * Sufficiency, MEASURED off the real tables rather than assumed (the per-link
  * |ΔnodeT| over all six mode×density builds is full mean 0.035 / max 0.106,
  * lite mean 0.043 / max 0.122): LINK_SEGMENTS = 6 samples the MEAN link every

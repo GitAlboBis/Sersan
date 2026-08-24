@@ -224,6 +224,61 @@
  *       WebGL2 MAX_VERTEX_UNIFORM_BLOCKS floor of 12. The PARTICLE material's
  *       12/12 vertex-stage block count is untouched by this round.
  *
+ * ROUND 9-B (2026-08-24) — THE NET SITS UNDER THE COPY. Owner: "la rete
+ * neurale ora sta sopra le scritte, deve stare sotto, le scritte non si
+ * leggono." Not a stacking bug (the canvas is already behind the DOM) — a
+ * CONTRAST one, created by 8-G/8-I making the plexus crisp and bright over the
+ * ledger copy. ONE 2D MASK, four touch points, nothing structural:
+ *   C1. `copyGateAt` / `copyYAt` / `copyMaskAt` / `copyMaskLineAt` — pure
+ *       functions of the LOCAL position, sitting beside the DOF helpers. The x
+ *       ramp's boundary is the MEASURED right bound of the real
+ *       `[data-row-body]` boxes (driver-written `uCopyEdge`, fallback = the
+ *       1280 worst case), not a guessed fraction; the y term is a broad bell
+ *       over the band's reading zone. Both layers evaluate the SAME expression
+ *       at their OWN live local point — the line at its chord `posL`, the
+ *       particles at their simulated/analytic position — so the two cannot
+ *       disagree about where the column is. Only the FLOOR differs
+ *       (COPY_MASK_FLOOR 1e-4 vs COPY_MASK_FLOOR_LINE 3e-3), because the star
+ *       core is 18.8× the line and one shared floor would either blind the copy
+ *       or delete the mesh from it.
+ *   C2. PARTICLES — `particleScalars` takes the live position now and
+ *       multiplies the combined role alpha by the mask. Multiplicative, not a
+ *       luminance ceiling: additive blending makes the delivered light scale
+ *       EXACTLY with the mask (the WCAG arithmetic is a product, not an
+ *       estimate), the star/line/dust ratios survive instead of flattening back
+ *       into the round-8-I haze, and the falloff stays smooth. The star's
+ *       IGNITION machinery (zGate ⇒ uRingGlow + uRingFlash + shockwave, the
+ *       surge flare, the packet kiss) is gated by the same ramp — a fully
+ *       ignited core reaches ≈165 post-blend (×15.5 its rest 10.67) and
+ *       ignition region 1 sits at local x ≈ −0.21, i.e. inside the column.
+ *   C3. LINE — the mask rides the OUTPUT alpha only, downstream of the
+ *       LINE_LUM_MAX knee, so the two ceilings compose: delivered ≤ 0.97 ×
+ *       floor = 0.00291 in the column, for every gain and every tone.
+ *   C4. The fragment DISCARD thresholds ride the mask (`cut` / `vLineCut` /
+ *       the nebula's). Left absolute at 0.004 they would kill the masked layers
+ *       outright and put a hard edge ~5px into the ramp; scaled, both sides of
+ *       the test carry the same factor, so it reduces algebraically to the
+ *       round-8 test and the surviving fragment SET — the fill budget — is
+ *       byte-identical everywhere, not merely at mask 1.
+ *   C5. NEBULA (broken) — same mask, same floor, but evaluated PER FRAGMENT
+ *       from a per-instance box varying rather than per vertex. A wisp quad's
+ *       local-x half-extent is 0.5·size·uPlaneAspect: 0.09 of the band on a
+ *       desktop, 0.39 on a phone. One interpolation across a box that wide is
+ *       a chord THROUGH the ramp, not the ramp — measured at 390 px it reads
+ *       gate 0.80 where the true gate is 0, i.e. the brightest thing left in
+ *       the phone band lands unmasked on the copy (≈0.043 added light ⇒
+ *       3.4:1, an AA FAIL). Everything else in the mask is per-instance or
+ *       short-chord, so this is the only layer that needed it.
+ * Zero new bindings (five plain `uniform()` scalars join an existing shared
+ * group), zero per-frame allocation, both backends, same treatment on lite.
+ * The DOM derivation, the per-viewport table and the WCAG arithmetic
+ * (5.38:1 at the brightest remaining pixel vs the 4.5:1 AA gate, 6.04:1 on the
+ * bare page) live in neuralLatticeConfig's COPY-COLUMN MASK section — INCLUDING
+ * the narrow-viewport ledger: below ~1100 px the copy fills the band and the
+ * mask floors essentially the whole cloud (97–100 % of the nodes at 390 px).
+ * That is the declared design's honest consequence, not a bug, but it is an
+ * OWNER-VISIBLE trade and it is written down there.
+ *
  * ROUND-8-D "NO CIRCLES ANYWHERE" AUDIT (this round):
  *   - node halos (orbiting ring, hollow centre) ....... REPLACED by star cores
  *   - membrane discs ................................. already off (round-8)
@@ -306,6 +361,14 @@ import {
   LINE_DASH_LO,
   LINE_DASH_HI,
   LINE_REVEAL_STAGGER,
+  COPY_EDGE_LOCAL,
+  COPY_EDGE_PAD,
+  COPY_RAMP_SOFT,
+  COPY_MASK_FLOOR,
+  COPY_MASK_FLOOR_LINE,
+  COPY_Y_FLOOR,
+  COPY_Y_IN,
+  COPY_Y_OUT,
   BEAD_ALPHA,
   STRETCH_GAIN,
   STRETCH_MAX,
@@ -520,6 +583,18 @@ export interface NeuralFieldUniforms {
   uLineSurgeGain: { value: number };
   /** Line emissive gain at full row/zone attention. */
   uLineRowGain: { value: number };
+  // --- ROUND 9-B copy-column mask (live tunables) ---------------------------
+  /** LOCAL x at which the mask bottoms out — the measured right bound of the
+   * `[data-row-body]` boxes + COPY_EDGE_PAD. DRIVER-WRITTEN per measure. */
+  uCopyEdge: { value: number };
+  /** Width of the floor→full ramp in LOCAL x (band-width fractions). */
+  uCopySoft: { value: number };
+  /** Mask floor over the copy column for the PARTICLE layer (1 = inert). */
+  uCopyFloor: { value: number };
+  /** Mask floor over the copy column for the LINE layer (1 = inert). */
+  uCopyLineFloor: { value: number };
+  /** Vertical term's floor over the text band (1 = inert). */
+  uCopyYFloor: { value: number };
   /** Per-strand twist phases (rad) — write entries of `.array`. */
   uStrandPhase: { array: number[] };
   /** Per-strand tube-thickness biases — write entries of `.array`. */
@@ -957,6 +1032,19 @@ export function createNeuralFieldBuild(
   const uLineRowGain = uniform(LINE_ROW_GAIN);
   const uStrandPhase = uniformArray([...STRAND_PHASES]);
   const uStrandThick = uniformArray([...STRAND_THICK_BIAS]);
+  // ROUND 9-B: the COPY-COLUMN MASK (see the config section of the same name).
+  // Five plain `uniform()` scalars — like the round-8-G traffic knobs they join
+  // an existing shared group, so they add ZERO uniform BLOCKS to either program
+  // and the 12/12 particle-material budget noted above is unmoved. uCopyEdge is
+  // DRIVER-WRITTEN from the measured `[data-row-body]` boxes (NeuralLattice);
+  // the default is the 1280 worst case + COPY_EDGE_PAD so an un-driven build
+  // (a driver that never runs, a measure that finds no body box) is the SAFE
+  // state, never a full-strength net over the copy.
+  const uCopyEdge = uniform(COPY_EDGE_LOCAL + COPY_EDGE_PAD);
+  const uCopySoft = uniform(COPY_RAMP_SOFT);
+  const uCopyFloor = uniform(COPY_MASK_FLOOR);
+  const uCopyLineFloor = uniform(COPY_MASK_FLOOR_LINE);
+  const uCopyYFloor = uniform(COPY_Y_FLOOR);
   // Round-3 (§B): row-reactive current + curl turbulence + depth-DOF. All
   // uniforms/uniformArrays — the storage-buffer and vertex-slot budgets are
   // untouched.
@@ -1289,6 +1377,62 @@ export function createNeuralFieldBuild(
   function dofSoftAt(z: Any): Any {
     const near01 = clamp(zNorm(z).mul(2.0).sub(1.0), float(0), float(1));
     return near01.mul(uDof);
+  }
+
+  // --- ROUND 9-B — THE COPY-COLUMN MASK -------------------------------------
+  // "la rete neurale ora sta sopra le scritte, deve stare sotto" — a CONTRAST
+  // fix (the canvas is already behind the DOM). The three functions below are
+  // PURE functions of the LOCAL position, and BOTH layers evaluate them at
+  // their own live local point — the LineSegments layer at its chord point
+  // `posL`, the particles at their simulated (compute) / analytic (static)
+  // position. Same space, same expression, so the layers cannot disagree about
+  // where the column is; what differs is only the FLOOR each one bottoms out
+  // at (COPY_MASK_FLOOR vs COPY_MASK_FLOOR_LINE — the star core is 18.8× the
+  // line, so one shared floor would either blind the copy or delete the mesh).
+  //
+  // The x boundary is DERIVED, not guessed: `uCopyEdge` is the measured right
+  // bound of the real `[data-row-body]` boxes (+ COPY_EDGE_PAD for the inner
+  // group's ±0.018 rotation drift), written by NeuralLattice. The full
+  // per-viewport derivation and the WCAG arithmetic are in the config's
+  // COPY-COLUMN MASK section.
+  //
+  // Cost: ~10 ALU in the vertex stage of each layer, zero bindings, zero
+  // per-frame allocation, identical on both backends (smoothstep/mix/max only).
+
+  /** 0 over the copy column → 1 right of the ramp. The gate is used BOTH as
+   * the mask's x term and as the switch that keeps a copy-column star's
+   * IGNITION machinery off (see particleScalars) — a fully ignited star core
+   * is ×15.5 its rest value (glow 1.9 × flash 3.4 × surge 1.6 × kiss 1.5), and
+   * gating that is far cheaper than paying for it in the floor, which would
+   * cost the resting star field its last 15× of visibility.
+   * `max(uCopySoft, 1e-3)` only keeps a zeroed soft width out of
+   * smoothstep's degenerate corner. */
+  function copyGateAt(x: Any): Any {
+    return smoothstep(
+      uCopyEdge,
+      uCopyEdge.add(max(uCopySoft, float(0.001))),
+      x,
+    );
+  }
+  /** The gentler VERTICAL term: a broad bell over the band's middle, where the
+   * ledger rows are densest, relaxing to 1 at the band's top/bottom edges. It
+   * scales every element by the same factor at a given y, so the star/line/dust
+   * ratios the owner approved survive intact — this lowers the CEILING over the
+   * text, it does not re-flatten the grammar. */
+  function copyYAt(y: Any): Any {
+    const ay = max(y, y.negate());
+    const bell = float(1).sub(
+      smoothstep(float(COPY_Y_IN), float(COPY_Y_OUT), ay),
+    );
+    return mix(float(1), uCopyYFloor, bell);
+  }
+  /** Full 2D mask for the PARTICLE layer at a LOCAL position. */
+  function copyMaskAt(p: Any, gate: Any): Any {
+    return mix(uCopyFloor, float(1), gate).mul(copyYAt(p.y));
+  }
+  /** Full 2D mask for the LINE layer — the SAME ramp, its own floor. */
+  function copyMaskLineAt(p: Any): Any {
+    return mix(uCopyLineFloor, float(1), copyGateAt(p.x)).mul(copyYAt(p.y));
   }
   /** Ring flow-t by index (config constants — fixed topology). */
   function ringT(idx: Any): Any {
@@ -1710,9 +1854,20 @@ export function createNeuralFieldBuild(
   /** Build the per-particle COLOR (tone × emissive), ALPHA and SIZE from a
    * meta/off pair (attributes on the static path, storage `.toAttribute()`
    * reads on the compute path — identical math). All per-instance constants,
-   * so the whole ramp lives in the vertex stage (round-2). */
-  function particleScalars(metaN: Any, offN: Any) {
+   * so the whole ramp lives in the vertex stage (round-2).
+   *
+   * ROUND 9-B: `posN` is the particle's LIVE LOCAL position (the simulated
+   * position on the compute tier, the reveal-blended analytic centre on the
+   * static one) — the copy-column mask has to be evaluated where the sprite
+   * actually DRAWS, not where its anchor is, which matters most during the
+   * reveal coalesce when a particle is still out at its scattered seed. */
+  function particleScalars(metaN: Any, offN: Any, posN: Any) {
     const role = metaN.x;
+    // ROUND 9-B — the copy-column gate/mask at this particle's live position.
+    // Hoisted here because the STAR branch needs the GATE (to switch its
+    // ignition machinery off over the copy) as well as the mask.
+    const cGate = copyGateAt(posN.x).toVar();
+    const cMask = copyMaskAt(posN, cGate).toVar();
     const ef = edgeFrame(metaN, offN);
     const t = ef.t;
     const disp = dispFactor(t);
@@ -1877,7 +2032,17 @@ export function createNeuralFieldBuild(
     //     kiss brighten them; degraded stars (broken, past the fracture) dim
     //     toward ember — pulled back by the uRecohere hover tease. ---
     const nT = nodeTAt(metaN.y);
-    const zGate = cloudZoneGate(nT);
+    // ROUND 9-B: the ignition machinery is GATED by the copy-column ramp. A
+    // fully ignited star core reaches ≈165 post-blend (glow 1.9 × flash 3.4 ×
+    // surge 1.6 × kiss 1.5 on the 10.67 resting value), and the ignition
+    // REGIONS are nodeT .25/.5/.75 — region 1 lands at local x ≈ −0.21,
+    // i.e. INSIDE the copy column. Sizing COPY_MASK_FLOOR for that excursion
+    // would have cost the resting star field its last 15× of visibility; gating
+    // it costs 3 multiplies and nothing visual, because at the floor the flash
+    // is invisible anyway. Folding the gate into zGate covers uRingGlow AND
+    // uRingFlash (and therefore the shockwave in sizeRing and the whitening in
+    // toneRing) in one place — a copy-column star simply stays at rest.
+    const zGate = cloudZoneGate(nT).mul(cGate).toVar();
     const glow = mix(float(1), zoneGlow(nT), zGate);
     const ringFlash = zoneFlash(nT).mul(zGate).toVar();
     const dStar = clamp(
@@ -1897,8 +2062,11 @@ export function createNeuralFieldBuild(
       .mul(mix(float(STAR_CORE_EMIS), float(STAR_TIP_EMIS), dStar))
       .mul(glow)
       .mul(float(1).add(ringFlash.mul(float(RING_FLASH_GAIN))))
-      .mul(float(1).add(surgeAt(nT).mul(0.6)))
-      .mul(float(1).add(kiss.mul(float(PACKET_NODE_GAIN))))
+      // ROUND 9-B: surge flare + packet kiss ride the copy gate for the same
+      // reason zGate does — over the copy column the star holds its rest value
+      // (10.67), which is exactly what COPY_MASK_FLOOR is sized on.
+      .mul(float(1).add(surgeAt(nT).mul(0.6).mul(cGate)))
+      .mul(float(1).add(kiss.mul(float(PACKET_NODE_GAIN)).mul(cGate)))
       .mul(float(1).sub(nodePast.mul(0.5)));
     // The CORE reads whitest and the spikes cool toward the link tone; stars
     // on the left of the cloud pick up a half-strength version of the links'
@@ -1959,18 +2127,45 @@ export function createNeuralFieldBuild(
       emisStream,
       select(isRing, emisRing, emisSpark),
     );
+    // ROUND 9-B: ONE multiplicative mask on the combined alpha — every role
+    // obeys it (stars, link dust/beads, fracture debris, sparks). Multiplicative
+    // on purpose rather than a luminance ceiling: additive blending makes the
+    // delivered light scale EXACTLY with the mask, so the WCAG arithmetic is a
+    // product rather than an estimate, the internal ratios (star 593× dust) are
+    // preserved instead of being flattened back into the round-8-I haze, and
+    // the spatial ramp reads as a smooth falloff rather than the near-step a
+    // ramped cap would give.
     const alpha = select(
       isStream,
       alphaStream,
       select(isRing, alphaRing, alphaSpark),
-    );
+    ).mul(cMask);
     const sizeK = select(
       isStream,
       sizeStream,
       select(isRing, sizeRing, sizeSpark),
     );
 
-    return { colorE: tone.toVec3().mul(emis), alpha, sizeK };
+    // ROUND 9-B — the fragment DISCARD threshold has to ride the mask too.
+    // `Discard(alpha < 0.004)` is a fill optimisation sized on the layer's own
+    // scale; leave it absolute and the copy column's masked particles (star
+    // alpha 1e-4) are killed OUTRIGHT — which would not just delete the faint
+    // star field, it would put a HARD EDGE in the ramp, because a star pops
+    // from discarded to post-blend 0.043 the instant mask crosses 0.004
+    // (≈4.6 px into the ramp at 1280). Scaling the threshold by the same mask
+    // makes the cut SCALE-INVARIANT — and note the fill budget is unmoved
+    // EVERYWHERE, not just at mask 1: `alpha` and `cut` carry the identical
+    // `cMask` factor, so the fragment shader's test reduces algebraically to
+    // the round-8 test (disc·baseAlpha·dofAlpha·uReveal < 0.004) at every point
+    // of the ramp AND under the vertical term (which is 0.6, never 1, across
+    // the whole reading zone). The surviving fragment SET is byte-identical;
+    // what changes is only how much light each survivor delivers.
+    return {
+      colorE: tone.toVec3().mul(emis),
+      alpha,
+      sizeK,
+      cut: float(0.004).mul(cMask),
+    };
   }
 
   /** Shared fragment shade — identical on both backends. The disc UV is the
@@ -1983,6 +2178,9 @@ export function createNeuralFieldBuild(
     vColor: Any;
     vAlpha: Any;
     vSoft: Any;
+    /** ROUND 9-B: the mask-scaled discard threshold (particleScalars.cut) —
+     * 0.004 at full strength, proportional inside the copy-column ramp. */
+    vCut: Any;
   }): Any {
     return Fn(() => {
       const inner = mix(float(0.12), float(DOF_SOFT_MIN), v.vSoft);
@@ -1990,7 +2188,7 @@ export function createNeuralFieldBuild(
         .mul(float(1).sub(v.vSoft.mul(0.2)))
         .toVar();
       const alpha = disc.mul(v.vAlpha).mul(uReveal).toVar();
-      Discard(alpha.lessThan(0.004));
+      Discard(alpha.lessThan(v.vCut));
       return vec4(v.vColor.toVec3(), alpha);
     })();
   }
@@ -2224,22 +2422,53 @@ export function createNeuralFieldBuild(
     const mat = new MeshBasicNodeMaterial();
     const aQuad = attribute("aQuad");
 
-    mat.vertexNode = Fn(() => {
-      const center = streamCenter(uFracture)
-        .add(vec3(aQuad.x, aQuad.y, float(0)))
-        .toVar();
-      const local = center.add(
+    // The quad's LOCAL point (centre + the aspect-corrected corner offset).
+    // `nebCentre` is shared with the mask box below so the spline is emitted
+    // once, not twice, in this stage.
+    const nebCentre = streamCenter(uFracture);
+    const nebLocal = nebCentre
+      .add(vec3(aQuad.x, aQuad.y, float(0)))
+      .add(
         vec3(
           positionLocal.x.mul(aQuad.z).mul(uPlaneAspect),
           positionLocal.y.mul(aQuad.z),
           float(0),
         ),
       );
-      return cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(local, 1.0)));
-    })();
+
+    mat.vertexNode = Fn(() =>
+      cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(nebLocal, 1.0))),
+    )();
 
     const vUv = varying(positionLocal.xy.mul(2.0));
     const vSeed = varying(aQuad.w);
+    // ROUND 9-B: the smoke obeys the copy-column mask too. It is anchored at
+    // the fracture (local x ≈ +0.14) and at DESKTOP aspects all three quads sit
+    // entirely right of the copy bound (measured: x ≥ +0.048 at 1280, where the
+    // copy ends at +0.029) — but an unmasked wisp peaks at ~0.054 post-blend,
+    // 2.8× the AA budget, so it is masked on the LINE floor (this is background
+    // smoke, not a subject). At the fracture centre (x = +0.139) the cost is
+    // the gate's 0.85 at 1280 and 1.0 from 1366 up — the break still reads.
+    //
+    // THE MASK IS EVALUATED PER FRAGMENT, not per vertex, and that is
+    // load-bearing rather than fussy. `uPlaneAspect` is rect.h/rect.w, so a
+    // quad's LOCAL x half-extent is 0.5·size·(h/w): 0.09 of the band on a
+    // desktop, but **0.39 on a phone**, where the band is taller than it is
+    // wide. A single interpolation across a box that wide is not the mask — it
+    // is a straight line through it, and at 390 px the interpolated gate reads
+    // 0.80 at the copy's right bound where the true gate is 0. That put the
+    // brightest thing left in the phone band (≈0.043 added light, 2.2× the AA
+    // budget ⇒ 3.4:1) straight over the copy — precisely the failure this
+    // round exists to remove. Carrying the quad's BOX instead (centre + half
+    // extent, both per-INSTANCE, so the interpolation is exact) and evaluating
+    // `copyMaskLineAt` in the fragment stage costs two smoothsteps on three
+    // quads and is correct at every aspect.
+    const vNebBox = varying(
+      vec4(
+        nebCentre.xy.add(vec2(aQuad.x, aQuad.y)),
+        vec2(aQuad.z.mul(uPlaneAspect).mul(0.5), aQuad.z.mul(0.5)),
+      ),
+    );
     // Flare × thin modulator — pure uniforms, vertex-computed (discipline).
     const vMod = varying(
       float(1)
@@ -2248,6 +2477,13 @@ export function createNeuralFieldBuild(
     );
 
     const shade = Fn(() => {
+      // ROUND 9-B: the fragment's own LOCAL xy, reconstructed exactly from the
+      // per-instance box (vUv ∈ [−1,1] spans the quad, so centre + uv·half is
+      // the same point the vertex stage projected). The mask is then the same
+      // pure function of local x/y the particles and the line evaluate.
+      const nebMask = copyMaskLineAt(
+        vNebBox.xy.add(vUv.mul(vNebBox.zw)),
+      ).toVar();
       const r = length(vUv).toVar();
       // Igloo shear: uv.x += uv.y → the streaking-smoke read.
       const suv = vec2(vUv.x.add(vUv.y.mul(float(NEBULA_SHEAR))), vUv.y).toVar();
@@ -2264,9 +2500,15 @@ export function createNeuralFieldBuild(
         .mul(radial)
         .mul(uNebulaAlpha)
         .mul(vMod)
+        .mul(nebMask)
         .mul(uReveal)
         .toVar();
-      Discard(alpha.lessThan(0.003));
+      // Threshold scaled by the same mask, for the reason the particle and line
+      // layers scale theirs: an absolute cut would delete the masked smoke and
+      // put a hard edge in the ramp instead of a falloff. Scale-invariant by
+      // construction — both sides carry the same `nebMask` factor, so the
+      // surviving fragment SET (and therefore the fill cost) is unchanged.
+      Discard(alpha.lessThan(nebMask.mul(0.003)));
       // Ember core → transparent; faint cyan rim upstream (−x, the last
       // healthy light). smoothstep edges kept ascending (edge0 < edge1).
       const rimUp = float(1)
@@ -2315,6 +2557,13 @@ export function createNeuralFieldBuild(
    *     1px line has no braid).
    *   - fragment stage: zero uniformArrays; scalars only.
    *   - zero per-frame allocation: everything below is built once.
+   *   - ROUND 9-B adds the copy-column mask to the VERTEX stage: five plain
+   *     `uniform()` scalars (a shared group, NOT a new UBO block — the 8-of-12
+   *     count above is unmoved), ~10 ALU, and one extra float varying
+   *     (`vLineCut`). three emits one `out` per varying NODE rather than
+   *     packing floats, so this material goes 3 → **4 of the WebGL2
+   *     MAX_VARYING_VECTORS floor of 15** (vLineCol, vLineAux, vLineRest,
+   *     vLineCut) — 11 spare either way.
    *
    * WHAT VARIES WHERE: the smooth, along-link brightness terms (surge, flash,
    * row attention, tint, shimmer, mid-span profile, DOF, reveal) resolve in
@@ -2480,13 +2729,31 @@ export function createNeuralFieldBuild(
       overL.mul(spanL).div(max(overL.add(spanL), float(1e-4))),
     );
 
-    // --- 6. Varyings (self-contained expressions — varying discipline) -----
-    const vLineCol = varying(toneL.mul(emisL));
-    const vLineAux = varying(vec4(alphaL, dispL, tL, sL));
-    /** The BAKED rest position — the dash-phase anchor (see §7). */
-    const vLineRest = varying(positionLocal);
+    // --- 6. ROUND 9-B — the copy-column mask, on the OUTPUT alpha only ------
+    // Deliberately NOT folded into `alphaL` above: `emisCapL` divides by
+    // `lum × alphaL`, so a masked alphaL would push that product under the
+    // 1e-3 divide guard and make the LINE_LUM_MAX ceiling inert exactly where
+    // it is needed — a hovered row under a surge would then deliver 0.011 into
+    // the copy column instead of the capped 0.0029. Applied HERE the two
+    // contracts compose: the knee bounds the line at ≤ LINE_LUM_MAX 0.97 for
+    // every gain and every tone, and the mask scales that bound, so the copy
+    // column's absolute line ceiling is 0.97 × COPY_MASK_FLOOR_LINE = 0.00291
+    // by construction. Same ramp as the particles, its own floor.
+    const maskL = copyMaskLineAt(posL).toVar();
+    const alphaOutL = alphaL.mul(maskL).toVar();
 
-    // --- 7. Fragment: the sharp masks --------------------------------------
+    // --- 7. Varyings (self-contained expressions — varying discipline) -----
+    const vLineCol = varying(toneL.mul(emisL));
+    const vLineAux = varying(vec4(alphaOutL, dispL, tL, sL));
+    /** The BAKED rest position — the dash-phase anchor (see §8). */
+    const vLineRest = varying(positionLocal);
+    /** ROUND 9-B: the mask-scaled discard threshold — the particle layer's
+     * `cut` twin, and for the same reason (an absolute 0.004 would delete the
+     * masked line outright and put a hard edge in the ramp). Byte-identical at
+     * full strength, proportional all the way down. */
+    const vLineCut = varying(float(0.004).mul(maskL));
+
+    // --- 8. Fragment: the sharp masks --------------------------------------
     const shade = Fn(() => {
       const a0 = vLineAux.x;
       const dsp = vLineAux.y;
@@ -2529,7 +2796,7 @@ export function createNeuralFieldBuild(
         dsp,
       );
       const alpha = a0.mul(fade).mul(gapF).mul(dash).toVar();
-      Discard(alpha.lessThan(0.004));
+      Discard(alpha.lessThan(vLineCut));
       return vec4(vLineCol.toVec3(), alpha);
     })();
 
@@ -2585,7 +2852,10 @@ export function createNeuralFieldBuild(
         sin(centerBase.x.mul(7.0).add(uTime.mul(0.7))),
       ).mul(0.003),
     );
-    const sc = particleScalars(aMeta, aOff);
+    // ROUND 9-B: `centerS` is the position this sprite actually draws at, so it
+    // is also where the copy-column mask is sampled (the compute branch passes
+    // its own live `posR` — same local space, same pure function).
+    const sc = particleScalars(aMeta, aOff, centerS);
     // Static-tier streaks: mild fixed elongation along the link direction,
     // boosted by the surge head / the spark burst.
     const motionS = motionNode(aMeta, aOff, null);
@@ -2603,10 +2873,11 @@ export function createNeuralFieldBuild(
     // varying stays a SELF-CONTAINED expression — varying discipline).
     const vAlpha = varying(sc.alpha.mul(dofAlphaAt(centerS.z)));
     const vSoft = varying(dofSoftAt(centerS.z));
+    const vCut = varying(sc.cut);
 
     configureMaterial(
       material,
-      buildShade({ vQuadUv, vColor, vAlpha, vSoft }),
+      buildShade({ vQuadUv, vColor, vAlpha, vSoft, vCut }),
     );
 
     return {
@@ -2789,7 +3060,9 @@ export function createNeuralFieldBuild(
   // slot → 5 of 8 total (quad position + 4 storage reads). `.xyz` mandatory.
   const velR = velocityBuffer.toAttribute().xyz;
 
-  const scR = particleScalars(metaR, offR);
+  // ROUND 9-B: the LIVE simulated position is the copy-column mask's sample
+  // point (posR is already a bound vertex-buffer read — no new slot).
+  const scR = particleScalars(metaR, offR, posR);
   const motionR = motionNode(metaR, offR, velR);
 
   material.vertexNode = buildVertex(
@@ -2806,8 +3079,12 @@ export function createNeuralFieldBuild(
   // discipline; posR is already a bound vertex-buffer read — no new slot.
   const vAlpha = varying(scR.alpha.mul(dofAlphaAt(posR.z)));
   const vSoft = varying(dofSoftAt(posR.z));
+  const vCut = varying(scR.cut);
 
-  configureMaterial(material, buildShade({ vQuadUv, vColor, vAlpha, vSoft }));
+  configureMaterial(
+    material,
+    buildShade({ vQuadUv, vColor, vAlpha, vSoft, vCut }),
+  );
 
   return {
     geometry,
@@ -2881,6 +3158,11 @@ export function createNeuralFieldBuild(
       uLineBlue,
       uLineSurgeGain,
       uLineRowGain,
+      uCopyEdge,
+      uCopySoft,
+      uCopyFloor,
+      uCopyLineFloor,
+      uCopyYFloor,
       uStrandPhase: uStrandPhase as unknown as { array: number[] },
       uStrandThick: uStrandThick as unknown as { array: number[] },
       uRowGlow: uRowGlow as unknown as { array: number[] },
