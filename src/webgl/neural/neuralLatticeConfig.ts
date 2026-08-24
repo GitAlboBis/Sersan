@@ -41,6 +41,14 @@
  * Node/edge data rides in uniformArrays (uNodePos/uNodeT/uEdgeA/uEdgeB) —
  * legal in any stage, zero storage-buffer / vertex-slot cost — so a resize
  * (or live re-authoring of the layout) is a uniform update, NO rebuild.
+ *
+ * ROUND-7 (2026-08-22, owner: "la luce che passa più frequente + continua a
+ * renderle più belle"): faster SURGE_PERIOD_*, plus a constant AMBIENT
+ * PACKET TRAFFIC layer (small bright beads forever traveling the edges,
+ * dying at the fracture on broken, kissing the node halos on arrival) and a
+ * beauty pass (per-edge mid-span brightness profile, per-layer cool→warm
+ * cyan tint, halo core/breath/variance, amber ember tips). See the round-7
+ * sections below; all shader-side, zero driver changes.
  */
 
 /** The two constellation modes. */
@@ -317,9 +325,15 @@ export const SPARK_COUNT = 32;
 export const SPARK_REACH = 0.22;
 
 // --- The pulse (surges) ------------------------------------------------------
-/** Seconds between automatic pulses. */
-export const SURGE_PERIOD_BROKEN = 4;
-export const SURGE_PERIOD_HEALTHY = 6;
+/** Seconds between automatic pulses. ROUND-7 (owner: "la luce nelle reti
+ * neurali che passa vorrei sia più frequente"): 4 → 2.4 / 6 → 3.5 — the big
+ * traveling pulse fires ~1.7× more often on both modes. The head still takes
+ * ~2s input→output (SURGE_SPEED), so on broken the death-flash + spark burst
+ * now land roughly every 2.4s, keeping the fracture visibly ALIVE; the
+ * healthy net re-lights its layers before the previous glow fully settles.
+ * Ambient PACKET traffic (below) carries the between-pulse life. */
+export const SURGE_PERIOD_BROKEN = 2.4;
+export const SURGE_PERIOD_HEALTHY = 3.5;
 /** Pulse head speed in flow-t units/sec (~2s input→output). The head sweeps
  * topological depth, so the net lights LAYER BY LAYER left→right. */
 export const SURGE_SPEED = 0.55;
@@ -334,6 +348,86 @@ export const SURGE_GAIN = 2.2;
 export const FLASH_DECAY = 4.0;
 export const FLASH_K = 500;
 export const FLASH_GAIN = 3.0;
+
+// --- Round-7 — AMBIENT PACKET TRAFFIC ----------------------------------------
+/**
+ * The big pulse every few seconds is not enough life for a network: small
+ * bright PACKETS constantly travel the edges (owner round-7: "più frequente
+ * ... continua a renderle più belle"). Entirely shader-side + uFlowTime
+ * driven — zero driver changes, zero new buffers; identical on the compute
+ * AND static/analytic tiers (a pure function of uniforms). PACKET_COUNT
+ * staggered clocks per RECEIVING node (hash(targetNode, k) — every edge
+ * terminating at a node rides its clock, so incoming beads CONVERGE and
+ * land together) each cycle at ~PACKET_RATE Hz; a packet occupies
+ * 1/PACKET_SPAN of its cycle traveling s 0→1 (source halo → target halo,
+ * WITH the flow direction), so expected visible traffic = COUNT·(1/SPAN)
+ * ≈ 0.4 packets/edge — the brief's calm-but-alive "~1 packet per 2–3 edges
+ * at any instant". Crossing time = 1/(RATE·SPAN) ≈ 0.9s: clearly faster
+ * than the ambient drift (~11s), clearly calmer than the surge head. On
+ * broken, traffic NEVER crosses the fracture — a packet reaching it
+ * sputters out (micro-spark flicker) and dies; the uRecohere hover tease
+ * briefly lets traffic through (the same gate grammar as dispFactor/
+ * nodeDrift). On healthy (and pre-fracture), the halo kiss runs the SAME
+ * per-node clock gaussian-centred on the arrival phase, so a halo swells +
+ * brightens exactly as its beads land (causally, not just statistically;
+ * the unfed input layer never kisses).
+ * RATE/WIDTH/GAIN are live-tunable (uPacketRate/uPacketWidth/uPacketGain on
+ * the dev-handle uniforms bag); the rest are shader-baked constants.
+ */
+/** Staggered packet clocks per RECEIVING node (shared by its incoming
+ * edges AND its halo kiss — the arrival-correlation contract) —
+ * BUILD-TIME shader unroll count. */
+export const PACKET_COUNT = 2;
+/** Packet clock rate (cycles/sec, ×0.75..1.25 per-packet hash variance).
+ * Mean inter-packet interval per edge ≈ 1/(RATE·COUNT) ≈ 2.3s. */
+export const PACKET_RATE = 0.22;
+/** A packet travels its edge in 1/SPAN of the cycle (duty cycle — the rest
+ * of the cycle the packet is off-edge and invisible). */
+export const PACKET_SPAN = 5;
+/** Gaussian half-width of the packet highlight along per-edge s (~13% of an
+ * edge ≈ a ~15px bright bead on a 680px band). */
+export const PACKET_WIDTH = 0.06;
+/** Peak emissive gain: ×(1 + GAIN) at the packet center = ×2.2 — above the
+ * >1.0 bloom floor, so packets BLOOM like little signals. */
+export const PACKET_GAIN = 1.2;
+/** Size swell at the packet center (rides beside the surge's 0.45). */
+export const PACKET_SIZE = 0.3;
+/** Tone push toward COL_CORE (white-cyan) at the packet center. */
+export const PACKET_WHITE = 0.45;
+/** Halo radius swell at a node-kiss peak (a packet "arriving"). */
+export const PACKET_NODE_SWELL = 0.12;
+/** Halo emissive gain at a node-kiss peak (subtler than an ignition flash). */
+export const PACKET_NODE_GAIN = 0.5;
+/** Kiss gaussian half-width in cycle units (~0.4s swell centred on the
+ * bead's arrival phase, 1/PACKET_SPAN, at the mean rate). */
+export const PACKET_KISS_WIDTH = 0.05;
+/** Micro-spark sputter rate (rad/s of the flicker sine) where a packet dies
+ * into the fracture (broken). */
+export const PACKET_FLICKER_HZ = 43;
+
+// --- Round-7 — beauty pass (taste constants) ---------------------------------
+/** Per-edge brightness profile: emissive ×(1−this/2) at the tips rising to
+ * ×(1+this/2) mid-span — filaments dim INTO the node halos and carry their
+ * light in the middle, so each edge reads as a strand of light, not a bar.
+ * Floor check: 2.1·0.85 ≈ 1.79 keeps the >1.0 bloom contract at the tips. */
+export const EDGE_MID_BRIGHT = 0.3;
+/** Per-layer tint within the navy→cyan family (NO violet): input layers run
+ * COOLER (toward COL_BLUE), output layers WARMER-cyan (toward COL_CORE).
+ * Max mixes at the extreme layers (t=0 / t=1). */
+export const LAYER_TINT_COOL = 0.35;
+export const LAYER_TINT_WARM = 0.22;
+/** Halo quality: per-node size variance (±this/2 around 1), a slow radius
+ * breath, a whiter CRISP core (inner-fill particles) and a softer fringe. */
+export const HALO_SIZE_VAR = 0.3;
+export const HALO_BREATH_AMP = 0.045;
+export const HALO_BREATH_RATE = 0.55;
+export const HALO_CORE_WHITE = 0.22;
+export const HALO_FRINGE_SOFT = 0.25;
+/** Fray embers warm toward amber at the VERY tips of the frayed side (the
+ * existing failure tone, one step warmer — still desaturated, sub-bloom). */
+export const COL_EMBER_TIP = "#8A5F3E";
+/** How hard the tip-warm ramp bites (smoothstep 0.6→1 of fray progress ×this). */
+export const EMBER_TIP_MIX = 0.75;
 
 // --- Layer ignition / hover --------------------------------------------------
 /** Emissive gain of a middle layer's ignition flash (bumpCluster / pulse

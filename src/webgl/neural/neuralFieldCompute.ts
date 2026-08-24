@@ -120,6 +120,31 @@
  *       fray wander +20%·vel, and flow +40%·vel via the uFlowTime clock
  *       (driver-integrated; flowParam reads it instead of uTime so a velocity
  *       change bends the flow RATE without teleporting phases).
+ *
+ * ROUND-7 (2026-08-22, owner: "la luce che passa più frequente + continua a
+ * renderle più belle") — ALL shader-side, zero driver changes, zero new
+ * bindings, both backends:
+ *   R1. AMBIENT PACKET TRAFFIC — packetAt(): PACKET_COUNT hash-staggered
+ *       clocks per RECEIVING node (packetClock, keyed by the edge's target)
+ *       send small bright beads (×~2.2 emissive — above the bloom floor, so
+ *       packets BLOOM) traveling s 0→1 with the flow, ~0.4 visible
+ *       packets/edge at any instant; edges into the same node converge and
+ *       land together. Rides uFlowTime → animates on the STATIC tier too
+ *       and quickens gently with scroll. On broken, traffic never crosses
+ *       the fracture: gated to zero past it, and a packet dying into the
+ *       break sputters (micro-spark flicker); the uRecohere tease re-opens
+ *       the crossing for a beat. nodeKissAt(): the SAME per-node clock,
+ *       centered on the arrival phase, briefly SWELLS (anchorNode) +
+ *       BRIGHTENS (particleScalars) a halo exactly as its beads land (input
+ *       layer gated out — nothing feeds it). Live knobs: uPacketRate /
+ *       uPacketWidth / uPacketGain (dev-handle uniforms bag).
+ *   R2. BEAUTY PASS — per-edge brightness profile (dim at the tips into the
+ *       halos, brightest mid-span); per-layer tint in the navy→cyan family
+ *       (input cooler → blue, output warmer-cyan → white-cyan, NO violet);
+ *       halo quality (per-node size variance + slow breath, whiter crisp
+ *       inner core, softer outer fringe); fray embers warming toward amber
+ *       at the very tips (uColEmberTip). Surge periods also dropped
+ *       (config SURGE_PERIOD_* 4→2.4 / 6→3.5).
  *   The membrane/nebula layers are pure vertex/fragment materials (no
  *   storage buffers, no compute, no textures) built for BOTH backends before
  *   the backend split — the 4-storage-buffer / 5-vertex-slot budget of the
@@ -191,6 +216,27 @@ import {
   SURGE_GAIN,
   FLASH_K,
   FLASH_GAIN,
+  PACKET_COUNT,
+  PACKET_RATE,
+  PACKET_SPAN,
+  PACKET_WIDTH,
+  PACKET_GAIN,
+  PACKET_SIZE,
+  PACKET_WHITE,
+  PACKET_NODE_SWELL,
+  PACKET_NODE_GAIN,
+  PACKET_KISS_WIDTH,
+  PACKET_FLICKER_HZ,
+  EDGE_MID_BRIGHT,
+  LAYER_TINT_COOL,
+  LAYER_TINT_WARM,
+  HALO_SIZE_VAR,
+  HALO_BREATH_AMP,
+  HALO_BREATH_RATE,
+  HALO_CORE_WHITE,
+  HALO_FRINGE_SOFT,
+  COL_EMBER_TIP,
+  EMBER_TIP_MIX,
   RING_FLASH_GAIN,
   STREAM_EMISSIVE,
   RING_EMISSIVE,
@@ -316,6 +362,15 @@ export interface NeuralFieldUniforms {
   uStretchMax: { value: number };
   /** Surge-head emissive gain (rides on the >1.0 floor). */
   uSurgeGain: { value: number };
+  // --- Round-7 ambient packet traffic (live tunables) -----------------------
+  /** Packet clock rate (cycles/sec; a bead crosses its edge in
+   * 1/(rate·PACKET_SPAN) ≈ 0.9s at the default). Density scales with it. */
+  uPacketRate: { value: number };
+  /** Gaussian half-width of a packet bead along per-edge s. */
+  uPacketWidth: { value: number };
+  /** Peak packet emissive gain — ×(1+gain) at the bead center (default 1.2
+   * → ×2.2, above the >1.0 bloom floor so packets bloom). */
+  uPacketGain: { value: number };
   /** Billboard base size in device px. */
   uPointSize: { value: number };
   /** Per-strand twist phases (rad) — write entries of `.array`. */
@@ -612,6 +667,9 @@ export function createNeuralFieldBuild(
   const uColBlue = uniform(new Color(COL_BLUE));
   const uColEmber = uniform(new Color(COL_EMBER));
   const uColEmber2 = uniform(new Color(COL_EMBER2));
+  // Round-7: the frayed tips warm toward amber (internal, like the ramp
+  // colors above — not in the tunables bag).
+  const uColEmberTip = uniform(new Color(COL_EMBER_TIP));
   const uPointSize = uniform(NEURAL_POINT_SIZE);
   // Round-2 live tunables (dev-handle surfaced; defaults from config).
   const uEnvelope = uniform(1);
@@ -622,6 +680,10 @@ export function createNeuralFieldBuild(
   const uStretchGain = uniform(STRETCH_GAIN);
   const uStretchMax = uniform(STRETCH_MAX);
   const uSurgeGain = uniform(SURGE_GAIN);
+  // Round-7: ambient packet traffic knobs (dev-handle uniforms bag).
+  const uPacketRate = uniform(PACKET_RATE);
+  const uPacketWidth = uniform(PACKET_WIDTH);
+  const uPacketGain = uniform(PACKET_GAIN);
   const uStrandPhase = uniformArray([...STRAND_PHASES]);
   const uStrandThick = uniformArray([...STRAND_THICK_BIAS]);
   // Round-3 (§B): row-reactive current + curl turbulence + depth-DOF. All
@@ -800,7 +862,10 @@ export function createNeuralFieldBuild(
     const B = nodeAt(ib).add(nodeDrift(ib, tB)).toVar();
     const t = mix(tA, tB, s).toVar();
     const dir = B.sub(A).normalize().toVar();
-    return { edgeIdx, strand, s, t, A, B, dir };
+    // `ib` (target-node index) is exposed for the round-7 packet clocks:
+    // traffic is keyed by the RECEIVING node so nodeKissAt can run the very
+    // same clock and kiss exactly when a bead lands (see packetAt).
+    return { edgeIdx, strand, s, t, A, B, dir, ib };
   }
   /** Round-3 row glow by JS-literal row index (uniformArray element — legal
    * in any stage, costs no buffer slot). */
@@ -1078,9 +1143,26 @@ export function createNeuralFieldBuild(
     // Crisp orbiting halo + the ignition SHOCKWAVE: the radius ripples out
     // 1 → 1+RING_SHOCKWAVE while the middle layer's flash envelope decays.
     const haloFlash = ringFlashAt(layerSlot(nT)).mul(midLayerGate(nT));
+    // Round-7 halo quality: per-node size variance (±HALO_SIZE_VAR/2) + a
+    // slow radius breath, plus the packet-arrival kiss swell (nodeKissAt —
+    // particleScalars reads the SAME clock for the brightness, so swell and
+    // glow arrive together). The compute tier's spring tracks these slow
+    // radius changes exactly like the RING_SHOCKWAVE ripple.
+    const hNode = fract(sin(aux.mul(77.7).add(3.3)).mul(43758.545)).toVar();
+    const haloVar = float(1 - HALO_SIZE_VAR / 2).add(
+      hNode.mul(float(HALO_SIZE_VAR)),
+    );
+    const haloBreath = float(1).add(
+      sin(uTime.mul(float(HALO_BREATH_RATE)).add(hNode.mul(Math.PI * 2))).mul(
+        float(HALO_BREATH_AMP),
+      ),
+    );
     const rr = float(NODE_RADIUS)
       .mul(float(1).add(offN.y.mul(float(NODE_RADIAL_JITTER))))
-      .mul(float(1).add(haloFlash.mul(float(RING_SHOCKWAVE))));
+      .mul(float(1).add(haloFlash.mul(float(RING_SHOCKWAVE))))
+      .mul(haloVar)
+      .mul(haloBreath)
+      .mul(float(1).add(nodeKissAt(aux, nT).mul(float(PACKET_NODE_SWELL))));
     // CAMERA-FACING circle in the x/y plane: the group is anisotropically
     // scaled (w·k, h·k), so the x component is aspect-corrected by
     // uPlaneAspect to keep the halo screen-circular (the membrane discs'
@@ -1142,6 +1224,106 @@ export function createNeuralFieldBuild(
     return uFlash
       .mul(exp(float(FLASH_K).mul(d.mul(d)).negate()))
       .mul(uBroken);
+  }
+
+  /** ROUND-7 — ambient packet traffic at (targetIdx, edgeIdx, s, t):
+   * PACKET_COUNT hash-staggered clocks per RECEIVING node each send a small
+   * bright bead traveling s 0→1 WITH the flow (source halo → target halo).
+   * A bead occupies 1/PACKET_SPAN of its cycle — the gaussian handles the
+   * "off" majority for free (no branch) — so expected visible traffic ≈
+   * COUNT/SPAN ≈ 0.4 packets/edge: calm but alive. CLOCK KEY = the edge's
+   * TARGET node (packetClock below): every edge terminating at a node rides
+   * the SAME clock, so incoming beads CONVERGE and land together — and
+   * nodeKissAt runs that identical clock, so the halo kiss peaks exactly at
+   * contact (causal, not merely statistically similar). Distinct target
+   * nodes stay fully decorrelated (per-node hash + ±25% rate variance —
+   * constant across an edge, so a bead never smears across its particles).
+   * Pure function of uFlowTime + uniforms → identical on the compute AND
+   * static tiers, deterministic for any scrub state, and it quickens gently
+   * with scroll (the flow clock's +40%·vel).
+   * NARRATIVE GATES (broken): traffic never crosses the fracture — past-side
+   * zeroed with the surge's own fracture window — and a bead dying INTO the
+   * break sputters at PACKET_FLICKER_HZ (the flicker rides the particle's
+   * own t, so it only shows where a packet is actually at the break). The
+   * uRecohere hover tease re-opens the crossing for a beat (the dispFactor /
+   * nodeDrift gate grammar). */
+  /** The shared per-(receiving-node, k) traffic clock 0..1 — THE round-7
+   * correlation contract: packetAt (bead position) and nodeKissAt (halo
+   * kiss) must read this same function or beads land without kisses. Phase
+   * offset AND ±25% rate variance from one per-(node, k) hash. */
+  function packetClock(nodeIdx: Any, k: number): Any {
+    const hn = fract(
+      sin(nodeIdx.mul(113.1).add(k * 71.3 + 29.7)).mul(43758.545),
+    ).toVar();
+    return fract(
+      hn.add(uFlowTime.mul(uPacketRate).mul(float(0.75).add(hn.mul(0.5)))),
+    );
+  }
+  function packetAt(targetIdx: Any, edgeIdx: Any, s: Any, t: Any): Any {
+    let p: Any = float(0);
+    for (let k = 0; k < PACKET_COUNT; k++) {
+      // Bead center sweeps s = cyc·SPAN: on-edge for cyc ∈ [0, 1/SPAN],
+      // ARRIVING (s=1) at cyc = 1/SPAN — where nodeKissAt(targetIdx) peaks.
+      const cyc = packetClock(targetIdx, k);
+      const d = s.sub(cyc.mul(float(PACKET_SPAN))).div(uPacketWidth);
+      p = p.add(exp(d.mul(d).negate()));
+    }
+    const openGate = float(1).sub(uRecohere.mul(0.9));
+    const past = smoothstep(
+      uFracture,
+      uFracture.add(float(FRACTURE_WINDOW)),
+      t,
+    )
+      .mul(uBroken)
+      .mul(openGate);
+    const dNear = t.sub(uFracture.sub(float(0.02)));
+    const nearBreak = exp(float(3000).mul(dNear.mul(dNear)).negate())
+      .mul(uBroken)
+      .mul(openGate);
+    const flick = mix(
+      float(1),
+      float(0.35).add(
+        sin(uFlowTime.mul(float(PACKET_FLICKER_HZ)).add(edgeIdx.mul(11.7)))
+          .mul(0.5)
+          .add(0.5)
+          .mul(0.85),
+      ),
+      nearBreak,
+    );
+    return p.mul(float(1).sub(past)).mul(flick);
+  }
+  /** ROUND-7 — halo "kiss": per-node packet-ARRIVAL pulses on the SAME
+   * packetClock the incoming edges ride (keyed by this node), gaussian-
+   * centered at the arrival phase cyc = 1/PACKET_SPAN — the swell ramps
+   * through the bead's final approach, peaks exactly as it lands (~±0.2s at
+   * PACKET_KISS_WIDTH), then decays as the bead is absorbed. Read by BOTH
+   * anchorNode (radius swell) and particleScalars (emissive/whitening) —
+   * a pure function of uFlowTime, so swell and glow arrive together across
+   * stages and backends (continuous in time → no pop on the static tier).
+   * INPUT-layer nodes (nT = 0, in-degree 0 — no on-screen edge feeds them)
+   * are gated out: nothing arrives, so nothing kisses. Degraded nodes
+   * (broken, past the fracture) receive no traffic — consistent with
+   * packetAt's fracture gate, since any edge terminating past the fracture
+   * has its beads killed at the break; the uRecohere tease briefly restores
+   * BOTH ends of that contract at once. */
+  function nodeKissAt(nodeIdx: Any, nT: Any): Any {
+    let kSum: Any = float(0);
+    for (let k = 0; k < PACKET_COUNT; k++) {
+      const cyc = packetClock(nodeIdx, k);
+      const d = cyc
+        .sub(float(1 / PACKET_SPAN))
+        .div(float(PACKET_KISS_WIDTH));
+      kSum = kSum.add(exp(d.mul(d).negate()));
+    }
+    // In-degree gate: the input layer (nT=0) receives no traffic. The next
+    // layer sits at nT=0.25, so the smoothstep is a clean per-node 0/1.
+    const fed = smoothstep(float(0.02), float(0.2), nT);
+    const gate = float(1).sub(
+      smoothstep(uFracture, uFracture.add(float(0.02)), nT)
+        .mul(uBroken)
+        .mul(float(1).sub(uRecohere.mul(0.9))),
+    );
+    return kSum.mul(fed).mul(gate);
   }
 
   /** Screen-motion vector (local units/s) feeding the velocity stretch.
@@ -1219,6 +1401,9 @@ export function createNeuralFieldBuild(
     );
     const surge = surgeAt(t);
     const flash = flashAt(t);
+    // Round-7: the ambient packet bead at this particle (0..~1) — constant
+    // small-scale traffic between the big pulses.
+    const packet = packetAt(ef.ib, ef.edgeIdx, ef.s, t).toVar();
 
     // --- EDGE: white-cyan core → cyan body → blue fringe; ember fray;
     //     white-cyan pulse head with its trailing gradient. ---
@@ -1228,15 +1413,41 @@ export function createNeuralFieldBuild(
       uColBlue,
       smoothstep(float(0.2), float(1), fringe),
     );
-    const gradCol = mix(bodyCol, uColCore, coreMix);
+    // Round-7 per-layer tint (navy→cyan family only, NO violet): input
+    // layers run COOLER (toward blue), output layers WARMER-cyan (toward
+    // white-cyan) — the signal visibly matures left→right. Max mixes at the
+    // extreme layers (t=0 / t=1); the mid net stays pure brand cyan.
+    const coolK = clamp(
+      float(0.5).sub(t).mul(2 * LAYER_TINT_COOL),
+      float(0),
+      float(1),
+    );
+    const warmK = clamp(
+      t.sub(float(0.5)).mul(2 * LAYER_TINT_WARM),
+      float(0),
+      float(1),
+    );
+    const bodyDepth = mix(mix(bodyCol, uColBlue, coolK), uColCore, warmK);
+    const gradCol = mix(bodyDepth, uColCore, coreMix);
+    // Round-7: the frayed side's VERY tips warm toward amber — the failure
+    // tone one step warmer (still desaturated ember, sub-bloom, never
+    // signal-cyan).
     const emberCol = mix(
-      uColEmber,
-      uColEmber2,
-      clamp(metaN.w.mul(0.6).add(u.mul(0.4)), float(0), float(1)),
+      mix(
+        uColEmber,
+        uColEmber2,
+        clamp(metaN.w.mul(0.6).add(u.mul(0.4)), float(0), float(1)),
+      ),
+      uColEmberTip,
+      smoothstep(float(0.6), float(1), u).mul(float(EMBER_TIP_MIX)),
     );
-    const headMix = clamp(surge.mul(0.85), float(0), float(1)).mul(
-      float(1).sub(deadMix),
-    );
+    // White-hot head: the surge OR a passing packet (packets are smaller
+    // PACKET_WHITE-weighted beads of the same core tone).
+    const headMix = clamp(
+      surge.mul(0.85).add(packet.mul(float(PACKET_WHITE))),
+      float(0),
+      float(1),
+    ).mul(float(1).sub(deadMix));
     const toneStream = mix(mix(gradCol, emberCol, deadMix), uColCore, headMix);
     // Idle dignity: slow per-particle brightness shimmer (±uShimmer).
     const shimmer = float(1).add(
@@ -1246,10 +1457,19 @@ export function createNeuralFieldBuild(
     // broken the window reaches into the debris (row 2 = the fracture) where
     // deadMix keeps the boost a warm ember lift, not a debris flare.
     const rowBright = float(1).add(rowResponse(t).mul(uRowGain));
+    // Round-7 per-edge brightness profile: 4·s·(1−s) parabola — emissive
+    // ×(1−EDGE_MID_BRIGHT/2) at the tips (dimming into the node halos)
+    // rising to ×(1+EDGE_MID_BRIGHT/2) mid-span. Tip floor 2.1·0.85 ≈ 1.79
+    // keeps the >1.0 bloom contract.
+    const midProfile = float(1 - EDGE_MID_BRIGHT / 2).add(
+      ef.s.mul(float(1).sub(ef.s)).mul(4 * EDGE_MID_BRIGHT),
+    );
     const emisStream = float(1)
       .add(surge.mul(uSurgeGain))
+      .add(packet.mul(uPacketGain))
       .add(flash.mul(float(FLASH_GAIN)))
       .mul(float(STREAM_EMISSIVE))
+      .mul(midProfile)
       .mul(shimmer)
       .mul(rowBright)
       .mul(float(1).sub(deadMix.mul(0.75)));
@@ -1266,12 +1486,13 @@ export function createNeuralFieldBuild(
       .mul(edge)
       .mul(gap)
       .mul(float(STREAM_ALPHA));
-    // Size falloff: bright fat core, fine fringe; the surge fattens the head.
+    // Size falloff: bright fat core, fine fringe; the surge fattens the
+    // head; a passing packet fattens its bead (round-7).
     const sizeStream = mix(
       float(CORE_SIZE_BOOST),
       float(FRINGE_SIZE_DROP),
       fringe,
-    ).mul(float(1).add(surge.mul(0.45)));
+    ).mul(float(1).add(surge.mul(0.45)).add(packet.mul(float(PACKET_SIZE))));
 
     // --- NODE HALO: igloo crisp/white at node scale. Middle-layer halos
     //     read uRingFlash/uRingGlow (layerSlot + midLayerGate); the pulse
@@ -1285,23 +1506,53 @@ export function createNeuralFieldBuild(
     const nodePast = smoothstep(uFracture, uFracture.add(float(0.02)), nT)
       .mul(uBroken)
       .mul(float(1).sub(uRecohere.mul(0.9)));
+    // Round-7: the packet-arrival kiss — the same clock that swells the
+    // halo radius in anchorNode brightens + slightly whitens it here
+    // (subtler than an ignition flash: PACKET_NODE_GAIN 0.5 vs 2.4).
+    const kiss = nodeKissAt(metaN.y, nT).toVar();
     const emisRing = float(RING_EMISSIVE)
       .mul(glow)
       .mul(float(1).add(ringFlash.mul(float(RING_FLASH_GAIN))))
       .mul(float(1).add(surgeAt(nT).mul(0.6)))
+      .mul(float(1).add(kiss.mul(float(PACKET_NODE_GAIN))))
       .mul(float(1).sub(nodePast.mul(0.5)));
+    // Round-7 halo quality: inner-fill particles (offN.y < 0 orbit inside
+    // the rim) read whiter — a CRISP core under the icy rim — while the
+    // outer fringe sheds a little alpha (softer breath outside). Input-layer
+    // halos pick up a half-strength version of the edges' cool tint.
+    const innerK = clamp(offN.y.negate(), float(0), float(1));
+    const haloBase = mix(
+      uColCyan,
+      uColBlue,
+      clamp(
+        float(0.5).sub(nT).mul(2 * LAYER_TINT_COOL),
+        float(0),
+        float(1),
+      ).mul(0.5),
+    );
     const toneRing = mix(
       mix(
-        uColCyan,
+        haloBase,
         uColCore,
-        clamp(float(RING_WHITE).add(ringFlash.mul(0.5)), float(0), float(1)),
+        clamp(
+          float(RING_WHITE)
+            .add(ringFlash.mul(0.5))
+            .add(innerK.mul(float(HALO_CORE_WHITE)))
+            .add(kiss.mul(0.2)),
+          float(0),
+          float(1),
+        ),
       ),
       uColEmber2,
       nodePast.mul(0.7),
     );
-    const alphaRing = float(STREAM_ALPHA).mul(
-      float(1).sub(nodePast.mul(float(NODE_DEGRADE))),
-    );
+    const alphaRing = float(STREAM_ALPHA)
+      .mul(
+        float(1).sub(
+          clamp(offN.y, float(0), float(1)).mul(float(HALO_FRINGE_SOFT)),
+        ),
+      )
+      .mul(float(1).sub(nodePast.mul(float(NODE_DEGRADE))));
     const sizeRing = float(RING_POINT_SIZE_BOOST).add(ringFlash.mul(0.35));
 
     // --- SPARK: white-hot burst, alive only while uFlash burns. ---
@@ -1925,6 +2176,9 @@ export function createNeuralFieldBuild(
       uStretchGain,
       uStretchMax,
       uSurgeGain,
+      uPacketRate,
+      uPacketWidth,
+      uPacketGain,
       uPointSize,
       uStrandPhase: uStrandPhase as unknown as { array: number[] },
       uStrandThick: uStrandThick as unknown as { array: number[] },
