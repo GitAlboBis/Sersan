@@ -10,7 +10,191 @@
 
 ## 0. VERDICT IN ONE PARAGRAPH
 
-None of the three options put on the table can deliver this journey, because **every island that would have to travel is placed from a DOM rect and glued to the camera every frame** — `NeuralLattice.tsx:374-379` and `CrystalCluster.tsx:487-494` both compute `group.position = camera.position + camera.quaternion · (screenOffset·k, ·, −CAMERA_Z)` and `group.quaternion = camera.quaternion`. A group re-derived from the camera pose each frame is **exactly invariant** under camera translation *and* camera rotation, and a world-root translation is a no-op for it because it is not parented to any world root. So (a) "SignatureLine gains a journey mode" and (b) "a new camera authority" would both move the tube and the dust and leave the two neural nets and the two stones *nailed to the screen*; (c) "move the world past the camera" would do the same thing from the other side. The journey has to be built **one level down**: a new **local dolly rig inside each island's own frame**, between the camera-locked outer group and the existing inner group — call it **option (d)**. SignatureLine stays the single camera writer, untouched, byte-identical. The second half of the answer is the coordinator's lead and it is correct: the DOM half is a **`.seq-stage`-class full-viewport sticky stage over a lengthened runway** — the grammar this site already ships four times (`singularity-passage.tsx:2529`, `cinematic-system-scroll.tsx:1697`, `fit-section.tsx:1308`, `services-section.tsx:1318`), all with `start:"top top" / end:"bottom bottom"`, explicit runway height in px/vh, and **no ScrollTrigger `pin:`**. Two independent journeys, not one — 6033 px of `#work` + `#services` sit between the bands. And there is a free gift in it: while the DOM stage is pinned, `SignatureLine`'s camera keeps gliding with `window.scrollY` (`SignatureLine.tsx:787`), so the tube and the dust stream through the frame at full speed with the copy held still. That IS igloo's travel, and it costs zero lines.
+None of the three options put on the table can deliver this journey, because **every island that would have to travel is placed from a DOM rect and glued to the camera every frame** — `NeuralLattice.tsx:374-379` and `CrystalCluster.tsx:487-494` both compute `group.position = camera.position + camera.quaternion · (screenOffset·k, ·, −CAMERA_Z)` and `group.quaternion = camera.quaternion`. A group re-derived from the camera pose each frame is **exactly invariant** under camera translation *and* camera rotation, and a world-root translation is a no-op for it because it is not parented to any world root. So (a) "SignatureLine gains a journey mode" and (b) "a new camera authority" would both move the tube and the dust and leave the two neural nets and the two stones *nailed to the screen*; (c) "move the world past the camera" would do the same thing from the other side. The journey has to be built **one level down**: a new **local dolly rig inside each island's own frame**, between the camera-locked outer group and the existing inner group — call it **option (d)**. SignatureLine stays the single camera writer, untouched, byte-identical. The second half of the answer is the coordinator's lead and it is correct: the DOM half is a **`.seq-stage`-class full-viewport sticky stage over a lengthened runway** — the grammar this site already ships four times (`singularity-passage.tsx:2529`, `cinematic-system-scroll.tsx:1697`, `fit-section.tsx:1308`, `services-section.tsx:1318`), all with `start:"top top" / end:"bottom bottom"`, explicit runway height in px/vh, and **no ScrollTrigger `pin:`**. Two independent journeys, not one — 6033 px of `#work` + `#services` sit between the bands, and owner decision **D2** now makes that a feature: the world **closes** at the Act I seam and **reopens** at the Act II seam, so there is no cross-interlude state to manage and no contention with `#services`' own pinned stage. And there is a free gift in it: while the DOM stage is pinned, `SignatureLine`'s camera keeps gliding with `window.scrollY` (`SignatureLine.tsx:787`), so the tube and the dust stream through the frame at full speed with the copy held still. That IS igloo's travel, and it costs zero lines.
+
+**Read PART 0-BIS first.** It reconciles this conclusion with the storyboard's frame (they are the same mechanism in different coordinates — the storyboard's "fixed viewpoint" is the group plane at `CAMERA_Z`), carries the binding D1 runway, adds the one genuinely new structural finding (**the rig must sit outside the anisotropic group scale or the authored diagonal shears 1.76× on desktop and 2.15× the other way on a phone**), and answers the storyboard's five technical asks.
+
+---
+
+## PART 0-BIS — ALIGNMENT WITH THE BINDING OWNER DECISIONS, AND THE STORYBOARD'S FIVE ASKS
+
+*Added after `2026-08-22-round10-OWNER-DECISIONS.md` (D1/D2/D3, binding) and the landed storyboard. Nothing in Parts 1–12 contradicts them; where a number changed it has been corrected in place and this section is the authority.*
+
+### 0B.1 The three decisions, and what each one changes in the mechanism
+
+**D1 — the full 27.4 %.** Binding runway: Act I `#problem` **6.10 vp = 4392 px** (today 1330 ⇒ **+3062**), Act II `#trust` **5.95 vp = 4284 px** (today 1475 ⇒ **+2809**), page **21459 → 27330 px**. My §5 previously priced 3/4/5-beat variants; that table is **superseded** and Part 5 now carries the binding bill only. Everything downstream that scales with runway length has been re-derived at 7 beats — most importantly the `useTextDrift` shear (§3.4), which gets **worse**, not better: **440.6 px** of separation inside a 720 px stage.
+
+**D2 — the world closes and reopens.** This is the single biggest *simplification* the mechanism gets, and yes, it changes my handover story materially:
+
+- **No cross-section world state.** There is nothing to keep alive across 6033 px, so there is no persistence layer, no "dimmed" mode, no long-lived uniform, and no risk of a camera-locked island riding over `#work`/`#services`.
+- **No contention with `#services`' pinned POV stage.** Two sticky stages never coexist. That removes an entire class of bug (two `overflow:hidden` frames, two `focusin` handlers, two ScrollTriggers with overlapping `start/end`) that I would otherwise have had to write a protocol for.
+- **The arm/disarm edge is already specified in the repo.** Use the passage's `bandST` grammar verbatim — `ScrollTrigger.create({ trigger: root, start:"top bottom", end:"bottom top", invalidateOnRefresh:true, onToggle })` (`singularity-passage.tsx:1144-1166`) — **including its P0 fix** (`:1178-1187`): after every refresh, re-assert the armed truth from the band's *fresh* measurement, because a stale band measurement once left a camera-locked hole armed over the whole home page (*"il buco nero si vede in tutta la home"*, `:1327-1336`). **That P0 is directly in this round's line of fire**: D1 grows two sections by 5871 px, which is exactly the downstream layout change that stranded `armed` last time. Copy the re-assertion, do not re-derive it.
+- **Invariant worth asserting in dev**: `journeyStore.problem.active && journeyStore.production.active` must never both be true. They are 6033 px apart and each band is ~4.3 k px, so it is structurally impossible — assert it anyway; it is the cheapest detector for a stale-arm regression.
+- The three act edges are `CUT_BOUNDARY_PAIRS` entries **already wired** (`sectionStore.ts:233-239`): `problem→case-studies`, `services→production`, `production→founders`. See 0B.4-(d) for the retiming answer (there isn't one — and why).
+
+**D3 — the meteorite is the fractured Act I stone, absent during travel.** Consequences for the crystal island, all favourable, one trap:
+
+- **Screen lifetime**: first sighting at P5-local 0.75 ⇒ `j ≈ 0.785`, held to `j = 1`. That is `0.25 × 576 + 648 = 792 px` of Act I's 3672 px of travel — **21.5 % of the act, ≈1.4 of the 7 beats**, not 7.
+- **Do NOT convert `CrystalCluster` to init-on-approach.** The instinct is to copy `SequenceSingularity`'s "build DEFERRED to the approach band + compileAsync-warmed, disposed on far leave" (`Scene.tsx` island header). Here it would *buy* a stall: the build loads a GLB (450 / 1114 tris, module-cached, non-suspending) and, on healthy + full + true-WebGPU, allocates the 512² mipmapped mark RT (`MARK_RT_SIZE`, `crystalConfig.ts:842`). The resident cost of an *invisible* stone is already almost nothing: `useFrame` early-returns on the cull (`CrystalCluster.tsx:443-446` — `group.visible = false; return;`), so an off-beat stone costs **one `if`**. Keep the existing lazy build; add a beat gate that drives the same `visible = false`.
+- **THE TRAP — the mark RT would render on the sighting frame.** `rig.render(gl, t, mesh.quaternion)` sits *after* the cull early-return (`CrystalCluster.tsx:653-654`), and with the shipped `MARK_SPIN = 0` (`crystalConfig.ts:1154`) it is a **render-once**. If the stone is hidden for the first 78.5 % of the act, that one-shot 512² render + mipmap chain lands on **exactly the T5 first-sighting frame** — the beat the storyboard calls "a shape in the distance, not an event". Fix: force one RT render at **build time** (or on the `bandST` arm edge), never on the visibility edge. One line, and it is invisible in review.
+- **The mark's screen budget shrinks 29 % at the hold pose, and is unchanged at the money shot.** The mark reads at 60 % of the silhouette by construction:
+
+| pose | `CRYSTAL_SCALE` | stone (fraction of `rect.h`) | stone px | mark px (60 %) |
+|---|---|---|---|---|
+| today, pre-shrink (619 px band) | 0.17 | 0.564 | 349 | **208** |
+| **landed shrink**, still the 619 px band | **0.115** | 0.382 | 236 | 142 |
+| journey APPROACH peak (P6 0.00–0.46), 720 px stage | — | 0.48 | 346 | **207** — identical to pre-shrink |
+| **journey HOLD** (P6 VERDICT), 720 px stage | 0.115 | 0.382 | 275 | **165** (−21 % vs pre-shrink) |
+| storyboard's 34 % alternative | 0.102 | 0.339 | 244 | 146 (−30 %) |
+
+  `MARK_LOD_K 0.36` (`:1150`) and `MARK_THICKNESS 0.35` (`:1066`) were fitted at 208 px. The mark reads at its best precisely at the money shot and shrinks only once it has already landed — defensible, and arguably the right dramatic shape — but it is **a measured regression on the thing the owner approved two commits ago** (`93bb31d`, "the logo reads inside the ice"). It gets its own QA gate in §12 Stage 4, with that number.
+- **Convergence with the `CRYSTAL_SCALE` fix — now a FACT, not a prediction.** The parallel agent landed **`CRYSTAL_SCALE = 0.115`** in the working tree while this dossier was being written. That is `0.115 × 3.32 = 38.2 %` of `rect.h`, against the storyboard's 34 % — a 12 % difference, well inside taste. Because the constant is a fraction of `rect.h`, it carries from the 619 px band to the 720 px stage **unchanged**, so the shrink does not need re-deriving when the anchor changes. **Do not duplicate the fix, and do not let anyone re-fit it against the old band.** The residual 34 vs 38.2 % is an owner-eye call at Stage 4, not an arithmetic one.
+
+### 0B.2 THE FRAME — the storyboard's reads stand, unchanged, and the numbers project directly
+
+The storyboard writes every pose in the **world-slides-past-a-fixed-viewpoint** frame, viewpoint at local `z = 0`, and calls it handoff §3a option (c). My Part 2 concludes that option (c) *as the handoff defines it* — translating a world root past a static camera — moves nothing for these islands. **These two statements are not in conflict, and the storyboard does not need re-projecting.** Here is the reconciliation, stated plainly:
+
+> The storyboard's "fixed viewpoint at the screen plane" is the **island's group plane**, which sits exactly `CAMERA_Z = 12` world units in front of the camera by construction (`NeuralLattice.tsx:374-379` places the group at `−CAMERA_Z` along the camera's forward axis). Its "the world slides through it" is a **translation of the cloud in the group's local frame**. That is precisely option (d) — the local dolly rig. The storyboard has been describing my mechanism all along, in the island's own coordinates; the only thing Part 2 adds is **who writes the transform** (the island's rig, not SignatureLine, not a world root) and **why nothing else can** (a camera-locked group is invariant under every camera write).
+
+The conversion is one constant. At a 100 vh stage, `rect.h = ih`, so:
+
+```
+hWorld = ih · k = ih · (WORLD_VIEW_HEIGHT / ih) = WORLD_VIEW_HEIGHT = 11.1914
+⇒ 1 local "stage-height" unit  =  11.1914 world units, at every viewport.
+```
+
+(`zWorld = hWorld × NEURAL_DEPTH_SCALE_FACTOR(1.0)`, `neuralLatticeConfig.ts:1581`.) So the storyboard's z axis maps to camera distance as `d = 12 − e × 11.1914`, where `e` is its effective local z:
+
+| storyboard `e` (stage-heights) | world offset | camera distance `d` | a 1-stage-height object renders at |
+|---|---|---|---|
+| −1.72 (far wall, P0) | −19.25 | 31.25 | **276 px** = 0.38 vp |
+| −1.55 (P0 slide start) | −17.35 | 29.35 | 294 px |
+| −0.85 (shell outer edge) | −9.51 | 21.51 | 402 px |
+| −0.15 (shell core edge) | −1.68 | 13.68 | 632 px |
+| **0 (the "screen plane")** | 0 | **12.00** | **720 px = 1.00 vp** ✔ |
+| +0.38 (nearest authored node) | +4.25 | 7.75 | 1114 px = 1.55 vp |
+| +0.45 (P6 slide end) | +5.04 | **6.96** | **1241 px = 1.72 vp** |
+
+**A 4.5 : 1 apparent-size range across the act, delivered entirely by a local translation of 22.4 world units — 1.87 × `CAMERA_Z`.** That is a real corridor, and it is unreachable by any camera write.
+
+Two structural checks, both clean:
+- **Near plane**: closest content sits at `d = 6.96` against `near = 0.1` (`Scene.tsx:389`) — 70× clearance. No clipping.
+- **Frustum culling**: every mesh in both islands is already `frustumCulled = false` (`NeuralLattice.tsx:796, 804, 817`; `CrystalCluster.tsx:1002, 1012`; `neuralFieldCompute.ts:2806`), so a 22-unit local translation cannot mis-cull against a stale bounding sphere. This was the one thing that could have made option (d) expensive, and it is already paid for.
+
+### 0B.3 NEW FINDING — the rig must sit OUTSIDE the anisotropic scale, or the diagonal shears 1.76×
+
+The outer group's scale is **non-uniform**: `group.scale.set(wWorld, hWorld, zWorld)` (`NeuralLattice.tsx:380`), i.e. `(19.8958, 11.1914, 11.1914)` at a 1280×720 stage. The x axis is scaled `wWorld/hWorld = 1.7778` more than z — that ratio *is* the viewport aspect, and it is why the config authors x in width-fractions and y/z in height-fractions (`neuralLatticeConfig.ts:47-53`).
+
+Translation along z is unaffected by that (a translation does not mix axes). **A yaw does.** Under `S = diag(19.8958, 11.1914, 11.1914)`, a child rotation `R(θ)` composes as `S·R(θ)`, which is **not** a rigid rotation: it is a rotation followed by an anisotropic stretch. Consequences for the storyboard's diagonal:
+
+| authored yaw | rendered x→z yaw at 1280×720 (aspect 1.778) | at 390×844 portrait (aspect 0.462) |
+|---|---|---|
+| Act I −7.7° | **−13.51°** (1.76× too strong) | **−3.58°** (0.46× too weak) |
+| Act II +6.3° | **+11.10°** | **+2.92°** |
+
+`atan(tan θ · wWorld/hWorld)`. So one authored constant would render the diagonal **1.76× too strong on desktop and 2.15× too weak on a phone**, and the cloud's silhouette would visibly stretch and un-stretch as θ ramps — a breathing distortion, not a rotation.
+
+**The fix is structural and it is six lines.** Move the anisotropic scale off the camera-locked group and put the rig above it:
+
+```
+<group ref={groupRef}>        // camera-locked position + quaternion, scale = 1   ← HUD anchor
+  <group ref={rigRef}>        // JOURNEY: rigid translate (WORLD units) + rigid rotate
+    <group ref={scaleRef}>    // scale = (wWorld, hWorld, zWorld)   ← moved off groupRef
+      <group ref={innerRef}>  // existing auto-orbit + pointer parallax, untouched
+        …meshes
+```
+
+The rig's translation is then `slide_local × WORLD_VIEW_HEIGHT` (world units) and its rotation is a genuine rotation at every viewport. The dev handle's `project()` reads `groupRef.position` (`NeuralLattice.tsx:776-780`) and is unaffected.
+
+**`CrystalCluster` needs no restructure**: its scale is already **uniform** (`group.scale.setScalar(s)`, `:494`), so a rig on either side of it is rigid. One island changes shape, the other does not.
+
+*Footnote, for whoever retires the copy mask*: the existing `COPY_EDGE_PAD` derivation (`neuralLatticeConfig.ts:1766-1771`) computes the inner group's rotational drift as `0.2·sin(0.09) = 0.018 of band width` — mixing a height-fraction with a width-fraction. The true drift in width fractions is `0.018 × (h/w) = 0.0087` at 1280. The shipped pad is therefore ~2× conservative, which is why the shipped ±0.09 rad orbit has never shown this bug. At 0.134 rad (7.7°) it would.
+
+### 0B.4 THE STORYBOARD'S FIVE TECHNICAL ASKS, ANSWERED
+
+**(1) Is `position: sticky; top:0; height:100vh; overflow:hidden` compatible with the `[data-lattice-anchor]` measure/anchor plumbing? — CONFIRMED, with one mandatory correction and three consequences.**
+
+- ✔ **The camera-lock math is rect-agnostic.** `NeuralLattice.tsx:370-380` consumes only `rect.{cxBase,w,h}` and `vpTop`; it locks to whatever box it is handed. The stage becomes `100vw × 100vh` ⇒ `group.scale = (worldViewWidth, WORLD_VIEW_HEIGHT, WORLD_VIEW_HEIGHT)` — the frustum at the group plane, exactly. Local ±0.5 in y fills the viewport height precisely. This is a *cleaner* number than today's letterbox, not a riskier one.
+- ⚠ **MANDATORY: the sticky-offset correction (§4.4, risk R1).** `vpTop = rect.docTop − scrollY` assumes normal flow. Under a sticky ancestor the net slides up out of frame and is culled once `vpTop < −(ih + CULL_PAD) = −940 px`, i.e. after 940 px of stage travel — **at `j = 0.256`, in the middle of P2, the thesis beat**. It is visibly wrong long before that: at `j = 0.05` the volume's centre is already 184 px (a quarter of the stage) too high. Correction: `vpTop = rect.docTop − scrollY + clamp(scrollY − stageTopDoc, 0, runwayPx − vh)`, with the measure-time offset subtracted from the cached `docTop`.
+- ✔ **`overflow: hidden` does not clip the WebGL.** The canvas is a separate `fixed inset-0` layer *behind* the DOM (`CanvasHost.tsx:33`); the stage clips DOM only. The volume may bleed past the stage box — which at 100 vh means "off-screen", so it is free. There are no clipping planes or scissors anywhere in `src/webgl/` (verified).
+- ✔ **The arrival ramp and the cull degrade gracefully.** With the corrected `vpTop`, the stage's `vpTop = 0` for the whole act ⇒ `vis = clamp((720+110−0)/(720·0.7)) = 1`. The `revealDamped` arrival ramp becomes a no-op inside the act, which is **correct**: arrival is now beat P0's job, not an IO ramp. The cull window (`vpTop + h < −220 || vpTop > ih + 220`) spans ~3 viewports around the stage — ample.
+- 📋 **`data-lattice-anchor` moves onto the stage element.** It is currently a full-bleed absolutely-positioned child of the rows stack (`problem-section.tsx:386-390`) carrying the dot-grid, the SVG fallback and the three callout spans. They move with it, which is what the storyboard wants (callouts projected against the stage, gated to P6).
+
+**(2) `BAND_ASPECT 0.45` vs a 100 vh stage (0.56 desktop / 2.16 phone portrait) — RULING.**
+
+The storyboard is right that a constant tweak cannot fix it, and right that this is the largest sizing risk. But **"the phone needs its own seeded cloud" is stronger than necessary and costs a second hand-tuned table.** The exact fix is cheaper.
+
+The facts: `BAND_ASPECT` is **build-time only**, used in exactly three places, all inside `buildPlexus` — the crystal density well (`:410`), the near-neighbour distance metric (`:431`) and the link-midpoint carve test (`:445`) — to put local x into height units before measuring a distance. The *live* in-shader aspect is a different, already-correct value: `uPlaneAspect = rect.h / rect.w`, driver-written per frame (`NeuralLattice.tsx:586`), which tracks the stage automatically and needs no change.
+
+The error, quantified: today's bands are 0.484 / 0.525, so 0.45 is within 8 %. At a desktop stage the truth is **0.5625** (25 % off — a mild columnar bias in the link graph). At 390×844 portrait the truth is **2.164**: the metric would stretch x by `1/0.45 = 2.22` where it should **compress** it by `1/2.164 = 0.462` — a **4.8× error in the wrong direction**. The near-neighbour graph would pick almost entirely the wrong axis, and the crystal density well would carve an ellipse 4.8× wrong in aspect (either swallowing the stone or cutting a wide slot through the cloud).
+
+> **RULING: make `BAND_ASPECT` a build-time PARAMETER of the generator, not a module constant.** `getPlexus(mode, density)` (`neuralLatticeConfig.ts:365-375`) is already module-cached by `${mode}:${density}`; extend it to `getPlexus(mode, density, aspectBucket)` with the key `${mode}:${density}:${aspectBucket}`, and pass the measured stage aspect into `buildPlexus`. Then the cloud is seeded for the aspect it will actually be shown at, **at every viewport, with no table and no phone variant.**
+
+Three implementation clauses, all precedented:
+- **Bucket the aspect, never pass the raw value.** The plexus tables are `uniformArray`s built at island-build time and the node/edge **counts are build-time** (`neuralFieldCompute.ts:935-936`), so a change means dispose + rebuild. Quantise to a coarse bucket (`portrait | square | landscape`, or 0.25 steps) and add it to the build effect's deps alongside `[mode, gl]` (`NeuralLattice.tsx:198-243`). This is exactly `DriftParticles`' `widthBucket` idiom and its stated reason (`DriftParticles.tsx:262-272`: a raw size dep "reallocated three Float32Arrays + a fresh InstancedBufferGeometry for up to 3000 instances on every tick of a resize drag").
+- **The DOM SVG fallback must use the same bucket.** `neural-graph-fallback.tsx` draws the same generator at density `"svg"`; if the two disagree, the fallback and the island show different graphs on the same viewport.
+- **`CRYSTAL_POS` and `CRYSTAL_CLEAR_INNER/OUTER` come along for free** — they are measured through the same metric, so parameterising it fixes the stone's clearance well at every aspect in the same change.
+
+Cost: one parameter, one cache-key change, one bucket in a deps array. **This also makes the round-9-B "@floor" count tables re-derivable rather than invalid** after the reseed — the per-sprite value arithmetic (the AA ledger) is untouched by topology.
+
+**(3) `useTextDrift` inside a sticky stage — VERIFIED, it is a real defect, and here is the fix.**
+
+Verified in source. `registerDrift` measures once at register and again only on ScrollTrigger `"refresh"` (`lusion-type.ts:536-540, 601, 655-656`); the per-frame tick is `dy = (1 − k)·(en.center − viewCenter)·DRIFT_SCALE` with `DRIFT_SCALE = 0.12` (`:563, :147`), where `en.center` is cached **document** space and `viewCenter` is live. Inside a sticky stage the element stops moving on screen but `viewCenter` keeps advancing, so `dy` grows without bound and translates the plate out of the pinned frame. At the **binding D1 runway** (Act I travel 5.10 vp = 3672 px):
+
+| block | `k` | `(1−k)` | `Δdy` across Act I | across Act II (3564 px) |
+|---|---|---|---|---|
+| display line | 0.5 | +0.5 | **+220.3 px** | +213.8 |
+| body | 1.5 | −0.5 | **−220.3 px** | −213.8 |
+| chapter desc | 1.25 | −0.25 | −110.2 px | −106.9 |
+
+**A display line and its own body would separate by 440.6 px — 61 % of the 720 px stage.** Not a tuning problem; a coordinate-system mismatch.
+
+Fix — **do not re-base the drift on beat progress; disarm it.** Re-basing (the storyboard's suggested alternative) would keep a per-frame ticker running to reproduce a parallax whose *entire purpose* is to express the block's distance from the viewport centre while the page scrolls. Inside a pinned stage the block **is** at a fixed distance from the viewport centre, so the physically correct value of the effect is a constant, and the cheapest correct implementation of a constant is not to run a ticker:
+
+- `useTextDrift`: skip registration when the scope sits inside `[data-journey="on"]` (`el.closest(...)`). One `if`, and `disarmDriftDriverIfEmpty()` (`:648`) then removes the ticker entirely for those blocks. Every other consumer on the site is byte-identical.
+- If the owner later wants motion on a held plate, the storyboard already specifies the right instrument and it is not drift: **recipe R2**, the Lusion EndSection idle rollup (one random char per word, every 2 s), which is what keeps a held frame alive without moving anything.
+
+Same class of breakage, same beat: `createReplayTrigger` (`:178-192`) keys `start:"top bottom" / end:"bottom top"` on the **row**. Pinned, every row enters within one frame and none leaves — the per-row R1/B1 cascade (`ROLL_DUR 1.25 s`, body `+0.3 s`) collapses to a simultaneous burst and never replays. Fix: when armed, drive the (already `paused: true`, already replayable) timelines from a `journeyStore.beat` straddle edge instead. Splits, the ignition latch (`:310`), `Hv1`, and the `onIgnite` ring bump are all untouched.
+
+**(4a) Binding budget for the journey uniforms — ZERO new blocks, ZERO new varyings.**
+
+The journey's shader-visible state is: `uJourneyRest` (the 0.08 dark rest), `uShellIn`/`uShellOut` (or baked literals — it is a shape, not a tuning), `uShellCore` (165 → 122 → 88), `uFrayZ` (the fracture plane, replacing today's `nodeT` gate) and `uCopyBeat` (replacing `uCopyEdge`/`uCopySoft`). That is **5–6 plain `uniform()` scalars, 0 new `uniformArray`, 0 new storage buffers, 0 new textures.**
+
+The precedent is explicit in the source and it is the *same count*: round 9-B added "five plain `uniform()` scalars (a shared group, NOT a new UBO block — the 8-of-12 count above is unmoved)" (`neuralFieldCompute.ts:2560-2564`, and `:272`, `:1038`). Plain scalars join three's shared groups; only a `uniformArray` emits its own UBO (`:952-955`).
+
+- Particle vertex stage: **stays 12 / 12** (the zero-headroom floor, `:962-968`). Untouched.
+- Link-line vertex stage: **stays 8 / 12**. Untouched.
+- **Varyings**: the shell value must reach the fragment stage on the line material, which is at 4 of the `MAX_VARYING_VECTORS` floor of 15 (`:2560-2568`). It **reuses `vLineCut`'s slot** — the copy mask that varying carries is being retired and the shell replaces it in the same channel. **Net varying delta: 0.** (Worth stating loudly: three emits one `out` per varying *node*, not packed floats, so an added varying is a real slot.)
+- Net across the swap: **−2 / +6 shared-group scalars, 0 blocks, 0 slots.**
+
+The **dolly and the yaw are scene-graph transforms**, carried by `modelViewMatrix` in `buildVertex` (`:2203`) — no shader input at all.
+
+**(4b) The WebGL2 fallback's shader cost at a 100 vh fill rate — bounded on paper, must be measured.**
+
+What can be stated exactly:
+- The anchor area grows only **16 %** (619 → 720 px tall at 1280 wide). That is not the driver.
+- The driver is the z-translation. `sizeNode ∝ 1/dist` (`:2211`) ⇒ sprite **area ∝ 1/dist²**. Relative to the group plane: a sprite at `e = +0.45` costs `(12/6.96)² = 2.97×`; one at the far wall `e = −1.72` costs `(12/31.25)² = 0.147×`. Because the cloud occupies the whole depth at every instant, the aggregate sits far below the near-node worst case — but the integral depends on the reseeded node distribution (ask 2), so **it is not derivable on paper. Measure it.**
+- **The WebGL2 fallback is not the worst case.** `NeuralLattice` skips `build.compute()` on a non-compute backend and renders the analytic build (header, `:427-428`), so its vertex/compute cost is *lower* than WebGPU's while its fill cost is identical. The worst case is a **capable phone at `fxBudget.level === 2` on a true-WebGPU backend**, running the compute sim *and* the fill, on a tile GPU, at a 2.16 portrait aspect.
+- `CrystalCluster` is a plain node material with no compute on either backend (header, `TIERS`), so the stone's cost is backend-independent.
+
+**(4c) `AdaptiveResolution` / DPR when the band goes full-screen — do NOT leave it to the monitor.**
+
+`AdaptiveResolution` steps `setDpr` inside `[min, effMax]` from drei's `PerformanceMonitor`, and **each change reallocates the swapchain + the PostFX render targets — "a brief hitch, fine occasionally"** (`AdaptiveResolution.tsx:16-21`). A journey whose fill swings ~3× *within* each beat is precisely the input that makes the monitor hunt, and every hunt is a hitch **inside a cinematic beat**. That is the specific new risk a full-screen band introduces, and it is not a fill-rate risk — it is a *stability* risk.
+
+> **Assert an explicit `dprCap` for the journey span instead of letting the monitor hunt.** The API is one line and already wired into `effMax`: `useTierStore.getState().setDprCap(cap | null)` (`tierStore.ts:597-598`, consumed at `AdaptiveResolution.tsx:52-56`). The precedent is exact — the passage caps the plunge at `SEQ.DPR_CAP = 1.5` "while the raymarch approaches fullscreen coverage", armed at `p > DPR_CAP_ON 0.85` and released at `p < DPR_CAP_OFF 0.82` (`seqStore.ts:228-230`, `singularity-passage.tsx:1541-1548`) — note the **hysteresis gap**, which is what stops the cap itself from chattering. Journey analog: arm on the `bandST` edge (stable for the whole act, so the DPR is *constant* through the film rather than hunting), release on leave, exactly as the coarse branch already does (`:1155-1158`, `:1213`).
+- Value: `1.5` is the right first guess by precedent; it must be replaced by a measurement (§12 Stage 2 gate).
+- Phones are additionally covered already: at level 2, `effMax` applies Lusion's pixel cap `sqrt(maxPixels/(w·h))` (`AdaptiveResolution.tsx:57-70`).
+- **Do not** step DPR per beat. One cap per act, or none.
+
+**(4d) `PostFXNodes` `uWipe` retiming for the act boundaries — NO retiming is needed, and here is the proof.**
+
+1. **Boundaries re-derive themselves.** `deriveCutBoundaries` runs only on a `sectionStore.measureVersion` bump and remaps doc fractions into progress space from the fresh `scrollHeight`/`innerHeight` (`PostFXNodes.tsx:1105-1126`). D1's +5871 px moves `problem→case-studies` and `services→production` to the right places with **zero code**.
+2. **The window is one viewport of scroll in px, by construction** — `halfWindow = 0.5·iH/limit` in progress space (`:1116`). It does *not* stretch with the taller page, which is correct: a seam should take one screen to cross regardless of document height.
+3. **The per-boundary window cap does not bind.** `maxH[i]` = half the distance to the nearest other boundary (`:1122-1132`). `problem→case-studies` and `case-studies→services` are separated by `#work`'s 2283 px — unchanged by D1, since `#work` does not grow — so `maxH ≈ 1141 px > 720`: no clamping, before or after.
+4. **The one thing to verify visually, not to code**: the journey closes when the stage unpins (`end:"bottom bottom"` ⇒ `p → 1`), while the cut fires when the boundary passes viewport **centre**, i.e. `≈0.5·ih` of scroll **later**. So the world closes, then the seam sweeps ~360 px afterward. That ordering is the right shape for D2 ("the world closes here" and *then* the cut), but if the owner wants them simultaneous, the lever is the last beat's length, **not** the cut driver.
+5. `uWarpBurst` already spikes on the crossing with `min(1, 0.35 + 0.65·|vel|/velNorm)` and a fresh seed (`:1181-1189`) — exactly the "the world closes here" the storyboard asks for. Nothing to add.
+
+**(5) The pose frame — the storyboard's reads stand and its numbers do NOT need re-projecting.** See 0B.2. The only correction is a naming one (the "fixed viewpoint" is the group plane at `CAMERA_Z`, not the eye) plus the structural one in 0B.3 (the rig must sit outside the anisotropic scale, or the authored yaw renders 1.76× too strong on desktop and 2.15× too weak on a phone).
 
 ---
 
@@ -46,7 +230,7 @@ Note the id/anchor mismatch, which trips everyone: the **second** neural section
 
 A single continuous journey across both would have to either swallow those two sections into the journey's world (a rewrite of two shipped systems, one of which is a 440vh pinned runway with its own snap stations at `services-section.tsx:934-938`) or run "under" them, which is not a thing — there is one Canvas and one camera.
 
-**Decision: two journeys, one grammar.** A shared `useJourneyStage()` hook + a shared `journeyStore`, instantiated twice with different beat tables. This is the same shape as `NeuralLattice mode="broken" | "healthy"` — one implementation, two configurations — and it is what makes the second one nearly free once the first ships.
+**Decision: two journeys, one grammar — and the owner has now ruled the same way** (D2: the world closes at the Act I seam and reopens at the Act II seam; a persisting dimmed net behind the interlude was explicitly rejected). A shared `useJourneyStage()` hook + a shared `journeyStore`, instantiated twice with different beat tables. This is the same shape as `NeuralLattice mode="broken" | "healthy"` — one implementation, two configurations — and it is what makes the second one nearly free once the first ships.
 
 It also matches the owner's own sentence: *"poi si va avanti nella rete e ne appare un'altra"* — "another one appears" is a **second** journey, and it does appear later in the page. The connective tissue between them (`#work`, `#services`) is exactly the "you travel on" he describes; it just happens to have content in it.
 
@@ -228,15 +412,15 @@ dy = (1 - en.k) * (en.center - viewCenter) * DRIFT_SCALE   // per gsap.ticker fr
 DRIFT_SCALE = 0.12  (:147)
 ```
 
-Inside a sticky stage the element does not move on screen, but `viewCenter` keeps advancing — so `dy` keeps growing and the drift **translates the copy right out of the pinned frame**. Over a 5-beat stage (runway 500vh, stage 100vh ⇒ travel 400vh = 2880 px at 720):
+Inside a sticky stage the element does not move on screen, but `viewCenter` keeps advancing — so `dy` keeps growing and the drift **translates the copy right out of the pinned frame**. At the **binding D1 runway** (Act I: 6.10 vp total, stage 1.00 ⇒ travel 5.10 vp = 3672 px at 720; Act II travel 4.95 vp = 3564 px):
 
-| block | `k` | `(1−k)` | `Δdy` over the stage |
-|---|---|---|---|
-| display line | 0.5 | +0.5 | **+172.8 px** |
-| body | 1.5 | −0.5 | **−172.8 px** |
-| chapter desc | 1.25 | −0.25 | −86.4 px |
+| block | `k` | `(1−k)` | `Δdy` across Act I | across Act II |
+|---|---|---|---|---|
+| display line | 0.5 | +0.5 | **+220.3 px** | +213.8 px |
+| body | 1.5 | −0.5 | **−220.3 px** | −213.8 px |
+| chapter desc | 1.25 | −0.25 | −110.2 px | −106.9 px |
 
-The display line and its body would separate by **345.6 px**. This is not a tuning problem; it is a coordinate-system mismatch.
+The display line and its own body would separate by **440.6 px — 61 % of the 720 px stage**. This is not a tuning problem; it is a coordinate-system mismatch. (Full ruling, including why re-basing on beat progress is the wrong fix, in §0B.4-(3).)
 
 Same class of breakage for `createReplayTrigger` (`lusion-type.ts:178-192`): `start:"top bottom" / end:"bottom top"` on a **row** element. Inside a pinned stage every row's rect is fixed on screen, so all rows enter the active range within one frame of the stage pinning and none leaves until it unpins — the per-row R1/B1 cascade (`ROLL_DUR` 1.25 s, body `+0.3 s`, `:115`, `:371`) collapses into a single simultaneous burst, and never replays.
 
@@ -291,7 +475,7 @@ This is `services-section.tsx:841-842` character for character. Use it; do not i
 const vpTop = rect.docTop - scrollY;
 ```
 
-`rect.docTop` is cached at measure time (`NeuralLattice.tsx:271`: `r.top + window.scrollY`). That formula assumes the anchor is in **normal flow**. Under a sticky ancestor the anchor's rendered top stops tracking `scrollY`, so `vpTop` drifts upward at exactly the scroll rate and **the net slides out of the top of the frame while the DOM band stays pinned**. At 400vh of stage travel the net would leave the viewport 2880 px early. This is the #1 breakage of the whole design and it is invisible in code review.
+`rect.docTop` is cached at measure time (`NeuralLattice.tsx:271`: `r.top + window.scrollY`). That formula assumes the anchor is in **normal flow**. Under a sticky ancestor the anchor's rendered top stops tracking `scrollY`, so `vpTop` drifts upward at exactly the scroll rate and **the net slides out of the top of the frame while the DOM band stays pinned**. At the binding D1 runway the group is culled once `vpTop < −(ih + CULL_PAD) = −940 px`, i.e. after 940 of Act I's 3672 px of travel — **at `j = 0.256`, in the middle of P2, the thesis beat** — and it is visibly a quarter-stage too high by `j = 0.05`. This is the #1 breakage of the whole design and it is invisible in code review.
 
 The correction, exact and allocation-free:
 
@@ -333,25 +517,23 @@ Round 9's crossing detector missed keyboard jumps once. The fix that shipped is 
 
 ---
 
-## PART 5 — RUNWAY COST, PRICED
+## PART 5 — RUNWAY COST (BINDING, per owner decision D1)
 
-House beat pitch, from the two shipped runways: fit `70vh`, services `85vh`. Take **`BEAT_VH = 0.80`**.
+**The owner approved the full 27.4 % before a line was written.** The variants my earlier draft priced (3 / 4 / 5 beats) are **superseded**; this is the bill.
 
-Runway = `100vh (stage) + BEATS × 80vh`.
-
-| beats | runway | `#problem` (1330 px) | `#trust` (1475 px) | Δ doc | Δ % of 21459 | extra scroll @≈1500 px/s |
+| act | beats | travel | + stage | runway | today | Δ |
 |---|---|---|---|---|---|---|
-| 3 | 340vh = 2448 px | +1118 | +973 | **+2091** | +9.7 % | ≈1.4 s |
-| 4 | 420vh = 3024 px | +1694 | +1549 | **+3243** | +15.1 % | ≈2.2 s |
-| 5 | 500vh = 3600 px | +2270 | +2125 | **+4395** | +20.5 % | ≈2.9 s |
+| **Act I `#problem`** | 7 | 5.10 vp = 3672 px | 1.00 vp = 720 px | **6.10 vp = 4392 px** | 1330 px | **+3062** |
+| **Act II `#trust`** | 7 | 4.95 vp = 3564 px | 1.00 vp = 720 px | **5.95 vp = 4284 px** | 1475 px | **+2809** |
+| | | | | | | **+5871** |
 
-For scale: the passage alone is **380vh** (`seqStore.ts:82`) and `#fit` is **520vh** (`fit-section.tsx:196-197`). A 420vh journey band is *smaller than two sections this page already ships*, and the resulting page (24 702 px at 4 beats) is 15 % longer — not a new category of document.
+**Home page 21459 → 27330 px (+27.4 %); 29.8 → 38.0 viewports.** The two neural sections become the tallest on the page, ahead of `#fit` (3941) and `#services` (3751). At a sustained ≈1500 px/s that is ≈3.9 s of additional scrolling across both acts.
 
-The owner's sentence names at least four beats ("vai avanti nella rete che si illumina" · "viene una scritta animata" · "si va avanti nella rete" · "ne appare un'altra" · "la pietra meteorite"). **Recommend `BEATS = 4` for stage 1** and treat 5 as a tuning decision after he sees it, because `BEAT_VH` and `BEATS` are both one-line config.
+Beat pitch: the storyboard budgets 0.40–0.90 vh and averages **0.73**, inside the house convention validated three times (`fit-section.tsx:196-197` `BEAT_VH 0.70`; `services-section.tsx:259` `SEGMENT_VH 0.85`; the passage's 380 vh over ~5 beats ≈ 0.76). Both `BEATS` and the per-beat pitch live in `journeyConfig` as one-line tunables — if the owner reports the copy beats feel rushed, the pitch is the lever (0.80 → 0.95 costs +864 px per act), never the sub-window split.
 
-What a longer document touches, all automatic: the signature curve waypoints (doc fractions, rebuilt on `measureVersion` — `SignatureLine.tsx:659-694`), `DriftParticles.worldLen` (`:196`, rebuilds on `anchors.version`), the cut-boundary remap (`PostFXNodes.tsx:1117-1126`), every ScrollTrigger. Nothing to wire.
+What a longer document touches, **all automatic**: the signature-curve waypoints (doc fractions, rebuilt on `measureVersion` — `SignatureLine.tsx:659-694`), `DriftParticles.worldLen` (`:196`, rebuilds on `anchors.version`), the cut-boundary remap (`PostFXNodes.tsx:1117-1126`, and see §0B.4-(d): the cut needs **no** retiming), every ScrollTrigger on the page. Nothing to wire; one thing to re-verify (risk R6).
 
-**And here is the payoff, measured.** Over a 4-beat stage the DOM holds still for `travel = 320vh = 2304 px`, during which `SignatureLine.tsx:787` descends the camera by `2304 × k = 35.8 world units` — **3.2× the camera's distance to the content plane**, i.e. 3.2 viewport-heights of world sweeping up through the frame. `DriftParticles` spawns motes at `z ∈ [−4, +2]` (`:235`) ⇒ camera distances `[10, 16]` ⇒ a **1.6× near/far parallax ratio** between the fastest and slowest dust layers, with ~9 motes per world unit of strip (3000 motes over `21459 × k = 333.6` units) ⇒ roughly **320 motes stream past** during one band's stage. The signature tube does the same. That is the "quasi un video" layer, and it requires **zero new code** — it is a consequence of pinning the DOM while the camera keeps reading `scrollY`.
+**And here is the payoff, measured at the binding runway.** Across Act I the DOM holds still for 3672 px, during which `SignatureLine.tsx:787` descends the camera by `3672 × k = 57.1 world units` — **5.10 viewport-heights of world sweeping up through a frame whose copy is not moving**. `DriftParticles` spawns motes at `z ∈ [−4, +2]` (`:235`) ⇒ camera distances `[10, 16]` ⇒ a **1.6× near/far parallax ratio** between the fastest and slowest dust layers, at ~9 motes per world unit of strip (3000 motes over `21459 × k = 333.6` units) ⇒ **≈514 motes stream past in Act I, ≈498 in Act II**. The signature tube does the same. That is the "quasi un video" layer, and it requires **zero new code** — it is a consequence of pinning the DOM while the camera keeps reading `scrollY`. It is also, deliberately, the whole of Stage 1.
 
 ---
 
@@ -464,7 +646,7 @@ Every path below already has a precedent in `singularity-passage.tsx`'s FALLBACK
 | **SSR / no JS** | The runway height and the sticky rule are **JS-applied inside the armed context** (`data-journey="on"` + `root.style.height`). Without JS neither exists ⇒ the section renders exactly as today: normal flow, copy settled and visible, hairlines full-width. **No primed-hidden poses in any className** — D-10 holds because it holds today (`problem-section.tsx:496-500`: the hidden hairline pose is GSAP-only). |
 | **`prefers-reduced-motion`** | `CanvasHost.tsx:35` renders **nothing** at tier "off" ⇒ no islands ⇒ no journey. The arm predicate must include `(prefers-reduced-motion: no-preference)` as a matchMedia **condition** (so a runtime toggle reverts the context — `singularity-passage.tsx:2352` `revertOnUpdate`), leaving normal flow. Zero timers, zero transforms. |
 | **tier "off" but motion-ok** (no WebGL, rare) | `useNeuralLatticeFallback()` returns true (`use-neural-lattice-fallback.ts:44-48`) ⇒ the SVG `NeuralGraphFallback` paints (`problem-section.tsx:394-399`). The journey must **not arm**: a pinned stage with a static SVG in it is a dead 4-viewport hole. **Arm predicate: `!showFallback && motionOk`.** These two must stay complements, same discipline as the lattice mount gate (`use-neural-lattice-fallback.ts:26-30`: *"If the two ever ship out of step…"*). |
-| **lite / capable phone** (`fxBudget.level === 2`) | The island **does** mount here (`Scene.tsx:509`, `island = level >= 2`). Arm the journey with a **reduced beat count** and measure in **`svh`**, never `vh` (D-7). Recommend `BEATS_COARSE = 2` for stage 1 and revisit — a phone reading a 4-viewport pinned stage on a 5G tail is a different UX question from a desktop one. |
+| **lite / capable phone** (`fxBudget.level === 2`) | The island **does** mount here (`Scene.tsx:509`, `island = level >= 2`). Arm the journey with a reduced beat count and measure in **`svh`**, never `vh` (D-7). The storyboard recommends **5 + 5 at a 0.60 pitch** (Act I 5.0 vp = 4220 px @844) against a 3-beat cut; that is **owner decision J-9, still open** — do not decide it here. Mechanically both are one config line. Two phone-specific constraints are *not* optional: the reseeded cloud must use the portrait aspect bucket (§0B.4-2 — at 2.16 the shipped `BAND_ASPECT` is 4.8× wrong), and `FOG_RADIUS_Y 0.46` must be re-derived against the stage or the fog reaches the frame edges (the "blocchi pagina" failure mode). |
 | **weak phone / narrow desktop** (`level ≤ 1`) | `showFallback` is true ⇒ not armed ⇒ today's layout, unchanged. |
 | **WebGL2 fallback backend** | `NeuralLattice` skips `build.compute()` and renders the analytic still-but-igniting field (`:427-428` per the header); `CrystalCluster` is a plain node material with no compute at all (header `TIERS`). Both accept the dolly identically — it is a scene-graph transform. **Note `MARK_RT_WEBGL2 = false`** (`crystalConfig.ts:1160`) and open decision §7.7: `?backend=webgl2` currently never initialises. The journey does not depend on the mark RT, so it is not blocked by that bug — but the QA gate cannot be run on WebGL2 until it is fixed. |
 | **Focus inside the pinned stage** | `focusin` handler zeroes `stage.scrollLeft/scrollTop` before anything reads layout (`services-section.tsx:958-961`). Mandatory: the ledger rows are `tabIndex={0}` (`problem-section.tsx:439`). |
@@ -481,12 +663,13 @@ Every path below already has a precedent in `singularity-passage.tsx`'s FALLBACK
 |---|---|---|---|
 | `src/webgl/store/journeyStore.ts` | **NEW.** globalThis-pinned zustand, `seqStore` shape. Per band: `{ active, p, beat, u, stickyPx, stageTopDoc, runwayPx, copyBeat }`. Header documents the ownership contract (DOM owns the clock; islands consume via `getState()`). | ~90 | A |
 | `src/components/fx/use-journey-stage.ts` | **NEW.** The shared hook: matchMedia arm predicate, `measure()` (runway px, `stageTopDoc`), `data-journey="on"`, the file-scoped `<style>` string, ONE `ScrollTrigger.create({start:"top top", end:"bottom bottom", scrub:true, invalidateOnRefresh:true, onRefreshInit:measure, onRefresh:snap, onUpdate})`, the straddle beat detector, the `focusin` net, the overflow measure, `snapPoint()` registration (owner decision), full cleanup. Modelled on `services-section.tsx:731-1000`. | ~280 | A |
-| `src/webgl/neural/journeyConfig.ts` | **NEW.** `BEATS`, `BEAT_VH`, `BEATS_COARSE`, the per-band beat table (dolly `d`, lateral, rotation, `copyBeat`), damping λs, dolly ceiling. All live-tunable. | ~120 | A |
-| `src/webgl/NeuralLattice.tsx` | (1) sticky-offset correction at `:360`; (2) `docTopUnstuck` in the rect effect `:271`; (3) the `r`-scaled placement at `:374-379`; (4) a `<group ref={rigRef}>` between the outer group and `inner`, posed from `journeyStore` before `:551`; (5) `uCopyBeat` write replacing the `uCopyEdge` publish effect `:296-299`; (6) delete the `[data-row-body]` measure `:279-290`. | ~70 | **S** |
-| `src/webgl/CrystalCluster.tsx` | Same (1)(3)(4) at `:437`, `:487-494`; **plus** the callout projection generalised to the journey depth at `:711-714` (§9.1). | ~45 | **S** |
+| `src/webgl/neural/journeyConfig.ts` | **NEW.** The binding D1 beat tables (Act I 7 beats / 5.10 vp travel, Act II 7 / 4.95), the per-beat slide `e`, lateral, yaw, `copyBeat` and `shellCore` (165 → 122 → 88), the sub-window split (EXIT/TRAVEL/HANDOFF/HOLD), damping λs, the **apparent-height cap** for the stone (§11.3), the act `dprCap`, and the aspect buckets. All live-tunable through `__sersanJourney_*`. | ~160 | A |
+| `src/webgl/NeuralLattice.tsx` | (1) sticky-offset correction at `:360`; (2) `docTopUnstuck` in the rect effect `:271`; (3) the `r`-scaled placement at `:374-379`; (4) **the group restructure of §0B.3** — `scale` moves off `groupRef` onto a new `scaleRef`, with `rigRef` (rigid translate + rotate, world units) between them, posed from `journeyStore`; (5) `uCopyBeat` write replacing the `uCopyEdge` publish effect `:296-299`; (6) delete the `[data-row-body]` measure `:279-290`; (7) aspect bucket into the build effect's deps `:198-243`. | ~95 | **S** |
+| `src/webgl/CrystalCluster.tsx` | Same (1)(3) at `:437`, `:487-494`; the rig (no restructure needed — the scale is already uniform at `:494`); the callout projection generalised to the journey depth at `:711-714` (§9.1); a beat gate on `group.visible`; **the mark RT forced to render at build, not on the visibility edge** (`:653-654`, risk R3b). | ~60 | **S** |
 | `src/webgl/neural/neuralFieldCompute.ts` | Mask swap: `gate = smoothstep(uCopyEdge, +uCopySoft, x)` → `gate = 1 − uCopyBeat`; the `mix(FLOOR, 1, gate)·yTerm` shape and **both floors are unchanged**. Delete `uCopyEdge`/`uCopySoft`, add `uCopyBeat`. Same change in the link-line vertex stage. | ~35 | **S** |
-| `src/webgl/neural/neuralLatticeConfig.ts` | Retire `COPY_EDGE_LOCAL`, `COPY_EDGE_PAD`, `COPY_RAMP_SOFT`, `copyEdgeFallback()` + the ~150-line derivation block `:1583-1760`. **Keep** `COPY_MASK_FLOOR` 1e-4, `COPY_MASK_FLOOR_LINE` 3e-3, `COPY_Y_FLOOR` 0.6, `COPY_Y_IN/OUT` — the AA ledger rides them. Replace the block with the beat derivation (§11.1). | ~−150 / +50 | **S** |
-| `src/components/sections/problem-section.tsx` | Wrap the container in the journey root + stage; move `data-lattice-anchor="problem"` onto the stage; `useJourneyStage(...)`; the `[data-emerge]` block stays in beat 0's frame. **Zero copy strings touched.** | ~55 | **S** |
+| `src/webgl/neural/neuralLatticeConfig.ts` | Retire `COPY_EDGE_LOCAL`, `COPY_EDGE_PAD`, `COPY_RAMP_SOFT`, `copyEdgeFallback()` + the ~150-line derivation block `:1583-1760`. **Keep** `COPY_MASK_FLOOR` 1e-4, `COPY_MASK_FLOOR_LINE` 3e-3, `COPY_Y_FLOOR` 0.6, `COPY_Y_IN/OUT` — the AA ledger rides them. Replace the block with the beat derivation (§11.1). **Plus (§0B.4-2): `BAND_ASPECT` becomes a parameter of `buildPlexus`, `getPlexus(mode, density, aspectBucket)` with the bucket in its cache key `:365-375`; the same parameter reaches the crystal density well `:410`, the neighbour metric `:431` and the carve test `:445`.** Re-author the cloud's z spine to the storyboard's 2.10-stage-height corridor (`PLEXUS_RZ` demoted to node jitter). | ~−150 / +90 | **S** |
+| `src/components/fx/neural-graph-fallback.tsx` | Consume the same aspect bucket as the island, or the SVG and the WebGL draw different graphs at the same viewport (§0B.4-2). | ~8 | **S** |
+| `src/components/sections/problem-section.tsx` | Wrap the container in the journey root + stage; move `data-lattice-anchor="problem"` onto the stage; `useJourneyStage(...)`; **re-point `[data-emerge]` to the stage** so the passage's covert jump + zoom-in land on beat P0 (risk R5); gate the three ghost callouts to the stone beat; drive the dot-grid's `background-position` from the journey parameter (the igloo `k3` layer idiom, ~15× the field's parallax rate). **Zero copy strings touched.** | ~85 | **S** |
 | `src/components/sections/production-grade-section.tsx` | Twin of the above. | ~55 | **S** |
 | `src/components/fx/lusion-type.ts` | (a) `useTextDrift`: skip registration inside `[data-journey="on"]` (§3.4); (b) `useLedgerReveal`: when armed, drive `tl.play(0)/pause(0)` off `journeyStore.beat` instead of `createReplayTrigger`. Both behind an `armed` flag ⇒ every other consumer (`/audit`, `/consulting`, …) is byte-identical. | ~40 | **S** |
 | `src/components/smooth-scroll-provider.tsx` | *(optional, pre-approved in principle)* anchor `offset: -72` vs `scroll-mt-24` double compensation, open decision §7.5. | 1 | **S** |
@@ -494,7 +677,9 @@ Every path below already has a precedent in `singularity-passage.tsx`'s FALLBACK
 | `src/webgl/SignatureLine.tsx` | **No change.** | 0 | — |
 | `src/app/globals.css` | **No change** — file-scoped `<style>` only (handoff §4). | 0 | — |
 
-Rough total: **~600 new lines, ~250 changed, ~150 deleted.**
+| `src/webgl/store/tierStore.ts` | **No change** — `setDprCap` already exists (`:597-598`) and is already consumed by `AdaptiveResolution` (`:52-56`). The journey calls it from the `bandST` edge. | 0 | — |
+
+Rough total: **~700 new lines, ~330 changed, ~150 deleted.** The single largest *new* item is `use-journey-stage.ts`; the single riskiest *edit* is the `NeuralLattice` group restructure (§0B.3), which is small but load-bearing and should land in Stage 1 while nothing depends on it.
 
 ### 9.1 The callout projection, generalised (the one non-obvious edit)
 
@@ -531,9 +716,11 @@ At `d = CAMERA_Z` this reduces **exactly** to the shipped expression (`den = CAM
 
 | # | risk | observable symptom | detection | rollback |
 |---|---|---|---|---|
-| **R1** | **Sticky-offset omitted or wrong** (§4.4) | The net and the stone slide up and out of the frame while the DOM band stays pinned; band looks empty for most of the stage | `__sersanNeuralLattice_problem` → compare the group's projected screen centre against the stage rect at `p = 0.1 / 0.5 / 0.9`. Must be constant. | Journey config `enabled:false` → the section reverts to normal flow (arm predicate short-circuits). |
-| **R2** | **Drift + replay-trigger breakage** (§3.4) | Copy blocks separate by up to 345 px inside the pinned frame; all rows animate at once and never replay | Screenshot at `p = 0.05` and `p = 0.95`; the display line and its body must keep their gap. `getComputedStyle(block).transform` must be identity when armed. | The `armed` gate in `lusion-type.ts` is one boolean; flip it and the stage runs with the ledger unarmed (visually wrong, not broken). |
-| **R3** | **Fill blow-out at the deep dolly poses** (§7.3) | fps drop on the travel beats; `AdaptiveResolution` drives DPR to `dprMin` and the whole page goes soft | `?perf=1` + `PerfProbe`, parked at each beat's pose; compare against the same band today | Lower the dolly ceiling in `journeyConfig` (one number, live-tunable via `__sersanJourney_*`). |
+| **R1** | **Sticky-offset omitted or wrong** (§4.4, §0B.4-1) | The net and the stone slide up out of frame while the DOM band stays pinned; **culled entirely at `j = 0.256`, mid-P2**, and visibly a quarter-stage high by `j = 0.05` | `__sersanNeuralLattice_problem.project()` → the group's projected screen centre must be constant to 2 px at `j = 0.1 / 0.5 / 0.9` | Journey config `enabled:false` → the section reverts to normal flow (the arm predicate short-circuits). |
+| **R2** | **Drift + replay-trigger breakage** (§3.4, §0B.4-3) | Copy blocks separate by **440.6 px = 61 % of the stage**; all rows animate at once and never replay | Screenshot at `j = 0.05` and `j = 0.95`; the display line and its body must keep their gap. `getComputedStyle(block).transform` must be identity when armed. | The `armed` gate in `lusion-type.ts` is one boolean; flip it and the stage runs with the ledger unarmed (visually wrong, not broken). |
+| **R2b** | **Rig placed INSIDE the anisotropic group scale** (§0B.3) | The authored diagonal renders 1.76× too strong on desktop and 2.15× too weak on a phone, and the cloud's silhouette breathes wider/narrower as the yaw ramps | Measure the rendered yaw against the authored constant at `j = 1`: `atan(tan θ · wWorld/hWorld)` vs `θ`. A silhouette-width delta between `j = 0` and `j = 1` at zero dolly is the same tell. | The scale lives on one line; move it back and set the rig's rotation to 0 (the dolly still works — translation is unaffected). |
+| **R3** | **Fill blow-out at the deep dolly poses** (§7.3, §0B.4-4b) | fps drop on the near-field beats; **worse — `AdaptiveResolution` hunts and each step reallocates the swapchain + PostFX RTs, i.e. a hitch inside a cinematic beat** | `?perf=1` + `PerfProbe` parked at each beat pose; watch `setDpr` transitions, not just fps | Assert a fixed `dprCap` for the whole act on the `bandST` edge (§0B.4-4c); then lower the dolly ceiling in `journeyConfig`. |
+| **R3b** | **Mark RT renders on the first-sighting frame** (§0B.1, D3) | A one-shot 512² render + mipmap chain lands exactly on the P5/T5 sighting — a hitch on the beat that is supposed to be "a shape in the distance" | Frame-time trace across `j = 0.78 → 0.80`; or log the RT's first render tick | Force one RT render at build time / on the `bandST` arm edge. One line. |
 | **R4** | **Beat edges missed on a keyboard/anchor jump** (§4.5) | Copy for a beat never plays, or plays for the wrong beat, after `PageDown` / `/#trust` / `End` / scroll restoration | Straddle-detector unit check in the dev handle: `__sersanJourney_problem.state.prevP`; drive `lenis.scrollTo` with 5 hard jumps and assert one fire each | The detector is one function; falling back to a per-frame "which beat am I in" recompute is visually correct and only loses the entrance timing. |
 | **R5** | **Covert-jump landing lands on an empty pinned frame** (§4.5) | After the plunge the divario shows a black stage with no copy; the `[data-emerge]` zoom-in plays on nothing | Fire the passage one-shot; screenshot at EMERGE end | Move `[data-emerge]` back into beat 0's visible frame — a JSX nesting change, no logic. |
 | **R6** | **Page height change destabilises a downstream measurement** | Signature-line curve deforms, cut boundaries land off-section, `#services` snap stations shift | `__sersanLineDebug.bboxY` + `__sersanSectionCuts.state.cuts` before/after; `__sersanSnap.candidates()` | Runway `BEATS` is one number; setting it to 0 restores today's height exactly. |
@@ -589,18 +776,23 @@ This closes open owner decision §7.3 ("the plexus over the copy — the journey
 - **The dot-grid** and its edge-clean mask (`problem-section.tsx:390`). It rides the band and is now free to fill a full-viewport stage.
 - **The snap engine.** Round 8-A deleted element snapping and kept the whisper on pinned runways (`round8-scroll-dossier.md` §4.2). The journey is a pinned runway; whether it registers stations is §4.6's owner decision.
 
-### 11.3 The stone shrink, folded in
+### 11.3 The stone shrink — the two fixes CONVERGE, do not duplicate them
 
-The in-flight change: `CRYSTAL_SCALE` 0.17 renders the 3.32-unit authored slab at **~56 %** of band height; the target is **35–40 %**. Since apparent height is linear in `CRYSTAL_SCALE`:
+`CRYSTAL_SCALE` is a fraction of `rect.h`, so it expresses the stone's height as a fraction of **whatever box it is anchored to** — the 619 px letterbox today, the 720 px stage in the journey. Both in-flight targets are stated in that same unit, which is why they agree:
 
 ```
-CRYSTAL_SCALE_new = 0.17 × (target / 0.56)
-  target 0.35 → 0.1063
-  target 0.375 → 0.1138
-  target 0.40 → 0.1214
+on-screen height fraction of the anchor  =  3.32 (slab units) × CRYSTAL_SCALE
+  pre-shrink:            3.32 × 0.17    = 0.564  → 56 %  of the 619 px band = 349 px
+  LANDED (working tree): 3.32 × 0.115   = 0.382  → 38.2 % of whatever the anchor is
+  storyboard      34 %:  CRYSTAL_SCALE  = 0.34 / 3.32 = 0.1024
 ```
 
-Every journey number in this dossier is stone-agnostic **except** the callout projection (§9.1), which is written in terms of `s` and `pxScale` and therefore tracks whatever `CRYSTAL_SCALE` ends up being. The one interaction to watch: a smaller stone at a deep dolly pose recovers apparent size from the perspective divide, so the "too big" complaint could return at the closest beat. **State the ceiling in `journeyConfig` as an apparent-height cap** (`d_min` such that `stone_apparent ≤ 0.55 × viewport`), not as a raw dolly distance — it is the same one-line clamp and it is immune to the stone constant changing again.
+**The landed value and the storyboard differ by 12 %** — 275 px vs 244 px at the 720 px stage. That is a taste call, not a conflict, and it is *already resolved in the right direction*: because the constant is a fraction of `rect.h`, the shrink carries from the 619 px band to the 720 px stage with no re-derivation at all. **Two rules for whoever touches it next:** (i) nobody re-fits it against the old 619 px band — the anchor is changing under them; (ii) one owner for the constant, not two commits.
+
+Journey-specific interactions:
+- The **callout projection** (§9.1) is written in terms of `s` and `pxScale`, so it tracks whatever `CRYSTAL_SCALE` ends up being — no coupling.
+- A smaller stone at a **deep dolly pose recovers apparent size from the perspective divide**, so "troppo grande" could return at the closest beat. **State the ceiling in `journeyConfig` as an apparent-height cap** (a `d_min` such that `stone_apparent ≤ 0.55 × viewport`), not as a raw dolly distance — same one-line clamp, immune to the constant changing again. The storyboard's own P6 numbers already respect it: 48 % at the approach peak, 34 % at the hold.
+- **The mark loses 29 % of its screen height at the hold pose** (208 → 147 px) and is unchanged at the money shot (207 px). Full table and the reasoning in §0B.1 (D3); QA gate in §12 Stage 4.
 
 ---
 
@@ -609,7 +801,7 @@ Every journey number in this dossier is stone-agnostic **except** the callout pr
 Each stage is independently shippable, independently visible to the owner in Chrome, and has a gate that is a screenshot or a number.
 
 ### Stage 1 — THE STAGE, EMPTY (no dolly, no beats)
-`#problem` only. Add `journeyStore`, `use-journey-stage`, the sticky stage + runway at **`BEATS = 4`**, the sticky-offset correction, the drift/replay gate. **The net and the stone do not move yet** — they simply hold frame while the world streams past them.
+`#problem` only. Add `journeyStore`, `use-journey-stage`, the sticky stage + the **binding 6.10 vp runway** (D1), the sticky-offset correction, the drift/replay gate, the group restructure of §0B.3 (rig above the scale — land it now, while nothing depends on it), and the act-wide `dprCap`. **The net and the stone do not move yet** — they simply hold frame while the world streams past them.
 
 - **Why first**: it isolates R1 and R2, the two risks that can silently destroy the composition, in a change with no visual ambition of its own.
 - **QA gate**: (i) park at `p = 0.1 / 0.5 / 0.9`; the projected screen centre of `__sersanNeuralLattice_problem`'s group must be constant to within 2 px (R1); (ii) the display line and its body keep their gap at `p = 0.05` and `p = 0.95` (R2); (iii) a video-frame capture across the stage shows the dust and the tube streaming upward at full speed — **this alone is the "quasi un video" beat and it is what to show the owner**; (iv) `npx tsc --noEmit` clean; (v) `#trust` and every other section byte-identical.
@@ -630,7 +822,7 @@ Wire `journeyStore.beat` → the existing ledger timelines; swap `uCopyEdge` →
 ### Stage 4 — THE STONE
 `CrystalCluster` joins the rig (dolly + the generalised callout projection); the meteorite gets its own beat (`"la pietra meteorite"`).
 
-- **QA gate**: callout CSS vars land within 1 % of the projected anchors at every beat (compare `--callout-N-left/top` against a `?debug` overlay); the stone's apparent height never exceeds the cap from §11.3; the tumble deadzone still settles upright at the beat lock.
+- **QA gate**: callout CSS vars land within 1 % of the projected anchors at every beat (compare `--callout-N-left/top` against a `?debug` overlay); the stone's apparent height never exceeds the cap from §11.3 (48 % at the approach peak, 34 % at the hold); the tumble deadzone still settles upright at the beat lock; **the mark measures ≥147 px tall at the hold pose and the owner confirms it still reads inside the ice** (the 29 % regression from §0B.1 — this is the one gate where a number is not enough, because `93bb31d` was an eye call); the mark RT's first render is timestamped at build, **not** at the sighting frame (risk R3b).
 
 ### Stage 5 — THE SECOND JOURNEY
 Instantiate the same hook on `#trust` with the healthy beat table.
@@ -643,7 +835,9 @@ Instantiate the same hook on `#trust` with the healthy beat table.
 
 ## CAVEATS / NOT FOUND
 
-- **`BEAT_VH = 0.80` is interpolated, not measured.** It sits between the two shipped runway pitches (fit 0.70, services 0.85). The owner's felt pacing is the only thing that can settle it; it is one live-tunable number.
+- **Beat pitch is budgeted from the site's own convention, not from a reading-speed study.** The storyboard's 0.73 average sits between the two shipped runway pitches (fit 0.70, services 0.85). The owner's felt pacing is the only thing that can settle it; it is one live-tunable number.
+- **The storyboard's closed-form `zWorld(j) = −1.55 + 2.00·j` and its per-beat z table disagree by a few hundredths** (the table is piecewise, running −1.55 → +0.20 over `j 0 → 0.905`, an effective slope of 1.93). **Take the per-beat table as authoritative** and derive the slide by interpolation within each beat; the closed form is a summary, not the spec. Flagged, not corrected — it belongs to the storyboard.
+- **The reseeded cloud invalidates the round-9-B "@floor" COUNT tables**, though not the per-sprite value arithmetic. Once `BAND_ASPECT` becomes a parameter (§0B.4-2) and the cloud is authored to a 2.10-stage-height corridor, the node/link counts per viewport must be re-run before anyone quotes them again. The AA ledger (ΔL budget, the two floors, Rec709 post-blend luminance) is topology-independent and carries over unchanged.
 - **The dolly's fill cost (§7.3, R3) has not been measured.** The 5.4× worst-case multiplier at `d = 5.16` is exact arithmetic on `sizeNode ∝ 1/dist`, but the *aggregate* effect across a cloud where half the nodes recede is not derivable on paper. `?perf=1` at each candidate pose is the measurement that settles it, and it must be run before the dolly ceiling is baked.
 - **The GSAP-ticker vs R3F-rAF ordering (§6.2) was reasoned, not instrumented.** The conclusion (≤1 frame of staleness, identical to the shipped `seqStore` chain) is robust either way, but if a beat ever reads visibly late, the instrument is a frame counter written by both callbacks into `__sersanJourney_*.state`.
 - **Anchor-rect measurement while stuck (§4.4, subtlety 1)** is the one place where I am reasoning about `getBoundingClientRect` behaviour on sticky descendants from spec rather than from a live check. The correction is written to be robust either way (it stores an unstuck baseline), but a two-minute live check — measure the anchor at `scrollY = stageTop − 100` and again at `stageTop + 1000` and compare `r.top + scrollY` — would confirm it before coding.
