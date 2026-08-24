@@ -5,7 +5,6 @@ import Link from "next/link";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Reveal } from "@/components/ui/reveal";
-import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
 import { getLenis } from "@/lib/lenis-singleton";
 import { applyRailOverscroll } from "@/lib/rail-overscroll";
@@ -1201,10 +1200,12 @@ export default function ServicesSection() {
     return (
       <section
         id="services"
-        className="section-accent-tint section-accent-tint--strong relative section-lg scroll-mt-24 overflow-hidden"
+        // Round 7-3 (continuous-space spec §B.3): tint + glows removed at
+        // BOTH mounts (this native path and the pinned POV path below stay
+        // twins) — the DOM must not own section-sized ambience; the slab
+        // hairlines + ghost numbers + the continuous GL field carry it.
+        className="relative section-lg scroll-mt-24 overflow-hidden"
       >
-        <SectionGlow position="top-left" intensity={1.1} size="55rem" />
-        <SectionGlow position="bottom-right" intensity={1} size="55rem" />
         <div className="container-px relative">
           {heading}
           {/* Below 640px this is a lateral rail; at 640px and above it is the
@@ -1298,7 +1299,10 @@ export default function ServicesSection() {
   return (
     <section
       id="services"
-      className="section-accent-tint section-accent-tint--strong relative scroll-mt-24"
+      // Round 7-3 (continuous-space spec §B.3): tint removed (twin of the
+      // native mount above). The POV camera pan now sweeps over a seamless
+      // field instead of a tinted block — the whole point of the de-block.
+      className="relative scroll-mt-24"
     >
       {/* Heading — normal flow, above the runway. */}
       <div className="container-px relative pt-20 sm:pt-[6.5rem] lg:pt-32">
@@ -1314,8 +1318,8 @@ export default function ServicesSection() {
           ref={stickyRef}
           className="sticky top-0 h-screen overflow-hidden"
         >
-          <SectionGlow position="top-left" intensity={1.1} size="55rem" />
-          <SectionGlow position="bottom-right" intensity={1} size="55rem" />
+          {/* (Round 7-3: the two SectionGlows that lived here were removed
+              with the section tint — no sweeping edges under the POV pan.) */}
           {/* Zoom/roll wrapper — full-frame, transform-origin at the viewport
               center so the focused point stays centered under scale/rotation.
               SSR paints the overview scale (inline transform GSAP then owns). */}

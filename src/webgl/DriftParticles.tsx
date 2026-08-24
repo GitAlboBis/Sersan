@@ -27,6 +27,7 @@ import {
 } from "./materials/particleSpriteShader";
 import { webgpuEnabled } from "./renderer/createRenderer";
 import { WORLD_VIEW_HEIGHT } from "./constants";
+import { SEQ_PAN_FRAC } from "./store/seqStore";
 import { useScrollStore } from "./store/scrollStore";
 import { useFxStore } from "./store/fxStore";
 import { routeFx, HOME_FX } from "./store/routeFxStore";
@@ -201,9 +202,35 @@ export function DriftParticles({ anchors, pathname }: DriftParticlesProps) {
     const seeds = new Float32Array(count);
     const scales = new Float32Array(count);
 
+    // Pan-band widening (round 7-3, continuous-space spec §A.6): the
+    // singularity passage's one-shot pans the camera to
+    // x = SEQ_PAN_FRAC × worldViewWidth, but the strip's +x spawn bound was
+    // ±(1.15·worldViewWidth)/2 — so during late TRAVERSE → early LIGHT-SPEED
+    // (before tunnelAlpha covers, ~1.5s window) the right half of the frame
+    // had NO dust: the field visibly ENDED just right of screen-center. For
+    // motes whose doc position falls inside the passage band (the
+    // `credibility` anchor span ± one viewport — the passage owns that
+    // anchor, page.tsx), widen the x spread by the pan distance and
+    // re-center it toward +x, so the widened range covers the PANNED frustum
+    // (x ∈ [−0.575, +1.125]·W) instead of both extremes. Zero per-frame
+    // cost; rebuilds on `anchors.version` exactly as before. Off-home the
+    // span does not exist → byte-identical spawn distribution.
+    const passageSpan = anchors.spans["credibility"];
+    const vhFrac =
+      anchors.scrollHeight > 0 ? size.height / anchors.scrollHeight : 0;
+    const bandStart = passageSpan ? passageSpan.start - vhFrac : Number.NaN;
+    const bandEnd = passageSpan ? passageSpan.end + vhFrac : Number.NaN;
+
     for (let i = 0; i < count; i++) {
-      offsets[i * 3] = (Math.random() - 0.5) * worldViewWidth * 1.15;
-      offsets[i * 3 + 1] = -Math.random() * worldLen;
+      // Doc fraction of this mote (its Y is -docFrac × worldLen below).
+      const docFrac = Math.random();
+      const inPassageBand =
+        passageSpan !== undefined && docFrac >= bandStart && docFrac <= bandEnd;
+      offsets[i * 3] = inPassageBand
+        ? (Math.random() - 0.5) * worldViewWidth * (1.15 + SEQ_PAN_FRAC) +
+          (SEQ_PAN_FRAC * worldViewWidth) / 2
+        : (Math.random() - 0.5) * worldViewWidth * 1.15;
+      offsets[i * 3 + 1] = -docFrac * worldLen;
       offsets[i * 3 + 2] = -4 + Math.random() * 6;
       seeds[i] = Math.random();
       scales[i] = 0.6 + Math.random();
@@ -225,8 +252,9 @@ export function DriftParticles({ anchors, pathname }: DriftParticlesProps) {
     return geo;
     // route.particleCountScale changes the count → rebuild on route.
     //
-    // `k` and `worldViewWidth` are INTENTIONALLY omitted (do not "fix" this
-    // back): both derive from useThree().size, which R3F republishes on every
+    // `k`, `worldViewWidth` and `size.height` (the pan-band's ±1-viewport
+    // margin) are INTENTIONALLY omitted (do not "fix" this
+    // back): all derive from useThree().size, which R3F republishes on every
     // ResizeObserver observation, so listing them reallocated three Float32Arrays
     // + a fresh InstancedBufferGeometry for up to 3000 instances on every tick of
     // a resize drag. They are recomputed on every render regardless, so the memo

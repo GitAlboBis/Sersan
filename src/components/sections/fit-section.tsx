@@ -6,7 +6,6 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { SplitText } from "gsap/SplitText";
 import { Check, X } from "lucide-react";
 import { SectionHeading } from "@/components/ui/section-heading";
-import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
 import { getLenis } from "@/lib/lenis-singleton";
 import { snapPoint } from "@/lib/scroll-snap";
@@ -1179,9 +1178,11 @@ export default function FitSection() {
     return (
       <section
         id="fit"
-        className="section-accent-tint relative section-lg scroll-mt-24 overflow-hidden"
+        // Round 7-3 (continuous-space spec §B.3): tint + glow removed at
+        // BOTH variants (this native path and the pinned verdict wall below
+        // stay twins). Pane hairlines (glass-pane grammar chrome) stay.
+        className="relative section-lg scroll-mt-24 overflow-hidden"
       >
-        <SectionGlow position="top-left" intensity={1} size="50rem" />
         <div className="container-px relative">
           {headingBlock}
 
@@ -1288,7 +1289,8 @@ export default function FitSection() {
    * No heading above the runway: the title IS the pinned chapter statement
    * inside the frame.                                                       */
   return (
-    <section id="fit" className="section-accent-tint relative scroll-mt-24">
+    // Round 7-3: tint removed (twin of the native variant above).
+    <section id="fit" className="relative scroll-mt-24">
       {/* The tall scroll runway: height = 100vh + 6×70vh, set in px by
           measure(). minHeight is the SSR placeholder before JS measures.
           The key is load-bearing: both branches render a <div> in this slot,
@@ -1304,7 +1306,8 @@ export default function FitSection() {
         {/* Sticky viewport — this IS the pin (no pin-spacer, anchors stay
             valid). */}
         <div ref={stickyRef} className="sticky top-0 h-screen overflow-hidden">
-          <SectionGlow position="top-left" intensity={1} size="50rem" />
+          {/* (Round 7-3: the SectionGlow that lived here was removed with
+              the section tint — no floating wash edges in the verdict wall.) */}
 
           {/* ---- The statement (z-10) — the chapter type. Painted at full
                opacity from SSR; its only motion is the slow parallax drift

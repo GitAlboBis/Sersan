@@ -423,6 +423,9 @@ function StagePanel({
     // click-dead on every path where the morph never activates.)
     let lit: boolean | null = null;
     let kids: HTMLElement[] | null = null;
+    // The panel-scoped contrast wash (hero only — queried lazily like `kids`;
+    // `undefined` = not yet looked up, `null` = absent, e.g. compact).
+    let wash: HTMLElement | null | undefined;
     const tick = () => {
       const el = ref.current;
       const p = progressRef.current;
@@ -478,6 +481,17 @@ function StagePanel({
               k.style.opacity = String(e);
               k.style.transform = `translate3d(0, ${(1 - e) * 26}px, 0)`;
             });
+            // The panel wash inherits the dead ScrimDimmer's one live duty
+            // (round 7-3): while the particle intro owns the hero every copy
+            // node above is suppressed, so the wash protects nothing and
+            // would only dim the GL wordmark (its box overlaps the mark's
+            // left half — the exact "eating the left half of the particle
+            // headline" failure class the old dimmer existed for). Same
+            // formula: a whisper at reveal 0, full again as the DOM copy
+            // cascades in. Reverse scrubbing mirrors (pure in reveal).
+            if (wash === undefined)
+              wash = el.querySelector<HTMLElement>("[data-panel-wash]");
+            if (wash) wash.style.opacity = String(0.15 + 0.85 * reveal);
           } else if (lastActive) {
             // Morph torn down (unmount/fallback) → restore the plain hero.
             if (h1) h1.style.opacity = "";
@@ -485,6 +499,7 @@ function StagePanel({
               k.style.opacity = "";
               k.style.transform = "";
             });
+            if (wash) wash.style.opacity = "";
           }
         }
         // Below this threshold the panel is visually hidden: disable pointer
@@ -580,7 +595,51 @@ function StagePanel({
             overlay would otherwise swallow clicks on the secondary button's
             right half. Lifting the block costs the mark's hover-erode only
             the pixels over the copy itself. */}
-        <div className={cn("max-w-[42rem]", isHero && "relative z-10")}>
+        {/* `relative` is gated exactly like the wash below (desktop always;
+            compact only when the hero already carried it): it exists solely
+            to contain the wash's absolute box, so the compact non-hero
+            class set stays byte-identical to pre-round-7-3. */}
+        <div
+          className={cn(
+            "max-w-[42rem]",
+            (!compact || isHero) && "relative",
+            isHero && "z-10",
+          )}
+        >
+          {/* Panel-scoped contrast wash (round 7-3 — REPLACES the two
+              stage-level hero scrims, continuous-space spec §A.5.2). An
+              absolutely positioned child of the copy column with generous
+              negative insets, so the existing panelOpacity engine fades it
+              WITH the copy for free: it enters, crossfades and exits with
+              each stage — including stage 04's 0.97→1 exit band — instead of
+              sitting screen-fixed over the passage's panning world (the
+              owner's "ombra blu tagliata": a screen-fixed left smudge cannot
+              survive the rightward head-turn). `closest-side` radial reaches
+              exactly 0 INSIDE its own box (quad-edge hygiene rule §A.6) — no
+              gradient stop or stage clip can ever paint a cut edge. Far less
+              alpha than the old scrims (0.88/0.85 stacked): it is always
+              centred on the text it protects, never holding AA across the
+              whole left third at every camera pose. Desktop only: the compact
+              spine keeps its own centred full-frame wash for now (§B.3 —
+              "compact wash until its own pass"); a second wash there would
+              double-darken the phone hero. -z-10 sinks it behind the copy
+              inside the panel's own stacking context (willChange above).
+              data-panel-wash: the hero rAF above inherits the dead
+              ScrimDimmer's one live duty through it — while the particle
+              intro owns the hero this box overlaps the GL wordmark's left
+              half, so it drops to a whisper (0.15 + 0.85·domReveal) and
+              eases back exactly as the DOM copy cascades in. */}
+          {!compact && (
+            <div
+              data-panel-wash
+              aria-hidden="true"
+              className="absolute -inset-x-16 -inset-y-10 -z-10 pointer-events-none"
+              style={{
+                background:
+                  "radial-gradient(closest-side, hsl(var(--bg) / 0.55) 0%, hsl(var(--bg) / 0.28) 55%, transparent 100%)",
+              }}
+            />
+          )}
           {isHero ? (
             <>
               {/* The page's H1 — typography source for the WebGL text-particle
@@ -1246,8 +1305,8 @@ function CompactSpine({
   const backend = useTierStore((s) => s.backend);
   const brandArmed = HERO_BRAND_COMPACT && level >= 2 && backend === "webgpu";
 
-  // Scrim dimmer (compact twin of the desktop one below in the main
-  // component): the centred 0.82-alpha navy wash paints OVER the canvas and
+  // Scrim dimmer (compact-only since round 7-3 — the desktop twin died with
+  // the desktop scrims): the centred 0.82-alpha navy wash paints OVER the canvas and
   // would swallow the particle brand at the frame centre. While the morph
   // owns the hero it drops to a whisper and eases back exactly as domReveal
   // brings the DOM H1 in. Runs ONLY while brandArmed — every other phone
@@ -1342,11 +1401,15 @@ function CompactSpine({
           runway's unit or the address bar collapsing mid-scrub shifts the
           frame under the reader. */}
       <div className="sticky top-0 h-[100svh] overflow-hidden">
-        {/* Contrast scrim. The desktop stage carries two LEFT-anchored scrims
-            because its copy lives in a left column beside the mark; on a phone
-            the copy spans the full frame, so the compact stage uses ONE centred
-            wash of the same grammar (page-navy over the persistent canvas,
-            aria-hidden, pointer-events-none). HeroLogo DOES mount at tier
+        {/* Contrast scrim. The desktop stage's two LEFT-anchored scrims were
+            removed round 7-3 (they rode screen-fixed over the passage's
+            camera pan — see StagePanel's panel-scoped wash, spec §A.5); this
+            centred phone wash SURVIVES for now (§B.3: "compact wash until
+            its own pass") because the compact beat has no camera pan (pan01
+            is never written on coarse pointers, seqStore contract), so a
+            screen-fixed wash violates nothing here. One centred wash of the
+            old grammar (page-navy over the persistent canvas, aria-hidden,
+            pointer-events-none). HeroLogo DOES mount at tier
             "lite" (Scene.tsx routes home → HeroLogo for every tier but "off"),
             so this is what holds the headline at AA over the spore mark. It
             fades to transparent at the edges so the filament and the mark's
@@ -1397,8 +1460,8 @@ export default function CinematicSystemScroll() {
   const stages = localizeStages(language);
   const copy = SPINE_COPY[language];
   const outerRef = useRef<HTMLDivElement | null>(null);
-  const leftScrimRef = useRef<HTMLDivElement | null>(null);
-  const radialScrimRef = useRef<HTMLDivElement | null>(null);
+  // (Removed round 7-3: leftScrimRef / radialScrimRef — the two stage-level
+  // contrast scrims are gone. See the panel-scoped wash in StagePanel.)
   const progressRef = useRef<number>(0);
   // Default to desktop layout on the server so the hero H1 + subhead are
   // present in the initial HTML (good for SEO, first paint, accessibility).
@@ -1581,35 +1644,14 @@ export default function CinematicSystemScroll() {
     };
   }, [mode, hasDetectedViewport]);
 
-  // Scrim dimmer: while the WebGL particle text owns the hero (textMorph
-  // active, DOM headline hidden) the two center-left contrast scrims drop to
-  // a whisper — they paint OVER the canvas and were swallowing the left half
-  // of the particle text — then ease back to full exactly as domReveal brings
-  // the crisp DOM H1 in (which is what they exist to keep readable). Inactive
-  // morph (every fallback path) → opacity 1, identical to before.
-  // Gated on the SAME condition as the render branch below: on the compact and
-  // stacked paths the two scrim nodes are never rendered, so this loop would
-  // spin forever writing to permanently-null refs. The dep array is widened
-  // accordingly so it also tears down if detection resolves off the desktop
-  // path (or an OS toggle flips it) after mount.
-  useEffect(() => {
-    if (mode !== "desktop") return;
-    let raf = 0;
-    let last = -1;
-    const tick = () => {
-      const m = useTextMorphStore.getState();
-      const o = m.active ? 0.15 + 0.85 * m.domReveal : 1;
-      if (o !== last) {
-        last = o;
-        const os = String(o);
-        if (leftScrimRef.current) leftScrimRef.current.style.opacity = os;
-        if (radialScrimRef.current) radialScrimRef.current.style.opacity = os;
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [mode]);
+  // (Removed round 7-3: the desktop ScrimDimmer rAF. The two stage-level
+  // scrims it drove are deleted — their opacity writer pinned them at 1 for
+  // the spine's whole post-intro life, which left them frozen screen-fixed
+  // over the passage's panning world during the one-shot's input lock (the
+  // owner's "ombra blu tagliata", continuous-space spec §A.1). The contrast
+  // job moved to a panel-scoped wash inside StagePanel's copy column, which
+  // the panelOpacity engine already fades with the copy — no JS needed, and
+  // one permanent rAF loop removed for free.)
 
   // ONLY prefers-reduced-motion reaches the stacked fallback now — on a
   // 390px phone AND on a 27" monitor. The pinned scrub is motion-heavy by
@@ -1653,41 +1695,21 @@ export default function CinematicSystemScroll() {
           the canvas paints its first frame the hero is simply the dark brand
           background + the radial washes below + the SSR'd text. */}
       <div className="sticky top-0 h-screen overflow-hidden">
-        {/* Left-side horizontal gradient — pushes the text panel's
-            readability up by darkening the planet/nebula behind it on
-            the left third of the viewport. Strongest near the left edge
-            (where the H1 + paragraph sit), fading to transparent at the
-            centre. Critical for the wider stage 0 / hero waypoint where
-            the planet drifts left at the wide-shot camera.
-            ScrimDimmer fades it (and the radial scrim below) way down while
-            the WebGL particle text owns the hero — these overlays paint OVER
-            the canvas and were eating the left half of the particle
-            headline — and eases it back in as the DOM H1 reveals. */}
-        <div
-          ref={leftScrimRef}
-          aria-hidden="true"
-          className="absolute inset-y-0 left-0 w-[58%] pointer-events-none"
-          style={{
-            background:
-              "linear-gradient(to right, hsl(var(--bg) / 0.88) 0%, hsl(var(--bg) / 0.45) 38%, transparent 74%)",
-          }}
-        />
-
-        {/* Guaranteed text-contrast scrim. Sits directly behind the text
-            column (center-left, where every panel now anchors) and above the
-            orb + overlay, so the headline/body keep ≥4.5:1 contrast at ALL
-            scroll positions — even when the bright orb drifts under the text on
-            the push-in. Concentrated center-left and faded out toward the orb
-            on the right so it never washes out the focal subject. */}
-        <div
-          ref={radialScrimRef}
-          aria-hidden="true"
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            background:
-              "radial-gradient(58% 85% at 0% 50%, hsl(var(--bg) / 0.85) 0%, hsl(var(--bg) / 0.4) 38%, transparent 72%)",
-          }}
-        />
+        {/* (Removed round 7-3: the two stage-level contrast scrims — the
+            left linear wash + the center-left radial lobe. They were
+            screen-fixed at opacity 1 for the spine's whole post-intro life,
+            so during the PINNED HANDOFF they rode frozen over the passage's
+            rightward camera pan as a soft-edged navy block with two cut
+            edges (the owner's "ombra blu tagliata"). Text contrast is now a
+            panel-scoped wash inside StagePanel's copy column that fades with
+            each panel via the panelOpacity engine — see StagePanel. EXIT
+            RULE (spec §A.5.3, now enforced by construction): every VISIBLE
+            stage-level child of this sticky stage must fade on the 0.97→1
+            exit band — today that is the StagePanels (panelOpacity) and the
+            StageRail (its own exit fade); the brand span is opacity-0
+            forever and the hover/gate layers paint nothing. Any new
+            decorative stage-level child must join that fade, so the
+            handoff's "empty and transparent" premise stays true. */}
 
         {/* Brand intro headline — "SERSAN", the monumental opening beat.
             The WebGL text-particle intro (HeroTextParticles) assembles it out

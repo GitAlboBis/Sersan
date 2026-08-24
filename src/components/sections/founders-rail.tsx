@@ -12,7 +12,6 @@ import { ArrowUpRight } from "lucide-react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { SectionHeading } from "@/components/ui/section-heading";
-import { SectionGlow } from "@/components/ui/section-glow";
 import { founders, type FounderProfile } from "@/data/founders";
 import { useLanguage } from "@/components/language-provider";
 import { getLenis } from "@/lib/lenis-singleton";
@@ -2189,10 +2188,12 @@ export default function FoundersRail() {
       <section
         id="founders"
         ref={nativeSectionRef}
-        className="section-accent-tint relative section-lg scroll-mt-24 overflow-hidden"
+        // Round 7-3 (continuous-space spec §B.3): tint + glows removed in
+        // all THREE layout variants of this section (native / morph / rail —
+        // they must not diverge). The DOM must not own section-sized
+        // ambience; the portrait morph + rail chrome carry the band.
+        className="relative section-lg scroll-mt-24 overflow-hidden"
       >
-        <SectionGlow position="top-left" intensity={1.2} size="60rem" />
-        <SectionGlow position="bottom-right" intensity={0.9} size="45rem" />
         {/* §5.5 chrome trim: 32 → 16px below `sm`; `sm:mb-10` unchanged. */}
         <div className="container-px relative mb-4 sm:mb-10">{heading()}</div>
         {/* MOBILE_HOME_SPEC §2 row 7 / §5.5 — <DragRail> adoption, AFFORDANCE
@@ -2239,7 +2240,8 @@ export default function FoundersRail() {
       <section id="founders" className="relative scroll-mt-24">
         <div
           ref={sectionRef}
-          className="section-accent-tint relative"
+          // Round 7-3: tint + glows removed (twin of the native variant).
+          className="relative"
           style={{ minHeight: "100vh" }}
         >
           <div
@@ -2247,8 +2249,6 @@ export default function FoundersRail() {
             data-founders-morph-sticky
             className="sticky top-0 flex h-screen flex-col justify-center overflow-hidden"
           >
-            <SectionGlow position="top-left" intensity={1.2} size="60rem" />
-            <SectionGlow position="bottom-right" intensity={0.9} size="45rem" />
             <div className="container-px relative w-full">
               <div className="mb-8 max-w-2xl sm:mb-10">{heading()}</div>
               <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-[minmax(0,26rem)_1fr]">
@@ -2374,7 +2374,9 @@ export default function FoundersRail() {
           measure(). minHeight is the SSR placeholder before JS measures. */}
       <div
         ref={sectionRef}
-        className="section-accent-tint relative"
+        // Round 7-3: tint + glows removed (twin of the native + morph
+        // variants — the three must not diverge).
+        className="relative"
         style={{ minHeight: "100vh" }}
       >
         {/* Sticky viewport — this IS the pin (no pin-spacer, anchors stay
@@ -2384,8 +2386,6 @@ export default function FoundersRail() {
           data-founders-sticky
           className="sticky top-0 flex h-screen items-center overflow-hidden"
         >
-          <SectionGlow position="top-left" intensity={1.2} size="60rem" />
-          <SectionGlow position="bottom-right" intensity={0.9} size="45rem" />
           <ul
             ref={trackRef}
             className="relative flex w-max items-center gap-6 will-change-transform"

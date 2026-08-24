@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
 import { useProductionPulseStore } from "@/webgl/store/productionPulseStore";
 import { useNeuralLatticeStore } from "@/webgl/store/neuralLatticeStore";
@@ -297,11 +296,15 @@ export default function ProductionGradeSection() {
       id="trust"
       ref={sectionRef}
       data-snap
-      className="section-accent-tint section-accent-tint--strong relative section-lg scroll-mt-24 overflow-hidden"
+      // Round 7-3 (continuous-space spec §B.3): section-accent-tint--strong
+      // + both SectionGlows removed — this was the strongest tint on the
+      // page, the owner's "teal-tinted BLOCK" band. The DOM must not own
+      // section-sized ambience; the healthy constellation + starfield +
+      // PostFX carry the band, and the W4 cut now sweeps over a seamless
+      // field instead of a tinted rectangle. Contrast improves (§B.5).
+      className="relative section-lg scroll-mt-24 overflow-hidden"
     >
       <style>{PGROW_CSS}</style>
-      <SectionGlow position="bottom-right" intensity={1.25} size="65rem" />
-      <SectionGlow position="top-left" intensity={0.9} size="50rem" />
       <div className="container-px relative">
         {/* Chapter heading + body-scale description column (the Problem
             section's twin grammar). */}
@@ -370,8 +373,9 @@ export default function ProductionGradeSection() {
 
         {/* THE LEDGER — full-width typographic rows; the WebGL band is their
             full-bleed -z-10 background (BAND GEOMETRY CONTRACT). `isolate`
-            pins the negative-z band inside this container so it paints above
-            the section wash but below every row. */}
+            pins the negative-z band inside this container so it paints below
+            every row (the section wash it once sat above was removed round
+            7-3). */}
         <div ref={rowRef} className="relative isolate mt-4 sm:mt-12">
           {/* The WebGL anchor rect — full-bleed to the viewport edges; the
               rings ignite at 40/62/84% of this box (registration unchanged).
@@ -381,8 +385,10 @@ export default function ProductionGradeSection() {
             aria-hidden="true"
             className="pointer-events-none absolute inset-y-0 left-[calc(50%-50vw)] right-[calc(50%-50vw)] -z-10"
           >
-            {/* Faint blueprint dot-grid (igloo garnish). */}
-            <div className="absolute inset-0 bg-[radial-gradient(hsl(var(--ink)/0.05)_1px,transparent_1px)] [background-size:26px_26px]" />
+            {/* Faint blueprint dot-grid (igloo garnish). Round 7-3: masked so
+                it dissolves INSIDE its own band (quad-edge hygiene, spec
+                §B.3) — the problem section's twin mask, kept identical. */}
+            <div className="absolute inset-0 bg-[radial-gradient(hsl(var(--ink)/0.05)_1px,transparent_1px)] [background-size:26px_26px] [mask-image:radial-gradient(ellipse_80%_70%_at_50%_50%,#000_55%,transparent_95%)]" />
             {showFallback && (
               <NeuralGraphFallback
                 variant="healthy"

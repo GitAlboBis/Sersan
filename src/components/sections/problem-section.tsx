@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
 import { useNeuralLatticeStore } from "@/webgl/store/neuralLatticeStore";
 import { useNeuralLatticeFallback } from "@/components/fx/use-neural-lattice-fallback";
@@ -287,11 +286,17 @@ export default function ProblemSection() {
       id="problem"
       ref={sectionRef}
       data-snap
-      className="section-accent-tint relative section-lg scroll-mt-24 overflow-hidden"
+      // Round 7-3 (continuous-space spec §B.3): section-accent-tint + both
+      // SectionGlows removed — the DOM must not own section-sized ambience.
+      // The page's one continuous space (body --bg + starfield + the
+      // constellation island + PostFX) carries the band; the tint's left
+      // lobe was the owner's "ombra blu a sinistra dopo la transizione" and
+      // its section-top edge the floating horizontal line after the plunge
+      // landing. Removal also IMPROVES contrast (§B.5: ink-mute over the
+      // tint core was 1.9:1 — failing AA — vs 6.1:1 on plain bg).
+      className="relative section-lg scroll-mt-24 overflow-hidden"
     >
       <style>{PLROW_CSS}</style>
-      <SectionGlow position="top-right" intensity={1.2} />
-      <SectionGlow position="bottom-left" intensity={0.8} size="50rem" />
       <div className="container-px relative">
         {/* Chapter heading — the [data-emerge] wrapper is the singularity
             passage's zoom-in landing target: the one-shot plunge timeline
@@ -369,7 +374,8 @@ export default function ProblemSection() {
         {/* THE LEDGER — a stack of full-width typographic rows; the WebGL
             band is its full-bleed -z-10 background (BAND GEOMETRY CONTRACT).
             `isolate` pins the negative-z band inside this container so it
-            paints above the section wash but below every row. */}
+            paints below every row (the section wash it once sat above was
+            removed round 7-3). */}
         <div ref={rowRef} className="relative isolate mt-4 sm:mt-12">
           {/* The WebGL anchor rect — the stream is camera-locked to this box
               (persistent canvas paints behind the DOM). Full-bleed: the x
@@ -381,8 +387,12 @@ export default function ProblemSection() {
             aria-hidden="true"
             className="pointer-events-none absolute inset-y-0 left-[calc(50%-50vw)] right-[calc(50%-50vw)] -z-10"
           >
-            {/* Faint blueprint dot-grid (igloo garnish). */}
-            <div className="absolute inset-0 bg-[radial-gradient(hsl(var(--ink)/0.05)_1px,transparent_1px)] [background-size:26px_26px]" />
+            {/* Faint blueprint dot-grid (igloo garnish). Round 7-3: masked so
+                it dissolves INSIDE its own band (quad-edge hygiene, spec
+                §B.3) — a grid that fades out before the band bounds reads as
+                a field IN the world; one that stops at the bounds reads as a
+                page block. */}
+            <div className="absolute inset-0 bg-[radial-gradient(hsl(var(--ink)/0.05)_1px,transparent_1px)] [background-size:26px_26px] [mask-image:radial-gradient(ellipse_80%_70%_at_50%_50%,#000_55%,transparent_95%)]" />
             {showFallback && (
               <NeuralGraphFallback
                 variant="broken"
