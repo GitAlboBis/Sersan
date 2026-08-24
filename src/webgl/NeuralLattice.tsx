@@ -1,40 +1,43 @@
 "use client";
 
 /**
- * NeuralLattice — the NEURAL CONSTELLATION WebGL island (2026-08-21 round-6
+ * NeuralLattice — the NEURAL PLEXUS WebGL island (2026-08-22 round-8-D
  * re-author; the component/file name is kept so Scene.tsx's mount gate stays
- * byte-identical). The look lives in neuralFieldCompute: a LAYERED
- * FEED-FORWARD NETWORK — 12 nodes in 5 layers, 21 braided edge filaments, a
- * bright orbiting halo per node — replacing the demoted horizontal river.
- * This driver's state machines are UNCHANGED from the stream rounds; only
- * the mapping constants (RING_T/FRACTURE_T semantics) moved.
+ * byte-identical). The look lives in neuralFieldCompute: a dense VOLUMETRIC
+ * BRAIN PLEXUS — ~103 nodes (lite ~56) in an organic cloud filling the band,
+ * ~227 near-neighbour link filaments (lite ~110), and a FILLED STAR-GLOW core
+ * per node — replacing the round-6 layered diagram and its orbiting halos
+ * (the owner's "cerchi vuoti"). THIS DRIVER IS UNCHANGED: no logic moved in
+ * round-8-D, only the meaning of the mapping constants it already wrote.
  *
  * ~9000 particles (3200 compact tier) fill the section's
  * `[data-lattice-anchor]` rect. Two instances mount on home:
- *   mode "broken"  (Problem, anchor "problem"): the net is intact through
- *     its first three layers, then DEGRADED past the fracture (t 0.62,
- *     between the 3rd and 4th layer — spatially AT the fractured crystal):
- *     edges fray into ember debris, far nodes drift off station. A PULSE
- *     rides input→output every ~4s (and on the DOM's in-view
- *     `bump("broken")`) and DIES at the fracture with a >1.0 emissive flash
- *     + spark burst + nebula flare. Row ignition (setHovered) → a BIGGER
- *     re-cohere tease (frayed edges re-connect, nodes pull back) + a
- *     localized uRowGlow swell in the row's region of the net.
- *   mode "healthy" (ProductionGrade, anchor "production"): all edges intact;
- *     the three MIDDLE layers are eval → trace → guardrail (their round-4
- *     membrane discs are retired since round-8 — the owner's unexplained
- *     "cerchi"; config MEMBRANE_ALPHA 0 gates the mesh build, so
- *     `build.membrane` is null). The DOM's sequenced `bumpCluster("healthy", i)`
- *     ignites layer i+1's halos (>1.0 flash + shockwave); every ~6s a pulse
- *     traverses the WHOLE net and SURVIVES, flashing each middle layer as it
- *     crosses (RING_T = [.25,.5,.75] — the layer depths). Row ignition →
- *     layer i+1's halos flare + its region tightens/brightens (uRowGlow).
+ *   mode "broken"  (Problem, anchor "problem"): the cloud is intact left of
+ *     the fracture (nodeT 0.62 — spatially AT the fractured crystal) and
+ *     DEGRADED right of it: links fray into ember debris, far stars drift off
+ *     station. A PULSE sweeps the cloud left→right every ~2.4s (and on the
+ *     DOM's in-view `bump("broken")`) and DIES at the fracture with a >1.0
+ *     emissive flash + spark burst + nebula flare. Row ignition (setHovered)
+ *     → a BIGGER re-cohere tease (frayed links re-connect, stars pull back) +
+ *     a localized uRowGlow swell in the row's region of the cloud.
+ *   mode "healthy" (ProductionGrade, anchor "production"): the whole cloud is
+ *     intact; the three ignition REGIONS are eval → trace → guardrail (their
+ *     round-4 membrane discs are retired since round-8 — the owner's
+ *     unexplained "cerchi"; config MEMBRANE_ALPHA 0 gates the mesh build, so
+ *     `build.membrane` is null). The DOM's sequenced
+ *     `bumpCluster("healthy", i)` ignites region i's STARS (>1.0 flash +
+ *     shockwave); every ~3.5s a pulse traverses the WHOLE cloud and SURVIVES,
+ *     flashing each region as it crosses (RING_T = [.25,.5,.75] — since
+ *     round-8-D these are nodeT REGION centres, blended gaussian-wise in the
+ *     shader, not layer depths). Row ignition → region i's stars flare + its
+ *     links tighten/brighten (uRowGlow).
  *
  * ANCHORING — camera-LOCKED screen-space placement (contract unchanged): the
  * OUTER group is positioned from the anchor rect's center, quaternion =
- * camera.quaternion, scale = (w·k, h·k, h·k). The node/edge tables are
- * mode-config uniformArrays in LOCAL space, so resize = re-measure rect only
- * — no per-particle re-anchoring, no buffer rebuild.
+ * camera.quaternion, scale = (w·k, h·k, h·k). The node/link tables are
+ * generated once by `getPlexus(mode, density)` and ride in LOCAL-space
+ * uniformArrays, so resize = re-measure rect only — no per-particle
+ * re-anchoring, no buffer rebuild.
  *
  * STORES (the ONLY cross-layer channel): useNeuralLatticeStore —
  * bump/bumpCluster (DOM in-view writers) + hovered (DOM row hover/focus) are
@@ -44,10 +47,11 @@
  *
  * GATING: Scene.tsx mounts this on `pathname === "/" && island && webgpu`
  * (island = fxBudget.level >= 2) — unchanged. Non-compute backends get the
- * analytic static build from neuralFieldCompute (a still-but-igniting
- * constellation: homes at rest, pulses/flashes/fray all uniform-animated).
+ * analytic static build from neuralFieldCompute (a still-but-igniting plexus:
+ * the SAME cloud at rest, pulses/flashes/fray/packets all uniform-animated).
  * The DOM SVG fallback (use-neural-lattice-fallback.ts, the exact
- * complement) carries the same layered-graph metaphor everywhere else.
+ * complement) draws the same plexus — same generator, `svg` density — with
+ * static star cores and no rings, everywhere else.
  *
  * PHONE BUDGET: `tier === "lite"` builds at NEURAL_PARTICLE_COUNT_COMPACT.
  * The tier is read with `getState()` in the build effect and NEVER subscribed
@@ -55,11 +59,11 @@
  *
  * ROUND-4 §B carried forward (igloo-mined effects): this driver additionally
  *   - integrates the FLOW CLOCK (uFlowTime += dt·(1 + uVelFlow·vel)) and the
- *     damped uScrollVel from scrollStore velocity (§B.3 — the net swells,
+ *     damped uScrollVel from scrollStore velocity (§B.3 — the plexus swells,
  *     streaks longer, curls harder and flows faster while you scroll, calm
  *     at rest; velocity is 0 under RM/native scroll so RM stays calm by
  *     construction);
- *   - latches + damps each middle LAYER's MEMBRANE seal (0→1 on first
+ *   - latches + damps each ignition REGION's MEMBRANE seal (0→1 on first
  *     ignition) and integrates its band phase (ripple = ×3 phase speed while
  *     uRingFlash burns — integration, never a backwards jump) (§B.1 — since
  *     round-8 the membrane MESH is retired by default (config MEMBRANE_ALPHA

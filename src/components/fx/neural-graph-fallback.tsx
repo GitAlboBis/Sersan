@@ -1,39 +1,46 @@
 "use client";
 
 /**
- * NeuralGraphFallback — the DOM/SVG twin of the NEURAL CONSTELLATION WebGL
- * island (2026-08-21 round-6 re-author; export/file name kept so the fallback
- * slot wiring in the two sections stays put).
+ * NeuralGraphFallback — the DOM/SVG twin of the NEURAL PLEXUS WebGL island
+ * (2026-08-22 round-8-D re-author; export/file name kept so the fallback slot
+ * wiring in the two sections stays put).
  *
- * The SAME layered feed-forward graph as the WebGL build — 12 nodes in 5
- * layers, 21 triangulating edges — drawn statically from the SHARED config
- * tables (NODES/EDGES/NODE_LAYER/FRACTURE_T in webgl/neural/
- * neuralLatticeConfig; one source of truth, change together. The middle
- * layers = RING_T's [.25,.5,.75] arrive via NODE_LAYER 1..3 — no direct
- * RING_T read needed):
+ * The SAME dense brain plexus as the WebGL build, drawn statically from the
+ * SHARED generator (`getPlexus(variant, "svg")` in webgl/neural/
+ * neuralLatticeConfig — one source of truth, one algorithm, three density
+ * presets): ~36 nodes in a volumetric cloud, ~62 near-neighbour links forming
+ * an irregular triangulation, and every node drawn as a FILLED STAR (a solid
+ * bright core inside a soft radial glow, with a 4-ray flare cross on the
+ * brighter ones).
  *
- *   variant "broken"  → the Problem section. The net is intact through its
- *     first three layers; edges crossing the fracture END CLEAN at the break
- *     and continue as dashed frayed tails toward DRIFTED ember nodes; the
- *     last two layers hang degraded. A pulse packet rides the layer-centroid
+ * ROUND-8-D "no circles" compliance: the three LAYER RINGS this file used to
+ * draw around the healthy layer centroids are GONE — they were hollow circles,
+ * exactly what the owner rejected. The healthy ignition now lights three
+ * REGIONS of the cloud instead (the same remap the WebGL build does with its
+ * gaussian zone blend). Node glows are FILLED radial gradients paired with a
+ * solid core, i.e. star glows, never rims.
+ *
+ *   variant "broken"  → the Problem section. The cloud is intact left of the
+ *     fracture (nodeT 0.62); links crossing it END CLEAN at the break and
+ *     continue as dashed frayed tails toward DRIFTED ember stars; everything
+ *     right of it hangs degraded. A pulse packet rides the x-slice centroid
  *     rail and DIES at the fracture (scatter burst), looping every ~4s.
- *   variant "healthy" → the ProductionGrade section. Full graph, plus three
- *     LAYER RINGS around the middle-layer centroids (eval → trace →
- *     guardrail — the WebGL membranes' echo) that IGNITE in pipeline order
- *     on mount via stroke-dashoffset draws; the pulse packet traverses the
- *     whole net every ~6s, pulsing each layer ring as it passes — the packet
- *     that survives.
+ *   variant "healthy" → the ProductionGrade section. The whole cloud is
+ *     intact; the three ignition REGIONS (eval → trace → guardrail) light in
+ *     pipeline order on mount; the pulse packet traverses the whole cloud
+ *     every ~6s, brightening each region as it passes — the packet that
+ *     survives.
  *
  * Renders when the WebGL island is ABSENT (use-neural-lattice-fallback.ts:
  * classic flag-OFF, lite/off tiers, reduced-motion). Decorative only:
  * aria-hidden — the real copy lives in the sections' ledger rows.
  *
- * Reduced-motion: the resting FINAL state — edges drawn, layer rings fully
- * lit, fray + scatter shown statically. No packets, no timers.
+ * Reduced-motion: the resting FINAL state — links drawn, all three regions
+ * fully lit, fray + scatter shown statically. No packets, no timers.
  *
- * No new dependency (GSAP + MotionPathPlugin already bundled); no SVG
- * filters anywhere (glow = underlay strokes + gradient fills — this runs on
- * the weakest tiers).
+ * No new dependency (GSAP + MotionPathPlugin already bundled); no SVG filters
+ * anywhere (glow = underlay strokes + gradient fills — this runs on the
+ * weakest tiers).
  */
 import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
@@ -41,10 +48,14 @@ import { MotionPathPlugin } from "gsap/MotionPathPlugin";
 import { useGSAP } from "@gsap/react";
 import { useNeuralLatticeStore } from "@/webgl/store/neuralLatticeStore";
 import {
-  NODES,
-  EDGES,
-  NODE_LAYER,
+  getPlexus,
   FRACTURE_T,
+  RING_T,
+  COL_CORE,
+  COL_CYAN,
+  COL_BLUE,
+  COL_EMBER2,
+  PLEXUS_RZ,
 } from "@/webgl/neural/neuralLatticeConfig";
 
 if (typeof window !== "undefined") {
@@ -59,98 +70,135 @@ const VB_W = 1000;
 const VB_H = 400;
 const MID_Y = VB_H / 2;
 
-/** LOCAL band space → viewBox: x ∈ ~±0.53 (width fractions) and y ∈ ±0.5
+/** LOCAL band space → viewBox: x ∈ ~±0.5 (width fractions) and y ∈ ±0.45
  * (height fractions, up) map inside the box with a small margin. */
 const X0 = 500;
 const XS = 900;
 const Y0 = MID_Y;
 const YS = 340;
 
-/** Deterministic drift of a DEGRADED node (broken layers 3-4) — the SVG echo
- * of the WebGL nodeDrift (whole nodes knocked off station). */
+/** Deterministic drift of a DEGRADED node (broken, past the fracture) — the
+ * SVG echo of the WebGL nodeDrift (whole stars knocked off station). */
 function driftOf(i: number): [number, number] {
-  return [10 + (i % 3) * 8, i % 2 === 0 ? -12 : 14];
+  return [7 + (i % 3) * 6, i % 2 === 0 ? -9 : 11];
 }
 
 interface GNode {
   x: number;
   y: number;
-  layer: number;
+  /** 0 (far) → 1 (near) — drives the star's size + opacity (the depth read). */
+  depth: number;
+  t: number;
   degraded: boolean;
+  /** Nearest ignition region, or −1 for the cloud's outer fringes. */
+  zone: number;
+  /** Deterministic "bright star" flag — these get the 4-ray flare cross. */
+  flare: boolean;
 }
 interface GEdge {
-  /** Solid segment (full edge, or the pre-fracture stub of a crossing). */
+  /** Solid segment (full link, or the pre-fracture stub of a crossing). */
   solid: string | null;
-  /** Dashed frayed tail (crossing remainder / fully-lost edge). */
+  /** Dashed frayed tail (crossing remainder / fully-lost link). */
   fray: string | null;
 }
 
 function buildGraph(variant: Variant) {
   const broken = variant === "broken";
-  const nodes: GNode[] = NODES[variant].map(([x, y], i) => {
-    const layer = NODE_LAYER[i];
-    const degraded = broken && layer >= 3;
+  const plexus = getPlexus(variant, "svg");
+
+  const nodes: GNode[] = plexus.nodes.map(([x, y, z], i) => {
+    const t = plexus.nodeT[i];
+    const degraded = broken && t > FRACTURE_T;
     const [dx, dy] = degraded ? driftOf(i) : [0, 0];
+    // Nearest ignition region — RING_T are 0.25 apart, so half a gap is the
+    // natural membership radius (the SVG echo of the gaussian zone blend).
+    let zone = -1;
+    let best = 0.125;
+    RING_T.forEach((rt, zi) => {
+      const d = Math.abs(t - rt);
+      if (d < best) {
+        best = d;
+        zone = zi;
+      }
+    });
     return {
       x: Math.round(X0 + x * XS) + dx,
       y: Math.round(Y0 - y * YS) + dy,
-      layer,
+      // QUANTIZED on purpose. `depth` is the only generator output that flows
+      // UNROUNDED into rendered attributes (r / opacity via lerp), and
+      // getPlexus is deterministic only per-ENGINE: it hashes through
+      // Math.sin, whose last-ULP result is implementation-defined, then
+      // amplifies it ×43758 — so Node's V8 and a JSC/SpiderMonkey client can
+      // disagree at ~1e-11 and print different attribute strings. Today that
+      // cannot bite (useNeuralLatticeFallback returns false until the tier
+      // probe resolves, so this SVG never renders during SSR or on the first
+      // client pass), but rounding to 3 decimals makes the markup engine-
+      // independent by construction instead of by accident. x/y are already
+      // Math.round-ed and `t` only feeds comparisons, so this closes the last
+      // continuous channel.
+      depth:
+        Math.round(Math.min(1, Math.max(0, z / (2 * PLEXUS_RZ) + 0.5)) * 1000) /
+        1000,
+      t,
       degraded,
+      zone,
+      flare: i % 3 === 0,
     };
   });
 
-  // Layer centroids (the packet rail + the layer-ring centers). Degraded
-  // drift is INCLUDED (the rail only uses intact layers anyway).
-  const centroids: { x: number; y: number }[] = [];
-  for (let l = 0; l < 5; l++) {
-    let cx = 0,
-      cy = 0,
-      n = 0;
-    nodes.forEach((p) => {
-      if (p.layer !== l) return;
-      cx += p.x;
-      cy += p.y;
-      n++;
-    });
-    centroids.push({ x: Math.round(cx / n), y: Math.round(cy / n) });
-  }
+  // The x-slice centroid spine (the packet rail + the fracture point) —
+  // exactly the uC0..uC4 control points the WebGL build registers on.
+  const centroids = plexus.centroids.map(([x, y]) => ({
+    x: Math.round(X0 + x * XS),
+    y: Math.round(Y0 - y * YS),
+  }));
 
-  // Fracture point: FRACTURE_T (0.62) sits between layer 2 (t .5) and layer
-  // 3 (t .75) → lerp the centroid spine (the WebGL spline, linearized).
+  // Fracture point: FRACTURE_T (0.62) sits between slice 2 (t .5) and slice 3
+  // (t .75) → lerp the centroid spine (the WebGL spline, linearized).
   const fr = (FRACTURE_T - 0.5) / 0.25;
   const fract = {
     x: Math.round(centroids[2].x + (centroids[3].x - centroids[2].x) * fr),
     y: Math.round(centroids[2].y + (centroids[3].y - centroids[2].y) * fr),
   };
 
-  const edges: GEdge[] = EDGES[variant].map(([a, b]) => {
+  const edges: GEdge[] = plexus.edges.map(([a, b]) => {
     const A = nodes[a];
     const B = nodes[b];
     const line = (x0: number, y0: number, x1: number, y1: number) =>
       `M ${x0} ${y0} L ${x1} ${y1}`;
-    if (!broken || B.layer <= 2) {
+    if (!broken || B.t <= FRACTURE_T) {
       return { solid: line(A.x, A.y, B.x, B.y), fray: null };
     }
-    if (A.layer === 2) {
-      // Crossing edge: solid to just before the break (s* ≈ 0.48 of the
-      // edge = the fracture depth), a CLEAN GAP, then the dashed fray to
-      // the drifted far node — the WebGL clean-break + fray echo.
-      const cut = 0.44;
-      const resume = 0.58;
-      const px = A.x + (B.x - A.x) * cut;
-      const py = A.y + (B.y - A.y) * cut;
-      const qx = A.x + (B.x - A.x) * resume;
-      const qy = A.y + (B.y - A.y) * resume;
-      return {
-        solid: line(A.x, A.y, Math.round(px), Math.round(py)),
-        fray: line(Math.round(qx), Math.round(qy), B.x, B.y),
-      };
+    if (A.t < FRACTURE_T) {
+      // Crossing link: solid to just before the break (the fracture's
+      // position along the link), a CLEAN GAP, then the dashed fray to the
+      // drifted far star — the WebGL clean-break + fray echo.
+      //
+      // MEASURED (2026-08-22): at the "svg" density this branch is currently
+      // UNREACHABLE — the crystal clearance well straddles the fracture's own
+      // x-slab (see the CRYSTAL_CLEAR_INNER note in neuralLatticeConfig), so
+      // buildPlexus delivers ZERO links spanning FRACTURE_T for broken/svg
+      // (full delivers 2, lite 1). The twin's break therefore reads through
+      // the clearance gap, the 9 fully-lost dashed links, the 8 drifted ember
+      // stars and the scatter burst — not through a cut filament. Kept live
+      // and correct because it becomes reachable again the moment
+      // PLEXUS_SEEDS.svg, CRYSTAL_POS or FRACTURE_T move.
+      const s = (FRACTURE_T - A.t) / Math.max(B.t - A.t, 1e-4);
+      const cut = Math.max(0.08, s - 0.09);
+      const resume = Math.min(0.92, s + 0.09);
+      const at = (f: number) => [
+        Math.round(A.x + (B.x - A.x) * f),
+        Math.round(A.y + (B.y - A.y) * f),
+      ];
+      const [px, py] = at(cut);
+      const [qx, qy] = at(resume);
+      return { solid: line(A.x, A.y, px, py), fray: line(qx, qy, B.x, B.y) };
     }
-    // Fully-lost edge (both endpoints past the fracture): dashed, dim.
+    // Fully-lost link (both endpoints past the fracture): dashed, dim.
     return { solid: null, fray: line(A.x, A.y, B.x, B.y) };
   });
 
-  // Packet rail: layer centroids input→output; broken ends AT the fracture.
+  // Packet rail: slice centroids left→right; broken ends AT the fracture.
   const railPts = broken
     ? [centroids[0], centroids[1], centroids[2], fract]
     : centroids;
@@ -158,15 +206,14 @@ function buildGraph(variant: Variant) {
     .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`)
     .join(" ");
 
-  // Healthy layer-ring pulse timing: x fraction of each middle layer along
-  // the rail span.
+  // Region-pulse timing: x fraction of each ignition region along the rail.
   const railX0 = centroids[0].x;
   const railX1 = (broken ? fract : centroids[4]).x;
-  const ringFracs = [1, 2, 3].map(
-    (l) => (centroids[l].x - railX0) / (railX1 - railX0),
+  const zoneFracs = [1, 2, 3].map(
+    (l) => (centroids[l].x - railX0) / Math.max(railX1 - railX0, 1),
   );
 
-  return { nodes, centroids, fract, edges, rail, ringFracs };
+  return { nodes, centroids, fract, edges, rail, zoneFracs };
 }
 
 const GRAPHS: Record<Variant, ReturnType<typeof buildGraph>> = {
@@ -179,17 +226,22 @@ function scatterOf(variant: Variant) {
   const o = GRAPHS[variant].fract;
   return Array.from({ length: 9 }, (_, k) => {
     const ang = ((-55 + k * 14) * Math.PI) / 180;
-    const dist = 46 + (k % 3) * 30;
+    const dist = 40 + (k % 3) * 26;
     return {
-      tx: Math.round(o.x + 30 + Math.cos(ang) * dist),
+      tx: Math.round(o.x + 24 + Math.cos(ang) * dist),
       ty: Math.round(o.y + Math.sin(ang) * dist),
     };
   });
 }
 const SCATTER = scatterOf("broken");
 
-/** Middle-layer ring radius (the WebGL membranes' echo). */
-const LAYER_RING_R = 46;
+/** Star geometry in viewBox units (the SVG echo of STAR_CORE_R /
+ * STAR_FLARE_LEN): core radius, filled glow radius and flare-ray reach, each
+ * scaled by the node's depth so near stars read bigger and brighter. */
+const STAR_CORE_R = [1.5, 2.9] as const;
+const STAR_GLOW_R = [4.5, 8.5] as const;
+const STAR_RAY = [6, 11] as const;
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 export function NeuralGraphFallback({
   variant,
@@ -201,8 +253,8 @@ export function NeuralGraphFallback({
   const broken = variant === "broken";
   const g = GRAPHS[variant];
   const rootRef = useRef<SVGSVGElement>(null);
-  const gradId = `constellation-grad-${variant}`;
-  // Reduced-motion: render the resting final frame (rings lit, scatter shown).
+  const gradId = `plexus-grad-${variant}`;
+  // Reduced-motion: render the resting final frame (regions lit, scatter out).
   const [rest, setRest] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
@@ -212,7 +264,7 @@ export function NeuralGraphFallback({
   // Row-reactive echo (trivial mapping only): the ledger rows write
   // setHovered on every tier, so when the WebGL island is absent this twin
   // answers attention with a whole-graph stroke-width / opacity bump on the
-  // edge cores. A LOCALIZED per-layer glow does not map trivially onto
+  // link cores. A LOCALIZED per-region glow does not map trivially onto
   // gradient strokes (filters banned here), so the echo stays global.
   const hovered = useNeuralLatticeStore((s) => s.hovered[variant]);
   const hoverActive = hovered !== null;
@@ -222,8 +274,8 @@ export function NeuralGraphFallback({
     if (!root) return;
     const cores = root.querySelectorAll<SVGPathElement>("[data-strand-core]");
     cores.forEach((p) => {
-      const w = Number(p.dataset.baseW ?? "1.2");
-      const o = Number(p.dataset.baseO ?? "0.55");
+      const w = Number(p.dataset.baseW ?? "1");
+      const o = Number(p.dataset.baseO ?? "0.5");
       gsap.to(p, {
         attr: {
           "stroke-width": hoverActive ? w * 1.4 : w,
@@ -247,30 +299,26 @@ export function NeuralGraphFallback({
       const rail = root.querySelector<SVGPathElement>("[data-rail]");
 
       if (!broken) {
-        // Layer-ring ignition — pipeline order (eval → trace → guardrail), a
-        // stroke-dashoffset draw per ring, 0.35s apart, once on mount.
-        const rings = Array.from(
-          root.querySelectorAll<SVGCircleElement>("[data-ring]"),
-        );
+        // REGION ignition — pipeline order (eval → trace → guardrail), the
+        // region's stars swell up from dim, 0.35s apart, once on mount.
         const igni = gsap.timeline();
-        rings.forEach((ring, i) => {
-          const len = ring.getTotalLength();
-          gsap.set(ring, {
-            strokeDasharray: len,
-            strokeDashoffset: len,
-            opacity: 1,
-          });
-          igni.to(
-            ring,
-            { strokeDashoffset: 0, duration: 0.7, ease: "expo.inOut" },
-            i * 0.35,
+        [0, 1, 2].forEach((zi) => {
+          const stars = root.querySelectorAll<SVGGElement>(
+            `[data-zone="${zi}"]`,
+          );
+          if (!stars.length) return;
+          igni.fromTo(
+            stars,
+            { opacity: 0.28 },
+            { opacity: 1, duration: 0.7, ease: "expo.out", stagger: 0.012 },
+            zi * 0.35,
           );
         });
       }
 
-      // The looping pulse packet: rides the centroid rail input→output;
-      // broken → dies at the fracture with a scatter burst; healthy →
-      // survives, pulsing each middle-layer ring as it passes.
+      // The looping pulse packet: rides the centroid rail left→right; broken
+      // → dies at the fracture with a scatter burst; healthy → survives,
+      // brightening each ignition region as it passes.
       if (!packet || !rail) return;
       const period = broken ? 4 : 6;
       const travel = broken ? 1.6 : 2.4;
@@ -307,10 +355,7 @@ export function NeuralGraphFallback({
           const target = SCATTER[k] ?? SCATTER[0];
           tl.fromTo(
             dot,
-            {
-              opacity: 0.85,
-              attr: { cx: g.fract.x, cy: g.fract.y },
-            },
+            { opacity: 0.85, attr: { cx: g.fract.x, cy: g.fract.y } },
             {
               opacity: 0,
               attr: { cx: target.tx, cy: target.ty },
@@ -321,26 +366,24 @@ export function NeuralGraphFallback({
           );
         });
       } else {
-        // SURVIVE: pulse each layer ring as the packet passes, fade at end.
-        const rings = Array.from(
-          root.querySelectorAll<SVGCircleElement>("[data-ring]"),
-        );
-        g.ringFracs.forEach((frac, i) => {
-          const at = frac * travel;
-          if (rings[i]) {
-            tl.fromTo(
-              rings[i],
-              { strokeOpacity: 0.75 },
-              {
-                strokeOpacity: 1,
-                duration: 0.16,
-                yoyo: true,
-                repeat: 1,
-                ease: "power2.out",
-              },
-              at,
-            );
-          }
+        // SURVIVE: brighten each region's stars as the packet passes.
+        g.zoneFracs.forEach((frac, zi) => {
+          const stars = root.querySelectorAll<SVGGElement>(
+            `[data-zone="${zi}"]`,
+          );
+          if (!stars.length) return;
+          tl.fromTo(
+            stars,
+            { opacity: 0.8 },
+            {
+              opacity: 1,
+              duration: 0.18,
+              yoyo: true,
+              repeat: 1,
+              ease: "power2.out",
+            },
+            frac * travel,
+          );
         });
         tl.to(
           packet,
@@ -362,8 +405,10 @@ export function NeuralGraphFallback({
       style={{ display: "block" }}
     >
       <defs>
-        {/* Global left→right ramp shared by every edge stroke (userSpaceOnUse
-            — per-edge bounding boxes would each restart the gradient). */}
+        {/* Global left→right ramp shared by every link stroke (userSpaceOnUse
+            — per-link bounding boxes would each restart the gradient). Stops
+            are the SHARED brand ramp constants: white-cyan → cyan → blue,
+            no violet anywhere. */}
         <linearGradient
           id={gradId}
           x1="0"
@@ -372,21 +417,23 @@ export function NeuralGraphFallback({
           y2="0"
           gradientUnits="userSpaceOnUse"
         >
-          <stop offset="0%" stopColor="hsl(var(--accent))" />
-          <stop offset="100%" stopColor="hsl(var(--accent-2))" />
+          <stop offset="0%" stopColor={COL_BLUE} />
+          <stop offset="55%" stopColor={COL_CYAN} />
+          <stop offset="100%" stopColor={COL_CORE} />
         </linearGradient>
-        {/* Soft radial halo for node cores + the pulse packet — the glow is a
-            gradient FILL, not a filter: this fallback runs precisely on the
-            weak / reduced tiers where filters hurt most. */}
-        <radialGradient id={`${gradId}-halo`}>
-          <stop offset="0%" stopColor="hsl(var(--accent))" stopOpacity="1" />
-          <stop offset="45%" stopColor="hsl(var(--accent))" stopOpacity="0.5" />
-          <stop offset="100%" stopColor="hsl(var(--accent))" stopOpacity="0" />
+        {/* FILLED star glow for the node cores + the pulse packet — a solid
+            radial fill that peaks at r = 0, never a rim: this is the SVG
+            counterpart of the WebGL star core, and the reason no hollow
+            circle survives anywhere in this twin. */}
+        <radialGradient id={`${gradId}-star`}>
+          <stop offset="0%" stopColor={COL_CORE} stopOpacity="0.95" />
+          <stop offset="35%" stopColor={COL_CYAN} stopOpacity="0.45" />
+          <stop offset="100%" stopColor={COL_CYAN} stopOpacity="0" />
         </radialGradient>
       </defs>
 
-      {/* EDGES — the triangular mesh. Glow = a wide translucent UNDERLAY
-          stroke beneath the crisp core stroke (filter-free bloom). */}
+      {/* LINKS — the near-neighbour triangulation. Glow = a wide translucent
+          UNDERLAY stroke beneath the crisp core stroke (filter-free bloom). */}
       <g fill="none" strokeLinecap="round">
         {g.edges.map(
           (e, i) =>
@@ -395,8 +442,8 @@ export function NeuralGraphFallback({
                 key={`edge-under-${i}`}
                 d={e.solid}
                 stroke={`url(#${gradId})`}
-                strokeWidth={4.5}
-                strokeOpacity={0.12}
+                strokeWidth={3}
+                strokeOpacity={0.1}
               />
             ),
         )}
@@ -406,55 +453,37 @@ export function NeuralGraphFallback({
               <path
                 key={`edge-${i}`}
                 data-strand-core
-                data-base-w={1.4}
-                data-base-o={0.65}
+                data-base-w={0.9}
+                data-base-o={0.5}
                 d={e.solid}
                 stroke={`url(#${gradId})`}
-                strokeWidth={1.4}
-                strokeOpacity={0.65}
+                strokeWidth={0.9}
+                strokeOpacity={0.5}
               />
             ),
         )}
-        {/* Frayed tails: dashed, ember-dim — the degraded half of the net. */}
+        {/* Frayed tails: dashed, ember-dim — the degraded half of the cloud. */}
         {g.edges.map(
           (e, i) =>
             e.fray && (
               <path
                 key={`fray-${i}`}
                 d={e.fray}
-                stroke="hsl(var(--ink-dim))"
-                strokeWidth={1.3}
-                strokeOpacity={0.45}
+                stroke={COL_EMBER2}
+                strokeWidth={0.9}
+                strokeOpacity={0.5}
                 strokeDasharray="3 7"
               />
             ),
         )}
-        {/* The pulse packet's invisible rail (layer-centroid spine). */}
+        {/* The pulse packet's invisible rail (x-slice centroid spine). */}
         <path data-rail d={g.rail} stroke="none" />
       </g>
 
-      {/* Healthy: three LAYER RINGS at the middle-layer centroids (the WebGL
-          membranes' echo), drawn by the ignition timeline (reduced motion:
-          fully lit at rest). Filter-free. */}
-      {!broken && (
-        <g fill="none">
-          {[1, 2, 3].map((l, i) => (
-            <circle
-              key={`ring-${i}`}
-              data-ring={i}
-              cx={g.centroids[l].x}
-              cy={g.centroids[l].y}
-              r={LAYER_RING_R}
-              stroke={`url(#${gradId})`}
-              strokeWidth={2.2}
-              strokeOpacity={0.85}
-            />
-          ))}
-        </g>
-      )}
-
-      {/* NODES — halo disc + crisp core; degraded nodes (broken, past the
-          fracture) sit drifted, ember-dim. */}
+      {/* STARS — filled glow + solid core (+ a 4-ray flare cross on the
+          brighter third). Size and opacity ride the node's depth, which is
+          the twin's depth cue. Degraded stars (broken, past the fracture) sit
+          drifted and ember-dim. */}
       <g>
         {g.nodes.map((n, i) =>
           n.degraded ? (
@@ -462,19 +491,34 @@ export function NeuralGraphFallback({
               key={`node-${i}`}
               cx={n.x}
               cy={n.y}
-              r={4.5}
-              fill="hsl(var(--ink-dim))"
-              opacity={0.5}
+              r={lerp(1.4, 2.4, n.depth)}
+              fill={COL_EMBER2}
+              opacity={0.55}
             />
           ) : (
-            <g key={`node-${i}`}>
-              <circle cx={n.x} cy={n.y} r={11} fill={`url(#${gradId}-halo)`} />
+            <g key={`node-${i}`} data-zone={n.zone}>
               <circle
                 cx={n.x}
                 cy={n.y}
-                r={2.4}
-                fill="hsl(var(--accent))"
-                opacity={0.95}
+                r={lerp(STAR_GLOW_R[0], STAR_GLOW_R[1], n.depth)}
+                fill={`url(#${gradId}-star)`}
+              />
+              {n.flare && (
+                <path
+                  d={`M ${n.x - lerp(STAR_RAY[0], STAR_RAY[1], n.depth)} ${n.y} H ${n.x + lerp(STAR_RAY[0], STAR_RAY[1], n.depth)} M ${n.x} ${n.y - lerp(STAR_RAY[0], STAR_RAY[1], n.depth)} V ${n.y + lerp(STAR_RAY[0], STAR_RAY[1], n.depth)}`}
+                  stroke={COL_CORE}
+                  strokeWidth={0.8}
+                  strokeOpacity={0.4}
+                  strokeLinecap="round"
+                  fill="none"
+                />
+              )}
+              <circle
+                cx={n.x}
+                cy={n.y}
+                r={lerp(STAR_CORE_R[0], STAR_CORE_R[1], n.depth)}
+                fill={COL_CORE}
+                opacity={lerp(0.7, 1, n.depth)}
               />
             </g>
           ),
@@ -491,8 +535,8 @@ export function NeuralGraphFallback({
               data-scatter={k}
               cx={rest ? p.tx : g.fract.x}
               cy={rest ? p.ty : g.fract.y}
-              r={2.2}
-              fill="hsl(var(--ink-dim))"
+              r={2}
+              fill={COL_EMBER2}
               opacity={rest ? 0.5 : 0}
             />
           ))}
@@ -500,13 +544,13 @@ export function NeuralGraphFallback({
       )}
 
       {/* The travelling pulse packet (hidden at rest / reduced motion).
-          The halo is baked into the radial-gradient fill — no filter. */}
+          The glow is baked into the radial-gradient fill — no filter. */}
       <circle
         data-packet
-        r={8}
+        r={7}
         cx={0}
         cy={MID_Y}
-        fill={`url(#${gradId}-halo)`}
+        fill={`url(#${gradId}-star)`}
         opacity={0}
       />
     </svg>

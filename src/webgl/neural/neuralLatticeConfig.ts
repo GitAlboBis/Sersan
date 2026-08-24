@@ -1,77 +1,105 @@
 /**
- * NEURAL CONSTELLATION — shared LOCAL-space layout + look constants for the
- * WebGL island in NeuralLattice.tsx (2026-08-21 round-6 re-author; the file
- * name is kept so the store / Scene wiring stays untouched).
+ * NEURAL PLEXUS — shared LOCAL-space layout + look constants for the WebGL
+ * island in NeuralLattice.tsx (2026-08-22 ROUND-8-D re-author; the file name
+ * is kept so the store / Scene wiring stays untouched).
  *
- * ROUND-6 (owner: "prima erano fatte tipo a triangolo, non una linea dritta
- * in orizzontale"): the demoted signal-stream RIVER is gone. The band now
- * holds a LAYERED CONSTELLATION — the canonical feed-forward network diagram
- * made cinematic: 12 nodes in 5 layers reading left→right, 21 living edge
- * filaments braiding between them, a bright orbiting halo per node. Adjacent
- * layers are vertically offset so the edges TRIANGULATE — no horizontal
- * centerline exists anywhere ("under the stone" is dead). The crystal
- * (CrystalCluster) floats WITHIN the net; node positions are authored to
- * clear its silhouette (see the round-6 spec §4).
+ * ROUND-8-D (owner, with a reference image: "i cerchi delle reti neurali ci
+ * sono ancora, le reti neurali sono fatte così" + "non hanno dei cerchi vuoti
+ * dentro"): the round-6 LAYERED DIAGRAM (5 layers · 12 nodes · 21 edges) and
+ * the orbiting node HALOS (a ring of dots with a hollow middle — the last
+ * surviving "cerchi vuoti") are both gone. The band now holds a real 3D
+ * BRAIN PLEXUS:
+ *   - a DENSE VOLUMETRIC CLOUD of ~100 nodes (lite ~55) seeded deterministic-
+ *     ally inside an organic ellipsoid that fills the anchor band, with real
+ *     z spread so the mass reads as a volume, not a diagram;
+ *   - every node is a FILLED STAR-GLOW — particles concentrate AT the node
+ *     centre with a tight radial falloff plus a 4-ray flare cross, so the
+ *     core is a solid luminous point that blooms into a star (NO ring, NO
+ *     disc, NO hollow centre anywhere);
+ *   - links are THIN PALE filaments between NEAR NEIGHBOURS (k-nearest with a
+ *     distance cutoff, deduped and capped) — a dense irregular triangulation
+ *     of triangles/tetrahedra, never columns or layers;
+ *   - depth reads through the existing size/brightness attenuation + DOF.
+ *
+ * The old layer machinery survives as a WEAK left→right coordinate only:
+ * `nodeT` ∈ [0,1] is a node's normalized x inside the cloud. It exists so the
+ * pulse can propagate as a WAVEFRONT sweeping the cloud, so the fracture can
+ * live at a position, and so the three ignition zones can be REGIONS. It is
+ * never quantized — nothing reads as a column.
  *
  * ONE visual vocabulary, two configs:
- *   - "broken"  → the Problem section. Layers past the FRACTURE (t=0.62,
- *                 between the 3rd and 4th layer) are DEGRADED: edges fray
- *                 into ember debris, their far endpoints drift off-station,
- *                 and the input→output PULSE dies at the fracture with the
- *                 flash + spark burst + nebula. Hover re-coheres for a beat.
- *   - "healthy" → the ProductionGrade section. All edges intact; the three
- *                 MIDDLE layers are eval → trace → guardrail; the pulse
- *                 traverses the whole net and SURVIVES, flashing each middle
- *                 layer's halos as it passes. (The round-4 membrane discs at
- *                 the layer centroids are retired since round-8 — see §B.1.)
+ *   - "broken"  → the Problem section. Everything past the FRACTURE
+ *                 (nodeT 0.62 — spatially at the broken crystal) is DEGRADED:
+ *                 filaments fray into ember debris, their far endpoints drift
+ *                 off-station, and the traveling PULSE dies at the fracture
+ *                 with the flash + spark burst + nebula. Hover re-coheres for
+ *                 a beat.
+ *   - "healthy" → the ProductionGrade section. The whole cloud is intact; the
+ *                 three ignition REGIONS (nodeT .25/.5/.75 — eval → trace →
+ *                 guardrail) light in sequence; the pulse traverses the whole
+ *                 cloud and SURVIVES, flashing each region's stars as it
+ *                 crosses. (The round-4 membrane discs are retired since
+ *                 round-8 — see §B.1.)
  *
- * COORDINATE FRAME (unchanged contract): the net lives in a CAMERA-LOCKED
+ * COORDINATE FRAME (unchanged contract): the plexus lives in a CAMERA-LOCKED
  * group scaled to the section's `[data-lattice-anchor]` rect (w·k × h·k).
  * Everything here is authored in the group's LOCAL space — x in fractions of
  * the rect WIDTH, y/z in fractions of the rect HEIGHT, x → right, y → up.
  * NOTHING here is in document/world Y; the group transform maps local →
- * screen.
+ * screen. Because x and y use different denominators, every DISTANCE measured
+ * at build time (near-neighbour links, the crystal clearance well) converts x
+ * to height units with BAND_ASPECT first — otherwise "nearest" would mean
+ * something different horizontally than vertically.
  *
- * REGISTRATION SPINE: the uC0..uC4 spline control points are now the five
- * LAYER CENTROIDS (derived below from the node table — STREAM_CTRL export
- * name kept so the build seam stays byte-identical). No particles ride the
- * spline any more; it only registers the fracture nebula + spark origin
- * (streamCenter(uFracture)), the row attention windows, and the DORMANT
- * membranes (streamCenter(RING_T[i]) = middle-layer centroids — retired
- * round-8, off by default).
+ * REGISTRATION SPINE: the uC0..uC4 spline control points are the five X-SLICE
+ * CENTROIDS of the cloud (gaussian-weighted over nodeT — see buildPlexus). No
+ * particles ride the spline; it only registers the fracture nebula + spark
+ * origin (streamCenter(uFracture)), the row attention windows, and the
+ * DORMANT membranes (retired round-8, off by default).
  *
- * Node/edge data rides in uniformArrays (uNodePos/uNodeT/uEdgeA/uEdgeB) —
- * legal in any stage, zero storage-buffer / vertex-slot cost — so a resize
- * (or live re-authoring of the layout) is a uniform update, NO rebuild.
+ * TRANSPORT: node/edge data rides in the SAME four uniformArrays as before
+ * (uNodePos/uNodeT/uEdgeA/uEdgeB) — `.element()` is legal in any stage and
+ * costs zero storage buffers / zero vertex-buffer slots, and the round-8-D
+ * cloud adds NO new binding. Each uniformArray element is padded to a vec4
+ * (16 B) by three's UniformArrayNode, so the biggest array here is
+ * EDGE_CAP·16 B ≈ 4 KB — an order of magnitude under both the WebGPU
+ * maxUniformBufferBindingSize (64 KiB) and the WebGL2 MAX_UNIFORM_BLOCK_SIZE
+ * floor (16 KiB). NODE/EDGE COUNTS ARE BUILD-TIME: they size the arrays and
+ * the baked meta buffer, so changing PLEXUS_SEEDS / PLEXUS_EDGE_CAP needs a
+ * rebuild, not a live uniform write.
  *
- * ROUND-7 (2026-08-22, owner: "la luce che passa più frequente + continua a
- * renderle più belle"): faster SURGE_PERIOD_*, plus a constant AMBIENT
- * PACKET TRAFFIC layer (small bright beads forever traveling the edges,
- * dying at the fracture on broken, kissing the node halos on arrival) and a
- * beauty pass (per-edge mid-span brightness profile, per-layer cool→warm
- * cyan tint, halo core/breath/variance, amber ember tips). See the round-7
- * sections below; all shader-side, zero driver changes.
+ * ROUND-7 (kept): AMBIENT PACKET TRAFFIC (small bright beads forever
+ * traveling the filaments, dying at the fracture on broken, KISSING the star
+ * core they arrive at) and the beauty pass (per-edge mid-span brightness
+ * profile, cool→warm cyan tint across the cloud, star size variance/breath,
+ * amber ember tips). All shader-side, zero driver changes.
  */
 
-/** The two constellation modes. */
+// crystalConfig only imports a TYPE from this module (`import type` is erased
+// at emit), so this value import creates NO runtime cycle.
+import { CRYSTAL_POS } from "./crystalConfig";
+
+/** The two plexus modes. */
 export type LatticeMode = "broken" | "healthy";
 
-/** Per-mode signal clusters — three middle layers, three pulse slots.
+/** Per-mode signal clusters — three ignition REGIONS, three pulse slots.
  * The neuralLatticeStore sizes its pulse arrays off this (contract kept). */
 export const CLUSTER_COUNT = 3;
 
 /** Brand signal ramp (FIXED white-cyan→cyan→blue — NO violet, ever).
- * The innermost filament radius reads white-hot, the body is brand cyan, the
+ * The star cores read white-hot, the link body is brand cyan, the filament
  * fringe cools to blue and fades to transparent navy (additive over the navy
- * bg = transparency). Node halos read whiter than edges (RING_WHITE). */
-export const COL_CORE = "#EAFBFF"; // white-cyan — halo cores + pulse head
-export const COL_CYAN = "#3BE1FF"; // edge body
-export const COL_BLUE = "#2A7FFF"; // edge fringe
+ * bg = transparency). Stars read whiter than links (RING_WHITE) — the
+ * reference's white-blue nodes on pale-blue threads. */
+export const COL_CORE = "#EAFBFF"; // white-cyan — star cores + pulse head
+export const COL_CYAN = "#3BE1FF"; // link body
+export const COL_BLUE = "#2A7FFF"; // link fringe
 /** Ember ramp the degraded side dims through (desaturated, sub-bloom). */
 export const COL_EMBER = "#4A443E";
 export const COL_EMBER2 = "#6B5546";
 
-/** Total particles in the constellation on a full-tier desktop. */
+/** Total particles in the plexus on a full-tier desktop (unchanged across the
+ * round-8-D re-author — the same budget now buys ~250 links + ~100 stars). */
 export const NEURAL_PARTICLE_COUNT = 9000;
 /**
  * Compact budget, selected when `tier === "lite"` (capable phones). Additive
@@ -82,129 +110,345 @@ export const NEURAL_PARTICLE_COUNT = 9000;
  */
 export const NEURAL_PARTICLE_COUNT_COMPACT = 3200;
 
-// --- The graph (round-6 constellation layout) --------------------------------
+// --- THE PLEXUS (round-8-D volumetric node cloud) ----------------------------
 /**
- * 5 layers at these x (width fractions; slight overshoot past ±0.5 so the
- * input/output columns sit at the band edges), node counts [2,3,3,2,2] = 12.
- * Topological depth t = layerIndex/4 → layers at t = [0, .25, .5, .75, 1].
- * ALL flow-t-parameterized machinery (surge, flash, rows, width envelope,
- * fracture) reads THIS t — flow-t is network depth now, not band x.
+ * Build-time density presets. `full` = desktop island, `lite` = the compact
+ * phone budget (NEURAL_PARTICLE_COUNT_COMPACT), `svg` = the DOM fallback twin
+ * (neural-graph-fallback.tsx) which needs a far smaller element count.
+ *
+ * SEEDS is the number of CANDIDATE points; the crystal clearance well (below)
+ * carves some away, so the delivered node count is a little lower and is
+ * reported by `getPlexus(...).nodes.length`. Node/edge counts are BUILD-TIME
+ * (they size the uniformArrays and the baked meta buffer) — changing any of
+ * these needs a rebuild, never a live uniform write.
  */
-export const NODE_LAYER_X = [-0.42, -0.18, 0.06, 0.3, 0.52] as const;
-/** Layer index per node (layer-major node numbering, both modes). */
-export const NODE_LAYER = [0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 4, 4] as const;
-export const NODE_COUNT = NODE_LAYER.length; // 12
-/** Topological depth per node (= layer/4) — seeds the uNodeT uniformArray. */
-export const NODE_T: readonly number[] = NODE_LAYER.map((l) => l / 4);
-
-/**
- * Per-mode node positions [x, y, z] (local space, y/z in height fractions).
- * DETERMINISTIC — authored, not seeded. Adjacent layers are vertically offset
- * (y ∈ ±0.28, z ∈ ±0.12) so edges triangulate. ANTI-CORRIDOR RULE (the
- * owner's dead "linea dritta in orizzontale"): no two CONSECUTIVE edges may
- * run near-horizontal (<~9°) in the SAME direction — hull runs must tent
- * (up-then-down / down-then-up); re-check when re-authoring any y.
- * The per-node x jitter is also
- * authored: it steers node cores clear of the crystal silhouettes
- * (crystalConfig CRYSTAL_POS — broken (+0.17,−0.05), healthy (+0.22,+0.06);
- * clearance rule + the two deliberate exceptions documented in the round-6
- * spec §4). Live-tunable via the uNodePos uniformArray on the dev handle.
- */
-export const NODES: Record<LatticeMode, [number, number, number][]> = {
-  broken: [
-    [-0.43, 0.2, -0.05],
-    [-0.42, -0.14, 0.08],
-    [-0.19, 0.27, 0.06],
-    [-0.18, 0.02, -0.1],
-    [-0.2, -0.24, 0.03],
-    [0.03, 0.28, -0.08],
-    [0.02, -0.04, 0.1],
-    [0.04, -0.28, -0.03],
-    [0.31, 0.22, -0.12],
-    [0.3, -0.2, 0.09],
-    [0.52, 0.1, 0.05],
-    [0.53, -0.18, -0.08],
-  ],
-  healthy: [
-    [-0.44, 0.16, 0.04],
-    [-0.41, -0.2, -0.06],
-    [-0.2, 0.26, -0.1],
-    [-0.17, 0.01, 0.12],
-    [-0.19, -0.26, -0.04],
-    [0.05, 0.24, 0.08],
-    [0.07, -0.02, -0.12],
-    [0.04, -0.24, 0.02],
-    [0.3, -0.27, -0.08],
-    [0.34, 0.27, 0.1],
-    [0.52, 0.14, -0.05],
-    [0.53, -0.15, 0.06],
-  ],
+export type PlexusDensity = "full" | "lite" | "svg";
+export const PLEXUS_SEEDS: Record<PlexusDensity, number> = {
+  full: 132,
+  lite: 74,
+  svg: 46,
 };
+/** k of the k-nearest-neighbour link pass (before dedupe + cap). */
+export const PLEXUS_K: Record<PlexusDensity, number> = {
+  full: 4,
+  lite: 4,
+  svg: 3,
+};
+/** Hard ceiling on the delivered edge list — sizes uEdgeA/uEdgeB. */
+export const PLEXUS_EDGE_CAP: Record<PlexusDensity, number> = {
+  full: 250,
+  lite: 132,
+  svg: 78,
+};
+/** Link cutoff as a multiple of the cloud's MEAN nearest-neighbour spacing
+ * (screen-height units). Above ~2 the mesh starts drawing long chords that
+ * read as a diagram again. */
+export const PLEXUS_LINK_CUTOFF = 1.85;
 
 /**
- * Per-mode edges [fromNode, toNode] — each node feeds 2–3 nodes of the next
- * layer (bounded by a steepness taste cap; one long diagonal kept per mid-gap
- * for drama). 21 edges per mode. MIN edge length ≈ 0.22 local (layer Δx) —
- * the WRAP_SNAP_DIST guard below keys on this; keep any new edge longer.
+ * The band's assumed aspect (rect.h / rect.w), used ONLY at build time to put
+ * x and y in the SAME (screen-height) units before measuring a distance. The
+ * live rect aspect is uPlaneAspect (driver-written per frame) and is used
+ * in-shader for the camera-facing star geometry; this constant only shapes the
+ * static topology, so a real band that is a bit wider/narrower just stretches
+ * the same plexus.
  */
-export const EDGES: Record<LatticeMode, [number, number][]> = {
-  broken: [
-    [0, 2], [0, 3], [0, 4], [1, 3], [1, 4],
-    [2, 5], [2, 6], [3, 5], [3, 6], [3, 7], [4, 6], [4, 7],
-    [5, 8], [5, 9], [6, 8], [6, 9], [7, 9],
-    [8, 10], [8, 11], [9, 10], [9, 11],
-  ],
-  healthy: [
-    [0, 2], [0, 3], [0, 4], [1, 3], [1, 4],
-    [2, 5], [2, 6], [3, 5], [3, 6], [3, 7], [4, 6], [4, 7],
-    [5, 8], [5, 9], [6, 8], [6, 9], [7, 8],
-    [8, 10], [8, 11], [9, 10], [9, 11],
-  ],
-};
+export const BAND_ASPECT = 0.45;
 
-/** Layer centroids of a node table (the uC0..4 registration spine). */
-function layerCentroids(
-  nodes: [number, number, number][],
-): [number, number, number][] {
-  const out: [number, number, number][] = [];
-  for (let l = 0; l < NODE_LAYER_X.length; l++) {
-    let x = 0, y = 0, z = 0, n = 0;
-    for (let i = 0; i < NODE_COUNT; i++) {
-      if (NODE_LAYER[i] !== l) continue;
-      x += nodes[i][0];
-      y += nodes[i][1];
-      z += nodes[i][2];
-      n++;
-    }
-    out.push([x / n, y / n, z / n]);
-  }
-  return out;
+/** Cloud centre + half-extents in LOCAL units (x = width fractions, y/z =
+ * height fractions). x overshoots ±0.5 slightly at the right, exactly like
+ * the retired layer table did, so the cloud reaches the band edges. */
+export const PLEXUS_CX = 0.03;
+export const PLEXUS_RX = 0.48;
+export const PLEXUS_RY = 0.42;
+export const PLEXUS_RZ = 0.2;
+/** Radial density exponent: r = U^(1/POW). POW = 3 is volume-uniform; below
+ * that the cloud gains a denser core (the reference image's bright middle). */
+export const PLEXUS_RADIAL_POW = 2.2;
+/** Low-frequency boundary warp — the cloud is an organic blob, not an
+ * ellipsoid with a machined rim. */
+export const PLEXUS_WARP = 0.22;
+/** Per-point direction jitter that breaks the golden-spiral regularity (the
+ * spiral alone reads as a woven shell). */
+export const PLEXUS_DIR_JITTER = 0.55;
+/** Gaussian sharpness of the x-slice weighting that derives the 5 spline
+ * control points (half-width ≈ 0.10 of nodeT ≈ 10 nodes per slice). Tuned so
+ * streamCenter(FRACTURE_T) lands on the broken crystal: at K = 70 the spine
+ * puts it at local (+0.139, +0.023) with the stone at (+0.17, −0.05) — a
+ * looser K compresses the spline toward the cloud centre and drags the smoke
+ * off the stone. */
+export const PLEXUS_CENTROID_K = 70;
+
+/**
+ * CRYSTAL CLEARANCE RULE. The CrystalCluster stone floats inside the plexus;
+ * a uniform cloud would swallow it. Node seeding therefore runs through a
+ * soft DENSITY WELL centred on the mode's crystal position (crystalConfig
+ * CRYSTAL_POS — broken (+0.17,−0.05), healthy (+0.22,+0.06)), measured as a
+ * SCREEN-ROUND 2D distance (x converted with BAND_ASPECT; z ignored, because
+ * what must stay readable is the stone's SILHOUETTE):
+ *
+ *   d < INNER            → keep probability 0   (fully carved — the stone's
+ *                          own body, ≈ ±0.25 height fractions, sits here)
+ *   INNER ≤ d < OUTER    → keep probability = smoothstep(INNER, OUTER, d)
+ *   d ≥ OUTER            → full density
+ *
+ * The ramp is what makes the stone sit IN the plexus instead of a hole: the
+ * mesh thins toward it. NOTE the rule is purely 2D — z is ignored — so NO
+ * node survives inside INNER, in front of or behind. Edges are filtered by
+ * the same rule: a link whose MIDPOINT falls inside INNER would draw straight
+ * across the stone and is dropped.
+ *
+ * TWO MEASURED SIDE-EFFECTS OF THIS WELL (2026-08-22 review — read before
+ * retuning INNER/OUTER, CRYSTAL_POS, FRACTURE_T or RING_T):
+ *
+ *  (a) It carves the fracture's own x-slab on BROKEN. The stone sits at
+ *      x +0.17 and FRACTURE_T 0.62 maps to x ≈ +0.143, i.e. INSIDE the well's
+ *      x-range, so almost every link that would span the break has its
+ *      midpoint in the well and is dropped. Delivered crossing links:
+ *      2 of 227 (full), 1 of 110 (lite), 0 of 62 (svg). The FRACTURE_GAP_T
+ *      "clean cut on every crossing filament" is therefore near-dormant — the
+ *      break now reads as the clearance GAP itself plus the drifted ember
+ *      side (22 nodes / 36 links past the fracture on full), the nebula and
+ *      the spark burst, all of which are position-driven and unaffected.
+ *
+ *  (b) It carves ignition REGION 3 on HEALTHY. The stone at x +0.22 maps to
+ *      nodeT 0.744 — essentially RING_T[2] (0.75), the guardrail beat. The
+ *      healthy nodeT histogram has a literal hole there (bin 0.7–0.8 = 0 of
+ *      101 nodes), so the region's gaussian star mass is 8.3 against 35.3 and
+ *      42.0 for eval and trace: the third beat of the sequenced
+ *      `bumpCluster("healthy", i)` lights a faint wash over the right of the
+ *      cloud instead of a bright cluster. cloudZoneGate was widened to stop
+ *      making this worse, but the imbalance itself is structural — closing it
+ *      means moving the healthy stone, RING_T[2], or the cloud's x extent,
+ *      all of which are owner/taste calls.
+ */
+export const CRYSTAL_CLEAR_INNER = 0.17;
+export const CRYSTAL_CLEAR_OUTER = 0.4;
+
+/**
+ * Minimum LOCAL (raw, un-aspected) link length. This is the guard the
+ * WRAP_SNAP_DIST recycle-snap keys on: a flow-s wrap teleports an edge
+ * particle's anchor by ONE EDGE LENGTH, so the snap threshold must sit BELOW
+ * the shortest edge. With a screen-metric triangulation the shortest links
+ * are the near-horizontal ones (x is compressed by BAND_ASPECT), so we reject
+ * anything under this — which doubles as an anti-corridor filter, since the
+ * rejects are exactly the stubby horizontal chords. See WRAP_SNAP_DIST.
+ */
+export const EDGE_MIN_LOCAL = 0.055;
+
+/** A deterministic [0,1) hash — same sin/fract family as the shader hashes. */
+function ph(i: number, a: number, b: number): number {
+  const s = Math.sin(i * a + b) * 43758.5453;
+  return s - Math.floor(s);
+}
+function smooth01(x: number, a: number, b: number): number {
+  const t = Math.min(1, Math.max(0, (x - a) / Math.max(b - a, 1e-6)));
+  return t * t * (3 - 2 * t);
 }
 
-/**
- * The 5 spline control points = LAYER CENTROIDS (derived — export name/type
- * kept so the createNeuralFieldBuild seam stays byte-identical). Catmull-Rom
- * passes THROUGH control points at segment boundaries, so
- * streamCenter(RING_T[i]) lands exactly on middle-layer centroid i+1 — the
- * (round-8-dormant) membrane discs re-register onto the layers with zero
- * shader change whenever they are revived.
- */
-export const STREAM_CTRL: Record<LatticeMode, [number, number, number][]> = {
-  broken: layerCentroids(NODES.broken),
-  healthy: layerCentroids(NODES.healthy),
-};
+export interface Plexus {
+  /** Node centres [x, y, z] in LOCAL space — seeds uNodePos. */
+  nodes: [number, number, number][];
+  /** Per-node WEAK left→right coordinate (normalized x, 0..1) — seeds
+   * uNodeT. Everything narrative (surge wavefront, fracture, ignition
+   * regions, row windows, cool→warm tint) is parameterized on THIS. */
+  nodeT: number[];
+  /** Near-neighbour links [a, b], ORIENTED so nodeT[a] ≤ nodeT[b] (flow and
+   * packet traffic therefore always run left→right and converge on the
+   * right-hand star) — seeds uEdgeA/uEdgeB. */
+  edges: [number, number][];
+  /** The 5 x-slice centroids = the uC0..uC4 registration spine. */
+  centroids: [number, number, number][];
+  /** Diagnostics (dev handle / docs): mean nearest-neighbour spacing in
+   * screen-height units, and the shortest delivered edge in LOCAL units
+   * (must exceed WRAP_SNAP_DIST). */
+  meanSpacing: number;
+  minEdgeLocal: number;
+}
 
-// --- Edge filaments ----------------------------------------------------------
-/** Braided strands per EDGE (was 4 per river) — two thin living filaments. */
-export const STRAND_COUNT = 2;
-/** Strand orbit radius around the edge line (height fractions) — with the
- * thickness jitter the rest filament reads ~24px on a ~680px band. Thinner
- * than the round-3 river by design (21 edges share the fill budget). */
-export const STRAND_RADIUS = 0.012;
+const plexusCache = new Map<string, Plexus>();
+
+/** Memoized deterministic plexus for a mode + density. Pure — same inputs
+ * always give the same cloud, so the compute build, the static/analytic build
+ * and the SVG twin all agree without sharing any runtime state. */
+export function getPlexus(
+  mode: LatticeMode,
+  density: PlexusDensity = "full",
+): Plexus {
+  const key = `${mode}:${density}`;
+  const hit = plexusCache.get(key);
+  if (hit) return hit;
+  const built = buildPlexus(mode, density);
+  plexusCache.set(key, built);
+  return built;
+}
+
+function buildPlexus(mode: LatticeMode, density: PlexusDensity): Plexus {
+  const seeds = PLEXUS_SEEDS[density];
+  const [ccx, ccy] = CRYSTAL_POS[mode];
+  // Decorrelates the two modes so the Problem and ProductionGrade bands are
+  // visibly different clouds telling the same story.
+  const ms = mode === "broken" ? 11.37 : 57.19;
+  const GOLD = Math.PI * (3 - Math.sqrt(5));
+
+  // --- 1. Seed the volumetric cloud ----------------------------------------
+  const nodes: [number, number, number][] = [];
+  for (let i = 0; i < seeds; i++) {
+    // Golden-spiral direction on the unit sphere + a jitter that breaks its
+    // regularity (organic, still deterministic).
+    const u = (i + 0.5) / seeds;
+    let dz = 1 - 2 * u;
+    const sr = Math.sqrt(Math.max(0, 1 - dz * dz));
+    const phi = i * GOLD + ms;
+    let dx = sr * Math.cos(phi) + (ph(i + ms, 12.9898, 78.233) - 0.5) * PLEXUS_DIR_JITTER;
+    let dy = sr * Math.sin(phi) + (ph(i + ms, 39.3467, 11.135) - 0.5) * PLEXUS_DIR_JITTER;
+    dz += (ph(i + ms, 73.156, 52.235) - 0.5) * PLEXUS_DIR_JITTER;
+    const dl = Math.hypot(dx, dy, dz) || 1;
+    dx /= dl;
+    dy /= dl;
+    dz /= dl;
+    // Centre-dense radius with a low-frequency organic boundary warp.
+    const rr = Math.pow(ph(i + ms, 91.318, 27.719), 1 / PLEXUS_RADIAL_POW);
+    const warp =
+      1 + PLEXUS_WARP * Math.sin(dx * 3.1 + ms) * Math.cos(dy * 2.7 - ms);
+    const r = Math.min(1, Math.max(0.05, rr * warp));
+    const x = PLEXUS_CX + dx * r * PLEXUS_RX;
+    const y = dy * r * PLEXUS_RY;
+    const z = dz * r * PLEXUS_RZ;
+    // Crystal density well (screen-round distance — silhouette clearance).
+    const d = Math.hypot((x - ccx) / BAND_ASPECT, y - ccy);
+    const keep = smooth01(d, CRYSTAL_CLEAR_INNER, CRYSTAL_CLEAR_OUTER);
+    if (ph(i + ms, 127.1, 311.7) > keep) continue;
+    nodes.push([x, y, z]);
+  }
+
+  // --- 2. The weak left→right coordinate -----------------------------------
+  let xMin = Infinity;
+  let xMax = -Infinity;
+  for (const n of nodes) {
+    if (n[0] < xMin) xMin = n[0];
+    if (n[0] > xMax) xMax = n[0];
+  }
+  const span = Math.max(xMax - xMin, 1e-3);
+  const nodeT = nodes.map((n) => (n[0] - xMin) / span);
+
+  // --- 3. Near-neighbour triangulation -------------------------------------
+  const N = nodes.length;
+  /** Distance in SCREEN-height units (x un-squashed by BAND_ASPECT). */
+  const sd = (a: number, b: number) =>
+    Math.hypot(
+      (nodes[a][0] - nodes[b][0]) / BAND_ASPECT,
+      nodes[a][1] - nodes[b][1],
+      nodes[a][2] - nodes[b][2],
+    );
+  /** RAW local distance — what the compute kernel's snap threshold sees. */
+  const ld = (a: number, b: number) =>
+    Math.hypot(
+      nodes[a][0] - nodes[b][0],
+      nodes[a][1] - nodes[b][1],
+      nodes[a][2] - nodes[b][2],
+    );
+  const midInWell = (a: number, b: number) => {
+    const mx = (nodes[a][0] + nodes[b][0]) / 2;
+    const my = (nodes[a][1] + nodes[b][1]) / 2;
+    return Math.hypot((mx - ccx) / BAND_ASPECT, my - ccy) < CRYSTAL_CLEAR_INNER;
+  };
+
+  let nnSum = 0;
+  const ranked: { j: number; d: number }[][] = [];
+  for (let i = 0; i < N; i++) {
+    const cand: { j: number; d: number }[] = [];
+    for (let j = 0; j < N; j++) {
+      if (j === i) continue;
+      if (ld(i, j) < EDGE_MIN_LOCAL) continue;
+      if (midInWell(i, j)) continue;
+      cand.push({ j, d: sd(i, j) });
+    }
+    cand.sort((p, q) => p.d - q.d || p.j - q.j);
+    ranked.push(cand);
+    nnSum += cand.length ? cand[0].d : 0;
+  }
+  const meanSpacing = N ? nnSum / N : 0;
+  const cutoff = meanSpacing * PLEXUS_LINK_CUTOFF;
+
+  const seen = new Set<number>();
+  const must: { a: number; b: number; d: number }[] = [];
+  const extra: { a: number; b: number; d: number }[] = [];
+  const push = (
+    bucket: { a: number; b: number; d: number }[],
+    i: number,
+    j: number,
+    d: number,
+  ) => {
+    // Orient by nodeT so flow + packets always run left→right.
+    const a = nodeT[i] <= nodeT[j] ? i : j;
+    const b = a === i ? j : i;
+    const key = a * 1024 + b;
+    if (seen.has(key)) return;
+    seen.add(key);
+    bucket.push({ a, b, d });
+  };
+  // Pass A — every node keeps its single nearest link (no orphan stars).
+  for (let i = 0; i < N; i++) {
+    const c = ranked[i][0];
+    if (c) push(must, i, c.j, c.d);
+  }
+  // Pass B — the remaining k-nearest inside the cutoff, shortest first.
+  const k = PLEXUS_K[density];
+  for (let i = 0; i < N; i++) {
+    const cand = ranked[i];
+    for (let c = 1; c < Math.min(k, cand.length); c++) {
+      if (cand[c].d > cutoff) break;
+      push(extra, i, cand[c].j, cand[c].d);
+    }
+  }
+  extra.sort((p, q) => p.d - q.d || p.a - q.a || p.b - q.b);
+  const cap = PLEXUS_EDGE_CAP[density];
+  const chosen = must.concat(extra).slice(0, cap);
+  const edges: [number, number][] = chosen.map((e) => [e.a, e.b]);
+  let minEdgeLocal = Infinity;
+  for (const [a, b] of edges) minEdgeLocal = Math.min(minEdgeLocal, ld(a, b));
+  if (!edges.length) minEdgeLocal = 0;
+
+  // --- 4. The 5 x-slice centroids (the uC0..uC4 registration spine) --------
+  const centroids: [number, number, number][] = [];
+  for (let s = 0; s < 5; s++) {
+    const t0 = s / 4;
+    let wx = 0;
+    let wy = 0;
+    let wz = 0;
+    let ws = 1e-6;
+    for (let i = 0; i < N; i++) {
+      const dt = nodeT[i] - t0;
+      const w = Math.exp(-PLEXUS_CENTROID_K * dt * dt);
+      wx += nodes[i][0] * w;
+      wy += nodes[i][1] * w;
+      wz += nodes[i][2] * w;
+      ws += w;
+    }
+    centroids.push([wx / ws, wy / ws, wz / ws]);
+  }
+
+  return { nodes, nodeT, edges, centroids, meanSpacing, minEdgeLocal };
+}
+
+// --- Link filaments ----------------------------------------------------------
+/**
+ * Strands per LINK. ROUND-8-D: 2 → 1. With ~250 links sharing the same
+ * particle budget an edge gets ~27 particles; splitting those over two
+ * strands made both dotted. One strand at ~4px spacing reads as a continuous
+ * PALE THREAD — which is what the reference's plexus links are.
+ */
+export const STRAND_COUNT = 1;
+/** Strand offset radius around the link line (height fractions). ROUND-8-D:
+ * 0.012 → 0.0028 (≈1.9px on a 680px band). The mass must read as a MESH, not a
+ * glow soup, so filaments are thin and pale and the light lives in the stars. */
+export const STRAND_RADIUS = 0.0028;
 /** Per-particle jitter radius within a strand (thickness noise). */
-export const STRAND_THICKNESS = 0.006;
-/** Full braid twists along ONE edge. */
-export const BRAID_TURNS = 1.4;
+export const STRAND_THICKNESS = 0.0018;
+/** Full twists along ONE link — nearly straight now (0.6): a plexus link is a
+ * thread between two stars, not a braid. */
+export const BRAID_TURNS = 0.6;
 /**
  * PHASE SEPARATION: distinct twist phases + thickness biases per strand.
  * FOUR entries kept (dev-handle uStrandPhase/uStrandThick contract) — only
@@ -212,26 +456,30 @@ export const BRAID_TURNS = 1.4;
  * edges on top.
  */
 export const STRAND_PHASES = [0.0, 2.4, 3.9, 5.7] as const;
-export const STRAND_THICK_BIAS = [1.3, 0.75, 1.05, 0.6] as const;
+export const STRAND_THICK_BIAS = [1.0, 0.75, 1.05, 0.6] as const;
 /** Per-strand twist-RATE multiplier = BASE + STEP·strandIndex. */
 export const STRAND_RATE_BASE = 0.82;
 export const STRAND_RATE_STEP = 0.12;
-/** Base flow speed — cycles/sec a particle advances along ITS EDGE (an edge
- * is ~¼ of the old river, so per-edge cycles run a touch faster). */
-export const FLOW_SPEED = 0.09;
+/** Base flow speed — cycles/sec a particle advances along ITS LINK. Links are
+ * short now (≈ one mean node spacing), so this is a slow trickle along each
+ * thread rather than a river current. */
+export const FLOW_SPEED = 0.075;
 
 // --- Silhouette --------------------------------------------------------------
 /** Alpha ramp along per-edge s: fade-in/out at the filament TIPS — the tips
- * dissolve into the node halos, which also hides the flow-wrap recycle (a
- * particle wraps s at near-zero alpha on both ends). */
+ * dissolve into the STAR CORES they connect (and it hides the flow-wrap
+ * recycle: a particle wraps s at near-zero alpha on both ends). */
 export const EDGE_FADE_IN = 0.12;
 export const EDGE_FADE_OUT = 0.1;
 /** Slight z-bow of the registration SPINE toward the camera at t=0.5 — lifts
  * the mid-net membranes/nebula slightly off the band plane. */
 export const STREAM_Z_BOW = 0.05;
-/** Radial size falloff: core particles up to this ×, fringe down to this ×. */
-export const CORE_SIZE_BOOST = 1.6;
-export const FRINGE_SIZE_DROP = 0.6;
+/** Radial size falloff across a filament's cross-section: core particles up
+ * to this ×, fringe down to this ×. ROUND-8-D: 1.6/0.6 → 1.25/0.55 — the
+ * cross-section is only a few px wide now, so a fat core sprite would swell
+ * a thread back into a rope. */
+export const CORE_SIZE_BOOST = 1.25;
+export const FRINGE_SIZE_DROP = 0.55;
 /** Velocity-stretched sprites (AT streak look): total elongation =
  * 1 + min(|v|·GAIN, MAX). Static tier uses a mild fixed elongation along the
  * EDGE direction (STATIC_ELONG) plus the surge advection. */
@@ -247,68 +495,117 @@ export const BREATHE_AMP = 0.06;
 export const BREATHE_PERIOD = 7;
 export const SHIMMER_AMP = 0.04;
 
-// --- Middle layers (eval → trace → guardrail) --------------------------------
+// --- Ignition REGIONS (eval → trace → guardrail) ------------------------------
 /**
- * The three MIDDLE layers' topological depth (layers 1/2/3 of 0..4). This is
- * the uRingFlash/uRingGlow/membrane registration: the driver's surge-crossing
- * logic flashes index i when the pulse crosses RING_T[i], node halos read
- * flash/glow index = nodeT·4−1 (gated to the middle layers), and the
- * (round-8-dormant) membrane discs sit at streamCenter(RING_T[i]) = the
- * layer centroids. With the membranes off, the ignition story rides entirely
- * on the layer HALOS (flash + shockwave) and the crystal rim flash.
+ * The three ignition zones' nodeT centres. ROUND-8-D remap: these used to be
+ * LAYER depths (layer/4); they are now REGIONS of the cloud — three vertical
+ * slabs of the plexus centred at nodeT .25/.5/.75. The driver contract is
+ * UNCHANGED: it flashes uRingFlash[i] when the pulse head crosses RING_T[i]
+ * and damps uRingGlow[i] toward the hover target, exactly as before. What
+ * changed is only how a node picks up those three slots: instead of the old
+ * hard `index = nodeT·4−1` quantization (which would re-introduce columns),
+ * the shader blends the three slots with a GAUSSIAN over nodeT (ZONE_K), so
+ * an ignition lights a soft REGION of the cloud — the reference image's
+ * bright clusters. The dormant membrane discs still sit at
+ * streamCenter(RING_T[i]) = x-slice centroids 1..3.
  */
 export const RING_T = [0.25, 0.5, 0.75] as const;
-/** Membrane disc radius (height fractions) — a LAYER PLANE, sized to the
- * node spread (±0.28), not the old river cross-section. Dormant since
- * round-8 (membranes off by default); kept for revival. */
+/** Gaussian sharpness of a zone's nodeT window. Zones are 0.25 apart; K = 44
+ * puts the half-weight point at ±0.125, i.e. exactly halfway to the next
+ * zone — the three windows form a soft partition of the cloud with no seam. */
+export const ZONE_K = 44;
+/** Membrane disc radius (height fractions). Dormant since round-8 (membranes
+ * off by default); kept for revival, now sized to the cloud's y half-extent. */
 export const RING_RADIUS = 0.2;
-/** Node halos read whiter than the edges (0..1 mix → COL_CORE); the ignition
- * flash pushes further toward white. */
-export const RING_WHITE = 0.35;
-/** Radial shockwave: halo radius expands 1 → 1+this at full ignition flash
- * (the flash envelope decays over ~0.5s → the visible ripple). */
+/** Star cores read much whiter than the links (0..1 mix → COL_CORE) — the
+ * reference is white-blue stars on pale-blue threads. ROUND-8-D: 0.35 → 0.55.
+ * The ignition flash pushes further toward white. */
+export const RING_WHITE = 0.55;
+/** Radial shockwave: a star's flare radius expands 1 → 1+this at full
+ * ignition flash (the flash envelope decays over ~0.5s → a visible ripple). */
 export const RING_SHOCKWAVE = 0.25;
-/** Edge width multiplier lost per middle layer passed (filaments discipline
- * stepwise 1 → ~0.61 through eval/trace/guardrail; healthy only). */
-export const TIGHTEN_PER_RING = 0.13;
-/** Extra spring gain near a middle layer (compute tier — the sim visibly
- * snaps filaments laminar as they cross a processing layer). */
-export const RING_SPRING_GAIN = 2.2;
-/** Gaussian sharpness of the layer-proximity window (in flow-t). */
-export const RING_PROX_K = 260;
+/** Link width multiplier lost per ignition zone passed (threads discipline
+ * smoothly 1 → ~0.73 left→right; healthy only). ROUND-8-D: 0.13 → 0.09 —
+ * with no layers to punctuate it this must read as a gentle maturity ramp,
+ * never as three steps. */
+export const TIGHTEN_PER_RING = 0.09;
+/** Extra spring gain near an ignition zone (compute tier). ROUND-8-D: 2.2 →
+ * 0.8 and the window widened (below) — a hard narrow lock at three x planes
+ * would carve visible vertical seams into a continuous cloud. */
+export const RING_SPRING_GAIN = 0.8;
+/** Gaussian sharpness of the zone-proximity window in the sim. ROUND-8-D:
+ * 260 → ZONE_K (44), so the laminar lock is as broad as the zone itself. */
+export const RING_PROX_K = ZONE_K;
 
-// --- Node halos (role 1 — was the guide-ring role) ---------------------------
-/** Halo orbit radius (height fractions ≈ 17px on a 680px band) — the crisp
- * icy-ring read at node scale. ROUND-8 (owner: "neanche le sfere" — the
- * halos + their loose fringes read as unexplained fuzzy SPHERES): 0.034 →
- * 0.0255 (−25%) so a node reads as a small luminous CORE (a neuron), not an
- * orb; pairs with the doubled HALO_FRINGE_SOFT shed (0.25 → 0.5) below.
- * Camera-facing: the x
- * component is aspect-corrected by uPlaneAspect in-shader (the group is
- * anisotropically scaled). */
-export const NODE_RADIUS = 0.0255;
-/** z jitter across the halo (a thin torus, not a flat washer). */
-export const NODE_TUBE = 0.006;
-/** Radial jitter fraction around NODE_RADIUS (some particles orbit inside —
- * a soft filled core under the crisp rim). */
-export const NODE_RADIAL_JITTER = 0.35;
-/** Halo particle orbit rate (rad/s, ×spinVar 0.6..1.4). */
-export const NODE_SPIN = 0.6;
-/** Fraction of particles that are NODE-HALO particles (both modes). */
-export const NODE_FRACTION = 0.2;
-/** Coherent drift reach of a DEGRADED node (broken, t past the fracture) —
- * whole-node displacement, so the far layers read as a net knocked off
- * station, not dissolved. uRecohere pulls it back. */
-export const NODE_DRIFT = 0.07;
-/** Tone/alpha degrade of a drifted node's halo (0..1 — ember mix + dim). */
+// --- Star cores (role 1 — was the node-halo role) -----------------------------
+/**
+ * ROUND-8-D — THE FIX FOR "cerchi vuoti". Node particles no longer ORBIT at a
+ * fixed NODE_RADIUS (a ring of dots with a hollow middle). They now build a
+ * FILLED STAR:
+ *   - CORE (1 − STAR_FLARE_FRACTION of them): a tight blob at the node centre,
+ *     radius STAR_CORE_R with a r = R·U^STAR_CORE_CONC concentration so the
+ *     density piles up at the exact centre → a solid luminous point;
+ *   - FLARE (STAR_FLARE_FRACTION of them): a 4-ray cross (two perpendicular
+ *     axes, the reference's star spikes) reaching STAR_FLARE_LEN, with size
+ *     and alpha falling off along the ray so the spikes taper to nothing.
+ * Both are BAKED as a literal offset vector into the per-particle `aOff`
+ * attribute (zero new buffers), and the shader only scales it — so the same
+ * star renders identically on the compute and static tiers.
+ *
+ * RETIRED by this round (kept out of the file on purpose so nothing can read
+ * a stale ring): NODE_RADIUS, NODE_TUBE, NODE_RADIAL_JITTER, NODE_SPIN,
+ * HALO_CORE_WHITE, HALO_FRINGE_SOFT. HALO_SIZE_VAR / HALO_BREATH_* are
+ * REPURPOSED below as the star's size variance / breath.
+ */
+/** Core blob radius (height fractions ≈ 3.7px on a 680px band). */
+export const STAR_CORE_R = 0.0055;
+/** Radial concentration exponent of the core blob (higher = denser centre). */
+export const STAR_CORE_CONC = 2.4;
+/** Fraction of a star's particles that build the flare cross. */
+export const STAR_FLARE_FRACTION = 0.42;
+/** Flare ray reach (height fractions ≈ 20px on a 680px band). */
+export const STAR_FLARE_LEN = 0.03;
+/** Distribution exponent along a ray (≈1 = even, tapered by size/alpha). */
+export const STAR_FLARE_POW = 0.85;
+/** Perpendicular jitter of a flare particle off its ray (keeps the spike from
+ * reading as a hairline). */
+export const STAR_SPIKE_JITTER = 0.0022;
+/** z jitter of a star's particles (real depth, no washer). */
+export const STAR_Z = 0.0035;
+/** Size multiplier at the exact core → at a flare tip. */
+export const STAR_CORE_SIZE = 1.75;
+export const STAR_TIP_SIZE = 0.45;
+/** Emissive multiplier at the core → at a tip (both × RING_EMISSIVE, so the
+ * tip still lands at 3.0·0.75 = 2.25, above the >1.0 bloom floor). */
+export const STAR_CORE_EMIS = 1.25;
+export const STAR_TIP_EMIS = 0.75;
+/** Alpha at a flare tip (core = 1) and the falloff exponent. */
+export const STAR_TIP_ALPHA = 0.18;
+export const STAR_ALPHA_POW = 1.4;
+/** Extra whitening of the innermost core particles (on top of RING_WHITE). */
+export const STAR_CORE_WHITE = 0.3;
+/** At-rest alpha of a star particle — cores stay dense while the link
+ * filaments go pale (STREAM_ALPHA). */
+export const NODE_ALPHA = 0.8;
+/** Fraction of particles that are STAR particles (both modes). ROUND-8-D:
+ * 0.20 → 0.28 (the brief's edges ~70% / cores ~28% / sparks ~2% split — with
+ * ~100 stars that is ~25 particles per star on the full tier). */
+export const NODE_FRACTION = 0.28;
+/** Coherent drift reach of a DEGRADED node (broken, nodeT past the fracture)
+ * — whole-node displacement, so the far cloud reads knocked off station, not
+ * dissolved. ROUND-8-D: 0.07 → 0.045 (the mesh is far denser; a big drift
+ * turned the frayed side into mush). uRecohere pulls it back. */
+export const NODE_DRIFT = 0.045;
+/** Tone/alpha degrade of a drifted node's star (0..1 — ember mix + dim). */
 export const NODE_DEGRADE = 0.55;
 
 // --- The fracture (broken) ---------------------------------------------------
-/** Topological depth where the net breaks — between the 3rd layer (t=0.5)
- * and the 4th (t=0.75): everything from the 4th layer on is degraded, and
- * the pulse dies before the guardrail layer ever lights. The spine puts
- * streamCenter(0.62) ≈ local (+0.16, −0.00) — AT the broken crystal
- * (+0.17, −0.05): the smoking break and the fractured stone are one event. */
+/** nodeT where the plexus breaks. Everything right of it is degraded, and the
+ * pulse dies before the third ignition zone (guardrail) ever lights. With the
+ * round-8-D cloud spanning x ≈ −0.45..+0.51, nodeT 0.62 lands at x ≈ +0.15,
+ * and the x-slice spine puts streamCenter(0.62) there — still AT the broken
+ * crystal (+0.17, −0.05), so the smoking break and the fractured stone remain
+ * one event (the constant did not need to move). */
 export const FRACTURE_T = 0.62;
 /** Smoothstep window past FRACTURE_T over which an edge particle detaches. */
 export const FRACTURE_WINDOW = 0.03;
@@ -320,10 +617,11 @@ export const FRACTURE_GAP_T = 0.03;
 export const DEBRIS_GAP = 0.02;
 /** Max alpha of frayed/detached particles (ember ceiling). */
 export const DEBRIS_ALPHA_MAX = 0.35;
-/** How far frayed particles scatter OFF their edge line (local units) —
- * small by design: frayed edges must still read as edges gone wrong, with
- * the drifted endpoints carrying the "network degraded" story. */
-export const DEBRIS_SPREAD = 0.13;
+/** How far frayed particles scatter OFF their link line (local units) —
+ * small by design: frayed links must still read as links gone wrong, with
+ * the drifted endpoints carrying the "network degraded" story. ROUND-8-D:
+ * 0.13 → 0.075, sized to the new (much shorter) mean link length. */
+export const DEBRIS_SPREAD = 0.075;
 /** Alpha fade of fully-frayed particles (leaves a faint ember ghost). */
 export const DEBRIS_FADE = 0.6;
 /** Wander acceleration on dispersing particles (compute extraAcc). */
@@ -345,11 +643,14 @@ export const SPARK_REACH = 0.22;
  * Ambient PACKET traffic (below) carries the between-pulse life. */
 export const SURGE_PERIOD_BROKEN = 2.4;
 export const SURGE_PERIOD_HEALTHY = 3.5;
-/** Pulse head speed in flow-t units/sec (~2s input→output). The head sweeps
- * topological depth, so the net lights LAYER BY LAYER left→right. */
+/** Pulse head speed in flow-t units/sec (~2s across the cloud). The head
+ * sweeps nodeT, so the plexus lights as a WAVEFRONT travelling left→right. */
 export const SURGE_SPEED = 0.55;
-/** Gaussian sharpness of the pulse's brightness peak along flow-t. */
-export const SURGE_K = 240;
+/** Gaussian sharpness of the pulse's brightness peak along flow-t. ROUND-8-D:
+ * 240 → 150 (half-width 0.054 → 0.068 of nodeT ≈ 70px on a 1100px band) — a
+ * continuous cloud needs a slightly broader wavefront to read as a wave
+ * crossing a volume rather than a scanline. */
+export const SURGE_K = 150;
 /** Trailing-gradient length behind the pulse head (flow-t units). */
 export const SURGE_TAIL = 0.035;
 /** Emissive gain at the pulse peak (rides on top of the >1.0 floor). */
@@ -370,10 +671,12 @@ export const FLASH_GAIN = 3.0;
  * staggered clocks per RECEIVING node (hash(targetNode, k) — every edge
  * terminating at a node rides its clock, so incoming beads CONVERGE and
  * land together) each cycle at ~PACKET_RATE Hz; a packet occupies
- * 1/PACKET_SPAN of its cycle traveling s 0→1 (source halo → target halo,
+ * 1/PACKET_SPAN of its cycle traveling s 0→1 (source star → target star,
  * WITH the flow direction), so expected visible traffic = COUNT·(1/SPAN)
- * ≈ 0.4 packets/edge — the brief's calm-but-alive "~1 packet per 2–3 edges
- * at any instant". Crossing time = 1/(RATE·SPAN) ≈ 0.9s: clearly faster
+ * ≈ 0.17 packets/link at the round-8-D numbers (COUNT 1 / SPAN 6) — ≈40
+ * beads over the ~230-link plexus, i.e. the same calm-but-alive read the
+ * round-7 river got from 0.4/edge over 21 edges. Crossing time =
+ * 1/(RATE·SPAN) ≈ 0.76s: clearly faster
  * than the ambient drift (~11s), clearly calmer than the surge head. On
  * broken, traffic NEVER crosses the fracture — a packet reaching it
  * sputters out (micro-spark flicker) and dies; the uRecohere hover tease
@@ -386,15 +689,20 @@ export const FLASH_GAIN = 3.0;
  * the dev-handle uniforms bag); the rest are shader-baked constants.
  */
 /** Staggered packet clocks per RECEIVING node (shared by its incoming
- * edges AND its halo kiss — the arrival-correlation contract) —
- * BUILD-TIME shader unroll count. */
-export const PACKET_COUNT = 2;
+ * links AND its star kiss — the arrival-correlation contract) — BUILD-TIME
+ * shader unroll count. ROUND-8-D: 2 → 1. Traffic density is COUNT/SPAN per
+ * LINK, and the link count went 21 → ~250: at the round-7 numbers the cloud
+ * would carry ~100 simultaneous beads (soup). One clock at SPAN 6 gives
+ * ~0.17 beads/link ≈ 40 on screen — the same calm-but-alive read at 12× the
+ * mesh density, and one fewer shader unroll. */
+export const PACKET_COUNT = 1;
 /** Packet clock rate (cycles/sec, ×0.75..1.25 per-packet hash variance).
- * Mean inter-packet interval per edge ≈ 1/(RATE·COUNT) ≈ 2.3s. */
+ * Mean inter-packet interval per link ≈ 1/(RATE·COUNT) ≈ 4.5s. */
 export const PACKET_RATE = 0.22;
-/** A packet travels its edge in 1/SPAN of the cycle (duty cycle — the rest
- * of the cycle the packet is off-edge and invisible). */
-export const PACKET_SPAN = 5;
+/** A packet travels its link in 1/SPAN of the cycle (duty cycle — the rest
+ * of the cycle the packet is off-link and invisible). Crossing time =
+ * 1/(RATE·SPAN) ≈ 0.76s. */
+export const PACKET_SPAN = 6;
 /** Gaussian half-width of the packet highlight along per-edge s (~13% of an
  * edge ≈ a ~15px bright bead on a 680px band). */
 export const PACKET_WIDTH = 0.06;
@@ -405,9 +713,10 @@ export const PACKET_GAIN = 1.2;
 export const PACKET_SIZE = 0.3;
 /** Tone push toward COL_CORE (white-cyan) at the packet center. */
 export const PACKET_WHITE = 0.45;
-/** Halo radius swell at a node-kiss peak (a packet "arriving"). */
+/** Star flare swell at a node-kiss peak (a packet "arriving" — the kiss now
+ * lights a STAR, which is exactly the reference's read). */
 export const PACKET_NODE_SWELL = 0.12;
-/** Halo emissive gain at a node-kiss peak (subtler than an ignition flash). */
+/** Star emissive gain at a node-kiss peak (subtler than an ignition flash). */
 export const PACKET_NODE_GAIN = 0.5;
 /** Kiss gaussian half-width in cycle units (~0.4s swell centred on the
  * bead's arrival phase, 1/PACKET_SPAN, at the mean rate). */
@@ -417,45 +726,38 @@ export const PACKET_KISS_WIDTH = 0.05;
 export const PACKET_FLICKER_HZ = 43;
 
 // --- Round-7 — beauty pass (taste constants) ---------------------------------
-/** Per-edge brightness profile: emissive ×(1−this/2) at the tips rising to
- * ×(1+this/2) mid-span — filaments dim INTO the node halos and carry their
- * light in the middle, so each edge reads as a strand of light, not a bar.
- * Floor check: 2.1·0.85 ≈ 1.79 keeps the >1.0 bloom contract at the tips. */
+/** Per-link brightness profile: emissive ×(1−this/2) at the tips rising to
+ * ×(1+this/2) mid-span — threads dim INTO the star cores and carry their
+ * light in the middle, so each link reads as a strand of light, not a bar.
+ * Floor check: 1.6·0.85 = 1.36 keeps the >1.0 bloom contract at the tips. */
 export const EDGE_MID_BRIGHT = 0.3;
-/** Per-layer tint within the navy→cyan family (NO violet): input layers run
- * COOLER (toward COL_BLUE), output layers WARMER-cyan (toward COL_CORE).
- * Max mixes at the extreme layers (t=0 / t=1). */
+/** Tint within the navy→cyan family (NO violet) across the cloud: the LEFT of
+ * the plexus runs COOLER (toward COL_BLUE), the RIGHT warmer-cyan (toward
+ * COL_CORE). Max mixes at nodeT 0 / 1; the middle stays pure brand cyan. */
 export const LAYER_TINT_COOL = 0.35;
 export const LAYER_TINT_WARM = 0.22;
-/** Halo quality: per-node size variance (±this/2 around 1), a slow radius
- * breath, a whiter CRISP core (inner-fill particles) and a softer fringe. */
+/** Star quality (REPURPOSED from the retired halo): per-node size variance
+ * (±this/2 around 1) and a slow breath of the whole star. */
 export const HALO_SIZE_VAR = 0.3;
 export const HALO_BREATH_AMP = 0.045;
 export const HALO_BREATH_RATE = 0.55;
-export const HALO_CORE_WHITE = 0.22;
-/** Alpha shed on the OUTER-orbit fringe particles (offN.y > 0). ROUND-8:
- * 0.25 → 0.5 — the round-7 −25% went the right direction; doubled so the
- * loose outer fringe nearly dissolves and the halo reads as a crisp >1.0-
- * bloom core + faint dusting, not a soft sphere. The inner core
- * (HALO_CORE_WHITE) and the packet-arrival kiss swell are untouched. */
-export const HALO_FRINGE_SOFT = 0.5;
 /** Fray embers warm toward amber at the VERY tips of the frayed side (the
  * existing failure tone, one step warmer — still desaturated, sub-bloom). */
 export const COL_EMBER_TIP = "#8A5F3E";
 /** How hard the tip-warm ramp bites (smoothstep 0.6→1 of fray progress ×this). */
 export const EMBER_TIP_MIX = 0.75;
 
-// --- Layer ignition / hover --------------------------------------------------
-/** Emissive gain of a middle layer's ignition flash (bumpCluster / pulse
- * crossing) on its node halos. */
+// --- Zone ignition / hover ---------------------------------------------------
+/** Emissive gain of an ignition zone's flash (bumpCluster / pulse crossing)
+ * on the STAR CORES inside that region of the cloud. */
 export const RING_FLASH_GAIN = 2.4;
-/** Hovered layer's halo glow target (row i hover → layer i+1 flares). */
+/** Hovered zone's star glow target (row i hover → region i flares). */
 export const RING_GLOW_FLARE = 1.9;
-/** Non-hovered middle layers while one is hovered (recede, never dark). */
+/** Non-hovered zones while one is hovered (recede, never dark). */
 export const RING_GLOW_DIM = 0.85;
-/** Damp rate of the per-layer glow toward its hover target. */
+/** Damp rate of the per-zone glow toward its hover target. */
 export const RING_GLOW_DAMP = 7.0;
-/** Broken hover tease — frayed edges briefly re-connect and drifted nodes
+/** Broken hover tease — frayed links briefly re-connect and drifted nodes
  * pull back on station, then fall apart again. Attack/decay damp rates. */
 export const RECOHERE_ATTACK = 14.0;
 export const RECOHERE_DECAY = 1.6;
@@ -463,19 +765,19 @@ export const RECOHERE_DECAY = 1.6;
 // --- Row-reactive attention (uRowGlow) ---------------------------------------
 /**
  * uRowGlow[3] (driven from the DOM ledger rows' setHovered) brightens a
- * REGION of the net:
- *   broken  → gaussian over flow-t at ROW_ZONE_T[i]: input layers / the mid
- *             net / the FRACTURE ZONE (row 2 = the fracture itself, which
- *             also thins the nebula) + the bigger re-cohere tease.
- *   healthy → gaussian at RING_T[i]: row i's attention attaches to layer
- *             i+1's nodes and the adjacent edge halves (eval → trace →
+ * REGION of the cloud (flow-t = nodeT since round-8-D):
+ *   broken  → gaussian at ROW_ZONE_T[i]: the left cloud / the mid cloud / the
+ *             FRACTURE ZONE (row 2 = the fracture itself, which also thins
+ *             the nebula) + the bigger re-cohere tease.
+ *   healthy → gaussian at RING_T[i]: row i's attention attaches to ignition
+ *             region i's stars and the links inside it (eval → trace →
  *             guardrail).
  */
 export const ROW_ZONE_T = [0.125, 0.4, FRACTURE_T] as const;
 /** Gaussian sharpness of a broken row zone (flow-t): half-width ≈ 0.1. */
 export const ROW_ZONE_K = 70;
-/** Gaussian sharpness of a healthy LAYER zone (half-width ≈ 0.09 — a layer
- * plus the near halves of its edges). */
+/** Gaussian sharpness of a healthy ignition REGION (half-width ≈ 0.09 — the
+ * region's stars plus the links inside it). */
 export const ROW_LAYER_K = 90;
 /** Emissive boost at full row glow (rides on STREAM_EMISSIVE; localized). */
 export const ROW_GAIN = 1.0;
@@ -627,48 +929,84 @@ export const DOF_SOFT_MIN = 0.03;
 export const DOF_SIZE_GAIN = 0.6;
 
 // --- Emissive / render (>1.0 selective-bloom contract) -----------------------
-/** The crystal cluster stays the band's centerpiece (round-5 demotion
- * numbers kept): the net glows over the bloom floor but never competes with
- * the crystal's ignition rim. Live-tunable via the dev handle. */
-export const STREAM_EMISSIVE = 2.1;
+/**
+ * The crystal cluster stays the band's centerpiece. ROUND-8-D rebalance: the
+ * light moved from the links to the STARS. Link filaments drop 2.1 → 1.6 (mid
+ * span ×1.15 = 1.84, tips ×0.85 = 1.36 — still over the >1.0 bloom floor, so
+ * the mesh keeps a faint halo without becoming glow soup at 12× the link
+ * count), while the star cores keep RING_EMISSIVE 3.0 (×STAR_CORE_EMIS 1.25 =
+ * 3.75 at the very centre) so every node BLOOMS into a star. Live-tunable via
+ * the dev handle (`uniforms` bag).
+ */
+export const STREAM_EMISSIVE = 1.6;
 export const RING_EMISSIVE = 3.0;
-/** At-rest alpha of an edge-particle disc. */
-export const STREAM_ALPHA = 0.65;
+/** At-rest alpha of a LINK particle disc (ROUND-8-D: 0.65 → 0.45 — pale
+ * threads). Star cores use NODE_ALPHA instead. */
+export const STREAM_ALPHA = 0.45;
 /** Billboard size in device px (perspective-scaled in the shader; the
- * CORE_SIZE_BOOST/FRINGE_SIZE_DROP falloff rides on top). */
-export const NEURAL_POINT_SIZE = 7.0;
-/** Node-halo particles read slightly denser. */
-export const RING_POINT_SIZE_BOOST = 1.3;
-/** Depth size/brightness attenuation keyed on local z (aerial depth cue). */
+ * CORE_SIZE_BOOST/FRINGE_SIZE_DROP falloff rides on top). ROUND-8-D: 7.0 →
+ * 3.6 — with ~230 links the filaments must be thin, and the smaller sprite
+ * also cuts the additive fill cost well below the round-7 total (same
+ * particle count, ~26% of the per-sprite area). Density check on a 680px
+ * band: ~28 particles per ~71px link = 2.5px spacing under a 4.5px sprite,
+ * so a thread still reads CONTINUOUS, just pale. */
+export const NEURAL_POINT_SIZE = 3.6;
+/** Base multiplier for STAR particles (the STAR_CORE_SIZE→STAR_TIP_SIZE
+ * falloff rides on top → 7.2px at the core, ~1.9px at a flare tip on the
+ * default point size: a crisp bloom point with fine spikes). */
+export const RING_POINT_SIZE_BOOST = 1.15;
+/** Depth size/brightness attenuation keyed on local z (aerial depth cue) —
+ * with a genuinely volumetric cloud this is now the main depth read. */
 export const NEURAL_DEPTH_ATTEN = 0.5;
-/** Local z half-range the depth cue normalizes over (round-6: widened for
- * the node table's ±0.12 authored depth). */
-export const DEPTH_Z_RANGE = 0.16;
+/** Local z half-range the depth cue normalizes over — matches PLEXUS_RZ. */
+export const DEPTH_Z_RANGE = PLEXUS_RZ;
 
 // --- Sim (compute tier) ------------------------------------------------------
 export const NEURAL_SPRING = 60;
 /** ζ = DAMPING / (2·√SPRING) ≈ 0.55 — settles cleanly, no buzz. */
 export const NEURAL_DAMPING = 8.5;
 export const NEURAL_MAX_SPEED = 8;
-/** RECYCLE-STREAK FIX: when an edge particle's flow-s wraps, its anchor
- * teleports ONE EDGE LENGTH (min ≈ 0.22 local — layer Δx; see EDGES). The
- * kernel hard-snaps pos to the anchor past this threshold, and the wrap
- * happens inside the EDGE_FADE tips (near-zero alpha). Must stay BELOW the
- * min edge length and ABOVE every legitimate excursion: reveal lag ≈ 0.15,
- * pointer bend ≈ 0.13 (POINTER_PUSH/RADIUS were reduced for exactly this),
- * curl ≈ 0.005. */
-export const WRAP_SNAP_DIST = 0.17;
+/**
+ * RECYCLE-STREAK FIX: when a link particle's flow-s wraps, its anchor
+ * teleports ONE LINK LENGTH. The kernel hard-snaps pos to the anchor past
+ * this threshold, and the wrap happens inside the EDGE_FADE tips (near-zero
+ * alpha) so the reset is invisible.
+ *
+ * ROUND-8-D: 0.17 → 0.038. The plexus links are near-neighbour threads, not
+ * layer-to-layer spans: the shortest DELIVERED link is EDGE_MIN_LOCAL = 0.055
+ * (enforced in buildPlexus; measured minimum across all six mode×density
+ * builds = 0.0551), so the threshold had to come down with it. The two
+ * legitimate excursions that used to sit between 0.038 and 0.17 are now
+ * handled explicitly instead of by headroom:
+ *   - pointer bend — POINTER_PUSH cut 12 → 1.6 below. The bound is the
+ *     steady-state spring displacement under the peak cursor acceleration,
+ *     POINTER_PUSH / NEURAL_SPRING = 1.6/60 = 0.0267 (the radial term peaks
+ *     at f² = 1 and the neural attractor passes orbit = 0, so nothing rides
+ *     on top). That clears 0.038 by 1.4×, NOT the 2× an earlier draft of this
+ *     note claimed — raising POINTER_PUSH above 2.28 breaks the invariant.
+ *   - reveal lag / fray / re-cohere — the kernel only ARMS the snap in the
+ *     steady state (uReveal > 0.9, uRecohere < 0.02, not dispersing), see the
+ *     `armed` gate in neuralFieldCompute's simulate(). uReveal is damped at
+ *     λ = 2.5 toward `scrollStore.reveal × visibility`, and scrollStore.reveal
+ *     is only ever 0 or 1 (default 1), so the gate is reached ~0.9 s after the
+ *     section scrolls in — it can never latch off permanently.
+ * Curl stays ≈ CURL_GAIN·CURL_SCALE ≈ 0.0007. Invariant to preserve:
+ * POINTER_PUSH/NEURAL_SPRING < WRAP_SNAP_DIST < EDGE_MIN_LOCAL ≤ the shortest
+ * delivered link, and WRAP_SNAP_DIST > every steady-state excursion.
+ */
+export const WRAP_SNAP_DIST = 0.038;
 /** Sparks track a fast analytic burst anchor — snap on the (invisible)
  * re-park jump between flashes so no backwards streak leaks. */
 export const SPARK_SNAP_DIST = 0.12;
 
 // --- Pointer bend (compute tier; existing unified force model) ---------------
 /** Radial repulsion strength — the cursor locally bends nearby filaments.
- * Round-6: reduced from the river's 26/0.22 so the max bend (~0.13) stays
- * under WRAP_SNAP_DIST (see above). */
-export const POINTER_PUSH = 12;
+ * ROUND-8-D: 12 → 1.6 so the max bend (~0.017) stays well under the new
+ * WRAP_SNAP_DIST (see above). A dense mesh should dimple under the cursor,
+ * not tear open. */
+export const POINTER_PUSH = 1.6;
 /** Influence radius (local units — anisotropic with the rect scale, fine). */
-export const POINTER_RADIUS = 0.14;
+export const POINTER_RADIUS = 0.1;
 
 // --- Reveal seed cloud --------------------------------------------------------
 export const SEED_SCATTER_XY = 0.95;
