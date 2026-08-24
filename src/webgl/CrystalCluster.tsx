@@ -8,6 +8,25 @@
  * demoted to ambient current around/behind it (config-level defaults in
  * neuralLatticeConfig — the round-5 demotion).
  *
+ * ROUND 8-H — THE MESH IS NOW AUTHORED, NOT PROCEDURAL (research/
+ * 2026-08-22-round8-blender-slab-log.md). This driver loads
+ * `/models/crystal-intact.glb` (healthy, 450 tris) or
+ * `/models/crystal-fractured.glb` (broken, 1 114 tris, 8 pieces tiling the
+ * slab) through crystalBuild's module-cached NON-SUSPENDING loader — awaited
+ * inside the existing lazy-build effect, never useGLTF/Suspense, which would
+ * wedge the island's commit queue (the RouteHeroLogo post-mortem). Both tiers
+ * get the same file (it is cheaper than the procedural lite build); a failed
+ * load falls back to the round-7 procedural geometry so the section can never
+ * be stone-less. `build.shardCentrs` / `.shardRands` — which this driver's
+ * callout projection and the ember SDF both ride — are read straight out of
+ * the GLB's 8 unique `_CENTR`/`_RAND` values in authoring (= volume
+ * descending) order, so the "one source" contract below is unchanged: the
+ * SAME numbers fill the vertex attributes and the CPU twin. The REST EXPLODE
+ * GAP comes off the build too (`build.restGap`) rather than off the config:
+ * the offset is `centr·gap`, and the authored centroids are ~1.9× longer than
+ * the procedural fallback's, so the two paths need different rest values to
+ * occupy the same band (derivation on FRACTURE_REST_GAP_AUTHORED).
+ *
  *   mode "broken"  (Problem, anchor "problem"): a FRACTURED CLUSTER of
  *     flat-shaded shards, exploded at rest by igloo's exact recipe (vertex
  *     path in crystalBuild), the gap breathing with the fracture surges
@@ -202,6 +221,9 @@ export function CrystalCluster({
   const [fog, setFog] = useState<CrystalFogBuild | null>(null);
   const markRigRef = useRef<MarkRTRig | null>(null);
   const liteRef = useRef(false);
+  /** Round 8-H — did the authored slab actually land (vs the procedural
+   * fallback)? Dev-handle only; the render path never branches on it. */
+  const authoredRef = useRef(false);
 
   useEffect(() => {
     if (!webgpuEnabled()) return;
@@ -218,8 +240,20 @@ export function CrystalCluster({
       import("./neural/crystalMarkRT"),
       import("./neural/crystalPlexus"),
       import("./neural/crystalFog"),
-    ]).then(([webgpu, tslNs, mod, markMod, plexusMod, fogMod]) => {
+    ]).then(async ([webgpu, tslNs, mod, markMod, plexusMod, fogMod]) => {
       if (cancelled) return;
+      // ROUND 8-H — the authored slab (crystal-intact / crystal-fractured
+      // .glb). NON-SUSPENDING by construction: a module-cached loader promise
+      // awaited inside this existing lazy-build effect, exactly like
+      // RouteHeroLogo.loadMarkGeometry — never useGLTF/Suspense, which would
+      // wedge the island's commit queue (RouteHeroLogo header post-mortem).
+      // 84 KB / 160 KB uncompressed, fetched behind the island chunk, and
+      // shared by every mount of the same mode for the session. `null` (404,
+      // parse failure) → createCrystalBuild rebuilds the round-7 procedural
+      // geometry, so the section can never end up stone-less.
+      const sourceGeometry = await mod.loadCrystalGeometry(mode);
+      if (cancelled) return;
+      authoredRef.current = !!sourceGeometry;
       // Phone budget: `getState()`, never a subscription (commit wedge).
       const lite = useTierStore.getState().fxBudget.level <= 2;
       liteRef.current = lite;
@@ -246,6 +280,10 @@ export function CrystalCluster({
         mode,
         lite,
         markTexture: markRig ? markRig.texture : undefined,
+        // Round 8-H: BOTH tiers get the authored asset — 450 / 1 114 tris is
+        // cheaper than the procedural lite build, so there is no reduced
+        // variant and no tier branch here.
+        sourceGeometry,
       });
       // Round 7-2b §B-c — the plexus net (healthy + full tier; restraint).
       if (!broken && !lite) {
@@ -333,6 +371,8 @@ export function CrystalCluster({
   const recohereTarget = useRef(0);
   const recohereEnv = useRef(0);
   const prevHovered = useRef<number | null>(null);
+  // Placeholder only — the frame loop bails on `!build` and re-derives this
+  // from `build.restGap` before any consumer (uGap, the callout twin) reads it.
   const gapRef = useRef(broken ? FRACTURE_REST_GAP : 0);
   const flashRef = useRef(0);
   // Damped projected callout values (per index: left%, edge-offset%) + the
@@ -515,8 +555,13 @@ export function CrystalCluster({
       );
       // Gap: rest ≈ exploded, breathing outward with the fracture surges,
       // collapsing toward 0 while the re-cohere envelope burns.
+      // ROUND 8-H (CHECK): the REST gap comes off the build, not off the
+      // config — the explode offset is `centr·gap` and the authored partition's
+      // centroids are ~1.9× longer than the procedural fallback's, so the two
+      // paths need different rest values to occupy the same band (derivation on
+      // FRACTURE_REST_GAP_AUTHORED). Surge/re-cohere multipliers are unchanged.
       gapRef.current =
-        FRACTURE_REST_GAP *
+        build.restGap *
         (1 + FRACTURE_SURGE_GAIN * maxPulse) *
         (1 - Math.min(recohereEnv.current, 1));
       flashRef.current = Math.min(recohereEnv.current, 1);
@@ -770,6 +815,17 @@ export function CrystalCluster({
       hasBuild: !!build,
       lite: liteRef.current,
       rect,
+      /** Round 8-H — true once the authored slab GLB is the mesh in use;
+       * false means the procedural round-7 fallback is on screen (asset
+       * failure), which is worth knowing before judging the stone. */
+      get authored() {
+        return authoredRef.current;
+      },
+      /** Triangle count of whatever geometry actually built. */
+      get tris() {
+        const p = build?.geometry?.attributes?.position;
+        return p ? p.count / 3 : null;
+      },
       get uReveal() {
         return revealDamped.current;
       },

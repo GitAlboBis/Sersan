@@ -6,7 +6,47 @@
  * WebGL2 fallback (only cross-backend TSL ops: the neuralFieldCompute /
  * PostFXNodes proven set plus dot/cross/sqrt, all core WGSL/GLSL builtins).
  *
- * GEOMETRY (procedural, dossier plan §1; Blender GLB is a later upgrade):
+ * GEOMETRY — ROUND 8-H: THE AUTHORED SLAB (primary path; research/
+ * 2026-08-22-round8-blender-slab-log.md). The procedural icosahedron below is
+ * now the FALLBACK only (asset 404 / parse failure).
+ *   healthy → `public/models/crystal-intact.glb` (450 tris, 1 328 verts,
+ *     83.7 KB): a Blender-authored slab — tilted block, 20 half-space cleaves,
+ *     vector erosion, 2 boolean bites, collapse-decimated — hitting all four
+ *     igloo silhouette gates (fillRatio 0.4725, concave 6.33 %, largest-1 %
+ *     faces 6.22 %, dihedral p99 123.5°). THE point of the swap: it carries
+ *     **34 planar patches, six of which cover 50 % of the surface, the largest
+ *     19 %**, where `IcosahedronGeometry(1,12)` has ZERO coplanar patches (all
+ *     3 380 triangles are their own facet). Refraction — and with it the
+ *     in-ice SERSAN mark — needs contiguous constant-normal regions to carry a
+ *     coherent image; that is why MARK_GAIN 0.35 → 2.4 only ever produced
+ *     confetti (crystalConfig MARK_GAIN).
+ *   broken  → `public/models/crystal-fractured.glb` (1 114 tris, 160 KB): the
+ *     SAME slab partitioned by an exact power/Laguerre diagram into 8 pieces
+ *     whose volumes match SHARD_SIZES³ (46/30/10/6.3/2.7/2.4/1.2/0.7 %),
+ *     shipped at gap = 0 (the pieces tile the slab exactly) with igloo's
+ *     centr/rand attribute contract baked in. The vertex path is UNCHANGED and
+ *     still applies igloo's exact explode recipe: pos += centr·(gap +
+ *     rand.y·sin(rand.x·5 + t·0.5)·0.05), plus per-shard rotate3D(pos − centr,
+ *     axis(rand), angle) — `_RAND` is a bit-exact twin of this file's own h(),
+ *     so the motion grammar did not change when the geometry did. ⚠ The recipe
+ *     did not change but its SCALE did: authored |centr| runs 0.70…1.58 where
+ *     the procedural spiral ran 0.42…0.84, so the rest gap had to come down
+ *     with it or the cluster explodes out of its band (CHECK — see
+ *     `restGap` below and FRACTURE_REST_GAP_AUTHORED in the config).
+ *   The GLB's custom attributes are renamed on load (`_CENTR`/`_RAND`/`_FACET`
+ *     → `aCentr`/`aRand`/`aFacet`; note three's GLTFLoader LOWERCASES unknown
+ *     glTF semantics) after `toNonIndexed()`. `_FACET` ships per PLANAR PATCH,
+ *     NOT per triangle — `bakeFacetRand()` must NOT be re-run on it or every
+ *     large plane would be speckled with per-triangle brightness and the
+ *     coherence this round bought would be destroyed at the shading level.
+ *     `displaceAndSquash()` / CRYSTAL_SQUASH are likewise NOT re-applied: the
+ *     .84/1/.65 proportions are baked, and an anisotropic scale after
+ *     authoring would shear every facet normal.
+ *   Both files are UNCOMPRESSED on purpose (Draco twins exist alongside): the
+ *     repo has no DRACOLoader wiring anywhere, and shipping the ~200 KB
+ *     decoder to save 35 KB gzipped is a net loss on first load.
+ *
+ * GEOMETRY (procedural FALLBACK — the round-5..7 path, dossier plan §1):
  *   healthy → ONE intact crystal: non-indexed IcosahedronGeometry displaced
  *     CPU-side by 2-octave fractal noise (0.34 amplitude, low octave terraced
  *     — round 7), squashed
@@ -17,9 +57,7 @@
  *     (single draw call): each shard its own small displaced flat-shaded
  *     icosahedron baked AROUND its centroid, with per-VERTEX `aCentr` (offset
  *     from cluster center) + `aRand` (vec3) constant across the shard —
- *     igloo's centr/rand attribute contract. The vertex path applies igloo's
- *     exact explode recipe: pos += centr·(gap + rand.y·sin(rand.x·5 +
- *     t·0.5)·0.05), plus per-shard rotate3D(pos − centr, axis(rand), angle).
+ *     igloo's centr/rand attribute contract.
  *
  * MATERIAL — custom TSL fake transmission (NOT drei MeshTransmissionMaterial:
  * that is GLSL/onBeforeCompile, dead on three/webgpu). The dossier §2 loop
@@ -111,6 +149,26 @@
  *      time: ~6 ALU, zero textures, zero PMREM, zero repo assets.
  * Nothing from igloo's asset set enters this repo; only the NUMBERS did.
  *
+ * ROUND 8-H — WHAT THE AUTHORED SLAB DOES TO THE VALUE WORLD. The material is
+ * unchanged; the geometry underneath it is not, and exactly one term had to be
+ * re-levelled because of it. The key lobe's PEAK is unchanged, but its AREA is
+ * not: a lit patch used to be one of ~3 380 micro-triangles (the eye
+ * integrated a mottled highlight), and is now up to 19 % of the surface in one
+ * flat piece. So the per-facet constants — which existed to fake normal
+ * variety on a mesh that had none — were cut against the round-8-F value table
+ * (crystalConfig FACET_JITTER / FACET_SPEC_JIT / FACET_VALUE_JIT / SPEC_GAIN),
+ * chosen so the brightest ordinary pixel lands back on 0.276 lumLin ≈ 7.0× the
+ * body INCLUDING the per-patch jitter (8-F quoted 0.277 with the jitter
+ * ignored, which the old 1.4× spec-jitter ceiling silently pushed to 0.388).
+ * Everything else in the value world is geometry-invariant and was re-checked
+ * rather than assumed: the analytic ambient hemisphere's TYPICAL value is
+ * exactly unchanged because ∮N dA = 0 over any closed surface (so the
+ * area-weighted mean of N.y is 0 → mean hemi 0.5 → 0.0142 lumLin, as derived),
+ * only its variance is chunkier; `backdrop()` / frost / ripple / sparkle are
+ * all functions of vLocal, not of tessellation; the fade + Discard contract
+ * reads alpha only. The body's typical value is unchanged at 0.0396 (the
+ * facet-value-jitter MEAN stays 1.0 by construction).
+ *
  * FOG ADAPTATION (dossier §5): igloo's opaque mix(bg, color, vFade) repaint
  * would paint solid navy over the DOM (our canvas is transparent) — instead
  * the SAME `falloffsmooth(camDist…)` window fades ALPHA, in crystal-local
@@ -144,6 +202,7 @@ import {
   SHARD_SPREAD_MIN,
   SHARD_SPREAD_MAX,
   FRACTURE_REST_GAP,
+  FRACTURE_REST_GAP_AUTHORED,
   CRYSTAL_IDLE_DRIFT,
   SHARD_SPIN,
   CRYSTAL_IOR,
@@ -238,6 +297,66 @@ import type { LatticeMode } from "./neuralLatticeConfig";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Any = any;
 
+// === ROUND 8-H — the authored slab assets ===================================
+/** Blender-authored, verified in `research/2026-08-22-round8-blender-slab-
+ * log.md` §7. UNCOMPRESSED variants are the primary ones on purpose: the repo
+ * wires no DRACOLoader anywhere (HeroLogo/RouteHeroGlb use drei `useGLTF`,
+ * RouteHeroLogo a bare `new GLTFLoader()`, and `sersan-mark.glb` itself ships
+ * uncompressed), so the ~200 KB decoder would cost more than the 35 KB gzipped
+ * it saves. `crystal-*.draco.glb` sit next to these if that ever flips. */
+const CRYSTAL_GLB: Record<"healthy" | "broken", string> = {
+  healthy: "/models/crystal-intact.glb",
+  broken: "/models/crystal-fractured.glb",
+};
+
+/** Module-level cache: ONE fetch, ONE parse per variant for the session.
+ * Resolved value is a MODULE SINGLETON — consumers must NEVER dispose it
+ * (createCrystalBuild builds its own `toNonIndexed()` copy and disposes only
+ * that). `null` = load failed → the procedural fallback geometry. */
+const crystalGeoPromises: Partial<
+  Record<"healthy" | "broken", Promise<Any | null>>
+> = {};
+
+/**
+ * Load the authored slab for a mode. NON-SUSPENDING by construction — the
+ * RouteHeroLogo.loadMarkGeometry idiom (a module-cached loader promise the
+ * driver awaits inside its existing lazy-build effect), NOT `useGLTF` +
+ * Suspense: a Suspense left pending inside the R3F-bridged tree wedges the
+ * island's update queue (see the RouteHeroLogo header post-mortem). The
+ * GLTFLoader chunk itself stays out of the island bundle via this dynamic
+ * import, and the whole module is already behind CrystalCluster's lazy import.
+ */
+export function loadCrystalGeometry(mode: LatticeMode): Promise<Any | null> {
+  const key = mode === "broken" ? "broken" : "healthy";
+  let p = crystalGeoPromises[key];
+  if (!p) {
+    p = import("three/examples/jsm/loaders/GLTFLoader.js")
+      .then(
+        ({ GLTFLoader }) =>
+          new Promise<Any>((resolve, reject) =>
+            new GLTFLoader().load(CRYSTAL_GLB[key], resolve, undefined, reject),
+          ),
+      )
+      .then((gltf: Any) => {
+        let src: Any = null;
+        gltf.scene.traverse((n: Any) => {
+          if (!src && n.isMesh) src = n;
+        });
+        if (!src) return null;
+        // Clone so the loader's own graph can be garbage-collected.
+        return src.geometry.clone();
+      })
+      .catch((err: unknown) => {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("[crystalBuild] authored slab load failed", err);
+        }
+        return null;
+      });
+    crystalGeoPromises[key] = p;
+  }
+  return p;
+}
+
 export interface CrystalUniforms {
   uTime: { value: number };
   /** 0→1 section reveal (driver: scrollStore.reveal × visibility ramp). */
@@ -322,6 +441,12 @@ export interface CrystalBuild {
   shardCentrs: number[][];
   /** Broken only: the per-shard rand vec3s (idle-drift twin math). */
   shardRands: number[][];
+  /** ROUND 8-H (CHECK) — the rest explode gap THIS build was levelled for:
+   * FRACTURE_REST_GAP_AUTHORED on the authored partition (centroids ~1.9×
+   * longer), FRACTURE_REST_GAP on the procedural fallback, 0 on healthy. The
+   * driver must read it from here — the explode offset is `centr·gap`, so the
+   * constant is only meaningful next to the `centr` array it ships with. */
+  restGap: number;
   dispose: () => void;
 }
 
@@ -337,6 +462,14 @@ export interface CrystalBuildArgs {
    * backend; absent → the mark branch is not built (procedural backdrop
    * only) and the material stays zero-texture. */
   markTexture?: Any;
+  /** ROUND 8-H — the authored slab source geometry (`loadCrystalGeometry`),
+   * INDEXED and still carrying the raw `_CENTR`/`_RAND`/`_FACET` attributes.
+   * Absent/null (asset 404, parse failure) → the procedural round-7 geometry
+   * is built instead, so the section can never end up stone-less. BOTH TIERS
+   * get the authored asset: at 450 / 1 114 triangles it is CHEAPER than the
+   * procedural lite build (1 620 / 1 920), so there is no reduced variant and
+   * CRYSTAL_DETAIL_LITE / SHARD_COUNT_LITE are dead on this path. */
+  sourceGeometry?: Any;
 }
 
 /** Deterministic [0,1) hash — the repo's sin-dot family (neuralFieldCompute
@@ -432,8 +565,141 @@ function bakeFacetRand(
   geometry.setAttribute("aFacet", new BufferAttribute(arr, 3));
 }
 
+/**
+ * ROUND 8-H — move a glTF custom attribute onto its shader name. three's
+ * GLTFLoader LOWERCASES any semantic it does not know (`ATTRIBUTES[name] ||
+ * name.toLowerCase()`, three 0.184 GLTFLoader L4806), so `_CENTR` arrives as
+ * `_centr`; both spellings are accepted and both are cleared, so a future
+ * loader change can neither drop the attribute nor leave a duplicate
+ * vertex-buffer slot behind. Returns the attribute (or null if absent).
+ */
+function takeAttr(geometry: Any, gltfName: string, to: string): Any {
+  const lower = gltfName.toLowerCase();
+  const a = geometry.getAttribute(lower) ?? geometry.getAttribute(gltfName);
+  geometry.deleteAttribute(lower);
+  geometry.deleteAttribute(gltfName);
+  if (a) geometry.setAttribute(to, a);
+  return a ?? null;
+}
+
+/**
+ * ROUND 8-H — turn the loaded slab into the soup the material expects, and
+ * read the per-piece table back OUT of it. Honors the authoring log's contract
+ * exactly (§6, §8):
+ *   · `toNonIndexed()` first — the shader flat-shades a soup, and the expansion
+ *     carries the custom attributes with it (guarded by `src.index`: see the ⚠
+ *     in the body — three returns `this`, not a copy, for an already-soup
+ *     asset, which would put the module singleton on the chopping block).
+ *   · NO `bakeFacetRand()`: `_FACET` ships per PLANAR PATCH (patches merged at
+ *     ≤8° dihedral; measured on the shipped files, 34 distinct randoms on the
+ *     intact — one per patch — and 57 across the fractured file's 76 patches,
+ *     a few pieces sharing a value). Re-baking it per triangle would speckle each
+ *     large plane with different FACET_SPEC_JIT / FACET_VALUE_JIT brightness —
+ *     re-breaking the mark's legibility at the shading level after this whole
+ *     round fixed it at the geometry level. Only a MISSING `_FACET` falls back
+ *     to the bake.
+ *   · NO `displaceAndSquash()` / CRYSTAL_SQUASH — the .84/1/.65 proportions are
+ *     baked and a post-hoc anisotropic scale shears every facet normal.
+ *   · `shardCentrs`/`shardRands` are READ from the file's 8 unique values in
+ *     AUTHORING order, never re-derived. Measured on the shipped asset: the
+ *     pieces are contiguous in the vertex buffer AND that buffer order is
+ *     volume-descending (46.06 / 30.40 / 10.24 / 6.27 / 2.73 / 2.39 / 1.23 /
+ *     0.68 % by signed-volume integration), so index 0/1 are the two large
+ *     bodies (EMBER_SHARDS) and the callout indices keep their size classes.
+ *     `_RAND[i]` was verified bit-equal (≤2.7e-8) to this file's own
+ *     `h(i, …)` triple, so the explode / idle-drift / spin phases are the ones
+ *     the procedural build produced for shard i — the motion grammar did not
+ *     change with the geometry. ⚠ NOTE the authoring log's §5 table has the
+ *     `centr` column of rows 3 and 4 transposed relative to the shipped file
+ *     (its volumes/tri-counts are right); reading the GLB — as here — is
+ *     immune to that.
+ *   · `_CENTR` is already pre-rotated to the glTF Y-up frame at authoring time
+ *     (the exporter leaves custom vectors in Blender's Z-up); re-verified on
+ *     the shipped file: max |centr − meanPos| = 0.234, i.e. volume-centroid vs
+ *     vertex-mean, not a frame error. Nothing to permute here. CHECK (8-H)
+ *     re-measured it the other way round and closed the question: `_CENTR` is
+ *     the piece's EXACT volume centroid (∫p dV / ∫dV per piece agrees with the
+ *     shipped vector to float precision, |Δ| < 1e-6 on all eight), so both the
+ *     callout twin and the ember blobs ride the true centroid, not an
+ *     approximation of it.
+ *   · Returns `null` — i.e. hands the caller back to the procedural build — for
+ *     a broken asset that parses but carries no `_CENTR`/`_RAND` pair. See the
+ *     ⚠ in the body: an empty piece table is a half-built cluster, not a
+ *     degraded one.
+ *   · The cluster's volume-weighted mean `centr` is (0.126, −0.181, −0.018),
+ *     |0.22| = 6.6 % of the bbox height, and is deliberately NOT subtracted:
+ *     the callout twin's `centr·(1 + gap + drift)` is exact only while `centr`
+ *     IS the baked piece centroid, and re-centring would need a second array
+ *     to keep it so. The exploded cluster therefore settles ~0.18 units low —
+ *     which the hover re-cohere pulls back up, reading as the pieces snapping
+ *     together.
+ */
+function prepareAuthored(
+  src: Any,
+  broken: boolean,
+  BufferAttribute: Any,
+): { geometry: Any; shardCentrs: number[][]; shardRands: number[][] } | null {
+  const shardCentrs: number[][] = [];
+  const shardRands: number[][] = [];
+  if (broken) {
+    const c = src.getAttribute("_centr") ?? src.getAttribute("_CENTR");
+    const r = src.getAttribute("_rand") ?? src.getAttribute("_RAND");
+    if (c && r) {
+      for (let i = 0; i < c.count; i++) {
+        const x = c.getX(i);
+        const y = c.getY(i);
+        const z = c.getZ(i);
+        let known = false;
+        for (const v of shardCentrs) {
+          if (v[0] === x && v[1] === y && v[2] === z) {
+            known = true;
+            break;
+          }
+        }
+        if (known) continue;
+        shardCentrs.push([x, y, z]);
+        shardRands.push([r.getX(i), r.getY(i), r.getZ(i)]);
+      }
+    }
+    // ⚠ CHECK (round 8-H): a broken build with no piece table is a HALF-BUILT
+    // state, not a degraded one — the vertex path would reference an `aCentr`
+    // that does not exist and the driver would find `shardCentrs` empty
+    // (callout leaders detached, ember blobs skipped). A parseable-but-
+    // malformed asset therefore takes the SAME exit as a 404: return null and
+    // let the caller build the procedural cluster, whose centr/rand it
+    // re-derives from the golden spiral.
+    if (!shardCentrs.length) return null;
+  }
+
+  // ⚠ CHECK (round 8-H): `toNonIndexed()` RETURNS `this` when the geometry is
+  // already non-indexed (three 0.184 BufferGeometry L19253) — on a re-exported
+  // soup asset that would hand back the MODULE SINGLETON, and everything below
+  // (attribute renames) plus `build.dispose()` would then mutate and destroy
+  // the session-shared object the loader contract says must never be touched.
+  // Clone instead: same cost class, and the singleton stays pristine for every
+  // later mount / GPU-loss rebuild.
+  const geometry = src.index ? src.toNonIndexed() : src.clone();
+  const facet = takeAttr(geometry, "_FACET", "aFacet");
+  if (broken) {
+    takeAttr(geometry, "_CENTR", "aCentr");
+    takeAttr(geometry, "_RAND", "aRand");
+  } else {
+    // The intact file carries an all-zero `_CENTR` and a single-value `_RAND`
+    // (the healthy vertex path reads neither) — drop both slots rather than
+    // upload 32 KB of constants. Healthy stays at 3 slots, broken at 5.
+    for (const n of ["_centr", "_CENTR", "_rand", "_RAND"]) {
+      geometry.deleteAttribute(n);
+    }
+  }
+  if (!geometry.getAttribute("normal")) geometry.computeVertexNormals();
+  // ONLY a malformed asset (no `_FACET` at all) falls back to the
+  // per-triangle bake — never a file that shipped per-patch randoms.
+  if (!facet) bakeFacetRand(geometry, BufferAttribute, broken ? 11.3 : 3.7);
+  return { geometry, shardCentrs, shardRands };
+}
+
 export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
-  const { webgpu, tsl, mode, lite, markTexture } = args;
+  const { webgpu, tsl, mode, lite, markTexture, sourceGeometry } = args;
   const {
     IcosahedronGeometry,
     BufferGeometry,
@@ -479,12 +745,24 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
   const samples = lite ? CRYSTAL_SAMPLES_LITE : CRYSTAL_SAMPLES;
 
   // === Geometry =============================================================
+  // ROUND 8-H: the authored slab is the primary path (see prepareAuthored);
+  // the procedural build below survives ONLY as the asset-failure fallback.
   let geometry: Any;
   const shardCentrs: number[][] = [];
   const shardRands: number[][] = [];
 
-  if (!broken) {
-    // ONE intact crystal — displaced, squashed, flat-shaded.
+  const authored = sourceGeometry
+    ? prepareAuthored(sourceGeometry, broken, BufferAttribute)
+    : null;
+  if (authored) {
+    geometry = authored.geometry;
+    for (const c of authored.shardCentrs) shardCentrs.push(c);
+    for (const r of authored.shardRands) shardRands.push(r);
+  } else if (!broken) {
+    // FALLBACK — ONE intact crystal: displaced, squashed, flat-shaded. Note
+    // this path has NO coplanar patches, so the in-ice mark degrades to the
+    // pre-round-8-H confetti read on it; that is accepted for an asset-failure
+    // fallback and is why the mark's dev-handle gain stays live.
     geometry = new IcosahedronGeometry(
       1,
       lite ? CRYSTAL_DETAIL_LITE : CRYSTAL_DETAIL,
@@ -493,7 +771,9 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     geometry.computeVertexNormals(); // non-indexed → per-face flat normals
     bakeFacetRand(geometry, BufferAttribute, 3.7); // round-7 facet randoms
   } else {
-    // FRACTURED CLUSTER — shards merged into one geometry (one draw call).
+    // FALLBACK — FRACTURED CLUSTER: shards merged into one geometry (one draw
+    // call). Its `centr`/`rand` are re-derived from the golden spiral, so the
+    // callout twin and the ember blobs stay exact on this path too.
     const count = lite ? SHARD_COUNT_LITE : SHARD_COUNT;
     const detail = lite ? SHARD_DETAIL_LITE : SHARD_DETAIL;
     const GOLDEN = Math.PI * (3 - Math.sqrt(5));
@@ -582,7 +862,17 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
   const uTime = uniform(0);
   const uReveal = uniform(0);
   const uFlash = uniform(0);
-  const uGap = uniform(broken ? FRACTURE_REST_GAP : 0);
+  // ROUND 8-H (CHECK): the rest gap follows the `centr` array this build
+  // actually shipped — the authored centroids are ~1.9× longer than the
+  // procedural ones, so one constant cannot serve both (FRACTURE_REST_GAP_
+  // AUTHORED carries the full derivation). Published on the build so the
+  // driver's gap ramp and its callout twin read the SAME number.
+  const restGap = broken
+    ? authored
+      ? FRACTURE_REST_GAP_AUTHORED
+      : FRACTURE_REST_GAP
+    : 0;
+  const uGap = uniform(restGap);
   const uCamDist0 = uniform(12);
   const uWorldScale = uniform(1);
   const uIor = uniform(CRYSTAL_IOR);
@@ -975,7 +1265,11 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     if (markBase) {
       // Additive over the procedural backdrop, PRE body-darken — the mark
       // rides the dark-glass multiply + frost density veining like igloo's
-      // transmission sample (MARK_GAIN compensates; see config).
+      // transmission sample (MARK_GAIN compensates; see config). ROUND 8-H:
+      // with the authored slab's large planes each finally refracting ONE
+      // coherent patch of this RT, the gain is unblocked and doubles to 0.70
+      // — the full derivation (and the ordering constraint that caps it) is
+      // on MARK_GAIN in crystalConfig.
       trans.assign(
         trans.add(vec3(mAccR, mAccG, mAccB).div(samples).mul(uMarkGain)),
       );
@@ -983,7 +1277,14 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
 
     // --- Round 7 §2 — DARK GLASS BODY: transmitted color × uBodyDarken (the
     // stone reads darker than the backdrop mid-tone — the meteorite read),
-    // with per-facet value jitter (§1) + frost density veining (§4). -------
+    // with per-facet value jitter (§1) + frost density veining (§4).
+    //
+    // ROUND 8-H: `aFacet` is now per PLANAR PATCH, so this multiply steps
+    // across whole planes instead of dithering across micro-triangles — and
+    // the MARK is inside `trans`, i.e. it rides this multiply too. That is the
+    // second reason FACET_VALUE_JIT was cut to ±9 % (config): at ±15 % the
+    // wordmark's brightness would step from plane to plane, re-introducing
+    // patchiness in the very image this round exists to make readable. ------
     const fJit = vFacet;
     let col: Any = trans
       .mul(uBodyDarken)
@@ -1053,7 +1354,18 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     // --- Round 7 §1 — 2-lobe environment: white-cyan key spec lobe + navy
     // fill. The key lobe uses a PER-FACET tilted normal (baked aFacet) with
     // a lowish exponent → facets catch distinct values and flash
-    // independently as the crystal tumbles (the #1 flatness killer). ------
+    // independently as the crystal tumbles (the #1 flatness killer).
+    //
+    // ROUND 8-H — RE-LEVELLED, not re-designed. uFacetJit existed to fake
+    // normal variety on a mesh that had none (a subdivided icosahedron's
+    // facets are nearly co-oriented); the authored slab supplies real variety
+    // (34 patches, dihedral p90 66.8°, p99 123.5°) and the jitter now tilts
+    // whole PLANES, so it was cut 0.35 → 0.12 (RMS tilt 9.9° → 3.4°, max
+    // 16.9° → 5.9°). uSpecGain 0.32 → 0.26 and FACET_SPEC_JIT 0.8 → 0.45 keep
+    // the brightest lit plane at 0.276 lumLin — the round-8-F value table's
+    // "brightest ordinary pixel", now honoured WITH the jitter included
+    // (8-F quoted 0.277 with amp = 1; the old 1.4× ceiling really reached
+    // 0.388). Every one of these is a config constant + a live uniform. -----
     const key = normalize(vec3(...FACET_KEY_DIR));
     const fill = normalize(vec3(...FACET_FILL_DIR));
     const H = normalize(key.add(V)).toVar();
@@ -1143,7 +1455,8 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     // exactly why its brightest pixel is at most 3.4× its body and its whole
     // stone lives in a 7.9:1 window; we had no ceiling at all. Every term
     // above is non-negative by construction (the frost density factor bottoms
-    // at 0.725 and the facet value jitter at 0.85), so only the upper clamp is
+    // at 0.725 and the facet value jitter at 0.91 — round 8-H; it was 0.85
+    // while FACET_VALUE_JIT was 0.3), so only the upper clamp is
     // needed — `min` against a broadcast uniform keeps it cross-backend (WGSL
     // `clamp` requires matching component types; `min(vec3, vec3)` does not).
     // With uCeil 1.35 the ignition flash saturates against it exactly as
@@ -1239,6 +1552,7 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     uniforms,
     shardCentrs,
     shardRands,
+    restGap,
     dispose() {
       geometry.dispose();
       material.dispose();

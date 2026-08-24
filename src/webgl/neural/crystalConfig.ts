@@ -26,10 +26,15 @@
  *
  * BINDING BUDGET: zero storage buffers. Vertex-buffer slots: broken uses 5
  * (position, normal, aCentr, aRand, aFacet), healthy 3 (position, normal,
- * aFacet) — well inside the 8-slot wall (gpgpuNodeSim.ts). aFacet (round 7)
- * is a per-FACE random vec3, constant across each triangle of the non-indexed
- * soup — attributes are vertex-buffer slots, NOT bindings. No compute: the
- * same node material compiles on the WebGL2 fallback backend of three/webgpu.
+ * aFacet) — well inside the 8-slot wall (gpgpuNodeSim.ts). ROUND 8-H keeps
+ * both counts exactly (the authored GLB ships those same attributes and the
+ * intact file's all-zero `_CENTR` / single-value `_RAND` are dropped on load).
+ * aFacet is a random vec3 constant across a facet — per TRIANGLE on the
+ * procedural fallback, per PLANAR PATCH on the authored asset, which is the
+ * whole point: re-baking it per triangle would speckle each large plane and
+ * undo the coherence the slab was authored for. Attributes are vertex-buffer
+ * slots, NOT bindings. No compute: the same node material compiles on the
+ * WebGL2 fallback backend of three/webgpu.
  *
  * ROUND 7-2b (§B-a, 2026-08-22-round7-stones-v2-anatomy.md): the HEALTHY
  * crystal on the FULL tier + true-WebGPU backend adds the SERSAN-mark
@@ -87,7 +92,39 @@
  * RATIO no longer reproduces the PERCEPTION, and 0.30 lands us on the dense
  * side of igloo's separation instead of 35% short of it.
  * MARK_GAIN is deliberately NOT raised — the mark's illegibility is a GEOMETRY
- * problem (see the ═══ block there), not a level problem.
+ * problem (see the ═══ block there), not a level problem. [SUPERSEDED BY 8-H
+ * BELOW: the geometry problem is now fixed, and the gain moved with it.]
+ *
+ * ROUND 8-H — THE AUTHORED SLAB LANDS (research/2026-08-22-round8-blender-
+ * slab-log.md). The owner, sharpened: "è completamente diversa da quella di
+ * ghiaccio del sito igloo." The measured cause was the mesh, not the material:
+ * `IcosahedronGeometry(1,12) + smooth radial noise` has **no coplanar patches
+ * at all**, so every one of its 3 380 triangles refracts its own patch of the
+ * inner world and the in-ice mark shatters into per-facet confetti. The
+ * Blender-authored replacement (`public/models/crystal-intact.glb` 450 tris /
+ * `crystal-fractured.glb` 1 114 tris, loaded by crystalBuild's module-cached
+ * non-suspending loader) hits all four igloo silhouette gates AND carries 34
+ * planar patches with six covering half the surface. Consequences here — all
+ * derived, all live-tunable, none of them redesigns:
+ *   1. The per-facet constants were micro-facet devices and now act on whole
+ *      planes: FACET_JITTER 0.35 → 0.12, FACET_SPEC_JIT 0.8 → 0.45,
+ *      FACET_VALUE_JIT 0.3 → 0.18, SPEC_GAIN 0.32 → 0.26. Net effect on the
+ *      8-F value table: the brightest ordinary pixel stays at 0.276 lumLin —
+ *      now including the per-patch jitter, which the old ceiling silently
+ *      pushed to 0.388. Body typical unchanged at 0.0396.
+ *   2. MARK_GAIN is UNBLOCKED and doubles to 0.70 (2.01:1 → 3.03:1 WCAG-form
+ *      against the body, capped by the ordering rule at ~0.88). The ═══ block
+ *      below is replaced accordingly.
+ *   3. HEALTHY_CALLOUT_ANCHORS re-fitted to the new surface (one of the three
+ *      was floating 27 % OUTSIDE it) and BROKEN_CALLOUT_SHARDS re-picked for
+ *      screen separation on the new fracture, keeping the large/mid/chip
+ *      classes. Both measured off the shipped GLBs, not eyeballed.
+ *   4. Geometry constants (CRYSTAL_DETAIL*, SHARD_*, CRYSTAL_SQUASH,
+ *      CRYSTAL_NOISE_*) are now FALLBACK-ONLY — nothing but an asset failure
+ *      builds the procedural mesh. Both tiers load the authored asset: at 450
+ *      / 1 114 tris it is cheaper than the procedural LITE build.
+ * Provenance unchanged: nothing from igloo entered this repo — the GLBs are
+ * authored from primitives, plane cuts and booleans; only NUMBERS transferred.
  */
 import type { LatticeMode } from "./neuralLatticeConfig";
 
@@ -104,7 +141,19 @@ export const CRYSTAL_POS: Record<LatticeMode, [number, number]> = {
  * reads wider). Live-tunable via the dev handle. */
 export const CRYSTAL_SCALE = 0.17;
 
-// --- Geometry (procedural; dossier plan §1) ---------------------------------
+// --- Geometry ---------------------------------------------------------------
+// ⚠ ROUND 8-H — EVERYTHING IN THIS BLOCK IS FALLBACK-ONLY. The shipped mesh is
+// the Blender-authored slab (`/models/crystal-intact.glb` +
+// `/models/crystal-fractured.glb`, paths in crystalBuild's CRYSTAL_GLB); these
+// constants only build a mesh when that asset fails to load. In particular
+// CRYSTAL_DETAIL_LITE / SHARD_DETAIL_LITE / SHARD_COUNT_LITE are dead on the
+// primary path — BOTH tiers load the same authored files, which at 450 / 1 114
+// triangles are cheaper than the procedural LITE build (1 620 / 1 920) and far
+// cheaper than the full one (3 380 / 4 000). CRYSTAL_SQUASH is NOT re-applied
+// to the authored geometry: its .84/1/.65 proportions (igloo cube1's) are
+// baked, and a post-hoc anisotropic scale would shear every facet normal.
+// SHARD_SIZES still documents the fracture's volume family — the authored
+// partition's piece volumes were solved to match SHARD_SIZES³.
 /** Icosahedron subdivision detail — tris = 20·(detail+1)². Facets sell
  * crystal: flat normals from the non-indexed PolyhedronGeometry. */
 export const CRYSTAL_DETAIL = 12; // healthy intact crystal (~3.4k tris)
@@ -157,8 +206,41 @@ export const SHARD_SPREAD_MAX = 0.58;
 // --- Fracture (broken) ------------------------------------------------------
 /** Rest gap — the cluster sits EXPLODED (igloo `gap`; explode offset =
  * centr·gap). Breathes outward with the fracture surges, collapses to ~0 on
- * the row-hover re-cohere. */
+ * the row-hover re-cohere. ⚠ FALLBACK-ONLY since round 8-H: this value is
+ * levelled against the PROCEDURAL shard centroids (|centr| 0.42–0.85). The
+ * authored partition's centroids are ~1.9× longer, so it uses its own constant
+ * below — crystalBuild picks per build and publishes it as `build.restGap`. */
 export const FRACTURE_REST_GAP = 1.0;
+/**
+ * ROUND 8-H (CHECK) — the same rest gap, re-levelled for the AUTHORED
+ * partition. The explode offset is `centr·gap`, so it is only meaningful
+ * relative to how long `centr` is, and the swap moved that a lot:
+ *   procedural shard centroids  |centr| 0.416 … 0.835  (mean 0.60)
+ *   authored piece centroids    |centr| 0.698 … 1.576  (mean 1.16)  = ~1.9×
+ * Left at 1.0 the fractured cluster's exploded silhouette measures (bbox of
+ * `position + centr·gap` over the shipped file) **4.07 × 4.93 × 3.55** against
+ * the round-7 procedural cluster's 2.65 × 4.21 × 2.24 — 54 % wider and
+ * reaching y = −3.04, i.e. 465 px below the crystal centre at the doc's
+ * reference band (900 px, 153 px/unit), where the centre already sits 5 % low
+ * (CRYSTAL_POS.broken.y). The bottom chips would render OUTSIDE the
+ * `[data-lattice-anchor]` band, and the third callout — piece 5, projected to
+ * a 90.5 % edge offset — would PIN against CALLOUT_EDGE_MAX (88) and stop
+ * tracking its shard, breaking the leader-line contract the round re-fitted
+ * BROKEN_CALLOUT_SHARDS for.
+ * **0.55** is the value that restores the round-7 exploded envelope: y-extent
+ * 4.201 vs the procedural 4.211 (x 3.49 / z 2.92, honestly wider because the
+ * authored intact slab itself is 15 % wider in x and 6 % in z — that part is
+ * the new silhouette, not the explode). At 0.55 the three callout anchors
+ * project to 56.3 / 25.3 / 81.3 % — all inside the clamps — with 131 / 244 /
+ * 375 px separation, still far past the ~71 px collision that got [1,3,5]
+ * rejected. Nearest-neighbour piece separation is 0.55·|Δcentr| ≈ 0.78 units
+ * between the two large bodies, ~28 % of the slab width: reads fractured, not
+ * flung. Surge peak (×1.5 → 0.825) reaches y-extent 4.65, a transient.
+ * ⚠ This is an ARITHMETIC fit to the round-7 envelope, not a live A/B — if the
+ * browser pass wants a wider blast, raise it here (uGap is on the dev handle);
+ * past ~0.75 the third callout starts pinning again.
+ */
+export const FRACTURE_REST_GAP_AUTHORED = 0.55;
 /** Gap boost per unit (eased) store pulse — the fracture-surge breathing. */
 export const FRACTURE_SURGE_GAIN = 0.5;
 /** Igloo idle sine drift amplitude (verbatim 0.05):
@@ -253,8 +335,29 @@ export const SPEC_POW = 14.0;
 /** ROUND 8-E §B4.2 part 3 — HIGHLIGHT COMPRESSION. 1.15 → 0.5, keyC (#D8F4FF)
  * having Rec709 linear luminance 0.865.
  *
- * ROUND 8-F (LIVE-MEASURED — the matte A/B): 0.5 → **0.32**. Peak 0.865 × 0.32
- * = **0.277 lumLin**. Against the new body (0.0396) and the unchanged fog core
+ * ═══ ROUND 8-H (THE AUTHORED SLAB) — 0.32 → **0.26**. The peak did not move;
+ * the AREA did. ═══
+ * On the procedural icosahedron a lit facet was one of ~3 380 micro-triangles
+ * and the eye integrated a mottled highlight; on the authored slab ONE patch
+ * can be 19 % of the surface and lights as a single value. Two coupled cuts
+ * hold the round-8-F window while that area grows:
+ *   SPEC_GAIN      0.32 → 0.26
+ *   FACET_SPEC_JIT 0.8  → 0.45  (per-patch amp span ±22.5 %, was ±40 %)
+ * Peak lit plane = 0.865 × 0.26 × 1.225 = **0.276 lumLin** — i.e. exactly the
+ * 8-F "brightest ordinary pixel" of 0.277, except that 8-F computed it at
+ * amp = 1 and the old ±40 % ceiling actually reached 0.865 × 0.32 × 1.4 =
+ * 0.388. So this is a strict FIDELITY gain, not a new level: the documented
+ * number is now the true maximum. The whole 8-F table therefore still holds —
+ * brightest ÷ body 7.0×, brightest vs fog 2.68:1, dynamic range 4.66:1 (4.74
+ * before, the hair of difference being FACET_VALUE_JIT lifting the darkest
+ * body 0.0190 → 0.0199).
+ * ⚠ The ±40 % spec jitter was itself a micro-facet device: between two LARGE
+ * planes at the same angle to the key light it reads as a shading error, not
+ * as mineral variation. That is why the jitter had to come down with the gain
+ * rather than the gain alone. ═══
+ *
+ * ROUND 8-F (LIVE-MEASURED — the matte A/B): 0.5 → 0.32. Peak 0.865 × 0.32
+ * = 0.277 lumLin. Against the body (0.0396) and the unchanged fog core
  * (0.072), all WCAG-form ((L+0.05) quotients) as in the doc:
  *   brightest ÷ body      7.0×      (8-E 7.6×; igloo hard-caps at 3.4×)
  *   stone dynamic range   4.74:1    (8-E 6.28:1; igloo 7.9:1)
@@ -266,23 +369,57 @@ export const SPEC_POW = 14.0;
  * ⚠ COUPLING: RIM_BASE was NOT cut this round, so the broad rim now peaks at
  * 0.277 too — the key lobe and the rim are TIED as the brightest ordinary
  * pixel, where 8-E had the lobe clearly ahead (0.433 vs 0.277). If the stone
- * starts reading as an outline again, cut RIM_BASE before raising this. */
-export const SPEC_GAIN = 0.32;
+ * starts reading as an outline again, cut RIM_BASE before raising this.
+ * (8-H note on that coupling: at SPEC_GAIN 0.26 the RIM would out-read the key
+ * lobe — 0.277 vs 0.225 at amp = 1 — were it not for the per-patch jitter,
+ * which takes the brightest plane to 0.276 and keeps them tied. The rim is
+ * still the first thing to cut if the outline read returns.) */
+export const SPEC_GAIN = 0.26;
 /** Fill lobe gain on max(dot(N, FILL), 0) — dev-tunable (uFillGain).
  * ROUND 8-E: 0.5 → 0.25. The analytic ambient hemisphere (§D3, AMBIENT_*)
  * now owns the cool floor this lobe was standing in for; keeping both at full
  * strength double-counts it and lifts the body off its 0.79× fog ratio. */
 export const FILL_GAIN = 0.25;
-/** Per-FACET normal tilt (view-space, from the baked aFacet random) fed to
- * the key lobe only — facets catch the sun independently, the #1 flatness
- * killer. Dev-tunable (uFacetJit). */
-export const FACET_JITTER = 0.35;
+/**
+ * Per-FACET normal tilt (view-space, from the baked aFacet random) fed to the
+ * key lobe only — facets catch the sun independently, the #1 flatness killer.
+ * Dev-tunable (uFacetJit).
+ *
+ * ROUND 8-H — 0.35 → **0.12**. This constant existed to FAKE normal variety on
+ * a mesh that had none: the procedural icosahedron's neighbours are near
+ * co-oriented (measured dihedral p99 **70°** against igloo's 97–124°, with
+ * every one of its 3 380 triangles its own facet), so a large stochastic tilt
+ * was the only source of facet-to-facet value separation. The authored slab
+ * supplies the real thing (34 planar patches; measured dihedral p50 0.7°
+ * WITHIN patches, p90 66.8° and p99 123.5° BETWEEN them), and the tilt now
+ * acts on whole planes rather than on invisible micro-triangles.
+ * Geometry of the knob: the offset is a vec3 of independent uniforms in
+ * ±J/2, so RMS|offset| = J/2 and max|offset| = √3·J/2 ⇒
+ *   J 0.35 → RMS tilt 9.9°, max 16.9°   (a visible mis-orientation on a plane)
+ *   J 0.12 → RMS tilt  3.4°, max  5.9°  (a break-up, not a wrong normal)
+ * Conservative on purpose: 0 would make every patch a perfect mirror of its
+ * geometric normal (and re-flatten coplanar neighbours into one value), while
+ * anything past ~0.2 starts to read as "this plane is facing the wrong way",
+ * which is exactly the credibility the authored silhouette was bought for. */
+export const FACET_JITTER = 0.12;
 /** Per-facet key-lobe brightness jitter span: amp = 1−span/2 + span·rand —
- * the mineral sparkle igloo's roughness map provides. */
-export const FACET_SPEC_JIT = 0.8;
-/** Per-facet BODY value jitter: body ×(0.85 + this·rand) — value separation
- * survives even where the key lobe misses. */
-export const FACET_VALUE_JIT = 0.3;
+ * the mineral sparkle igloo's roughness map provides.
+ * ROUND 8-H: 0.8 → **0.45** (amp span 0.6–1.4 → 0.775–1.225). Coupled to the
+ * SPEC_GAIN cut — see the derivation there. ±40 % between two LARGE planes at
+ * the same angle to the key light reads as a shading error; ±22.5 % reads as
+ * micro-roughness variation, which is what it is meant to be. */
+export const FACET_SPEC_JIT = 0.45;
+/** Per-facet BODY value jitter: body ×(1 − this/2 + this·rand) — value
+ * separation survives even where the key lobe misses.
+ * ROUND 8-H: 0.3 → **0.18** (×0.85–1.15 → ×0.91–1.09). Two reasons, the second
+ * load-bearing: (a) per-patch steps of ±15 % across planes covering up to 19 %
+ * of the stone read as patchy paint, not as mineral; (b) the in-ice MARK is
+ * added PRE `uBodyDarken`, so it rides this exact multiply — at ±15 % the
+ * wordmark's own brightness would step from plane to plane, re-introducing
+ * incoherence in the image this round exists to make legible. The MEAN factor
+ * is 1.0 either way, so the body's typical value is untouched (0.0396); only
+ * the darkest body moves, 0.0190 → 0.0199. */
+export const FACET_VALUE_JIT = 0.18;
 /**
  * Round 7 — dark glass body (§2): transmitted color × this. The stone reads
  * DARKER than the backdrop mid-tone (the "meteorite" read); brightness comes
@@ -467,17 +604,62 @@ export const CALLOUT_EDGE: readonly ("top" | "bottom")[] = [
 /** Label-block offset from the leader-line TIP to the positioned edge:
  * ~15px label line + 4px gap + 28px leader (`h-7` + `mt-1`/`mb-1`). */
 export const CALLOUT_LABEL_OFFSET_PX = 47;
-/** Healthy anchors: fixed crystal-local points (post-squash units — bbox
- * ≈ x ±1.25, y ±1.8) on the intact crystal; they ride its tumble. */
+/**
+ * Healthy anchors: fixed crystal-local points on the intact crystal; they ride
+ * its tumble (the driver applies `mesh.rotation`, so each stays the same
+ * MATERIAL point on the stone).
+ *
+ * ROUND 8-H — RE-FITTED TO THE AUTHORED SLAB, measured not guessed. The old
+ * values were written against a bbox the previous comment recorded as
+ * "x ±1.25, y ±1.8"; the shipped slab measures **x ±1.3945, y ±1.6600,
+ * z ±1.0790**. Ray-casting each old anchor's direction from the crystal centre
+ * against the shipped mesh:
+ *   [-0.55, 1.15, 0.40]  |p| 1.336 vs surface 1.054 → **1.27× — 27 % OUTSIDE
+ *                         the stone**, i.e. its leader line pointed at air
+ *   [ 0.20,-1.30, 0.30]  |p| 1.349 vs surface 1.445 → 0.93×, already right
+ *   [ 0.90, 0.50, 0.20]  |p| 1.049 vs surface 1.524 → 0.69×, buried in the body
+ * Each is re-placed at **0.97 × the surface radius along its own direction** —
+ * on the stone, a hair inside the silhouette, which is what an anchor is for.
+ * Directions (and therefore the three callouts' relative screen placement) are
+ * preserved exactly; only the radii moved. Re-run this fit if the GLB is
+ * re-authored: cast from the origin, take the FIRST hit, multiply by 0.97.
+ */
 export const HEALTHY_CALLOUT_ANCHORS: readonly [number, number, number][] = [
-  [-0.55, 1.15, 0.4],
-  [0.2, -1.3, 0.3],
-  [0.9, 0.5, 0.2],
+  [-0.42, 0.88, 0.31],
+  [0.21, -1.35, 0.31],
+  [1.27, 0.71, 0.28],
 ];
-/** Broken anchors ride these shard indices (< SHARD_COUNT_LITE so the lite
- * build keeps all three): anchor = centr·(1 + gap + idle drift). */
+/**
+ * Broken anchors ride these piece indices: anchor = centr·(1 + gap + drift).
+ * Indices are into the AUTHORED partition (crystalBuild reads the GLB's 8
+ * unique `_CENTR`/`_RAND` values in authoring = volume-descending order), so
+ * 0/1 are the two large bodies, 2/3 mid, 4-7 chips.
+ *
+ * ROUND 8-H — [1, 3, 5] → **[1, 2, 5]**, measured. The size-class INTENT is
+ * unchanged (large 30.4 % / mid 10.2 % / chip 2.4 %); what changed is that the
+ * authored fracture seeds its chips near one impact shoulder instead of on a
+ * golden spiral, which stacked two of the old three anchors on top of each
+ * other. Projected screen offsets from the crystal centre at rest gap
+ * (px at a 900 px band, 153 px per crystal unit, +y up), anchor = centr·(1+gap)
+ * at the re-levelled FRACTURE_REST_GAP_AUTHORED 0.55, i.e. centr·1.55:
+ *   piece 1 (−148, −59)   piece 2 (−38, −130)   piece 3 (+111, −245)
+ *   piece 5 (+151, −284)  piece 4 (−118, −293)  piece 0 (+155, +53)
+ * [1,3,5] puts pieces 3 and 5 **40 px apart in x, 39 px in y** — and after the
+ * CALLOUT_EDGE ±47 px label offsets their label blocks cross. [1,2,5] spreads
+ * to 131 / 244 / 375 px separations across three quadrants, which is the
+ * relationship the old golden-spiral cluster had. Their edge-relative offsets
+ * land at 56.3 / 25.3 / 81.3 %, all inside CALLOUT_EDGE_MIN/MAX (2…88) — the
+ * check that forced the gap re-level: at the un-levelled gap 1.0 piece 5
+ * projected to 90.5 % and PINNED against the clamp, i.e. its leader line
+ * stopped pointing at its shard. All three stay < SHARD_COUNT_LITE (harmless
+ * now — every tier gets all 8 authored pieces).
+ * ⚠ QA: this is the one round-8-H change with no arithmetic gate behind it,
+ * only geometry. If the browser pass prefers the old mid piece, [1,3,5] is a
+ * one-token revert (it clears the clamps too at gap 0.55: piece 3 lands at
+ * 77.0 %; only its 40 px proximity to piece 5 argues against it).
+ */
 export const BROKEN_CALLOUT_SHARDS: readonly [number, number, number] = [
-  1, 3, 5,
+  1, 2, 5,
 ];
 /** Damp λ of the projected callout values (labels must not jitter with the
  * wobble/tumble) + the write threshold in % (skip sub-0.1% churn). */
@@ -516,33 +698,62 @@ export const MARK_COLOR = "#D8F4FF";
  * clearly visible INSIDE the ice (igloo's penguin read) without leaving the
  * compressed window or approaching the ceiling.
  *
- * ═══ ROUND 8-F — DO NOT RAISE THIS. THE MARK IS BLOCKED ON GEOMETRY. ═══
+ * ═══ ROUND 8-H — UNBLOCKED BY THE AUTHORED SLAB. 0.35 → **0.70**. ═══
  *
- * The owner A/B'd 0.35 → 1.4 → 2.4 live at `__sersanCrystal_healthy.uniforms`.
- * At NO gain did the SERSAN mark become legible; it only filled the stone with
- * confetti. The cause is not LEVEL, it is SPATIAL COHERENCE, and it is a
- * measured property of our mesh (`2026-08-22-round8-stone-source-anatomy.md`
- * §A1): our procedural icosahedron carries **2.3%** of its surface area in the
- * largest 1% of triangles against igloo's **6–20%** — thousands of near-equal
- * micro-facets where they have a few large cleavage planes. The mark is sampled
- * through the per-fragment refracted direction, so every facet taps a DIFFERENT
- * patch of the RT: igloo's big planes refract one coherent image of the
- * penguin; our high-frequency faceting dices the wordmark into per-facet noise.
- * Raising the gain amplifies the noise — which is exactly what was observed.
+ * The history this replaces: the owner A/B'd 0.35 → 1.4 → 2.4 live at
+ * `__sersanCrystal_healthy.uniforms` and at NO gain did the mark become
+ * legible — it only filled the stone with confetti. The cause was never LEVEL,
+ * it was SPATIAL COHERENCE: the mark is sampled through the per-fragment
+ * refracted direction, so every facet taps a different patch of the RT, and
+ * the procedural icosahedron had **zero coplanar patches** (all 3 380
+ * triangles are their own facet, largest-1 %-faces 2.3 % vs igloo's 6–20 %).
+ * The authored slab (`crystal-intact.glb`) carries **34 planar patches, six of
+ * which cover half the surface, the largest 19 %** — each of those refracts
+ * ONE coherent image. That is the fix; this constant is now free to move.
  *
- * It unblocks on the AUTHORED SILHOUETTE (doc §C — Blender cube + negative
- * Voronoi chips + **Planar Decimate**, the operator that moves areaTop1% from
- * ~2% to 6–12%), currently being produced into `public/models/`. Re-level
- * MARK_GAIN against the value table THEN, on the new mesh, and not before.
+ * WHY 0.70 (the arithmetic, since this was levelled without a browser — the
+ * main session owns the visual A/B). The mark is added PRE `uBodyDarken`, so
+ * a full-coverage stroke contributes lum(#D8F4FF) 0.865 × G × BODY_DARKEN 0.30
+ * = 0.2595·G on top of the 0.0396 body:
+ *   G = 0.35 → stroke 0.130 lumLin, WCAG-form vs body (0.180/0.0896) = 2.01:1
+ *   G = 0.70 → stroke 0.221 lumLin, WCAG-form vs body (0.271/0.0896) = 3.03:1
+ * 3:1 is the standards threshold at which a graphical object is deemed to read
+ * against its background, and 2:1 is not — so the old level was ALSO under the
+ * bar, independently of the geometry defect. Three checks bound it from above:
+ *   1. ORDERING. The brightest ordinary pixel on the stone is 0.276 (key lobe
+ *      / rim). At 0.70 the mark peaks at 0.221 = 0.80× that, so the surface
+ *      still out-reads its inclusion — a lit stone with a mark inside, not a
+ *      lamp with a logo. The TIE is at G = (0.276 − 0.0396)/0.2595 = **0.91**
+ *      (CHECK re-derivation; the first pass wrote 0.88, which is the same
+ *      bound with a margin rather than the solution). Keep 0.88 as the
+ *      operational ceiling for any live A/B — it buys back the ~4 % the frost
+ *      density factor can add on top of the mark (×1.275 at its brightest
+ *      vein) before the ordering flips.
+ *   2. BLOOM. Per channel the addition is (0.144, 0.190, 0.210) — post-blend
+ *      ×0.94 = 0.197 peak, nowhere near the ≈1.0 selective-bloom threshold, so
+ *      MARK_COLOR's "the mark itself can never trip bloom" contract survives
+ *      (and CRYSTAL_CEIL 1.35 is never reached: mark + key lobe = 0.50).
+ *   3. SAMPLING LOSS. The 3-sample ladder taps the RT at coords that differ by
+ *      Δuv ≈ 0.024 (≈12 px of the 512 RT) and blurs at lod ≈ 1.17, so a stroke
+ *      narrower than that spread lands at ~0.7 of full coverage: 2.42:1 rather
+ *      than 3.03:1. That is the realistic floor, and it is why the value was
+ *      not set at the 3:1 minimum.
+ * Live A/B range for the browser pass: **0.55 – 0.85** (uMarkGain on the dev
+ * handle), never past 0.88. If the mark reads but the stone starts to glow,
+ * cut BODY_DARKEN's neighbours, not this — the mark rides that multiply.
  *
- * (Levelling note for that pass: the mark is added PRE `uBodyDarken`, so the
- * round-8-F cut to 0.30 scales it too — 0.35 × lum(#D8F4FF) 0.865 × 0.30 =
- * 0.091 lumLin = **2.3× the body**, which essentially preserves its 8-E ratio
- * of 2.7×. No compensating raise is owed; the small drop is only the ambient
- * floor, which does not ride the multiply.) */
-export const MARK_GAIN = 0.35;
+ * NOTE the fallback: if the GLB ever fails to load, crystalBuild rebuilds the
+ * procedural icosahedron, on which this gain will look like confetti again.
+ * That is an asset-failure path, not a tuning state. */
+export const MARK_GAIN = 0.7;
 /** Refraction-coordinate → RT-UV scale: uv = coord·this + 0.5. Sizes the mark
- * to ~0.9 crystal units inside the body (dev-tunable, uMarkScale). */
+ * to ~0.9 crystal units inside the body (dev-tunable, uMarkScale).
+ * ROUND 8-H — left alone on purpose. The mapping is uv = vLocal.xy·0.22 + 0.5
+ * and the slab's HEIGHT is identical to the old mesh's (3.32 by construction),
+ * so the mark's relationship to the stone's vertical extent is unchanged; only
+ * x grew 15.7 %, i.e. the silhouette now reveals a little more of the mark's
+ * width. If the browser pass wants the mark bigger on the stone, this is the
+ * knob (lower = larger), not MARK_GAIN. */
 export const MARK_COORD_SCALE = 0.55;
 /** Igloo lod law (§A1 verbatim): lod = log2(rtSize)·roughness·clamp(2·ior−2,
  * 0,1); at ior 1.18 the ior factor is 0.36 — folded in here. roughEff (frost-
@@ -588,7 +799,18 @@ export const EMBER_DEPTH = 0.35;
 export const EMBER_R0 = 0.55;
 export const EMBER_R1 = 0.32;
 /** Which shards the two small blobs ride (indices into shardCentrs — 0/1 are
- * the two LARGE bodies of SHARD_SIZES; both < SHARD_COUNT_LITE). */
+ * the two LARGE bodies of SHARD_SIZES; both < SHARD_COUNT_LITE).
+ * ROUND 8-H: still correct on the authored partition — crystalBuild reads the
+ * GLB's pieces in volume-descending order, where 0/1 carry **46.06 % + 30.40 %
+ * of the slab's volume**. Blob placement re-checked (CHECK, correcting the
+ * first pass, which compared `centr` to the piece's VERTEX MEAN and concluded
+ * the blob was off by up to 0.234): `_CENTR` is the piece's exact VOLUME
+ * centroid — ∫p dV / ∫dV integrated per piece off the shipped file agrees to
+ * float precision on all eight — and the blob sits at centr·(1 + gap + drift),
+ * which is exactly where the vertex path puts that centroid. The offset is
+ * ZERO, so the gaussian peaks dead centre of the piece: the "inside the shard,
+ * not painted on" read is stronger here than on the procedural cluster, not
+ * weaker. */
 export const EMBER_SHARDS: readonly [number, number] = [0, 1];
 /** Gap → dimming: env = 1/(1 + gap·this). Exploded wide = dim ember, hover
  * re-cohere (gap→0) = brightest — "something still alive inside". */
@@ -656,7 +878,16 @@ export const WARM_GAIN = 0.25;
 // carries shards + chips + the fracture field — a second net there muds).
 // Igloo's sF/ZL/$L construction scaled to 12 points; all in crystal units. --
 export const PLEXUS_POINTS = 12;
-/** Cylinder radius ≈ 0.9 × crystal bound (~1.6 units). */
+/** Cylinder radius ≈ 0.9 × crystal bound (~1.6 units).
+ * ROUND 8-H — re-checked, deliberately UNCHANGED. The "crystal bound" this was
+ * authored against is the Y half-height 1.66, which the authored slab
+ * reproduces EXACTLY by construction (bbox height 3.32 was chosen to preserve
+ * CRYSTAL_SCALE's on-screen size), so the intended 0.87× relationship still
+ * holds. The slab is 15 % wider in x (half-width 1.205 → 1.3945) and 6 % in z,
+ * so orbit points on the jittered inner radius (1.45 × [0.8,1] = 1.16) now
+ * pass closer to the silhouette in x — but PLEXUS_MASK_IN 1.1 already fades
+ * those segments to nearly nothing (smoothstep(1.1, 1.9, 1.16) ≈ 0.02), which
+ * is exactly the case the radial mask exists for. Nothing to retune. */
 export const PLEXUS_RADIUS = 1.45;
 /** Per-point radius jitter: r × [1−this, 1] (igloo ×[0.8, 1]). */
 export const PLEXUS_RADIUS_JIT = 0.2;
