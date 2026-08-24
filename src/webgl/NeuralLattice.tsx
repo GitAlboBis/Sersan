@@ -21,8 +21,10 @@
  *     re-cohere tease (frayed edges re-connect, nodes pull back) + a
  *     localized uRowGlow swell in the row's region of the net.
  *   mode "healthy" (ProductionGrade, anchor "production"): all edges intact;
- *     the three MIDDLE layers are eval → trace → guardrail (membrane discs
- *     at their centroids). The DOM's sequenced `bumpCluster("healthy", i)`
+ *     the three MIDDLE layers are eval → trace → guardrail (their round-4
+ *     membrane discs are retired since round-8 — the owner's unexplained
+ *     "cerchi"; config MEMBRANE_ALPHA 0 gates the mesh build, so
+ *     `build.membrane` is null). The DOM's sequenced `bumpCluster("healthy", i)`
  *     ignites layer i+1's halos (>1.0 flash + shockwave); every ~6s a pulse
  *     traverses the WHOLE net and SURVIVES, flashing each middle layer as it
  *     crosses (RING_T = [.25,.5,.75] — the layer depths). Row ignition →
@@ -59,12 +61,17 @@
  *     construction);
  *   - latches + damps each middle LAYER's MEMBRANE seal (0→1 on first
  *     ignition) and integrates its band phase (ripple = ×3 phase speed while
- *     uRingFlash burns — integration, never a backwards jump) (§B.1);
+ *     uRingFlash burns — integration, never a backwards jump) (§B.1 — since
+ *     round-8 the membrane MESH is retired by default (config MEMBRANE_ALPHA
+ *     0 skips its build → `build.membrane` is null and nothing mounts); this
+ *     cheap seal/phase integration is deliberately KEPT so a config revival
+ *     needs zero driver work);
  *   - integrates the broken NEBULA wisp drift (igloo t·0.05, kicked +0.3
- *     while the death-flash burns) (§B.2);
+ *     while the death-flash burns) (§B.2 — the nebula survived the round-8
+ *     review: it reads as fracture smoke, not a floating circle);
  *   - renders the mode's extra layer mesh (membrane / nebula) inside the SAME
  *     camera-locked inner group at renderOrder −2 (behind the particles; both
- *     additive, so ordering is cosmetic).
+ *     additive, so ordering is cosmetic). Membrane: null since round-8.
  */
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -518,7 +525,10 @@ export function NeuralLattice({
         // Seal latch: the first ignition (bumpCluster or a surge crossing —
         // both land in ringFlashEased) closes membrane i for good; the damp
         // makes the disc visibly grow shut while the flash decays (igloo
-        // ring-seal read).
+        // ring-seal read). ROUND-8: the membrane mesh itself is retired
+        // (build.membrane is null) — this integration keeps running into the
+        // live uniforms so a config revival (MEMBRANE_ALPHA > 0) needs zero
+        // driver work; three scalar damps/adds per frame is noise.
         if (ringFlashEased.current[i] > 0.15) membraneSealTarget.current[i] = 1;
         membraneSeal.current[i] = THREE.MathUtils.damp(
           membraneSeal.current[i],
@@ -649,6 +659,10 @@ export function NeuralLattice({
           // Round-4 §B knobs (write via `uniforms`): the uScrollVel response
           // gains + the membrane / nebula looks. velFlow + velNorm are
           // driver-read (they shape the integration, not a shader).
+          // ROUND-8: membraneAlpha/membraneBulge are INERT at the default —
+          // config MEMBRANE_ALPHA 0 skips the mesh build, so no shader reads
+          // them; reviving needs the config constant > 0 + a rebuild, not
+          // this live knob.
           velNorm: u.uVelNorm.value,
           velSwell: u.uVelSwell.value,
           velStretch: u.uVelStretch.value,

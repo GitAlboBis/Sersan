@@ -102,8 +102,14 @@
  *   3. DEPTH-DOF ILLUSION — size × alpha modulated by local z (the node
  *      table authors ±0.12 of real depth; far = smaller/dimmer, near =
  *      bigger + a softer disc via the vSoft varying) — cheap bokeh, no post.
- *   B1. LAYER MEMBRANES (healthy) — three camera-facing disc quads at the
- *       middle-layer centroids running igloo §5's forcefield recipe verbatim
+ *   B1. LAYER MEMBRANES (healthy) — RETIRED BY DEFAULT since round-8
+ *       (owner: "non capisco i cerchi" — the discs read as unexplained
+ *       floating circles): config MEMBRANE_ALPHA is 0 and the build seam
+ *       below skips constructing the layer entirely when it is 0. The
+ *       machinery (uniforms, driver seal/phase integration, this build
+ *       function) is kept for revival. When alive: three camera-facing disc
+ *       quads at the middle-layer centroids running igloo §5's forcefield
+ *       recipe verbatim
  *       (banded noise `sin(noise·13 + phase − y·10)`, aastep(0.2)·(1−n·0.75),
  *       the mask·base + mask⁵·0.5 + rim·0.5 alpha sum) with procedural value
  *       noise for tWind. Positions derive from the SAME streamCenter/RING_T
@@ -150,6 +156,18 @@
  *   the backend split — the 4-storage-buffer / 5-vertex-slot budget of the
  *   particle material is untouched; each layer's own geometry uses 2 slots
  *   (quad + 1 instanced attribute).
+ *
+ * ROUND-8 (2026-08-22, owner: "non capisco i cerchi ... e neanche le sfere")
+ * — config-side only, zero driver/binding changes, both backends:
+ *   - MEMBRANES OFF: the healthy discs were the unexplained "cerchi" —
+ *     MEMBRANE_ALPHA is 0 and the build seam skips the layer entirely (the
+ *     membrane-only flash terms — ripple alpha/emissive/phase — live inside
+ *     buildMembraneLayer and die with it; the ignition story rides on the
+ *     halo flash/shockwave + the crystal rim flash, both untouched).
+ *   - HALOS TIGHTENED: the "sfere" — NODE_RADIUS −25% (0.034 → 0.0255) and
+ *     HALO_FRINGE_SOFT 0.25 → 0.5 (outer-orbit alpha shed doubled) so a node
+ *     reads as a small crisp >1.0-bloom core; inner core + kiss swell kept.
+ *   - NEBULA reviewed + KEPT (sheared noise wisps, never a disc — config §B.2).
  */
 import {
   unifiedForceStep,
@@ -406,13 +424,18 @@ export interface NeuralFieldUniforms {
   uVelDebris: { value: number };
   /** DRIVER-READ ONLY: |velocity| that maps to uScrollVel = 1. */
   uVelNorm: { value: number };
-  // --- Round-4 §B.1 — ring membranes (healthy builds; dead nodes on broken) --
+  // --- Round-4 §B.1 — ring membranes (healthy builds; dead nodes on broken).
+  // ROUND-8: the membrane MESH is retired by default (config MEMBRANE_ALPHA
+  // 0 skips its build) — these uniforms stay live (the driver still writes
+  // them) so a config revival needs no wiring work, but they drive nothing
+  // until the mesh is built again. ---
   /** Per-ring 0→1 seal envelope (driver-latched on first ignition). */
   uMembraneSeal: { array: number[] };
   /** Per-ring driver-integrated band phase (rad — ripple = faster integration
    * while uRingFlash burns, never a backwards jump). */
   uMembranePhase: { array: number[] };
-  /** Peak membrane alpha (subtle glass ≈ 0.22). */
+  /** Peak membrane alpha (seeded from config MEMBRANE_ALPHA — 0 since
+   * round-8; inert while the mesh is un-built). */
   uMembraneAlpha: { value: number };
   /** Radial bulge per unit row hover (+8% default). */
   uMembraneBulge: { value: number };
@@ -437,7 +460,9 @@ export interface NeuralFieldBuild {
   geometry: Any;
   material: Any;
   uniforms: NeuralFieldUniforms;
-  /** Round-4 §B.1: ring forcefield membranes — healthy builds only. */
+  /** Round-4 §B.1: ring forcefield membranes — healthy builds only, and
+   * ALWAYS null since round-8 (config MEMBRANE_ALPHA 0 gates the build;
+   * set it > 0 to revive). */
   membrane: NeuralFieldLayer | null;
   /** Round-4 §B.2: fracture nebula — broken builds only. */
   nebula: NeuralFieldLayer | null;
@@ -1905,8 +1930,16 @@ export function createNeuralFieldBuild(
   }
 
   // Mode-gated layer builds (shared by BOTH backend branches below — pure
-  // vertex/fragment materials, no compute dependency).
-  const membrane = mode === "healthy" ? buildMembraneLayer() : null;
+  // vertex/fragment materials, no compute dependency). ROUND-8 (owner: "non
+  // capisco i cerchi"): the healthy MEMBRANE discs are retired by default —
+  // MEMBRANE_ALPHA 0 skips the build entirely (no geometry/material, and
+  // NeuralLattice's `build.membrane &&` mount gate then never mounts a mesh),
+  // so the invisible layer costs nothing on either backend. Set the config
+  // alpha > 0 to revive (rebuild required). The broken NEBULA stays: it
+  // renders as sparse sheared smoke wisps at the fracture, never a disc
+  // (see the config §B.2 round-8 review note).
+  const membrane =
+    mode === "healthy" && MEMBRANE_ALPHA > 0 ? buildMembraneLayer() : null;
   const nebula = mode === "broken" ? buildNebulaLayer() : null;
 
   // === Static (no-compute) build ===========================================

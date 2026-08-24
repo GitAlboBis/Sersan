@@ -20,9 +20,10 @@
  *                 and the input→output PULSE dies at the fracture with the
  *                 flash + spark burst + nebula. Hover re-coheres for a beat.
  *   - "healthy" → the ProductionGrade section. All edges intact; the three
- *                 MIDDLE layers are eval → trace → guardrail (membrane discs
- *                 at their centroids); the pulse traverses the whole net and
- *                 SURVIVES, flashing each middle layer's halos as it passes.
+ *                 MIDDLE layers are eval → trace → guardrail; the pulse
+ *                 traverses the whole net and SURVIVES, flashing each middle
+ *                 layer's halos as it passes. (The round-4 membrane discs at
+ *                 the layer centroids are retired since round-8 — see §B.1.)
  *
  * COORDINATE FRAME (unchanged contract): the net lives in a CAMERA-LOCKED
  * group scaled to the section's `[data-lattice-anchor]` rect (w·k × h·k).
@@ -34,9 +35,10 @@
  * REGISTRATION SPINE: the uC0..uC4 spline control points are now the five
  * LAYER CENTROIDS (derived below from the node table — STREAM_CTRL export
  * name kept so the build seam stays byte-identical). No particles ride the
- * spline any more; it only registers the membranes (streamCenter(RING_T[i]) =
- * middle-layer centroids), the fracture nebula + spark origin
- * (streamCenter(uFracture)), and the row attention windows.
+ * spline any more; it only registers the fracture nebula + spark origin
+ * (streamCenter(uFracture)), the row attention windows, and the DORMANT
+ * membranes (streamCenter(RING_T[i]) = middle-layer centroids — retired
+ * round-8, off by default).
  *
  * Node/edge data rides in uniformArrays (uNodePos/uNodeT/uEdgeA/uEdgeB) —
  * legal in any stage, zero storage-buffer / vertex-slot cost — so a resize
@@ -184,7 +186,8 @@ function layerCentroids(
  * kept so the createNeuralFieldBuild seam stays byte-identical). Catmull-Rom
  * passes THROUGH control points at segment boundaries, so
  * streamCenter(RING_T[i]) lands exactly on middle-layer centroid i+1 — the
- * membrane discs re-register onto the layers with zero shader change.
+ * (round-8-dormant) membrane discs re-register onto the layers with zero
+ * shader change whenever they are revived.
  */
 export const STREAM_CTRL: Record<LatticeMode, [number, number, number][]> = {
   broken: layerCentroids(NODES.broken),
@@ -249,12 +252,15 @@ export const SHIMMER_AMP = 0.04;
  * The three MIDDLE layers' topological depth (layers 1/2/3 of 0..4). This is
  * the uRingFlash/uRingGlow/membrane registration: the driver's surge-crossing
  * logic flashes index i when the pulse crosses RING_T[i], node halos read
- * flash/glow index = nodeT·4−1 (gated to the middle layers), and the membrane
- * discs sit at streamCenter(RING_T[i]) = the layer centroids.
+ * flash/glow index = nodeT·4−1 (gated to the middle layers), and the
+ * (round-8-dormant) membrane discs sit at streamCenter(RING_T[i]) = the
+ * layer centroids. With the membranes off, the ignition story rides entirely
+ * on the layer HALOS (flash + shockwave) and the crystal rim flash.
  */
 export const RING_T = [0.25, 0.5, 0.75] as const;
-/** Membrane disc radius (height fractions) — a LAYER PLANE now, sized to the
- * node spread (±0.28), not the old river cross-section. */
+/** Membrane disc radius (height fractions) — a LAYER PLANE, sized to the
+ * node spread (±0.28), not the old river cross-section. Dormant since
+ * round-8 (membranes off by default); kept for revival. */
 export const RING_RADIUS = 0.2;
 /** Node halos read whiter than the edges (0..1 mix → COL_CORE); the ignition
  * flash pushes further toward white. */
@@ -272,10 +278,15 @@ export const RING_SPRING_GAIN = 2.2;
 export const RING_PROX_K = 260;
 
 // --- Node halos (role 1 — was the guide-ring role) ---------------------------
-/** Halo orbit radius (height fractions ≈ 22px on a 680px band) — the crisp
- * icy-ring read at node scale. Camera-facing: the x component is aspect-
- * corrected by uPlaneAspect in-shader (the group is anisotropically scaled). */
-export const NODE_RADIUS = 0.034;
+/** Halo orbit radius (height fractions ≈ 17px on a 680px band) — the crisp
+ * icy-ring read at node scale. ROUND-8 (owner: "neanche le sfere" — the
+ * halos + their loose fringes read as unexplained fuzzy SPHERES): 0.034 →
+ * 0.0255 (−25%) so a node reads as a small luminous CORE (a neuron), not an
+ * orb; pairs with the doubled HALO_FRINGE_SOFT shed (0.25 → 0.5) below.
+ * Camera-facing: the x
+ * component is aspect-corrected by uPlaneAspect in-shader (the group is
+ * anisotropically scaled). */
+export const NODE_RADIUS = 0.0255;
 /** z jitter across the halo (a thin torus, not a flat washer). */
 export const NODE_TUBE = 0.006;
 /** Radial jitter fraction around NODE_RADIUS (some particles orbit inside —
@@ -422,7 +433,12 @@ export const HALO_SIZE_VAR = 0.3;
 export const HALO_BREATH_AMP = 0.045;
 export const HALO_BREATH_RATE = 0.55;
 export const HALO_CORE_WHITE = 0.22;
-export const HALO_FRINGE_SOFT = 0.25;
+/** Alpha shed on the OUTER-orbit fringe particles (offN.y > 0). ROUND-8:
+ * 0.25 → 0.5 — the round-7 −25% went the right direction; doubled so the
+ * loose outer fringe nearly dissolves and the halo reads as a crisp >1.0-
+ * bloom core + faint dusting, not a soft sphere. The inner core
+ * (HALO_CORE_WHITE) and the packet-arrival kiss swell are untouched. */
+export const HALO_FRINGE_SOFT = 0.5;
 /** Fray embers warm toward amber at the VERY tips of the frayed side (the
  * existing failure tone, one step warmer — still desaturated, sub-bloom). */
 export const COL_EMBER_TIP = "#8A5F3E";
@@ -497,6 +513,20 @@ export const CURL_SPEED_2 = 0.9;
  * the SAME streamCenter/RING_T math as ever — with the centroid spine the
  * discs land on the layers for free. Seal (0→1 on first ignition), ripple
  * (uRingFlash) and bulge (uRowGlow) are all uniform-driven.
+ *
+ * ROUND-8 (2026-08-22, owner verbatim: "non capisco i cerchi che ci sono in
+ * una delle reti neurali, e neanche le sfere"): the membrane discs ARE the
+ * "cerchi" — big wavy topographic circles floating around the healthy
+ * layers that read as unexplained blobs now that the crystal + constellation
+ * + packet traffic carry the section. RETIRED BY DEFAULT: MEMBRANE_ALPHA = 0,
+ * and the neuralFieldCompute build seam additionally SKIPS constructing the
+ * membrane geometry/material (and so NeuralLattice never mounts the mesh)
+ * whenever the alpha is 0 — an invisible layer must cost nothing. Everything
+ * else is KEPT for a future owner revival: all constants below, the
+ * uMembraneSeal/Phase/Alpha/Bulge uniforms, and the driver's seal-latch +
+ * band-phase integration in NeuralLattice. To revive: set MEMBRANE_ALPHA
+ * back to the round-6 taste value 0.18 (a rebuild is required — the live
+ * uMembraneAlpha dev knob alone cannot revive a mesh that was never built).
  */
 /** Quad half-size ÷ disc radius — margin covers the ripple + hover bulge. */
 export const MEMBRANE_MARGIN = 1.35;
@@ -507,9 +537,11 @@ export const MEMBRANE_NOISE_SCALE = 3.0;
 export const MEMBRANE_BAND_THRESH = 0.2;
 /** The `mask·base` weight of the igloo alpha sum. */
 export const MEMBRANE_BAND_BASE = 0.5;
-/** Peak membrane alpha — subtle glass, not a wall (round-6: eased 0.22 →
- * 0.18 for the larger layer-plane discs). */
-export const MEMBRANE_ALPHA = 0.18;
+/** Peak membrane alpha. ROUND-8: 0 — membranes are retired by default (see
+ * the section header above); 0 ALSO gates the mesh build itself in
+ * neuralFieldCompute. Revive: restore the round-6 taste value 0.18 (any >0
+ * value makes the seam build + mount the layer again on the next rebuild). */
+export const MEMBRANE_ALPHA = 0;
 /** Membrane emissive — just over the bloom floor so the glass haloes
  * faintly; the ignition flash pushes it further. */
 export const MEMBRANE_EMISSIVE = 1.35;
@@ -531,6 +563,12 @@ export const MEMBRANE_SEAL_DAMP = 5.0;
  * the round-6 spine puts AT the broken crystal, so the smoke wraps the
  * fractured stone (intentional; spec §4). Igloo tunnel-smoke recipe verbatim.
  * Flares on pulse death (uFlash), thins on the row-2 re-cohere tease.
+ *
+ * ROUND-8 REVIEW: the nebula STAYS. Unlike the retired membrane discs it
+ * never renders as a circle — alpha = pow(v1·v2·v3, 3)·3 keeps only the
+ * peaks of three multiplied noise taps (sparse sheared WISPS; the radial
+ * term merely contains them inside the quad, it is never a visible disc
+ * edge), so it reads as narrative smoke at the fracture, not a floating blob.
  */
 /** Per-quad [dx, dy, size, seed] in LOCAL units, offsets from the fracture
  * point (downstream-biased — the smoke hangs over the degraded side). */
