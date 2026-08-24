@@ -211,8 +211,9 @@
  *       it stays a particle, so it reads as an object riding the thread.
  *   L2. THE PARTICLES ARE TRAFFIC NOW — the braid is zeroed (STRAND_RADIUS 0)
  *       so a bead sits ON its line rather than ~4px beside it, the resting
- *       alpha drops to a dust floor (STREAM_ALPHA 0.06) and rises to
- *       BEAD_ALPHA 0.9 where a packet or the surge head is passing, and the
+ *       alpha drops to a dust floor (STREAM_ALPHA — 0.012 since round-8-I cut
+ *       the haze, was 0.06) and rises to BEAD_ALPHA 0.9 where a packet or the
+ *       surge head is passing (the bead end is untouched by that cut), and the
  *       sprite shrinks to DUST_SIZE at rest / swells by PACKET_SIZE at a bead.
  *   L3. RE-ALLOCATION — NODE_FRACTION 0.28 → 0.46 and STAR_FLARE_FRACTION
  *       0.42 → 0.70: a full-tier star goes 25 → 40 particles and its four
@@ -1836,10 +1837,11 @@ export function createNeuralFieldBuild(
     // ROUND-8-G — THE LINK PARTICLE IS TRAFFIC, NOT THREAD. The thread is the
     // LineSegments layer (buildLinkLineLayer); these particles are the beads
     // that travel it, so their alpha rides a ramp instead of a constant:
-    // faint DUST at rest (uDustAlpha 0.06 — post-blend 0.090, a soft core for
-    // the 0.568 line) rising to uBeadAlpha 0.9 where a packet or the surge
-    // head is passing (post-blend 3.6 / 5.0 — over the ≈1.0 bloom floor, so
-    // the traffic BLOOMS and the mesh under it does not).
+    // faint DUST at rest (uDustAlpha — round-8-I 0.012, post-blend 0.018: a
+    // grain ON the 0.568 line, where 0.06/0.090 was a fog OVER the band)
+    // rising to uBeadAlpha 0.9 where a packet or the surge head is passing
+    // (post-blend 3.6 / 5.0 — over the ≈1.0 bloom floor, so the traffic BLOOMS
+    // and the mesh under it does not; the bead end did NOT move).
     const traffic = clamp(
       packet.add(surge.mul(0.8)),
       float(0),

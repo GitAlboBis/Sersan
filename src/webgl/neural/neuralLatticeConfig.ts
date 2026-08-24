@@ -91,11 +91,31 @@
  *      the stars (NODE_FRACTION 0.28 → 0.46, STAR_FLARE_FRACTION 0.42 → 0.70:
  *      the 4 flare rays go from 2.6 to 7.0 particles each);
  *   3. the surviving link particles are TRAFFIC, not thread — STREAM_ALPHA is
- *      a 0.06 dust floor with BEAD_ALPHA 0.9 as its traveling peak, and the
- *      beads got more frequent (PACKET_COUNT 1 → 2, RATE 0.22 → 0.3) because
- *      they are now the only thing moving on the lines.
+ *      a 0.06 dust floor (0.012 since round-8-I, see below) with BEAD_ALPHA 0.9
+ *      as its traveling peak, and the beads got more frequent (PACKET_COUNT
+ *      1 → 2, RATE 0.22 → 0.3) because they are now the only thing moving on
+ *      the lines.
  * Totals are unchanged (9000 / 3200) and the fill budget goes DOWN ~7% (see
  * NODE_FRACTION). No new bindings, no new storage, no per-frame allocation.
+ *
+ * ROUND-8-I (2026-08-24) — KILL THE HAZE. Second live pass on the round-8-G
+ * build (owner's Chrome, foregrounded, authored slab confirmed loading). With
+ * the LineSegments layer carrying the structure, the ~4,800 link-traffic
+ * particles sitting AT REST were painting a FOG across the band — the reference
+ * image has lines and stars and nothing in between, and the haze was flattening
+ * both. Two constants, both live-verified, nothing structural:
+ *   STREAM_ALPHA (uDustAlpha) 0.06 → **0.012**  — the resting dust drops 5×
+ *   STAR_PUNCH   (uStarPunch) 2.2  → **3.2**    — the stars take the band back
+ * Measured effect: the integrated resting-dust light falls from ≈5.2k to ≈1.0k
+ * px²·lum across the band while the star core rises 7.33 → 10.67 post-blend, so
+ * the star-to-haze ratio improves **7.3×**. What is NOT touched, by
+ * construction: the packet BEADS (they ride uBeadAlpha 0.9, the other end of the
+ * traffic ramp — still 3.65 post-blend) and the fracture DEBRIS (an ABSOLUTE
+ * branch since round-8-G — see DEBRIS_ALPHA_MAX, whose read actually gains,
+ * landing at 18.3× the resting dust where it sat at 3.7×). One consequence to
+ * watch: at punch 3.2 the star FLARE TIP crosses the bloom floor for the first
+ * time (1.029 vs the 0.707 it had) — the derivation and the tie point are at
+ * STAR_CORE_EMIS.
  *
  * ROUND-8-F (2026-08-22) — BAKE THE LIVE TUNING. Round-8-D's LOOK numbers were
  * derived arithmetically and never eyeballed; shipped, the plexus read as faint
@@ -849,14 +869,32 @@ export const STAR_Z = 0.0035;
 export const STAR_CORE_SIZE = 1.75;
 export const STAR_TIP_SIZE = 0.45;
 /** Emissive multiplier at the core → at a tip (both × RING_EMISSIVE × the
- * round-8-F STAR_PUNCH, so the core lands at 3.0·2.2·1.25 = 8.25 and the tip
- * at 3.0·2.2·0.75 = 4.95). Post-blend the CORE blooms hard (0.889 tone × 8.25
- * × NODE_ALPHA 1.0 = 7.33) while a flare TIP stays at 0.794 × 4.95 ×
- * STAR_TIP_ALPHA 0.18 = 0.71 — under the ≈1.0 threshold, so the spikes stay
- * crisp instead of smearing into the core's halo. */
+ * round-8-I STAR_PUNCH, so the core lands at 3.0·3.2·1.25 = 12.0 and the tip
+ * at 3.0·3.2·0.75 = 7.2). Post-blend the CORE blooms hard (0.889 tone × 12.0 ×
+ * NODE_ALPHA 1.0 = **10.67**, was 7.33 at punch 2.2).
+ *
+ * ⚠ ROUND-8-I — THE FLARE TIP NOW CROSSES THE BLOOM FLOOR, reported rather than
+ * silently accepted. A tip is 0.794 × 7.2 × STAR_TIP_ALPHA 0.18 = **1.029**
+ * against the ≈1.0 threshold (it was 0.707 at punch 2.2, deliberately under it
+ * so "the spikes stay crisp instead of smearing into the core's halo"). The
+ * crossing is a hairline — 3% over — and the ray's product emis×alpha is
+ * monotonic from 1.25×1.0 at the centre to 0.75×0.18 at the tip, so nothing on
+ * the star is dimmer than the tip: at 3.2 the WHOLE star, spikes included, is
+ * bloom input. The exact tie is
+ *   STAR_PUNCH = 1 / (0.794 · 3.0 · STAR_TIP_EMIS 0.75 · STAR_TIP_ALPHA 0.18)
+ *              = **3.110**
+ * so 3.10 buys the old crisp-spike contract back for a 3% loss of punch, and
+ * STAR_TIP_ALPHA 0.175 does the same without touching the core. Left at the
+ * live-verified 3.2 on purpose: the owner's reference is bright white star
+ * nodes, and a whisper of bloom on the spikes serves that read — but if the
+ * next browser pass sees the four rays smearing into the core halo, those two
+ * numbers are the fix, not the punch. */
 export const STAR_CORE_EMIS = 1.25;
 export const STAR_TIP_EMIS = 0.75;
-/** Alpha at a flare tip (core = 1) and the falloff exponent. */
+/** Alpha at a flare tip (core = 1) and the falloff exponent. ROUND-8-I: this is
+ * one of the two knobs that decides whether the flare rays bloom — see the tie
+ * derivation at STAR_CORE_EMIS (0.175 keeps them under the threshold at
+ * STAR_PUNCH 3.2). */
 export const STAR_TIP_ALPHA = 0.18;
 export const STAR_ALPHA_POW = 1.4;
 /** Extra whitening of the innermost core particles (on top of RING_WHITE). */
@@ -875,6 +913,19 @@ export const NODE_ALPHA = 1.0;
  *
  * STAR_PUNCH scales the star's >1.0 core emissive (see STAR_CORE_EMIS) — 2.2
  * is what made the cloud read as a star MESH rather than dust.
+ *
+ * ROUND-8-I (LIVE-VERIFIED, the haze pass): 2.2 → **3.2**. This is the second
+ * half of the STREAM_ALPHA cut and it only works BECAUSE of it: with ~4,800
+ * resting link particles fogging the band, punching the stars harder just made
+ * a brighter fog: the eye reads the star/surround RATIO, not the star. With the
+ * dust at 0.012 the same punch lands on near-black and the reference grammar
+ * finally appears — crisp blue triangles with bright white nodes at the
+ * vertices. Post-blend: core 0.889 × (RING_EMISSIVE 3.0 × 3.2 × STAR_CORE_EMIS
+ * 1.25 = 12.0) × NODE_ALPHA 1.0 = **10.67** (was 7.33) = 18.8× the link line's
+ * 0.568 and 593× the resting dust. Cost: ZERO — this scales emissive, it does
+ * not resize or add sprites. Ceiling to know before raising it further: at 3.11
+ * the star FLARE TIPS cross the bloom threshold (STAR_CORE_EMIS).
+ *
  * STAR_SPREAD stretches the whole BAKED star offset (core blob AND flare rays
  * together): at 1.35 the core blob radius is STAR_CORE_R 0.0055 × 1.35 =
  * 0.0074 (≈5.0px on a 680px band) and a flare ray reaches STAR_FLARE_LEN 0.03
@@ -883,7 +934,7 @@ export const NODE_ALPHA = 1.0;
  * Neither knob changes fill cost — they move particles, they do not resize
  * sprites (that is NEURAL_POINT_SIZE).
  */
-export const STAR_PUNCH = 2.2;
+export const STAR_PUNCH = 3.2;
 export const STAR_SPREAD = 1.35;
 /**
  * Fraction of particles that are STAR particles (both modes).
@@ -953,6 +1004,14 @@ export const DEBRIS_GAP = 0.02;
  * BEAD_ALPHA as its travelling peak, and multiplying the debris by either
  * would be wrong — dead links carry no traffic. The debris branch therefore
  * became ABSOLUTE, and the constant re-baked to the 0.217 that shipped.
+ *
+ * ROUND-8-I — RE-CHECKED, DELIBERATELY UNCHANGED. The haze pass cut the resting
+ * dust 5× (STREAM_ALPHA 0.06 → 0.012) and the question was whether the fracture
+ * debris rides the same alpha. It does not — that is exactly what "the debris
+ * branch is ABSOLUTE" above buys — so the fray/debris story keeps its full
+ * level while the healthy dust around it drops, and the break goes from 3.7× to
+ * **18.3×** its surroundings. No split of the constant is owed; the round makes
+ * the fracture read louder, not quieter.
  */
 export const DEBRIS_ALPHA_MAX = 0.22;
 /** How far frayed particles scatter OFF their link line (local units) —
@@ -1309,17 +1368,24 @@ export const DOF_SIZE_GAIN = 0.6;
  * three converts a hex Color: lum(COL_CYAN #3BE1FF) = 0.6201, lum(COL_BLUE
  * #2A7FFF) = 0.2289, lum(COL_CORE #EAFBFF) = 0.9371.
  *
- * ROUND-8-G LEDGER (post-blend luminance, threshold = 1.0):
- *   star CORE  7.33   blooms hard   (3.0 × STAR_PUNCH 2.2 × STAR_CORE_EMIS
- *                                    1.25 = 8.25, tone 0.889, NODE_ALPHA 1.0)
- *   packet BEAD 3.65  blooms        (see BEAD_ALPHA)
- *   star flare tip 0.71             (crisp spikes, no smear — unchanged)
- *   LINK LINE  0.568  NEVER blooms  (see LINE_EMISSIVE; hard-capped at 0.968)
- *   resting dust 0.090              (5.9% of the line it rides — a soft core,
- *                                    not a competing blob)
- * The star core therefore sits **12.9× the link line** at rest and 7.6× even
- * at the line's absolute ceiling: stars stay the subject by a wide margin,
- * which is the round-8-G brief's contract.
+ * ROUND-8-I LEDGER (post-blend luminance, threshold = 1.0; 8-G value in
+ * brackets where it moved):
+ *   star CORE  10.67  blooms hard   (3.0 × STAR_PUNCH 3.2 × STAR_CORE_EMIS
+ *                                    1.25 = 12.0, tone 0.889, NODE_ALPHA 1.0)
+ *                                   [7.33]
+ *   packet BEAD 3.65  blooms        UNCHANGED — beads ride uBeadAlpha, not the
+ *                                   dust floor (see BEAD_ALPHA)
+ *   star flare tip 1.029            [0.71] ⚠ now just over the floor — see the
+ *                                   tie derivation at STAR_CORE_EMIS
+ *   LINK LINE  0.568  NEVER blooms  UNCHANGED (see LINE_EMISSIVE; capped 0.968)
+ *   resting dust 0.018              [0.090] — 3.2% of the line it rides, i.e.
+ *                                   a grain ON the line instead of a fog over
+ *                                   the band (see STREAM_ALPHA)
+ *   fracture debris 0.22 alpha      UNCHANGED (absolute branch — DEBRIS_ALPHA_MAX)
+ * The star core therefore sits **18.8× the link line** at rest (was 12.9×),
+ * 11.0× at the line's absolute ceiling, and **593× the resting dust** (was
+ * 81×): stars are the subject by an order of magnitude, which is what the
+ * owner's reference image actually looks like.
  *
  * ROUND-8-F was LIVE-MEASURED (the owner's Chrome pass) and lifted
  * STREAM_EMISSIVE 1.6 → 2.1 to stop the particle-drawn links reading as dust.
@@ -1334,12 +1400,38 @@ export const RING_EMISSIVE = 3.0;
 /**
  * RESTING alpha of a LINK particle — the DUST FLOOR since round-8-G (0.62 →
  * 0.06). These particles no longer draw the thread, so at rest they must not
- * pretend to: post-blend 0.6201 × (2.1 × midProfile 1.15) × 0.06 = **0.090**,
- * i.e. 16% of the line's own 0.568 spread over a 3.4px sprite — it reads as
- * the line's soft core, never as a bead. BEAD_ALPHA is the other end of the
- * ramp. Star cores use NODE_ALPHA instead. Live: `uniforms.uDustAlpha`.
+ * pretend to. BEAD_ALPHA is the other end of the same ramp; star cores use
+ * NODE_ALPHA instead. Live: `uniforms.uDustAlpha`.
+ *
+ * ═══ ROUND-8-I (LIVE-VERIFIED) — 0.06 → **0.012**. THE HAZE. ═══
+ *
+ * Round-8-G sized this as "the line's soft core" (post-blend 0.6201 × (2.1 ×
+ * midProfile 1.15) × 0.06 = 0.090, 16% of the line's own 0.568) and checked it
+ * PER PARTICLE. That was the error: the quantity the eye integrates is the
+ * COVERAGE. 4,828 resting link particles × a 3.4px² DUST_SIZE sprite ≈ 58k px²
+ * of additive fill at 0.090 each ⇒ **≈5.2k px²·lum smeared over the whole
+ * band** — a fog, and the reference image has no fog in it, only lines and
+ * stars. Live, dropping this one number transformed the read: crisp blue
+ * triangles + bright white star nodes, i.e. the owner's grammar.
+ *   post-blend per particle  0.090 → **0.018** (3.2% of the line, was 16%)
+ *   integrated band haze     ≈5.2k → **≈1.0k** px²·lum (−80%)
+ * Still VISIBLE, deliberately: 0.018 lumLin encodes to ~36/255 of cyan added
+ * over the near-black page navy, so the line keeps a soft core and the traffic
+ * keeps a trail — it just stops being a veil.
+ *
+ * WHAT THIS DOES NOT TOUCH (both checked in neuralFieldCompute, not assumed):
+ *   - the packet BEADS. `mix(uDustAlpha, uBeadAlpha, traffic)` — a bead sits at
+ *     traffic ≈ 1, i.e. on BEAD_ALPHA 0.9, so its 3.65 post-blend is untouched.
+ *     The beads are the owner-loved feature and they now stand **50× above the
+ *     dust they travel through** instead of 15×.
+ *   - the FRACTURE DEBRIS / fray story, which rides the SAME particles but NOT
+ *     this constant: since round-8-G the debris branch is ABSOLUTE
+ *     (`mix(liveA, debrisA, disp)` with debrisA = DEBRIS_ALPHA_MAX 0.22 × the
+ *     fade ramp), because a dead link carries no traffic. So no split is owed —
+ *     and the fracture actually reads STRONGER, the debris going from 3.7× to
+ *     **18.3×** the healthy resting dust.
  */
-export const STREAM_ALPHA = 0.06;
+export const STREAM_ALPHA = 0.012;
 /**
  * PEAK alpha of a LINK particle at a packet bead / under the surge head — the
  * top of the `mix(STREAM_ALPHA, BEAD_ALPHA, traffic)` ramp, where traffic =

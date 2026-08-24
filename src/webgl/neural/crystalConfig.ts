@@ -125,6 +125,57 @@
  *      / 1 114 tris it is cheaper than the procedural LITE build.
  * Provenance unchanged: nothing from igloo entered this repo — the GLBs are
  * authored from primitives, plane cuts and booleans; only NUMBERS transferred.
+ *
+ * ROUND 8-I — THE SECOND LIVE PASS (2026-08-24, owner's Chrome on the shipped
+ * authored slab: `authored:true, tris:450`). Three findings, two fixed here:
+ *
+ *  1. THE STONE WAS MOIRÉING — a checkerboard/corduroy across every plane.
+ *     Proven live NOT to be the in-ice mark (it survives `uMarkGain = 0`): it is
+ *     the round-8-E/F ripple carrier ALIASING, i.e. exactly the size dependency
+ *     the round-8-E check flagged and then mis-sized. The retune assumed a
+ *     1 470 px band (250 px per crystal unit); the LIVE band is **~725 px**, so
+ *     the stone spans **123 px/unit** and RIPPLE_FREQ 26 was running at **4.7
+ *     px/cycle** — train 2 at **4.1**, which is the check's own "~4.2" warning
+ *     arriving. Below ~8 px/cycle an analytic sine has nothing to filter it
+ *     (a mip-mapped normal map filters itself; ours cannot), and on the
+ *     round-8-H slab's LARGE FLAT planes two crossed trains at a constant
+ *     normal are a perfectly regular screen-space lattice: literally a
+ *     checkerboard. That is why this appeared only after the authored geometry
+ *     landed — on the procedural potato, curvature swept the screen frequency
+ *     continuously and the same aliasing read as noise. Fixed at the FREQUENCY,
+ *     not hidden in the amplitude: RIPPLE_FREQ 26 → **12** (10.3 / 8.9
+ *     px/cycle for the two trains) with RIPPLE_AMP re-derived 0.018 → **0.0385**
+ *     so the DELIVERED surface tilt stays igloo's 25°.
+ *  2. Two more live-verified cuts, both the same story — the authored slab's big
+ *     coherent planes want less noise ON them: FROST_AMP 1.0 → **0.35** (the
+ *     veins were fighting the planes the slab exists to provide) and CRYSTAL_CA
+ *     0.16 → **0.10** (dispersion spread on a flat plane reads as colour
+ *     speckle, not as glass — and 0.10 is igloo's measured value, the return
+ *     §D4 predicted).
+ *  3. The in-ice MARK still does not read as the SERSAN mark even on coherent
+ *     planes. That is now an OWNER decision, not a tuning one — MARK_GAIN stays
+ *     at 0.70 and the honest options are written out there.
+ *
+ * RE-DERIVED VALUE TABLE (8-H → 8-I; lumLin, ratios WCAG-form as in the doc):
+ *   body typical          0.0396 → 0.0396   UNCHANGED (frost's mean factor is
+ *                                           1.0 at any amplitude)
+ *   body ÷ fog core       0.550  → 0.550    UNCHANGED
+ *   body vs fog contrast  1.36:1 → 1.36:1   UNCHANGED (igloo 1.22:1)
+ *   brightest ordinary px 0.276  → 0.276    UNCHANGED
+ *   brightest ÷ body      7.0×   → 7.0×     UNCHANGED (igloo caps at 3.4×)
+ *   brightest vs fog      2.68:1 → 2.68:1   UNCHANGED (igloo 2.5:1)
+ *   darkest body          0.0199 → **0.0230**  the frost's dark vein shallows
+ *   stone dynamic range   4.66:1 → **4.47:1**  ← the ONLY row that moves, and
+ *                                           the price of the frost cut
+ *                                           (igloo 7.9:1)
+ * The ripple pair and the CA cannot move the table by construction: the first
+ * re-distributes normals at CONSTANT tilt (only their screen frequency changed),
+ * the second re-distributes channels without scaling luminance. That is the
+ * whole point of re-deriving the amplitude instead of just lowering it — a round
+ * that changes the stone's entire texture read leaves the value world of rounds
+ * 8-E/F/H standing.
+ * BONUS, measured while re-deriving: the frost cut also closes a latent ordering
+ * violation the 8-H mark level had on the brightest frost vein — see MARK_GAIN.
  */
 import type { LatticeMode } from "./neuralLatticeConfig";
 
@@ -254,8 +305,21 @@ export const SHARD_SPIN = 0.15;
 export const CRYSTAL_IOR = 1.18;
 /** Round 7 — dispersion visibility up (igloo's fringes are clearly visible):
  * base uCA 0.1→0.16; igloo's 0.1 rode a real screen RT, our low-frequency
- * procedural backdrop needs more per-channel eta spread to show fringes. */
-export const CRYSTAL_CA = 0.16; // uChromaticAberration
+ * procedural backdrop needs more per-channel eta spread to show fringes.
+ *
+ * ROUND 8-I (LIVE-VERIFIED on the authored slab): 0.16 → **0.10** — back to
+ * igloo's measured value, for the reason §D4 predicted ("ours higher by design,
+ * compensating a low-contrast procedural backdrop — re-check after
+ * BACKDROP_GAIN"). The round-7 boost was compensation for a mesh with NO
+ * coplanar patches, where every micro-facet tapped its own patch of the backdrop
+ * and needed extra eta spread to show a fringe at all. On the round-8-H slab a
+ * single plane refracts ONE coherent image, and 0.16 stopped reading as
+ * dispersion and started reading as colour SPECKLE across the plane. Delivered:
+ * grazing effective CA = 0.10 × (1 + 1·CA_EDGE_BOOST 1.6) = **0.26** (was
+ * 0.416), face-on **0.10** (was 0.16). Chroma only — it re-distributes the
+ * body's channels without scaling luminance, so like CA_EDGE_BOOST it appears
+ * NOWHERE in the value table. */
+export const CRYSTAL_CA = 0.1; // uChromaticAberration
 /** Round 7 — fresnel-weighted CA boost: effective CA = uCA·(1 + fres·this),
  * so the fringes concentrate on the SILHOUETTE (igloo's read) while the body
  * stays coherent. Dev-tunable (uCAEdge).
@@ -351,6 +415,9 @@ export const SPEC_POW = 14.0;
  * brightest ÷ body 7.0×, brightest vs fog 2.68:1, dynamic range 4.66:1 (4.74
  * before, the hair of difference being FACET_VALUE_JIT lifting the darkest
  * body 0.0190 → 0.0199).
+ * (ROUND 8-I: this constant and the peak it sets are UNCHANGED; only the
+ * darkest body moved again — 0.0199 → 0.0230 as FROST_AMP dropped to 0.35 —
+ * so the dynamic range reads **4.47:1**. Full table in the file header.)
  * ⚠ The ±40 % spec jitter was itself a micro-facet device: between two LARGE
  * planes at the same angle to the key light it reads as a shading error, not
  * as mineral variation. That is why the jitter had to come down with the gain
@@ -477,15 +544,48 @@ export const SPARKLE_GAIN = 0.3;
  * the stone into glassy regions and frosted regions. Ours sat at 5.5, i.e.
  * only 1.45× away from the relief band (RIPPLE_FREQ 8) — the two mudded into
  * a single mid-frequency corrugation. 5.5 → 0.9 separates them by 28.9×
- * (igloo ≈ 32×): frost becomes zoning, ripple becomes wet shimmer. */
+ * (igloo ≈ 32×): frost becomes zoning, ripple becomes wet shimmer.
+ *
+ * ROUND 8-I — the separation NARROWS and is left alone, deliberately. The
+ * anti-aliasing retune takes the relief band to RIPPLE_FREQ 12, so the two are
+ * now **13.3×** apart, not 28.9×. Still more than an order of magnitude, so the
+ * §A2 defect (one mudded mid-frequency corrugation at 1.45×) is nowhere near
+ * returning, and the frost's own amplitude is cut 65% this round on top. If the
+ * frost ever starts reading as RELIEF rather than as zoning, the one-knob fix is
+ * here (0.9 → 0.4 restores ~30×), not on the carrier — the carrier is pinned by
+ * the pixel grid (see RIPPLE_FREQ). */
 export const FROST_FREQ = 0.9;
 /** Master frost amplitude (signed noise ×this) — dev-tunable (uFrostAmp);
- * 0 = uniform glass. Lite never compiles the frost octave. */
-export const FROST_AMP = 1.0;
+ * 0 = uniform glass. Lite never compiles the frost octave.
+ *
+ * ROUND 8-I (LIVE-VERIFIED on the authored slab): 1.0 → **0.35**. The frost
+ * veins were FIGHTING the large planes the round-8-H slab exists to provide:
+ * a full-amplitude vein sweeping across a single 19%-of-the-surface plane
+ * breaks it into patches, which is the incoherence the authored geometry was
+ * bought to remove. `frost` is signed, so the amplitude is the whole span —
+ * ±0.5·this — and every downstream K scales with it:
+ *   roughEff  0.27 … 0.45   →  **0.329 … 0.392**  (FROST_ROUGH_K)
+ *   thickEff  1.20 … 2.80   →  **1.72 … 2.28**    (FROST_THICK_K)
+ *   body ×    0.725 … 1.275 →  **0.904 … 1.096**  (FROST_DENSITY_K)
+ * Value-table effect: the MEAN factor is 1.0 either way, so body typical is
+ * untouched at 0.0396; only the extremes close in — darkest body 0.0199 →
+ * 0.0230, i.e. dynamic range 4.66:1 → **4.47:1**. That narrowing is the price
+ * of this cut and it is the only row of the table that moves.
+ * ⚠ COST TO KNOW: the roughness ZONING is largely surrendered — the delivered
+ * spread is now ±9% around CRYSTAL_ROUGH where igloo measures p10/p90
+ * 0.19/0.44. If the stone starts reading as ONE uniform material, raise
+ * FROST_ROUGH_K (0.5 → 1.43 restores the old roughness range at this
+ * amplitude) rather than raising this — the thickness and density veins are the
+ * ones that were breaking the planes. */
+export const FROST_AMP = 0.35;
 /** Frost → roughness modulation: roughEff = rough·(1 + frost·this).
- * ROUND 8-E §D2: 0.9 → 0.5. With CRYSTAL_ROUGH 0.36 the veined range becomes
- * 0.36·[0.75, 1.25] = 0.27 … 0.45 — igloo's measured p10/p50/p90 of
- * 0.19/0.36/0.44 (their `0.65 × G` effective roughness). */
+ * ROUND 8-E §D2: 0.9 → 0.5. With CRYSTAL_ROUGH 0.36 and the then-current
+ * FROST_AMP 1.0 the veined range was 0.36·[0.75, 1.25] = 0.27 … 0.45 — igloo's
+ * measured p10/p50/p90 of 0.19/0.36/0.44 (their `0.65 × G` effective
+ * roughness). ROUND 8-I leaves this constant alone but FROST_AMP 1.0 → 0.35
+ * tightens the delivered range to **0.329 … 0.392**; 1.43 here would restore
+ * the igloo distribution without re-introducing the density/thickness veining
+ * that the amplitude cut removed. */
 export const FROST_ROUGH_K = 0.5;
 /** Frost → thickness modulation (refraction depth veins). */
 export const FROST_THICK_K = 0.8;
@@ -725,10 +825,17 @@ export const MARK_COLOR = "#D8F4FF";
  *      still out-reads its inclusion — a lit stone with a mark inside, not a
  *      lamp with a logo. The TIE is at G = (0.276 − 0.0396)/0.2595 = **0.91**
  *      (CHECK re-derivation; the first pass wrote 0.88, which is the same
- *      bound with a margin rather than the solution). Keep 0.88 as the
- *      operational ceiling for any live A/B — it buys back the ~4 % the frost
- *      density factor can add on top of the mark (×1.275 at its brightest
- *      vein) before the ordering flips.
+ *      bound with a margin rather than the solution). That typical-body tie is
+ *      only half the story: the frost density factor multiplies BOTH the mark
+ *      and the body, so the binding case is the brightest frost VEIN. ROUND 8-I
+ *      re-derived it after the FROST_AMP cut and found a latent violation:
+ *        frost span ×1.275 (8-H): vein tie at G = (0.276 − 0.0466)/(0.2595 ×
+ *          1.275) = **0.693** — the shipped 0.70 was a hair OVER the ordering
+ *          bound wherever the frost peaked;
+ *        frost span ×1.096 (8-I): vein tie at G = (0.276 − 0.0420)/(0.2595 ×
+ *          1.096) = **0.822** — 0.70 now clears it by 17.5 %.
+ *      So the operational ceiling for any live A/B is **0.82** (0.91 is the
+ *      typical-body tie, reachable only where the frost is neutral).
  *   2. BLOOM. Per channel the addition is (0.144, 0.190, 0.210) — post-blend
  *      ×0.94 = 0.197 peak, nowhere near the ≈1.0 selective-bloom threshold, so
  *      MARK_COLOR's "the mark itself can never trip bloom" contract survives
@@ -738,9 +845,43 @@ export const MARK_COLOR = "#D8F4FF";
  *      narrower than that spread lands at ~0.7 of full coverage: 2.42:1 rather
  *      than 3.03:1. That is the realistic floor, and it is why the value was
  *      not set at the 3:1 minimum.
- * Live A/B range for the browser pass: **0.55 – 0.85** (uMarkGain on the dev
- * handle), never past 0.88. If the mark reads but the stone starts to glow,
- * cut BODY_DARKEN's neighbours, not this — the mark rides that multiply.
+ * ═══ ROUND 8-I (LIVE) — THE LEVEL WAS NEVER THE PROBLEM, AND NEITHER, IT TURNS
+ * OUT, WAS THE GEOMETRY ALONE. THIS IS AN OWNER DECISION FROM HERE. ═══
+ *
+ * The 8-H bet was that spatial coherence would make the mark legible and that
+ * the gain was then free to move. Half of it held: on the authored slab the
+ * mark is a coherent luminous presence instead of confetti. The other half did
+ * not. A/B'd live on the clean stone at **uMarkGain 0.7 → 1.1 with uMarkScale
+ * 0.6**, it is still NOT recognizable as the SERSAN mark.
+ *
+ * WHY — a FORM problem, not a number one. 34 planar patches means 34
+ * independent refracted images: each patch taps its own region of the RT
+ * through its own refracted direction, so the subject arrives cut into 34
+ * offset pieces. A CHUNKY SOLID SILHOUETTE survives that — igloo's penguin is
+ * legible by MASS and shading, and a few offset pieces of a solid body still
+ * read as that body. A THIN-STROKED GEOMETRIC LOGO does not: cut a hairline
+ * stroke into 34 offset pieces and there is no stroke left to follow. Raising
+ * the gain only brightens the pieces, which is exactly what both live A/Bs
+ * measured (0.35 → 2.4 on the old mesh, 0.7 → 1.1 on the slab).
+ *
+ * MARK_GAIN THEREFORE STAYS AT 0.70. Nothing above is retracted — the ordering,
+ * bloom and sampling arithmetic all still hold; it is the SUBJECT that is
+ * wrong. The options are the owner's, and NONE of them is implemented here:
+ *   (a) ACCEPT — keep this subject and read it as a soft luminous presence
+ *       inside the ice rather than as a readable logo. Zero work, zero risk;
+ *       the stone already looks like this.
+ *   (b) SWAP THE RT SUBJECT for a CHUNKY SOLID FORM whose silhouette survives
+ *       refraction — a simplified solid mark (filled counters, heavy weight, no
+ *       hairlines) or an abstract solid core. The igloo-faithful path, and the
+ *       only one that can plausibly yield a READABLE inclusion. Cost is
+ *       authoring the subject, not code: the RT rig, its +2 fragment bindings,
+ *       the lod law and MARK_RT_* are all unchanged by it.
+ *   (c) DROP THE INNER OBJECT — MARK_GAIN 0, the mark branch stops compiling on
+ *       the healthy build (−1 texture −1 sampler), and the stone reads as pure
+ *       ice. Cheapest, and defensible: an empty stone is not a defect.
+ * Until that call is made the live A/B range stands at 0.55 – 0.82 (ceiling per
+ * check 1) — but the honest expectation is that NO value in it makes the mark
+ * readable, so spending a browser pass on this knob is not recommended.
  *
  * NOTE the fallback: if the GLB ever fails to load, crystalBuild rebuilds the
  * procedural icosahedron, on which this gain will look like confetti again.
@@ -837,21 +978,98 @@ export const EMBER_FLICKER = 0.15;
  * mip-mapped normal map filters itself; an analytic sine does not. This is
  * the one place where "match the measurement exactly" is the wrong
  * instruction (doc §D1).
+ *
+ * ═══ ROUND 8-I — 26 → **12**. THE WALL WAS ALREADY BREACHED; THE 250 px/unit
+ * ABOVE WAS NEVER MEASURED. ═══
+ *
+ * Live: every plane of the stone carried a checkerboard/corduroy. Proven not to
+ * be the mark (survives `uMarkGain = 0`), and dropping uRippleAmp cleaned it
+ * completely — so it is this carrier, aliasing. The size arithmetic, done
+ * properly this time:
+ *   px per crystal unit = rect.h · CRYSTAL_SCALE · scaleMul   (CrystalCluster
+ *   L667 — the group's world scale is rect.h·k·CRYSTAL_SCALE·scaleMul and k is
+ *   world-units-per-pixel, so k cancels and the on-screen size is pure CSS px).
+ *   The 8-E entry implies rect.h·scaleMul = 1 470 px. The MEASURED live band is
+ *   **~725 px** at scaleMul 1.0 (= (0.8 + 0.2·reveal)·(1 − 0.03·vel), i.e. 1.0
+ *   at rest and fully revealed) ⇒ **123.25 px/unit**, half the assumption.
+ *   ⇒ at 26: 123.25/26     = **4.74 px/cycle**  (train 1)
+ *   ⇒ at 26: 123.25/29.9   = **4.12 px/cycle**  (train 2, ×RIPPLE_F2 1.15)
+ * 4.1 px/cycle is two samples per cycle at DPR 1 (tierStore dprMin = 1, and
+ * AdaptiveResolution sits there on any GPU under pressure): Nyquist itself. The
+ * round-8-E check predicted this number — "a short band could halve px/unit →
+ * ~4.2 px/cycle for train 2" — and it is exactly what shipped.
+ * WHY IT ONLY APPEARED NOW: the round-8-H authored slab. On the procedural
+ * potato, curvature swept the screen-space frequency continuously and the
+ * aliasing read as noise; on 34 planar patches the normal is CONSTANT across a
+ * plane, so two crossed sine trains project to a perfectly regular lattice —
+ * a checkerboard, by construction, not by chance.
+ * THE NEW VALUE. Gate: ≳8 screen px per cycle for BOTH trains at the real band
+ *   size ⇒ F ≤ rect.h·CRYSTAL_SCALE / (8·RIPPLE_F2) = 123.25/9.2 = **13.4**.
+ *   12 delivers **10.27 px/cycle** (train 1) and **8.93** (train 2) with ~12%
+ *   margin on the gate. Fixed at the frequency, not by hiding it in the
+ *   amplitude — RIPPLE_AMP is re-derived to hold the same 25° tilt.
+ * BAND-HEIGHT FLOOR (the size dependency, stated so it is never implicit
+ *   again): train 2 stays ≥ 8 px/cycle while `rect.h ≥ 54.12·F`, i.e. **≥ 649
+ *   px at F = 12**. Under a fast scroll-in (reveal 0.0 ⇒ scaleMul 0.8) the same
+ *   floor rises to ~811 px, a transient while the stone is still fading in.
+ *   Below that the fix is to lower F further, in this ratio.
+ * LITE / MOBILE: not applicable by construction — the whole ripple branch is
+ *   `if (!lite)` in crystalBuild, so the compact tier never compiles a carrier
+ *   to alias. The far-fade does not shrink the stone either (camera-locked
+ *   uniform scale; only scaleMul moves it, ≤20%).
+ * ⚠ THE CEILING IS NOT A CONSTANT — it is `band height ÷ 9.2`. Any future
+ *   re-tune of CRYSTAL_SCALE or of the section band height moves it. ═══
  */
-export const RIPPLE_FREQ = 26.0;
+export const RIPPLE_FREQ = 12.0;
 /** Normal-perturbation amplitude (uRippleAmp). ROUND 8-E: 0.12 → 0.018.
  * The perturbation is N + gradT·amp with |gradT| ∝ frequency, so holding a
  * tilt while tripling the frequency needs amp ÷ 3 — and the target tilt drops
  * too (44° → ~25°, igloo's measured 20–33°): amp = tan 25° / (1.01·F) =
- * 0.4663 / 26.26 ≈ 0.018. 0 = off. */
-export const RIPPLE_AMP = 0.018;
-/** vnoise3 phase-warp of the first wave train (breaks the straight rulings). */
+ * 0.4663 / 26.26 ≈ 0.018. 0 = off.
+ *
+ * ROUND 8-I — RE-DERIVED, NOT RE-TUNED: 0.018 → **0.0385**. The carrier drops
+ * 26 → 12 to stop aliasing, and |gradT| ∝ F, so holding the DELIVERED tilt
+ * needs amp × 26/12: amp = tan 25° / (1.01 · 12) = 0.46631 / 12.12 =
+ * **0.0385** ⇒ atan(1.01 · 12 · 0.0385) = **25.0°**, igloo's band (20–33°),
+ * unchanged from what 8-E/8-F delivered. This is why the value table does not
+ * move: the stone keeps exactly the same surface tilt, it just spends it at
+ * half the screen frequency. (Relation checked against the pre-8-E state:
+ * F 8 · amp 0.12 ⇒ atan(0.9696) = 44.1°, which is the "~44°" the 8-E entry
+ * measured. The 1.01 is the RMS tangential-gradient factor of the two crossed
+ * trains.)
+ *
+ * ⚠ SANITY BOUND, stated because it is the one number here NOT covered by the
+ * live pass. What was verified live is that amp **0.004 at F 26** was clean —
+ * a 6.0° tilt. The artifact scales with the per-pixel normal step
+ * (tan θ · 2π/px-per-cycle), so on that metric:
+ *   F 26 / amp 0.018 (moiréd)      0.4663 × 1.325 = **0.618**
+ *   F 12 / amp 0.0385 (SHIPPED)    0.4663 × 0.612 = **0.285**   ← 54% below it
+ *   F 26 / amp 0.004 (live-clean)  0.1050 × 1.325 = **0.139**
+ * i.e. the shipped setting sits between the two, 2.05× the proven-clean point
+ * and less than half the artifact point, with the sampling itself fixed (10.3
+ * px/cycle vs 4.7). If any corduroy survives the browser pass, this uniform is
+ * on the dev handle and two values are pre-derived: **0.0188** reproduces the
+ * live-clean per-pixel step exactly (12.8° tilt) and **0.030** lands on igloo's
+ * LOW edge (20°). Do not go back up on the frequency to get relief. */
+export const RIPPLE_AMP = 0.0385;
+/** vnoise3 phase-warp of the first wave train (breaks the straight rulings).
+ * ROUND 8-I — unchanged and re-checked, because on the authored slab's flat
+ * planes this is the ONLY thing standing between the carrier and a machined
+ * grating. Its authority is measured in PIXELS, and the retune helps it: the
+ * warp wanders the rulings by ±(RIPPLE_WARP/2π) = ±0.24 cycles, which was
+ * ±1.1 px at F 26 and is **±2.5 px at F 12** — the same wander, now visible.
+ * Train 2 still carries no warp (a fixed +2.7 phase), which is what makes the
+ * pair read as a crossed weave rather than as noise. */
 export const RIPPLE_WARP = 1.5;
 /** ROUND 8-E — the warp NOISE frequency, previously derived as
  * RIPPLE_FREQ·0.6 and therefore dragged from 4.8 to 15.6 by the carrier
  * retune. Decoupled and frozen at its historic value: the phase warp belongs
  * in the FORM band (it makes the wave trains wander), not on top of the
- * carrier — at 15.6 it turned the shimmer into high-frequency chaos. */
+ * carrier — at 15.6 it turned the shimmer into high-frequency chaos.
+ * ROUND 8-I — the decoupling pays off again, in the other direction: at the
+ * new carrier the warp sits **2.5× below it** (12 / 4.8), between the historic
+ * 1.67× and 8-E's 5.4×, so it still reads as a wander of the rulings and not as
+ * a third train. Nothing to change; it is only ever wrong when it is derived. */
 export const RIPPLE_WARP_FREQ = 4.8;
 /** Two fixed skew directions (normalized at build) — the crossed wave trains. */
 export const RIPPLE_DIR1: [number, number, number] = [0.81, 0.33, 0.48];
@@ -859,7 +1077,19 @@ export const RIPPLE_DIR2: [number, number, number] = [-0.29, 0.77, -0.56];
 /** Second train: frequency ratio + amplitude (round 7 spec: ×1.7, ×0.6).
  * ROUND 8-E: 1.7 → 1.15 — the ALIASING WALL guard. At the new carrier the old
  * ratio would put train 2 at 44 cycles/unit (5.7 px/cycle: crawl + shimmer);
- * 1.15 lands it at 29.9, just inside the ~30 ceiling. */
+ * 1.15 lands it at 29.9, just inside the ~30 ceiling.
+ *
+ * ROUND 8-I — RE-CHECKED AGAINST THE REAL PIXEL GRID, KEPT AT 1.15. This ratio
+ * is the binding train, so the round-8-I frequency gate was solved on IT, not
+ * on the carrier: F ≤ px-per-unit / (8·this). At the measured 123.25 px/unit
+ * that is F ≤ 13.4, hence RIPPLE_FREQ 12 and a delivered **13.8 cycles/unit ⇒
+ * 8.93 px/cycle** for this train (it was 29.9 ⇒ 4.12 px/cycle, i.e. AT Nyquist
+ * — the round-8-E "just inside the ~30 ceiling" was measured against a band
+ * twice the real size). Raising this ratio now costs frequency headroom
+ * one-for-one: 1.3 would take train 2 to 15.6 cycles/unit ⇒ 7.9 px/cycle,
+ * through the gate. The smallest on-screen size that still clears it is
+ * rect.h ≥ 8·this·F/CRYSTAL_SCALE = 649 px (see RIPPLE_FREQ); lite/mobile never
+ * compile the branch at all. */
 export const RIPPLE_F2 = 1.15;
 export const RIPPLE_A2 = 0.6;
 

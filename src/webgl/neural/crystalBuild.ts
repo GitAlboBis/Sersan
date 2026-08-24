@@ -1143,6 +1143,13 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
       // deriving from the carrier — the retuned carrier would otherwise have
       // dragged the warp from 4.8 to 15.6 cycles/unit and turned the wet
       // shimmer into high-frequency chaos. The warp belongs in the FORM band.
+      // Round 8-I: RIPPLE_FREQ / RIPPLE_F2 / RIPPLE_A2 are BAKED here as graph
+      // literals (only uRippleAmp is live), so the carrier's anti-aliasing
+      // retune 26 → 12 needs an edit + reload, not a uniform write — and the
+      // decoupled warp is untouched by it, which is the point. The frequency
+      // is bounded by the stone's ON-SCREEN size (~123 px/crystal-unit at the
+      // measured band, ≳8 px per cycle for BOTH trains); the derivation lives
+      // at crystalConfig RIPPLE_FREQ. Lite never builds this branch.
       const arg1 = dot(vLocal, vec3(rd1[0], rd1[1], rd1[2]))
         .mul(RIPPLE_FREQ)
         .add(vnoise3(vLocal.mul(RIPPLE_WARP_FREQ)).mul(RIPPLE_WARP))
