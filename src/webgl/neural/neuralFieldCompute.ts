@@ -28,13 +28,16 @@
  * transfers verbatim; the pulse now reads as a WAVEFRONT sweeping the volume.
  *
  * ROLES (baked into the same meta/off/seed buffers — layout below):
- *   0 LINK  — home = mix(A,B,s) + a single thin filament offset in a real
- *     perpendicular frame (cross(dir, ref) with a ref that is never parallel
- *     to dir — the cloud has links pointing in every direction, including
- *     along ẑ) + thickness jitter + curl shred (compute tier). Per-link
- *     golden-angle phase offsets decorrelate the threads; per-link s
- *     fade-in/out dissolves the tips into the STAR CORES (and hides the
- *     flow-wrap).
+ *   0 LINK — TRAFFIC since ROUND-8-G, not thread. home = mix(A,B,s) ON the
+ *     chord (STRAND_RADIUS is 0 now: the LINE layer draws that exact chord, so
+ *     a braid would park the bead beside its own line) + a sub-pixel thickness
+ *     jitter in a real perpendicular frame (cross(dir, ref) with a ref that is
+ *     never parallel to dir — the cloud has links pointing in every direction,
+ *     including along ẑ) + curl shred (compute tier, ≈0.5px). At rest these
+ *     are faint DUST riding the line (uDustAlpha, DUST_SIZE); where a packet
+ *     bead or the surge head passes they swell and brighten to uBeadAlpha and
+ *     BLOOM. Per-link s fade-in/out dissolves the tips into the STAR CORES
+ *     (and hides the flow-wrap).
  *   1 STAR CORE — the fix for "cerchi vuoti". Particles no longer orbit: a
  *     baked per-particle OFFSET (aOff carries the literal vector) puts most
  *     of them in a tight centre-weighted blob and the rest on a 4-ray flare
@@ -182,6 +185,44 @@
  *     MEMBRANE_ALPHA is 0 and the build seam skips the layer entirely.
  *   - NEBULA reviewed + KEPT (sheared noise wisps, never a disc — config §B.2).
  *
+ * ROUND-8-G (2026-08-24) — THE LINKS BECOME REAL LINES. Live-verified with the
+ * owner watching: particles strung along an edge never became the reference's
+ * thin crisp CONTINUOUS lines; pushed to 7.5 then 10px they became a chain of
+ * glowing BLOBS, because a glowing sprite ≥4px and a 1px line are different
+ * primitives. Structural, not tunable.
+ *   L1. NEW LAYER `buildLinkLineLayer()` — ONE `LineSegments` (one draw call),
+ *       vertex tables baked by neuralLinkLines.bakeLinkLineGeometry from the
+ *       SAME getPlexus(mode, density) edge list the particles read (single
+ *       source of truth; no second generator). The vertex stage re-derives the
+ *       LIVE chord exactly as `edgeFrame` does (uEdgeA/uEdgeB → uNodePos +
+ *       nodeDrift), so a drifted broken endpoint takes its line with it. Built
+ *       BEFORE the backend split like the membrane/nebula layers, so the
+ *       static/analytic tier gets the identical lines. Per-link effects that
+ *       transferred: fracture fray (dim + ember tone + a per-fragment dash),
+ *       the clean break gap, uRecohere (through dispFactor/nodeDrift),
+ *       uRowGlow zone ignition, the surge wavefront sweeping along the link,
+ *       the death-flash, the mid-span brightness profile, the cool→warm nodeT
+ *       tint, the shimmer, the tip fade into the star cores, depth-DOF and a
+ *       staggered reveal. NOT transferred (and why): the radial core→fringe
+ *       ramp and the width envelope (cross-section properties — a 1px line has
+ *       none), the velocity streak stretch (a sprite property), the curl shred
+ *       and the pointer bend (compute-only particle forces the line's vertex
+ *       stage cannot read). The packet BEAD is deliberately left OFF the line:
+ *       it stays a particle, so it reads as an object riding the thread.
+ *   L2. THE PARTICLES ARE TRAFFIC NOW — the braid is zeroed (STRAND_RADIUS 0)
+ *       so a bead sits ON its line rather than ~4px beside it, the resting
+ *       alpha drops to a dust floor (STREAM_ALPHA 0.06) and rises to
+ *       BEAD_ALPHA 0.9 where a packet or the surge head is passing, and the
+ *       sprite shrinks to DUST_SIZE at rest / swells by PACKET_SIZE at a bead.
+ *   L3. RE-ALLOCATION — NODE_FRACTION 0.28 → 0.46 and STAR_FLARE_FRACTION
+ *       0.42 → 0.70: a full-tier star goes 25 → 40 particles and its four
+ *       flare rays 2.6 → 7.0 each (the round-8-D check's own flag). Totals
+ *       unchanged; fill ~7% cheaper. Budgets: the line material is a SEPARATE
+ *       program — 2 vertex buffers of 8, 0 storage bindings, 5 uniformArray
+ *       UBO blocks in its vertex stage (+ three's ≤3 shared groups) = 8 of the
+ *       WebGL2 MAX_VERTEX_UNIFORM_BLOCKS floor of 12. The PARTICLE material's
+ *       12/12 vertex-stage block count is untouched by this round.
+ *
  * ROUND-8-D "NO CIRCLES ANYWHERE" AUDIT (this round):
  *   - node halos (orbiting ring, hollow centre) ....... REPLACED by star cores
  *   - membrane discs ................................. already off (round-8)
@@ -196,6 +237,7 @@ import {
   unifiedForceStep,
   type TslSymbolsGpgpu,
 } from "../gpgpu/gpgpuNodeSim";
+import { bakeLinkLineGeometry } from "./neuralLinkLines";
 import {
   COL_CORE,
   COL_CYAN,
@@ -245,6 +287,25 @@ import {
   STREAM_Z_BOW,
   CORE_SIZE_BOOST,
   FRINGE_SIZE_DROP,
+  DUST_SIZE,
+  // ROUND-8-G — the link LINE layer.
+  LINK_SEGMENTS,
+  LINE_ALPHA,
+  LINE_EMISSIVE,
+  LINE_LUM_MAX,
+  LINE_LUM_KNEE,
+  LINE_BLUE_MIX,
+  LINE_SURGE_GAIN,
+  LINE_SURGE_WHITE,
+  LINE_ROW_GAIN,
+  LINE_FLASH_GAIN,
+  LINE_DEAD_ALPHA,
+  LINE_DEAD_DIM,
+  LINE_DASH_FREQ,
+  LINE_DASH_LO,
+  LINE_DASH_HI,
+  LINE_REVEAL_STAGGER,
+  BEAD_ALPHA,
   STRETCH_GAIN,
   STRETCH_MAX,
   STATIC_ELONG,
@@ -435,10 +496,29 @@ export interface NeuralFieldUniforms {
   uStarSpread: { value: number };
   /** Multiplier on the star's >1.0 core emissive (bloom punch). */
   uStarPunch: { value: number };
-  /** At-rest alpha of a star particle (links use STREAM_ALPHA). */
+  /** At-rest alpha of a star particle (link dust uses uDustAlpha). */
   uNodeAlpha: { value: number };
   /** Billboard base size in device px. */
   uPointSize: { value: number };
+  // --- Round-8-G link TRAFFIC + the LINE layer (live tunables) --------------
+  /** RESTING alpha of a link particle — the dust floor (STREAM_ALPHA). */
+  uDustAlpha: { value: number };
+  /** PEAK alpha of a link particle where a bead / the surge head passes. */
+  uBeadAlpha: { value: number };
+  /** Line body master alpha. */
+  uLineAlpha: { value: number };
+  /** Line body resting emissive. */
+  uLineEmissive: { value: number };
+  /** Hard ceiling on the line's POST-BLEND LUMINANCE — the shader divides
+   * it by the live lum(tone) x alpha, so the line never blooms whatever the
+   * gains or the tone. */
+  uLineLumMax: { value: number };
+  /** Line body mix toward COL_BLUE from brand cyan (paleness). */
+  uLineBlue: { value: number };
+  /** Line emissive gain per unit surge. */
+  uLineSurgeGain: { value: number };
+  /** Line emissive gain at full row/zone attention. */
+  uLineRowGain: { value: number };
   /** Per-strand twist phases (rad) — write entries of `.array`. */
   uStrandPhase: { array: number[] };
   /** Per-strand tube-thickness biases — write entries of `.array`. */
@@ -504,6 +584,15 @@ export interface NeuralFieldLayer {
   material: Any;
 }
 
+/** ROUND-8-G: the link LINE layer — ONE `LineSegments` object (mounted with
+ * `<primitive>`, the crystalPlexus idiom), plus its geometry/material for
+ * disposal and a couple of build-time diagnostics for the dev handle. */
+export interface NeuralFieldLines extends NeuralFieldLayer {
+  object: Any;
+  edgeCount: number;
+  vertexCount: number;
+}
+
 export interface NeuralFieldBuild {
   geometry: Any;
   material: Any;
@@ -514,6 +603,9 @@ export interface NeuralFieldBuild {
   membrane: NeuralFieldLayer | null;
   /** Round-4 §B.2: fracture nebula — broken builds only. */
   nebula: NeuralFieldLayer | null;
+  /** Round-8-G: the plexus link lines — ALWAYS built (both modes, both
+   * backends); the mesh the star cores hang in. */
+  links: NeuralFieldLines;
   /** Dispatch the compute step with a clamped frame delta (no-op on static). */
   compute: (delta: number) => void;
   dispose: () => void;
@@ -571,8 +663,15 @@ function h(i: number, mulA: number, addB: number): number {
  * distribute across the ~227 links ∝ link LENGTH (uniform visual density);
  * star particles round-robin the ~103 nodes, and each one is independently
  * hashed into the CORE blob (centre-weighted, r = R·U^STAR_CORE_CONC) or one
- * of the FOUR flare rays. Role budget: NODE_FRACTION (28%) stars, the rest
- * links (broken gives SPARK_COUNT of it to the burst).
+ * of the FOUR flare rays. Role budget: NODE_FRACTION stars, the rest link
+ * TRAFFIC (broken gives SPARK_COUNT of it to the burst).
+ *
+ * ROUND-8-G re-split (the line layer draws the thread now, so the particles
+ * that used to BE it are free): NODE_FRACTION 0.28 → 0.46 and
+ * STAR_FLARE_FRACTION 0.42 → 0.70, i.e. per full-tier star 40.2 particles
+ * (was 25) of which 7.0 per flare ray (was 2.6 — the round-8-D check's flag);
+ * per link 21.3 traffic particles (was 28.4), enough that a PACKET_WIDTH bead
+ * always spans ~3 sprites at ±1σ. Totals unchanged.
  */
 function seedBuffers(count: number, mode: LatticeMode, plexus: Plexus) {
   const meta = new Float32Array(count * 4);
@@ -682,9 +781,12 @@ export function createNeuralFieldBuild(
   const { webgpu, tsl, gl, backendIsWebGPU, count, mode } = args;
   const {
     InstancedBufferGeometry,
+    BufferGeometry,
     BufferAttribute,
     InstancedBufferAttribute,
     MeshBasicNodeMaterial,
+    LineBasicNodeMaterial,
+    LineSegments,
     Color,
     Vector2,
     Vector3,
@@ -840,6 +942,18 @@ export function createNeuralFieldBuild(
   const uStarSpread = uniform(STAR_SPREAD);
   const uStarPunch = uniform(STAR_PUNCH);
   const uNodeAlpha = uniform(NODE_ALPHA);
+  // ROUND-8-G: link particles are TRAFFIC (dust floor ↔ bead peak) and the
+  // thread they ride is the LINE layer. All plain `uniform()` scalars — they
+  // join an existing shared group, so they add ZERO uniform BLOCKS to either
+  // program (the block-count budget note above is unmoved).
+  const uDustAlpha = uniform(STREAM_ALPHA);
+  const uBeadAlpha = uniform(BEAD_ALPHA);
+  const uLineAlpha = uniform(LINE_ALPHA);
+  const uLineEmissive = uniform(LINE_EMISSIVE);
+  const uLineLumMax = uniform(LINE_LUM_MAX);
+  const uLineBlue = uniform(LINE_BLUE_MIX);
+  const uLineSurgeGain = uniform(LINE_SURGE_GAIN);
+  const uLineRowGain = uniform(LINE_ROW_GAIN);
   const uStrandPhase = uniformArray([...STRAND_PHASES]);
   const uStrandThick = uniformArray([...STRAND_THICK_BIAS]);
   // Round-3 (§B): row-reactive current + curl turbulence + depth-DOF. All
@@ -1719,20 +1833,37 @@ export function createNeuralFieldBuild(
       float(0.35),
       smoothstep(float(0.55), float(1), fringe),
     );
+    // ROUND-8-G — THE LINK PARTICLE IS TRAFFIC, NOT THREAD. The thread is the
+    // LineSegments layer (buildLinkLineLayer); these particles are the beads
+    // that travel it, so their alpha rides a ramp instead of a constant:
+    // faint DUST at rest (uDustAlpha 0.06 — post-blend 0.090, a soft core for
+    // the 0.568 line) rising to uBeadAlpha 0.9 where a packet or the surge
+    // head is passing (post-blend 3.6 / 5.0 — over the ≈1.0 bloom floor, so
+    // the traffic BLOOMS and the mesh under it does not).
+    const traffic = clamp(
+      packet.add(surge.mul(0.8)),
+      float(0),
+      float(1),
+    ).toVar();
+    const liveA = mix(uDustAlpha, uBeadAlpha, traffic).mul(fringeA);
+    // The debris branch is ABSOLUTE now: a frayed link carries no traffic
+    // (packetAt is gated past the fracture), so scaling it by either end of
+    // the ramp would be wrong. DEBRIS_ALPHA_MAX was re-based 0.35 → 0.22 to
+    // reproduce the 0.35 × the old STREAM_ALPHA 0.62 that shipped.
     const debrisA = float(DEBRIS_ALPHA_MAX).mul(
       float(1).sub(u.mul(float(DEBRIS_FADE))),
     );
-    const alphaStream = mix(fringeA, debrisA, disp)
-      .mul(edge)
-      .mul(gap)
-      .mul(float(STREAM_ALPHA));
-    // Size falloff: bright fat core, fine fringe; the surge fattens the
-    // head; a passing packet fattens its bead (round-7).
+    const alphaStream = mix(liveA, debrisA, disp).mul(edge).mul(gap);
+    // Size: the resting dust shrinks to DUST_SIZE (a 9.4px sprite sitting on
+    // a 1px line is the chain-of-blobs read this round removes) and a passing
+    // packet swells it back into a ~10.3px BEAD (PACKET_SIZE 2.0).
     const sizeStream = mix(
       float(CORE_SIZE_BOOST),
       float(FRINGE_SIZE_DROP),
       fringe,
-    ).mul(float(1).add(surge.mul(0.45)).add(packet.mul(float(PACKET_SIZE))));
+    )
+      .mul(float(DUST_SIZE))
+      .mul(float(1).add(surge.mul(0.45)).add(packet.mul(float(PACKET_SIZE))));
 
     // --- STAR CORE: a FILLED white-blue point with radiating spikes. The
     //     star's radial parameter is re-derived from the baked offset —
@@ -2151,6 +2282,271 @@ export function createNeuralFieldBuild(
     return { geometry: geo, material: mat };
   }
 
+  /**
+   * ROUND-8-G — THE LINK LINE LAYER. ONE `LineSegments`, ONE draw call: the
+   * plexus links are real line geometry now, following crystalPlexus.ts's
+   * proven idiom (position-only-ish attributes, alpha-masked, additive,
+   * depthWrite off, renderOrder −2, cross-backend, disposed with the build).
+   *
+   * SINGLE SOURCE OF TRUTH: the vertex tables are baked by
+   * `bakeLinkLineGeometry(plexus, LINK_SEGMENTS)` from the SAME `plexus` the
+   * particles read — there is no second generator and no second topology. The
+   * vertex stage then re-derives the LIVE chord exactly the way `edgeFrame`
+   * does (uEdgeA/uEdgeB → uNodePos + nodeDrift), so a drifted broken endpoint
+   * takes its line with it and a live `uniforms.uNodePos` edit moves the line
+   * and the particles together.
+   *
+   * BUDGET (this is a SEPARATE program from the particle material, with its
+   * own limits — verified, not assumed):
+   *   - vertex buffers: `position` + `aLink` = **2 of 8**. No index buffer.
+   *   - storage bindings: **0 of 8** (nothing here reads a storage buffer, so
+   *     the layer is identical on the compute and analytic tiers).
+   *   - uniform BLOCKS in the vertex stage: GLSLNodeBuilder emits one UBO per
+   *     uniformArray, and this stage references FIVE — uNodePos, uNodeT,
+   *     uEdgeA, uEdgeB (the chord) and uRowGlow (rowResponse). Plus three's
+   *     own shared groups (object / render / frame) that is **8 of the WebGL2
+   *     MAX_VERTEX_UNIFORM_BLOCKS floor of 12** — 4 spare, where the particle
+   *     material sits at 12/12. Deliberately NOT referenced: uRingGlow /
+   *     uRingFlash (ignition belongs to the STARS — the link particles never
+   *     read them either, and adding them would spend headroom to make the
+   *     mesh out-shout its own subject) and uStrandPhase / uStrandThick (a
+   *     1px line has no braid).
+   *   - fragment stage: zero uniformArrays; scalars only.
+   *   - zero per-frame allocation: everything below is built once.
+   *
+   * WHAT VARIES WHERE: the smooth, along-link brightness terms (surge, flash,
+   * row attention, tint, shimmer, mid-span profile, DOF, reveal) resolve in
+   * the VERTEX stage across LINK_SEGMENTS sub-segments; the SHARP masks (tip
+   * fade, clean-break gap, fray dash) run per FRAGMENT, because at 1px an
+   * interpolated edge is a staircase.
+   */
+  function buildLinkLineLayer(): NeuralFieldLines {
+    const baked = bakeLinkLineGeometry(plexus, LINK_SEGMENTS);
+    const geo = new BufferGeometry();
+    geo.setAttribute("position", new BufferAttribute(baked.position, 3));
+    geo.setAttribute("aLink", new BufferAttribute(baked.aLink, 2));
+    const mat = new LineBasicNodeMaterial();
+    const aLink = attribute("aLink", "vec2");
+
+    // --- 1. The LIVE chord — `edgeFrame` minus the flow parameter ----------
+    const eIdx = clamp(aLink.x, float(0), float(EDGE_N - 1)).toVar();
+    const sL = aLink.y.toVar();
+    const iaL = uEdgeA.element(int(eIdx)) as Any;
+    const ibL = uEdgeB.element(int(eIdx)) as Any;
+    const tAL = nodeTAt(iaL).toVar();
+    const tBL = nodeTAt(ibL).toVar();
+    const AL = nodeAt(iaL).add(nodeDrift(iaL, tAL)).toVar();
+    const BL = nodeAt(ibL).add(nodeDrift(ibL, tBL)).toVar();
+    const posL = mix(AL, BL, sL).toVar();
+    const tL = mix(tAL, tBL, sL).toVar();
+
+    mat.vertexNode = Fn(() => {
+      return cameraProjectionMatrix.mul(modelViewMatrix.mul(vec4(posL, 1.0)));
+    })();
+
+    // --- 2. Per-link narrative state (all vertex stage) --------------------
+    const dispL = dispFactor(tL).toVar(); // fray 0..1 (carries uRecohere)
+    const uL = clamp(
+      tL.sub(uFracture).div(float(1).sub(uFracture)),
+      float(0),
+      float(1),
+    ).toVar(); // fray life progress
+    const deadMixL = clamp(
+      dispL.mul(float(0.4).add(uL.mul(0.6))),
+      float(0),
+      float(1),
+    ).toVar();
+    const surgeL = surgeAt(tL).toVar();
+    const flashL = flashAt(tL).toVar();
+    const rowL = rowResponse(tL).toVar();
+    /** Per-LINK hash — decorrelates the shimmer and the reveal stagger. */
+    const hLink = fract(sin(eIdx.mul(57.31).add(11.7)).mul(43758.545)).toVar();
+
+    // --- 3. Tone: pale navy-cyan body, cool→warm across the cloud ----------
+    const coolK = clamp(
+      float(0.5).sub(tL).mul(2 * LAYER_TINT_COOL),
+      float(0),
+      float(1),
+    );
+    const warmK = clamp(
+      tL.sub(float(0.5)).mul(2 * LAYER_TINT_WARM),
+      float(0),
+      float(1),
+    );
+    const bodyL = mix(uColCyan, uColBlue, uLineBlue);
+    const bodyDepthL = mix(mix(bodyL, uColBlue, coolK), uColCore, warmK);
+    // Fray embers, warming toward amber at the very tips (particle parity).
+    const emberL = mix(
+      mix(
+        uColEmber,
+        uColEmber2,
+        clamp(hLink.mul(0.6).add(uL.mul(0.4)), float(0), float(1)),
+      ),
+      uColEmberTip,
+      smoothstep(float(0.6), float(1), uL).mul(float(EMBER_TIP_MIX)),
+    );
+    const headL = clamp(
+      surgeL.mul(float(LINE_SURGE_WHITE)),
+      float(0),
+      float(1),
+    ).mul(float(1).sub(deadMixL));
+    const toneL = mix(mix(bodyDepthL, emberL, deadMixL), uColCore, headL)
+      .toVec3()
+      .toVar();
+
+    // --- 4. Alpha (vertex part; the sharp masks are per-fragment) ----------
+    // Staggered reveal: link i knits in over uReveal ∈ [h·STAGGER, +0.45], so
+    // the net assembles with the particle coalesce instead of switching on.
+    const revealL = smoothstep(
+      hLink.mul(float(LINE_REVEAL_STAGGER)),
+      hLink.mul(float(LINE_REVEAL_STAGGER)).add(float(0.45)),
+      uReveal,
+    );
+    const deadAL = float(LINE_DEAD_ALPHA).mul(
+      float(1).sub(uL.mul(float(DEBRIS_FADE))),
+    );
+    const alphaL = uLineAlpha
+      .mul(mix(float(1), deadAL, dispL))
+      .mul(dofAlphaAt(posL.z))
+      .mul(revealL)
+      .toVar();
+
+    // --- 5. Emissive, under a soft post-blend LUMINANCE ceiling ------------
+    // At rest, mid-span, shimmer peak: lum(mix(CYAN, BLUE, LINE_BLUE_MIX 0.3))
+    // 0.5029 × LINE_EMISSIVE 1.35 × midProfile 1.15 × shimmer 1.04 ×
+    // LINE_ALPHA 0.70 = **0.568** — 43% under the ≈1.0 bloom threshold, and
+    // 1/12.9 of the 7.33 star core.
+    //
+    // The ceiling is enforced on the REAL post-blend luminance, not on the
+    // emissive multiplier, because the tone is not constant: the surge head
+    // whitens toward COL_CORE (lum 0.9371) and the warm end of the nodeT tint
+    // adds more, so the worst-case tone luminance is 0.768 — a flat emissive
+    // cap sized on the 0.5029 body would have let a surge crossing a hovered
+    // region reach 1.48 post-blend and bloom. Dividing LINE_LUM_MAX by the
+    // ACTUAL lum × alpha makes the contract tone-independent and permanent:
+    // whatever the colour, whatever the gains, the line lands under 0.97. The
+    // >1.0 budget belongs to the star cores (7.33) and the beads (3.65).
+    // Rec709 weights, spelled out (linear space — three converts hex Colors
+    // into the linear working space, which is what PostFXNodes thresholds).
+    //
+    // ⚠ IT IS A SOFT KNEE, NOT A HARD min() — that was the round-8-G check's
+    // one behavioural fix. Measured, a hard clamp engaged at surge 0.436, i.e.
+    // across |ΔnodeT| ≤ 0.0744, WIDER than the surge gaussian's own 0.068
+    // half-width: the entire visible head sat pinned at a flat 0.970 and, with
+    // a full-tier link spanning only 0.035 of nodeT, links flat-topped WHOLE.
+    // The declared "the wavefront visibly sweeps each line" became "links
+    // switch to the ceiling and back", and a hovered row during a scroll was
+    // already over the cap at surge 0 (raw 3.43 vs cap 2.76) — dead to the
+    // surge entirely. LINE_LUM_KNEE keeps the chain EXACT up to 0.7·cap and
+    // then compresses asymptotically, so the response stays monotonic to the
+    // very top while the ceiling is approached and never reached.
+    const shimmerL = float(1).add(
+      sin(uTime.mul(0.5).add(hLink.mul(37.0)).add(tL.mul(9.0))).mul(uShimmer),
+    );
+    const midL = float(1 - EDGE_MID_BRIGHT / 2).add(
+      sL.mul(float(1).sub(sL)).mul(4 * EDGE_MID_BRIGHT),
+    );
+    const lumL = toneL.x
+      .mul(0.2126)
+      .add(toneL.y.mul(0.7152))
+      .add(toneL.z.mul(0.0722));
+    const emisCapL = uLineLumMax.div(max(lumL.mul(alphaL), float(1e-3)));
+    // Round-4 §B.3's scroll-velocity SWELL re-homed: widthEnvelope's job was
+    // to thicken the filament while you scroll, and a 1px line has no width —
+    // so the same uScrollVel × uVelSwell rides the BRIGHTNESS instead (the net
+    // energises rather than fattens). It goes INSIDE the knee, so the ceiling
+    // still holds; putting it on alpha would have dodged the cap entirely.
+    const emisRawL = uLineEmissive
+      .mul(midL)
+      .mul(shimmerL)
+      .mul(float(1).add(rowL.mul(uLineRowGain)))
+      .mul(float(1).add(surgeL.mul(uLineSurgeGain)))
+      .mul(float(1).add(flashL.mul(float(LINE_FLASH_GAIN))))
+      .mul(float(1).add(uScrollVel.mul(uVelSwell)))
+      .mul(float(1).sub(deadMixL.mul(float(LINE_DEAD_DIM))))
+      .toVar();
+    // Soft knee: exact below knee, then knee + over·span/(over + span) —
+    // C1 (unit slope at the knee), monotonic, → emisCapL without reaching it.
+    // `span` is cap·(1 − KNEE) ≥ 0.31 for every reachable cap, and the max()
+    // is the belt-and-braces divide guard (a negative alpha from a degenerate
+    // dead ramp would otherwise feed a 970 cap through the divide).
+    const kneeL = emisCapL.mul(float(LINE_LUM_KNEE)).toVar();
+    const underL = min(emisRawL, kneeL).toVar();
+    const overL = emisRawL.sub(underL).toVar();
+    const spanL = emisCapL.sub(kneeL).toVar();
+    const emisL = underL.add(
+      overL.mul(spanL).div(max(overL.add(spanL), float(1e-4))),
+    );
+
+    // --- 6. Varyings (self-contained expressions — varying discipline) -----
+    const vLineCol = varying(toneL.mul(emisL));
+    const vLineAux = varying(vec4(alphaL, dispL, tL, sL));
+    /** The BAKED rest position — the dash-phase anchor (see §7). */
+    const vLineRest = varying(positionLocal);
+
+    // --- 7. Fragment: the sharp masks --------------------------------------
+    const shade = Fn(() => {
+      const a0 = vLineAux.x;
+      const dsp = vLineAux.y;
+      const tF = vLineAux.z;
+      const sF = vLineAux.w;
+      // Tips dissolve INTO the star cores they connect (the same EDGE_FADE
+      // window the particle filament used, ≈8px on a 71px link).
+      const fade = smoothstep(float(0), float(EDGE_FADE_IN), sF).mul(
+        float(1).sub(smoothstep(float(1 - EDGE_FADE_OUT), float(1), sF)),
+      );
+      // CLEAN BREAK (broken): zero alpha right past the fracture on every
+      // crossing line — a visible cut, not mush.
+      const gapF = float(1).sub(
+        smoothstep(uFracture.sub(float(0.008)), uFracture, tF)
+          .mul(
+            float(1).sub(
+              smoothstep(
+                uFracture.add(uGap),
+                uFracture.add(uGap).add(float(0.02)),
+                tF,
+              ),
+            ),
+          )
+          .mul(uBroken),
+      );
+      // FRAY DASH — crystalPlexus's broken-dash mask verbatim (a product of
+      // three sines, thresholded). Sampled on the BAKED REST position, so the
+      // dashes are welded to the geometry and never crawl as the endpoints
+      // drift; blended in by `dsp`, so a healthy line is solid and a dying one
+      // breaks up exactly like the SVG twin's ember `strokeDasharray`.
+      const K = float(LINE_DASH_FREQ);
+      const dn = sin(vLineRest.x.mul(K))
+        .mul(sin(vLineRest.y.mul(K).add(1.3)))
+        .mul(sin(vLineRest.z.mul(K).add(2.6)))
+        .mul(0.5)
+        .add(0.5);
+      const dash = mix(
+        float(1),
+        smoothstep(float(LINE_DASH_LO), float(LINE_DASH_HI), dn),
+        dsp,
+      );
+      const alpha = a0.mul(fade).mul(gapF).mul(dash).toVar();
+      Discard(alpha.lessThan(0.004));
+      return vec4(vLineCol.toVec3(), alpha);
+    })();
+
+    configureMaterial(mat, shade);
+
+    const object = new LineSegments(geo, mat);
+    object.frustumCulled = false;
+    // Behind the particles (−1) with the other mined layers; everything in
+    // this band is additive, so the ordering is cosmetic, never occluding.
+    object.renderOrder = -2;
+    return {
+      object,
+      geometry: geo,
+      material: mat,
+      edgeCount: baked.edgeCount,
+      vertexCount: baked.vertexCount,
+    };
+  }
+
   // Mode-gated layer builds (shared by BOTH backend branches below — pure
   // vertex/fragment materials, no compute dependency). ROUND-8 (owner: "non
   // capisco i cerchi"): the healthy MEMBRANE discs are retired by default —
@@ -2163,6 +2559,10 @@ export function createNeuralFieldBuild(
   const membrane =
     mode === "healthy" && MEMBRANE_ALPHA > 0 ? buildMembraneLayer() : null;
   const nebula = mode === "broken" ? buildNebulaLayer() : null;
+  // ROUND-8-G: the link lines are the mesh itself — built on every mode and
+  // every backend (no storage buffers, no compute), so the analytic tier gets
+  // the identical plexus.
+  const links = buildLinkLineLayer();
 
   // === Static (no-compute) build ===========================================
   if (!backendIsWebGPU) {
@@ -2213,6 +2613,7 @@ export function createNeuralFieldBuild(
       uniforms: buildUniforms(),
       membrane,
       nebula,
+      links,
       compute: () => {},
       dispose() {
         geometry.dispose();
@@ -2221,6 +2622,8 @@ export function createNeuralFieldBuild(
         membrane?.material.dispose();
         nebula?.geometry.dispose();
         nebula?.material.dispose();
+        links.geometry.dispose();
+        links.material.dispose();
       },
     } satisfies NeuralFieldBuild;
   }
@@ -2410,6 +2813,7 @@ export function createNeuralFieldBuild(
     uniforms: buildUniforms(),
     membrane,
     nebula,
+    links,
     compute(delta: number) {
       uDelta.value = delta;
       gl.compute(simulate);
@@ -2421,6 +2825,8 @@ export function createNeuralFieldBuild(
       membrane?.material.dispose();
       nebula?.geometry.dispose();
       nebula?.material.dispose();
+      links.geometry.dispose();
+      links.material.dispose();
     },
   } satisfies NeuralFieldBuild;
 
@@ -2465,6 +2871,14 @@ export function createNeuralFieldBuild(
       uStarPunch,
       uNodeAlpha,
       uPointSize,
+      uDustAlpha,
+      uBeadAlpha,
+      uLineAlpha,
+      uLineEmissive,
+      uLineLumMax,
+      uLineBlue,
+      uLineSurgeGain,
+      uLineRowGain,
       uStrandPhase: uStrandPhase as unknown as { array: number[] },
       uStrandThick: uStrandThick as unknown as { array: number[] },
       uRowGlow: uRowGlow as unknown as { array: number[] },

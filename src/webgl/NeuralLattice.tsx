@@ -5,10 +5,19 @@
  * re-author; the component/file name is kept so Scene.tsx's mount gate stays
  * byte-identical). The look lives in neuralFieldCompute: a dense VOLUMETRIC
  * BRAIN PLEXUS — ~103 nodes (lite ~56) in an organic cloud filling the band,
- * ~227 near-neighbour link filaments (lite ~110), and a FILLED STAR-GLOW core
- * per node — replacing the round-6 layered diagram and its orbiting halos
- * (the owner's "cerchi vuoti"). THIS DRIVER IS UNCHANGED: no logic moved in
- * round-8-D, only the meaning of the mapping constants it already wrote.
+ * ~227 near-neighbour LINKS (lite ~110), and a FILLED STAR-GLOW core per node
+ * — replacing the round-6 layered diagram and its orbiting halos (the owner's
+ * "cerchi vuoti"). THIS DRIVER IS UNCHANGED: no logic moved in round-8-D or
+ * round-8-G, only the meaning of the mapping constants it already wrote.
+ *
+ * ROUND-8-G (2026-08-24) — THE LINKS ARE REAL LINES. Particles strung along an
+ * edge could never be the reference's thin crisp continuous lines (a glowing
+ * ≥4px sprite and a 1px line are different primitives), so the links are now
+ * ONE `LineSegments` built by neuralFieldCompute.buildLinkLineLayer from the
+ * same getPlexus tables. The ONLY change in this file is the extra
+ * `<primitive object={build.links.object} />` mount below (plus its dispose,
+ * which rides the existing build.dispose()) and the new dev-handle tunables —
+ * no state-machine change, no new per-frame work, no new store reads.
  *
  * ~9000 particles (3200 compact tier) fill the section's
  * `[data-lattice-anchor]` rect. Two instances mount on home:
@@ -653,6 +662,19 @@ export function NeuralLattice({
           surgeGain: u.uSurgeGain.value,
           pointSize: u.uPointSize.value,
           flowSpeed: u.uFlowSpeed.value,
+          // ROUND-8-G: the link LINE layer + the traffic ramp that rides it.
+          // linkLines/linkVerts are BUILD-TIME (baked geometry — LINK_SEGMENTS
+          // needs a rebuild, not a uniform write).
+          linkLines: build?.links.edgeCount ?? 0,
+          linkVerts: build?.links.vertexCount ?? 0,
+          lineAlpha: u.uLineAlpha.value,
+          lineEmissive: u.uLineEmissive.value,
+          lineLumMax: u.uLineLumMax.value,
+          lineBlue: u.uLineBlue.value,
+          lineSurgeGain: u.uLineSurgeGain.value,
+          lineRowGain: u.uLineRowGain.value,
+          dustAlpha: u.uDustAlpha.value,
+          beadAlpha: u.uBeadAlpha.value,
           strandPhase: [...u.uStrandPhase.array],
           strandThick: [...u.uStrandThick.array],
           sparkCount: mode === "broken" ? SPARK_COUNT : 0,
@@ -710,6 +732,12 @@ export function NeuralLattice({
             frustumCulled={false}
           />
         )}
+        {/* ROUND-8-G — the plexus LINKS, as real line geometry: ONE
+            LineSegments (one draw call) built from the same getPlexus tables
+            the particles read, mounted with <primitive> exactly like
+            CrystalCluster mounts crystalPlexus's net. renderOrder / culling
+            are set on the object in the build. */}
+        <primitive object={build.links.object} />
         <mesh
           geometry={build.geometry}
           material={build.material}

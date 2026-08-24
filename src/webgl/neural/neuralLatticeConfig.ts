@@ -16,9 +16,10 @@
  *     centre with a tight radial falloff plus a 4-ray flare cross, so the
  *     core is a solid luminous point that blooms into a star (NO ring, NO
  *     disc, NO hollow centre anywhere);
- *   - links are THIN PALE filaments between NEAR NEIGHBOURS (k-nearest with a
+ *   - links are THIN PALE LINES between NEAR NEIGHBOURS (k-nearest with a
  *     distance cutoff, deduped and capped) — a dense irregular triangulation
- *     of triangles/tetrahedra, never columns or layers;
+ *     of triangles/tetrahedra, never columns or layers. Since ROUND-8-G they
+ *     are real line geometry, not particles strung along an edge;
  *   - depth reads through the existing size/brightness attenuation + DOF.
  *
  * The old layer machinery survives as a WEAK left→right coordinate only:
@@ -74,6 +75,28 @@
  * profile, cool→warm cyan tint across the cloud, star size variance/breath,
  * amber ember tips). All shader-side, zero driver changes.
  *
+ * ROUND-8-G (2026-08-24) — THE LINKS BECOME REAL LINES. Live-verified with the
+ * owner watching: the reference brain-plexus has thin crisp CONTINUOUS lines
+ * between bright star nodes, and our particle-strung links never became that.
+ * Pushed to NEURAL_POINT_SIZE 7.5 → 10 and the strand envelope to 3.2 they
+ * became a chain of glowing BLOBS — a glowing sprite ≥4px cannot render a 1px
+ * line; the two are different primitives, so no constant was ever going to fix
+ * it. The links are now REAL LINE GEOMETRY (one `LineSegments`, one draw call,
+ * baked by neuralLinkLines.ts from the SAME getPlexus tables, shaded by
+ * neuralFieldCompute.buildLinkLineLayer — see the LINK LINE LAYER section).
+ * Three consequences ripple through this file:
+ *   1. the LOOK constants for the new layer (LINE_*, LINK_SEGMENTS);
+ *   2. the BRAID is zeroed (STRAND_RADIUS 0) so the traveling packet beads ride
+ *      the exact chord the line draws, and the freed particle budget moves to
+ *      the stars (NODE_FRACTION 0.28 → 0.46, STAR_FLARE_FRACTION 0.42 → 0.70:
+ *      the 4 flare rays go from 2.6 to 7.0 particles each);
+ *   3. the surviving link particles are TRAFFIC, not thread — STREAM_ALPHA is
+ *      a 0.06 dust floor with BEAD_ALPHA 0.9 as its traveling peak, and the
+ *      beads got more frequent (PACKET_COUNT 1 → 2, RATE 0.22 → 0.3) because
+ *      they are now the only thing moving on the lines.
+ * Totals are unchanged (9000 / 3200) and the fill budget goes DOWN ~7% (see
+ * NODE_FRACTION). No new bindings, no new storage, no per-frame allocation.
+ *
  * ROUND-8-F (2026-08-22) — BAKE THE LIVE TUNING. Round-8-D's LOOK numbers were
  * derived arithmetically and never eyeballed; shipped, the plexus read as faint
  * dust with dotted link trails instead of the reference's star-mesh. The owner
@@ -114,8 +137,9 @@ export const COL_BLUE = "#2A7FFF"; // link fringe
 export const COL_EMBER = "#4A443E";
 export const COL_EMBER2 = "#6B5546";
 
-/** Total particles in the plexus on a full-tier desktop (unchanged across the
- * round-8-D re-author — the same budget now buys ~250 links + ~100 stars). */
+/** Total particles in the plexus on a full-tier desktop (unchanged since the
+ * round-8-D re-author; round-8-G re-SPLIT it — ~4,140 star particles, ~4,828
+ * link-traffic beads/dust, 32 sparks — see NODE_FRACTION). */
 export const NEURAL_PARTICLE_COUNT = 9000;
 /**
  * Compact budget, selected when `tier === "lite"` (capable phones). Additive
@@ -124,21 +148,20 @@ export const NEURAL_PARTICLE_COUNT = 9000;
  * Read via `useTierStore.getState()` in the BUILD path only, never as a
  * subscription inside the Canvas island (the R3F island commit wedge).
  *
- * ROUND-8-F LITE CHECK (NEURAL_POINT_SIZE 3.6 → 7.5 is the only change here
- * that touches cost — fill scales as pointSize², nothing else in this round
- * adds a particle or a draw):
- *   - vs ROUND-7, which shipped 7.0 on this same 3,200 budget: (7.5/7.0)² =
- *     **1.15×**. The lite tier has already carried this sprite size.
- *   - absolute: 3,200 × (7.5 · CORE_SIZE_BOOST 1.25)² at DPR 1 ≈ 281k px² of
- *     additive fill, against the round-8-D DESKTOP figure of 9,000 × 4.5² ×
- *     DPR2² ≈ 729k px² — the phone at the new size costs 39% of what the
- *     desktop was already running comfortably.
- *   - link continuity survives the thinner net: lite delivers ~2,272 link
- *     particles over ~110 links = 20.7 per link, and its sparser cloud
- *     (PLEXUS_SEEDS 74 vs 132 ⇒ ~1.22× the mean spacing) puts those at ~2.9px
- *     apart on a 480px-tall phone band — still 3.2× overlapped by the 9.4px
- *     core sprite and 1.4× by the 4.1px fringe. Sprites are px-fixed while the
- *     band shrinks, so the small screen HELPS here.
+ * ROUND-8-G LITE CHECK (the round-8-F entry it replaces argued link CONTINUITY
+ * out of sprite overlap; continuity is the LINE layer's job now, so the check
+ * is purely cost + bead sampling):
+ *   - split: 1,472 stars (26.3 over 56 nodes) · 1,696 link-traffic particles
+ *     (15.4 over 110 links) · 32 sparks.
+ *   - fill at DPR 1: stars 442 core × 15.1px² + 1,030 flare × 8.4px² ≈ 173k,
+ *     resting dust 1,696 × 3.4px² ≈ 20k, live beads ≈ 12k, the LINE layer
+ *     (110 links × ~50px × 1px) ≈ 6k ⇒ **≈211k px²**, against the round-8-F
+ *     figure of 281k on this same budget. The phone gets CHEAPER.
+ *   - bead sampling on the thinner net: 15.4 particles over a ~50px link on a
+ *     480px band = 3.2px spacing, so a PACKET_WIDTH 0.07 bead still spans ~3
+ *     sprites at ±1σ — the same smooth travelling dot the desktop gets.
+ *   - flare rays: 4.6 per ray over a 19.4px reach = 4.2px spacing against an
+ *     ~8.4px mean flare sprite ⇒ 2.0× overlapped, continuous.
  *   - uDof 0.45 (DOF_STRENGTH) narrows the size spread from ±0.30 to ±0.135,
  *     which lowers the peak near-particle sprite area — a small credit back.
  */
@@ -468,43 +491,39 @@ function buildPlexus(mode: LatticeMode, density: PlexusDensity): Plexus {
 
 // --- Link filaments ----------------------------------------------------------
 /**
- * Strands per LINK. ROUND-8-D: 2 → 1. With ~250 links sharing the same
- * particle budget an edge gets ~27 particles; splitting those over two
- * strands made both dotted. One strand at ~4px spacing reads as a continuous
- * PALE THREAD — which is what the reference's plexus links are.
+ * Strands per LINK. ROUND-8-D: 2 → 1. ROUND-8-G keeps 1: the thread is a LINE
+ * now (see LINE_* below), and the surviving link PARTICLES are the traveling
+ * traffic that rides it — traffic has no braid.
  */
 export const STRAND_COUNT = 1;
 /**
  * Strand offset radius around the link line (height fractions) — the helix a
- * filament's single strand traces, i.e. how much a link SAGS off its chord.
- * It is NOT the filament's visual width: that is the sprite (NEURAL_POINT_SIZE
- * × CORE_SIZE_BOOST = 9.4px), and it is not what made the links read dotted.
+ * link particle's strand traces, i.e. how far off the A→B chord it sags.
  *
- * ROUND-8-F: 0.0028 → 0.0034, and the number is derived at the point where it
- * is APPLIED, not where it is authored. The shader multiplies `strandOff+jit`
- * by widthEnvelope(), which now carries the live-measured ENVELOPE_BASE 1.8
- * (below), so the EFFECTIVE cross-section radius is
- *   STRAND_RADIUS × ENVELOPE_BASE = 0.0034 × 1.8 = **0.0061**
- * — the round-8-F brief's "~0.006" target, hit where it counts. Writing 0.006
- * into this constant would have delivered 0.0108 effective: 1.8× past the
- * target, ≈0.9× the pre-round-8-D 0.012, and 1.5× the star core blob radius
- * (STAR_CORE_R × STAR_SPREAD = 0.0074) — links sagging WIDER than the stars
- * they connect, which inverts the "stars are the subject" read. The owner's
- * live A/B was looking at 0.0028 × 1.8 = 0.00504, so ~0.006 is a +21% nudge on
- * what they saw, not a 2.1× jump. If the links want more slack, this is the
- * one knob (or raise uEnvelope live — same product).
+ * ROUND-8-G: 0.0034 → **0**. THE BEAD MUST SIT ON THE LINE. The new
+ * `LineSegments` layer draws the EXACT A→B chord (a straight segment is the
+ * reference's grammar — crisp lines, not sagging ropes), so any strand offset
+ * would park the traveling packet bead BESIDE its own line: at the round-8-F
+ * numbers the effective radius was STRAND_RADIUS × ENVELOPE_BASE = 0.0061
+ * ≈ 4.1px on a 680px band, i.e. a 10px bead visibly off a 1px line.
  *
- * Continuity is unaffected either way, and the arithmetic says so: consecutive
- * particles on a link are 2.5px apart along the chord, and the helix adds only
- * R·Δθ perpendicular, where Δθ = 2π·BRAID_TURNS·STRAND_RATE_BASE·(2.5/71) =
- * 0.109 rad ⇒ 0.45px at the new radius. Neighbour gap √(2.5² + 0.45²) =
- * 2.54px against a 9.4px core / 4.1px fringe sprite. The dotted read was
- * NEURAL_POINT_SIZE, not this.
+ * The alternative — bending the LINE onto the braid — was rejected: it would
+ * need the helix evaluated per line vertex (more ALU on a layer whose whole
+ * point is to be cheap) and it still could not match the COMPUTE tier, where
+ * the particle path also carries the curl shred that the line's vertex stage
+ * has no access to. Zeroing the braid makes the two paths identical by
+ * construction on BOTH backends instead of approximately equal on one.
+ *
+ * STRAND_THICKNESS keeps a sub-pixel residue so the dust is not perfectly
+ * collinear (see below); the fray/debris scatter on `broken` is untouched —
+ * that displacement is authored in DEBRIS_SPREAD, not here.
  */
-export const STRAND_RADIUS = 0.0034;
-/** Per-particle jitter radius within a strand (thickness noise). Also rides
- * widthEnvelope → effective 0.0018 × 1.8 = 0.0032 (≈2.2px). */
-export const STRAND_THICKNESS = 0.0018;
+export const STRAND_RADIUS = 0;
+/** Per-particle jitter radius within a strand. ROUND-8-G: 0.0018 → 0.0006 —
+ * effective 0.0006 × ENVELOPE_BASE 1.8 = 0.0011 ≈ **0.7px**, i.e. sub-pixel
+ * against the 1px line, so the beads still read as ON it while the resting
+ * dust keeps a hair of volume instead of a machined single-file queue. */
+export const STRAND_THICKNESS = 0.0006;
 /**
  * Master filament width envelope — the uEnvelope default (was a bare
  * `uniform(1)` literal in neuralFieldCompute). ROUND-8-F (LIVE-MEASURED):
@@ -513,6 +532,17 @@ export const STRAND_THICKNESS = 0.0018;
  * on top of the healthy TIGHTEN_PER_RING ramp, the idle breathe, the row
  * response and the scroll-velocity swell. Cost: zero — it moves particles off
  * the chord, it does not resize sprites or add any.
+ *
+ * ⚠ ROUND-8-G: this knob and the whole widthEnvelope() family are now nearly
+ * INERT. STRAND_RADIUS is 0 (the beads ride the line), so the only thing left
+ * for the envelope to scale is the 0.0006 thickness jitter — 1.8 × that is
+ * 0.7px. Kept at 1.8 so a revival of the braid lands where round-8-F left it.
+ * Where the family's members went instead:
+ *   VEL_SWELL      → the LINE's brightness (inside its capped emissive chain);
+ *   ROW_SWELL      → LINE_ROW_GAIN, also brightness;
+ *   TIGHTEN_PER_RING → NOT transferred. It was a left→right "discipline" ramp
+ *     expressed as width; a 1px line has no width, and mapping it to alpha
+ *     would fight the cool→warm tint that already carries the maturity read.
  */
 export const ENVELOPE_BASE = 1.8;
 /** Full twists along ONE link — nearly straight now (0.6): a plexus link is a
@@ -534,6 +564,153 @@ export const STRAND_RATE_STEP = 0.12;
  * thread rather than a river current. */
 export const FLOW_SPEED = 0.075;
 
+// --- ROUND-8-G — THE LINK LINE LAYER -----------------------------------------
+/**
+ * The links are REAL LINE GEOMETRY (one `LineSegments`, one draw call, built
+ * by neuralLinkLines.bakeLinkLineGeometry from the SAME getPlexus tables the
+ * particles read; material in neuralFieldCompute.buildLinkLineLayer).
+ *
+ * WHY (owner-visible, live-verified 2026-08-24): the reference brain-plexus
+ * has thin crisp CONTINUOUS lines between bright stars. Particles strung along
+ * an edge cannot be that — pushed to 7.5px and then 10px they became a chain
+ * of glowing blobs, because a glowing sprite ≥4px and a 1px line are different
+ * primitives. Structural, not a tuning problem.
+ *
+ * SIX of the constants below are live on the dev handle — `uniforms.uLineAlpha
+ * / uLineEmissive / uLineLumMax / uLineBlue / uLineSurgeGain / uLineRowGain`
+ * (plus the traffic pair `uDustAlpha` / `uBeadAlpha`). The REST — the surge
+ * whitening, the flash gain, the dead alpha/dim, the dash triple and the
+ * reveal stagger — are baked as `float()` literals in the node graph and need
+ * an edit + reload, not a uniform write. LINK_SEGMENTS is BUILD-TIME (baked
+ * geometry).
+ */
+/** Sub-segments per link in the baked LineSegments (⇒ 2× this vertices/link).
+ * The chord is straight and would need 2; the subdivision is there so the
+ * VERTEX-stage terms that vary along a link resolve — the surge wavefront
+ * (SURGE_K 150 ⇒ half-width 0.068 of nodeT) and the fracture death-flash
+ * (FLASH_K 500 ⇒ 0.037).
+ *
+ * SAMPLING, MEASURED (not the draft's "a link spans ≈0.05 of nodeT" — that
+ * number was never taken off the real tables). Over all six mode×density
+ * builds the per-link |ΔnodeT| is: full mean 0.035 / max 0.106, lite mean
+ * 0.043 / max 0.122. Six sub-segments therefore sample the MEAN link every
+ * 0.006 and the WORST-CASE (longest) link every 0.018, i.e.
+ *   - surge  (half-width 0.068): 3.9 samples inside the half-width even on
+ *     the longest link — linear-interp error ≈1% of peak;
+ *   - flash  (half-width 0.037): 2.1 samples on the longest link — error
+ *     ≈4% of peak.
+ * Both are well under a visible stair-step, and the SHORT links (the dense
+ * middle of the cloud) are sampled 3× finer still. Cost: 227 links × 12 =
+ * 2,724 verts (lite 1,320) — one position + one vec2 attribute, no index
+ * buffer. */
+export const LINK_SEGMENTS = 6;
+/**
+ * At-rest master alpha of the line body. With LINE_EMISSIVE below this is the
+ * pair that sets the whole layer's brightness, and it is bounded by the bloom
+ * contract (see STREAM_EMISSIVE's ledger): the line must stay UNDER post-blend
+ * luminance 1.0 at every moment, because the light in this band belongs to the
+ * stars and the beads.
+ */
+export const LINE_ALPHA = 0.7;
+/**
+ * Resting emissive of the line body. THE ARITHMETIC (post-blend luminance,
+ * bloom threshold 1.0):
+ *   base tone = mix(COL_CYAN, COL_BLUE, LINE_BLUE_MIX 0.3) ⇒ lum
+ *               0.7 × 0.6201 + 0.3 × 0.2289 = **0.5029**
+ *   rest, mid-span, shimmer peak:
+ *               0.5029 × 1.35 × midProfile 1.15 × shimmer 1.04 × LINE_ALPHA
+ *               0.70 = **0.568**  ⇒ 43% headroom, and 1/12.9 of the 7.33 star
+ *               core. (Round-8-F's particle thread sat at 0.966 with 3.5%
+ *               headroom — the line is dimmer per pixel and reads BRIGHTER
+ *               because it concentrates that energy in 1px instead of smearing
+ *               it across a 9.4px sprite.)
+ */
+export const LINE_EMISSIVE = 1.35;
+/**
+ * ASYMPTOTIC CEILING on the line's POST-BLEND LUMINANCE — the quantity
+ * PostFXNodes actually thresholds (≈1.0). The shader divides this by the
+ * line's live `lum(tone) × alpha` and folds the result into the emissive chain
+ * through the SOFT KNEE below, so the contract is tone-independent and
+ * permanent: whatever the gains (row hover × surge × flash × shimmer ×
+ * mid-span × scroll swell) and whatever the tone (the surge head whitens
+ * toward COL_CORE, lum 0.9371, and the warm end of the nodeT tint adds more —
+ * worst-case tone lum 0.768), THE LINE NEVER BLOOMS. A flat cap on the
+ * emissive MULTIPLIER would not have held: sized on the 0.5029 body tone it
+ * let a surge crossing a hovered region reach 1.48. 0.97 leaves a 3% guard
+ * band under the threshold — and the knee means the line only ever
+ * APPROACHES it, never lands on it.
+ */
+export const LINE_LUM_MAX = 0.97;
+/**
+ * Knee fraction of LINE_LUM_MAX under which the ceiling is EXACTLY inert.
+ *
+ * WHY THIS EXISTS (round-8-G check, 2026-08-24): the first cut clamped with a
+ * hard `min(emissive, cap)`, and measured on the real numbers that clamp ate
+ * the entire wavefront. With LINE_SURGE_GAIN 1.0 the cap engages at surge
+ * 0.436 — i.e. everywhere within |ΔnodeT| 0.0744 of the head, WIDER than the
+ * surge gaussian's own 0.068 half-width. So the whole visible head sat pinned
+ * at a flat 0.970, and since a full-tier link spans only 0.035 of nodeT the
+ * links flat-topped WHOLE: the "wavefront visibly sweeps each line" read
+ * collapsed into "links switch to the ceiling and back". Worse, a hovered row
+ * during a scroll (row 1 × vel 1) already sat above the cap at surge 0 — the
+ * surge was completely invisible on hovered rows.
+ *
+ * The knee is the standard C1 soft-clip: exact below `knee × cap`, then
+ * `knee + over·span/(over + span)` with `span = cap − knee`, which is
+ * monotonic, has unit slope at the knee and tends to `cap` without reaching
+ * it. Measured effect (mid-cloud tone, LINE_ALPHA 0.7):
+ *   surge 0 / 0.2 / 0.5 / 1.0 → 0.568 / 0.730 / 0.839 / 0.902  (was
+ *   0.568 / 0.741 / 0.970 / 0.970 — flat from 0.44 up)
+ *   hover+scroll, surge 0 → 1 → 0.867 → 0.942  (was 0.970 → 0.970, dead)
+ * The resting value is byte-identical (0.568) because rest sits far under the
+ * knee. 0.7 is the largest knee that keeps the surge's first half untouched.
+ *
+ * Not a uniform on purpose: it is the SHAPE of the contract, not a look knob,
+ * and uLineLumMax already gives the dev handle the axis that matters.
+ */
+export const LINE_LUM_KNEE = 0.7;
+/** How far the line body sits toward COL_BLUE from brand cyan — "thin, PALE,
+ * navy-cyan". The cool→warm nodeT tint (LAYER_TINT_COOL/WARM) still rides on
+ * top, so the left of the cloud cools further and the right warms to
+ * white-cyan, exactly as the link particles used to. */
+export const LINE_BLUE_MIX = 0.3;
+/** Emissive gain per unit surge — the wavefront visibly SWEEPS each line.
+ * ×2 on the raw multiplier; DELIVERED post-blend (after the LINE_LUM_KNEE
+ * soft ceiling and the head's own whitening) the head lands at 0.902 against
+ * a 0.568 body = **×1.59**, still monotonic all the way up and still under
+ * the ≈1.0 bloom threshold. */
+export const LINE_SURGE_GAIN = 1.0;
+/** Tone push toward COL_CORE (white-cyan) per unit surge at the head. */
+export const LINE_SURGE_WHITE = 0.5;
+/** Emissive gain at full row/zone attention (uRowGlow — broken: the row's
+ * cloud region; healthy: ignition region i). Deliberately below the particle
+ * ROW_GAIN 1.0: a lit REGION should read as its stars flaring with their mesh
+ * warming, not as the mesh out-shouting the stars. */
+export const LINE_ROW_GAIN = 0.7;
+/** Emissive gain per unit fracture death-flash on the crossing lines. */
+export const LINE_FLASH_GAIN = 1.2;
+/** Alpha a frayed line keeps at the moment of the break (it then fades with
+ * the same DEBRIS_FADE ramp the debris particles use) — dying links dim,
+ * dash and drift with their endpoints instead of vanishing on a frame. */
+export const LINE_DEAD_ALPHA = 0.5;
+/** Emissive dim of a fully-frayed line (matches the particle deadMix 0.75). */
+export const LINE_DEAD_DIM = 0.75;
+/**
+ * FRAY DASH (broken). crystalPlexus's broken-dash idiom verbatim — a product
+ * of three sines of the REST position (so dashes are welded to the geometry
+ * and do not crawl as endpoints drift), thresholded by smoothstep(LO, HI).
+ * FREQ 210 puts ≈3.6 periods on a 0.107-long link ⇒ 3–5 dashes per link, the
+ * same read as the SVG twin's `strokeDasharray="3 7"` ember links. Evaluated
+ * per FRAGMENT: at 1px a vertex-interpolated dash is a smear.
+ */
+export const LINE_DASH_FREQ = 210;
+export const LINE_DASH_LO = 0.36;
+export const LINE_DASH_HI = 0.52;
+/** Per-link reveal stagger: link i fades in over uReveal ∈ [h·this, h·this +
+ * 0.45] with h a per-link hash — the net knits itself together as the section
+ * arrives instead of switching on as one slab. */
+export const LINE_REVEAL_STAGGER = 0.55;
+
 // --- Silhouette --------------------------------------------------------------
 /** Alpha ramp along per-edge s: fade-in/out at the filament TIPS — the tips
  * dissolve into the STAR CORES they connect (and it hides the flow-wrap
@@ -549,6 +726,16 @@ export const STREAM_Z_BOW = 0.05;
  * a thread back into a rope. */
 export const CORE_SIZE_BOOST = 1.25;
 export const FRINGE_SIZE_DROP = 0.55;
+/**
+ * ROUND-8-G — RESTING SPRITE SCALE for LINK particles. The thread is a LINE
+ * now; a link particle at rest is faint DUST riding it, and a 9.4px sprite
+ * sitting on a 1px line is exactly the "chain of blobs" the owner rejected.
+ * 0.55 puts the resting dust at mix(1.25, 0.55, fringe)·0.55·NEURAL_POINT_SIZE
+ * ≈ **3.4px** — a grain that gives the line a soft core without competing with
+ * it. PACKET_SIZE then swells the same sprite back up for a BEAD (≈10.3px).
+ * Stars are untouched (they scale by RING_POINT_SIZE_BOOST, not this).
+ */
+export const DUST_SIZE = 0.55;
 /** Velocity-stretched sprites (AT streak look): total elongation =
  * 1 + min(|v|·GAIN, MAX). Static tier uses a mild fixed elongation along the
  * EDGE direction (STATIC_ELONG) plus the surge advection. */
@@ -631,8 +818,23 @@ export const RING_PROX_K = ZONE_K;
 export const STAR_CORE_R = 0.0055;
 /** Radial concentration exponent of the core blob (higher = denser centre). */
 export const STAR_CORE_CONC = 2.4;
-/** Fraction of a star's particles that build the flare cross. */
-export const STAR_FLARE_FRACTION = 0.42;
+/**
+ * Fraction of a star's particles that build the flare cross.
+ *
+ * ROUND-8-G: 0.42 → **0.70**, closing the round-8-D check's own flag ("the 4
+ * flare rays are 2.6 particles each"). The freed link budget (below) raises a
+ * full-tier star from ~25 to ~40 particles, and the split decides where those
+ * go. Spending them on the CORE would be waste: the core blob is a 5.0px-radius
+ * ball (STAR_CORE_R × STAR_SPREAD) drawn with 15.1px sprites, so it is already
+ * saturated additive white at ~8 particles. The RAYS are what was starved.
+ *   - was: 25 × 0.42 = 10.5 flare ÷ 4 rays = 2.6/ray over a 27.5px reach ⇒
+ *     10.6px spacing against a ~8.4px mean flare sprite = a DOTTED spike.
+ *   - now: 40 × 0.70 = 28 flare ÷ 4 rays = **7.0/ray** ⇒ 3.9px spacing, 2.1×
+ *     overlapped = a CONTINUOUS tapered spike. Core keeps 12 (1.5× saturated).
+ *   - lite: 26 × 0.70 = 18.4 ÷ 4 = 4.6/ray over a 19.4px reach on a 480px
+ *     band ⇒ 4.2px spacing, still 2.0× overlapped.
+ */
+export const STAR_FLARE_FRACTION = 0.7;
 /** Flare ray reach (height fractions ≈ 20px on a 680px band as authored;
  * × STAR_SPREAD 1.35 the DELIVERED reach is 0.0405 ≈ 27.5px). */
 export const STAR_FLARE_LEN = 0.03;
@@ -683,10 +885,42 @@ export const NODE_ALPHA = 1.0;
  */
 export const STAR_PUNCH = 2.2;
 export const STAR_SPREAD = 1.35;
-/** Fraction of particles that are STAR particles (both modes). ROUND-8-D:
- * 0.20 → 0.28 (the brief's edges ~70% / cores ~28% / sparks ~2% split — with
- * ~100 stars that is ~25 particles per star on the full tier). */
-export const NODE_FRACTION = 0.28;
+/**
+ * Fraction of particles that are STAR particles (both modes).
+ *
+ * ROUND-8-G — THE RE-ALLOCATION. Links no longer need particles to BE a line
+ * (the LineSegments layer draws them), so the ~70% they held is redistributed.
+ * 0.28 → **0.46**. Totals are unchanged (9000 / 3200):
+ *
+ *   full 9000 : stars 4140 (46%) · link traffic 4828 (53.6%) · sparks 32
+ *               ⇒ 40.2 particles/star over 103 nodes (was 25)
+ *               ⇒ 21.3 particles/link over 227 links (was 28.4)
+ *   lite 3200 : stars 1472 (46%) · link traffic 1696 (53%) · sparks 32
+ *               ⇒ 26.3/star over 56 nodes · 15.4/link over 110 links
+ *
+ * The link share stays high ON PURPOSE — those particles are now the ambient
+ * PACKET BEADS (round-7, owner: "la luce che passa vorrei sia più frequente"),
+ * the only thing that MOVES along the lines, and a bead needs enough samples
+ * inside its PACKET_WIDTH gaussian to read as a smooth travelling dot instead
+ * of a strobing sprite: at 21.3/link the spacing is 3.3px, so a bead spans ~3
+ * particles at ±1σ and ~6 at ±2σ. Dropping the link share further would bring
+ * back the very stutter this round removes, one primitive down.
+ *
+ * FILL BUDGET (the only real cost, ∝ sprite px²; desktop, DPR-independent
+ * comparison at identical totals):
+ *   round-8-F : stars 2520 (1462 core × 15.1px² + 1058 flare × 8.4px²) 407k
+ *               + links 6448 × 6.2px² 250k                    = **657k px²**
+ *   round-8-G : stars 4140 (1242 core + 2898 flare)           = 486k
+ *               + resting dust 4828 × 3.4px² (DUST_SIZE)      =  58k
+ *               + ~76 live beads × ~6 lit particles × 10.3px² =  52k
+ *               + the LINE layer 227 links × 71px × 1px       =  16k
+ *                                                             = **612k px²**
+ * i.e. ~7% CHEAPER than what already ran, with the stars 64% denser. The lite
+ * tier drops harder (≈211k vs the round-8-F 281k — the itemised ledger is on
+ * NEURAL_PARTICLE_COUNT_COMPACT) because the dust shrinks before the phone's
+ * smaller band shrinks anything else.
+ */
+export const NODE_FRACTION = 0.46;
 /** Coherent drift reach of a DEGRADED node (broken, nodeT past the fracture)
  * — whole-node displacement, so the far cloud reads knocked off station, not
  * dissolved. ROUND-8-D: 0.07 → 0.045 (the mesh is far denser; a big drift
@@ -711,8 +945,16 @@ export const FRACTURE_GAP_T = 0.03;
 /** Small forward push past the break before the fray spreads (local units —
  * the frayed side visibly starts beyond the cut). */
 export const DEBRIS_GAP = 0.02;
-/** Max alpha of frayed/detached particles (ember ceiling). */
-export const DEBRIS_ALPHA_MAX = 0.35;
+/**
+ * Max alpha of frayed/detached particles (ember ceiling). ROUND-8-G: 0.35 →
+ * **0.22**, a NO-OP re-basing, not a dim. Until this round the shader read
+ * `mix(fringeA, debrisA, disp) × STREAM_ALPHA`, so a frayed particle shipped
+ * at 0.35 × 0.62 = 0.217. STREAM_ALPHA is now the DUST FLOOR (0.06) with
+ * BEAD_ALPHA as its travelling peak, and multiplying the debris by either
+ * would be wrong — dead links carry no traffic. The debris branch therefore
+ * became ABSOLUTE, and the constant re-baked to the 0.217 that shipped.
+ */
+export const DEBRIS_ALPHA_MAX = 0.22;
 /** How far frayed particles scatter OFF their link line (local units) —
  * small by design: frayed links must still read as links gone wrong, with
  * the drifted endpoints carrying the "network degraded" story. ROUND-8-D:
@@ -791,22 +1033,28 @@ export const FLASH_GAIN = 3.0;
  * would carry ~100 simultaneous beads (soup). One clock at SPAN 6 gives
  * ~0.17 beads/link ≈ 40 on screen — the same calm-but-alive read at 12× the
  * mesh density, and one fewer shader unroll. */
-export const PACKET_COUNT = 1;
+export const PACKET_COUNT = 2;
 /** Packet clock rate (cycles/sec, ×0.75..1.25 per-packet hash variance).
- * Mean inter-packet interval per link ≈ 1/(RATE·COUNT) ≈ 4.5s. */
-export const PACKET_RATE = 0.22;
+ * Mean inter-packet interval per link ≈ 1/(RATE·COUNT) ≈ 1.7s. */
+export const PACKET_RATE = 0.3;
 /** A packet travels its link in 1/SPAN of the cycle (duty cycle — the rest
  * of the cycle the packet is off-link and invisible). Crossing time =
- * 1/(RATE·SPAN) ≈ 0.76s. */
+ * 1/(RATE·SPAN) ≈ 0.56s. */
 export const PACKET_SPAN = 6;
-/** Gaussian half-width of the packet highlight along per-edge s (~13% of an
- * edge ≈ a ~15px bright bead on a 680px band). */
-export const PACKET_WIDTH = 0.06;
+/** Gaussian half-width of the packet highlight along per-edge s. ROUND-8-G:
+ * 0.06 → 0.07 (≈10px at ±1σ on a 680px band) — with 21.3 particles per link
+ * that is ~3 sprites inside 1σ and ~6 inside 2σ, so the bead reads as one
+ * smooth travelling dot rather than a sprite handing off to a sprite. */
+export const PACKET_WIDTH = 0.07;
 /** Peak emissive gain: ×(1 + GAIN) at the packet center = ×2.2 — above the
  * >1.0 bloom floor, so packets BLOOM like little signals. */
 export const PACKET_GAIN = 1.2;
-/** Size swell at the packet center (rides beside the surge's 0.45). */
-export const PACKET_SIZE = 0.3;
+/** Size swell at the packet center (rides beside the surge's 0.45).
+ * ROUND-8-G: 0.3 → **2.0**. It now has to lift the RESTING dust (DUST_SIZE
+ * 0.55 ⇒ ≈3.4px) back into a bead: 0.83 × 0.55 × (1 + 2.0) × NEURAL_POINT_SIZE
+ * 7.5 = **10.3px** at the bead centre, 3× its own dust and comfortably under
+ * the 15.1px star core it is travelling toward. */
+export const PACKET_SIZE = 2.0;
 /** Tone push toward COL_CORE (white-cyan) at the packet center. */
 export const PACKET_WHITE = 0.45;
 /** Star flare swell at a node-kiss peak (a packet "arriving" — the kiss now
@@ -896,8 +1144,13 @@ export const RECOHERE_ROW_BOOST = 1.45;
  * Small by design — filaments SHRED organically, the edges keep their course.
  * Static tier keeps the analytic twist (no curl). Live-tunable via uCurl. */
 export const CURL_GAIN = 0.15;
-/** Displacement scale = the filament cross-section radius (local units). */
-export const CURL_SCALE = STRAND_RADIUS + STRAND_THICKNESS;
+/** Displacement scale (local units). It USED to derive from the filament
+ * cross-section (STRAND_RADIUS + STRAND_THICKNESS); round-8-G zeroed the braid
+ * so the beads ride the line, which would have silently killed the curl with
+ * it. Frozen here at the round-8-F value 0.0034 + 0.0018 = **0.0052** so the
+ * fray still shreds organically and the WRAP_SNAP_DIST arithmetic below (curl
+ * excursion ≈ CURL_GAIN × CURL_SCALE ≈ 0.0008) is unchanged. */
+export const CURL_SCALE = 0.0052;
 /** Two octaves: base + ~2.1× frequency at half amplitude. */
 export const CURL_FREQ = 22;
 export const CURL_FREQ_2 = 47;
@@ -1005,7 +1258,10 @@ export const NEBULA_RIM_GAIN = 0.35;
 export const VEL_NORM = 100;
 /** Damp λ of uScrollVel toward the normalized target. */
 export const VEL_DAMP = 6;
-/** Filament thickness envelope +25%·vel (the net swells while you scroll). */
+/** +25%·vel while you scroll. ROUND-8-G re-homed it: it used to thicken the
+ * particle filament through widthEnvelope (now inert — see ENVELOPE_BASE); it
+ * now rides the LINE's capped emissive chain, so the net ENERGISES while you
+ * scroll instead of fattening. Same constant, same damped uScrollVel. */
 export const VEL_SWELL = 0.25;
 /** Streak stretch gain +60%·vel (faster scroll = longer light streaks). */
 export const VEL_STRETCH = 0.6;
@@ -1043,38 +1299,60 @@ export const DOF_SIZE_GAIN = 0.6;
 // --- Emissive / render (>1.0 selective-bloom contract) -----------------------
 /**
  * The crystal cluster stays the band's centerpiece; the light lives in the
- * STARS, and the links are the mesh that carries it.
+ * STARS, the LINE layer is the mesh that connects them, and the link particles
+ * are the traffic that travels it.
  *
- * ROUND-8-F (LIVE-MEASURED, not derived — the owner's visual pass in Chrome).
- * The round-8-D numbers below were computed arithmetically and never eyeballed;
- * shipped, the plexus read as faint dust with DOTTED link trails instead of the
- * reference's continuous pale filaments. STREAM_EMISSIVE 1.6 → 2.1.
+ * THE BLOOM CONTRACT (unchanged, and it is the binding constraint on every
+ * number in this section): PostFXNodes thresholds Rec709 luminance ≈1.0 on the
+ * POST-BLEND framebuffer, i.e. on `tone × emissive × alpha`, NOT on the
+ * emissive multiplier alone. Luminance is measured in LINEAR space, the way
+ * three converts a hex Color: lum(COL_CYAN #3BE1FF) = 0.6201, lum(COL_BLUE
+ * #2A7FFF) = 0.2289, lum(COL_CORE #EAFBFF) = 0.9371.
  *
- * THE BLOOM CONTRACT IS UNCHANGED AND IT IS THE BINDING CONSTRAINT: PostFXNodes
- * thresholds Rec709 luminance ≈1.0 on the POST-BLEND framebuffer, i.e. on
- * `tone × emissive × alpha`, NOT on the emissive multiplier alone. Link body,
- * at rest, mid-span, core: lum(COL_CYAN) 0.6201 × (2.1 × midProfile 1.15) ×
- * STREAM_ALPHA 0.62 = **0.928**, and ×1.04 at the shimmer peak = **0.966** —
- * under 1.0, so LINKS STILL DO NOT BLOOM (they only halo). The traveling
- * signals deliberately cross it (a packet bead ×2.2 → 2.04, the surge head
- * ×3.2 → 2.97, a full row hover ×2 → 1.86), exactly as designed. Headroom is
- * thin by construction: the product STREAM_EMISSIVE × STREAM_ALPHA must stay
- * under 1.0/(0.6201·1.15·1.04) = **1.348**; we sit at 2.1 × 0.62 = 1.302.
- * Raising either past that puts the resting mesh into bloom soup.
+ * ROUND-8-G LEDGER (post-blend luminance, threshold = 1.0):
+ *   star CORE  7.33   blooms hard   (3.0 × STAR_PUNCH 2.2 × STAR_CORE_EMIS
+ *                                    1.25 = 8.25, tone 0.889, NODE_ALPHA 1.0)
+ *   packet BEAD 3.65  blooms        (see BEAD_ALPHA)
+ *   star flare tip 0.71             (crisp spikes, no smear — unchanged)
+ *   LINK LINE  0.568  NEVER blooms  (see LINE_EMISSIVE; hard-capped at 0.968)
+ *   resting dust 0.090              (5.9% of the line it rides — a soft core,
+ *                                    not a competing blob)
+ * The star core therefore sits **12.9× the link line** at rest and 7.6× even
+ * at the line's absolute ceiling: stars stay the subject by a wide margin,
+ * which is the round-8-G brief's contract.
  *
- * Star cores keep RING_EMISSIVE 3.0 but now ride uStarPunch (STAR_PUNCH 2.2):
- * 3.0 × 2.2 × STAR_CORE_EMIS 1.25 = 8.25 at the very centre → post-blend
- * 0.889 × 8.25 × 1.0 = 7.33, i.e. **7.9× the link body** (round-8-D: 5.2×).
- * Stars are the subject and pull further ahead of the mesh, which is the
- * round-8-F brief's contract. Live-tunable via the dev handle (`uniforms`).
+ * ROUND-8-F was LIVE-MEASURED (the owner's Chrome pass) and lifted
+ * STREAM_EMISSIVE 1.6 → 2.1 to stop the particle-drawn links reading as dust.
+ * ROUND-8-G keeps 2.1 but re-purposes it: it is the TRAFFIC's emissive now
+ * (the thread it used to draw is real geometry), so the old razor-thin
+ * headroom ("STREAM_EMISSIVE × STREAM_ALPHA < 1.348; we sit at 1.302") is
+ * gone — the product is 2.1 × 0.06 = 0.126 at rest and deliberately over the
+ * threshold only where a bead or the surge head is passing.
  */
 export const STREAM_EMISSIVE = 2.1;
 export const RING_EMISSIVE = 3.0;
-/** At-rest alpha of a LINK particle disc. ROUND-8-F (live): 0.45 → 0.62 — the
- * pale thread was TOO pale to read as a filament at all. Bounded by the
- * post-blend bloom product above (2.1 × 0.62 = 1.302 < 1.348). Star cores use
- * NODE_ALPHA instead. */
-export const STREAM_ALPHA = 0.62;
+/**
+ * RESTING alpha of a LINK particle — the DUST FLOOR since round-8-G (0.62 →
+ * 0.06). These particles no longer draw the thread, so at rest they must not
+ * pretend to: post-blend 0.6201 × (2.1 × midProfile 1.15) × 0.06 = **0.090**,
+ * i.e. 16% of the line's own 0.568 spread over a 3.4px sprite — it reads as
+ * the line's soft core, never as a bead. BEAD_ALPHA is the other end of the
+ * ramp. Star cores use NODE_ALPHA instead. Live: `uniforms.uDustAlpha`.
+ */
+export const STREAM_ALPHA = 0.06;
+/**
+ * PEAK alpha of a LINK particle at a packet bead / under the surge head — the
+ * top of the `mix(STREAM_ALPHA, BEAD_ALPHA, traffic)` ramp, where traffic =
+ * clamp(packet + 0.8·surge, 0, 1).
+ *
+ * Post-blend at a bead centre: tone = mix(COL_CYAN, COL_CORE, PACKET_WHITE
+ * 0.45) ⇒ lum 0.7629; emissive = (1 + packet × uPacketGain 1.2) × 2.1 ×
+ * midProfile 1.15 = 5.313; × 0.9 = **3.648** — 3.6× the bloom threshold, so
+ * beads BLOOM (half a star core, which is right: a bead is what a star eats).
+ * Under a full surge head it is brighter still (≈4.96) — the wavefront is
+ * meant to blaze through the mesh. Live: `uniforms.uBeadAlpha`.
+ */
+export const BEAD_ALPHA = 0.9;
 /**
  * Billboard size in device px (perspective-scaled in the shader; the
  * CORE_SIZE_BOOST/FRINGE_SIZE_DROP falloff rides on top).
@@ -1125,23 +1403,28 @@ export const NEURAL_MAX_SPEED = 8;
  * builds = 0.0551), so the threshold had to come down with it. The two
  * legitimate excursions that used to sit between 0.038 and 0.17 are now
  * handled explicitly instead of by headroom:
- *   - pointer bend — POINTER_PUSH cut 12 → 1.6 below. The bound is the
- *     steady-state spring displacement under the peak cursor acceleration,
- *     POINTER_PUSH / NEURAL_SPRING = 1.6/60 = 0.0267 (the radial term peaks
- *     at f² = 1 and the neural attractor passes orbit = 0, so nothing rides
- *     on top). That clears 0.038 by 1.4×, NOT the 2× an earlier draft of this
- *     note claimed — raising POINTER_PUSH above 2.28 breaks the invariant.
+ *   - pointer bend — POINTER_PUSH cut 12 → 1.6 (round-8-D) → **0.6**
+ *     (round-8-G, see the constant: the particles are the travelling beads
+ *     now, and an 18px fling would park a lit bead beside its own line). The
+ *     bound is the steady-state spring displacement under the peak cursor
+ *     acceleration, POINTER_PUSH / NEURAL_SPRING = 0.6/60 = **0.010** (the
+ *     radial term peaks at f² = 1 and the neural attractor passes orbit = 0,
+ *     so nothing rides on top; lockGain only ever RAISES the spring, which
+ *     shrinks the excursion further). Raising POINTER_PUSH above 2.28 breaks
+ *     the invariant — round-8-D sat at 1.6, i.e. a 1.4× clearance; 0.6 is a
+ *     3.8× one.
  *   - reveal lag / fray / re-cohere — the kernel only ARMS the snap in the
  *     steady state (uReveal > 0.9, uRecohere < 0.02, not dispersing), see the
  *     `armed` gate in neuralFieldCompute's simulate(). uReveal is damped at
  *     λ = 2.5 toward `scrollStore.reveal × visibility`, and scrollStore.reveal
  *     is only ever 0 or 1 (default 1), so the gate is reached ~0.9 s after the
  *     section scrolls in — it can never latch off permanently.
- * Curl stays ≈ CURL_GAIN·CURL_SCALE ≈ 0.0008 (round-8-F: CURL_SCALE tracked
- * STRAND_RADIUS 0.0028 → 0.0034, so 0.0007 → 0.00078; the curl term is added
- * OUTSIDE widthEnvelope, so ENVELOPE_BASE 1.8 does not scale it). Total
- * steady-state excursion 0.0267 + 0.0008 = 0.0275 < 0.038 — the guard still
- * clears by 1.38×. Invariant to preserve:
+ * Curl stays ≈ CURL_GAIN·CURL_SCALE ≈ 0.0008 (round-8-G FROZE CURL_SCALE at
+ * the round-8-F value 0.0052 instead of letting it track STRAND_RADIUS, which
+ * went to 0 — see the constant; the curl term is added OUTSIDE widthEnvelope,
+ * so ENVELOPE_BASE 1.8 does not scale it). Total steady-state excursion
+ * 0.010 + 0.0008 = **0.0108** < 0.038 — the guard clears by **3.5×** (it was
+ * 1.38× at round-8-D's 1.6). Invariant to preserve:
  * POINTER_PUSH/NEURAL_SPRING < WRAP_SNAP_DIST < EDGE_MIN_LOCAL ≤ the shortest
  * delivered link, and WRAP_SNAP_DIST > every steady-state excursion.
  */
@@ -1151,11 +1434,30 @@ export const WRAP_SNAP_DIST = 0.038;
 export const SPARK_SNAP_DIST = 0.12;
 
 // --- Pointer bend (compute tier; existing unified force model) ---------------
-/** Radial repulsion strength — the cursor locally bends nearby filaments.
- * ROUND-8-D: 12 → 1.6 so the max bend (~0.017) stays well under the new
- * WRAP_SNAP_DIST (see above). A dense mesh should dimple under the cursor,
- * not tear open. */
-export const POINTER_PUSH = 1.6;
+/**
+ * Radial repulsion strength — the cursor locally pushes nearby particles.
+ * ROUND-8-D: 12 → 1.6 so the max bend stays under WRAP_SNAP_DIST.
+ *
+ * ROUND-8-G: 1.6 → **0.6**. The thing the cursor used to bend WAS the link —
+ * the filament was made of these particles, so the mesh dimpled. The mesh is
+ * rigid line geometry now, and the particles on it are the travelling beads,
+ * so the old steady-state excursion (POINTER_PUSH / NEURAL_SPRING = 1.6/60 =
+ * 0.0267 local ≈ 18px on a 680px band) would fling a bright bead half a link
+ * AWAY from the line it is supposed to be riding — the exact "beside the line"
+ * failure this round exists to remove. At 0.6 the peak excursion is 0.010
+ * (≈6.8px, under one bead diameter) and the cursor still visibly disturbs the
+ * traffic where it passes.
+ *
+ * Bending the LINE to match was considered and rejected: the bend is a spring
+ * steady state inside the COMPUTE kernel, so an analytic copy in the line's
+ * vertex stage would bend the lines on the static tier where the particles do
+ * not bend at all — trading a small mismatch on one backend for a guaranteed
+ * one on the other.
+ *
+ * The WRAP_SNAP invariant gains margin: 0.010 + curl 0.0008 = 0.0108 against
+ * WRAP_SNAP_DIST 0.038 — a 3.5× clearance where round-8-D had 1.38×.
+ */
+export const POINTER_PUSH = 0.6;
 /** Influence radius (local units — anisotropic with the rect scale, fine). */
 export const POINTER_RADIUS = 0.1;
 
