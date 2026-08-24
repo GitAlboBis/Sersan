@@ -40,6 +40,34 @@
  * Broken / lite / WebGL2-fallback builds stay zero-texture (the ember core is
  * pure ALU). The plexus (§B-c) is 2 extra position-only draw calls on its own
  * geometries — no crystal slots, no bindings beyond its own material uniforms.
+ *
+ * ROUND 8-E — THE VALUE WORLD (research/2026-08-22-round8-stone-source-
+ * anatomy.md). The owner: "le pietre non mi sembrano per niente come quelle
+ * nel sito igloo." The measured verdict is arithmetic, not taste: igloo's
+ * whole stone lives inside a 7.9:1 value window sitting ON a mid-value fog
+ * (body = a 20 %-darkened copy of its surround, 1.22:1); ours spanned 54.6:1
+ * on a near-black page (body 1.03:1 = invisible, sparkle 54:1 = blinding).
+ * Two defects, only two: the absolute floor was 54× too low and the
+ * highlight-to-body ratio 167× too wide. This round fixes both, plus the two
+ * cheap refinements the same measurements exposed:
+ *   1. A luminous NAVY FOG VOLUME behind each stone (crystalFog.ts) giving the
+ *      silhouette something to be darker than, COUPLED to `BACKDROP_GAIN` on
+ *      the crystal's procedural backdrop — the crystal never samples the
+ *      framebuffer (its body comes from `backdrop()` and it composites at
+ *      alpha 0.94), so a glow behind it would otherwise do nothing to the
+ *      BODY. One driver value writes both, so the 0.79 body/surround ratio is
+ *      CONSTRUCTED rather than coincidental (§B3's ⚠).
+ *   2. Highlight compression + a value CEILING (igloo's `clamp(…,0,1)`
+ *      mechanism at a level that keeps the site's >1.0 selective-bloom
+ *      contract as a hairline whisper — see CRYSTAL_CEIL / RIM_EDGE_*).
+ *   3. TEXTURE BAND SEPARATION (§A2): our ripple and frost sat 1.45× apart
+ *      and mudded into one corrugation; igloo separates relief from roughness
+ *      zoning by ~32×. Five constants, zero new code.
+ *   4. An ANALYTIC AMBIENT HEMISPHERE (§D3) — we had no ambient term at all,
+ *      which is why facets read binary lit/unlit and the body could go fully
+ *      black. ~6 ALU, zero bindings, zero assets.
+ * NOTHING from igloo's asset set enters this repo: what transferred is the
+ * NUMBERS in that document (frequencies, luminance percentiles, ratios).
  */
 import type { LatticeMode } from "./neuralLatticeConfig";
 
@@ -131,7 +159,13 @@ export const CRYSTAL_CA = 0.16; // uChromaticAberration
  * stays coherent. Dev-tunable (uCAEdge). */
 export const CA_EDGE_BOOST = 2.5;
 export const CRYSTAL_THICKNESS = 2.0; // refraction-offset scale
-export const CRYSTAL_ROUGH = 0.6;
+/** ROUND 8-E §D2 — roughness LEVEL. igloo's effective roughness is
+ * `0.65 × G` on its roughness map = 0.19 / 0.36 / 0.44 at p10/p50/p90 (the
+ * widely-repeated "roughness .65" is the multiplier, NOT the value); ours ran
+ * 0.6 modulated ×(1 ± 0.45) → 0.33–0.87, ~1.7× rougher at the median and
+ * nearly double their max. 0.6 → 0.36; with FROST_ROUGH_K 0.5 the frost
+ * veining now yields ≈ 0.27 / 0.36 / 0.45 — igloo's distribution. */
+export const CRYSTAL_ROUGH = 0.36;
 /** Dispersion samples: 3 full / 1 lite (igloo AWESOME_SAMPLES=3). */
 export const CRYSTAL_SAMPLES = 3;
 export const CRYSTAL_SAMPLES_LITE = 1;
@@ -153,16 +187,28 @@ export const BACKDROP_CYAN = "#3BE1FF";
 /** Two bloom spots: [x, y, gaussian sharpness] in backdrop-coordinate units
  * + the shared additive gain (sub-1.0 — the spots glow, never bloom).
  * Round 7: sharper (2.2/3.0→4.0/5.5) + brighter (0.45→0.75, peak channel
- * still 0.75 < 1.0) — crisp internal highlights the dispersion can split. */
+ * still 0.75 < 1.0) — crisp internal highlights the dispersion can split.
+ * ROUND 8-E: 0.75 → 0.5. The spots are added AFTER `uBackdropGain` (they are
+ * authored ABSOLUTE internal highlights, not part of the navy field — gaining
+ * them ×8 would put a spot centre at lumLin ≈ 3.8, a hard bloom star, exactly
+ * the failure this round removes). At 0.5 a spot centre lands at 0.31 lumLin
+ * pre-darken → 0.155 post-darken ≈ 2.7× the raised body: a bright internal
+ * highlight inside the compressed window. */
 export const BACKDROP_SPOTS: readonly [number, number, number][] = [
   [0.55, 0.35, 4.0],
   [-0.6, -0.5, 5.5],
 ];
-export const BACKDROP_SPOT_GAIN = 0.75;
+export const BACKDROP_SPOT_GAIN = 0.5;
 
 // --- Round 7 — 2-lobe procedural environment (realism pass §1) --------------
-/** Key lobe direction (view-space fixed) — the soft white-cyan "sun". */
-export const FACET_KEY_DIR: [number, number, number] = [0.42, 0.62, 0.66];
+/** Key lobe direction (view-space fixed) — the soft white-cyan "sun".
+ * ROUND 8-E §D3: RE-AIMED to the measured sun of igloo's environment map —
+ * its single ~3411× pixel sits at equirect y 87/256 ⇒ **≈ 29° above the
+ * horizon** (the azimuth depends on three's equirect convention + their
+ * `envMapRotation.y = π`, so only the elevation is treated as solid). Old
+ * [0.42, 0.62, 0.66] was 38.4° up; the azimuth is preserved and the xz
+ * magnitude renormalised to cos 29° = 0.875. */
+export const FACET_KEY_DIR: [number, number, number] = [0.47, 0.485, 0.74];
 /** Fill lobe direction (view-space fixed) — cool navy from low-left-front. */
 export const FACET_FILL_DIR: [number, number, number] = [-0.45, -0.4, 0.55];
 /** Lobe colors — white-cyan key / navy fill (NO violet, round-7 contract). */
@@ -172,9 +218,19 @@ export const FACET_FILL_COLOR = "#14283F";
  * exponent (real spread — whole facets flash, not pinpricks) × SPEC_GAIN.
  * Dev-tunable (uSpecPow / uSpecGain). */
 export const SPEC_POW = 14.0;
-export const SPEC_GAIN = 1.15;
-/** Fill lobe gain on max(dot(N, FILL), 0) — dev-tunable (uFillGain). */
-export const FILL_GAIN = 0.5;
+/** ROUND 8-E §B4.2 part 3 — HIGHLIGHT COMPRESSION. 1.15 → 0.5. The key lobe
+ * is now the stone's BRIGHTEST ordinary pixel (the rim is not — that is the
+ * igloo read: env-lit facets, not a glowing outline). keyC (#D8F4FF) has
+ * Rec709 linear luminance 0.865, so the peak lands at 0.433 lumLin against
+ * the raised body (0.057) and the fog core (0.072): stone dynamic range
+ * 6.3:1 (igloo 7.9:1), brightest-vs-surround 4.0:1 (igloo 2.5:1, doc band
+ * 2.5–4.2:1). Both ratios are WCAG-form ((L+0.05) quotients), as in the doc. */
+export const SPEC_GAIN = 0.5;
+/** Fill lobe gain on max(dot(N, FILL), 0) — dev-tunable (uFillGain).
+ * ROUND 8-E: 0.5 → 0.25. The analytic ambient hemisphere (§D3, AMBIENT_*)
+ * now owns the cool floor this lobe was standing in for; keeping both at full
+ * strength double-counts it and lifts the body off its 0.79× fog ratio. */
+export const FILL_GAIN = 0.25;
 /** Per-FACET normal tilt (view-space, from the baked aFacet random) fed to
  * the key lobe only — facets catch the sun independently, the #1 flatness
  * killer. Dev-tunable (uFacetJit). */
@@ -202,35 +258,53 @@ export const SPARKLE_POW = 90.0;
 export const SPARKLE_DENSITY = 0.72;
 /** Slow time wink (rad/s phase per cell) so glints breathe even at rest. */
 export const SPARKLE_TWINKLE = 1.7;
-/** Glint intensity — >1.0 so single pixels bloom. Dev-tunable
- * (uSparkleGain); the lite build never compiles the sparkle branch. */
-export const SPARKLE_GAIN = 3.5;
+/** Glint intensity. ROUND 8-E §B4.2 part 3: 3.5 → 0.5 — the single widest
+ * defect in the old value world (peak 3.03 lumLin = **569× the body**; igloo
+ * caps every pixel at 3.4× its body). At 0.5 the glint peaks at 0.433 lumLin,
+ * level with the key lobe (same keyC), and SUB-BLOOM by construction — winks
+ * read as mineral facets catching the sun instead of white stars on black.
+ * Dev-tunable (uSparkleGain); the lite build never compiles the branch. */
+export const SPARKLE_GAIN = 0.5;
 
 // --- Round 7 — frost grain (internal structure, §4) -------------------------
-/** 3D value-noise frequency over crystal-local position — vein scale. */
-export const FROST_FREQ = 5.5;
+/** 3D value-noise frequency over crystal-local position — the ROUGHNESS
+ * ZONING band. ROUND 8-E §A2/§D1 (band separation, priority 2): igloo's
+ * roughness map saturates its structure function at 256 px ÷ ~228 texels per
+ * object unit ⇒ **≈ 0.9 cycles / unit** — a broad, slow patchwork that zones
+ * the stone into glassy regions and frosted regions. Ours sat at 5.5, i.e.
+ * only 1.45× away from the relief band (RIPPLE_FREQ 8) — the two mudded into
+ * a single mid-frequency corrugation. 5.5 → 0.9 separates them by 28.9×
+ * (igloo ≈ 32×): frost becomes zoning, ripple becomes wet shimmer. */
+export const FROST_FREQ = 0.9;
 /** Master frost amplitude (signed noise ×this) — dev-tunable (uFrostAmp);
  * 0 = uniform glass. Lite never compiles the frost octave. */
 export const FROST_AMP = 1.0;
-/** Frost → roughness modulation: roughEff = rough·(1 + frost·this). */
-export const FROST_ROUGH_K = 0.9;
+/** Frost → roughness modulation: roughEff = rough·(1 + frost·this).
+ * ROUND 8-E §D2: 0.9 → 0.5. With CRYSTAL_ROUGH 0.36 the veined range becomes
+ * 0.36·[0.75, 1.25] = 0.27 … 0.45 — igloo's measured p10/p50/p90 of
+ * 0.19/0.36/0.44 (their `0.65 × G` effective roughness). */
+export const FROST_ROUGH_K = 0.5;
 /** Frost → thickness modulation (refraction depth veins). */
 export const FROST_THICK_K = 0.8;
 /** Frost → body density veining: body ×(1 + frost·this). */
 export const FROST_DENSITY_K = 0.55;
 
-/** Fresnel rim. Round 7 (§2): RIM_BASE 0.55→1.6 — the GRAZING rim now crosses
- * 1.0 into bloom on its own (dark body, bright dispersive edges — the igloo
- * read); the ignition flash still pushes far beyond. 1.6 (not 1.1): the bloom
- * high-pass thresholds Rec709 LUMINANCE (0.2126/0.7152/0.0722 — BloomNode),
- * not max-channel, and the framebuffer sees col×alpha (normal blending over
- * the transparent clear). Whitened rim lum ≈ 0.79 at f1=1, so post-blend
- * lum = RIM_BASE·0.79·0.94 → 1.1 peaked at 0.82 (never bloomed; its "1.03"
- * was the blue channel, weighted 0.07); 1.6 crosses 1.0 for the f1 ≳ 0.95
- * grazing band (peak ≈ 1.19 — restrained) on full AND lite. */
+/** Fresnel rim. Round 7 (§2) took RIM_BASE 0.55→1.6 so the whole grazing band
+ * crossed 1.0 into bloom. ROUND 8-E §B4.2 part 3 REVERSES that: at 1.6 the rim
+ * peaked at 1.27 lumLin = **238× the body**, and with the sparkle at 569× the
+ * eye could see nothing BUT the highlights — the literal arithmetic of
+ * "glowing white outline on black". 1.6 → **0.35**: the whitened rim's Rec709
+ * linear luminance is 0.791 at f1 = 1, so the broad rim now peaks at 0.277
+ * lumLin ≈ 4.9× the raised body — present, dispersive, and NOT the brightest
+ * thing on the stone (the key lobe is, at 0.443). The >1.0 bloom is not lost,
+ * it is re-scoped to a hairline: see RIM_EDGE_START / RIM_EDGE_GAIN. */
 export const FRESNEL_POW = 3.0;
-export const RIM_BASE = 1.6;
-export const RIM_FLASH_GAIN = 2.2;
+export const RIM_BASE = 0.35;
+/** Ignition flash gain on the rim. ROUND 8-E: 2.2 → 1.2 — with the value
+ * CEILING in place (CRYSTAL_CEIL) a 2.2 flash pinned a wide band flat at the
+ * clamp; 1.2 keeps the mid-rim proportionate and lets only the outer edge
+ * saturate (igloo's own `clamp(…,0,1)` behaviour). */
+export const RIM_FLASH_GAIN = 1.2;
 /** Round 7 — per-channel fresnel exponent ratio (R×this / G / B÷this): blue
  * reaches further inward than red → a spectral dispersion fringe on the
  * silhouette with zero extra refraction samples. */
@@ -360,8 +434,14 @@ export const MARK_RT_FRAME = 1.15;
 export const MARK_COLOR = "#D8F4FF";
 /** Additive gain on the mark taps INSIDE the dispersion ladder (pre
  * uBodyDarken — the mark rides the dark-glass multiply + frost veining like
- * igloo's transmission sample, so > 1 here lands ~0.75 post-darken). */
-export const MARK_GAIN = 1.6;
+ * igloo's transmission sample). ROUND 8-E re-levelling (the round-8 doc flags
+ * MARK_* and EMBER_* as additive terms that must be re-levelled once the body
+ * rises ~8×): at 1.6 the mark landed at ~0.71 lumLin post-darken against a
+ * 0.005 body — a **133×** blob, one of the terms making the stone read as a
+ * lamp. 1.6 → 0.35 puts it at 0.155 lumLin ≈ 2.7× the raised body: an object
+ * clearly visible INSIDE the ice (igloo's penguin read) without leaving the
+ * compressed window or approaching the ceiling. */
+export const MARK_GAIN = 0.35;
 /** Refraction-coordinate → RT-UV scale: uv = coord·this + 0.5. Sizes the mark
  * to ~0.9 crystal units inside the body (dev-tunable, uMarkScale). */
 export const MARK_COORD_SCALE = 0.55;
@@ -384,9 +464,14 @@ export const MARK_RT_WEBGL2 = false;
 // bindings). Colored the sanctioned desaturated amber (#886a3d — §A3 pinned
 // igloo's interior warmth as env-side amber), sub-bloom by construction. ----
 export const EMBER_COLOR = "#886a3d";
-/** Master ember gain (uEmberGain). ≤ 0.35 keeps the peak channel far under
- * the bloom threshold at any gap/flicker phase (sub-bloom rule). */
-export const EMBER_GAIN = 0.3;
+/** Master ember gain (uEmberGain). ROUND 8-E re-levelling in the OPPOSITE
+ * direction to MARK_GAIN: the ember is added AFTER uBodyDarken, so raising
+ * the body ~8× would have buried it (0.3 → 0.048 lumLin = 0.85× the new
+ * body). 0.3 → 0.5 restores its relationship to the body — 0.05 lumLin at
+ * rest gap (breathe 0.625) ≈ 0.9× body, 0.079 ≈ 1.4× body on the hover
+ * re-cohere: a warm density you read INSIDE the shard, never a glow. Peak
+ * channel 0.5·0.246 = 0.12 — far under the bloom threshold at any phase. */
+export const EMBER_GAIN = 0.5;
 /** How far the k=0 refracted direction pushes the ember sample point into the
  * body (crystal units) — the "inside, not painted on" parallax. */
 export const EMBER_DEPTH = 0.35;
@@ -403,18 +488,48 @@ export const EMBER_GAP_DIM = 0.6;
 export const EMBER_FLICKER = 0.15;
 
 // --- §B-b — wet-ice ripple (procedural normal band, full tier only) ---------
-/** Ripple carrier frequency over vLocal — a clearly separate band ABOVE
- * CRYSTAL_NOISE_FREQ (1.6) and BELOW SPARKLE_FREQ (15). */
-export const RIPPLE_FREQ = 8.0;
-/** Normal-perturbation amplitude (uRippleAmp; spec 0.10–0.15). 0 = off. */
-export const RIPPLE_AMP = 0.12;
+/**
+ * Ripple carrier frequency over vLocal — the RELIEF band.
+ *
+ * ROUND 8-E §A2/§D1 (band separation, priority 2 — promoted ABOVE the Blender
+ * silhouette because it is five constants and no new code). igloo's normal
+ * maps carry their dominant energy at an 8–16 px period over ~456 texels per
+ * object unit ⇒ **28–57 cycles / unit**, at 20–33° RMS tilt. Ours ran 8
+ * cycles/unit at ~44° — one visible ripple every ~31 screen px and twice too
+ * steep: we built a *rippled* stone, not a *wet* one.
+ *
+ * 8 → 26 (the doc's 24–30 window). At CRYSTAL_SCALE 0.17 the stone spans
+ * ~250 screen px per crystal unit, so 26 puts one cycle every ~9.6 px — a
+ * shimmer near the resolution limit, which is exactly what reads as WET.
+ *
+ * ALIASING WALL — do not exceed ~30. igloo gets away with 57 because a
+ * mip-mapped normal map filters itself; an analytic sine does not. This is
+ * the one place where "match the measurement exactly" is the wrong
+ * instruction (doc §D1).
+ */
+export const RIPPLE_FREQ = 26.0;
+/** Normal-perturbation amplitude (uRippleAmp). ROUND 8-E: 0.12 → 0.018.
+ * The perturbation is N + gradT·amp with |gradT| ∝ frequency, so holding a
+ * tilt while tripling the frequency needs amp ÷ 3 — and the target tilt drops
+ * too (44° → ~25°, igloo's measured 20–33°): amp = tan 25° / (1.01·F) =
+ * 0.4663 / 26.26 ≈ 0.018. 0 = off. */
+export const RIPPLE_AMP = 0.018;
 /** vnoise3 phase-warp of the first wave train (breaks the straight rulings). */
 export const RIPPLE_WARP = 1.5;
+/** ROUND 8-E — the warp NOISE frequency, previously derived as
+ * RIPPLE_FREQ·0.6 and therefore dragged from 4.8 to 15.6 by the carrier
+ * retune. Decoupled and frozen at its historic value: the phase warp belongs
+ * in the FORM band (it makes the wave trains wander), not on top of the
+ * carrier — at 15.6 it turned the shimmer into high-frequency chaos. */
+export const RIPPLE_WARP_FREQ = 4.8;
 /** Two fixed skew directions (normalized at build) — the crossed wave trains. */
 export const RIPPLE_DIR1: [number, number, number] = [0.81, 0.33, 0.48];
 export const RIPPLE_DIR2: [number, number, number] = [-0.29, 0.77, -0.56];
-/** Second train: frequency ratio + amplitude (spec: ×1.7, ×0.6). */
-export const RIPPLE_F2 = 1.7;
+/** Second train: frequency ratio + amplitude (round 7 spec: ×1.7, ×0.6).
+ * ROUND 8-E: 1.7 → 1.15 — the ALIASING WALL guard. At the new carrier the old
+ * ratio would put train 2 at 44 cycles/unit (5.7 px/cycle: crawl + shimmer);
+ * 1.15 lands it at 29.9, just inside the ~30 ceiling. */
+export const RIPPLE_F2 = 1.15;
 export const RIPPLE_A2 = 0.6;
 
 // --- Rollout item 4 — warm glint lobe (§A3 mechanism twin, full tier) -------
@@ -512,3 +627,216 @@ export const CRYSTAL_VEL_SCALE_K = 0.03;
 /** Velocity damp λ (rising/falling — the PostFXNodes 6/3 grammar). */
 export const CRYSTAL_VEL_LAMBDA_UP = 6;
 export const CRYSTAL_VEL_LAMBDA_DOWN = 3;
+
+// === ROUND 8-E — THE STONE'S VALUE WORLD ====================================
+// research/2026-08-22-round8-stone-source-anatomy.md, Part B + §D3.
+// All values below are LIVE-TUNABLE from the dev handle
+// (`__sersanCrystal_<anchor>.feel` for the JS-side geometry knobs,
+// `.uniforms` for the shader-side ones). The doc is explicit that the targets
+// are DERIVED, not tuned — expect the owner to move them.
+
+// --- §B4.2 part 1 — THE FOG VOLUME (crystalFog.ts) --------------------------
+/**
+ * Why a fog at all (the arithmetic, not the taste): ice is TRANSMISSIVE, so
+ * its body value is (backdrop value) × (losses < 1). Against a near-black
+ * page the body can only ever be ≤ near-black, and the only way to brighten
+ * it is an ADDITIVE term — which on a dark body is a glow BY DEFINITION, i.e.
+ * the exact failure we are escaping. To read "dense" a solid must be
+ * measurably DARKER than its surround across most of its silhouette, and
+ * there is no room below lumLin 0.0069. So the stone needs a local light
+ * world to be darker than. That is the whole fix.
+ *
+ * SIZED FOR SERSAN, NOT COPIED: igloo's `k3` fog sits at lumLin 0.366 — a
+ * light grey-blue page. We take the RELATIONSHIPS at one fifth the absolute
+ * level: fog core ≈ 0.07 lumLin (≈10× the page). Sanity check from round 7-3
+ * §B.5: the DOM `section-accent-tint` cores just deleted measured L ≈ 0.128
+ * blended — **this fog is DIMMER than the washes the owner had removed**. It
+ * is not a return to page-blocks: same energy, world-scoped, in the right
+ * shape, in the right place, with a falloff that reaches exactly 0 inside its
+ * own quad (round 7-3 §A.6 hygiene rule — no rectangles, no visible edges).
+ */
+/** Navy-tinted luminous air. Rec709 LINEAR luminance 0.066, B/R ≈ 5.7 —
+ * unmistakably navy, no violet (logo-variant palette contract). */
+export const CRYSTAL_FOG_COLOR = "#2E4A6E";
+/** Multiplier on the fog colour (uFogGain). Composited peak luminance =
+ * lum(colour)·FOG_GAIN·FOG_OPACITY = 0.066·1.9·0.55 ≈ 0.069 ≈ the 0.07
+ * target. Split into gain × opacity on purpose: gain is "how much light",
+ * opacity is "how much of the page it occludes" — the fog stays a
+ * TRANSLUCENT volume (45 % of the page still reads through its core) instead
+ * of a paint-over. */
+export const FOG_GAIN = 1.9;
+/** Peak alpha at the fog core, before the reveal ramp. */
+export const FOG_OPACITY = 0.55;
+/**
+ * ⚠ ACCESSIBILITY — HARD GATE (doc §B4.3). `--ink-mute` (#8A94A6, rel-lum
+ * 0.2934) over the fog CORE (composited L 0.0721) is **2.8:1 — WCAG AA
+ * FAIL**. The fog therefore must not sit under the copy column. This constant
+ * is the multiplier on the crystal's OWN distance from the band centre-line
+ * (|CRYSTAL_POS[mode].x| of the rect width) used as the fog's INWARD x
+ * radius, so at 1.0 the falloff reaches exactly 0 AT the centre-line BY
+ * CONSTRUCTION, for both modes and every viewport width.
+ *
+ * RE-DERIVED FROM THE DOM (the round-8 doc's "83–167 px of clearance" does
+ * NOT survive measurement — do not trust it, this does): the
+ * `[data-lattice-anchor]` band is full-bleed, so rect.w = viewport width and
+ * its centre IS the viewport centre. The ledger/production body copy is
+ * `max-w-[34em]` left-aligned inside `container-px` (padding = --margin 10rem
+ * ≥1280, max-width 1600) at `clamp(0.95rem, 1.05vw, 1.15rem)`. Its right
+ * bound vs the centre-line: **−37 px at 1280** (it CROSSES), +6 px at 1366,
+ * +43 px at 1440, +55 px at 1500, +69 px at 1600, +23 px at 1728, +14 px at
+ * 1920 and above. So the copy is NOT always left of the centre-line and the
+ * gate is not a geometric no-overlap — it is a VALUE gate, and it holds with
+ * a wide margin:
+ *   worst case 1280 / broken, copy edge 37 px past the centre → local
+ *   x −0.471 → compressed r 0.831 → alpha 0.017 → composited L 0.0089 →
+ *   **5.8:1** (vs 6.0:1 on the bare page). AA breaks only above alpha 0.164,
+ *   i.e. 9.6× more fog than the worst pixel any copy ever sees.
+ * Lower this below 1.0 to buy geometric clearance too. Above 1.0 would break
+ * the gate (the asymmetry saturates at SYMMETRIC and alpha under the 1280
+ * copy edge jumps to 0.24, 1.5× the AA break point), so the driver CLAMPS it
+ * to [0,1] — the constraint is enforced, not merely written here. If the copy
+ * measure, the gutter or FOG_GAIN/FOG_OPACITY move, re-run this derivation:
+ * the 9.6× headroom is what makes 1.0 safe, not the shape.
+ *
+ * ⚠ NOTE, NOT A FIX (owner call): the ghost callouts inside the band
+ * (`.eyebrow`, 10 px, `text-ink-mute/80`) are positioned ON the crystal, i.e.
+ * on the fog core — their contrast falls from ~6:1 to ~3:1. They live inside
+ * the `aria-hidden` decorative band and every string is duplicated verbatim
+ * in the ledger row above them, so this is incidental text, not content. It
+ * is recorded here rather than fixed because the section files are frozen.
+ */
+export const FOG_CLEAR = 1.0;
+/** OUTWARD x radius, a fraction of the rect WIDTH (not half-width), away from
+ * the type column. The quad's right bound is 0.30 + CRYSTAL_POS.x (0.17 /
+ * 0.22) = 0.47 / 0.52 of the width from centre, against a 0.50 viewport
+ * half-width — so on `healthy` the geometry's last 0.02·w is off-screen. The
+ * hygiene rule (a) still holds on the VISIBLE output: alpha at the screen
+ * edge is 0.0015, under the shader's 0.002 Discard floor, so the last painted
+ * fog pixel sits at 0.4978·w from centre — 0.0022·w (≈3 px at 1280, 4 px at
+ * 1920) INSIDE the viewport. Raising this, FOG_FALLOFF or FOG_OPACITY without
+ * re-checking that margin would terminate the falloff on the viewport edge —
+ * a straight vertical cut, the "vecchi blocchi pagina" failure. */
+export const FOG_RADIUS_OUT = 0.3;
+/** Y radius (fraction of the rect height). 0.46 + |CRYSTAL_POS.y| (0.05 /
+ * 0.06) ≈ 0.51–0.52, i.e. the quad's zero-alpha bound lands essentially ON
+ * the band bounds: nothing bleeds a visible value into the chapter block
+ * above (whose right cell carries `--ink-mute` copy) or the next section. */
+export const FOG_RADIUS_Y = 0.46;
+/** Exponent on the `smoothstep(1,0,r)` radial falloff. The round-7-3 §B.4
+ * spec names `smoothstep(1,0,r)²`; at 2.0 the mass concentrates inside
+ * r < 0.4 and the stone (which spans out to r ≈ 0.7) sits almost entirely on
+ * the bright core with nothing left over for a surround. 1.35 spreads value
+ * across the footprint so the stone's mid-body sits on the core (darker than
+ * its surround, igloo's 0.79 ratio) while its extremities cross onto the dim
+ * tail (brighter than its surround) — igloo's own read: "across the frame it
+ * swings from lighter-than to darker-than, which is why it reads as MASS"
+ * (§B1). Set 2.0 to restore the spec-verbatim curve. */
+export const FOG_FALLOFF = 1.35;
+/** Master coupling scalar (dev handle `feel.fogEnergy`). ONE knob drives BOTH
+ * halves — the fog quad's opacity and the crystal's BACKDROP_GAIN — so body
+ * and surround always track (see BACKDROP_GAIN). 0 = exactly today's look. */
+export const FOG_ENERGY = 1.0;
+
+// --- §B4.2 part 2 — BACKDROP_GAIN (the load-bearing half) -------------------
+/**
+ * The subtlety that sinks a naive implementation: `crystalBuild` does NOT
+ * read the scene behind it. The body comes from the procedural `backdrop()`
+ * and the crystal composites at CRYSTAL_ALPHA 0.94, so only 6 % of whatever
+ * is behind it shows through — **putting a glow behind the crystal does
+ * almost nothing to the BODY**. Both halves are required.
+ *
+ * This gain multiplies `backdrop()`'s NAVY FIELD (not its cyan spots — see
+ * BACKDROP_SPOT_GAIN). It is preferred over re-tuning BACKDROP_NAVY/NAVY2
+ * because it preserves the authored palette, gives the dev handle one knob,
+ * and keeps the coupling explicit. (For reference, the equivalent static
+ * palette lift would be `#060D18 → ~#253A57` and `#1C2E4E → ~#6291E6` —
+ * visibly off-brand as literals.)
+ *
+ * 8.0 rather than the doc's derived ≈10 because the doc's figure assumed NO
+ * ambient term; the analytic hemisphere (§D3) below now contributes ≈ 0.014
+ * lumLin of the body budget. Arithmetic: backdrop typical 0.0106 × 8 =
+ * 0.0848 pre-darken → × BODY_DARKEN 0.5 = 0.0424, + ambient 0.0142 = **0.057
+ * body** against a **0.072 fog core** ⇒ body/surround **0.79** — igloo's ratio
+ * (0.794), CONSTRUCTED from one driver value instead of coincidental.
+ */
+export const BACKDROP_GAIN = 8.0;
+
+// --- §B4.2 part 3 — the value CEILING + the bloom whisper -------------------
+/**
+ * igloo hard-caps every stone pixel: `outgoingLight = clamp(…, 0, 1)`
+ * (bundle L38013), which is why its brightest pixel is at most 3.4× its body
+ * and its whole stone lives in a 7.9:1 window. We had no ceiling at all.
+ *
+ * ⚠ OWNER DECISION (doc §B4.2 part 3 leaves it open; taken conservatively
+ * here, documented so it can be flipped in one number):
+ *   - **1.35 (SHIPPED)** — the site's >1.0 selective-bloom contract is a house
+ *     signature (PostFXNodes thresholds Rec709 luminance ≈1.0 on the
+ *     post-blend framebuffer, i.e. col×alpha). At 1.35 everything on the
+ *     stone is compressed EXCEPT a hairline at extreme grazing
+ *     (RIM_EDGE_*), which survives the ceiling at 1.176 col-lum → 1.110
+ *     post-blend: a bloom INPUT of ~0.11, a genuine whisper. The ignition
+ *     flash saturates against the ceiling exactly as igloo's clamp does.
+ *   - **1.0 + RIM_EDGE_GAIN 0 (the igloo-faithful alternative)** — verbatim
+ *     igloo: no pinpoint bloom anywhere on the crystal, its glow being a soft
+ *     global haze from a 0.2 threshold we do not run. Flip both numbers to
+ *     get it; nothing else changes.
+ */
+export const CRYSTAL_CEIL = 1.35;
+/** Where the bloom hairline starts, on f1 = 1 − dot(N,V). 0.90 ⇒ only
+ * surfaces within ~5.7° of grazing (on a smooth silhouette that is the outer
+ * ~0.5 % of the radius; on our faceted soup it also catches the few facets
+ * turned edge-on). Below this the rim is the compressed RIM_BASE band. */
+export const RIM_EDGE_START = 0.9;
+/** Gain of that hairline, on the same whitened rim colour (linear luminance
+ * 0.791). Total at f1 = 1: RIM_BASE·0.791 + this·0.791 = 0.277 + 0.910 =
+ * 1.187 col-lum — but the CEILING bites first, and per CHANNEL: the whitened
+ * rim is (0.474, 0.864, 1.000), so ×1.5 clips only BLUE (1.50 → 1.35) and the
+ * luminance lands at **1.176** (blue is weighted 0.0722, hence the small
+ * loss). ×CRYSTAL_ALPHA 0.94 + 6 % of the fog behind = **1.110** post-blend,
+ * still over the ≈1.0 threshold with ~0.11 of bloom input. Note the coupling:
+ * below CRYSTAL_CEIL 1.296 the ceiling starts clipping GREEN as well, and the
+ * hairline falls back through the bloom threshold at **CRYSTAL_CEIL ≈ 1.16**
+ * (post-blend 1.005 at 1.16, 0.998 at 1.15). The two constants are one
+ * decision; moving either alone can silently delete the whisper.
+ * 0 = no crystal bloom at all (the igloo-faithful option). */
+export const RIM_EDGE_GAIN = 1.15;
+
+// --- §D3 — ANALYTIC AMBIENT HEMISPHERE (priority 4) -------------------------
+/**
+ * We had NO ambient term: two hard analytic lobes added directly, no Fresnel
+ * weighting, no wrap, no floor — hence facets reading binary lit/unlit and a
+ * body that could go fully black. igloo's stone is lit by a real IBL whose
+ * DOMINANT contribution is a broad cool ambient, not the sun: their env map
+ * runs p25 0.272 → p75 0.798 (a ~3× vertical gradient) with 73.7 % of pixels
+ * cool (B > 1.1·R) and 8.7 % warm; the ~3411× sun is a small source whose
+ * integrated power (≈0.33 sr·radiance) is merely comparable to that base.
+ *
+ * Encoded here as ~6 ALU with ZERO bindings, zero PMREM, zero repo assets:
+ *   ambient(N) = AMBIENT_GAIN · mix(DOWN, UP, N.y·0.5 + 0.5) · tint
+ * evaluated on the VIEW-space normal (consistent with FACET_KEY_DIR /
+ * FACET_FILL_DIR, which are already view-space-fixed directions).
+ *
+ * ⚠ TRAP, documented for whoever revisits this (doc §D3 fallback v2): if a
+ * texture path is ever taken — a runtime 64×32 equirect DataTexture, the only
+ * sane upgrade — the sun texel must be written as **≈53, NOT 3411**. One
+ * texel of a 64×32 equirect subtends 6.1e-3 sr against the source's 9.6e-5,
+ * so writing the source value would inject ~64× igloo's actual sun energy.
+ * That is the classic env-map downsampling trap. We are analytic, so it does
+ * not bite today — but it costs +2 fragment bindings if it ever does.
+ */
+export const AMBIENT_DOWN = 0.272; // measured p25
+export const AMBIENT_UP = 0.798; // measured p75
+/** Cool tint — linear B/R ≈ 1.22 (measured 1.25 over 73.7 % cool pixels). */
+export const AMBIENT_COOL = "#EAF3FF";
+/** Warm fraction folded into the tint at build time (measured 8.7 %), using
+ * the sanctioned desaturated amber. Zero shader cost — it is a JS mix. */
+export const AMBIENT_WARM_MIX = 0.087;
+/**
+ * Master gain (uAmbGain). Scales igloo's ABSOLUTE env radiance into our
+ * one-fifth-level world AND into a shader that has no diffuse albedo to
+ * multiply it by. 0.032 gives: floor (N.y = −1) 0.0072 lumLin — the body can
+ * no longer go black; typical (N.y ≈ 0) 0.0142; ceiling (N.y = +1) 0.0211.
+ * Combined with the transmission body (0.0424) that is 0.057 typical / 0.027
+ * darkest — the doc's §B4.1 targets (0.055 / ≈0.02).
+ */
+export const AMBIENT_GAIN = 0.032;

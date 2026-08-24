@@ -76,6 +76,41 @@
  *      (pow 24) in desaturated amber, gain ≤0.25: the §A3 mechanism twin of
  *      igloo's env-map warm patches sweeping the ripple. Sub-bloom.
  *
+ * ROUND 8-E — THE VALUE WORLD (research/2026-08-22-round8-stone-source-
+ * anatomy.md, Part B + §D3). Rounds 5–7 built the right MATERIAL in the wrong
+ * WORLD. Measured: igloo's whole stone lives in a 7.9:1 window sitting on a
+ * mid-value fog, its body a 20 %-darkened copy of its surround (1.22:1);
+ * ours spanned 54.6:1 on a near-black page — body 1.03:1 (invisible), rim
+ * 23:1, sparkle 54:1. Exactly two defects: the absolute floor was 54× too low
+ * and the highlight-to-body ratio 167× too wide. Four changes here, all
+ * procedural, zero new bindings:
+ *   1. `uBackdropGain` multiplies `backdrop()`'s NAVY FIELD (not its authored
+ *      cyan spots — gaining those ×8 would put a spot centre at lumLin 3.8, a
+ *      hard bloom star). This is the LOAD-BEARING half of the fog fix: the
+ *      crystal never samples the framebuffer and composites at alpha 0.94, so
+ *      the fog quad behind it (crystalFog.ts) reaches only 6 % of the body.
+ *      CrystalCluster writes this uniform and the fog's opacity from ONE
+ *      driver value, so the 0.79 body/surround ratio is CONSTRUCTED, not the
+ *      coincidence of two independent constants it used to be.
+ *   2. HIGHLIGHT COMPRESSION + a value CEILING (`uCeil`, igloo's
+ *      `clamp(outgoingLight, 0, 1)` mechanism at a brand-scaled level). The
+ *      config gains fall rim 1.6→0.35, sparkle 3.5→0.5, spec 1.15→0.5, mark
+ *      1.6→0.35 (ember goes the other way, 0.3→0.5, because it is added AFTER
+ *      the body multiply). The site's >1.0 selective-bloom contract survives
+ *      as a HAIRLINE: `uRimEdge` on a smoothstep(uRimEdgeStart,1,f1) gate
+ *      lifts only the extreme-grazing band past the threshold.
+ *   3. TEXTURE BAND SEPARATION (§A2/§D1): ripple 8→26 cycles/unit at 1/7 the
+ *      amplitude, frost 5.5→0.9 — 1.45× apart becomes 28.9× (igloo ≈32×), so
+ *      the relief reads WET (one cycle per ~9.6 screen px) and the frost reads
+ *      as broad glassy/frosted zoning instead of both mudding into one
+ *      mid-frequency corrugation.
+ *   4. An ANALYTIC AMBIENT HEMISPHERE (§D3) — we had NO ambient term at all,
+ *      hence binary lit/unlit facets and a body that could go fully black.
+ *      mix(p25, p75, N.y·.5+.5) on igloo's measured env-map distribution,
+ *      cool-tinted with the measured 8.7 % warm fraction folded in at build
+ *      time: ~6 ALU, zero textures, zero PMREM, zero repo assets.
+ * Nothing from igloo's asset set enters this repo; only the NUMBERS did.
+ *
  * FOG ADAPTATION (dossier §5): igloo's opaque mix(bg, color, vFade) repaint
  * would paint solid navy over the DOM (our canvas is transparent) — instead
  * the SAME `falloffsmooth(camDist…)` window fades ALPHA, in crystal-local
@@ -174,6 +209,7 @@ import {
   RIPPLE_FREQ,
   RIPPLE_AMP,
   RIPPLE_WARP,
+  RIPPLE_WARP_FREQ,
   RIPPLE_DIR1,
   RIPPLE_DIR2,
   RIPPLE_F2,
@@ -182,6 +218,18 @@ import {
   WARM_COLOR,
   WARM_POW,
   WARM_GAIN,
+  // Round 8-E (the value world). NOTE: BACKDROP_GAIN is deliberately NOT
+  // imported here — `uBackdropGain` defaults to 1 (exact back-compat) and is
+  // ramped to that target by CrystalCluster from the same driver value that
+  // sets the fog quad's opacity. The coupling is the point.
+  CRYSTAL_CEIL,
+  RIM_EDGE_START,
+  RIM_EDGE_GAIN,
+  AMBIENT_DOWN,
+  AMBIENT_UP,
+  AMBIENT_COOL,
+  AMBIENT_WARM_MIX,
+  AMBIENT_GAIN,
 } from "./crystalConfig";
 import type { LatticeMode } from "./neuralLatticeConfig";
 
@@ -245,6 +293,24 @@ export interface CrystalUniforms {
   uMarkGain: { value: number };
   /** Refraction-coord → mark-RT-UV scale (dead node like uMarkGain). */
   uMarkScale: { value: number };
+  // --- round 8-E value-world tunables (dev-handle surfaced) ----------------
+  /** ROUND 8-E §B4.2 part 2 — gain on `backdrop()`'s navy field. Default 1
+   * (exact back-compat); CrystalCluster ramps it to BACKDROP_GAIN from the
+   * SAME driver value that sets the fog quad's opacity, so the body and its
+   * surround always track. THE load-bearing half: the crystal composites at
+   * alpha 0.94, so a fog behind it reaches only 6 % of the body. */
+  uBackdropGain: { value: number };
+  /** ROUND 8-E §D3 — analytic ambient-hemisphere master gain. Gives the body
+   * a FLOOR (the stone can no longer go fully black) at ~6 ALU. */
+  uAmbGain: { value: number };
+  /** ROUND 8-E §B4.2 part 3 — the value CEILING (igloo's clamp mechanism).
+   * Set 1.0 for the igloo-faithful "no crystal bloom" variant. */
+  uCeil: { value: number };
+  /** Grazing band where the bloom hairline starts, on f1 = 1 − dot(N,V). */
+  uRimEdgeStart: { value: number };
+  /** Hairline gain — the ONLY term left above the bloom threshold. 0 = the
+   * igloo-faithful variant (no pinpoint bloom on the crystal at all). */
+  uRimEdge: { value: number };
 }
 
 export interface CrystalBuild {
@@ -389,6 +455,7 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     float,
     length,
     max,
+    min,
     clamp,
     sin,
     cos,
@@ -544,6 +611,18 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
   const uEmberGain = uniform(EMBER_GAIN);
   const uMarkGain = uniform(MARK_GAIN);
   const uMarkScale = uniform(MARK_COORD_SCALE);
+  // Round 8-E value-world tunables. uBackdropGain DEFAULTS TO 1 (not
+  // BACKDROP_GAIN): a build whose driver never ramps it — or a dev handle set
+  // back to 0 energy — renders exactly the pre-round-8 body, so the coupling
+  // with the fog quad is the only thing that can raise it (doc §B3's ⚠: the
+  // old body/surround match was a coincidence of two independent constants,
+  // and the moment a fog exists that coincidence breaks unless ONE value
+  // drives both).
+  const uBackdropGain = uniform(1);
+  const uAmbGain = uniform(AMBIENT_GAIN);
+  const uCeil = uniform(CRYSTAL_CEIL);
+  const uRimEdgeStart = uniform(RIM_EDGE_START);
+  const uRimEdge = uniform(RIM_EDGE_GAIN);
   const uColNavy = uniform(new Color(BACKDROP_NAVY));
   const uColNavy2 = uniform(new Color(BACKDROP_NAVY2));
   const uColCyan = uniform(new Color(BACKDROP_CYAN));
@@ -554,6 +633,14 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
   // Round 7-2b — the sanctioned desaturated-amber pair (warm lobe + ember).
   const warmCol = new Color(WARM_COLOR);
   const emberCol = new Color(EMBER_COLOR);
+  // Round 8-E §D3 — the ambient tint: the measured cool base with the
+  // measured 8.7 % warm fraction folded in HERE, at build time, so the
+  // shader pays nothing for it (a JS lerp in linear working space — three's
+  // ColorManagement already converted both hexes out of sRGB).
+  const ambCol = new Color(AMBIENT_COOL).lerp(
+    new Color(WARM_COLOR),
+    AMBIENT_WARM_MIX,
+  );
 
   // === Shared TSL helpers ===================================================
   /** Rodrigues rotation of p about unit axis by angle. */
@@ -645,6 +732,16 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
    * drops the second multiply) + two soft cyan bloom spots. Evaluated at a
    * 2D coordinate derived from the crystal-local position + the refracted
    * direction, so tumbling shifts the "internal world" like real refraction.
+   *
+   * ROUND 8-E §B4.2 part 2 — `uBackdropGain` lifts the NAVY FIELD (and only
+   * the field) by ~8× so the transmitted body finally has a value: 0.0106 →
+   * 0.085 lumLin pre-darken, → 0.042 post-darken, + the ambient floor = 0.057
+   * against a 0.072 fog core (igloo's 0.79 ratio). The cyan SPOTS are added
+   * AFTER the gain on purpose: they are authored ABSOLUTE internal highlights
+   * already tuned sub-1.0, and ×8 would put a spot centre at 3.8 lumLin — a
+   * hard bloom star, precisely the "glowing white on black" failure this
+   * round exists to remove (BACKDROP_SPOT_GAIN drops 0.75 → 0.5 to sit
+   * correctly inside the new window instead).
    */
   function backdrop(c: Any): Any {
     let g: Any = clamp(c.x.add(c.y).mul(0.25).add(0.5), float(0), float(1));
@@ -656,7 +753,7 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
       const n2 = vnoise2(c.mul(2.0).add(vec2(0.0, uTime.mul(0.017))));
       g = g.mul(n2.mul(0.5).add(0.5));
     }
-    let col: Any = mix(uColNavy, uColNavy2, g).mul(1.1);
+    let col: Any = mix(uColNavy, uColNavy2, g).mul(1.1).mul(uBackdropGain);
     for (const [sx, sy, sk] of BACKDROP_SPOTS) {
       const d = c.sub(vec2(sx, sy));
       col = col.add(
@@ -736,6 +833,8 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
   // Round 7-2b — desaturated amber constants (warm lobe + broken ember).
   const warmC = vec3(warmCol.r, warmCol.g, warmCol.b);
   const emberC = vec3(emberCol.r, emberCol.g, emberCol.b);
+  // Round 8-E — the pre-mixed ambient tint (cool base + 8.7 % warm).
+  const ambC = vec3(ambCol.r, ambCol.g, ambCol.b);
 
   const shade = Fn(() => {
     const N = normalize(vNrmView).toVar();
@@ -749,9 +848,14 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     // in VIEW space (constant vD1/vD2 varyings). The Nj refraction jitter
     // below rides ON TOP (igloo's blue-noise grain twin). Full tier only. ---
     if (!lite) {
+      // Round 8-E: the phase warp reads RIPPLE_WARP_FREQ (a decoupled
+      // constant frozen at the historic RIPPLE_FREQ·0.6 = 4.8) instead of
+      // deriving from the carrier — the retuned carrier would otherwise have
+      // dragged the warp from 4.8 to 15.6 cycles/unit and turned the wet
+      // shimmer into high-frequency chaos. The warp belongs in the FORM band.
       const arg1 = dot(vLocal, vec3(rd1[0], rd1[1], rd1[2]))
         .mul(RIPPLE_FREQ)
-        .add(vnoise3(vLocal.mul(RIPPLE_FREQ * 0.6)).mul(RIPPLE_WARP))
+        .add(vnoise3(vLocal.mul(RIPPLE_WARP_FREQ)).mul(RIPPLE_WARP))
         .toVar();
       const arg2 = dot(vLocal, vec3(rd2[0], rd2[1], rd2[2]))
         .mul(RIPPLE_FREQ * RIPPLE_F2)
@@ -927,6 +1031,25 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
       );
     }
 
+    // --- Round 8-E §D3 — ANALYTIC AMBIENT HEMISPHERE (priority 4). Until
+    // now this material had NO ambient term: two hard analytic lobes added
+    // directly, no Fresnel weighting, no wrap, no floor — which is why the
+    // facets read binary lit/unlit and the body could go fully black. igloo's
+    // stone is lit by a real IBL whose DOMINANT contribution is a broad cool
+    // ambient, not the sun: their env map runs p25 0.272 → p75 0.798 over a
+    // ~3× vertical gradient, 73.7 % cool, 8.7 % warm; the ~3411× sun's
+    // integrated power (0.33 sr·radiance) is merely COMPARABLE to that base.
+    // Encoded as one hemisphere lerp on the view-space normal (consistent
+    // with FACET_KEY_DIR / FACET_FILL_DIR, which are already view-space-fixed
+    // directions) — ~6 ALU, zero textures, zero PMREM, zero repo assets. It
+    // is what finally gives the body a FLOOR: 0.0072 lumLin at N.y = −1.
+    // Runs on LITE too — it is the cheap half of the fix and the value world
+    // is not a garnish. ------------------------------------------------------
+    const hemi = N.y.mul(0.5).add(0.5);
+    col = col.add(
+      ambC.mul(mix(float(AMBIENT_DOWN), float(AMBIENT_UP), hemi)).mul(uAmbGain),
+    );
+
     // --- Round 7 §1 — 2-lobe environment: white-cyan key spec lobe + navy
     // fill. The key lobe uses a PER-FACET tilted normal (baked aFacet) with
     // a lowish exponent → facets catch distinct values and flash
@@ -985,12 +1108,26 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
       );
     }
 
-    // --- Round 7 §2 — BRIGHT DISPERSIVE RIM: per-channel fresnel exponents
-    // (blue reaches further inward than red → spectral fringe), whitened
-    // toward extreme grazing. RIM_BASE now pushes the grazing rim past 1.0
-    // into bloom on its own — sized on Rec709 LUMINANCE post-blend, the
-    // metric BloomNode's high-pass actually reads (see RIM_BASE comment);
-    // the ignition flash burns far beyond. --------------------------------
+    // --- Round 7 §2 — DISPERSIVE RIM: per-channel fresnel exponents (blue
+    // reaches further inward than red → spectral fringe), whitened toward
+    // extreme grazing.
+    //
+    // ROUND 8-E §B4.2 part 3 — COMPRESSED. Round 7 pushed RIM_BASE to 1.6 so
+    // the whole grazing band crossed 1.0 into bloom; measured, that put the
+    // rim at 238× the body while the sparkle ran at 569×, and a body pinned
+    // at 1.03:1 against the page underneath — the literal arithmetic of a
+    // glowing white outline on black. At 0.35 the broad rim peaks at 0.277
+    // lumLin ≈ 4.9× the raised body: present, dispersive, and no longer the
+    // brightest thing on the stone (the key lobe is).
+    //
+    // The >1.0 bloom is not deleted, it is re-scoped to a HAIRLINE: `edge`
+    // gates a second, ungraded term on the extreme-grazing band alone
+    // (uRimEdgeStart 0.90 ⇒ within ~5.7° of grazing), taking the peak to
+    // 1.187 col-lum → 1.116 post-blend, a bloom INPUT of ~0.12. ⚠ This is the
+    // doc's one OPEN OWNER DECISION (§B4.2 part 3), taken conservatively
+    // because the >1.0 selective-bloom contract is a house signature; the
+    // igloo-faithful alternative is uRimEdge 0 + uCeil 1.0 (no pinpoint bloom
+    // anywhere on the crystal), both live on the dev handle. ---------------
     const rim3 = vec3(
       pow(f1, float(FRESNEL_POW * RIM_DISPERSION)),
       fres,
@@ -998,6 +1135,20 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     );
     const rimCol = mix(uColCyan, vec3(1.0, 1.0, 1.0), f1.mul(RIM_WHITEN));
     col = col.add(rimCol.mul(rim3).mul(uRimBase.add(uFlash.mul(uRimFlash))));
+    const edge = smoothstep(uRimEdgeStart, float(1.0), f1);
+    col = col.add(rimCol.mul(edge).mul(uRimEdge));
+
+    // --- Round 8-E §B4.2 part 3 — THE VALUE CEILING. igloo caps every stone
+    // pixel with `outgoingLight = clamp(…, 0, 1)` (bundle L38013), which is
+    // exactly why its brightest pixel is at most 3.4× its body and its whole
+    // stone lives in a 7.9:1 window; we had no ceiling at all. Every term
+    // above is non-negative by construction (the frost density factor bottoms
+    // at 0.725 and the facet value jitter at 0.85), so only the upper clamp is
+    // needed — `min` against a broadcast uniform keeps it cross-backend (WGSL
+    // `clamp` requires matching component types; `min(vec3, vec3)` does not).
+    // With uCeil 1.35 the ignition flash saturates against it exactly as
+    // igloo's clamp does, while the rim hairline stays just below.
+    col = min(col, vec3(uCeil, uCeil, uCeil));
 
     // --- Depth fade (igloo fog-mix window, adapted to ALPHA — header) ------
     const dRel = length(vPosView)
@@ -1023,9 +1174,13 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     // Same alpha-Discard idiom as particleNodeMaterial / neuralFieldCompute;
     // 0.05 sits just above the fade floor (round 7: 0.94·(1−FADE_MAX) ≈
     // 0.047 — still under) so fully-faded shards vanish instead of holding a
-    // ghost film + phantom occlusion. Round-7 §6 check: the darker body is
-    // carried through the fade window by the >1.0 rim + glints (additive on
-    // top of the body term), so the silhouette reads until Discard.
+    // ghost film + phantom occlusion. Round-8-E re-check (this rationale used
+    // to read "carried by the >1.0 rim + glints", which the compression
+    // deleted): the rim is now 0.35 and the sparkle 0.5, but the body itself
+    // rose ~8× (uBackdropGain + the ambient floor 0.0072, which the old build
+    // did not have at all), so the silhouette that survives to the Discard is
+    // now the BODY rather than its highlights — the correct read, and a
+    // strictly larger value than before at every fade step.
     Discard(alpha.lessThan(0.05));
     return vec4(col, alpha);
   })();
@@ -1071,6 +1226,11 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     uEmberGain,
     uMarkGain,
     uMarkScale,
+    uBackdropGain,
+    uAmbGain,
+    uCeil,
+    uRimEdgeStart,
+    uRimEdge,
   };
 
   return {

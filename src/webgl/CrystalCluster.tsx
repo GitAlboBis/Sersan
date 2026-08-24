@@ -83,6 +83,33 @@
  *     twin of igloo's fov coupling; PostFXNodes already consumes the same
  *     velocity channel for warp/vignette — nothing new there). NO camera
  *     writes, ever.
+ *
+ * ROUND 8-E — THE VALUE WORLD (research/2026-08-22-round8-stone-source-
+ * anatomy.md §B4.2). This driver owns the COUPLING that makes the fix work.
+ * The stone reads as a glowing outline on black because its body sits at
+ * 1.03:1 against the page while its highlights run to 54:1; the cure needs a
+ * luminous world behind it — but `crystalBuild` never samples the framebuffer
+ * (its body comes from the procedural `backdrop()`, and it composites at
+ * CRYSTAL_ALPHA 0.94, so only 6 % of anything drawn behind it reaches the
+ * body). So the fix is TWO halves that must move together:
+ *   1. `crystalFog.ts` — one soft navy quad mounted in THIS group at
+ *      renderOrder −4 (drawn BEFORE the crystal, so the stone composites OVER
+ *      it rather than being washed by an additive layer on top). Anisotropic
+ *      and ASYMMETRIC: its inward x radius is the crystal's own distance to
+ *      the band centre-line, so the falloff reaches exactly 0 there — the
+ *      hard a11y gate (`--ink-mute` over the fog core is 2.8:1, an AA fail)
+ *      is satisfied BY CONSTRUCTION at every viewport width, not by tuning.
+ *      The copy does cross the centre-line at 1280; the worst pixel any copy
+ *      sees is alpha 0.017 → 5.8:1, and AA only breaks at 0.164. The full
+ *      per-width derivation lives on FOG_CLEAR in crystalConfig — re-run it
+ *      if the gain, the opacity or the copy measure move.
+ *   2. `uBackdropGain` on the crystal, written from the SAME `fogDrive`
+ *      scalar as the quad's opacity, so body and surround always track and
+ *      igloo's 0.79 body/surround ratio is CONSTRUCTED rather than the
+ *      coincidence of two independent constants it used to be (doc §B3's ⚠).
+ * One dev-handle knob (`feel.fogEnergy`) moves both; at 0 the render is
+ * exactly the pre-round-8 look. Everything else (radii, clearance, falloff,
+ * gain, opacity) is on the same handle.
  */
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
@@ -131,8 +158,18 @@ import {
   CRYSTAL_VEL_SCALE_K,
   CRYSTAL_VEL_LAMBDA_UP,
   CRYSTAL_VEL_LAMBDA_DOWN,
+  // Round 8-E (the value world)
+  BACKDROP_GAIN,
+  FOG_CLEAR,
+  FOG_ENERGY,
+  FOG_FALLOFF,
+  FOG_GAIN,
+  FOG_OPACITY,
+  FOG_RADIUS_OUT,
+  FOG_RADIUS_Y,
 } from "./neural/crystalConfig";
 import type { CrystalBuild } from "./neural/crystalBuild";
+import type { CrystalFogBuild } from "./neural/crystalFog";
 import type { MarkRTRig } from "./neural/crystalMarkRT";
 import type { CrystalPlexus } from "./neural/crystalPlexus";
 import { loadMarkGeometry } from "./RouteHeroLogo";
@@ -162,6 +199,7 @@ export function CrystalCluster({
   // --- Lazy build (three/webgpu chunk loads ONLY here) ----------------------
   const [build, setBuild] = useState<CrystalBuild | null>(null);
   const [plexus, setPlexus] = useState<CrystalPlexus | null>(null);
+  const [fog, setFog] = useState<CrystalFogBuild | null>(null);
   const markRigRef = useRef<MarkRTRig | null>(null);
   const liteRef = useRef(false);
 
@@ -171,6 +209,7 @@ export function CrystalCluster({
     let built: CrystalBuild | null = null;
     let markRig: MarkRTRig | null = null;
     let plexusBuilt: CrystalPlexus | null = null;
+    let fogBuilt: CrystalFogBuild | null = null;
 
     void Promise.all([
       import("three/webgpu"),
@@ -178,7 +217,8 @@ export function CrystalCluster({
       import("./neural/crystalBuild"),
       import("./neural/crystalMarkRT"),
       import("./neural/crystalPlexus"),
-    ]).then(([webgpu, tslNs, mod, markMod, plexusMod]) => {
+      import("./neural/crystalFog"),
+    ]).then(([webgpu, tslNs, mod, markMod, plexusMod, fogMod]) => {
       if (cancelled) return;
       // Phone budget: `getState()`, never a subscription (commit wedge).
       const lite = useTierStore.getState().fxBudget.level <= 2;
@@ -214,8 +254,16 @@ export function CrystalCluster({
           tslNs as never,
         );
       }
+      // Round 8-E §B4.2 part 1 — the fog volume, on EVERY tier including
+      // lite: one quad, one draw call, ~15 ALU. The value world is what makes
+      // the stone read as mass at all, so it is not a full-tier garnish.
+      fogBuilt = fogMod.createCrystalFog({
+        webgpu: webgpu as never,
+        tsl: tslNs as never,
+      });
       setBuild(built);
       setPlexus(plexusBuilt);
+      setFog(fogBuilt);
     });
 
     return () => {
@@ -223,9 +271,11 @@ export function CrystalCluster({
       built?.dispose();
       markRig?.dispose();
       plexusBuilt?.dispose();
+      fogBuilt?.dispose();
       markRigRef.current = null;
       setBuild(null);
       setPlexus(null);
+      setFog(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, gl]);
@@ -271,6 +321,10 @@ export function CrystalCluster({
   // --- Per-frame driver -----------------------------------------------------
   const groupRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.Mesh>(null);
+  /** Round 8-E — the fog quad. Scaled per-frame to world radii derived from
+   * the anchor rect (the group is UNIFORMLY scaled, so the anisotropy has to
+   * live on the child's own scale). */
+  const fogRef = useRef<THREE.Mesh>(null);
   const scratch = useRef(new THREE.Vector3());
   const anchorScratch = useRef(new THREE.Vector3());
   const revealDamped = useRef(0);
@@ -305,6 +359,24 @@ export function CrystalCluster({
     visWindows: CALLOUT_VIS_WINDOWS.map(
       (w) => [w[0], w[1]] as [number, number],
     ),
+    // --- Round 8-E value world (every new knob is live-tunable) -----------
+    /** THE coupling scalar. Drives the fog quad's opacity AND the crystal's
+     * uBackdropGain from one value, so body and surround can never drift
+     * apart. 0 = exactly the pre-round-8 render. */
+    fogEnergy: FOG_ENERGY,
+    /** Target for uBackdropGain at full energy. */
+    backdropGain: BACKDROP_GAIN,
+    fogGain: FOG_GAIN,
+    fogOpacity: FOG_OPACITY,
+    fogFalloff: FOG_FALLOFF,
+    /** ⚠ A11Y GATE — multiplier on |CRYSTAL_POS[mode].x| for the fog's INWARD
+     * x radius. ≤ 1 keeps the falloff's zero at (or right of) the band
+     * centre-line, i.e. out of the copy column, where `--ink-mute` over the
+     * fog core would be 2.8:1 (AA fail). CLAMPED to [0,1] in the driver —
+     * setting it higher from the console does nothing, by design. */
+    fogClear: FOG_CLEAR,
+    fogRadiusOut: FOG_RADIUS_OUT,
+    fogRadiusY: FOG_RADIUS_Y,
   });
 
   useFrame((_, rawDelta) => {
@@ -462,6 +534,61 @@ export function CrystalCluster({
     u.uGap.value = gapRef.current;
     u.uCamDist0.value = camera.position.distanceTo(group.position);
     u.uWorldScale.value = s;
+
+    // --- Round 8-E §B4.2 — THE VALUE WORLD, both halves from ONE value. ----
+    // `fogDrive` is the single coupling scalar (doc §B3's ⚠: the old
+    // body/surround match was a coincidence of two independent constants, and
+    // the moment a fog exists that coincidence breaks unless the same number
+    // sets both). It rides `reveal` so the lit volume and the raised body
+    // arrive and leave together with the band.
+    // The gate is STRUCTURAL, not documentary: `fogDrive` is derived from the
+    // fog quad's own liveness, so there is no ordering, chunk-failure or
+    // commit-timing path that can raise the body without its surround (a
+    // ×8 backdrop with nothing behind it is the round's failure mode read
+    // backwards — a glowing block on the page). Cull, unmount, mode swap and
+    // reveal all already move both through `reveal`.
+    const fogM = fogRef.current;
+    const fogLive = fog !== null && fogM !== null;
+    const fogDrive = fogLive ? reveal * feelC.fogEnergy : 0;
+    // Half 2 (LOAD-BEARING): the crystal composites at alpha 0.94 and its
+    // body comes from the procedural backdrop(), so the quad behind it
+    // reaches only 6 % of the body — without this the stone stays invisible
+    // against the new fog. 1 = today's look, ramping to feelC.backdropGain.
+    u.uBackdropGain.value = 1 + (feelC.backdropGain - 1) * fogDrive;
+    // Half 1: the fog quad itself. Anisotropic (the band is far wider than
+    // the stone) and ASYMMETRIC — the inward x radius is the crystal's own
+    // distance to the band centre-line, so the falloff hits exactly 0 there
+    // at every viewport width (the a11y gate; the copy does cross that line at
+    // 1280, and the measured worst case is 5.8:1 — see FOG_CLEAR for the
+    // per-width derivation and the 9.6× alpha headroom). The quad's coords are
+    // [-1,1]², so the mesh scale IS the world radius; dividing by `s` keeps
+    // the fog's world size invariant under the group's uniform scale
+    // (including the §B-f velocity compression — the fog must not breathe
+    // with scroll speed, it is the world, not the object).
+    if (fog && fogM) {
+      const sSafe = Math.max(s, 1e-4);
+      // CRYSTAL_POS x is positive for both modes (the stone sits right of
+      // centre, clearing the left type column); Math.abs keeps the clearance
+      // honest if that ever flips.
+      // ⚠ THE A11Y GATE IS ENFORCED HERE, not just documented on FOG_CLEAR.
+      // `fogClear` is a live console knob and >1 walks the inward zero LEFT of
+      // the centre-line at |pos.x|·(clear−1)·w per unit; past 1.76 (broken) /
+      // 1.36 (healthy) the inward radius overtakes the outward one, the
+      // `Math.max(…, 1)` below pins the shape to SYMMETRIC, and the fog runs
+      // 0.13·w past the centre-line — alpha 0.24 under the 1280 copy edge,
+      // 1.5× the 0.164 that breaks AA. Clamping to [0,1] makes the worst
+      // reachable state the one the FOG_CLEAR derivation actually covers.
+      const clear = Math.min(Math.max(feelC.fogClear, 0), 1);
+      const rxIn = Math.abs(pos[0]) * clear * rect.w * k;
+      const rxOut = feelC.fogRadiusOut * rect.w * k;
+      const ry = feelC.fogRadiusY * rect.h * k;
+      fogM.scale.set(rxOut / sSafe, ry / sSafe, 1);
+      const fu = fog.uniforms;
+      fu.uFogAsym.value = rxIn > 1e-4 ? Math.max(rxOut / rxIn, 1) : 1;
+      fu.uFogGain.value = feelC.fogGain;
+      fu.uFogOpacity.value = feelC.fogOpacity * fogDrive;
+      fu.uFogFalloff.value = feelC.fogFalloff;
+    }
 
     // --- Round 7-2b §B-a — the mark transmission RT (healthy full only;
     // markRigRef is null otherwise). Driven from THIS existing useFrame —
@@ -699,8 +826,27 @@ export function CrystalCluster({
           : null;
       },
       /** Round 7-2b — live FEEL knobs (mutate from the console): deadzone,
-       * velNorm, velScaleK, connectWindow, visWindows[[min,max]×3]. */
+       * velNorm, velScaleK, connectWindow, visWindows[[min,max]×3].
+       * Round 8-E adds the value world: fogEnergy (THE coupling knob — 0
+       * restores the pre-round-8 render), backdropGain, fogGain, fogOpacity,
+       * fogFalloff, fogClear (⚠ a11y gate — clamped to [0,1] in the driver),
+       * fogRadiusOut, fogRadiusY. */
       feel: feel.current,
+      /** Round 8-E — the fog quad's live uniforms + its resolved geometry
+       * (world radii in crystal-group units; asym = outward ÷ inward x
+       * radius, the a11y clearance ratio). Null until the lazy build lands. */
+      get fogInfo() {
+        const fm = fogRef.current;
+        return fog
+          ? {
+              gain: fog.uniforms.uFogGain.value,
+              opacity: fog.uniforms.uFogOpacity.value,
+              asym: fog.uniforms.uFogAsym.value,
+              falloff: fog.uniforms.uFogFalloff.value,
+              scale: fm ? [fm.scale.x, fm.scale.y] : null,
+            }
+          : null;
+      },
       /** Round 7-2b — damped callout visibilities (0..1 per index). */
       get calloutVis() {
         return visVals.current.slice();
@@ -741,6 +887,12 @@ export function CrystalCluster({
           emberGain: u.uEmberGain.value, // dead node on healthy / lite
           markGain: u.uMarkGain.value, // dead node unless mark branch built
           markScale: u.uMarkScale.value, // dead node unless mark branch built
+          // round-8-E value world (crystalBuild header §1–§4):
+          backdropGain: u.uBackdropGain.value, // coupled to feel.fogEnergy
+          ambGain: u.uAmbGain.value,
+          ceil: u.uCeil.value, // 1.0 = the igloo-faithful no-bloom variant
+          rimEdgeStart: u.uRimEdgeStart.value,
+          rimEdge: u.uRimEdge.value, // 0 = no crystal bloom at all
         };
       },
     };
@@ -750,6 +902,24 @@ export function CrystalCluster({
 
   return (
     <group ref={groupRef} renderOrder={-3} visible={false}>
+      {/* Round 8-E §B4.2 part 1 — THE FOG VOLUME. renderOrder −4: painted
+          BEFORE the crystal, so the stone composites OVER the lit volume
+          (an additive layer on TOP would wash the body and destroy the
+          "darker than its surround" read the whole round exists to build).
+          depthWrite:false so it never punches the depth-tested SignatureLine;
+          culled with the group; swept by the W4 cut like any other GL pixel.
+          Its radial falloff reaches exactly 0 inside its own quad — the round
+          7-3 §A.6 hygiene rule: no rectangles, no visible edges, nothing that
+          could resurrect the "vecchi blocchi pagina". */}
+      {fog && (
+        <mesh
+          ref={fogRef}
+          geometry={fog.geometry}
+          material={fog.material}
+          renderOrder={-4}
+          frustumCulled={false}
+        />
+      )}
       {/* renderOrder −3: painted before the constellation layers (−2/−1) —
           the additive net reads as current flowing in FRONT of the crystal. */}
       <mesh
