@@ -73,6 +73,22 @@
  * core they arrive at) and the beauty pass (per-edge mid-span brightness
  * profile, cool→warm cyan tint across the cloud, star size variance/breath,
  * amber ember tips). All shader-side, zero driver changes.
+ *
+ * ROUND-8-F (2026-08-22) — BAKE THE LIVE TUNING. Round-8-D's LOOK numbers were
+ * derived arithmetically and never eyeballed; shipped, the plexus read as faint
+ * dust with dotted link trails instead of the reference's star-mesh. The owner
+ * measured corrections at the console (`__sersanNeuralLattice_*.uniforms`) and
+ * they are now the DEFAULTS: NEURAL_POINT_SIZE 3.6 → 7.5, NODE_ALPHA 0.8 → 1.0,
+ * STAR_PUNCH 2.2, STAR_SPREAD 1.35, DOF_STRENGTH 0.45, ENVELOPE_BASE 1.8, plus
+ * the three build-time link constants the console could not reach
+ * (STRAND_RADIUS, STREAM_ALPHA, STREAM_EMISSIVE), derived at each constant's
+ * own doc comment. The four knobs that used to be bare `uniform(1)` literals in
+ * neuralFieldCompute (uStarPunch / uStarSpread / uDof / uEnvelope) are config
+ * constants now, so the shipped look is authored in ONE file; the dev handle
+ * still overrides every one of them at runtime, unchanged. NOTHING structural
+ * moved — no geometry, no bindings, no per-frame work, no new draw calls; the
+ * only cost delta is sprite fill (pointSize², see NEURAL_PARTICLE_COUNT_COMPACT
+ * for the lite budget check).
  */
 
 // crystalConfig only imports a TYPE from this module (`import type` is erased
@@ -107,6 +123,24 @@ export const NEURAL_PARTICLE_COUNT = 9000;
  * DPR 2. Same topology — the phone gets a thinner version of the same net.
  * Read via `useTierStore.getState()` in the BUILD path only, never as a
  * subscription inside the Canvas island (the R3F island commit wedge).
+ *
+ * ROUND-8-F LITE CHECK (NEURAL_POINT_SIZE 3.6 → 7.5 is the only change here
+ * that touches cost — fill scales as pointSize², nothing else in this round
+ * adds a particle or a draw):
+ *   - vs ROUND-7, which shipped 7.0 on this same 3,200 budget: (7.5/7.0)² =
+ *     **1.15×**. The lite tier has already carried this sprite size.
+ *   - absolute: 3,200 × (7.5 · CORE_SIZE_BOOST 1.25)² at DPR 1 ≈ 281k px² of
+ *     additive fill, against the round-8-D DESKTOP figure of 9,000 × 4.5² ×
+ *     DPR2² ≈ 729k px² — the phone at the new size costs 39% of what the
+ *     desktop was already running comfortably.
+ *   - link continuity survives the thinner net: lite delivers ~2,272 link
+ *     particles over ~110 links = 20.7 per link, and its sparser cloud
+ *     (PLEXUS_SEEDS 74 vs 132 ⇒ ~1.22× the mean spacing) puts those at ~2.9px
+ *     apart on a 480px-tall phone band — still 3.2× overlapped by the 9.4px
+ *     core sprite and 1.4× by the 4.1px fringe. Sprites are px-fixed while the
+ *     band shrinks, so the small screen HELPS here.
+ *   - uDof 0.45 (DOF_STRENGTH) narrows the size spread from ±0.30 to ±0.135,
+ *     which lowers the peak near-particle sprite area — a small credit back.
  */
 export const NEURAL_PARTICLE_COUNT_COMPACT = 3200;
 
@@ -440,12 +474,47 @@ function buildPlexus(mode: LatticeMode, density: PlexusDensity): Plexus {
  * PALE THREAD — which is what the reference's plexus links are.
  */
 export const STRAND_COUNT = 1;
-/** Strand offset radius around the link line (height fractions). ROUND-8-D:
- * 0.012 → 0.0028 (≈1.9px on a 680px band). The mass must read as a MESH, not a
- * glow soup, so filaments are thin and pale and the light lives in the stars. */
-export const STRAND_RADIUS = 0.0028;
-/** Per-particle jitter radius within a strand (thickness noise). */
+/**
+ * Strand offset radius around the link line (height fractions) — the helix a
+ * filament's single strand traces, i.e. how much a link SAGS off its chord.
+ * It is NOT the filament's visual width: that is the sprite (NEURAL_POINT_SIZE
+ * × CORE_SIZE_BOOST = 9.4px), and it is not what made the links read dotted.
+ *
+ * ROUND-8-F: 0.0028 → 0.0034, and the number is derived at the point where it
+ * is APPLIED, not where it is authored. The shader multiplies `strandOff+jit`
+ * by widthEnvelope(), which now carries the live-measured ENVELOPE_BASE 1.8
+ * (below), so the EFFECTIVE cross-section radius is
+ *   STRAND_RADIUS × ENVELOPE_BASE = 0.0034 × 1.8 = **0.0061**
+ * — the round-8-F brief's "~0.006" target, hit where it counts. Writing 0.006
+ * into this constant would have delivered 0.0108 effective: 1.8× past the
+ * target, ≈0.9× the pre-round-8-D 0.012, and 1.5× the star core blob radius
+ * (STAR_CORE_R × STAR_SPREAD = 0.0074) — links sagging WIDER than the stars
+ * they connect, which inverts the "stars are the subject" read. The owner's
+ * live A/B was looking at 0.0028 × 1.8 = 0.00504, so ~0.006 is a +21% nudge on
+ * what they saw, not a 2.1× jump. If the links want more slack, this is the
+ * one knob (or raise uEnvelope live — same product).
+ *
+ * Continuity is unaffected either way, and the arithmetic says so: consecutive
+ * particles on a link are 2.5px apart along the chord, and the helix adds only
+ * R·Δθ perpendicular, where Δθ = 2π·BRAID_TURNS·STRAND_RATE_BASE·(2.5/71) =
+ * 0.109 rad ⇒ 0.45px at the new radius. Neighbour gap √(2.5² + 0.45²) =
+ * 2.54px against a 9.4px core / 4.1px fringe sprite. The dotted read was
+ * NEURAL_POINT_SIZE, not this.
+ */
+export const STRAND_RADIUS = 0.0034;
+/** Per-particle jitter radius within a strand (thickness noise). Also rides
+ * widthEnvelope → effective 0.0018 × 1.8 = 0.0032 (≈2.2px). */
 export const STRAND_THICKNESS = 0.0018;
+/**
+ * Master filament width envelope — the uEnvelope default (was a bare
+ * `uniform(1)` literal in neuralFieldCompute). ROUND-8-F (LIVE-MEASURED):
+ * 1.0 → 1.8. It multiplies widthEnvelope(), i.e. it scales `strandOff + jit`
+ * for LINK particles only (stars are untouched — their spread is STAR_SPREAD),
+ * on top of the healthy TIGHTEN_PER_RING ramp, the idle breathe, the row
+ * response and the scroll-velocity swell. Cost: zero — it moves particles off
+ * the chord, it does not resize sprites or add any.
+ */
+export const ENVELOPE_BASE = 1.8;
 /** Full twists along ONE link — nearly straight now (0.6): a plexus link is a
  * thread between two stars, not a braid. */
 export const BRAID_TURNS = 0.6;
@@ -557,13 +626,15 @@ export const RING_PROX_K = ZONE_K;
  * HALO_CORE_WHITE, HALO_FRINGE_SOFT. HALO_SIZE_VAR / HALO_BREATH_* are
  * REPURPOSED below as the star's size variance / breath.
  */
-/** Core blob radius (height fractions ≈ 3.7px on a 680px band). */
+/** Core blob radius (height fractions ≈ 3.7px on a 680px band as authored;
+ * × the round-8-F STAR_SPREAD 1.35 the DELIVERED radius is 0.0074 ≈ 5.0px). */
 export const STAR_CORE_R = 0.0055;
 /** Radial concentration exponent of the core blob (higher = denser centre). */
 export const STAR_CORE_CONC = 2.4;
 /** Fraction of a star's particles that build the flare cross. */
 export const STAR_FLARE_FRACTION = 0.42;
-/** Flare ray reach (height fractions ≈ 20px on a 680px band). */
+/** Flare ray reach (height fractions ≈ 20px on a 680px band as authored;
+ * × STAR_SPREAD 1.35 the DELIVERED reach is 0.0405 ≈ 27.5px). */
 export const STAR_FLARE_LEN = 0.03;
 /** Distribution exponent along a ray (≈1 = even, tapered by size/alpha). */
 export const STAR_FLARE_POW = 0.85;
@@ -575,8 +646,12 @@ export const STAR_Z = 0.0035;
 /** Size multiplier at the exact core → at a flare tip. */
 export const STAR_CORE_SIZE = 1.75;
 export const STAR_TIP_SIZE = 0.45;
-/** Emissive multiplier at the core → at a tip (both × RING_EMISSIVE, so the
- * tip still lands at 3.0·0.75 = 2.25, above the >1.0 bloom floor). */
+/** Emissive multiplier at the core → at a tip (both × RING_EMISSIVE × the
+ * round-8-F STAR_PUNCH, so the core lands at 3.0·2.2·1.25 = 8.25 and the tip
+ * at 3.0·2.2·0.75 = 4.95). Post-blend the CORE blooms hard (0.889 tone × 8.25
+ * × NODE_ALPHA 1.0 = 7.33) while a flare TIP stays at 0.794 × 4.95 ×
+ * STAR_TIP_ALPHA 0.18 = 0.71 — under the ≈1.0 threshold, so the spikes stay
+ * crisp instead of smearing into the core's halo. */
 export const STAR_CORE_EMIS = 1.25;
 export const STAR_TIP_EMIS = 0.75;
 /** Alpha at a flare tip (core = 1) and the falloff exponent. */
@@ -585,8 +660,29 @@ export const STAR_ALPHA_POW = 1.4;
 /** Extra whitening of the innermost core particles (on top of RING_WHITE). */
 export const STAR_CORE_WHITE = 0.3;
 /** At-rest alpha of a star particle — cores stay dense while the link
- * filaments go pale (STREAM_ALPHA). */
-export const NODE_ALPHA = 0.8;
+ * filaments stay paler (STREAM_ALPHA 0.62). ROUND-8-F (live-measured): 0.8 →
+ * 1.0, the uNodeAlpha default. The star core is the one element in the band
+ * that is allowed to be fully opaque additive white-cyan; at 0.8 it was
+ * conceding 20% of its punch to a mesh it is supposed to dominate. */
+export const NODE_ALPHA = 1.0;
+/**
+ * ROUND-8-F live-measured defaults for the three star knobs that used to be
+ * bare `uniform(1)` literals in neuralFieldCompute (uStarPunch / uStarSpread).
+ * They are config constants now so the shipped look is authored in ONE file
+ * and the dev handle still overrides them at runtime exactly as before.
+ *
+ * STAR_PUNCH scales the star's >1.0 core emissive (see STAR_CORE_EMIS) — 2.2
+ * is what made the cloud read as a star MESH rather than dust.
+ * STAR_SPREAD stretches the whole BAKED star offset (core blob AND flare rays
+ * together): at 1.35 the core blob radius is STAR_CORE_R 0.0055 × 1.35 =
+ * 0.0074 (≈5.0px on a 680px band) and a flare ray reaches STAR_FLARE_LEN 0.03
+ * × 1.35 = 0.0405 (≈27.5px). Node COUNT and the core/flare split stay
+ * BUILD-TIME (PLEXUS_SEEDS / STAR_FLARE_FRACTION).
+ * Neither knob changes fill cost — they move particles, they do not resize
+ * sprites (that is NEURAL_POINT_SIZE).
+ */
+export const STAR_PUNCH = 2.2;
+export const STAR_SPREAD = 1.35;
 /** Fraction of particles that are STAR particles (both modes). ROUND-8-D:
  * 0.20 → 0.28 (the brief's edges ~70% / cores ~28% / sparks ~2% split — with
  * ~100 stars that is ~25 particles per star on the full tier). */
@@ -729,7 +825,10 @@ export const PACKET_FLICKER_HZ = 43;
 /** Per-link brightness profile: emissive ×(1−this/2) at the tips rising to
  * ×(1+this/2) mid-span — threads dim INTO the star cores and carry their
  * light in the middle, so each link reads as a strand of light, not a bar.
- * Floor check: 1.6·0.85 = 1.36 keeps the >1.0 bloom contract at the tips. */
+ * ROUND-8-F ceiling check (the direction that matters now that STREAM_EMISSIVE
+ * is 2.1): the MID-SPAN peak 2.1·1.15 = 2.415 is the term that has to stay out
+ * of bloom, and it does — post-blend 0.928 (see STREAM_EMISSIVE). The tip floor
+ * 2.1·0.85 = 1.785 keeps its faint halo. */
 export const EDGE_MID_BRIGHT = 0.3;
 /** Tint within the navy→cyan family (NO violet) across the cloud: the LEFT of
  * the plexus runs COOLER (toward COL_BLUE), the RIGHT warmer-cyan (toward
@@ -920,6 +1019,19 @@ export const VEL_CURL = 0.3;
 export const VEL_DEBRIS = 0.2;
 
 // --- Depth-DOF illusion ------------------------------------------------------
+/**
+ * Master DOF strength — the uDof default (was a bare `uniform(1)` literal in
+ * neuralFieldCompute). ROUND-8-F (LIVE-MEASURED): 1.0 → 0.45. At full strength
+ * the depth cue was doing the opposite of its job on the round-8-D cloud: it
+ * smeared the far half of the stars into dust instead of placing them behind
+ * the near ones. At 0.45 all three DOF terms scale back proportionally —
+ * far-half alpha dim 1 − 0.45·far01 (was 1 − 0.45·far01 at full, i.e. the
+ * (1 − DOF_FAR_DIM) 0.45 factor now yields only 0.2025·far01), near-half disc
+ * softening ×0.45, and the DOF_SIZE_GAIN size spread narrows from ±0.30 to
+ * ±0.135 around 1. Depth still reads (NEURAL_DEPTH_ATTEN is untouched); it
+ * just no longer erases the far stars. 0 = the flat round-2 look.
+ */
+export const DOF_STRENGTH = 0.45;
 /** Alpha multiplier at the FAR extreme of the z range (far = smaller/dimmer). */
 export const DOF_FAR_DIM = 0.55;
 /** Soft-disc inner edge at full NEAR softness (bokeh-like falloff on near
@@ -930,30 +1042,65 @@ export const DOF_SIZE_GAIN = 0.6;
 
 // --- Emissive / render (>1.0 selective-bloom contract) -----------------------
 /**
- * The crystal cluster stays the band's centerpiece. ROUND-8-D rebalance: the
- * light moved from the links to the STARS. Link filaments drop 2.1 → 1.6 (mid
- * span ×1.15 = 1.84, tips ×0.85 = 1.36 — still over the >1.0 bloom floor, so
- * the mesh keeps a faint halo without becoming glow soup at 12× the link
- * count), while the star cores keep RING_EMISSIVE 3.0 (×STAR_CORE_EMIS 1.25 =
- * 3.75 at the very centre) so every node BLOOMS into a star. Live-tunable via
- * the dev handle (`uniforms` bag).
+ * The crystal cluster stays the band's centerpiece; the light lives in the
+ * STARS, and the links are the mesh that carries it.
+ *
+ * ROUND-8-F (LIVE-MEASURED, not derived — the owner's visual pass in Chrome).
+ * The round-8-D numbers below were computed arithmetically and never eyeballed;
+ * shipped, the plexus read as faint dust with DOTTED link trails instead of the
+ * reference's continuous pale filaments. STREAM_EMISSIVE 1.6 → 2.1.
+ *
+ * THE BLOOM CONTRACT IS UNCHANGED AND IT IS THE BINDING CONSTRAINT: PostFXNodes
+ * thresholds Rec709 luminance ≈1.0 on the POST-BLEND framebuffer, i.e. on
+ * `tone × emissive × alpha`, NOT on the emissive multiplier alone. Link body,
+ * at rest, mid-span, core: lum(COL_CYAN) 0.6201 × (2.1 × midProfile 1.15) ×
+ * STREAM_ALPHA 0.62 = **0.928**, and ×1.04 at the shimmer peak = **0.966** —
+ * under 1.0, so LINKS STILL DO NOT BLOOM (they only halo). The traveling
+ * signals deliberately cross it (a packet bead ×2.2 → 2.04, the surge head
+ * ×3.2 → 2.97, a full row hover ×2 → 1.86), exactly as designed. Headroom is
+ * thin by construction: the product STREAM_EMISSIVE × STREAM_ALPHA must stay
+ * under 1.0/(0.6201·1.15·1.04) = **1.348**; we sit at 2.1 × 0.62 = 1.302.
+ * Raising either past that puts the resting mesh into bloom soup.
+ *
+ * Star cores keep RING_EMISSIVE 3.0 but now ride uStarPunch (STAR_PUNCH 2.2):
+ * 3.0 × 2.2 × STAR_CORE_EMIS 1.25 = 8.25 at the very centre → post-blend
+ * 0.889 × 8.25 × 1.0 = 7.33, i.e. **7.9× the link body** (round-8-D: 5.2×).
+ * Stars are the subject and pull further ahead of the mesh, which is the
+ * round-8-F brief's contract. Live-tunable via the dev handle (`uniforms`).
  */
-export const STREAM_EMISSIVE = 1.6;
+export const STREAM_EMISSIVE = 2.1;
 export const RING_EMISSIVE = 3.0;
-/** At-rest alpha of a LINK particle disc (ROUND-8-D: 0.65 → 0.45 — pale
- * threads). Star cores use NODE_ALPHA instead. */
-export const STREAM_ALPHA = 0.45;
-/** Billboard size in device px (perspective-scaled in the shader; the
- * CORE_SIZE_BOOST/FRINGE_SIZE_DROP falloff rides on top). ROUND-8-D: 7.0 →
- * 3.6 — with ~230 links the filaments must be thin, and the smaller sprite
- * also cuts the additive fill cost well below the round-7 total (same
- * particle count, ~26% of the per-sprite area). Density check on a 680px
- * band: ~28 particles per ~71px link = 2.5px spacing under a 4.5px sprite,
- * so a thread still reads CONTINUOUS, just pale. */
-export const NEURAL_POINT_SIZE = 3.6;
+/** At-rest alpha of a LINK particle disc. ROUND-8-F (live): 0.45 → 0.62 — the
+ * pale thread was TOO pale to read as a filament at all. Bounded by the
+ * post-blend bloom product above (2.1 × 0.62 = 1.302 < 1.348). Star cores use
+ * NODE_ALPHA instead. */
+export const STREAM_ALPHA = 0.62;
+/**
+ * Billboard size in device px (perspective-scaled in the shader; the
+ * CORE_SIZE_BOOST/FRINGE_SIZE_DROP falloff rides on top).
+ *
+ * ROUND-8-F (LIVE-MEASURED): 3.6 → 7.5. This is the constant that actually
+ * fixed the "dotted trails", and the round-8-D arithmetic had it backwards.
+ * Density on a 680px band: link particles = 9000 − floor(9000·NODE_FRACTION)
+ * − SPARK_COUNT = 6448, spread length-proportionally over ~227 delivered
+ * links ⇒ ~28.4 particles per ~71px link = **2.5px spacing**. Against that:
+ *   - at 3.6 the FRINGE sprite was 3.6 × FRINGE_SIZE_DROP 0.55 = **1.98px** —
+ *     0.79× the spacing, i.e. NO OVERLAP: the pale outer strand was literally
+ *     a dotted line. The 4.5px core overlapped only 1.8×.
+ *   - at 7.5 the core sprite is 7.5 × CORE_SIZE_BOOST 1.25 = **9.4px** (3.8×
+ *     the spacing) and the fringe 7.5 × 0.55 = **4.1px** (1.65×). Every
+ *     cross-section strand now overlaps its neighbour → one continuous
+ *     filament.
+ * Fill budget: fill scales as pointSize², so this is (7.5/7.0)² = **1.15× the
+ * ROUND-7 shipped fill** at identical particle counts on BOTH tiers — the
+ * round-8-D 3.6 was the anomaly, not this. See NEURAL_PARTICLE_COUNT_COMPACT
+ * for the lite check.
+ */
+export const NEURAL_POINT_SIZE = 7.5;
 /** Base multiplier for STAR particles (the STAR_CORE_SIZE→STAR_TIP_SIZE
- * falloff rides on top → 7.2px at the core, ~1.9px at a flare tip on the
- * default point size: a crisp bloom point with fine spikes). */
+ * falloff rides on top → 15.1px at the core, ~3.9px at a flare tip on the
+ * round-8-F point size: a crisp bloom point with fine spikes, and comfortably
+ * wider than the 9.4px link filament so the stars stay the subject). */
 export const RING_POINT_SIZE_BOOST = 1.15;
 /** Depth size/brightness attenuation keyed on local z (aerial depth cue) —
  * with a genuinely volumetric cloud this is now the main depth read. */
@@ -990,7 +1137,11 @@ export const NEURAL_MAX_SPEED = 8;
  *     λ = 2.5 toward `scrollStore.reveal × visibility`, and scrollStore.reveal
  *     is only ever 0 or 1 (default 1), so the gate is reached ~0.9 s after the
  *     section scrolls in — it can never latch off permanently.
- * Curl stays ≈ CURL_GAIN·CURL_SCALE ≈ 0.0007. Invariant to preserve:
+ * Curl stays ≈ CURL_GAIN·CURL_SCALE ≈ 0.0008 (round-8-F: CURL_SCALE tracked
+ * STRAND_RADIUS 0.0028 → 0.0034, so 0.0007 → 0.00078; the curl term is added
+ * OUTSIDE widthEnvelope, so ENVELOPE_BASE 1.8 does not scale it). Total
+ * steady-state excursion 0.0267 + 0.0008 = 0.0275 < 0.038 — the guard still
+ * clears by 1.38×. Invariant to preserve:
  * POINTER_PUSH/NEURAL_SPRING < WRAP_SNAP_DIST < EDGE_MIN_LOCAL ≤ the shortest
  * delivered link, and WRAP_SNAP_DIST > every steady-state excursion.
  */

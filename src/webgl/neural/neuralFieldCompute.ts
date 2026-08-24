@@ -220,6 +220,12 @@ import {
   STAR_TIP_ALPHA,
   STAR_ALPHA_POW,
   STAR_CORE_WHITE,
+  // ROUND-8-F: the live-measured defaults for four uniforms that used to be
+  // bare literals here (uStarPunch / uStarSpread / uDof / uEnvelope).
+  STAR_PUNCH,
+  STAR_SPREAD,
+  DOF_STRENGTH,
+  ENVELOPE_BASE,
   NODE_ALPHA,
   NODE_FRACTION,
   NODE_DRIFT,
@@ -807,7 +813,10 @@ export function createNeuralFieldBuild(
   const uColEmberTip = uniform(new Color(COL_EMBER_TIP));
   const uPointSize = uniform(NEURAL_POINT_SIZE);
   // Round-2 live tunables (dev-handle surfaced; defaults from config).
-  const uEnvelope = uniform(1);
+  // ROUND-8-F: this default was a bare literal 1 — it is ENVELOPE_BASE (1.8)
+  // now, so the shipped filament width is authored in neuralLatticeConfig with
+  // the rest of the look. Live overrides via the dev handle are unchanged.
+  const uEnvelope = uniform(ENVELOPE_BASE);
   const uBreathe = uniform(BREATHE_AMP);
   const uShimmer = uniform(SHIMMER_AMP);
   const uZBow = uniform(STREAM_Z_BOW);
@@ -825,8 +834,11 @@ export function createNeuralFieldBuild(
   // the >1.0 core emissive, uNodeAlpha the star opacity. Node COUNT and the
   // core/flare split are BUILD-TIME (PLEXUS_SEEDS / STAR_FLARE_FRACTION) —
   // changing those needs a rebuild, not a uniform write.
-  const uStarSpread = uniform(1);
-  const uStarPunch = uniform(1);
+  // ROUND-8-F: the first two defaults were bare literal 1s; they are the
+  // live-measured STAR_SPREAD / STAR_PUNCH config constants now (same dev
+  // handle, same override path — only the shipped starting point moved).
+  const uStarSpread = uniform(STAR_SPREAD);
+  const uStarPunch = uniform(STAR_PUNCH);
   const uNodeAlpha = uniform(NODE_ALPHA);
   const uStrandPhase = uniformArray([...STRAND_PHASES]);
   const uStrandThick = uniformArray([...STRAND_THICK_BIAS]);
@@ -835,7 +847,9 @@ export function createNeuralFieldBuild(
   // untouched.
   const uRowGlow = uniformArray([0, 0, 0]);
   const uCurl = uniform(CURL_GAIN);
-  const uDof = uniform(1);
+  // ROUND-8-F: was a bare literal 1 — the live-measured DOF_STRENGTH (0.45)
+  // now, since full-strength DOF was smearing the far stars into dust.
+  const uDof = uniform(DOF_STRENGTH);
   const uRowGain = uniform(ROW_GAIN);
   const uRowSwell = uniform(ROW_SWELL);
   // Round-4 (§B): scroll-velocity net + membrane/nebula layers. All plain

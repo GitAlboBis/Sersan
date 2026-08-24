@@ -68,6 +68,26 @@
  *      black. ~6 ALU, zero bindings, zero assets.
  * NOTHING from igloo's asset set enters this repo: what transferred is the
  * NUMBERS in that document (frequencies, luminance percentiles, ratios).
+ *
+ * ROUND 8-F — BAKE THE LIVE TUNING. Round 8-E's value world was DERIVED; this
+ * round is the first time it was looked at. The owner ran a matte A/B at
+ * `__sersanCrystal_problem.uniforms` and the matte variant won clearly, so four
+ * constants become defaults: BODY_DARKEN 0.5 → 0.30, SPEC_GAIN 0.5 → 0.32,
+ * CA_EDGE_BOOST 2.5 → 1.6, SPARKLE_GAIN 0.5 → 0.30. Re-derived value table
+ * (lumLin; ratios WCAG-form, the doc's convention — 8-E → 8-F, igloo):
+ *   body typical          0.0566 → **0.0396**   (igloo 0.291 @ 5× the level)
+ *   body ÷ fog core       0.786  → **0.550**    (igloo 0.794)
+ *   body vs fog contrast  1.14:1 → **1.36:1**   (igloo 1.22:1) ← the read
+ *   brightest ÷ body      7.6×   → **7.0×**     (igloo caps at 3.4×)
+ *   brightest vs fog      3.96:1 → **2.68:1**   (igloo 2.5:1)
+ *   stone dynamic range   6.28:1 → **4.74:1**   (igloo 7.9:1) ← the cost
+ * The 0.79 ratio is deliberately abandoned and BACKDROP_GAIN is NOT used to
+ * compensate — the full argument (and the one-number path back) lives at
+ * BACKDROP_GAIN. Short version: at one fifth igloo's absolute fog level the
+ * RATIO no longer reproduces the PERCEPTION, and 0.30 lands us on the dense
+ * side of igloo's separation instead of 35% short of it.
+ * MARK_GAIN is deliberately NOT raised — the mark's illegibility is a GEOMETRY
+ * problem (see the ═══ block there), not a level problem.
  */
 import type { LatticeMode } from "./neuralLatticeConfig";
 
@@ -156,8 +176,18 @@ export const CRYSTAL_IOR = 1.18;
 export const CRYSTAL_CA = 0.16; // uChromaticAberration
 /** Round 7 — fresnel-weighted CA boost: effective CA = uCA·(1 + fres·this),
  * so the fringes concentrate on the SILHOUETTE (igloo's read) while the body
- * stays coherent. Dev-tunable (uCAEdge). */
-export const CA_EDGE_BOOST = 2.5;
+ * stays coherent. Dev-tunable (uCAEdge).
+ *
+ * ROUND 8-F (LIVE-MEASURED — the matte A/B): 2.5 → **1.6**. At grazing the
+ * effective CA goes 0.16 × 3.5 = 0.56 → 0.16 × 2.6 = **0.416** (−26%);
+ * face-on is unchanged at 0.16 by construction. This is a CHROMA constant, not
+ * a value one — it re-distributes the body's channels, it does not scale
+ * luminance, so it appears nowhere in the value table. It is also the direction
+ * the source doc predicted: §D4 flagged our 0.16 (+2.5 edge) against igloo's
+ * measured 0.10 as "ours higher by design, compensating a low-contrast
+ * procedural backdrop — re-check after BACKDROP_GAIN". With the field now 8×
+ * up, the over-spread reads as rainbow fringing rather than dispersion. */
+export const CA_EDGE_BOOST = 1.6;
 export const CRYSTAL_THICKNESS = 2.0; // refraction-offset scale
 /** ROUND 8-E §D2 — roughness LEVEL. igloo's effective roughness is
  * `0.65 × G` on its roughness map = 0.19 / 0.36 / 0.44 at p10/p50/p90 (the
@@ -192,8 +222,10 @@ export const BACKDROP_CYAN = "#3BE1FF";
  * authored ABSOLUTE internal highlights, not part of the navy field — gaining
  * them ×8 would put a spot centre at lumLin ≈ 3.8, a hard bloom star, exactly
  * the failure this round removes). At 0.5 a spot centre lands at 0.31 lumLin
- * pre-darken → 0.155 post-darken ≈ 2.7× the raised body: a bright internal
- * highlight inside the compressed window. */
+ * pre-darken → ROUND 8-F, × BODY_DARKEN 0.30: **0.093 post-darken ≈ 2.3× the
+ * body** (8-E: 0.155 ≈ 2.7×). The spots ride the same multiply as the body, so
+ * the matte cut preserves their relationship almost exactly — they stay bright
+ * internal highlights inside the compressed window, no re-levelling owed. */
 export const BACKDROP_SPOTS: readonly [number, number, number][] = [
   [0.55, 0.35, 4.0],
   [-0.6, -0.5, 5.5],
@@ -218,14 +250,24 @@ export const FACET_FILL_COLOR = "#14283F";
  * exponent (real spread — whole facets flash, not pinpricks) × SPEC_GAIN.
  * Dev-tunable (uSpecPow / uSpecGain). */
 export const SPEC_POW = 14.0;
-/** ROUND 8-E §B4.2 part 3 — HIGHLIGHT COMPRESSION. 1.15 → 0.5. The key lobe
- * is now the stone's BRIGHTEST ordinary pixel (the rim is not — that is the
- * igloo read: env-lit facets, not a glowing outline). keyC (#D8F4FF) has
- * Rec709 linear luminance 0.865, so the peak lands at 0.433 lumLin against
- * the raised body (0.057) and the fog core (0.072): stone dynamic range
- * 6.3:1 (igloo 7.9:1), brightest-vs-surround 4.0:1 (igloo 2.5:1, doc band
- * 2.5–4.2:1). Both ratios are WCAG-form ((L+0.05) quotients), as in the doc. */
-export const SPEC_GAIN = 0.5;
+/** ROUND 8-E §B4.2 part 3 — HIGHLIGHT COMPRESSION. 1.15 → 0.5, keyC (#D8F4FF)
+ * having Rec709 linear luminance 0.865.
+ *
+ * ROUND 8-F (LIVE-MEASURED — the matte A/B): 0.5 → **0.32**. Peak 0.865 × 0.32
+ * = **0.277 lumLin**. Against the new body (0.0396) and the unchanged fog core
+ * (0.072), all WCAG-form ((L+0.05) quotients) as in the doc:
+ *   brightest ÷ body      7.0×      (8-E 7.6×; igloo hard-caps at 3.4×)
+ *   stone dynamic range   4.74:1    (8-E 6.28:1; igloo 7.9:1)
+ *   brightest vs surround 2.68:1    (8-E 3.96:1; igloo 2.5:1, band 2.5–4.2:1)
+ * The middle row is the cost of this round: cutting the ceiling while the floor
+ * also drops NARROWS the stone's own window away from igloo's 7.9:1. The other
+ * two rows improve — brightest-vs-surround lands almost exactly on igloo's 2.5,
+ * which is the ratio that governs whether the stone reads matte or lit.
+ * ⚠ COUPLING: RIM_BASE was NOT cut this round, so the broad rim now peaks at
+ * 0.277 too — the key lobe and the rim are TIED as the brightest ordinary
+ * pixel, where 8-E had the lobe clearly ahead (0.433 vs 0.277). If the stone
+ * starts reading as an outline again, cut RIM_BASE before raising this. */
+export const SPEC_GAIN = 0.32;
 /** Fill lobe gain on max(dot(N, FILL), 0) — dev-tunable (uFillGain).
  * ROUND 8-E: 0.5 → 0.25. The analytic ambient hemisphere (§D3, AMBIENT_*)
  * now owns the cool floor this lobe was standing in for; keeping both at full
@@ -241,10 +283,29 @@ export const FACET_SPEC_JIT = 0.8;
 /** Per-facet BODY value jitter: body ×(0.85 + this·rand) — value separation
  * survives even where the key lobe misses. */
 export const FACET_VALUE_JIT = 0.3;
-/** Round 7 — dark glass body (§2): transmitted color × this. The stone reads
+/**
+ * Round 7 — dark glass body (§2): transmitted color × this. The stone reads
  * DARKER than the backdrop mid-tone (the "meteorite" read); brightness comes
- * from lobes/rim/glints instead. Dev-tunable (uBodyDarken). */
-export const BODY_DARKEN = 0.5;
+ * from lobes/rim/glints instead. Dev-tunable (uBodyDarken).
+ *
+ * ROUND 8-F (LIVE-MEASURED at `__sersanCrystal_problem.uniforms`, not derived):
+ * 0.5 → 0.30. The round-8-E stone still read GLASSY-BRIGHT; a matte A/B at the
+ * console read markedly closer to igloo, and this is the constant that carries
+ * it. Transmission body 0.0848 × 0.30 = **0.0254 lumLin**, + the ambient floor
+ * 0.0142 ⇒ **body 0.0396** against the unchanged 0.072 fog core.
+ *
+ * That is body/fog **0.55**, not igloo's 0.79 — a deliberate, argued deviation,
+ * NOT compensated with BACKDROP_GAIN. See BACKDROP_GAIN for the full reasoning;
+ * the one-line version: the 0.79 RATIO is not the perception. At igloo's
+ * absolute fog (0.366) a 0.79 ratio yields 1.22:1 of WCAG-form body-vs-surround
+ * separation; at OUR fog (0.072, one fifth the level) the same ratio yields only
+ * 1.14:1, because the +0.05 offset dominates down here. 0.30 puts us at
+ * **1.36:1** — on the DENSE side of igloo's perceived separation rather than
+ * 35% short of it, which is exactly what the owner measured as "closer to
+ * igloo". Terms that ride this multiply (MARK_GAIN) keep their ratio to the
+ * body; terms added AFTER it (EMBER_GAIN) gain ~1.4× relative weight — see
+ * each. */
+export const BODY_DARKEN = 0.3;
 
 // --- Round 7 — sparkle glints (igloo's triangle-sparkle layer, §3) ----------
 /** Hash-cell frequency over crystal-local position (cells ≈ 1/15 unit). */
@@ -260,11 +321,16 @@ export const SPARKLE_DENSITY = 0.72;
 export const SPARKLE_TWINKLE = 1.7;
 /** Glint intensity. ROUND 8-E §B4.2 part 3: 3.5 → 0.5 — the single widest
  * defect in the old value world (peak 3.03 lumLin = **569× the body**; igloo
- * caps every pixel at 3.4× its body). At 0.5 the glint peaks at 0.433 lumLin,
- * level with the key lobe (same keyC), and SUB-BLOOM by construction — winks
- * read as mineral facets catching the sun instead of white stars on black.
- * Dev-tunable (uSparkleGain); the lite build never compiles the branch. */
-export const SPARKLE_GAIN = 0.5;
+ * caps every pixel at 3.4× its body).
+ *
+ * ROUND 8-F (LIVE-MEASURED — the matte A/B): 0.5 → **0.30**. Peak 0.865 × 0.30
+ * = **0.260 lumLin** = 6.6× the new body, and now deliberately BELOW the key
+ * lobe (0.277) instead of level with it: on a matte stone the sun-facing facet
+ * should out-read a micro-glint, or the surface goes back to glitter. Still
+ * sub-bloom by construction (post-blend 0.26 × CRYSTAL_ALPHA 0.94 = 0.24,
+ * nowhere near the ≈1.0 threshold). Dev-tunable (uSparkleGain); the lite build
+ * never compiles the branch. */
+export const SPARKLE_GAIN = 0.3;
 
 // --- Round 7 — frost grain (internal structure, §4) -------------------------
 /** 3D value-noise frequency over crystal-local position — the ROUGHNESS
@@ -295,9 +361,17 @@ export const FROST_DENSITY_K = 0.55;
  * eye could see nothing BUT the highlights — the literal arithmetic of
  * "glowing white outline on black". 1.6 → **0.35**: the whitened rim's Rec709
  * linear luminance is 0.791 at f1 = 1, so the broad rim now peaks at 0.277
- * lumLin ≈ 4.9× the raised body — present, dispersive, and NOT the brightest
- * thing on the stone (the key lobe is, at 0.443). The >1.0 bloom is not lost,
- * it is re-scoped to a hairline: see RIM_EDGE_START / RIM_EDGE_GAIN. */
+ * lumLin. The >1.0 bloom is not lost, it is re-scoped to a hairline: see
+ * RIM_EDGE_START / RIM_EDGE_GAIN.
+ *
+ * ⚠ ROUND 8-F — NOT CUT (it was not in the owner's live A/B), but its STANDING
+ * changed and the next taste pass should know it. The body fell to 0.0396 and
+ * SPEC_GAIN to 0.32, so this rim is now **7.0× the body** (was 4.9×) and it
+ * TIES the key lobe (0.277 vs 0.277) as the brightest ordinary pixel, where
+ * 8-E deliberately kept the lobe ahead — "env-lit facets, not a glowing
+ * outline" is the igloo read, and we are one nudge from losing it. If the stone
+ * reads as an outline again, cut THIS before touching SPEC_GAIN; ≈0.28 restores
+ * the 8-E ordering (rim 0.222 = 0.80× the lobe). */
 export const FRESNEL_POW = 3.0;
 export const RIM_BASE = 0.35;
 /** Ignition flash gain on the rim. ROUND 8-E: 2.2 → 1.2 — with the value
@@ -440,7 +514,32 @@ export const MARK_COLOR = "#D8F4FF";
  * 0.005 body — a **133×** blob, one of the terms making the stone read as a
  * lamp. 1.6 → 0.35 puts it at 0.155 lumLin ≈ 2.7× the raised body: an object
  * clearly visible INSIDE the ice (igloo's penguin read) without leaving the
- * compressed window or approaching the ceiling. */
+ * compressed window or approaching the ceiling.
+ *
+ * ═══ ROUND 8-F — DO NOT RAISE THIS. THE MARK IS BLOCKED ON GEOMETRY. ═══
+ *
+ * The owner A/B'd 0.35 → 1.4 → 2.4 live at `__sersanCrystal_healthy.uniforms`.
+ * At NO gain did the SERSAN mark become legible; it only filled the stone with
+ * confetti. The cause is not LEVEL, it is SPATIAL COHERENCE, and it is a
+ * measured property of our mesh (`2026-08-22-round8-stone-source-anatomy.md`
+ * §A1): our procedural icosahedron carries **2.3%** of its surface area in the
+ * largest 1% of triangles against igloo's **6–20%** — thousands of near-equal
+ * micro-facets where they have a few large cleavage planes. The mark is sampled
+ * through the per-fragment refracted direction, so every facet taps a DIFFERENT
+ * patch of the RT: igloo's big planes refract one coherent image of the
+ * penguin; our high-frequency faceting dices the wordmark into per-facet noise.
+ * Raising the gain amplifies the noise — which is exactly what was observed.
+ *
+ * It unblocks on the AUTHORED SILHOUETTE (doc §C — Blender cube + negative
+ * Voronoi chips + **Planar Decimate**, the operator that moves areaTop1% from
+ * ~2% to 6–12%), currently being produced into `public/models/`. Re-level
+ * MARK_GAIN against the value table THEN, on the new mesh, and not before.
+ *
+ * (Levelling note for that pass: the mark is added PRE `uBodyDarken`, so the
+ * round-8-F cut to 0.30 scales it too — 0.35 × lum(#D8F4FF) 0.865 × 0.30 =
+ * 0.091 lumLin = **2.3× the body**, which essentially preserves its 8-E ratio
+ * of 2.7×. No compensating raise is owed; the small drop is only the ambient
+ * floor, which does not ride the multiply.) */
 export const MARK_GAIN = 0.35;
 /** Refraction-coordinate → RT-UV scale: uv = coord·this + 0.5. Sizes the mark
  * to ~0.9 crystal units inside the body (dev-tunable, uMarkScale). */
@@ -470,7 +569,17 @@ export const EMBER_COLOR = "#886a3d";
  * body). 0.3 → 0.5 restores its relationship to the body — 0.05 lumLin at
  * rest gap (breathe 0.625) ≈ 0.9× body, 0.079 ≈ 1.4× body on the hover
  * re-cohere: a warm density you read INSIDE the shard, never a glow. Peak
- * channel 0.5·0.246 = 0.12 — far under the bloom threshold at any phase. */
+ * channel 0.5·0.246 = 0.12 — far under the bloom threshold at any phase.
+ *
+ * ROUND 8-F — UNCHANGED at 0.5, but it is the one term the matte cut makes
+ * RELATIVELY STRONGER: the ember is added AFTER `uBodyDarken`, so BODY_DARKEN
+ * 0.5 → 0.30 leaves its absolute value alone while the body around it falls.
+ * Ratios go 0.9× → **1.25× body** at rest gap and 1.4× → **2.0×** on the hover
+ * re-cohere. That is desirable (a warm density is easier to read inside a
+ * darker shard) and it is still absolutely sub-bloom — peak channel 0.12
+ * against the ≈1.0 threshold — so it is left alone deliberately, not by
+ * omission. Cut toward 0.35 only if the broken cluster starts reading as a
+ * lantern rather than a stone with something alive in it. */
 export const EMBER_GAIN = 0.5;
 /** How far the k=0 refracted direction pushes the ember sample point into the
  * body (crystal units) — the "inside, not painted on" parallax. */
@@ -754,10 +863,48 @@ export const FOG_ENERGY = 1.0;
  *
  * 8.0 rather than the doc's derived ≈10 because the doc's figure assumed NO
  * ambient term; the analytic hemisphere (§D3) below now contributes ≈ 0.014
- * lumLin of the body budget. Arithmetic: backdrop typical 0.0106 × 8 =
- * 0.0848 pre-darken → × BODY_DARKEN 0.5 = 0.0424, + ambient 0.0142 = **0.057
- * body** against a **0.072 fog core** ⇒ body/surround **0.79** — igloo's ratio
- * (0.794), CONSTRUCTED from one driver value instead of coincidental.
+ * lumLin of the body budget. Round-8-E arithmetic: backdrop typical 0.0106 × 8
+ * = 0.0848 pre-darken → × BODY_DARKEN 0.5 = 0.0424, + ambient 0.0142 = 0.057
+ * body against a 0.072 fog core ⇒ body/surround 0.79 — igloo's ratio (0.794).
+ *
+ * ═══ ROUND 8-F DECISION — STAYS AT 8.0. The stone gets DARKER, and the 0.79
+ * ratio is deliberately abandoned. ═══
+ *
+ * BODY_DARKEN 0.5 → 0.30 (live-measured) drops the body to 0.0254 + 0.0142 =
+ * **0.0396**, i.e. body/fog **0.55**. The doc's §B4.2 coupling rule says the
+ * two halves must track — so the question was posed correctly: compensate with
+ * this gain (13.3 restores 0.79) or accept a darker stone? ACCEPT. Four
+ * reasons, in order of weight:
+ *
+ *  1. THE RATIO IS NOT THE PERCEPTION AT OUR ABSOLUTE LEVEL. Our fog core is
+ *     0.072 against igloo's 0.366 — one fifth, by brand design (§B4.1). In
+ *     WCAG form ((L+0.05) quotients — the doc's own convention) igloo's 0.794
+ *     ratio buys 0.416/0.341 = **1.22:1** of body-vs-surround separation. The
+ *     SAME 0.794 ratio at our level buys only 0.122/0.1066 = **1.14:1**,
+ *     because the +0.05 offset dominates down here: copying the ratio delivers
+ *     ~64% of igloo's perceived density. To REPRODUCE 1.22:1 at our fog the
+ *     body must sit at 0.050, i.e. body/fog **0.694** — already below 0.79.
+ *     At 0.0396 we get **1.36:1**, on the dense side of igloo rather than 35%
+ *     short of it. That overshoot is precisely what the owner measured as
+ *     "markedly closer to igloo".
+ *  2. COMPENSATING WOULD UNDO THE MEASUREMENT. G = 13.3 restores the body to
+ *     0.0566 — the exact value the live A/B rejected — and re-brightens the
+ *     navy FIELD the dispersion bends by 1.67×, i.e. it walks back toward the
+ *     lamp read that round 8-E exists to remove.
+ *  3. IT WOULD ALSO NARROW THE STONE FURTHER. With the highlights already cut
+ *     (SPEC_GAIN/SPARKLE_GAIN), raising the floor back gives a dynamic range of
+ *     (0.277+0.05)/(0.0268+0.05) = **4.26:1** versus **4.74:1** for the darker
+ *     stone. igloo is 7.9:1, so not compensating is the closer of the two.
+ *  4. THE MASS READ SURVIVES AND STRENGTHENS. igloo's §B1 signature is a stone
+ *     that swings from darker-than to lighter-than across a varying fog. The
+ *     crossover radius (where fog(r) = body, under FOG_FALLOFF 1.35) moves from
+ *     r = 0.26 to **r = 0.41** of the fog footprint while the stone still spans
+ *     to r ≈ 0.7 — so the swing is intact, and a larger fraction of the
+ *     silhouette now does the "denser than its surround" work.
+ *
+ * Unchanged by this: the fog itself (FOG_GAIN / FOG_OPACITY / FOG_CLEAR), and
+ * therefore the entire §B4.3 accessibility derivation under FOG_CLEAR. To
+ * revert to the 8-E look it is still one number here (13.3) plus BODY_DARKEN.
  */
 export const BACKDROP_GAIN = 8.0;
 
@@ -798,7 +945,16 @@ export const RIM_EDGE_START = 0.9;
  * hairline falls back through the bloom threshold at **CRYSTAL_CEIL ≈ 1.16**
  * (post-blend 1.005 at 1.16, 0.998 at 1.15). The two constants are one
  * decision; moving either alone can silently delete the whisper.
- * 0 = no crystal bloom at all (the igloo-faithful option). */
+ * 0 = no crystal bloom at all (the igloo-faithful option).
+ *
+ * ROUND 8-F — the whisper SURVIVES, verified rather than assumed. None of the
+ * four cuts touches this pair: the hairline is `RIM_BASE + RIM_EDGE_GAIN` =
+ * 0.35 + 1.15 = 1.50 on the whitened rim colour, whose BLUE channel clips at
+ * CRYSTAL_CEIL 1.35 exactly as before, giving the same 1.176 col-lum → 1.110
+ * post-blend. The only coupling is second-order and in the SAFE direction: at
+ * grazing the body/spec/sparkle terms that stack under the clamp are all
+ * smaller now, so slightly less is being thrown away by the ceiling — the
+ * clipped result is unchanged, and green (1.296) still sits just under it. */
 export const RIM_EDGE_GAIN = 1.15;
 
 // --- §D3 — ANALYTIC AMBIENT HEMISPHERE (priority 4) -------------------------
@@ -836,7 +992,14 @@ export const AMBIENT_WARM_MIX = 0.087;
  * one-fifth-level world AND into a shader that has no diffuse albedo to
  * multiply it by. 0.032 gives: floor (N.y = −1) 0.0072 lumLin — the body can
  * no longer go black; typical (N.y ≈ 0) 0.0142; ceiling (N.y = +1) 0.0211.
- * Combined with the transmission body (0.0424) that is 0.057 typical / 0.027
- * darkest — the doc's §B4.1 targets (0.055 / ≈0.02).
+ *
+ * ROUND 8-F re-derivation (BODY_DARKEN 0.5 → 0.30, this constant UNCHANGED):
+ * the transmission half drops 0.0424 → 0.0254, so the body is now **0.0396
+ * typical / 0.0190 darkest** (8-E: 0.057 / 0.027; doc §B4.1 targets 0.055 /
+ * ≈0.02). Note what this term is now doing: it supplies **36%** of the typical
+ * body (was 25%) and **38%** of the darkest, so the analytic hemisphere — not
+ * the transmission — is what keeps the matte stone off black. Do not cut it
+ * while chasing "matte"; below ≈0.02 the facets go binary lit/unlit again,
+ * which is the §D3 defect this term exists to fix.
  */
 export const AMBIENT_GAIN = 0.032;
