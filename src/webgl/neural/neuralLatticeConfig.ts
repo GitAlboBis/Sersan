@@ -219,6 +219,22 @@ export const PLEXUS_SEEDS: Record<PlexusDensity, number> = {
   lite: 74,
   svg: 46,
 };
+/**
+ * ROUND 11 STAGE 1.5 — the seed count for a STONE-LESS island (`well: false`).
+ * The crystal density well rejects ~22 % of the seeds, so a cloud built
+ * without it from `PLEXUS_SEEDS` would deliver 132 nodes where the approved
+ * band delivers 103 — a 28 % denser constellation with 28 % fewer particles
+ * per star. These are the DELIVERED counts of the welled build, measured from
+ * the shipped generator (`__sersanNeuralLattice_problem.plexus.nodes`), so a
+ * stone-less island lands on exactly the approved density and the five islands
+ * differ ONLY in where their nodes are — which is the whole point of the seed.
+ * `svg` is listed for completeness; the DOM fallback always keeps the well.
+ */
+export const PLEXUS_SEEDS_STONELESS: Record<PlexusDensity, number> = {
+  full: 103,
+  lite: 56,
+  svg: 46,
+};
 /** k of the k-nearest-neighbour link pass (before dedupe + cap). */
 export const PLEXUS_K: Record<PlexusDensity, number> = {
   full: 4,
@@ -355,31 +371,78 @@ export interface Plexus {
    * (must exceed WRAP_SNAP_DIST). */
   meanSpacing: number;
   minEdgeLocal: number;
+  /**
+   * ROUND 11 STAGE 1.5 — a structural fingerprint, so an island sequence can
+   * PROVE its constellations differ rather than assert it (QA gate 4). Node
+   * and edge COUNTS are a weak test (two seeds can deliver the same counts and
+   * a completely different cloud), so these are shape statistics: connected
+   * components, the biggest one, the mean edge length, and a position
+   * checksum over every node.
+   */
+  components: number;
+  largestComponent: number;
+  meanEdgeLocal: number;
+  /** Deterministic checksum of every node position, 6 significant digits. */
+  checksum: number;
 }
 
 const plexusCache = new Map<string, Plexus>();
 
-/** Memoized deterministic plexus for a mode + density. Pure — same inputs
- * always give the same cloud, so the compute build, the static/analytic build
- * and the SVG twin all agree without sharing any runtime state. */
+/**
+ * The mode's DEFAULT master seed — the one number that decorrelates two clouds
+ * built from identical code. These two values are the shipped constellations
+ * (`broken` = the Problem band, `healthy` = the ProductionGrade band) and must
+ * not move: every screenshot the owner has approved is of these.
+ *
+ * ROUND 11 STAGE 1.5 — `ms` is now an ARGUMENT rather than a literal, which is
+ * the whole mechanism behind the island SEQUENCE (coverage-trilemma dossier
+ * §7.1/§8①). Five islands of the same code, five seeds, five visibly different
+ * constellations — and zero shader edits, because the seed only ever reaches
+ * the GPU as the CONTENTS of the uNodePos / uNodeT / uEdgeA / uEdgeB tables
+ * that already exist.
+ */
+export const PLEXUS_MASTER_SEED: Record<LatticeMode, number> = {
+  broken: 11.37,
+  healthy: 57.19,
+};
+
+/** Memoized deterministic plexus for a mode + density (+ seed / clearance).
+ * Pure — same inputs always give the same cloud, so the compute build, the
+ * static/analytic build and the SVG twin all agree without sharing any runtime
+ * state. Omitting `seed`/`well` reproduces the shipped cloud EXACTLY, so every
+ * pre-round-11 call site is byte-identical. */
 export function getPlexus(
   mode: LatticeMode,
   density: PlexusDensity = "full",
+  seed?: number,
+  well = true,
 ): Plexus {
-  const key = `${mode}:${density}`;
+  const ms = Number.isFinite(seed as number)
+    ? (seed as number)
+    : PLEXUS_MASTER_SEED[mode];
+  const key = `${mode}:${density}:${ms}:${well ? 1 : 0}`;
   const hit = plexusCache.get(key);
   if (hit) return hit;
-  const built = buildPlexus(mode, density);
+  const built = buildPlexus(mode, density, ms, well);
   plexusCache.set(key, built);
   return built;
 }
 
-function buildPlexus(mode: LatticeMode, density: PlexusDensity): Plexus {
-  const seeds = PLEXUS_SEEDS[density];
+function buildPlexus(
+  mode: LatticeMode,
+  density: PlexusDensity,
+  // Decorrelates one cloud from another — the two modes by default, and since
+  // round 11 the five Act-I islands from each other (see PLEXUS_MASTER_SEED).
+  ms: number,
+  // The CRYSTAL DENSITY WELL. It carves silhouette clearance for the stone, so
+  // it belongs only to the band the stone actually rides. An island with no
+  // stone in it would otherwise show an unexplained void — and, worse, the
+  // SAME void in the same place on all five, which is repetition where the
+  // seed is trying to buy variety.
+  well: boolean,
+): Plexus {
+  const seeds = well ? PLEXUS_SEEDS[density] : PLEXUS_SEEDS_STONELESS[density];
   const [ccx, ccy] = CRYSTAL_POS[mode];
-  // Decorrelates the two modes so the Problem and ProductionGrade bands are
-  // visibly different clouds telling the same story.
-  const ms = mode === "broken" ? 11.37 : 57.19;
   const GOLD = Math.PI * (3 - Math.sqrt(5));
 
   // --- 1. Seed the volumetric cloud ----------------------------------------
@@ -407,9 +470,12 @@ function buildPlexus(mode: LatticeMode, density: PlexusDensity): Plexus {
     const y = dy * r * PLEXUS_RY;
     const z = dz * r * PLEXUS_RZ;
     // Crystal density well (screen-round distance — silhouette clearance).
-    const d = Math.hypot((x - ccx) / BAND_ASPECT, y - ccy);
-    const keep = smooth01(d, CRYSTAL_CLEAR_INNER, CRYSTAL_CLEAR_OUTER);
-    if (ph(i + ms, 127.1, 311.7) > keep) continue;
+    // Skipped on a stone-less island: no stone, no clearance to carve.
+    if (well) {
+      const d = Math.hypot((x - ccx) / BAND_ASPECT, y - ccy);
+      const keep = smooth01(d, CRYSTAL_CLEAR_INNER, CRYSTAL_CLEAR_OUTER);
+      if (ph(i + ms, 127.1, 311.7) > keep) continue;
+    }
     nodes.push([x, y, z]);
   }
 
@@ -440,6 +506,7 @@ function buildPlexus(mode: LatticeMode, density: PlexusDensity): Plexus {
       nodes[a][2] - nodes[b][2],
     );
   const midInWell = (a: number, b: number) => {
+    if (!well) return false;
     const mx = (nodes[a][0] + nodes[b][0]) / 2;
     const my = (nodes[a][1] + nodes[b][1]) / 2;
     return Math.hypot((mx - ccx) / BAND_ASPECT, my - ccy) < CRYSTAL_CLEAR_INNER;
@@ -520,7 +587,55 @@ function buildPlexus(mode: LatticeMode, density: PlexusDensity): Plexus {
     centroids.push([wx / ws, wy / ws, wz / ws]);
   }
 
-  return { nodes, nodeT, edges, centroids, meanSpacing, minEdgeLocal };
+  // --- 5. The structural fingerprint (QA gate 4) ---------------------------
+  // Union-find over the delivered edge list + a position checksum. O(N + E),
+  // once, at build time.
+  const parent = new Array<number>(N);
+  for (let i = 0; i < N; i++) parent[i] = i;
+  const find = (i: number): number => {
+    let r = i;
+    while (parent[r] !== r) r = parent[r];
+    while (parent[i] !== r) {
+      const n = parent[i];
+      parent[i] = r;
+      i = n;
+    }
+    return r;
+  };
+  let edgeLenSum = 0;
+  for (const [a, b] of edges) {
+    edgeLenSum += ld(a, b);
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[ra] = rb;
+  }
+  const sizes = new Map<number, number>();
+  for (let i = 0; i < N; i++) {
+    const r = find(i);
+    sizes.set(r, (sizes.get(r) ?? 0) + 1);
+  }
+  let largestComponent = 0;
+  sizes.forEach((v) => {
+    if (v > largestComponent) largestComponent = v;
+  });
+  let checksum = 0;
+  for (let i = 0; i < N; i++) {
+    checksum +=
+      nodes[i][0] * (i + 1.7) + nodes[i][1] * (i + 3.1) + nodes[i][2] * (i + 5.3);
+  }
+
+  return {
+    nodes,
+    nodeT,
+    edges,
+    centroids,
+    meanSpacing,
+    minEdgeLocal,
+    components: sizes.size,
+    largestComponent,
+    meanEdgeLocal: edges.length ? edgeLenSum / edges.length : 0,
+    checksum: Math.round(checksum * 1e6) / 1e6,
+  };
 }
 
 // --- Link filaments ----------------------------------------------------------

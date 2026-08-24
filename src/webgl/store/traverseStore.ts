@@ -43,6 +43,22 @@ export interface TraverseFrame {
   /** Section progress 0→1 over the section's own height (storyboard §B0). */
   p: number;
   /**
+   * The section's own doc-space top and height, published so a consumer can
+   * express its OWN authored strip-x without a second measurement.
+   *
+   * ROUND 11 STAGE 1.5 — this is what makes the island SEQUENCE possible. Each
+   * island (and the stone) re-centres its lateral on the scroll position at
+   * which its OWN band is centred in the viewport, i.e. it carries an authored
+   * strip-x exactly the way the copy blocks do (storyboard §B3, "the strip-x
+   * compensation column"). Without it, the last island would be drawn 1725 px
+   * left of the frame at the moment it is needed and the lateral cull would
+   * delete it. The compensation MUST derive from this frozen snapshot, never
+   * from a second `getBoundingClientRect` of the section — two reads of the
+   * same geometry is exactly the class of bug this store exists to prevent.
+   */
+  secTop: number;
+  secH: number;
+  /**
    * The SCENE's lateral in CSS px at the content plane, signed (negative =
    * the world runs left). The net rides α ≡ 1.00, so this is exactly
    * `dir · tan(angle) · clamp(scrollY − secTop, 0, secH)`.
@@ -74,6 +90,8 @@ function makeFrame(): TraverseFrame {
     active: false,
     scrollY: 0,
     p: 0,
+    secTop: 0,
+    secH: 1,
     xScenePx: 0,
     laneCenterPx: 0,
     laneHalfPx: 0,

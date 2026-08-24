@@ -71,9 +71,13 @@ import { suspendSnap } from "@/lib/scroll-snap";
 import {
   traverseConfig,
   traverseRate,
+  traverseIslands,
+  fitTraverseLadder,
   onTraverseConfigChange,
   setTraverseConfig,
+  MAX_TRAVERSE_ISLANDS,
   type TraverseBandId,
+  type TraverseLadderFit,
 } from "@/webgl/neural/traverseConfig";
 import {
   registerTraverseBand,
@@ -83,6 +87,7 @@ import {
   buildRateWindow,
   makeRateSample,
   rateAt,
+  windowAt,
   excursionOf,
   type RateSample,
   type RateWindow,
@@ -98,6 +103,14 @@ const OPACITY_DEADBAND = 0.003;
 const COPY_BOX_SELECTOR =
   "[data-row-body],[data-chapter-desc],[data-chapter-h2],h3";
 
+/**
+ * A READING UNIT — the box whose two halves are ONE statement (a ledger row's
+ * display line + its own body; the chapter's H2 + its description). See the
+ * `opWin` note in `Block`: opacity is a property of the unit, never of the
+ * half.
+ */
+const UNIT_SELECTOR = "[data-ledger-row],[data-traverse-unit]";
+
 interface Block {
   el: HTMLElement;
   copyEl: HTMLElement;
@@ -111,9 +124,46 @@ interface Block {
   copyLeft: number;
   copyW: number;
   win: RateWindow;
+  /**
+   * ⚠ THE OPACITY WINDOW IS THE READING UNIT'S, NOT THE BLOCK'S — and the
+   * distinction is the whole of the round-11.5 legibility fix.
+   *
+   * `win` is the block's own coverage window and it MUST stay per-block: the
+   * lateral rate is `α_fast + (α_slow − α_fast)·V̂` with α_slow 0.50 on display
+   * type and 0.25 on body (§B2.3), i.e. the two halves of a row are at two
+   * DEPTHS and that is the design. But §B2.4's `opacity = V̂` on that same
+   * per-block window makes each half fade on ITS OWN box, and the two boxes are
+   * 97 px apart: both halves reach V̂ = 1 when their own top clears
+   * `headerH + m`, so the display line — which is above — clears it 97 px of
+   * scroll EARLIER and dies 97 px EARLIER. Measured at 1920×935 on the shipped
+   * build, every ledger row spent 60–80 px of scroll showing a fully opaque
+   * paragraph under a headline at opacity 0.000, and another 60–80 px showing
+   * the headline with a dead paragraph. A row is one statement; a statement
+   * with half of it invisible is not a beat, it is a bug.
+   *
+   * So opacity (and, with it, the mask lane — §E's "one window, three outputs"
+   * pairing is preserved, just at the unit) rides the window of the UNION BOX
+   * of the unit's blocks. Two consequences worth stating because they are
+   * guarantees, not side effects:
+   *
+   *  1. `unitH ≤ bandH` ⇒ V̂_unit = 1 ⇔ the union box is inside the band ⇒ every
+   *     member box is inside the band ⇒ every member is in its OWN rate plateau
+   *     (α = α_slow). The copy is now opaque only where it is slowest — §B2.4's
+   *     "never legible and fast at the same time" holds MORE strictly than it
+   *     did per-block, not less.
+   *  2. A unit TALLER than the band cannot satisfy (1) — the union could cover
+   *     the band while a member sits outside it — so such a unit keeps its
+   *     per-block windows (`opWin === win`). The rule is self-limiting and
+   *     needs no viewport table.
+   */
+  opWin: RateWindow;
+  /** Doc-space top the `opWin` is evaluated at (the unit's, or the block's). */
+  opTop: number;
   appliedX: number;
   appliedOp: number;
   row: HTMLElement | null;
+  /** The reading unit this block belongs to (null = it is its own unit). */
+  unit: HTMLElement | null;
 }
 
 export function useDiagonalTraverse(
@@ -140,6 +190,9 @@ export function useDiagonalTraverse(
         const frame = registerTraverseBand(bandId);
 
         // --- arm the file-scoped CSS (runway growth + band pin) -------------
+        /** The last fitted island ladder (dev handle / QA gate 2). */
+        let ladderFit: TraverseLadderFit | null = null;
+
         const armCss = (): void => {
           const b = traverseConfig.bands[bandId];
           section.style.setProperty("--tv-gap-vh", `${b.gapVh}`);
@@ -158,6 +211,77 @@ export function useDiagonalTraverse(
             section.style.removeProperty("--tv-band-bottom");
             section.style.removeProperty("--tv-band-h");
           }
+          // The ladder is UNPLACED here and re-placed by `measure()` — it is a
+          // function of the measured act, not of the config alone.
+          if (!traverseConfig.islands.enabled) clearIslands();
+        };
+
+        /** Un-place every extra island: `display: none`, zero rect, no build. */
+        const clearIslands = (): void => {
+          for (let n = 0; n < MAX_TRAVERSE_ISLANDS; n++) {
+            section.style.removeProperty(`--tv-island-${n}`);
+            section.style.removeProperty(`--tv-island-${n}-on`);
+          }
+          ladderFit = null;
+        };
+
+        /**
+         * ROUND 11 STAGE 1.5 — PLACE THE ISLAND LADDER, fitted to the act we
+         * just measured. Each extra anchor is a pure measurement box authored
+         * by the section; this writes the only two things it needs (an offset
+         * and a display switch) as custom properties, so placement costs no
+         * React commit and is live-tunable from the console.
+         *
+         * ⚠ The offsets CANNOT be authored constants. The act is 6.020 vh at
+         * 1280×720, 5.590 at 1440×900 and 5.200 at 768×1024, and the primary
+         * band's own top moves with the chapter's height (1.803 / 1.554 /
+         * 1.419 vh, measured). A fixed ladder that covers the tail at one
+         * viewport overhangs `#work` at another, or opens a hole. So the two
+         * ends are pinned to the MEASURED act and the middle is spread evenly
+         * between them; `fitTraverseLadder` is pure and reports the pitch
+         * bounds it was fitted against.
+         */
+        const placeIslands = (): void => {
+          const cfgI = traverseConfig.islands;
+          if (!cfgI.enabled) {
+            clearIslands();
+            return;
+          }
+          const primary = section.querySelector<HTMLElement>(
+            `[data-lattice-anchor="${bandId}"]`,
+          );
+          if (!primary) {
+            clearIslands();
+            return;
+          }
+          const pr = primary.getBoundingClientRect();
+          if (pr.height < 2) {
+            clearIslands();
+            return;
+          }
+          const bandY = (pr.top + window.scrollY - secTop) / ih;
+          const bandVh = pr.height / ih;
+          const extras = traverseIslands();
+          const fit = fitTraverseLadder(
+            bandY,
+            bandVh,
+            secH / ih,
+            extras,
+            cfgI.leadVh,
+            cfgI.tailPin,
+          );
+          ladderFit = fit;
+          for (let n = 0; n < MAX_TRAVERSE_ISLANDS; n++) {
+            const isl = extras[n];
+            if (isl) {
+              const dy = isl.dy ?? fit.offsets[n] ?? 0;
+              section.style.setProperty(`--tv-island-${n}`, `${dy}`);
+              section.style.setProperty(`--tv-island-${n}-on`, "block");
+            } else {
+              section.style.removeProperty(`--tv-island-${n}`);
+              section.style.removeProperty(`--tv-island-${n}-on`);
+            }
+          }
         };
         armCss();
         section.dataset.traverse = bandId;
@@ -175,6 +299,12 @@ export function useDiagonalTraverse(
         // The frame path's ONE scratch. `rateAt` writes into it and returns it,
         // so `apply()` allocates nothing over 8 blocks × 60 fps.
         const sample: RateSample = makeRateSample();
+        // Reading-unit scratch — allocated ONCE and cleared per measure, never
+        // per frame (see the `opWin` note in `Block`).
+        const unitSpan = new Map<
+          HTMLElement,
+          { top: number; bottom: number; win: RateWindow | null }
+        >();
 
         const els = Array.from(
           section.querySelectorAll<HTMLElement>("[data-drift]"),
@@ -193,9 +323,12 @@ export function useDiagonalTraverse(
             copyLeft: 0,
             copyW: 1,
             win: buildRateWindow(1, headerPx, 1, 0.12, 0.25, 0.25, 0),
+            opWin: buildRateWindow(1, headerPx, 1, 0.12, 0.25, 0.25, 0),
+            opTop: 0,
             appliedX: 0,
             appliedOp: 1,
             row: el.closest<HTMLElement>("[data-ledger-row]"),
+            unit: el.closest<HTMLElement>(UNIT_SELECTOR),
           });
         });
         dbg.current.blocks = blocks;
@@ -262,6 +395,10 @@ export function useDiagonalTraverse(
               cfg.capBody && blk.kind === "body" ? blk.h : 0,
             );
           }
+          // Placed LAST: the fit needs `secTop`/`secH`/`ih` from this pass, and
+          // the extras are absolutely positioned so re-placing them cannot
+          // move anything the pass above just measured.
+          placeIslands();
           const c = dbg.current.counters;
           c.secTop = secTop;
           c.secH = secH;
@@ -315,6 +452,11 @@ export function useDiagonalTraverse(
           frame.active = sy + ih > secTop && sy < secTop + secH;
           frame.scrollY = sy;
           frame.p = p;
+          // Published so the WebGL islands and the stone can express their own
+          // authored strip-x from THIS frozen snapshot rather than measuring
+          // the section a second time (see traverseStore's `secTop`).
+          frame.secTop = secTop;
+          frame.secH = secH;
           frame.xScenePx = dir * rate * travelled;
           if (best && cfg.laneEnabled) {
             // ⚠ From the block's FINAL APPLIED `x` — the same number written
@@ -555,6 +697,155 @@ export function useDiagonalTraverse(
                 tolerancePx: 38,
               };
             },
+            /**
+             * ROUND 11 STAGE 1.5 QA — GATE 1 + GATE 2, THE CENSUS.
+             *
+             * Walks the WHOLE act at `step` px and asks two questions per
+             * sample: is any neural band on frame, and is any copy block
+             * non-transparent. "On frame" is a STRICT viewport intersection
+             * (pad 0), not the island's 220 px cull pad, and it includes the
+             * LATERAL test — an island swept off the side is not on frame no
+             * matter where its DOM box sits. "Copy on frame" is `V̂ > 0`, i.e.
+             * exactly the opacity the traverse writes (§B2.4: outside the
+             * window the block is transparent, so it is not on frame in any
+             * sense the eye would agree with).
+             *
+             * This reproduces the pre-change baseline exactly — 18.8 / 29.1 /
+             * 12.1 / 40.0 with a 1116 px longest run at 1280×720 — which is
+             * what makes the after/before comparison worth quoting.
+             */
+            coverage(step = 4) {
+              const cfgL = traverseConfig;
+              const b = cfgL.bands[bandId];
+              const dir = b.dir;
+              const r = traverseRate(b);
+              const compensate = cfgL.islands.compensate;
+              const bands: {
+                id: string;
+                docTop: number;
+                h: number;
+                w: number;
+                cx: number;
+                origin: number;
+                on: number;
+              }[] = [];
+              section
+                .querySelectorAll<HTMLElement>("[data-lattice-anchor]")
+                .forEach((el) => {
+                  const cr = el.getBoundingClientRect();
+                  if (cr.height < 2 || cr.width < 2) return;
+                  const docTop = cr.top + window.scrollY;
+                  const centre = docTop + cr.height / 2 - ih / 2;
+                  const trav = Math.min(
+                    Math.max(centre - secTop, 0),
+                    secH,
+                  );
+                  bands.push({
+                    id: el.getAttribute("data-lattice-anchor") ?? "?",
+                    docTop,
+                    h: cr.height,
+                    w: cr.width,
+                    cx: cr.left + cr.width / 2,
+                    origin: compensate ? dir * r * trav : 0,
+                    on: 0,
+                  });
+                });
+              const vw = window.innerWidth;
+              let both = 0;
+              let copyOnly = 0;
+              let netOnly = 0;
+              let none = 0;
+              let total = 0;
+              let run = 0;
+              let longest = 0;
+              let longestAt = 0;
+              let maxOn = 0;
+              const runs: number[] = [];
+              for (let s = secTop; s <= secTop + secH; s += step) {
+                total++;
+                const trav = Math.min(Math.max(s - secTop, 0), secH);
+                const xScene = dir * r * trav;
+                let on = 0;
+                for (let i = 0; i < bands.length; i++) {
+                  const bd = bands[i];
+                  const vpTop = bd.docTop - s;
+                  if (vpTop + bd.h < 0 || vpTop > ih) continue;
+                  const cxNow = bd.cx + xScene - bd.origin;
+                  if (cxNow + bd.w / 2 < 0 || cxNow - bd.w / 2 > vw) continue;
+                  on++;
+                  bd.on++;
+                }
+                if (on > maxOn) maxOn = on;
+                let copy = false;
+                for (let i = 0; i < blocks.length; i++) {
+                  if (rateAt(blocks[i].win, blocks[i].docTop - s, r).vhat > 0) {
+                    copy = true;
+                    break;
+                  }
+                }
+                if (on > 0 && copy) both++;
+                else if (copy) copyOnly++;
+                else if (on > 0) netOnly++;
+                else {
+                  none++;
+                  run += step;
+                  if (run > longest) {
+                    longest = run;
+                    longestAt = s - secTop;
+                  }
+                  continue;
+                }
+                if (run > 0) {
+                  runs.push(run);
+                  run = 0;
+                }
+              }
+              if (run > 0) runs.push(run);
+              const pct = (n: number) => Math.round((n / total) * 1000) / 10;
+              return {
+                viewport: [vw, ih],
+                secH: Math.round(secH),
+                runwayVh: Math.round((secH / ih) * 100) / 100,
+                samples: total,
+                netAndCopy: pct(both),
+                copyOnly: pct(copyOnly),
+                netOnly: pct(netOnly),
+                nothing: pct(none),
+                netOnFrame: pct(both + netOnly),
+                maxIslandsOnFrame: maxOn,
+                longestNothingRunPx: longest,
+                longestNothingAtSectionY: Math.round(longestAt),
+                nothingRuns: runs.sort((x, y) => y - x).slice(0, 6),
+                islands: bands.map((bd) => ({
+                  id: bd.id,
+                  topVh: Math.round(((bd.docTop - secTop) / ih) * 1000) / 1000,
+                  originPx: Math.round(bd.origin),
+                  onFramePct: pct(bd.on),
+                })),
+              };
+            },
+            /** ROUND 11 STAGE 1.5 QA — GATE 2, the ladder as fitted, with the
+             * two bounds it was fitted against. `ok` false means a bound was
+             * clamped and the placement is a compromise, not a fit. */
+            get ladder() {
+              return ladderFit
+                ? {
+                    ok: ladderFit.ok,
+                    maxPitchVh: Math.round(ladderFit.maxPitch * 1000) / 1000,
+                    minPitchVh: Math.round(ladderFit.minPitch * 1000) / 1000,
+                    topsVh: ladderFit.tops.map(
+                      (t) => Math.round(t * 1000) / 1000,
+                    ),
+                    pitchesVh: ladderFit.pitches.map(
+                      (p) => Math.round(p * 1000) / 1000,
+                    ),
+                    offsetsVh: ladderFit.offsets.map(
+                      (o) => Math.round(o * 1000) / 1000,
+                    ),
+                    runwayVh: Math.round((secH / ih) * 1000) / 1000,
+                  }
+                : null;
+            },
             get counters() {
               return { ...dbg.current.counters };
             },
@@ -580,6 +871,7 @@ export function useDiagonalTraverse(
           section.style.removeProperty("--tv-gap-vh");
           section.style.removeProperty("--tv-band-bottom");
           section.style.removeProperty("--tv-band-h");
+          clearIslands();
           // Clear our OWN properties only, and do not assume `x` survives the
           // drift driver's `clearProps:"transform"` teardown (lusion-type
           // `registerDrift`): both are RM-gated and unmount together, so

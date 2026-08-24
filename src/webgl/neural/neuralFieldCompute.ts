@@ -301,6 +301,7 @@ import {
   COL_EMBER,
   COL_EMBER2,
   getPlexus,
+  PLEXUS_MASTER_SEED,
   type PlexusDensity,
   type Plexus,
   NEURAL_PARTICLE_COUNT_COMPACT,
@@ -690,6 +691,23 @@ export interface NeuralFieldBuild {
   /** Round-8-G: the plexus link lines — ALWAYS built (both modes, both
    * backends); the mesh the star cores hang in. */
   links: NeuralFieldLines;
+  /**
+   * ROUND 11 STAGE 1.5 — the structural fingerprint of THIS build's cloud, so
+   * the island sequence can PROVE its five constellations differ rather than
+   * assert it (QA gate 4). Read-only, computed once at build.
+   */
+  stats: {
+    seed: number;
+    well: boolean;
+    nodes: number;
+    edges: number;
+    meanDegree: number;
+    minEdgeLocal: number;
+    components: number;
+    largestComponent: number;
+    meanEdgeLocal: number;
+    checksum: number;
+  };
   /** Dispatch the compute step with a clamped frame delta (no-op on static). */
   compute: (delta: number) => void;
   dispose: () => void;
@@ -706,6 +724,19 @@ export interface NeuralFieldBuildArgs {
   count: number;
   /** Which stream this build paints — decides the ring-particle allocation. */
   mode: LatticeMode;
+  /**
+   * ROUND 11 STAGE 1.5 — the plexus MASTER SEED for this build. Omitted (the
+   * shipped call shape) ⇒ `PLEXUS_MASTER_SEED[mode]`, i.e. byte-identical to
+   * every build before the island sequence existed. Supplied ⇒ a different
+   * constellation from the SAME code and the SAME uniform-block budget: the
+   * seed only ever reaches the GPU as the CONTENTS of the four plexus
+   * uniformArrays that already exist, so there is no shader edit, no new
+   * binding, and the 12/12 vertex-stage block count does not move.
+   */
+  plexusSeed?: number;
+  /** Carve the crystal density well? Only the band the stone rides needs it
+   * (default true = shipped). */
+  plexusWell?: boolean;
 }
 
 const QUAD_CORNERS = [-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0];
@@ -863,6 +894,8 @@ export function createNeuralFieldBuild(
   args: NeuralFieldBuildArgs,
 ): NeuralFieldBuild {
   const { webgpu, tsl, gl, backendIsWebGPU, count, mode } = args;
+  const plexusSeed = args.plexusSeed;
+  const plexusWell = args.plexusWell !== false;
   const {
     InstancedBufferGeometry,
     BufferGeometry,
@@ -917,7 +950,7 @@ export function createNeuralFieldBuild(
   // subscription inside the Canvas island — the R3F commit wedge).
   const density: PlexusDensity =
     count <= NEURAL_PARTICLE_COUNT_COMPACT ? "lite" : "full";
-  const plexus = getPlexus(mode, density);
+  const plexus = getPlexus(mode, density, plexusSeed, plexusWell);
   const { meta, offA, seed } = seedBuffers(count, mode, plexus);
   const ctrlInit = plexus.centroids;
 
@@ -2858,6 +2891,22 @@ export function createNeuralFieldBuild(
   // the identical plexus.
   const links = buildLinkLineLayer();
 
+  /** Gate-4 fingerprint — shared by both backend branches (same tables). */
+  const stats = {
+    seed: Number.isFinite(plexusSeed as number)
+      ? (plexusSeed as number)
+      : PLEXUS_MASTER_SEED[mode],
+    well: plexusWell,
+    nodes: NODE_N,
+    edges: EDGE_N,
+    meanDegree: NODE_N ? (2 * EDGE_N) / NODE_N : 0,
+    minEdgeLocal: plexus.minEdgeLocal,
+    components: plexus.components,
+    largestComponent: plexus.largestComponent,
+    meanEdgeLocal: plexus.meanEdgeLocal,
+    checksum: plexus.checksum,
+  };
+
   // === Static (no-compute) build ===========================================
   if (!backendIsWebGPU) {
     const material = new MeshBasicNodeMaterial();
@@ -2912,6 +2961,7 @@ export function createNeuralFieldBuild(
       membrane,
       nebula,
       links,
+      stats,
       compute: () => {},
       dispose() {
         geometry.dispose();
@@ -3118,6 +3168,7 @@ export function createNeuralFieldBuild(
     membrane,
     nebula,
     links,
+    stats,
     compute(delta: number) {
       uDelta.value = delta;
       gl.compute(simulate);

@@ -143,6 +143,12 @@ import { useSectionStore } from "./store/sectionStore";
 import { useScrollStore } from "./store/scrollStore";
 import { useNeuralLatticeStore } from "./store/neuralLatticeStore";
 import { useTierStore } from "./store/tierStore";
+import { useTraverseStore, type TraverseFrame } from "./store/traverseStore";
+import {
+  traverseConfig,
+  traverseRate,
+  type TraverseBandId,
+} from "./neural/traverseConfig";
 import { CLUSTER_COUNT, type LatticeMode } from "./neural/neuralLatticeConfig";
 import {
   CRYSTAL_POS,
@@ -363,6 +369,13 @@ export function CrystalCluster({
   // --- Per-frame driver -----------------------------------------------------
   const groupRef = useRef<THREE.Group>(null);
   const meshRef = useRef<THREE.Mesh>(null);
+  /**
+   * ROUND 11 STAGE 1.5 — THE STONE TRAVELS. Stage 1 gave the net a lateral rig
+   * and gave the stone nothing, so while the net slid 1895 px left the
+   * meteorite sat perfectly still on a moving world. This ref is the whole
+   * fix's input: the SAME frozen frame the net reads, never a second one.
+   */
+  const traverseRef = useRef<TraverseFrame | null>(null);
   /** Round 8-E — the fog quad. Scaled per-frame to world radii derived from
    * the anchor rect (the group is UNIFORMLY scaled, so the anisotropy has to
    * live on the child's own scale). */
@@ -441,12 +454,52 @@ export function CrystalCluster({
     const ih = size.height;
     const vw = size.width;
     const k = WORLD_VIEW_HEIGHT / ih;
-    const scrollY = window.scrollY;
+
+    // ── ROUND 11 STAGE 1.5 — THE TRAVERSE RIG ──────────────────────────────
+    // ONE FROZEN READ, SHARED. The stone's vertical (`vpTop`), its lateral,
+    // its tumble scalar `a`, its callout windows, its plexus gate and its
+    // projected callout vars all derive from the SAME snapshot the net's rig
+    // derives from. A stone on `window.scrollY` and a net on the frame would
+    // shear by up to 22 px at a hard flick — two objects at the same depth
+    // disagreeing, which is exactly what the store exists to prevent.
+    //
+    // THE LATERAL IS APPLIED TO `cx`, NOT TO A CHILD TRANSFORM, and that is
+    // deliberate. This group is UNIFORMLY scaled by `s` (≈1.106 world units at
+    // the reference band), so a child translate would render at `x·s` — off by
+    // 10.6 % here and by whatever `s` happens to be at every other viewport,
+    // band height and velocity compression. Folded into `cx` it goes through
+    // the same `(cx − vw/2)·k` + camera-quaternion path the placement already
+    // uses, i.e. OUTSIDE the group scale by construction, exactly equivalent
+    // to NeuralLattice's `rig.position.x = lateralPx·k` inside a scale-1 group.
+    //
+    // The origin is this band's own arrival — the identical expression the
+    // island uses on the identical rect — so the stone and the net that share
+    // this anchor can never differ by more than float noise.
+    let tv = traverseRef.current;
+    if (!tv) {
+      tv = useTraverseStore.getState().bands[anchorId] ?? null;
+      traverseRef.current = tv;
+    }
+    const onBand = !!tv && tv.active;
+    const scrollY = onBand ? tv!.scrollY : window.scrollY;
+    let lateralPx = 0;
+    if (onBand) {
+      lateralPx = tv!.xScenePx;
+      const bcfg = traverseConfig.bands[anchorId as TraverseBandId];
+      if (bcfg && traverseConfig.islands.compensate) {
+        const centreScroll = rect.docTop + rect.h / 2 - ih / 2;
+        const travelledAtCentre = Math.min(
+          Math.max(centreScroll - tv!.secTop, 0),
+          tv!.secH,
+        );
+        lateralPx -= bcfg.dir * traverseRate(bcfg) * travelledAtCentre;
+      }
+    }
 
     const vpTop = rect.docTop - scrollY;
     const pos = CRYSTAL_POS[mode];
     // Crystal center in viewport px (CSS y down; config +y is up).
-    const cx = rect.cxBase + pos[0] * rect.w;
+    const cx = rect.cxBase + pos[0] * rect.w + lateralPx;
     const cy = vpTop + rect.h / 2 - pos[1] * rect.h;
 
     if (vpTop + rect.h < -CULL_PAD || vpTop > ih + CULL_PAD) {
@@ -714,6 +767,15 @@ export function CrystalCluster({
       // so it survives the section growth ONLY under the viewport re-base —
       // band-keyed, pxScale triples and the labels scatter.
       const pxScale = rect.h * feelC.scale * scaleMul;
+      // ⚠ ROUND 11 STAGE 1.5 — THE CALLOUTS FOLLOW THE STONE LATERALLY, and
+      // they do it through `cx` alone. `rectLeft` is the DOM anchor's left
+      // edge and the anchor does NOT move (it carries no transform); `cx` is
+      // the stone's true screen centre and now includes the traverse lateral.
+      // So `ax` — which is `cx` re-based onto the anchor rect — already
+      // carries the offset, from the SAME frame snapshot that placed the
+      // stone, in the same frame. Do NOT add it a second time here, and do
+      // NOT re-read it from the store: the projection twin's whole contract is
+      // that it is a pure function of the values the render path just used.
       const rectLeft = rect.cxBase - rect.w / 2;
       const offPct = (CALLOUT_LABEL_OFFSET_PX / rect.h) * 100;
       for (let i = 0; i < CLUSTER_COUNT; i++) {
@@ -864,6 +926,50 @@ export function CrystalCluster({
       hasBuild: !!build,
       lite: liteRef.current,
       rect,
+      /**
+       * ROUND 11 STAGE 1.5 QA — GATE 5. The stone's lateral, recomputed from
+       * the published frame by the SAME closed form the frame path uses, plus
+       * the net island that shares this anchor. `deltaPx` is the gate and it is
+       * 0 by construction: one frozen `scrollY`, one rect, one expression.
+       */
+      get traverse() {
+        const frame = traverseRef.current;
+        const g = groupRef.current;
+        if (!frame || !rect) return { bound: false };
+        const ihNow = size.height;
+        const bcfg = traverseConfig.bands[anchorId as TraverseBandId];
+        let origin = 0;
+        if (bcfg && traverseConfig.islands.compensate) {
+          const centreScroll = rect.docTop + rect.h / 2 - ihNow / 2;
+          origin =
+            bcfg.dir *
+            traverseRate(bcfg) *
+            Math.min(Math.max(centreScroll - frame.secTop, 0), frame.secH);
+        }
+        const stone = frame.active ? frame.xScenePx - origin : 0;
+        const net = (
+          window as unknown as Record<
+            string,
+            { traverse?: { lWorld?: number } } | undefined
+          >
+        )[`__sersanNeuralLattice_${anchorId}`]?.traverse;
+        const kNow = WORLD_VIEW_HEIGHT / ihNow;
+        const netPx =
+          net && typeof net.lWorld === "number" ? net.lWorld / kNow : null;
+        return {
+          bound: true,
+          active: frame.active,
+          scrollY: frame.scrollY,
+          xScenePx: Math.round(frame.xScenePx * 100) / 100,
+          originPx: Math.round(origin * 100) / 100,
+          stoneLateralPx: Math.round(stone * 100) / 100,
+          netLateralPx: netPx === null ? null : Math.round(netPx * 100) / 100,
+          deltaPx:
+            netPx === null ? null : Math.round((stone - netPx) * 1000) / 1000,
+          tolerancePx: 1,
+          visible: !!g && g.visible,
+        };
+      },
       /** Round 8-H — true once the authored slab GLB is the mesh in use;
        * false means the procedural round-7 fallback is on screen (asset
        * failure), which is worth knowing before judging the stone. */
