@@ -75,6 +75,42 @@ let externallyPumped = false;
 // _preventNextNativeScrollEvent swallows its side, our flag is dropped by
 // the next tick's epsilon). Under reduced motion the provider never
 // acquires an instance, so no listener exists and this whole path is inert.
+//
+// ROUND 8-A INTERPLAY (the `duration`→`lerp` switch below): re-verified
+// against lenis 1.3.23 — the smoothing law cannot reach this path.
+//   - `scrollTo`'s `immediate` branch (dist/lenis.mjs L770–782) writes
+//     animatedScroll/targetScroll, setScroll, reset(), emit() and RETURNS
+//     before the `duration/easing/lerp` normalization (L784) and before
+//     `animate.fromTo` (L786). Our forced re-sync never touches the knob.
+//   - `force: true` still bypasses the `isStopped || isLocked` early return
+//     (L720) — unchanged, that check reads neither.
+//   - the `isScrolling === "smooth"` guard still holds during a wheel glide:
+//     lerp mode goes through the SAME non-immediate `animate.fromTo`, whose
+//     `onStart` fires SYNCHRONOUSLY inside `scrollTo` (L786 → Animate.fromTo
+//     L110, `onStart?.()` L118) and whose `onUpdate` re-sets "smooth" every
+//     frame (L796) — so the guard is armed from the wheel event itself,
+//     before the next pump. Completion calls `reset()` (zeroes velocity,
+//     re-reads actualScroll, L647–653), so the frame after a glide ends the
+//     epsilon compare is ~0 and no spurious re-sync fires. Only the completion
+//     CONDITION changed (rounded-value match instead of elapsed duration) —
+//     the state machine is identical.
+//   - the epsilon guard is a position compare and is law-agnostic.
+// Net: B14's LOGIC is unchanged; only WHEN it re-arms after a wheel gesture
+// moves. Honest numbers rather than the tempting "~250 ms" (that is the
+// PERCEPTUAL 95 %-settled figure, not the completion): the lerp branch ends
+// when `Math.round(value) === Math.round(target)` (L87), i.e. within ~0.5–1 px
+// of target — ln(D/1)/12 ≈ 0.38 s for a 100 px notch, ~0.65 s for a 2000 px
+// flick, versus a flat 0.9 s before. So it usually arms SOONER.
+// The one asymmetric corner, recorded so nobody re-derives it: approaching a
+// target whose fractional part sits just above .5 (from below) or just below
+// it (from above), the rounded-match needs |Δ| < |frac − 0.5|, which for a
+// frac within ~1e-4 of .5 stretches the tail to 1–3 s of SUB-PIXEL crawl
+// (bounded — float64 convergence completes it; a new wheel event retargets
+// `fromTo` and ends it immediately). It cannot strand the page: the position
+// is already at target to within a pixel. Its only cost is that B14 (and
+// Lenis's own `onNativeScroll`, which is likewise inert while "smooth") stay
+// disarmed for that window — same class of hole as the old fixed 0.9 s, just
+// rarer and occasionally longer.
 let nativeScrollSeen = false;
 const flagNativeScroll = () => {
   nativeScrollSeen = true;
@@ -126,10 +162,54 @@ export function pumpLenis(time: number) {
 export function acquireLenis(): Lenis {
   if (!instance) {
     instance = new Lenis({
-      // Light easing — we don't want molasses, just rAF-smoothed scroll.
-      duration: 0.9,
-      // Default smooth easing curve (out-expo-ish).
-      easing: (t: number) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+      // SMOOTHING LAW (round 8-A, 2026-08-22): lerp mode, λ = 12 s⁻¹.
+      //
+      // Was `duration: 0.9` + an out-expo easing: a FIXED-duration glide per
+      // gesture, so one wheel notch and a hard flick both took 0.9 s to land.
+      // lusion.co (dossier §2.2, `hoisted.js` ScrollPane.update) instead uses
+      // an FPS-normalized exponential approach with `wheelEaseCoeff = 12`.
+      // Verified against the installed lenis 1.3.23 source, not docs:
+      //   - `Animate.advance` (dist/lenis.mjs L76–97) branches
+      //     `if (duration && easing) … else if (lerp) …` — duration+easing
+      //     WINS, so the lerp knob is dead code while either is set. Both had
+      //     to go, not just `duration`.
+      //   - the constructor (L435–436) back-fills the other half of the pair:
+      //     a `duration` alone gets `defaultEasing`, an `easing` alone gets
+      //     `duration = 1`. Passing neither is the only way into lerp mode.
+      //   - the lerp branch is `damp(value, to, lerp * 60, dt)` =
+      //     `1 − exp(−lerp·60·dt)` → λ = 0.2 × 60 = 12 s⁻¹, byte-equivalent
+      //     to Lusion's coefficient. Time constant 83 ms; ~95 % settled
+      //     250 ms after the last event.
+      // Felt result: response scales with REMAINING DISTANCE — a notch dies
+      // in ~0.25 s, a long flick glides proportionally further — instead of
+      // every gesture costing the same 0.9 s. Heavier is 0.15 (λ=9); do not
+      // go near igloo's double-lerp ~0.1, this is a document, not a canvas.
+      //
+      // This also puts the wheel path and the programmatic path on the same
+      // law: `scrollTo` without explicit options inherits `options.lerp`
+      // (L719), so the two call sites that pass NO options now ease
+      // exponentially — the nav/in-page anchor glide (smooth-scroll-provider
+      // `onClick`) and the failed-field focus scroll (start-intake-form
+      // `focusFailedField`). That is exactly what Lusion does (their nav links
+      // route through the same wheel smoothing, dossier §2.3), and both land
+      // within a pixel in ~0.4–0.8 s, comfortably inside the provider's
+      // 1100 ms snap-suspend backstop.
+      //
+      // EVERY OTHER call site is provably unaffected, but NOT for the reason
+      // one would assume — read before touching:
+      //   - `scroll-snap.ts` settles/steps pass BOTH `duration` and `easing`
+      //     → `Animate.advance`'s duration branch, untouched.
+      //   - the runway step glides (services-section L966, fit-section L818,
+      //     founders-rail L1276/L2067) pass `{ duration: 0.6 }` ONLY. They
+      //     used to inherit the `easing` deleted above; now `scrollTo` L784
+      //     back-fills lenis's `defaultEasing` — which is
+      //     `(t) => Math.min(1, 1.001 - 2 ** (-10 * t))` (L373), BYTE-IDENTICAL
+      //     to the curve removed here. So their feel is unchanged by luck of
+      //     an exact match, not by contract: if this easing is ever restored
+      //     as something else, those four sites silently change with it.
+      //   - `{ immediate: true }` teleports (route reset, B14 re-sync, gate
+      //     jumps) return before the normalization entirely.
+      lerp: 0.2,
       // Wheel smoothing only — `syncTouch` stays OFF, on purpose.
       //
       // (The old reason here, "we don't run the scene on mobile anyway", is

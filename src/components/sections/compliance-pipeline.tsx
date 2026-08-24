@@ -897,7 +897,7 @@ export default function CompliancePipeline() {
 
   return (
     <section
-      data-snap
+      // Round 8-A: `data-snap` removed (free sections no longer settle).
       className="section-lg relative overflow-hidden"
       aria-labelledby="compliance-pipeline-heading"
     >

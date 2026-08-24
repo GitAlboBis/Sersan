@@ -102,7 +102,7 @@ export function AuditClient() {
     <div className="min-h-[100svh] pt-24 relative">
       {/* Hero */}
       <div data-line-anchor="hero">
-      <section data-snap className="relative section-lg overflow-hidden">
+      <section className="relative section-lg overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-background/40 via-background/20 to-background pointer-events-none" />
         <div
           aria-hidden="true"
@@ -179,7 +179,7 @@ export function AuditClient() {
           md:grid-cols-2 card grid + DisplacementWipeReveal entrance into
           ./surfaces-ledger.tsx, copy byte-identical). */}
       <div data-line-anchor="surfaces">
-      <section data-snap className="section-lg relative">
+      <section className="section-lg relative">
         <div className="container-px relative">
           <SectionHeading
             align="center"
@@ -217,10 +217,9 @@ export function AuditClient() {
           try the 60-second read, then "What's in the report" shows the real
           thing. Deliberately NO data-line-anchor: the audit route's curve
           waypoints stay exactly as authored (anchors intact per the webgl
-          contract); data-snap centres it like the page's other focal beats
-          (the snap engine measures live, so the quiz's height changes never
-          go stale). */}
-      <section data-snap className="section-lg relative">
+          contract). Round 8-A: `data-snap` removed with every other free
+          section — only the pinned week-timeline runway still settles. */}
+      <section className="section-lg relative">
         <div className="container-px relative">
           <Reveal className="max-w-3xl mx-auto">
             <SelfAudit isEn={isEn} />
@@ -298,7 +297,7 @@ export function AuditClient() {
       </div>
 
       {/* What happens after */}
-      <section data-snap className="section-lg relative">
+      <section className="section-lg relative">
         <div className="container-px relative">
           <SectionHeading
             align="center"
@@ -404,7 +403,7 @@ export function AuditClient() {
       {/* Closing CTA — booking (written-intake fallback while the Cal embed
           is disabled; see CAL_ENABLED in @/lib/site) */}
       <div data-line-anchor="final-cta">
-      <section id="book-call" data-snap className="section-lg relative overflow-hidden">
+      <section id="book-call" className="section-lg relative overflow-hidden">
         <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] opacity-25 pointer-events-none"
           aria-hidden="true"

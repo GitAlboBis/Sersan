@@ -1,22 +1,38 @@
 /**
- * scroll-snap — the ONE site-wide snap engine on the Lenis singleton.
+ * scroll-snap — the pinned-runway settle engine on the Lenis singleton.
  *
- * Client request 2026-07-23: hard flicks must still come to rest ON a
- * section, and settles must land with the section CENTERED. The site is not
- * a flat page though — it has scroll-hijacking gates (hero intro, spine
- * exit, founders morph), sticky scrub runways with their own corrective
- * scrollTo's, drag bridges, FLIP route flights, and previously TWO separate
- * lenis/snap instances (home spine + audit timeline) issuing competing
- * debounced settles. This module replaces all of that with one engine the
- * whole app registers into:
+ * ROUND 8-A (2026-08-22) — SCOPE CUT. This module used to settle every
+ * `[data-snap]` SECTION on every route (client request 2026-07-23: "hard
+ * flicks must come to rest ON a section, centered"). The owner's round-8
+ * verdict retired that: a free-reading page must rest exactly where the
+ * reader leaves it. The scroll dossier
+ * (research/2026-08-22-round8-scroll-dossier.md) reverses lusion.co — which
+ * has NO snap of any kind, only λ=12/s wheel smoothing — and igloo, whose
+ * auto-center only fires when a scene boundary is torn mid-screen. Ours fired
+ * on ordinary reading rests, and three things fell out of that:
  *
- *   - `snapElement(el, align)` — a DOM section. Measured LIVE at snap time
- *     (getBoundingClientRect), so font swaps, FLIP re-sorts, language
- *     toggles and IO reveals can never leave a stale target. Disconnected
- *     or zero-height elements (mode fallbacks) are skipped automatically.
+ *   1. a settle ~0.4–2.3 s after the last wheel event ("si ferma dopo 1s");
+ *   2. it centered the SECTION rect, ~100–170 px above the constellation band
+ *      the reader was actually looking at ("si assesta troppo in alto" —
+ *      §1.3 of the dossier has the geometry, should this ever be revived: the
+ *      target would have to be the `[data-lattice-anchor]` band, not the
+ *      section);
+ *   3. its ≤900 px/s glide crossed `"top bottom"` entrance triggers the user
+ *      never scrolled to, and direction-reversing settles hard-reset
+ *      half-played row entrances via onLeaveBack → pause(0) ("non permette
+ *      l'esperienza completa con gli effetti gsap delle scritte").
+ *
+ * So `snapElement` / `[data-snap]` / `ScrollSnapSections` are GONE, and with
+ * them every free-section settle on every route. What survives is the one
+ * correction igloo actually justifies and (a) alone would have re-opened:
+ * never resting mid-pose inside a PINNED SCRUB RUNWAY, whose visual state is
+ * a pure function of scroll offset — a rest halfway through a services
+ * segment / fit beat / founders panel / spine station / audit day parks a
+ * torn pose. Inside those ranges the settle glide IS the choreography.
+ *
  *   - `snapPoint(get)` — a lazy value getter for positions INSIDE a scrub
  *     runway (panel/card/beat lock scroll offsets). The getter closes over
- *     the owner's live measure() vars, so it is always fresh too.
+ *     the owner's live measure() vars, so it is always fresh.
  *   - `snapBarrier(get)` — a document Y a settle must never animate across
  *     (the spine pin-end and the founders gate top hijack plausible-speed
  *     crossings; a snap crossing them would trigger a beat the user never
@@ -25,6 +41,11 @@
  *   - `suspendSnap()` — refcounted pause, returns an idempotent release.
  *     Held while any gate is engaged, during drag scrubs, and across route
  *     resets. Suspending also cancels any pending debounce.
+ *
+ * Consequence of the cut: on a route with no runway (about, consulting,
+ * contact, resources, case-studies, trust) there are now ZERO candidates and
+ * the engine is inert — it arms a debounce, finds nothing, returns. Only the
+ * PageDown/PageUp stepping stays useful there, via its page-glide fallback.
  *
  * Trigger discipline: only Lenis `virtual-scroll` (USER wheel input — the
  * gates consume their wheel at capture before Lenis, and programmatic
@@ -41,18 +62,28 @@
  */
 import type Lenis from "lenis";
 
-export type SnapAlign = "start" | "center" | "end";
-
-interface ElementEntry {
-  el: HTMLElement;
-  align: SnapAlign;
-}
-
-/** ~How much of a viewport a settle may travel: the capture radius. Sections
- * are ~1 viewport apart, so this reads as "almost always locks on", while a
- * rest deep inside a tall free-reading block stays untouched. */
+/** ~How much of a viewport a settle may travel: the capture radius. Runway
+ * stations are well inside that, so a rest inside a pin locks on; a rest in
+ * the free reading between runways has no candidate to reach for at all. */
 const CAPTURE_FRAC = 0.42;
-/** Debounce after the last user wheel event before evaluating. */
+/** Debounce after the last user wheel event before evaluating.
+ *
+ * Round 8-A deliberately KEPT 420 and skipped the dossier's optional
+ * §4.2 "igloo-parity" bump to 1000. Traced against the new `lerp: 0.2`
+ * smoothing law (λ = 12 s⁻¹, so at 60 fps the per-frame step is
+ * (1 − exp(−0.2)) = 0.181 of the remaining distance): `evaluate`'s velocity
+ * gate (>0.6 px/frame) clears once
+ * the wheel glide is within ~3.3 px of its own rest, i.e. at
+ * t = ln(D/3.3)/12 — 0.28 s for a 100 px notch, 0.53 s for a 2000 px flick.
+ * At 420 ms the settle therefore starts INSIDE the dying tail and reads as
+ * one continuous motion (as it did under the old 0.9 s law, which fired at
+ * 660–900 ms mid-glide). Bumping to 1000 ms would insert ~0.5 s of dead
+ * stillness first and turn the whisper into a visible self-restart — the
+ * exact "si ferma e poi si riassesta" pathology the round-8 cut exists to
+ * kill. The companion refinement (`Math.min(1.2, 0.6 + |d|/1500)`) is also
+ * skipped: capture is ≤0.42·ih, so |d| ≤ ~380 px and the LIVE formula
+ * already tops out at ~0.71 s — the "cap" would never bind and would only
+ * make the glide ~20 % slower. */
 const DEBOUNCE_MS = 420;
 /** Re-check cadence while Lenis is still easing (lerp tail / corrective
  * glides); bounded so an abandoned animation can't retry forever. */
@@ -71,7 +102,6 @@ const isStackedViewport = () =>
   window.matchMedia("(max-width: 767px)").matches;
 
 let lenis: Lenis | null = null;
-const elements = new Set<ElementEntry>();
 const points = new Set<() => number>();
 const barriers = new Set<() => number>();
 let suspendCount = 0;
@@ -98,34 +128,16 @@ function maxScroll(): number {
   );
 }
 
-/** All candidate document-Y targets, measured NOW. */
+/** All candidate document-Y targets, measured NOW. Runway points only since
+ * round 8-A — a route with no pinned runway returns an empty list, which is
+ * how "free sections never settle" is enforced at the source. */
 function candidates(): number[] {
-  const ih = window.innerHeight;
-  const y = window.scrollY;
   const limit = maxScroll();
   const out: number[] = [];
   const push = (v: number) => {
     if (Number.isFinite(v)) out.push(Math.round(Math.min(Math.max(v, 0), limit)));
   };
   for (const get of points) push(get());
-  for (const entry of elements) {
-    const { el, align } = entry;
-    if (!el.isConnected) continue;
-    const r = el.getBoundingClientRect();
-    if (r.height <= 1) continue; // hidden / swapped-out mode
-    // Centering a section much taller than the viewport is meaningless (and
-    // on narrow layouts the same sections stack to multiples of the screen —
-    // snapping there would trap the reader). Tall content reads free.
-    if (align === "center" && r.height > ih * 1.75) continue;
-    const top = y + r.top;
-    push(
-      align === "start"
-        ? top
-        : align === "end"
-          ? top + r.height - ih
-          : top + r.height / 2 - ih / 2,
-    );
-  }
   return out;
 }
 
@@ -148,6 +160,16 @@ function evaluate() {
   if (!lenis || suspendCount > 0) return;
   const l = lenis as unknown as { isStopped?: boolean; velocity?: number };
   if (l.isStopped) return;
+  // Nothing registered → nothing this engine can ever do on this route
+  // (round 8-A: no runway, no candidates). Checked BEFORE the velocity
+  // retry so a wheel gesture on about/consulting/contact/resources/
+  // case-studies/trust cannot schedule the 8×240 ms retry ladder whose only
+  // possible outcome is the `all.length === 0` return below — this is what
+  // makes the header's "arms a debounce, finds nothing, returns" literal.
+  // (A runway that registers DURING a retry window is no longer picked up;
+  // a settle fired because a component happened to mount mid-tail was never
+  // wanted anyway.)
+  if (points.size === 0) return;
   // Still moving (user lerp tail, or a section's own corrective glide) —
   // wait for the genuine rest instead of retargeting mid-flight.
   if (Math.abs(l.velocity ?? 0) > 0.6) {
@@ -242,7 +264,10 @@ export function attachSnap(instance: Lenis) {
         return suspendCount;
       },
       get counts() {
-        return { elements: elements.size, points: points.size, barriers: barriers.size };
+        // `elements` is a permanent 0 since round 8-A (element snapping was
+        // removed) — reported explicitly so the QA contract and any existing
+        // console snippet still read true rather than `undefined`.
+        return { elements: 0, points: points.size, barriers: barriers.size };
       },
       candidates,
       evaluate,
@@ -274,12 +299,10 @@ export function detachSnap() {
   lenis = null;
 }
 
-/** Register a section element. Returns an unsubscribe. */
-export function snapElement(el: HTMLElement, align: SnapAlign = "center") {
-  const entry: ElementEntry = { el, align };
-  elements.add(entry);
-  return () => elements.delete(entry);
-}
+// (`snapElement(el, align)` / `SnapAlign` / the `[data-snap]` markup contract
+// were removed in round 8-A — see the header. Do NOT reintroduce a DOM-section
+// target without reading dossier §1.3 first: the section rect is the wrong
+// frame, the band is.)
 
 /** Register a lazy value target (runway interior lock). Returns unsubscribe. */
 export function snapPoint(get: () => number) {

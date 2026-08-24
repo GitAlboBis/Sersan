@@ -285,7 +285,11 @@ export default function ProblemSection() {
     <section
       id="problem"
       ref={sectionRef}
-      data-snap
+      // Round 8-A: `data-snap` removed. This section's settle centered the
+      // SECTION rect, which sits ~100–170 px above the constellation band the
+      // reader is framing — the owner's "si assesta troppo in alto". Free
+      // sections no longer settle at all; the page rests where you leave it.
+      //
       // Round 7-3 (continuous-space spec §B.3): section-accent-tint + both
       // SectionGlows removed — the DOM must not own section-sized ambience.
       // The page's one continuous space (body --bg + starfield + the

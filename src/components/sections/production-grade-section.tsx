@@ -295,7 +295,9 @@ export default function ProductionGradeSection() {
     <section
       id="trust"
       ref={sectionRef}
-      data-snap
+      // Round 8-A: `data-snap` removed — same band-vs-section framing bug as
+      // #problem (dossier §1.3). Free sections no longer settle at all.
+      //
       // Round 7-3 (continuous-space spec §B.3): section-accent-tint--strong
       // + both SectionGlows removed — this was the strongest tint on the
       // page, the owner's "teal-tinted BLOCK" band. The DOM must not own

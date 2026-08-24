@@ -189,11 +189,13 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
     // Expose to window for nav anchor links + debugging.
     (window as unknown as { __lenis?: typeof lenis }).__lenis = lenis;
 
-    // Site-wide snap engine (lib/scroll-snap): sections register themselves
-    // (ScrollSnapSections + the runway components); the provider owns the
-    // lifecycle and holds it while any scroll-hijack gate is engaged — a
-    // debounced settle firing into a stopped/hijacked Lenis is at best lost,
-    // at worst trips a gate's safety valve.
+    // Pinned-runway settle engine (lib/scroll-snap). Round 8-A: free sections
+    // no longer register at all (`ScrollSnapSections` + `[data-snap]` are
+    // gone) — only the runway owners (spine, services, fit, founders, audit
+    // timeline) contribute snapPoints. The provider still owns the lifecycle
+    // and holds it while any scroll-hijack gate is engaged: a debounced
+    // settle firing into a stopped/hijacked Lenis is at best lost, at worst
+    // trips a gate's safety valve.
     attachSnap(lenis);
     let releaseGateHold: (() => void) | null = null;
     const syncGateHold = () => {

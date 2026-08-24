@@ -121,7 +121,7 @@ export function CaseStudiesClient() {
   return (
     <div className="min-h-[100svh] pt-24 relative">
       {/* Header — the /projects wordmark. */}
-      <section data-line-anchor="hero" data-snap className="pt-16 pb-10 sm:pt-24 sm:pb-14">
+      <section data-line-anchor="hero" className="pt-16 pb-10 sm:pt-24 sm:pb-14">
         <div className="container-px">
           <div ref={headerRef} key={language} className="cs-archive-title-wrap">
             <h1
@@ -199,7 +199,7 @@ export function CaseStudiesClient() {
       {/* Closing CTA — overflow-x-clip: the decorative 700px glow hangs past
           the right edge on narrow viewports and would drag the document
           (measured 190px at 320w); clip the horizontal escape only. */}
-      <section data-line-anchor="final-cta" data-snap className="section-lg relative overflow-x-clip">
+      <section data-line-anchor="final-cta" className="section-lg relative overflow-x-clip">
         <div
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] opacity-20 pointer-events-none"
           aria-hidden="true"

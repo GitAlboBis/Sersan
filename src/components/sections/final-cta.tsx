@@ -61,7 +61,9 @@ export default function FinalCTA() {
   return (
     <section
       id="contact"
-      data-snap
+      // Round 8-A: `data-snap` removed (free sections no longer settle).
+      // `scroll-mt-24` stays — it serves native `#contact` anchor navigation,
+      // which the snap engine never read.
       className="relative section-lg scroll-mt-24 overflow-hidden"
     >
       <div className="container-px relative">

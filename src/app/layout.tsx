@@ -6,7 +6,6 @@ import { LanguageProvider } from "@/components/language-provider";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { SmoothScrollProvider } from "@/components/smooth-scroll-provider";
-import { ScrollSnapSections } from "@/components/scroll-snap-sections";
 import { SectionBus } from "@/components/section-bus";
 import { CanvasHost } from "@/webgl/CanvasHost";
 import { Preloader } from "@/components/fx/preloader";
@@ -290,10 +289,11 @@ export default function RootLayout({
                 useSectionStore. Lives OUTSIDE the Canvas so the bus works on
                 every tier, including "off". Renders nothing. */}
             <SectionBus />
-            {/* Site-wide scroll snap: registers [data-snap] sections on each
-                route into lib/scroll-snap (client request 2026-07-23 — every
-                section settles centered; hard flicks still lock on). */}
-            <ScrollSnapSections />
+            {/* (Round 8-A, 2026-08-22: <ScrollSnapSections /> deleted. Free
+                sections no longer settle at all — the page rests wherever the
+                reader leaves it, Lusion-style. lib/scroll-snap survives as the
+                pinned-runway whisper only, and the runway owners register
+                themselves; there is nothing site-wide left to mount.) */}
             <CardTiltController />
             <HeadingChoreographer />
             {/* Mono eyebrow/label decode-scramble — one delegated observer. */}

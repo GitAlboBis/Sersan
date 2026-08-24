@@ -59,7 +59,7 @@ export function ConsultingClient() {
     <div className="min-h-[100svh] pt-24 relative">
       {/* Hero */}
       <div data-line-anchor="hero">
-      <section data-snap className="relative section-lg overflow-hidden">
+      <section className="relative section-lg overflow-hidden">
         <div
           aria-hidden="true"
           className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[55rem] max-w-[110vw] h-[24rem] opacity-30 blur-[120px]"
@@ -121,7 +121,7 @@ export function ConsultingClient() {
       {/* Practice areas — full-bleed big-type numbered index (the ledger
           replaced the 4×2 icon-card grid; see ./practice-ledger.tsx). */}
       <div data-line-anchor="practice">
-      <section data-snap className="section-lg">
+      <section className="section-lg">
         <div className="container-px">
           <SectionHeading
             align="center"
@@ -148,7 +148,7 @@ export function ConsultingClient() {
       {/* Engagement formats — sequential big-type step-through (the acts
           replaced the three card-steel columns; see ./engagement-acts.tsx). */}
       <div data-line-anchor="engage">
-      <section id="engage" data-snap className="section-lg scroll-mt-24">
+      <section id="engage" className="section-lg scroll-mt-24">
         <div className="container-px">
           <SectionHeading
             align="center"
@@ -308,7 +308,7 @@ export function ConsultingClient() {
 
       {/* Closing CTA */}
       <div data-line-anchor="final-cta">
-      <section data-snap className="section-lg">
+      <section className="section-lg">
         <div className="container-px">
           <div className="max-w-2xl mx-auto text-center">
             <SectionHeading
