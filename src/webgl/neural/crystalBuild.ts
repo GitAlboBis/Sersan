@@ -1211,11 +1211,19 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
       // shimmer into high-frequency chaos. The warp belongs in the FORM band.
       // Round 8-I: RIPPLE_FREQ / RIPPLE_F2 / RIPPLE_A2 are BAKED here as graph
       // literals (only uRippleAmp is live), so the carrier's anti-aliasing
-      // retune 26 → 12 needs an edit + reload, not a uniform write — and the
-      // decoupled warp is untouched by it, which is the point. The frequency
-      // is bounded by the stone's ON-SCREEN size (~123 px/crystal-unit at the
-      // measured band, ≳8 px per cycle for BOTH trains); the derivation lives
-      // at crystalConfig RIPPLE_FREQ. Lite never builds this branch.
+      // retune needs an edit + reload, not a uniform write — and the decoupled
+      // warp is untouched by it, which is the point. The frequency is bounded
+      // by the stone's ON-SCREEN size; the derivation lives at crystalConfig
+      // RIPPLE_FREQ. Lite never builds this branch.
+      // ROUND 10-A: CRYSTAL_SCALE 0.17 → 0.115 takes the stone to ~83
+      // px/crystal-unit at the measured band, so the carrier followed it down
+      // (12 → 8, with RIPPLE_AMP re-derived to hold the same 25° tilt) to keep
+      // its SCREEN period where the 8-I live pass left it. ⚠ Note the `.mul(F)`
+      // below sits inside sin(), i.e. F is rad/unit and the period is 2π/F —
+      // the "px/cycle" figures in the 8-E/8-I config entries were computed as
+      // 1/F and are 2π× too small; the correction is written out at
+      // crystalConfig RIPPLE_FREQ. Also note `feel.scale` is a live dev knob
+      // as of this round and these literals do NOT follow it.
       const arg1 = dot(vLocal, vec3(rd1[0], rd1[1], rd1[2]))
         .mul(RIPPLE_FREQ)
         .add(vnoise3(vLocal.mul(RIPPLE_WARP_FREQ)).mul(RIPPLE_WARP))

@@ -396,6 +396,15 @@ export function CrystalCluster({
   // config constants are the defaults, spec: dev-handle tunables for every
   // new knob, including the JS-side ones).
   const feel = useRef({
+    /** ROUND 10-A — the stone's uniform size (CRYSTAL_SCALE), wired live
+     * because it is the one number the owner judges by eye and it used to
+     * need an edit + reload. Read in BOTH the group's world scale AND the
+     * callout projection's px-per-unit twin, so the twin can never desync
+     * from the render. ⚠ RIPPLE_FREQ / RIPPLE_AMP / SPARKLE_FREQ are BAKED
+     * graph literals derived against this value (they hold their on-screen
+     * period) — moving it live does NOT move them; bake a found value back
+     * into crystalConfig and re-derive there. */
+    scale: CRYSTAL_SCALE,
     deadzone: TUMBLE_DEADZONE,
     velNorm: CRYSTAL_VEL_NORM,
     velScaleK: CRYSTAL_VEL_SCALE_K,
@@ -483,8 +492,19 @@ export function CrystalCluster({
     const scaleMul =
       (0.8 + 0.2 * reveal) * (1 - feelC.velScaleK * velEased.current);
 
-    // Camera-locked placement, UNIFORM scale (see header).
-    const s = rect.h * k * CRYSTAL_SCALE * scaleMul;
+    // Camera-locked placement, UNIFORM scale (see header). ROUND 10-A reads
+    // the size off the dev handle (`feel.scale`, default CRYSTAL_SCALE 0.115)
+    // so it can be judged live; the callout projection below reads the SAME
+    // value, which is what keeps its px-per-unit twin exact.
+    // ⚠ CHECK-ROUND — THIS IS ONE OF THE TWO LINES THAT MUST CHANGE WHEN THE
+    // §problem / §trust SECTIONS GROW. `rect.h` is the band, and a band-keyed
+    // scale makes the stone 1677 px tall at the round-11 4392 px band. The
+    // prepared one-liner is `ih * k * feelC.scale * scaleMul` with
+    // CRYSTAL_SCALE re-based to 0.0926; the other line is `pxScale` below and
+    // the two MUST move together. Full audit table on crystalConfig
+    // CRYSTAL_SCALE ("PREPARED CHANGE"). Deliberately NOT applied yet — the
+    // owner is still judging the 0.17 → 0.115 shrink at today's band size.
+    const s = rect.h * k * feelC.scale * scaleMul;
     scratch.current
       .set((cx - vw / 2) * k, (ih / 2 - cy) * k, -CAMERA_Z)
       .applyQuaternion(camera.quaternion)
@@ -621,12 +641,22 @@ export function CrystalCluster({
       // honest if that ever flips.
       // ⚠ THE A11Y GATE IS ENFORCED HERE, not just documented on FOG_CLEAR.
       // `fogClear` is a live console knob and >1 walks the inward zero LEFT of
-      // the centre-line at |pos.x|·(clear−1)·w per unit; past 1.76 (broken) /
-      // 1.36 (healthy) the inward radius overtakes the outward one, the
-      // `Math.max(…, 1)` below pins the shape to SYMMETRIC, and the fog runs
-      // 0.13·w past the centre-line — alpha 0.24 under the 1280 copy edge,
-      // 1.5× the 0.164 that breaks AA. Clamping to [0,1] makes the worst
-      // reachable state the one the FOG_CLEAR derivation actually covers.
+      // the centre-line at |pos.x|·(clear−1)·w per unit; once the inward
+      // radius overtakes the outward one the `Math.max(…, 1)` below pins the
+      // shape to SYMMETRIC. Clamping to [0,1] makes the worst reachable state
+      // the one the FOG_CLEAR derivation actually covers.
+      // ROUND 10-A — FOG_RADIUS_OUT fell 0.30 → 0.203 with the stone, so those
+      // crossover points moved and one of them is now BELOW 1:
+      //   broken   rxOut/rxIn = 0.203/0.17 = 1.194 (was 1.765) — asymmetric at
+      //            clear = 1, inward zero exactly ON the centre-line, unchanged
+      //            worst-case alpha 0.017 (5.8:1) under the 1280 copy edge;
+      //   healthy  0.203/0.22 = 0.923 (was 1.364) — ALREADY pinned symmetric at
+      //            clear = 1, and that is now the SAFE state, not the dangerous
+      //            one: the quad's inward bound lands 0.017·w RIGHT of the
+      //            centre-line, so alpha under the 1280 copy edge is 0.0011,
+      //            below the shader's 0.002 Discard. Geometric clearance.
+      // Consequence for QA: on `healthy`, fogClear is inert at ≥0.923 and only
+      // tightens below it. Full per-width derivation on FOG_CLEAR.
       const clear = Math.min(Math.max(feelC.fogClear, 0), 1);
       const rxIn = Math.abs(pos[0]) * clear * rect.w * k;
       const rxOut = feelC.fogRadiusOut * rect.w * k;
@@ -674,7 +704,16 @@ export function CrystalCluster({
     if (el) {
       // px-per-crystal-unit at the group's depth plane (== s / k — includes
       // the §B-f velocity compression so the projection twin stays exact).
-      const pxScale = rect.h * CRYSTAL_SCALE * scaleMul;
+      // ROUND 10-A: `feelC.scale`, the SAME value `s` was built from — never
+      // the config constant, or a live size tweak would silently detach every
+      // leader line from its anchor.
+      // ⚠ CHECK-ROUND — the SECOND of the two band-keyed lines (see `s` above).
+      // It must switch to `ih` in the same commit as `s` does, or the leader
+      // lines detach. The round-10 callout fit (BROKEN_CALLOUT_SHARDS /
+      // HEALTHY_CALLOUT_ANCHORS) is a px-vs-px fit against 47 px label offsets,
+      // so it survives the section growth ONLY under the viewport re-base —
+      // band-keyed, pxScale triples and the labels scatter.
+      const pxScale = rect.h * feelC.scale * scaleMul;
       const rectLeft = rect.cxBase - rect.w / 2;
       const offPct = (CALLOUT_LABEL_OFFSET_PX / rect.h) * 100;
       for (let i = 0; i < CLUSTER_COUNT; i++) {
@@ -896,7 +935,12 @@ export function CrystalCluster({
        * Round 8-E adds the value world: fogEnergy (THE coupling knob — 0
        * restores the pre-round-8 render), backdropGain, fogGain, fogOpacity,
        * fogFalloff, fogClear (⚠ a11y gate — clamped to [0,1] in the driver),
-       * fogRadiusOut, fogRadiusY. */
+       * fogRadiusOut, fogRadiusY.
+       * Round 10-A adds `scale` — the stone's uniform size (CRYSTAL_SCALE
+       * 0.115 = 38.2 % of band height). ⚠ It does NOT drag the fog radii with
+       * it (they are their own knobs, deliberately ratio-fitted to 0.115 —
+       * scale them by the same factor if you move it) and it does NOT move the
+       * baked ripple/sparkle frequencies. */
       feel: feel.current,
       /** Round 8-E — the fog quad's live uniforms + its resolved geometry
        * (world radii in crystal-group units; asym = outward ÷ inward x

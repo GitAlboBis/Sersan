@@ -220,21 +220,290 @@
  * ⚠ CHECK-ROUND: the round-9 doc's §3.6 y-flip reasoning did NOT survive
  * re-derivation from the three source — the flag ships at **−1**, not +1. See
  * MARK_FLIP_Y; +1 would have shipped the logo upside-down.
+ *
+ * ROUND 10-A — THE STONE COMES DOWN (owner, live: "the crystal is too big").
+ * CRYSTAL_SCALE 0.17 → **0.115**, i.e. the authored 3.32-unit slab goes from
+ * 56.4 % of band height to **38.2 %** — a linear ratio ρ = 0.115/0.17 =
+ * **0.67647**, area 0.458×. Full arithmetic at CRYSTAL_SCALE. This entry is the
+ * INDEX of everything that had been fitted against the old size; each constant
+ * carries its own re-derivation.
+ *
+ *  1. SCALE-INVARIANT BY CONSTRUCTION — nothing to do, verified not assumed:
+ *     · the silhouette proportions (.84/1/.65, igloo cube1's) — the group scale
+ *       is UNIFORM and CRYSTAL_SQUASH is still fallback-only (crystalBuild
+ *       L830 sits inside the procedural branch), so no facet normal shears;
+ *     · THE ENTIRE VALUE WORLD (rounds 8-E/8-F/8-H/8-I). Every shading term is
+ *       per-fragment and angle-based — lobes, fresnel/rim, ambient hemisphere,
+ *       body darken, ceiling. A uniform scale changes no dot product, so the
+ *       lumLin table, the >1.0 bloom contract and MARK_GAIN's three checks all
+ *       stand verbatim. (The stone emits LESS total light, not more: same value
+ *       per pixel over 0.458× the area.)
+ *     · the plexus (all crystal-local, §B-c), the ember SDF, the fracture
+ *       nearest-neighbour separation, the frost ZONING count across the stone.
+ *  2. RE-DERIVED, RATIO PRESERVED — the fog quad radii (FOG_RADIUS_OUT 0.30 →
+ *     0.203, FOG_RADIUS_Y 0.46 → 0.311, both ×ρ) so the stone occupies exactly
+ *     the same fraction of the fog footprint: the corner radius stays r = 0.731
+ *     and the whole §B4.2 crossover argument is untouched. A11Y IMPROVES from a
+ *     value gate to a GEOMETRIC one on `healthy` — see FOG_CLEAR.
+ *  3. RE-DERIVED AGAINST THE PIXEL GRID — every crystal-local SPATIAL frequency
+ *     is 1/ρ = 1.48× finer on screen at the same constant. Held at their fitted
+ *     ON-SCREEN size: RIPPLE_FREQ 12 → **8** (with RIPPLE_AMP 0.0385 → 0.0577
+ *     re-derived to keep igloo's 25° delivered tilt) and SPARKLE_FREQ 15 →
+ *     **10.15** (hash cells stay 8.2 screen px, not 5.6). FROST_FREQ is left
+ *     alone — at ~93 px per cycle it is zoning, nowhere near the grid.
+ *     ⚠ AND A UNIT CORRECTION THE 8-I ENTRY GOT WRONG — see RIPPLE_FREQ: the
+ *     shader is `sin(x·F)`, so the period is 2π/F units, and every historic
+ *     "px/cycle" figure in this file was 2π× too small. The RELATIONSHIP the
+ *     8-I round fitted (screen period, moiré at ~30 px, clean at ~65 px) is
+ *     unaffected; only the labels were.
+ *  4. RE-FITTED, GEOMETRY MOVED — the callouts. `CALLOUT_LABEL_OFFSET_PX = 47`
+ *     is a FIXED DOM measurement (label line + gap + leader) that does NOT
+ *     shrink with the stone, so a 0.68× anchor field lets the ±47 px label
+ *     offsets dominate: the shipped BROKEN_CALLOUT_SHARDS [1,2,5] INVERTED the
+ *     vertical order of callouts 1 and 2 and overlapped their label blocks.
+ *     → BROKEN_CALLOUT_SHARDS [1,2,5] → **[1,6,3]**, HEALTHY_CALLOUT_ANCHORS[2]
+ *     re-cast to the lower-right flank. Both measured off the shipped GLBs with
+ *     the driver's own projection maths, swept over `a`, the wobble phase, 8
+ *     viewports × 7 band heights × EN/IT. Numbers on each constant.
+ *     ⚠ BONUS FINDING: the shipped [1,2,5] ALREADY collided in Italian at band
+ *     heights ≲ 790 px (re-measured in the check round; the first pass said
+ *     725) — the round-8-H fit was computed at a 900 px band and in English
+ *     only. This round fixes a latent bug, it does not introduce one.
+ *  5. VERIFIED, NOT CHANGED — the mark. It is 60 % of the silhouette BY
+ *     CONSTRUCTION, so it shrinks with it: 246 → **167 screen px** at the
+ *     8-I-measured 725 px band. Every legibility relationship in the round-9
+ *     mechanism is expressed in uv and is therefore scale-free (swim ≤ 0.0809
+ *     RT-uv reachable, mip footprint 0.0044 RT-uv — ⚠ read MARK_WORLD_HALF's
+ *     check 2 for the RT-uv vs mark-height unit fix; the first pass of this
+ *     round mixed them and over-reported the p5 margin by 1.15×); the RT goes
+ *     from 1.81× to 2.67× oversampled. Measured on the shipped
+ *     `sersan-mark.glb`: it is NOT a hairline — 33 % ink coverage, local
+ *     stroke thickness p5 = 41 texels and p50 = 90 texels (0.0801 / 0.1758
+ *     RT-uv), i.e. the MEDIAN stroke is 2.2× the worst reachable refractive
+ *     displacement (p5 is 0.99× it, so the thinnest twentieth is displaced by
+ *     about its own width at the grazing maximum), and 15.4 screen px wide at
+ *     the new size. MARK_WORLD_HALF stays 1.15.
  */
 import type { LatticeMode } from "./neuralLatticeConfig";
 
 // --- Placement (fractions of the anchor rect, from center; + y = up) --------
 /** Per-mode crystal center in the band. Broken sits between the fracture
  * (x 55%) and the debris field; healthy floats over the rising weave between
- * ring 2 and ring 3 (rings at 40/62/84%). Both clear the left type column. */
+ * ring 2 and ring 3 (rings at 40/62/84%). Both clear the left type column.
+ * ROUND 10-A — unchanged and now clearing it by MORE: at CRYSTAL_SCALE 0.115
+ * the healthy stone's inward edge sits at 0.22·w − 1.3945·0.115·rect.h from the
+ * centre-line (204 px right of it at 1440×725, was 151 px), and the fog quad
+ * that used to reach the centre-line no longer does — see FOG_CLEAR. */
 export const CRYSTAL_POS: Record<LatticeMode, [number, number]> = {
   broken: [0.17, -0.05],
   healthy: [0.22, 0.06],
 };
-/** Uniform group scale = rect.h·k·this — crystal radius ≈ 17% of band height
- * (the squashed silhouette spans ~½ band height; the exploded broken cluster
- * reads wider). Live-tunable via the dev handle. */
-export const CRYSTAL_SCALE = 0.17;
+/**
+ * Uniform group scale = rect.h·k·this·scaleMul (CrystalCluster L487), and the
+ * px-per-crystal-unit twin the callout projection rides is rect.h·this·scaleMul
+ * (L677 — `k` is world-units-per-pixel, so it cancels and the on-screen size is
+ * pure CSS px).
+ *
+ * ═══ ROUND 10-A — 0.17 → **0.115**. THE OWNER: "the crystal is too big." ═══
+ *
+ * THE ARITHMETIC. The shipped mesh is the authored slab, bbox **2.789 × 3.320 ×
+ * 2.158** (re-measured off `public/models/crystal-intact.glb` this round, not
+ * quoted: half-extents 1.3945 / 1.6600 / 1.0790, 450 tris, 34 planar patches —
+ * exactly the round-8-H log). Its on-screen height is
+ *
+ *     slabPx = 3.32 · rect.h · CRYSTAL_SCALE · scaleMul
+ *     ⇒ fraction of band height = 3.32 · CRYSTAL_SCALE · scaleMul
+ *
+ * — note rect.h cancels, so this fraction is the SAME at every viewport and
+ * every band height. That is what makes the target a single number:
+ *     0.170 → 3.32 · 0.170 = **0.564**  (56.4 % of band height — the complaint)
+ *     0.115 → 3.32 · 0.115 = **0.382**  (38.2 %, inside the 0.35–0.40 window)
+ * At the arrival end of the ramp (reveal 0 ⇒ scaleMul 0.8) it reads 30.5 %, and
+ * at the §B-f velocity floor (scaleMul 0.97) 37.0 %. Linear ratio
+ * ρ = 0.115/0.17 = **0.676471**, area **0.4576×**.
+ * In pixels at the 8-I LIVE-MEASURED band (rect.h ≈ 725 px, scaleMul 1):
+ *     px per crystal unit  123.25 → **83.375**
+ *     slab height (3.32 u) 409.2 px → **276.8 px**
+ *     slab width  (2.789u) 343.7 px → **232.5 px**
+ *     exploded broken cluster (y-extent 4.201 units at the re-levelled gap)
+ *                          517.8 px (71.4 % of band) → **350.3 px (48.3 %)**
+ * At the round-9 doc's 900 px reference band: 153.0 → **103.5** px/unit, slab
+ * 507.9 → **343.6 px**.
+ *
+ * WHY 0.115 AND NOT THE MIDDLE OF THE WINDOW. Three constraints meet here and
+ * 0.115 is the value that satisfies all three rather than the arithmetic mean:
+ *   · the owner's read wants a decisive cut — a 32 % linear reduction is one;
+ *   · the in-ice mark is 60 % of the silhouette by construction (see
+ *     MARK_WORLD_HALF), so the stone's size is the mark's size: 0.115 leaves it
+ *     at 167 px with p5 strokes 15.4 px wide, 0.105 would take it to 152 px;
+ *   · RIPPLE_FREQ's ceiling is `px-per-unit ÷ 9.2` (the constant is pinned to
+ *     the pixel grid, not to the stone), and 0.115 lands the retuned carrier on
+ *     a clean **8.0** with 13.3 % of margin — slightly more than the 11.7 % the
+ *     8-I fit shipped with.
+ *
+ * WHAT DOES *NOT* MOVE, verified rather than assumed:
+ *   · THE SILHOUETTE. The group scale is UNIFORM (that is the whole reason the
+ *     header insists on it), so .84/1/.65 — igloo cube1's proportions, baked
+ *     into the GLB — is untouched, and **CRYSTAL_SQUASH is NOT re-applied**:
+ *     `displaceAndSquash(…, CRYSTAL_SQUASH, …)` lives inside crystalBuild's
+ *     PROCEDURAL branch (L830) and the authored path never reaches it. A
+ *     post-hoc anisotropic scale here would shear every facet normal.
+ *   · THE VALUE WORLD. Every shading term is per-fragment and angle-based, so a
+ *     uniform scale changes no dot product: the 8-F/8-H/8-I lumLin table, the
+ *     >1.0 selective-bloom contract and MARK_GAIN's ordering/bloom checks all
+ *     hold verbatim. (Total emitted light DROPS with the area — the stone
+ *     cannot read "hotter" from this change; only its per-pixel values could do
+ *     that, and none of them moved.)
+ *     CHECK-ROUND, re-derived rather than accepted, in Rec709 LINEAR weights
+ *     (0.2126/0.7152/0.0722): the only thing on the stone that crosses the
+ *     ≈1.0 bloom threshold is still the grazing rim hairline, and it crosses by
+ *     the same amount — whitened rim (0.474, 0.864, 1.000) × (RIM_BASE 0.35 +
+ *     RIM_EDGE_GAIN 1.15) = (0.711, 1.296, 1.500), CRYSTAL_CEIL 1.35 clips BLUE
+ *     only ⇒ col-lum **1.176**, × CRYSTAL_ALPHA 0.94 + 6 % of the fog behind ⇒
+ *     **1.110** post-blend. Nothing new crosses 1.0 and nothing that crossed
+ *     stops crossing; the trigger is `f1 = 1 − dot(N,V)` and the slab's normals
+ *     are flat per patch, so it is whole facets that light, not a sub-pixel
+ *     ring. The 6 %-of-fog term is preserved specifically because the fog radii
+ *     were scaled by the same ρ (r = 0.7314 — see FOG_RADIUS_OUT); had they not
+ *     been, THIS is the number that would have moved.
+ *     ⚠ THE ONE VALUE-SIDE THING THAT IS NOT PER-PIXEL, recorded because "the
+ *     value world is scale-invariant" is otherwise read as absolute: the bloom
+ *     is a mip-pyramid over the DRAWING BUFFER, so its kernel is fixed in
+ *     screen px while the stone's silhouette shrank by ρ. The halo is therefore
+ *     1/ρ = 1.48× wider RELATIVE to the stone than it was. From a whisper-level
+ *     0.11 bloom input on a grazing hairline that is not a "lamp" risk, but it
+ *     is the one axis on which a smaller stone can read hotter, and it is where
+ *     to look first if the live pass says it glows.
+ * ROUND 10-A also WIRES THIS TO THE DEV HANDLE (`…feel.scale`), which it was
+ * not before — the owner judges this number by eye and had to edit + reload to
+ * move it. The driver reads `feelC.scale` in BOTH places (the group's world
+ * scale AND the callout projection's px-per-unit twin), so the twin can never
+ * desync from the render: `__sersanCrystal_healthy.feel.scale = 0.13`.
+ * ⚠ If it is moved live, RIPPLE_FREQ / RIPPLE_AMP / SPARKLE_FREQ do NOT follow
+ * (they are baked graph constants) — see the ceiling note on RIPPLE_FREQ.
+ *
+ * ╔═══════════════════════════════════════════════════════════════════════════╗
+ * ║ ⚠⚠ PREPARED CHANGE — READ BEFORE THE §problem / §trust SECTIONS GROW.     ║
+ * ║ THIS CONSTANT IS A FRACTION OF THE BAND, AND THE BAND IS ABOUT TO TRIPLE. ║
+ * ╚═══════════════════════════════════════════════════════════════════════════╝
+ * NOT APPLIED — the sections are still 1330 / 1475 px today and the owner has
+ * to be able to judge the 0.17 → 0.115 shrink live, at today's size. This block
+ * is the answer written down so nobody re-derives it under time pressure.
+ *
+ * THE COUPLING. `s = rect.h · k · CRYSTAL_SCALE · scaleMul` (CrystalCluster
+ * L499) and its projection twin `pxScale = rect.h · CRYSTAL_SCALE · scaleMul`
+ * (L702). `rect` is the `[data-lattice-anchor]` box — the ledger rows stack,
+ * ~725 px today. The very property this entry celebrates — rect.h CANCELS, so
+ * the stone is 3.32·0.115 = **38.2 % of band height at every viewport** — is
+ * exactly what detonates: a constant fraction of a band that triples is a stone
+ * that triples.
+ *     band  725 px (today)  → slab **277 px**  (31 % of a 900 px viewport) ✓
+ *     band 1330 px          → slab **508 px**  (56 %)
+ *     band 1475 px          → slab **563 px**  (63 %)
+ *     band 4392 px (round-11 §problem) → slab **1677 px — 186 % of the
+ *       viewport**. The stone would be taller than the screen.
+ * (Confirms the round-11 dossier's 1678 px. It is one of three band-keyed
+ * constants that detonate; the other two, NEURAL_DEPTH_SCALE_FACTOR and
+ * BAND_ASPECT, are not in this file.)
+ *
+ * THE FIX, one line in each of two places — BOTH must move together or the
+ * callout projection detaches from the render (that twin rule is why L499 and
+ * L702 read the same `feelC.scale`):
+ *     const s       = ih * k * feelC.scale * scaleMul;   // was rect.h * k * …
+ *     const pxScale = ih     * feelC.scale * scaleMul;   // was rect.h     * …
+ * `ih` is `size.height`, already in scope at both sites. Note the pleasing
+ * consequence: `k = WORLD_VIEW_HEIGHT / ih`, so `s` collapses to the CONSTANT
+ * `WORLD_VIEW_HEIGHT · scale · scaleMul` = **1.0368 · scaleMul** — the stone
+ * becomes a fixed world size, independent of viewport, band and DPR.
+ *
+ * THE CONSTANT. To reproduce today's approved 276.8 px slab on the repo's
+ * reference 1440×900 canvas (the one MARK_THICKNESS and the fog corner-radius
+ * derivations are quoted against):
+ *     C_vp = CRYSTAL_SCALE · rect.h / ih = 0.115 · 725 / 900 = **0.0926**
+ *     ⇒ slab = 3.32 · 0.0926 = **30.8 % of VIEWPORT height**, at every viewport
+ *       and every band, forever.
+ * If the shrink is re-judged on a different canvas first, re-base with the same
+ * formula: ih 768 → 0.1086 · ih 800 → 0.1042 · ih 982 → 0.0849 · ih 1080 →
+ * 0.0772. The two pinnings agree only where band/viewport = 725/900 = 0.806.
+ *
+ * WHAT ELSE MOVES — the audit, so the table is not rediscovered either. "Band"
+ * = keyed to rect.h, "width" = keyed to rect.w (the band is FULL-BLEED, so
+ * rect.w ≡ viewport width and nothing width-keyed is at risk), "units" =
+ * crystal-local and carried by the group's uniform scale.
+ *   CRYSTAL_SCALE          band   ✗ 3×  → viewport, C_vp 0.0926 (above)
+ *   CRYSTAL_POS.y          band   ✗     → the +0.06 offset goes 44 px → 264 px.
+ *                                         Viewport-keyed equivalent 0.0483.
+ *                                         (CRYSTAL_POS.x is width-keyed ✓.)
+ *   the `a` scalar         band   ✗✗    → `a = (vpTop + rect.h/2 − ih/2)/ih`
+ *                                         spans ±0.90 today and ±2.94 at a
+ *                                         4392 band, so the tumble runs to
+ *                                         **355°** (was 102°) and the stone
+ *                                         spins nearly a full turn. It also
+ *                                         drags CALLOUT_VIS_WINDOWS and
+ *                                         PLEXUS_CONNECT_WINDOW, which are
+ *                                         windows ON `a`. This is the worst of
+ *                                         the three and needs a decision, not
+ *                                         just a constant: either clamp `a` or
+ *                                         measure it from the STONE's own
+ *                                         viewport-sized window instead of the
+ *                                         band centre.
+ *   FOG_RADIUS_Y           band   ✗     → 0.311·4392 = a 1366 px world-y
+ *                                         radius. Worse, if the stone goes
+ *                                         viewport-keyed and this does not, the
+ *                                         fog corner radius r collapses 0.614 →
+ *                                         0.101 on its y-term and the stone
+ *                                         sits entirely on the bright core —
+ *                                         the §B4.2 "glowing blob" failure,
+ *                                         back. Move it with the stone:
+ *                                         **FRY_vp = 0.311·725/900 = 0.2505**,
+ *                                         which restores the y-term to 0.6138.
+ *   FOG_RADIUS_OUT         width  ✓     → and its x-term of r is preserved
+ *                                         automatically, because C_vp·ih ≡
+ *                                         CRYSTAL_SCALE·rect.h at the reference
+ *                                         (0.3976 either way).
+ *   FOG_CLEAR + the a11y   width  ✓     → rxIn = |pos.x|·rect.w. The 0.017·w
+ *     geometry                            healthy clearance is untouched.
+ *   CALLOUT_LABEL_OFFSET_PX px    ✓     → 47 px is 47 px; `offPct` converts it
+ *                                         per band and stays correct.
+ *   CALLOUT_LEFT_MIN/MAX   width  ✓
+ *   CALLOUT_EDGE_MIN/MAX   band   ~     → still correct as a %, but the guard
+ *                                         band in px triples (2…88 % of 4392 =
+ *                                         88…3865 px), i.e. it stops being a
+ *                                         meaningful guard. Harmless, noted.
+ *   BROKEN_CALLOUT_SHARDS  units  ✓✗    → the FIT is px-vs-px (47 px offsets
+ *   HEALTHY_CALLOUT_ANCHORS               and ~110 px labels against projected
+ *                                         anchor offsets ∝ pxScale). Band-keyed
+ *                                         it triples and the labels scatter
+ *                                         across 3× the area; VIEWPORT-keyed
+ *                                         pxScale is unchanged and this round's
+ *                                         whole sweep holds verbatim.
+ *   RIPPLE_FREQ / _AMP     px/u   ✓✗    → same story: px-per-unit is
+ *   SPARKLE_FREQ                          rect.h·scale = 505 band-keyed (the
+ *                                         carrier's screen period triples to
+ *                                         196 px — the pre-8-E "rippled stone,
+ *                                         not a wet one"), vs ih·C_vp = 83.375
+ *                                         viewport-keyed, i.e. IDENTICAL to
+ *                                         today. Another reason the viewport
+ *                                         re-base is the cheap answer: it is
+ *                                         the only one under which none of the
+ *                                         baked graph literals need re-tuning.
+ *                                         ⚠ One regression to accept: the
+ *                                         RIPPLE_F2 gate's floor becomes a
+ *                                         VIEWPORT-height floor, ih ≥
+ *                                         9.2·8/0.0926 = **794 px**, so a
+ *                                         768-tall window sits 3 % through the
+ *                                         gate. RIPPLE_FREQ 7.5 clears down to
+ *                                         745 px if that ever matters.
+ *   PLEXUS_* / MARK_* /    units  ✓     → all crystal-local, children of the
+ *   FRACTURE_REST_GAP…                    uniformly-scaled group. They follow
+ *                                         the stone whichever pinning wins.
+ * RECOMMENDATION: pin to the VIEWPORT. It is one token in two lines, it makes
+ * `s` a constant, and it is the only option under which the round-10 callout
+ * fit and the three baked frequencies survive the growth untouched. The two
+ * items it does NOT solve by itself are `CRYSTAL_POS.y` and the `a` scalar —
+ * both need their own call when the redesign lands.
+ */
+export const CRYSTAL_SCALE = 0.115;
 
 // --- Geometry ---------------------------------------------------------------
 // ⚠ ROUND 8-H — EVERYTHING IN THIS BLOCK IS FALLBACK-ONLY. The shipped mesh is
@@ -334,7 +603,32 @@ export const FRACTURE_REST_GAP = 1.0;
  * ⚠ This is an ARITHMETIC fit to the round-7 envelope, not a live A/B — if the
  * browser pass wants a wider blast, raise it here (uGap is on the dev handle);
  * past ~0.75 the third callout starts pinning again.
- */
+ *
+ * ROUND 10-A — RE-CHECKED AGAINST CRYSTAL_SCALE 0.115, DELIBERATELY UNCHANGED.
+ * The quantity this was fitted to (the round-7 exploded envelope, y-extent
+ * 4.201) and the read it buys ("nearest-neighbour separation 0.78 units ≈ 28 %
+ * of the slab width: fractured, not flung") are both in CRYSTAL UNITS, i.e.
+ * they are stone-relative and a uniform scale cannot move them. What moved is
+ * the two BOUNDS that fitted it, and both loosened by 1/ρ = 1.48×:
+ *   · band overflow — the lowest chip reaches y = −3.04 units = 465 px below
+ *     the crystal centre at the doc's 900 px band; at 0.115 that is **315 px**,
+ *     against 405 px of band below the (5 % low) centre.
+ *     CHECK-ROUND, re-measured off `crystal-fractured.glb` so the ladder is
+ *     exact: at rest (gap 0.55, no per-shard rotation) the lowest vertex is
+ *     y = **−2.418**; the worst REACHABLE low point once the per-shard rotate3D
+ *     is allowed any angle is **−2.80** at rest and **−3.14** at the full
+ *     FRACTURE_SURGE_GAIN gap 0.825 — so −3.04 is a mid-surge figure and the
+ *     honest verdict is stronger than "was marginal": at 0.170 the surge case
+ *     reached 481 px against 405 px of band and **overflowed it by ~76 px**; at
+ *     0.115 the same case reaches 325 px and clears. The shrink closed a real
+ *     bleed, it did not merely widen a margin.
+ *   · callout pinning — every projected offset shrank by ρ, so the "past ~0.75
+ *     the third callout starts pinning" ceiling moves to **~1.11**.
+ * So the head-room to raise it exists now; it is deliberately NOT spent. The
+ * owner's complaint is size, and enlarging the blast to compensate the shrink
+ * would hand back on the broken section exactly what this round takes: at 0.55
+ * the exploded cluster reads 350 px on a 725 px band (48.3 %, was 71.4 %).
+ * The re-fitted BROKEN_CALLOUT_SHARDS were solved AT this gap. */
 export const FRACTURE_REST_GAP_AUTHORED = 0.55;
 /** Gap boost per unit (eased) store pulse — the fracture-surge breathing. */
 export const FRACTURE_SURGE_GAIN = 0.5;
@@ -556,8 +850,29 @@ export const FACET_VALUE_JIT = 0.18;
 export const BODY_DARKEN = 0.3;
 
 // --- Round 7 — sparkle glints (igloo's triangle-sparkle layer, §3) ----------
-/** Hash-cell frequency over crystal-local position (cells ≈ 1/15 unit). */
-export const SPARKLE_FREQ = 15.0;
+/** Hash-cell frequency over crystal-local position — the shader is
+ * `floor(vLocal · this)`, so the cells are exactly 1/this crystal units (no 2π
+ * here, unlike RIPPLE_FREQ — read its unit correction before comparing them).
+ *
+ * ROUND 10-A — 15 → **10.15**, the same rule as the ripple carrier and for the
+ * same reason: this is a crystal-LOCAL frequency, so at a fixed constant the
+ * stone's shrink would make it 1/ρ = 1.48× finer on screen. The fitted quantity
+ * is the cell's ON-SCREEN size (the round-7/8-F live passes were judged at it):
+ *     @ 0.170, 725 px band: 123.25/15    = **8.22 px** per cell  (accepted)
+ *     @ 0.115 unchanged:     83.375/15   = **5.56 px** per cell  ← glitter, and
+ *       a hard `floor()` boundary that close to the grid shimmers on any
+ *       DPR-1 device (tierStore's dprMin, and where AdaptiveResolution sits
+ *       under pressure)
+ *     @ 0.115, this:         83.375/10.15 = **8.21 px** per cell  ← held
+ * 15 · ρ = 10.147, shipped as 10.15. The cell COUNT across the stone falls
+ * 50 → 33.7 in height, which is the honest cost: the glint field is sparser on
+ * the stone. That is the correct trade — SPARKLE_GAIN was levelled (8-F) to sit
+ * BELOW the key lobe precisely so the surface does not read as glitter, and
+ * 1.48× denser cells at a fixed gain walk straight back into it.
+ * Ratio to the relief band is preserved: 15/12 = 1.25 → 10.15/8 = 1.27.
+ * ⚠ BAKED graph literal (like RIPPLE_FREQ) — an edit + reload, not a uniform;
+ * only `uSparkleGain` is live. */
+export const SPARKLE_FREQ = 10.15;
 /** Per-cell micro-normal spread around the facet normal. */
 export const SPARKLE_TILT = 0.8;
 /** Glint alignment exponent (view/normal/light gate) — high & tight. */
@@ -597,7 +912,42 @@ export const SPARKLE_GAIN = 0.3;
  * returning, and the frost's own amplitude is cut 65% this round on top. If the
  * frost ever starts reading as RELIEF rather than as zoning, the one-knob fix is
  * here (0.9 → 0.4 restores ~30×), not on the carrier — the carrier is pinned by
- * the pixel grid (see RIPPLE_FREQ). */
+ * the pixel grid (see RIPPLE_FREQ).
+ *
+ * ROUND 10-A — LEFT ALONE, and this is the one frequency in the file where that
+ * is the right answer, so the reasoning is recorded rather than assumed. The
+ * ripple carrier and the sparkle cells were scaled with the stone because they
+ * are pinned to the PIXEL GRID; the frost is not — its lattice cell is
+ * **1/0.9 = 1.111 crystal units = ~93 screen px** at 0.115/725 (was 137 px),
+ * roughly three cells across the 3.32-unit slab. Zoning is a STONE-relative
+ * property: it must stay constant per stone, not per pixel, and that is exactly
+ * what leaving it does.
+ * ⚠ CHECK-ROUND UNIT FIX (twice, in one paragraph — read this before quoting
+ * the separation figure). (a) The first pass of this entry wrote "one cycle
+ * spans 2π/0.9 = 6.98 crystal units, i.e. ~93 screen px", which cannot both be
+ * true. There is **no 2π here**: the shader is `vnoise3(vLocal·FROST_FREQ)`, a
+ * value-noise LATTICE, so the cell is 1/F and the 93 px figure is the correct
+ * one. The 2π convention belongs only to the `sin(x·F)` family — see
+ * RIPPLE_FREQ. (b) The "band separation" numbers in this entry (28.9× → 13.3×
+ * → 8.9×) are RAW CONSTANT RATIOS, F_ripple/F_frost, and have been throughout
+ * — but the two constants live in different conventions, so that ratio
+ * overstates the real spectral gap by 2π in every round. In actual SPATIAL
+ * PERIOD (value noise peaks near 2 cells = 2.222 units; carrier period 2π/F):
+ *     8-E   F 26  →  2.222 / 0.242 = **9.2×**
+ *     8-I   F 12  →  2.222 / 0.524 = **4.2×**
+ *     10-A  F 8   →  2.222 / 0.785 = **2.8×**   ← where we now are
+ *     §A2 failure (frost 5.5, carrier 8) → 0.364 / 0.785 = 0.46×, i.e. the
+ *       frost was 2.2× FINER than the carrier when the two mudded.
+ * So the honest statement is NOT "still an order of magnitude": the gap is
+ * **~1.5 octaves** and it has narrowed in each of the last two rounds. It is
+ * still the right call to leave this alone, for two reasons the raw ratio does
+ * not capture: the frost and the carrier are on DIFFERENT CHANNELS (frost
+ * modulates roughEff/thickEff/body density; only the ripple perturbs the
+ * normal), and FROST_AMP was cut to 0.35 in 8-I, delivering ±9 % of roughness
+ * spread — a zoning that cannot read as relief whatever its frequency. But if
+ * a future round takes the carrier below 8, THIS is the constant that has to
+ * move with it (0.9 → 0.4 restores ~2 octaves), and the check is the period
+ * ladder above, not the raw ratio. */
 export const FROST_FREQ = 0.9;
 /** Master frost amplitude (signed noise ×this) — dev-tunable (uFrostAmp);
  * 0 = uniform glass. Lite never compiles the frost octave.
@@ -746,7 +1096,23 @@ export const CALLOUT_EDGE: readonly ("top" | "bottom")[] = [
   "top",
 ];
 /** Label-block offset from the leader-line TIP to the positioned edge:
- * ~15px label line + 4px gap + 28px leader (`h-7` + `mt-1`/`mb-1`). */
+ * ~15px label line + 4px gap + 28px leader (`h-7` + `mt-1`/`mb-1`).
+ *
+ * ⚠ ROUND 10-A — THIS IS THE CONSTANT THAT MADE THE SHRINK NON-TRIVIAL, and it
+ * is deliberately NOT re-derived: it is a MEASUREMENT OF THE DOM (the leader
+ * span's own `h-7` + margin + line box), so it does not scale with the stone,
+ * and lowering it would detach the leader's tip from the anchor it points at —
+ * the leader-line contract. The consequence has to be absorbed on the ANCHORS
+ * instead: `top` callouts place their label 47 px ABOVE the anchor and `bottom`
+ * callouts 47 px BELOW it, so any (top, bottom) pair whose anchors are ordered
+ * "bottom-edge one ABOVE top-edge one" CONVERGES by a fixed 94 px regardless of
+ * size. At CRYSTAL_SCALE 0.17 the shipped broken pair had 154 px of raw anchor
+ * separation at a 725 px band (94 px of convergence ⇒ 60 px of label gap); at
+ * 0.115 it has 104 px ⇒ the two labels INVERT and overlap. Hence the re-fit at
+ * BROKEN_CALLOUT_SHARDS / HEALTHY_CALLOUT_ANCHORS, whose rule is now explicit:
+ * **the bottom-edge callout (index 1) must anchor BELOW the top-edge ones**, in
+ * which case the ±47 px offsets DIVERGE and the pair can never close past
+ * 64 px. Both re-fits obey it. */
 export const CALLOUT_LABEL_OFFSET_PX = 47;
 /**
  * Healthy anchors: fixed crystal-local points on the intact crystal; they ride
@@ -767,11 +1133,53 @@ export const CALLOUT_LABEL_OFFSET_PX = 47;
  * Directions (and therefore the three callouts' relative screen placement) are
  * preserved exactly; only the radii moved. Re-run this fit if the GLB is
  * re-authored: cast from the origin, take the FIRST hit, multiply by 0.97.
+ *
+ * ═══ ROUND 10-A — ANCHOR 2 MOVES FROM THE UPPER-RIGHT SHOULDER TO THE
+ * LOWER-RIGHT FLANK. `[1.27, 0.71, 0.28]` → `[1.30, −0.65, 0.33]`. ═══
+ *
+ * WHY (it is not taste). Anchors 0 and 2 are BOTH `top`-edge (CALLOUT_EDGE), so
+ * their labels both sit exactly CALLOUT_LABEL_OFFSET_PX above their anchors —
+ * i.e. their vertical separation is the anchors' separation, undiminished. The
+ * shipped pair differ by only Δy = 0.17 crystal units, which bought 21 px of
+ * vertical separation at 0.17/725 and was carried entirely by the 209 px of
+ * HORIZONTAL separation. Horizontal separation scales with the stone; the label
+ * WIDTHS do not (`.eyebrow` is unlayered CSS, so it wins the cascade against
+ * the span's `text-[10px] tracking-[0.18em]`: 11 px JetBrains Mono at 0.12em ⇒
+ * 7.92 px per char, and "GUARDRAIL CLAMP" / "CLAMP GUARDRAIL" is 118.8 px wide
+ * against "EVAL BASELINE" / "BASELINE EVAL" at 103.0 px). At ρ = 0.676 the
+ * 209 px becomes 141 px against 110.9 px of combined half-widths.
+ * Swept the driver's own projection (rotation + perspective + clamps) over
+ * a ∈ [−0.45, 0.55] inside the CALLOUT_VIS_WINDOWS, the full wobble phase, 8
+ * viewports × 7 band heights (560…1100) × EN/IT — worst label-block clearance:
+ *     shipped anchors @ 0.170   **+14.4 px**   (already thin; 8 clamp pins)
+ *     shipped anchors @ 0.115   **−9.7 px**    ← OVERLAP, the naive change
+ *     new anchors     @ 0.115   **+68.2 px**   ← 4.7× the shipped margin
+ * The fix obeys CALLOUT_LABEL_OFFSET_PX's rule: index 1 (`bottom`) stays the
+ * LOWEST anchor, and dropping index 2 below the equator gives the two `top`
+ * callouts 1.53 units of Δy instead of 0.17 — vertical separation now does the
+ * work that horizontal separation can no longer do at this size.
+ *
+ * MEASURED, NOT EYEBALLED, by the same rule as round 8-H. Direction (1, −0.5,
+ * 0.25) ray-cast from the origin against the shipped `crystal-intact.glb`
+ * (450 tris) hits its first surface at t = **1.5385**; × 0.97 = [1.303, −0.651,
+ * 0.326], written rounded as [1.30, −0.65, 0.33] (|p| 1.4904 vs surface 1.5404
+ * ⇒ **0.968** — the same "hair inside the silhouette"). Its radius is within
+ * 0.6 % of the anchor it replaces (1.482), so the leader length is unchanged;
+ * only the clock position moved. Anchors 0 and 1 are UNTOUCHED — re-cast this
+ * round and both still sit at 0.970/0.969 of their surface radius.
+ * ⚠ NOTE FOR THE NEXT RE-FIT: the slab is NOT star-shaped from its own origin —
+ * a ray straight up (+Y) hits an interior wall at t = 0.474, not the 1.66 apex.
+ * Always cast the exact direction you intend to use and check |p| against the
+ * bbox before trusting it.
+ * ⚠ RESIDUAL: one clamp-pin case survives (CALLOUT_LEFT_MAX, at viewport width
+ * 768 with a band ≥ 1100 px). The shipped 0.17 configuration pinned in EIGHT
+ * such cases, and at 768 px the measured band is ~670 px, so the combination is
+ * not reachable — recorded, not fixed.
  */
 export const HEALTHY_CALLOUT_ANCHORS: readonly [number, number, number][] = [
   [-0.42, 0.88, 0.31],
   [0.21, -1.35, 0.31],
-  [1.27, 0.71, 0.28],
+  [1.3, -0.65, 0.33],
 ];
 /**
  * Broken anchors ride these piece indices: anchor = centr·(1 + gap + drift).
@@ -801,9 +1209,82 @@ export const HEALTHY_CALLOUT_ANCHORS: readonly [number, number, number][] = [
  * only geometry. If the browser pass prefers the old mid piece, [1,3,5] is a
  * one-token revert (it clears the clamps too at gap 0.55: piece 3 lands at
  * 77.0 %; only its 40 px proximity to piece 5 argues against it).
+ *
+ * ═══ ROUND 10-A — [1, 2, 5] → **[1, 6, 3]**. THE SHIPPED TRIPLE INVERTS AT THE
+ * NEW SIZE, AND WAS ALREADY BROKEN IN ITALIAN AT SMALL BANDS. ═══
+ *
+ * THE DEFECT, exactly. Callout 1 is the `bottom`-edge one, so its label hangs
+ * CALLOUT_LABEL_OFFSET_PX *below* its anchor; callouts 0 and 2 are `top`, so
+ * theirs sit 47 px *above*. In [1,2,5] the bottom-edge callout rode piece 2
+ * (centr y −0.549) while the third rode piece 5 (centr y −1.196) — i.e. the
+ * bottom-edge label pointed DOWN from the HIGHER anchor and the top-edge label
+ * pointed UP from the LOWER one. The two converge by a fixed 94 px:
+ *     raw anchor Δy = 0.55-gap · (1.196 − 0.549) · px-per-unit
+ *     @ 0.170, band 725 (123.25 px/u):  154 px − 94 = **60 px** of label gap
+ *     @ 0.115, band 725 ( 83.375 px/u): 104 px − 94 = **10 px**, then the
+ *       wobble tips it and the two labels INVERT their reading order.
+ * Because the convergence is a CONSTANT and the separation is proportional,
+ * this pair fails at ANY sufficiently small stone — and the same arithmetic run
+ * back over the SHIPPED configuration shows it already failed there: at band
+ * heights ≲ **790 px** in Italian ("NIENTE DEBUGGING" 126.7 px + "NIENTE
+ * FIDUCIA" 110.9 px against 152 px of x separation) the round-8-H fit
+ * overlaps. It was computed at a 900 px band, in English. This is a latent bug
+ * being closed, not a new constraint. (CHECK-ROUND: re-swept independently —
+ * the shipped triple at 0.170 in IT scores +0.3 px at an 800 px band, −9.4 at
+ * 725, −16.5 at 650; the first pass of this entry quoted 725 px, which
+ * understated the reach of the defect. In EN at 0.170 it clears everywhere
+ * ≥ 560 px, which is how it survived 8-H.)
+ *
+ * THE FIT. Swept the driver's own projection (explode gap + idle drift +
+ * rotation + perspective + both clamps) over a ∈ [−0.45, 0.55] within the
+ * CALLOUT_VIS_WINDOWS, the full wobble phase, 8 viewports × 7 band heights
+ * (560…1100) × EN/IT, scoring the worst label-block clearance over every pair
+ * simultaneously visible. All 48 one-large/one-mid/one-chip permutations:
+ *     [1,2,5] @ 0.170  **−16.0 px**  (the shipped triple, IT)
+ *     [1,2,5] @ 0.115  **−16.0 px**  (the naive change)
+ *     [1,6,3] @ 0.115  **+19.5 px**  ← shipped
+ *     [1,5,3] +19.5 (ties, but see below) · [1,7,3] +4.3 · [1,4,3] −8.5 ·
+ *     [1,3,6] −11.3 · [0,3,4] −16.0
+ * ⚠ NOTE ON THE UNITS OF A NEGATIVE SCORE: the metric is AABB separation,
+ * `max(gapX, gapY)`, so it saturates at −(label line height) once two blocks
+ * fully coincide. −16.0 means "overlapping", not "overlapping by 16 px"; only
+ * the positive numbers are distances. CHECK-ROUND re-derivation at a 16.5 px
+ * line box reproduces the table within 1 px (−16.5 / −16.5 / +19.0, with
+ * [1,5,3] tying at +19.0 and [1,7,3] landing at −3.8 rather than +4.3 — the
+ * one row of the table that is line-height-sensitive, and not a shipped
+ * candidate). The shipped pair holds +15.5 … +22.5 px across line boxes
+ * 13…20 px, i.e. the choice does not depend on the line-height assumption.
+ * TIE-BREAK ON ANCHOR SPREAD, which is the round-8-H criterion the label sweep
+ * does not see: [1,5,3] ties on labels but puts pieces 5 and 3 only **30 px**
+ * apart on screen — two leader lines annotating the same corner of the cluster,
+ * which is exactly why 8-H rejected [1,3,5]. [1,6,3] separates the same three
+ * labels across **161 / 174 / 90 px** in three quadrants (upper-left / lower-
+ * centre / mid-right), against the shipped triple's 106 px minimum at the same
+ * band. Same clearance, 3× the spread.
+ * WHY IT HOLDS AT ANY SIZE (the structural half, not the sweep's): [1,6,3]
+ * obeys CALLOUT_LABEL_OFFSET_PX's rule — the `bottom`-edge slot rides piece 6,
+ * centr y −1.392, the LOWEST of the three (piece 1 −0.248, piece 3 −1.031). So
+ * the ±47 px offsets DIVERGE instead of converging and the pair's label gap is
+ * `Δy + 64 px`, floored at 64 px however small the stone gets. The shipped
+ * triple had the sign the other way, which is why its margin was proportional
+ * to the stone and this one's is not.
+ * No clamp pinning in any case ([1,6,3]'s rest-pose edge offsets are 52.4 /
+ * 18.0 / 63.9 % against CALLOUT_EDGE_MIN/MAX 2…88, and its left offsets 61.3 /
+ * 65.3 / 70.5 % against 4…96) — the round-8-H pinning check is satisfied with
+ * far more room than before, because every projected offset shrank by ρ.
+ * SIZE-CLASS INTENT PRESERVED, slot order changed: piece 1 large (30.4 %),
+ * piece 6 chip, piece 3 mid (10.2 %). No large/mid/chip SLOT ordering clears
+ * the sweep — [1,3,6], the best of them, lands at −11.3 px — because the slot
+ * order is what decides which callout hangs its label downward; the classes
+ * stay, their slots swap.
+ * ⚠ These are the piece indices into the AUTHORED partition, re-verified this
+ * round by parsing `crystal-fractured.glb` directly (8 unique `_CENTR`:
+ * 0 [0.655, 0.224, 0.087] · 1 [−0.625, −0.248, −0.273] · 2 [−0.160, −0.549,
+ * 0.664] · 3 [0.470, −1.031, −0.569] · 4 [−0.499, −1.235, −0.008] · 5 [0.639,
+ * −1.196, 0.061] · 6 [−0.129, −1.392, −0.729] · 7 [0.093, −1.136, 0.021]).
  */
 export const BROKEN_CALLOUT_SHARDS: readonly [number, number, number] = [
-  1, 2, 5,
+  1, 6, 3,
 ];
 /** Damp λ of the projected callout values (labels must not jitter with the
  * wobble/tumble) + the write threshold in % (skip sub-0.1% churn). */
@@ -838,6 +1319,28 @@ export const CALLOUT_EDGE_MAX = 88;
  * crystal unit) it lands on 246 screen px, so 1 RT texel = 0.55 px — the RT is
  * **1.81× oversampled** and the lod blur is a ~1.2 px soft edge. Crisp, with
  * mip headroom left over.
+ * ROUND 10-A — 512 stays, with MORE headroom, not less. CRYSTAL_SCALE 0.17 →
+ * 0.115 takes the band to 83.375 px per crystal unit, so the mark lands on
+ * **167 screen px**, 1 RT texel = **0.375 px**, and the RT is **2.67×
+ * oversampled** (the lod blur is a ~0.84 px soft edge). Shrinking the stone can
+ * only ever increase this ratio — the RT is a fixed-resolution subject-local
+ * image and the screen footprint is what got smaller. Nothing to do; recorded
+ * because the numbers above are quoted elsewhere.
+ * ⚠ CHECK-ROUND, the other half of that coin, because "more headroom" is only
+ * true of SHARPNESS. The lod is EXPLICIT — `roughEff · log2(512) · MARK_LOD_K`
+ * fed to `.level()`, never a screen-space derivative — so the filter kernel is
+ * fixed in TEXELS (2.25 at lod 1.17) while the screen footprint shrank. Against
+ * the pixel footprint the sign flips: the RT frame spans 246·1.15 = 283 px at
+ * 0.17 ⇒ 1.81 texels per screen px, a 2.25-texel kernel COVERS it; at 0.115 it
+ * spans 192 px ⇒ 2.67 texels per px against the same 2.25-texel kernel, i.e.
+ * the single tap now under-covers its pixel by ~19 %. Left alone deliberately:
+ * the GPU's trilinear tap is a ~2-mip tent (≈4.5 texels ≈ 1.7 px) which still
+ * covers, the mark is screen-UPRIGHT and render-once (MARK_TUMBLE false) so
+ * there is no motion to crawl, and the correcting move — raising MARK_LOD_K —
+ * would blur the mark, which is the exact opposite of what this round's
+ * legibility argument is defending. If a live pass reports crunchy stroke
+ * edges, MARK_LOD_K 0.36 → 0.50 is the one-knob fix (lod 1.17 → 1.62, kernel
+ * 3.07 texels = exactly the new footprint).
  */
 export const MARK_RT_SIZE = 512;
 /** Ortho half-extent framing the ~2-unit-tall normalized mark (margin so the
@@ -973,7 +1476,20 @@ export const MARK_COLOR = "#D8F4FF";
  * procedural icosahedron. ROUND 9-C makes that path far less bad than it was —
  * the base map no longer depends on the mesh having coplanar patches at all, so
  * the fallback loses only the per-patch coherence of the PERTURBATION (a
- * per-triangle 5–18 px jitter), not the placement of the image. */
+ * per-triangle 5–18 px jitter), not the placement of the image.
+ *
+ * ROUND 10-A — 0.70 SURVIVES THE SHRINK UNTOUCHED, checked term by term rather
+ * than assumed. This is a LEVEL, and CRYSTAL_SCALE is a uniform scale: the
+ * compositing site (additive into `trans`, PRE `uBodyDarken`), the body it is
+ * measured against (0.0396 lumLin), the brightest ordinary pixel it must not
+ * out-read (0.276) and the frost span that binds the ordering tie (×1.096) are
+ * all per-fragment quantities that no scale can move. So check 1's ceiling is
+ * still **0.822** on the brightest frost vein (0.91 on typical body), check 2's
+ * post-blend peak is still 0.197 against the ≈1.0 bloom threshold, and check 3
+ * is still the single-tap full **3.03:1**. The live A/B range stands at
+ * 0.55–0.82. What DID change is the mark's on-screen size — 246 → 167 px — and
+ * that is a legibility question, answered with measurements at
+ * MARK_WORLD_HALF, not a level question. */
 export const MARK_GAIN = 0.7;
 /* ─── REMOVED IN ROUND 9-C: `MARK_COORD_SCALE` (was 0.55) ────────────────────
  * It was the second half of the broken map, `uv = vLocal.xy·BACKDROP_COORD_
@@ -1053,6 +1569,16 @@ export const MARK_GAIN = 0.7;
  * Dev-tunable 0.15 (reads like a decal, ice character lost) … 0.9 (today's
  * effective, strokes break) via `__sersanCrystal_healthy.uniforms.uMarkThick`.
  *
+ * ROUND 10-A — UNCHANGED, AND THAT IS A RESULT, NOT AN OMISSION. The swim is
+ * `uMarkThick·sin δ /(2·uMarkHalf)` **uv** — dimensionless — so at CRYSTAL_SCALE
+ * 0.115 it is still 1.5 / 3.8 / 6.0 % of the mark's own height at δ = 5 / 13 /
+ * 20°, exactly as at 0.17. Only the pixel restatement moves, and it moves the
+ * safe way: 3.8 / 9.4 / 14.8 px on a 246 px mark → **2.5 / 6.6 / 10.0 px on a
+ * 167 px mark** (0.35 · sin δ · 83.375). The ripple's contribution likewise
+ * scales with the same factor (±4 px → ±2.7 px), because RIPPLE_AMP was
+ * re-derived to hold the SAME 25° delivered tilt. Nothing in this entry's
+ * legibility ladder is a function of the stone's size.
+ *
  * LEVERS STILL ON THE SHELF if the owner wants more legibility after the live
  * pass, cheapest first: (1) RT DILATE — render the mark mesh twice into the
  * 512², once at scale 1.06 at ~0.3 gain (a soft shoulder ≈7 screen px, i.e.
@@ -1087,7 +1613,72 @@ export const MARK_THICKNESS = 0.35;
  * shown through — cropped top and bottom. See the MARK_COORD_SCALE removal
  * note above.)
  * Dev-tunable 0.7 … 1.6 via `…uniforms.uMarkHalf`.
- */
+ *
+ * ═══ ROUND 10-A — STAYS AT 1.15. THE MARK SHRINKS WITH THE STONE BY
+ * CONSTRUCTION, AND IT STILL CLEARS THE LEGIBILITY THRESHOLD — MEASURED. ═══
+ *
+ * At CRYSTAL_SCALE 0.115 the mark's on-screen height is 2 crystal units ×
+ * 83.375 px/unit = **166.8 px** at the 8-I-measured 725 px band (was 246.5 px);
+ * as a share of the band it is 2·CRYSTAL_SCALE = **23.0 %** (was 34.0 %), and
+ * that share, not the pixel figure, is the viewport-invariant form. At the
+ * round-9 doc's 900 px reference band it is 207 px.
+ *
+ * WHY IT STILL READS — three checks, and the first is the one that settles it:
+ *  1. THE MARK IS NOT A HAIRLINE. Measured this round by rasterising the
+ *     shipped `sersan-mark.glb` into the 512² RT frame (normalised exactly as
+ *     RouteHeroLogo does: centre → height 2 → recentre; the result confirms the
+ *     ±0.814 × ±1.000 × ±0.150 half-extents this file already claims — x, y, z
+ *     in that order; the GLB ships ±0.8119 × ±0.9974 pre-normalisation):
+ *         ink coverage                      **33.1 %** of the RT
+ *         local stroke thickness (min of the h/v run through each ink texel)
+ *           p5 **41 texels** · p25 88 · p50 **90 texels**
+ *     The round-8-I "hairline logo cut into 34 pieces" framing — already
+ *     retracted by 9-C on the mechanism — is also wrong about the SUBJECT: a
+ *     fifth of the mark's own height is the median stroke.
+ *  2. EVERY DISPLACEMENT THAT COULD BREAK IT IS IN uv, HENCE SCALE-FREE.
+ *     ⚠ CHECK-ROUND UNIT FIX — the first pass of this entry compared two
+ *     DIFFERENT uv's and reported a margin 1.15× too generous. There are two
+ *     normalisations in play and they differ by MARK_RT_FRAME/1.0 = 1.15:
+ *       · **RT-uv** (0…1 across the texture, which spans 2·MARK_RT_FRAME = 2.3
+ *         mark units). `Δ(markUv)` from MARK_THICKNESS is in THIS unit.
+ *       · **mark-height** (fraction of the mark's own 2-unit height) = RT-uv
+ *         × 1.15. The "1.5 / 3.8 / 6.0 %" figures on MARK_THICKNESS are these.
+ *     Everything below is stated in RT-uv, measured not quoted:
+ *         p5 stroke   41/512 = **0.0801** RT-uv (= 0.0921 of mark height)
+ *         p50 stroke  90/512 = **0.1758** RT-uv (= 0.2021 of mark height)
+ *         worst reachable refractive swim **0.0809** RT-uv (MARK_THICKNESS;
+ *           0.152 is the unreachable sin δ = 1 bound)
+ *         lod-1.17 mip footprint 2.25 texels = **0.0044** RT-uv
+ *     ⇒ the thinnest twentieth of the mark is **0.99×** the worst reachable
+ *     swim — NOT 1.14× — i.e. at the hard grazing maximum (δ = 32.1°, and only
+ *     on facets actually at grazing incidence) the p5 strokes are displaced by
+ *     about their own width. The ratio that carries "not a hairline" is the
+ *     MEDIAN: p50 is **2.17×** the worst swim, and at the ordinary deviations
+ *     MARK_THICKNESS tabulates (δ = 5 / 13 / 20° ⇒ 0.0132 / 0.0342 / 0.0520
+ *     RT-uv) even p5 clears at **6.1× / 2.3× / 1.5×**. Against the mip
+ *     footprint p5 is **18×**.
+ *     All four of these ratios are identical at 0.17 and at 0.115 — the swim is
+ *     `uMarkThick·sin δ/(2·uMarkHalf)` (both crystal-unit lengths; the group's
+ *     `mScale` multiplies the exit-point offset AND the half-extent and
+ *     cancels — crystalBuild's mark block), and the mip lod is
+ *     `roughEff·log2(512)·MARK_LOD_K`, an EXPLICIT `.level()` driven by
+ *     roughness, never by a screen-space derivative. Neither has an absolute
+ *     pixel or texel term. THAT is why the shrink cannot cost legibility.
+ *     (The one term that is not scale-free, D/(D−d), moves the safe way: d ∝
+ *     mScale, so a smaller stone drives the perspective factor toward 1.)
+ *  3. ABSOLUTE SIZE. Restating check 1 in pixels at the new scale: p5 strokes
+ *     are **15.4 px** wide and the median **33.7 px** (band 725); at a 620 px
+ *     band, 13.1 / 28.8 px. Nowhere near a legibility floor.
+ * So MARK_WORLD_HALF is NOT raised. Raising it (= a bigger mark) would spend
+ * the containment margin this entry's ⚠ above documents — the mark's bbox
+ * CORNER already sits at 1.29 against the slab's smallest support half-extent
+ * 1.079 — to buy contrast the arithmetic says is not needed. The 60 %-of-height
+ * relationship is preserved and remains ≤ the 0.75 ceiling stated above.
+ * ⚠ WHERE THE MARK GENUINELY DOES NOT EXIST: the `lite` tier. The branch is
+ * gated `healthy && !lite && (WebGPU || MARK_RT_WEBGL2)` (CrystalCluster), and
+ * `lite` is `fxBudget.level ≤ 2`, which every coarse-pointer device and every
+ * viewport under 768 px takes. At 390 px there is no in-ice mark to size — the
+ * stone renders body + fog only. The callouts are `max-sm:hidden` there too. */
 export const MARK_WORLD_HALF = 1.15;
 /**
  * ROUND 9-C — the y-flip. **SETTLED FROM THE THREE SOURCE, NOT LEFT TO THE
@@ -1267,8 +1858,52 @@ export const EMBER_FLICKER = 0.15;
  *   uniform scale; only scaleMul moves it, ≤20%).
  * ⚠ THE CEILING IS NOT A CONSTANT — it is `band height ÷ 9.2`. Any future
  *   re-tune of CRYSTAL_SCALE or of the section band height moves it. ═══
+ *
+ * ═══ ROUND 10-A — 12 → **8.0**. THE CEILING MOVED, EXACTLY AS THE ⚠ ABOVE SAID
+ * IT WOULD. Plus a UNIT CORRECTION to every "px/cycle" figure above. ═══
+ *
+ * THE RETUNE. CRYSTAL_SCALE 0.17 → 0.115 takes the stone from 123.25 to
+ * **83.375** px per crystal unit at the 8-I-measured 725 px band. The carrier
+ * is a frequency over crystal-LOCAL position, so its screen frequency rises by
+ * 1/ρ = 1.48× at a fixed constant. Holding the fitted ON-SCREEN period:
+ *     F_new = F_old · ρ = 12 · 0.676471 = 8.118  →  shipped **8.0**
+ * (8.0 rather than 8.118 because it is round and errs 1.5 % COARSER, i.e. on
+ * the safe side of the gate.) The 8-I gate, restated in its own terms:
+ *     F ≤ px-per-unit / (8 · RIPPLE_F2) = 83.375 / 9.2 = **9.06**
+ *     8.0 ⇒ 13.3 % of margin (the 8-I fit had 11.7 %).
+ * BAND-HEIGHT FLOOR, the size dependency this file insists on stating: train 2
+ *     stays inside the gate while `rect.h ≥ 8·RIPPLE_F2·F/CRYSTAL_SCALE` =
+ *     9.2·8/0.115 = **640 px** (was 649 px — unchanged in practice), rising to
+ *     ~800 px transiently at the arrival scaleMul 0.8.
+ * RIPPLE_AMP is re-derived (0.0385 → **0.0577**) to hold the SAME delivered
+ *     25° surface tilt, so — exactly as in 8-I — the value table does not move:
+ *     the stone keeps its surface tilt and spends it at the same SCREEN
+ *     frequency it was fitted at. The artifact metric (tan θ · F / px-per-unit)
+ *     goes 0.0454 → **0.0447**, 1.5 % better.
+ *
+ * ⚠ THE UNIT CORRECTION — READ THIS BEFORE TRUSTING ANY "px/cycle" NUMBER
+ * ABOVE. The shader is `sin(dot(vLocal, d) · RIPPLE_FREQ)` (crystalBuild's
+ * ripple block — no 2π anywhere), so F is RADIANS per crystal unit and the
+ * spatial period is **2π/F units**, not 1/F. Every px/cycle figure in the 8-E
+ * and 8-I entries above was computed as `px-per-unit ÷ F`, i.e. **2π× too
+ * small**. The true screen periods are:
+ *     F 8  (pre-8-E)          → 96.8 px   "a rippled stone, not a wet one" ✓
+ *     F 26 (8-E/8-F, shipped) → 29.8 px   the moiré the owner saw ✓
+ *     F 12 (8-I, shipped)     → 64.5 px   the clean state ✓
+ *     F 8  @ 0.115 (this)     → **65.5 px** — the same clean state, held
+ * The three live data points still order exactly as the 8-I entry says, so the
+ * RELATIONSHIP it fitted (and this round preserves) is untouched; only its
+ * labels were wrong. Note the corrected reading also explains the failure
+ * honestly: two crossed trains on a flat plane are a regular screen lattice at
+ * ANY frequency — what makes it read as moiré rather than as ripples is how
+ * FINE that lattice is, and 30 px was fine, 65 px is not. The `≳8 px/cycle`
+ * Nyquist framing was the wrong mechanism for the right number.
+ * ⚠ AND THE GATE IS STILL NOT A CONSTANT: it is `band height × CRYSTAL_SCALE ÷
+ * 9.2`. `feel.scale` is now a live dev knob (see CRYSTAL_SCALE) and this is a
+ * BAKED graph literal — moving the stone live does not move the carrier, so a
+ * live A/B that lands somewhere else must come back here and re-derive.
  */
-export const RIPPLE_FREQ = 12.0;
+export const RIPPLE_FREQ = 8.0;
 /** Normal-perturbation amplitude (uRippleAmp). ROUND 8-E: 0.12 → 0.018.
  * The perturbation is N + gradT·amp with |gradT| ∝ frequency, so holding a
  * tilt while tripling the frequency needs amp ÷ 3 — and the target tilt drops
@@ -1298,8 +1933,26 @@ export const RIPPLE_FREQ = 12.0;
  * px/cycle vs 4.7). If any corduroy survives the browser pass, this uniform is
  * on the dev handle and two values are pre-derived: **0.0188** reproduces the
  * live-clean per-pixel step exactly (12.8° tilt) and **0.030** lands on igloo's
- * LOW edge (20°). Do not go back up on the frequency to get relief. */
-export const RIPPLE_AMP = 0.0385;
+ * LOW edge (20°). Do not go back up on the frequency to get relief.
+ *
+ * ROUND 10-A — RE-DERIVED AGAIN, SAME RULE: 0.0385 → **0.0577**. The carrier
+ * drops 12 → 8 to hold its screen period against the smaller stone, |gradT| ∝ F
+ * as before, so amp × 12/8:
+ *     amp = tan 25° / (1.01 · 8) = 0.46631 / 8.08 = **0.05771**
+ *     ⇒ atan(1.01 · 8 · 0.0577) = **25.0°**, igloo's band (20–33°), the SAME
+ *       delivered tilt rounds 8-E/8-F/8-I shipped ⇒ the value table is untouched.
+ * Per-pixel normal step (tan θ · F / px-per-unit — the artifact metric, now
+ * written in a form that does not depend on the px/cycle convention the
+ * RIPPLE_FREQ entry corrects):
+ *     F 26 / amp 0.018   (moiréd)      0.46631 · 26/123.25 = **0.0984**
+ *     F 12 / amp 0.0385  (8-I shipped) 0.46631 · 12/123.25 = **0.0454**
+ *     F 8  / amp 0.0577  (SHIPPED)     0.46631 ·  8/ 83.375 = **0.0447**
+ *     F 26 / amp 0.004   (live-clean)  0.10510 · 26/123.25 = **0.0222**
+ * i.e. the shipped setting sits 1.5 % BELOW the state the owner accepted and
+ * 55 % below the artifact point. The two pre-derived fallbacks carry over,
+ * rescaled by 12/8: **0.0285** reproduces the live-clean step exactly (13.0°)
+ * and **0.0451** lands on igloo's low edge (20°). `uRippleAmp` is live. */
+export const RIPPLE_AMP = 0.0577;
 /** vnoise3 phase-warp of the first wave train (breaks the straight rulings).
  * ROUND 8-I — unchanged and re-checked, because on the authored slab's flat
  * planes this is the ONLY thing standing between the carrier and a machined
@@ -1307,7 +1960,13 @@ export const RIPPLE_AMP = 0.0385;
  * warp wanders the rulings by ±(RIPPLE_WARP/2π) = ±0.24 cycles, which was
  * ±1.1 px at F 26 and is **±2.5 px at F 12** — the same wander, now visible.
  * Train 2 still carries no warp (a fixed +2.7 phase), which is what makes the
- * pair read as a crossed weave rather than as noise. */
+ * pair read as a crossed weave rather than as noise.
+ * ROUND 10-A — unchanged, and its pixel authority is unchanged with it: the
+ * wander is ±(1.5/2π) = ±0.2387 of a CYCLE, and the cycle's screen length was
+ * held constant by the carrier retune (64.5 → 65.5 px), so ±2.5 px stays ±2.5
+ * px. (Under the corrected 2π convention of the RIPPLE_FREQ entry the absolute
+ * numbers above are 2π× larger — ±15.4 px at F 12, ±15.6 px now — but the point
+ * is the same and the RATIO to the ruling is exactly preserved.) */
 export const RIPPLE_WARP = 1.5;
 /** ROUND 8-E — the warp NOISE frequency, previously derived as
  * RIPPLE_FREQ·0.6 and therefore dragged from 4.8 to 15.6 by the carrier
@@ -1317,7 +1976,25 @@ export const RIPPLE_WARP = 1.5;
  * ROUND 8-I — the decoupling pays off again, in the other direction: at the
  * new carrier the warp sits **2.5× below it** (12 / 4.8), between the historic
  * 1.67× and 8-E's 5.4×, so it still reads as a wander of the rulings and not as
- * a third train. Nothing to change; it is only ever wrong when it is derived. */
+ * a third train. Nothing to change; it is only ever wrong when it is derived.
+ * ROUND 10-A — the carrier lands on **8.0**, i.e. the warp is back at exactly
+ * its historic **1.67×** relationship (the pre-8-E state this constant was
+ * frozen from), which is the one ratio in this family that has actually been
+ * looked at in a browser and accepted. Still nothing to change — and it is
+ * still only ever wrong when it is derived.
+ * ⚠ CHECK-ROUND, same convention trap as FROST_FREQ: "1.67×" is the RAW ratio
+ * of two constants in DIFFERENT conventions — this one is a `vnoise3` lattice
+ * frequency (cell = 1/4.8 = 0.208 units, dominant λ ≈ 2 cells = 0.417 units),
+ * the carrier is a `sin(x·F)` frequency (period 2π/8 = 0.785 units). So the
+ * warp's own structure is in fact ~1.9× FINER than the ruling it wanders, not
+ * 1.67× coarser. That is harmless HERE because the warp enters only as a PHASE
+ * term — `grad` is the analytic derivative of the UNWARPED sine (crystalBuild's
+ * ripple block), so no amount of warp changes the delivered normal amplitude —
+ * but it does mean the read shifts from "the rulings wander" toward "the
+ * rulings wobble" as the carrier comes down: the wander's own screen scale went
+ * 51 px (F 12 @ 0.17) → **35 px** (F 8 @ 0.115) against a ruling spacing held
+ * at ~65 px. If the live pass calls the surface busy rather than wet, LOWER
+ * this (4.8 → ~3.2 restores the 8-I ratio of wander-scale to ruling). */
 export const RIPPLE_WARP_FREQ = 4.8;
 /** Two fixed skew directions (normalized at build) — the crossed wave trains. */
 export const RIPPLE_DIR1: [number, number, number] = [0.81, 0.33, 0.48];
@@ -1337,7 +2014,13 @@ export const RIPPLE_DIR2: [number, number, number] = [-0.29, 0.77, -0.56];
  * one-for-one: 1.3 would take train 2 to 15.6 cycles/unit ⇒ 7.9 px/cycle,
  * through the gate. The smallest on-screen size that still clears it is
  * rect.h ≥ 8·this·F/CRYSTAL_SCALE = 649 px (see RIPPLE_FREQ); lite/mobile never
- * compile the branch at all. */
+ * compile the branch at all.
+ * ROUND 10-A — KEPT AT 1.15 and still the binding train: the gate was solved on
+ * IT again at the new size (F ≤ 83.375/9.2 = 9.06 ⇒ RIPPLE_FREQ 8.0, delivering
+ * 9.06 "px/cycle" in this entry's convention). The band-height floor moves 649
+ * → **640 px**, i.e. unchanged in practice — F and CRYSTAL_SCALE fell together
+ * by design, and 8·this·F/CRYSTAL_SCALE is invariant under that. ⚠ Read the
+ * unit correction on RIPPLE_FREQ before quoting any px/cycle number here. */
 export const RIPPLE_F2 = 1.15;
 export const RIPPLE_A2 = 0.6;
 
@@ -1360,12 +2043,35 @@ export const PLEXUS_POINTS = 12;
  * ROUND 8-H — re-checked, deliberately UNCHANGED. The "crystal bound" this was
  * authored against is the Y half-height 1.66, which the authored slab
  * reproduces EXACTLY by construction (bbox height 3.32 was chosen to preserve
- * CRYSTAL_SCALE's on-screen size), so the intended 0.87× relationship still
+ * the then-current CRYSTAL_SCALE's on-screen size — ROUND 10-A changes that
+ * scale, which moves the on-screen size but NOT the 1.66 half-height this
+ * ratio is taken against), so the intended 0.87× relationship still
  * holds. The slab is 15 % wider in x (half-width 1.205 → 1.3945) and 6 % in z,
  * so orbit points on the jittered inner radius (1.45 × [0.8,1] = 1.16) now
  * pass closer to the silhouette in x — but PLEXUS_MASK_IN 1.1 already fades
  * those segments to nearly nothing (smoothstep(1.1, 1.9, 1.16) ≈ 0.02), which
- * is exactly the case the radial mask exists for. Nothing to retune. */
+ * is exactly the case the radial mask exists for. Nothing to retune.
+ *
+ * ROUND 10-A — RE-DERIVED AND PROVEN INVARIANT, not merely left alone. The
+ * concern the shrink raises is real ("does the mask still hug the stone, or is
+ * there now a visible empty shell / a clipped silhouette?") and the answer is
+ * structural: the plexus is mounted as a CHILD of the crystal group
+ * (CrystalCluster mounts `plexus.lines`/`.cross` in the same group as the
+ * mesh), the group's scale is UNIFORM, and this radius, PLEXUS_RADIUS_JIT,
+ * PLEXUS_TREADMILL, PLEXUS_CONNECT_DIST/BREAK_DIST, PLEXUS_Y_GATE,
+ * PLEXUS_CROSS_SIZE and PLEXUS_MASK_IN/OUT are ALL in crystal units. Every
+ * ratio to the silhouette therefore survives a scale change bit-for-bit:
+ *     radius ÷ slab half-height   1.45 / 1.66  = 0.873   ← unchanged
+ *     jittered inner ÷ half-width 1.16 / 1.3945 = 0.832  ← unchanged
+ *     mask-in ÷ half-height       1.10 / 1.66  = 0.663   ← unchanged
+ * The mask still fades a segment at the x-flank to smoothstep(1.1,1.9,1.16) ≈
+ * 0.02, and the net's outer edge still sits 0.873 of the way up the stone. What
+ * DOES change is the whole net's on-screen size (1.45 units: 179 px → **121 px**
+ * of radius at the 725 px band) — which is the point of the round, and it is
+ * the one thing that must NOT be compensated here, or the net would grow
+ * relative to the stone it wraps. Nothing to retune, arithmetically this time.
+ * The only plexus quantity worth a pixel check is the dash mask — see
+ * PLEXUS_DASH_FREQ. */
 export const PLEXUS_RADIUS = 1.45;
 /** Per-point radius jitter: r × [1−this, 1] (igloo ×[0.8, 1]). */
 export const PLEXUS_RADIUS_JIT = 0.2;
@@ -1403,10 +2109,25 @@ export const PLEXUS_CROSS_ALPHA = 0.85;
  * read, one draw call. */
 export const PLEXUS_CROSS_SIZE = 0.1;
 /** Radial fade — segments near the crystal body dissolve (igloo's
- * mix-to-black + additive; here the same smoothstep drives alpha). */
+ * mix-to-black + additive; here the same smoothstep drives alpha).
+ * ROUND 10-A — unchanged, and unchanged for a REASON, not by omission: both
+ * bounds are crystal-local and evaluated PER FRAGMENT
+ * (`smoothstep(MASK_IN, MASK_OUT, length(varying(positionLocal)))` in
+ * crystalPlexus.makeMat), so the hollow they cut is a fixed shape in the
+ * stone's own frame and scales with it exactly. Full derivation on
+ * PLEXUS_RADIUS. Note the per-FRAGMENT evaluation is also why trap #12 (a
+ * per-VERTEX smoothstep interpolated across a wide primitive) cannot bite here
+ * — `positionLocal` interpolates linearly and is then fed to the smoothstep,
+ * which is the correct order. */
 export const PLEXUS_MASK_IN = 1.1;
 export const PLEXUS_MASK_OUT = 1.9;
-/** Broken-dash mask frequency: smoothstep(.4,.5, sinenoise(pos·this)). */
+/** Broken-dash mask frequency: smoothstep(.4,.5, sinenoise(pos·this)).
+ * ROUND 10-A — pixel-checked and kept. It is a product of three `sin(x·this)`,
+ * so the period is 2π/10.1 = 0.622 crystal units (the same convention trap the
+ * RIPPLE_FREQ entry corrects): **51.9 screen px** per dash cycle at 0.115/725,
+ * down from 76.7 px. Coarse enough that the grid never enters it, so unlike the
+ * ripple carrier and the sparkle cells this one does not need to follow the
+ * stone. */
 export const PLEXUS_DASH_FREQ = 10.1;
 
 // --- §B-d — callout gating windows (staggered arrive/leave) -----------------
@@ -1522,24 +2243,133 @@ export const FOG_OPACITY = 0.55;
  * the `aria-hidden` decorative band and every string is duplicated verbatim
  * in the ledger row above them, so this is incidental text, not content. It
  * is recorded here rather than fixed because the section files are frozen.
+ *
+ * ═══ ROUND 10-A — THE GATE STRENGTHENS, AND ON `healthy` IT STOPS BEING A
+ * VALUE GATE AT ALL. This constant is UNCHANGED at 1.0; what changed under it
+ * is FOG_RADIUS_OUT (0.30 → 0.203, scaled with the stone). ═══
+ *
+ * The asymmetry compresses local x < 0 by `uFogAsym = max(rxOut/rxIn, 1)`, and
+ * since the quad's half-width IS rxOut, the inward falloff coordinate is
+ * `x/rxOut · rxOut/rxIn = x/rxIn` — i.e. **while asym > 1 the inward geometry
+ * depends only on rxIn, and rxIn did not move** (it is |CRYSTAL_POS.x|·clear·w,
+ * keyed to the placement, not to the radius). So the whole derivation above
+ * carries over verbatim wherever the clamp is inactive:
+ *   · BROKEN: rxOut/rxIn = 0.203/0.17 = **1.194** (was 1.765). Still > 1, so
+ *     the falloff still reaches exactly 0 AT the centre-line, and the worst
+ *     case (1280, copy edge 37 px past centre) is the SAME alpha **0.017 ⇒
+ *     5.8:1**, with the same 9.6× headroom to the 0.164 AA break point.
+ *   · HEALTHY: rxOut/rxIn = 0.203/0.22 = **0.923 < 1**, so the driver's
+ *     `Math.max(…, 1)` now pins it SYMMETRIC — and symmetric is no longer the
+ *     dangerous state, because the radius is smaller than the placement: the
+ *     quad's inward bound lands at 0.22 − 0.203 = **0.017·w RIGHT of the
+ *     centre-line**. The quad never crosses the centre-line at any width.
+ *     Alpha under the 1280 copy edge goes 0.0088 → **0.0011, below the
+ *     shader's 0.002 Discard floor**, i.e. literally not painted there.
+ * ⚠ CONSEQUENCE FOR THE DEV HANDLE: on `healthy`, `feel.fogClear` is inert for
+ * any value ≥ 0.923 (asym stays pinned at 1) and only tightens below it. On
+ * `broken` it behaves as documented. The clamp to [0,1] in the driver is
+ * unchanged and still the enforcement.
+ *
+ * ⚠⚠ CHECK-ROUND — THE "GEOMETRIC GATE" ON `healthy` IS **CONDITIONAL ON
+ * VIEWPORT WIDTH**, and the first pass of this entry stated it unconditionally.
+ * What is unconditional is only that the QUAD stops 0.017·w right of the
+ * centre-line. The COPY does not stop at the centre-line — it crosses it, and
+ * how far it crosses is not a fixed fraction of w, because `--margin` steps
+ * (2/4/6/10rem at 768/1024/1280) while the 34em measure is nearly constant
+ * (the font clamp pins at 0.95rem below 1448 px). Re-deriving the same table
+ * this entry already carries, but down through the steps — copy right edge vs
+ * the centre-line, then the resulting healthy alpha and `--ink-mute` contrast:
+ *       w     edge    α(0.203)  ratio      α(0.30, the old quad)  ratio
+ *      768   +197 px   0.488    3.3:1            0.497            3.2:1
+ *      900   +131 px   0.336    3.8:1            0.361            3.7:1
+ *      958   +102 px   0.165    4.7:1            0.201            4.5:1
+ *     1024   +101 px   0.135    4.9:1            0.171            4.6:1
+ *     1152    +37 px   0.002    6.0:1            0.012            5.9:1
+ *     1280    +37 px   0.001    6.0:1            0.009            5.9:1
+ *    ≥1366   left of centre — nothing painted, either quad
+ * So: the Discard floor is cleared for every width **≥ ~1152 px** (and the
+ * ≥1280 branch clears it by construction — it would need w < 1272 to fail, and
+ * that branch starts at 1280). Below that the fog IS painted under the copy's
+ * right edge, and below **~958 px** it crosses the 0.164 AA break.
+ * THREE THINGS THAT MATTER ABOUT THAT:
+ *   (a) It is PRE-EXISTING, not introduced here. The right-hand columns are the
+ *       shipped 0.30 quad and they are worse at every single width.
+ *   (b) This round is a STRICT IMPROVEMENT everywhere, provably, not just in
+ *       the sampled rows: with the clamp pinned symmetric the falloff
+ *       coordinate is |x − 0.22w|/rxOut, and rxOut fell, so |q.x| rose at every
+ *       width ⇒ alpha fell at every width. Same in the asymmetric regime,
+ *       where the inward geometry depends only on rxIn (unchanged).
+ *   (c) It is NOT fixable from this constant. Below ~807 px the copy's right
+ *       edge is further right than the crystal's own centre (0.22·w), so no
+ *       value of FOG_CLEAR — which can only walk the INWARD zero out to
+ *       0.22·w — can clear it. It is a layout fact (a 34em measure inside a
+ *       4rem gutter on a ~800 px viewport reaches two thirds across the page),
+ *       and the section files are frozen. Recorded, not fixed.
+ * Note the tier gate does NOT cover this: `lite` is `fxBudget.level ≤ 2` =
+ * coarse pointer OR < 768 px, so a 768–1150 px FINE-POINTER window (a resized
+ * desktop browser, 1024×768, 1152×864) mounts the full stone and its fog.
+ * ⚠ AND THE STANDING WARNING STILL STANDS: this is keyed to the copy measure
+ * (`max-w-[34em]` in `container-px`) and to FOG_GAIN/FOG_OPACITY, none of which
+ * moved this round. Re-run the table if any of them do.
  */
 export const FOG_CLEAR = 1.0;
 /** OUTWARD x radius, a fraction of the rect WIDTH (not half-width), away from
- * the type column. The quad's right bound is 0.30 + CRYSTAL_POS.x (0.17 /
+ * the type column.
+ *
+ * ROUND 8-E (0.30): the quad's right bound was 0.30 + CRYSTAL_POS.x (0.17 /
  * 0.22) = 0.47 / 0.52 of the width from centre, against a 0.50 viewport
- * half-width — so on `healthy` the geometry's last 0.02·w is off-screen. The
- * hygiene rule (a) still holds on the VISIBLE output: alpha at the screen
- * edge is 0.0015, under the shader's 0.002 Discard floor, so the last painted
- * fog pixel sits at 0.4978·w from centre — 0.0022·w (≈3 px at 1280, 4 px at
- * 1920) INSIDE the viewport. Raising this, FOG_FALLOFF or FOG_OPACITY without
- * re-checking that margin would terminate the falloff on the viewport edge —
- * a straight vertical cut, the "vecchi blocchi pagina" failure. */
-export const FOG_RADIUS_OUT = 0.3;
-/** Y radius (fraction of the rect height). 0.46 + |CRYSTAL_POS.y| (0.05 /
- * 0.06) ≈ 0.51–0.52, i.e. the quad's zero-alpha bound lands essentially ON
- * the band bounds: nothing bleeds a visible value into the chapter block
- * above (whose right cell carries `--ink-mute` copy) or the next section. */
-export const FOG_RADIUS_Y = 0.46;
+ * half-width — so on `healthy` the geometry's last 0.02·w was off-screen, and
+ * hygiene rule (a) survived only because alpha at the screen edge was 0.0015,
+ * under the shader's 0.002 Discard floor.
+ *
+ * ═══ ROUND 10-A — 0.30 → **0.203** (= 0.30 · ρ), scaled WITH the stone. ═══
+ * The fog is not a page decoration whose size is free: its job is to give the
+ * silhouette a graded surround, so what is fitted is the STONE's position on
+ * the falloff, and that is a ratio. The fog quad's world size is deliberately
+ * independent of the group scale (CrystalCluster divides by `s`), so a naive
+ * CRYSTAL_SCALE change would have left a 0.30·w glow around a 0.68× stone —
+ * the stone would have retreated onto the bright core and lost the swing that
+ * makes it read as mass. Scaling both radii by ρ keeps it EXACT:
+ *     stone corner radius in fog units, r = √[(1.3945·S·(h/w)/FRO)² +
+ *                                             (1.6600·S/FRY)²]
+ *     @ 0.170 / 0.30 / 0.46 (1440×725):  √(0.3979² + 0.6135²) = **0.7312**
+ *     @ 0.115 / 0.203 / 0.311:           √(0.3978² + 0.6138²) = **0.7314**
+ * — so BACKDROP_GAIN's whole §B4.2 argument (crossover at r = 0.41, stone
+ * spanning to r ≈ 0.7, "darker-than in the middle, lighter-than at the
+ * extremities") is preserved to 0.03 %, and the value table does not move.
+ * QUAD-EDGE HYGIENE IMPROVES from "3 px of margin" to structural: the right
+ * bound is now 0.203 + 0.17/0.22 = **0.373 / 0.423** of the width from centre
+ * against the 0.50 half-width, i.e. the falloff terminates 0.077–0.127·w (≈99–
+ * 163 px at 1280) INSIDE the viewport on both modes. Nothing can cut on the
+ * screen edge any more. It also turns the a11y clearance on `healthy` from a
+ * value gate into a geometric one — see FOG_CLEAR.
+ * The standing warning is unchanged: raising this, FOG_FALLOFF or FOG_OPACITY
+ * without re-checking the edge margin is how the "vecchi blocchi pagina"
+ * failure comes back. */
+export const FOG_RADIUS_OUT = 0.203;
+/** Y radius (fraction of the rect height).
+ * ROUND 8-E (0.46): 0.46 + |CRYSTAL_POS.y| (0.05 / 0.06) ≈ 0.51–0.52, i.e. the
+ * quad's zero-alpha bound landed essentially ON the band bounds.
+ * ROUND 10-A — 0.46 → **0.311** (= 0.46 · ρ), the y half of the same
+ * ratio-preserving scale (derivation on FOG_RADIUS_OUT). The bound is now
+ * 0.311 + 0.05/0.06 = **0.361 / 0.371** of band height from the band centre
+ * against the 0.50 half-height, so the falloff reaches zero ~0.13·rect.h inside
+ * the band instead of exactly on it: strictly more headroom against bleeding a
+ * visible value into the chapter block above (whose right cell carries
+ * `--ink-mute` copy) or into the next section.
+ * ⚠ CHECK-ROUND — THIS IS THE ONLY BAND-KEYED CONSTANT IN THE FOG. Its twin
+ * FOG_RADIUS_OUT keys off rect.w, and the band is full-bleed so rect.w ≡ the
+ * viewport width and cannot grow; rect.h can, and is about to (round-11:
+ * §problem 1330 → ~4392 px). Band-keyed, this becomes a 1366 px world-y radius.
+ * Worse, it is HALF of the corner-radius identity r = 0.7314 that BACKDROP_GAIN
+ * §B4.2 rests on, so it must move in the SAME commit as CRYSTAL_SCALE or the
+ * pairing breaks: with the stone viewport-keyed (C_vp 0.0926) and this left
+ * band-keyed at a 4392 px band, r's y-term collapses **0.614 → 0.101** and the
+ * stone sits entirely inside the bright core — §B4.2's "glowing blob" failure,
+ * back. The prepared value is **FRY_vp = 0.311 · 725/900 = 0.2505** against a
+ * viewport-keyed `ry = ih · FRY_vp · k`, which restores the y-term to 0.6138
+ * exactly. Full table on CRYSTAL_SCALE ("PREPARED CHANGE"). */
+export const FOG_RADIUS_Y = 0.311;
 /** Exponent on the `smoothstep(1,0,r)` radial falloff. The round-7-3 §B.4
  * spec names `smoothstep(1,0,r)²`; at 2.0 the mass concentrates inside
  * r < 0.4 and the stone (which spans out to r ≈ 0.7) sits almost entirely on
@@ -1548,7 +2378,17 @@ export const FOG_RADIUS_Y = 0.46;
  * its surround, igloo's 0.79 ratio) while its extremities cross onto the dim
  * tail (brighter than its surround) — igloo's own read: "across the frame it
  * swings from lighter-than to darker-than, which is why it reads as MASS"
- * (§B1). Set 2.0 to restore the spec-verbatim curve. */
+ * (§B1). Set 2.0 to restore the spec-verbatim curve.
+ * ROUND 10-A — unchanged, and the "spans out to r ≈ 0.7" it rests on is
+ * unchanged with it: FOG_RADIUS_OUT/Y were scaled by the same ρ as the stone
+ * precisely so this number stays put (0.7312 → 0.7314, derivation there). The
+ * fog reads smaller on screen because the stone does; their relationship — the
+ * only thing this exponent was fitted against — is untouched.
+ * ⚠ TRAP #12 DOES NOT APPLY HERE, checked rather than assumed: crystalFog
+ * varies `positionLocal.xy` and evaluates `smoothstep(1,0,r)` in the FRAGMENT,
+ * so nothing interpolates a smoothstep across the quad. The quad also got
+ * NARROWER this round — full width 2·FOG_RADIUS_OUT = 0.60·w → **0.406·w** —
+ * which moves it further from the case that failed on phones, not closer. */
 export const FOG_FALLOFF = 1.35;
 /** Master coupling scalar (dev handle `feel.fogEnergy`). ONE knob drives BOTH
  * halves — the fog quad's opacity and the crystal's BACKDROP_GAIN — so body
@@ -1614,7 +2454,17 @@ export const FOG_ENERGY = 1.0;
  * Unchanged by this: the fog itself (FOG_GAIN / FOG_OPACITY / FOG_CLEAR), and
  * therefore the entire §B4.3 accessibility derivation under FOG_CLEAR. To
  * revert to the 8-E look it is still one number here (13.3) plus BODY_DARKEN.
- */
+ *
+ * ROUND 10-A — 8.0 STANDS, INCLUDING REASON 4, WHICH IS THE ONLY ONE THE
+ * SHRINK COULD HAVE BROKEN. Reason 4 is geometric ("the crossover radius moves
+ * to r = 0.41 while the stone still spans to r ≈ 0.7"), and it is stated in FOG
+ * FOOTPRINT units — so it would have collapsed if the stone had shrunk inside a
+ * fixed fog (the stone would have ended entirely inside r < 0.5, i.e. sitting
+ * on the core with no lighter-than half to swing to). FOG_RADIUS_OUT/Y were
+ * scaled by the same ρ as the stone precisely to stop that: the corner radius
+ * is 0.7314 against 0.7312 before, and the crossover is untouched at 0.41
+ * because nothing in the falloff, the gain, the opacity or the body moved.
+ * Reasons 1–3 are pure value arithmetic and are scale-free by construction. */
 export const BACKDROP_GAIN = 8.0;
 
 // --- §B4.2 part 3 — the value CEILING + the bloom whisper -------------------

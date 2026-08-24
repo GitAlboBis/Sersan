@@ -35,14 +35,31 @@
  * ANISOTROPIC AND ASYMMETRIC: the driver sets `uFogAsym` = (outward x radius ÷
  * inward x radius) where the INWARD radius is the crystal's own distance to
  * the band centre-line, so the left-hand falloff hits exactly 0 AT that
- * centre-line by construction, at every viewport width and for both modes.
- * The fragment compresses local x < 0 by that ratio before taking the radius
- * — one `select`, no branch divergence worth measuring. The copy column does
- * NOT stop at the centre-line at every width (it crosses it by 37 px at
- * 1280), so read FOG_CLEAR in crystalConfig for the measured per-width
- * derivation: the gate is a VALUE gate with 9.6× headroom on alpha, not a
+ * centre-line by construction, at every viewport width. The fragment
+ * compresses local x < 0 by that ratio before taking the radius — one
+ * `select`, no branch divergence worth measuring. The copy column does NOT
+ * stop at the centre-line at every width (it crosses it by 37 px at 1280), so
+ * read FOG_CLEAR in crystalConfig for the measured per-width derivation: on
+ * `broken` the gate is a VALUE gate with 9.6× headroom on alpha, not a
  * no-overlap guarantee, and that is what must be re-checked if the gain, the
  * opacity or the copy measure ever move.
+ * ROUND 10-A — on `healthy` the QUAD itself now clears the centre-line.
+ * FOG_RADIUS_OUT fell 0.30 → 0.203 with the stone (CRYSTAL_SCALE 0.17 →
+ * 0.115), so the outward radius is now SMALLER than the crystal's distance to
+ * the centre-line (0.203 < 0.22): `uFogAsym` pins to 1, the quad is symmetric,
+ * and its inward bound stops 0.017·w RIGHT of the centre-line at every width.
+ * At 1280 the alpha under the copy edge is 0.0011 — below the `Discard` floor
+ * below, i.e. not painted there at all. `broken` (0.203 vs 0.17) keeps the
+ * asymmetric construction and its numbers verbatim.
+ * ⚠ CHECK-ROUND: that is NOT a width-independent guarantee, because the COPY's
+ * crossing of the centre-line is not a fixed fraction of the width (`--margin`
+ * steps at 768/1024/1280 while the 34em measure barely moves). The quad clears
+ * the Discard floor for every viewport ≥ ~1152 px; between ~958 and 1152 px the
+ * fog is painted faintly under the copy's right edge, and below ~958 px it
+ * crosses the AA break — a PRE-EXISTING condition that this round improves at
+ * every width but does not remove, and that cannot be fixed from FOG_CLEAR.
+ * The measured per-width table lives on FOG_CLEAR in crystalConfig; read it
+ * before quoting "geometric clearance" anywhere.
  *
  * ANCHORING. This quad is a child of CrystalCluster's group, i.e. it is
  * anchored to the thing it serves (round 7-3 §A.6 rule (b)): it tracks the
