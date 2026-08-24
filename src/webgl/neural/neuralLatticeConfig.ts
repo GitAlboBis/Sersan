@@ -1579,6 +1579,36 @@ export const NEURAL_ORBIT_FREQ_X = 0.13;
 export const NEURAL_Z_BREATHE = 0.015;
 /** group.scale.z = rect-height·k · this factor (honest depth for the net). */
 export const NEURAL_DEPTH_SCALE_FACTOR = 1.0;
+/**
+ * ROUND 11 — THE DEPTH, MADE A CONSTANT OF THE SITE INSTEAD OF AN ACCIDENT OF
+ * ONE SECTION'S HEIGHT (mechanism §4.2-1).
+ *
+ * `zWorld = rect.h · k · NEURAL_DEPTH_SCALE_FACTOR` ties the cloud's DEPTH to
+ * the anchor's HEIGHT, which is fine at today's 619 px band and catastrophic
+ * once a section grows: at a 4392 px anchor `zWorld` reaches 68.26, node
+ * world-z ±13.65, camera distances **[−1.65, 25.65] — nodes BEHIND the
+ * camera**, and the cloud inverts.
+ *
+ * A band whose height is viewport-relative is measured against
+ * WORLD_VIEW_HEIGHT instead, so `ih` cancels and the depth spread of the
+ * shipped look becomes exact at every viewport and every runway:
+ *
+ *     zWorld = WORLD_VIEW_HEIGHT · NEURAL_DEPTH_VIEWPORT_SPAN = 9.6215
+ *     node world-z = ±1.9243, camera distance ∈ [10.076, 13.924]
+ *
+ * 0.8597 = 619/720 — today's `#problem` band on the 1280×720 reference. Only
+ * a band the traverse owns takes this path; every other band keeps the shipped
+ * formula byte-for-byte.
+ *
+ * ⚠ It makes the depth a CONSTANT, which is not the same as making it
+ * UNCHANGED. Measured HEAD `zWorld` (= rect.h·k) against this 9.6212:
+ * 1280×720 9.617 · 1440×900 7.979 · 768×1024 5.634 · 390×844 6.397. So a
+ * traversed band is 20–71 % DEEPER than it was at every non-reference
+ * viewport — deliberate (it is now viewport-invariant, and `minNodeDist`
+ * measures 10.076 ≥ 10.0 everywhere, verified 1280/1440/768/390), but it is a
+ * look change, not a preservation.
+ */
+export const NEURAL_DEPTH_VIEWPORT_SPAN = 0.8597;
 
 // === ROUND 9-B — THE COPY-COLUMN MASK =======================================
 // Owner, verbatim (2026-08-24): "la rete neurale ora sta sopra le scritte, deve
@@ -1804,6 +1834,30 @@ export const COPY_EDGE_PAD = 0.035;
  * narrowing it sharpens the boundary into something the eye can find.
  */
 export const COPY_RAMP_SOFT = 0.1;
+/**
+ * ROUND 11 — THE HALF-PLANE, EXPRESSED AS A LANE.
+ *
+ * Under the diagonal traverse the copy translates relative to the net, so the
+ * shipped half-plane gate ("dim everything left of the copy") goes DEGENERATE:
+ * swept to local x ≈ +1.5 it dims the entire cloud, swept to −1.5 it dims
+ * nothing — round 9-B's narrow-viewport failure reached by translation instead
+ * of by width. So the gate is now a two-sided LANE centred on the copy
+ * (`uCopyLaneC` ± `uCopyLaneW`, same `uCopySoft` ramp, mechanism §2B.4).
+ *
+ * THIS CONSTANT IS THE BACKWARD-COMPATIBILITY HINGE. A lane whose half-width
+ * is far wider than the band reproduces the half-plane EXACTLY:
+ *
+ *     laneC = edge − W,  laneW = W
+ *     ⇒ gate = smoothstep(W, W+soft, |x − laneC|) ≡ smoothstep(edge, edge+soft, x)
+ *
+ * for every x > laneC, which is every point in the band. 2.0 puts the lane's
+ * unused left wall at local x ≈ −1.5, far outside the cloud's [−0.45, +0.51]
+ * extent at every viewport, and keeps the fp32 error of the `+W … −W` round
+ * trip at ~2e-7 of local x — six orders of magnitude inside the 0.1 ramp.
+ * The un-traversed band (`#production`) is driven with exactly this pair and
+ * is therefore byte-identical to the shipped half-plane.
+ */
+export const COPY_LANE_OPEN_W = 2.0;
 /**
  * Mask floor for the PARTICLE layer (stars, link dust/beads, debris, sparks).
  * Sized on the star core, which is the brightest thing in the band and the

@@ -232,7 +232,7 @@
  *   C1. `copyGateAt` / `copyYAt` / `copyMaskAt` / `copyMaskLineAt` — pure
  *       functions of the LOCAL position, sitting beside the DOF helpers. The x
  *       ramp's boundary is the MEASURED right bound of the real
- *       `[data-row-body]` boxes (driver-written `uCopyEdge`, fallback = the
+ *       `[data-row-body]` boxes (driver-written `uCopyLaneC/W`, fallback = the
  *       1280 worst case), not a guessed fraction; the y term is a broad bell
  *       over the band's reading zone. Both layers evaluate the SAME expression
  *       at their OWN live local point — the line at its chord `posL`, the
@@ -363,6 +363,7 @@ import {
   LINE_REVEAL_STAGGER,
   COPY_EDGE_LOCAL,
   COPY_EDGE_PAD,
+  COPY_LANE_OPEN_W,
   COPY_RAMP_SOFT,
   COPY_MASK_FLOOR,
   COPY_MASK_FLOOR_LINE,
@@ -584,9 +585,16 @@ export interface NeuralFieldUniforms {
   /** Line emissive gain at full row/zone attention. */
   uLineRowGain: { value: number };
   // --- ROUND 9-B copy-column mask (live tunables) ---------------------------
-  /** LOCAL x at which the mask bottoms out — the measured right bound of the
-   * `[data-row-body]` boxes + COPY_EDGE_PAD. DRIVER-WRITTEN per measure. */
-  uCopyEdge: { value: number };
+  /**
+   * ROUND 11 — the mask lane's CENTRE in LOCAL x. Under the diagonal traverse
+   * the copy moves relative to the net, so the shipped half-plane became a
+   * two-sided lane (see COPY_LANE_OPEN_W). DRIVER-WRITTEN: per MEASURE on an
+   * un-traversed band (the half-plane-equivalent pair), per FRAME on a
+   * traversed one, from the tracked block's FINAL APPLIED `x`.
+   */
+  uCopyLaneC: { value: number };
+  /** Half-width of the mask lane in LOCAL x. COPY_LANE_OPEN_W = half-plane. */
+  uCopyLaneW: { value: number };
   /** Width of the floor→full ramp in LOCAL x (band-width fractions). */
   uCopySoft: { value: number };
   /** Mask floor over the copy column for the PARTICLE layer (1 = inert). */
@@ -1033,14 +1041,21 @@ export function createNeuralFieldBuild(
   const uStrandPhase = uniformArray([...STRAND_PHASES]);
   const uStrandThick = uniformArray([...STRAND_THICK_BIAS]);
   // ROUND 9-B: the COPY-COLUMN MASK (see the config section of the same name).
-  // Five plain `uniform()` scalars — like the round-8-G traffic knobs they join
+  // SIX plain `uniform()` scalars — like the round-8-G traffic knobs they join
   // an existing shared group, so they add ZERO uniform BLOCKS to either program
-  // and the 12/12 particle-material budget noted above is unmoved. uCopyEdge is
-  // DRIVER-WRITTEN from the measured `[data-row-body]` boxes (NeuralLattice);
-  // the default is the 1280 worst case + COPY_EDGE_PAD so an un-driven build
-  // (a driver that never runs, a measure that finds no body box) is the SAFE
-  // state, never a full-strength net over the copy.
-  const uCopyEdge = uniform(COPY_EDGE_LOCAL + COPY_EDGE_PAD);
+  // and the 12/12 particle-material budget noted above is unmoved (round 11
+  // added `uCopyLaneW`; it is a plain scalar, not a `uniformArray`, so the
+  // zero-headroom vertex stage is untouched). The lane pair is DRIVER-WRITTEN
+  // from the measured `[data-row-body]` boxes (NeuralLattice); the default is
+  // the 1280 worst case + COPY_EDGE_PAD so an un-driven build (a driver that
+  // never runs, a measure that finds no body box) is the SAFE state, never a
+  // full-strength net over the copy.
+  // ROUND 11: the half-plane is now a LANE, and its default pair is the
+  // half-plane-equivalent one (COPY_LANE_OPEN_W's note carries the identity).
+  const uCopyLaneC = uniform(
+    COPY_EDGE_LOCAL + COPY_EDGE_PAD - COPY_LANE_OPEN_W,
+  );
+  const uCopyLaneW = uniform(COPY_LANE_OPEN_W);
   const uCopySoft = uniform(COPY_RAMP_SOFT);
   const uCopyFloor = uniform(COPY_MASK_FLOOR);
   const uCopyLineFloor = uniform(COPY_MASK_FLOOR_LINE);
@@ -1390,9 +1405,12 @@ export function createNeuralFieldBuild(
   // at (COPY_MASK_FLOOR vs COPY_MASK_FLOOR_LINE — the star core is 18.8× the
   // line, so one shared floor would either blind the copy or delete the mesh).
   //
-  // The x boundary is DERIVED, not guessed: `uCopyEdge` is the measured right
-  // bound of the real `[data-row-body]` boxes (+ COPY_EDGE_PAD for the inner
-  // group's ±0.018 rotation drift), written by NeuralLattice. The full
+  // The x boundary is DERIVED, not guessed: the lane is centred on the real
+  // `[data-row-body]` box (+ COPY_EDGE_PAD for the inner group's ±0.018
+  // rotation drift), written by NeuralLattice — and under the traverse it
+  // TRACKS that box's applied `x` per frame, from the same window, in the
+  // same frame (a one-frame-stale lane breaches the bloom-onset margin at
+  // 814 px/s on a phone). The full
   // per-viewport derivation and the WCAG arithmetic are in the config's
   // COPY-COLUMN MASK section.
   //
@@ -1408,10 +1426,17 @@ export function createNeuralFieldBuild(
    * `max(uCopySoft, 1e-3)` only keeps a zeroed soft width out of
    * smoothstep's degenerate corner. */
   function copyGateAt(x: Any): Any {
+    // ROUND 11 — a two-sided LANE, not a half-plane (mechanism §2B.4). With
+    // the default pair (laneC = edge − W, laneW = W ≫ band) this is EXACTLY
+    // `smoothstep(edge, edge + soft, x)`, which is what keeps the un-traversed
+    // band byte-identical. Two extra ALU (a subtract and an abs); zero new
+    // uniform BLOCKS — `uCopyLaneW` is a plain scalar joining the existing
+    // shared group, so the 12/12 particle vertex stage is unmoved.
+    const d = x.sub(uCopyLaneC);
     return smoothstep(
-      uCopyEdge,
-      uCopyEdge.add(max(uCopySoft, float(0.001))),
-      x,
+      uCopyLaneW,
+      uCopyLaneW.add(max(uCopySoft, float(0.001))),
+      max(d, d.negate()),
     );
   }
   /** The gentler VERTICAL term: a broad bell over the band's middle, where the
@@ -3158,7 +3183,8 @@ export function createNeuralFieldBuild(
       uLineBlue,
       uLineSurgeGain,
       uLineRowGain,
-      uCopyEdge,
+      uCopyLaneC,
+      uCopyLaneW,
       uCopySoft,
       uCopyFloor,
       uCopyLineFloor,

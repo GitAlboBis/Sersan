@@ -26,10 +26,11 @@
  * know — WHERE the copy column is. The rect effect now also measures the real
  * `[data-row-body]` boxes of the owning section and stores their right bound in
  * the band's LOCAL x (`rect.copyEdge`); a small effect publishes it, plus
- * COPY_EDGE_PAD, into `uCopyEdge` on every measure. No per-frame work is added,
- * no store read, no state machine change — and because the write is on measure
- * rather than in useFrame, the dev handle's `uCopyEdge` stays tunable from the
- * console between layout changes.
+ * COPY_EDGE_PAD, into the lane uniforms on every measure. No per-frame work is
+ * added there, no store read, no state machine change — and because the write
+ * is on measure rather than in useFrame, the dev handle's lane stays tunable
+ * from the console between layout changes (round 11 moves it into the frame
+ * path for a TRAVERSED band only).
  *
  * ~9000 particles (3200 compact tier) fill the section's
  * `[data-lattice-anchor]` rect. Two instances mount on home:
@@ -59,6 +60,26 @@
  * generated once by `getPlexus(mode, density)` and ride in LOCAL-space
  * uniformArrays, so resize = re-measure rect only — no per-particle
  * re-anchoring, no buffer rebuild.
+ *
+ * ROUND 11 (2026-08-24) — THE DIAGONAL TRAVERSE, Stage 1. Four things, and
+ * every one of them is INERT on a band no `traverseStore` entry owns (i.e. on
+ * `#production`, and on `#problem` under reduced motion / fallback tier), so
+ * the un-traversed island is byte-for-byte what shipped:
+ *   1. THE RIG. The group graph gains two levels — `groupRef` (position +
+ *      quaternion, scale 1) → `rigRef` (the lateral translate, in WORLD units)
+ *      → `scaleRef` (the anisotropic (w·k, h·k, z) scale, MOVED off groupRef)
+ *      → `innerRef` (the existing orbit/parallax). The rig must sit OUTSIDE
+ *      the anisotropic scale or its magnitude would be sheared by the viewport
+ *      aspect. SignatureLine remains the only camera writer and changes by
+ *      ZERO lines — every island here is exactly invariant under a camera
+ *      write, which is why the traverse has to be a local rig at all.
+ *   2. THE FROZEN CLOCK. `vpTop` reads the traverse snapshot's `scrollY`, not
+ *      `window.scrollY`, so the net's vertical and the copy's lateral can
+ *      never come from two different reads of the same clock.
+ *   3. THE MASK LANE. `uCopyEdge` became `uCopyLaneC` + `uCopyLaneW`: a swept
+ *      half-plane goes degenerate, so the gate is a two-sided lane that tracks
+ *      the copy's applied `x`, driven from the same window in the same frame.
+ *   4. The LATERAL cull, the viewport-relative `zWorld`, and the act DPR cap.
  *
  * STORES (the ONLY cross-layer channel): useNeuralLatticeStore —
  * bump/bumpCluster (DOM in-view writers) + hovered (DOM row hover/focus) are
@@ -108,6 +129,8 @@ import { useScrollStore } from "./store/scrollStore";
 import { usePointerStore } from "./store/pointerStore";
 import { useNeuralLatticeStore } from "./store/neuralLatticeStore";
 import { useTierStore } from "./store/tierStore";
+import { useTraverseStore, type TraverseFrame } from "./store/traverseStore";
+import { traverseConfig } from "./neural/traverseConfig";
 import {
   CLUSTER_COUNT,
   FLOW_SPEED,
@@ -116,6 +139,12 @@ import {
   NEURAL_PARTICLE_COUNT,
   NEURAL_PARTICLE_COUNT_COMPACT,
   NEURAL_DEPTH_SCALE_FACTOR,
+  NEURAL_DEPTH_VIEWPORT_SPAN,
+  COPY_LANE_OPEN_W,
+  COPY_RAMP_SOFT,
+  PLEXUS_RZ,
+  COPY_MASK_FLOOR,
+  COPY_MASK_FLOOR_LINE,
   NEURAL_PARALLAX,
   NEURAL_AUTO_ORBIT,
   NEURAL_ORBIT_FREQ_Y,
@@ -264,13 +293,40 @@ export function NeuralLattice({
     // every viewport, font size and gutter without a per-width table in the
     // shader. Runs in the SAME effect as the rect measure (measureVersion /
     // resize), never per frame.
+    // ⚠ ROUND 11 — SUBTRACT THE APPLIED LATERAL BEFORE CACHING. The traverse
+    // writes an `x` on each `[data-drift]` wrapper, and `getBoundingClientRect`
+    // returns the TRANSFORMED box, so a measure that lands anywhere but the
+    // block's reading plateau reads a polluted right bound. It is not a small
+    // pollution: a block whose window is closed rides α_edge, so a measure at
+    // scrollY 0 read `copyEdge = 7.87` band widths (≈ 10 070 px) instead of
+    // 0.03, which drives the half-plane so far off-band that the gate is
+    // FULLY OPEN — round 9-B's "la rete sta sopra le scritte", back, on every
+    // path that falls back to the measured edge. This is the mechanism's §3.4
+    // trap and the fix is its own quoted idiom (`lusion-type.ts`
+    // `measureDriftEntry`): subtract the offset that is currently applied.
+    // `m41` of a `none` transform is 0, so an un-traversed band (`#production`,
+    // and `#problem` under RM / fallback tier) measures exactly what it always
+    // did — the `[data-drift]` wrappers only ever carry a `y` there.
     let copyRight = Number.NEGATIVE_INFINITY;
     const owner = el.closest("section");
     if (owner) {
       const bodies = owner.querySelectorAll<HTMLElement>("[data-row-body]");
       bodies.forEach((b) => {
         const br = b.getBoundingClientRect();
-        if (br.width > 0) copyRight = Math.max(copyRight, br.right);
+        if (br.width <= 0) return;
+        let dx = 0;
+        const wrap = b.closest<HTMLElement>("[data-drift]");
+        if (wrap) {
+          const t = getComputedStyle(wrap).transform;
+          if (t && t !== "none") {
+            try {
+              dx = new DOMMatrixReadOnly(t).m41;
+            } catch {
+              dx = 0;
+            }
+          }
+        }
+        copyRight = Math.max(copyRight, br.right - dx);
       });
     }
     setRect({
@@ -297,14 +353,65 @@ export function NeuralLattice({
   // would stomp every console tune of `uCopyEdge`). COPY_EDGE_PAD is the margin
   // for the inner group's ±0.018 rotation drift plus scrollbar/measure slack —
   // see the constant.
+  // ROUND 11: the half-plane is expressed as a LANE (see COPY_LANE_OPEN_W).
+  // `laneC = edge − W, laneW = W` is EXACTLY the shipped half-plane, so an
+  // un-traversed band is byte-identical and keeps its measure-time write.
   useEffect(() => {
     if (!build || !rect) return;
-    build.uniforms.uCopyEdge.value = rect.copyEdge + COPY_EDGE_PAD;
+    build.uniforms.uCopyLaneC.value =
+      rect.copyEdge + COPY_EDGE_PAD - COPY_LANE_OPEN_W;
+    build.uniforms.uCopyLaneW.value = COPY_LANE_OPEN_W;
   }, [build, rect]);
+
+  // Release the act DPR cap if this island unmounts while it holds one — a
+  // leaked ceiling would freeze the whole page's resolution.
+  useEffect(
+    () => () => {
+      if (armedDprCap.current === null) return;
+      const tier = useTierStore.getState();
+      if (tier.dprCap === armedDprCap.current) tier.setDprCap(null);
+      armedDprCap.current = null;
+    },
+    [],
+  );
 
   // --- Per-frame driver ------------------------------------------------------
   const groupRef = useRef<THREE.Group>(null);
+  /**
+   * ROUND 11 — THE TRAVERSE RIG. It sits OUTSIDE the anisotropic scale and
+   * expresses its translation in WORLD units (mechanism §5.3): under
+   * `S = diag(wWorld, hWorld, zWorld)` a child translation renders as
+   * `(t.x·wWorld, t.y·hWorld, t.z·zWorld)`, so a rig INSIDE the scale would
+   * make any depth component of the run shear by the viewport aspect (1.78×
+   * on desktop, 0.46× on a phone — a 3.85× swing) and any yaw a
+   * rotation-then-stretch. Outside it, `L = X·k` is right at every viewport.
+   *
+   * `groupRef` therefore keeps position + quaternion and NOTHING else; the
+   * scale moved down to `scaleRef`. `project()` still reads `groupRef`, which
+   * is the anchor point — unaffected by the restructure.
+   */
+  const rigRef = useRef<THREE.Group>(null);
+  const scaleRef = useRef<THREE.Group>(null);
   const innerRef = useRef<THREE.Group>(null);
+  /** The traverse band this island reads, or null when nothing owns it. */
+  const traverseRef = useRef<TraverseFrame | null>(null);
+  /** R1 clock instrument: frames consumed while the DOM's clock advanced. */
+  const glFrames = useRef(0);
+  /**
+   * R1 baselines. The gate is `|Δdom − Δgl| === 0` over a window, so the reset
+   * has to zero BOTH counters *from one call* — and this island cannot zero the
+   * DOM's, because `frame.tick` is re-written from `apply()`'s own monotone
+   * counter on the very next frame. So the reset takes a BASELINE of each and
+   * the getter reports the deltas; the pair is then comparable no matter where
+   * in the act the reset happened.
+   */
+  const glBase = useRef(0);
+  const domBase = useRef(0);
+  const lastSeenScroll = useRef(Number.NaN);
+  /** The DPR ceiling this island armed (so it only ever releases its own). */
+  const armedDprCap = useRef<number | null>(null);
+  /** True while the mask lane is being driven per frame by the traverse. */
+  const laneDriven = useRef(false);
   const scratch = useRef(new THREE.Vector3());
   const revealDamped = useRef(0);
   const clock = useRef(0);
@@ -348,36 +455,151 @@ export function NeuralLattice({
 
   useFrame((_, rawDelta) => {
     const group = groupRef.current;
+    const rig = rigRef.current;
+    const scaleGroup = scaleRef.current;
     const inner = innerRef.current;
-    if (!group || !inner || !rect || !build) return;
+    if (!group || !rig || !scaleGroup || !inner || !rect || !build) return;
     const delta = Math.min(rawDelta, 1 / 30);
 
     const ih = size.height;
     const vw = size.width;
     const k = WORLD_VIEW_HEIGHT / ih;
-    const scrollY = window.scrollY;
+
+    // --- ROUND 11: the traverse snapshot ------------------------------------
+    // ⚠ ONE FROZEN `scrollY`, READ BY ALL. When a band owns this island the
+    // VERTICAL comes from the same snapshot the DOM copy's LATERAL came from —
+    // recomputing it from `window.scrollY` here would put the net's y and the
+    // net's x on two different reads of the same clock, and under a windowed
+    // copy rate that is the shear the whole design exists to avoid. Off-band
+    // (or unarmed) it falls back to today's read, byte-for-byte.
+    let tv = traverseRef.current;
+    if (!tv) {
+      tv = useTraverseStore.getState().bands[anchorId] ?? null;
+      traverseRef.current = tv;
+    }
+    const onBand = !!tv && tv.active;
+    const scrollY = onBand ? tv!.scrollY : window.scrollY;
+    const lateralPx = onBand ? tv!.xScenePx : 0;
+    if (onBand && scrollY !== lastSeenScroll.current) {
+      lastSeenScroll.current = scrollY;
+      glFrames.current++;
+    }
+
+    // Act DPR cap (§6.3): the traverse's load FALLS through the act, so the
+    // performance monitor's natural response is to CLIMB dpr mid-film — and
+    // every climb reallocates the swapchain + the PostFX targets, i.e. a hitch
+    // inside a cinematic beat. Freeze the ceiling for the duration; a genuine
+    // decline can still drop it, which is correct. One cap per act, never per
+    // beat, and we only ever release the cap we ourselves armed.
+    if (tv) {
+      const tier = useTierStore.getState();
+      if (onBand && armedDprCap.current === null && traverseConfig.dprCap) {
+        const capped = gl.getPixelRatio();
+        armedDprCap.current = capped;
+        tier.setDprCap(capped);
+      } else if (!onBand && armedDprCap.current !== null) {
+        if (tier.dprCap === armedDprCap.current) tier.setDprCap(null);
+        armedDprCap.current = null;
+      }
+    }
 
     const vpTop = rect.docTop - scrollY;
     const cx = rect.cxBase;
     const cy = vpTop + rect.h / 2;
+    // Hoisted from the uniform-drive block below: the mask lane is now
+    // written ABOVE the culls (see the note there), so it needs `u` first.
+    const u = build.uniforms;
+
+    // --- ROUND 11 — THE MASK LANE TRACKS THE COPY ---------------------------
+    // A half-plane gate swept 1.70 band widths goes degenerate (it dims the
+    // whole cloud at one end of the act and nothing at the other), so the gate
+    // is a two-sided LANE centred on the copy. The centre comes from the
+    // block's FINAL APPLIED `x`, published in the same frame by the same
+    // window — never a linearised α, never a separate integrator, never a
+    // damper: a lane driven at α_read while the copy runs at α_edge walks
+    // 292 px off the text, 7.7× the tolerance, worst exactly at the top and
+    // bottom of the frame where the eye first lands.
+    //
+    // ONE WINDOW, THREE OUTPUTS: `laneWindow` (V̂) drives the copy's opacity in
+    // the DOM and, here, the lane's WIDTH, its SOFTNESS and its DEPTH. At
+    // V̂ = 1 all three are the shipped values exactly; at V̂ = 0 the lane has
+    // zero width, zero ramp and a floor of 1, i.e. the gate is fully OPEN —
+    // which is what the copy-free stretches of the act need (§E4) and what
+    // makes the whole transition C¹ rather than a pop.
+    //
+    // ⚠ THIS RUNS BEFORE THE CULLS, DELIBERATELY. It used to sit down with the
+    // other uniform writes, below both `return`s — and a band is ALWAYS culled
+    // at the moment `onBand` flips false (the band lives inside the section, so
+    // it leaves the frame first), which made the restore branch unreachable and
+    // left the gate parked on a 0.41-wide stripe wherever the copy last was.
+    // Latent while the band is invisible; live the moment the traverse is torn
+    // down off-frame (a runtime reduced-motion toggle) and the band comes back
+    // with a stale lane. Five float writes is the right price for a state
+    // machine that cannot get stuck.
+    if (onBand && traverseConfig.laneEnabled) {
+      laneDriven.current = true;
+      const v = tv!.laneWindow;
+      const bandW = Math.max(rect.w, 1);
+      u.uCopyLaneC.value = (tv!.laneCenterPx - cx - lateralPx) / bandW;
+      u.uCopyLaneW.value = (tv!.laneHalfPx / bandW + COPY_EDGE_PAD) * v;
+      u.uCopySoft.value = COPY_RAMP_SOFT * v;
+      u.uCopyFloor.value = 1 + (COPY_MASK_FLOOR - 1) * v;
+      u.uCopyLineFloor.value = 1 + (COPY_MASK_FLOOR_LINE - 1) * v;
+    } else if (laneDriven.current) {
+      // Edge only (never per frame): the band left the traverse's range, so
+      // hand the gate back to the shipped half-plane and the shipped floors
+      // rather than leaving it parked wherever the copy last was.
+      laneDriven.current = false;
+      u.uCopyLaneC.value = rect.copyEdge + COPY_EDGE_PAD - COPY_LANE_OPEN_W;
+      u.uCopyLaneW.value = COPY_LANE_OPEN_W;
+      u.uCopySoft.value = COPY_RAMP_SOFT;
+      u.uCopyFloor.value = COPY_MASK_FLOOR;
+      u.uCopyLineFloor.value = COPY_MASK_FLOOR_LINE;
+    }
 
     if (vpTop + rect.h < -CULL_PAD || vpTop > ih + CULL_PAD) {
       group.visible = false;
       return;
+    }
+    // ROUND 11 — the LATERAL cull (§5.4b). Every mesh here is
+    // `frustumCulled={false}` (which is what makes the rig safe against a
+    // stale bounding sphere), so a band that has travelled 1.5 screens
+    // off-frame would otherwise keep submitting ~9000 sprites and a
+    // 227-segment LineSegments every frame. Two comparisons, no allocation.
+    if (lateralPx !== 0) {
+      const cxNow = cx + lateralPx;
+      if (
+        cxNow + rect.w / 2 < -CULL_PAD ||
+        cxNow - rect.w / 2 > vw + CULL_PAD
+      ) {
+        group.visible = false;
+        return;
+      }
     }
     group.visible = true;
 
     // Camera-locked placement of the OUTER group, scaled to the anchor rect.
     const wWorld = rect.w * k;
     const hWorld = rect.h * k;
-    const zWorld = hWorld * NEURAL_DEPTH_SCALE_FACTOR;
+    // ⚠ A band the traverse owns has a VIEWPORT-relative height, so its depth
+    // is measured against WORLD_VIEW_HEIGHT and `ih` cancels: zWorld = 9.6215
+    // at every viewport and every runway, instead of tracking an anchor box
+    // that a 6.1-viewport runway would push to 68.26 (nodes behind the
+    // camera). Every other band keeps the shipped formula byte-for-byte.
+    const zWorld = tv
+      ? WORLD_VIEW_HEIGHT * NEURAL_DEPTH_VIEWPORT_SPAN
+      : hWorld * NEURAL_DEPTH_SCALE_FACTOR;
     scratch.current
       .set((cx - vw / 2) * k, (ih / 2 - cy) * k, -CAMERA_Z)
       .applyQuaternion(camera.quaternion)
       .add(camera.position);
     group.position.copy(scratch.current);
     group.quaternion.copy(camera.quaternion);
-    group.scale.set(wWorld, hWorld, zWorld);
+    // The rig translates in WORLD units, OUTSIDE the anisotropic scale, using
+    // the SAME `k` that placed the group — so the conversion constant is
+    // written exactly once and `L = X·k` needs no fudge factor.
+    rig.position.x = lateralPx * k;
+    scaleGroup.scale.set(wWorld, hWorld, zWorld);
 
     // Arrival ramp: assemble when the READER arrives (same shape as the
     // lattice build this replaces — scrollStore.reveal gated by a per-section
@@ -555,7 +777,6 @@ export function NeuralLattice({
     inner.position.z = Math.sin(t * 0.21) * NEURAL_Z_BREATHE;
 
     // --- Drive the field uniforms -------------------------------------------
-    const u = build.uniforms;
     u.uTime.value = t;
     u.uReveal.value = revealDamped.current;
     u.uSurgeT.value = s.t;
@@ -594,6 +815,7 @@ export function NeuralLattice({
     // Aspect correction for both quad layers (screen-circular discs inside
     // the (w·k, h·k)-scaled group). Pure math on the cached rect.
     u.uPlaneAspect.value = rect.h / Math.max(rect.w, 1);
+
     if (!broken) {
       for (let i = 0; i < CLUSTER_COUNT; i++) {
         // Seal latch: the first ignition (bumpCluster or a surge crossing —
@@ -736,12 +958,16 @@ export function NeuralLattice({
           lineRowGain: u.uLineRowGain.value,
           dustAlpha: u.uDustAlpha.value,
           beadAlpha: u.uBeadAlpha.value,
-          // ROUND 9-B — the copy-column mask. copyEdge is DRIVER-WRITTEN on
-          // every measure (it is the measured `[data-row-body]` right bound +
-          // COPY_EDGE_PAD, reported raw as copyEdgeMeasured); a console write
-          // survives until the next resize/measureVersion bump. Set copyFloor /
-          // copyLineFloor / copyYFloor to 1 for exactly the round-8-I look.
-          copyEdge: u.uCopyEdge.value,
+          // ROUND 9-B / 11 — the copy mask, now a LANE. On an un-traversed
+          // band the pair is DRIVER-WRITTEN per measure and is exactly the
+          // shipped half-plane (`copyEdgeEquivalent` reports where that
+          // half-plane's edge sits); on a traversed one it is written per
+          // frame from the tracked block's applied `x`, so a console write
+          // there survives one frame. Set copyFloor / copyLineFloor /
+          // copyYFloor to 1 for exactly the round-8-I look.
+          copyLaneC: u.uCopyLaneC.value,
+          copyLaneW: u.uCopyLaneW.value,
+          copyEdgeEquivalent: u.uCopyLaneC.value + u.uCopyLaneW.value,
           copyEdgeMeasured: rect?.copyEdge ?? null,
           copySoft: u.uCopySoft.value,
           copyFloor: u.uCopyFloor.value,
@@ -778,44 +1004,112 @@ export function NeuralLattice({
         const v = g.position.clone().project(camera);
         return [((v.x + 1) / 2) * size.width, ((1 - v.y) / 2) * size.height];
       },
+      /**
+       * ROUND 11 QA — the numbers the Stage 1 gates are stated in.
+       *  R2  `zWorld` must read 9.62 ± 0.05 and `minNodeDist` ≥ 10.0 at EVERY
+       *      viewport, including 390×844.
+       *  R1  `domFrames` and `glFrames` must be EQUAL on every frame across a
+       *      3000 px/s flick — the gate is a skew of 0.
+       *  R7  `laneCentrePx` must equal the tracked block's applied `x` to
+       *      < 2 px (against a 38 px tolerance).
+       */
+      get traverse() {
+        const g = scaleRef.current;
+        const zWorld = g ? g.scale.z : 0;
+        const nodeZ = zWorld * PLEXUS_RZ;
+        const frame = traverseRef.current;
+        return {
+          bound: !!frame,
+          active: !!frame && frame.active,
+          p: frame ? frame.p : 0,
+          xScenePx: frame ? frame.xScenePx : 0,
+          lWorld: rigRef.current ? rigRef.current.position.x : 0,
+          zWorld,
+          minNodeDist: CAMERA_Z - nodeZ,
+          maxNodeDist: CAMERA_Z + nodeZ,
+          laneWindow: frame ? frame.laneWindow : 0,
+          laneCentrePx: frame ? frame.laneCenterPx : 0,
+          laneHalfPx: frame ? frame.laneHalfPx : 0,
+          laneCentreLocal: build ? build.uniforms.uCopyLaneC.value : 0,
+          /** The lane centre converted back to viewport px — compare this to
+           * the tracked block's `left + x + width/2` (R7c, < 2 px). */
+          laneCentreBackPx: build
+            ? build.uniforms.uCopyLaneC.value * (rect?.w ?? 1) +
+              (rect?.cxBase ?? 0) +
+              (frame ? frame.xScenePx : 0)
+            : 0,
+          domFrames: (frame ? frame.tick : 0) - domBase.current,
+          glFrames: glFrames.current - glBase.current,
+          /** The gate: must be 0 on every frame across a 3000 px/s flick. */
+          skew: Math.abs(
+            (frame ? frame.tick : 0) -
+              domBase.current -
+              (glFrames.current - glBase.current),
+          ),
+          domFramesRaw: frame ? frame.tick : 0,
+          glFramesRaw: glFrames.current,
+          dprCap: armedDprCap.current,
+        };
+      },
+      resetTraverseCounters() {
+        // BASELINE, not zero — see glBase/domBase. Zeroing `frame.tick` here
+        // would be undone on the next `apply()` (the hook's own `domFrames` is
+        // monotone and this island cannot reach it), which made the shipped
+        // reset report a skew equal to however many frames the band had
+        // already been active for. Measured 56 and 64 on two scroll paths that
+        // in fact had a true skew of 0.
+        glBase.current = glFrames.current;
+        domBase.current = traverseRef.current?.tick ?? 0;
+      },
     };
   }
 
   if (!build) return null;
 
+  // ROUND 11 — FOUR levels, not two (mechanism §5.2):
+  //   groupRef  camera-locked position + quaternion, scale STAYS 1
+  //   rigRef    the traverse: a rigid translate in WORLD units, OUTSIDE the
+  //             anisotropic scale so its direction and magnitude are honest at
+  //             every viewport
+  //   scaleRef  the (wWorld, hWorld, zWorld) scale — moved OFF groupRef
+  //   innerRef  the existing auto-orbit + pointer parallax, untouched
   return (
     <group ref={groupRef} renderOrder={-1} visible={false}>
-      <group ref={innerRef}>
-        {/* Round-4 mined-effect layers — same camera-locked frame, behind the
-            particles (additive → ordering is cosmetic, never occluding). */}
-        {build.membrane && (
-          <mesh
-            geometry={build.membrane.geometry}
-            material={build.membrane.material}
-            renderOrder={-2}
-            frustumCulled={false}
-          />
-        )}
-        {build.nebula && (
-          <mesh
-            geometry={build.nebula.geometry}
-            material={build.nebula.material}
-            renderOrder={-2}
-            frustumCulled={false}
-          />
-        )}
-        {/* ROUND-8-G — the plexus LINKS, as real line geometry: ONE
-            LineSegments (one draw call) built from the same getPlexus tables
-            the particles read, mounted with <primitive> exactly like
-            CrystalCluster mounts crystalPlexus's net. renderOrder / culling
-            are set on the object in the build. */}
-        <primitive object={build.links.object} />
-        <mesh
-          geometry={build.geometry}
-          material={build.material}
-          renderOrder={-1}
-          frustumCulled={false}
-        />
+      <group ref={rigRef}>
+        <group ref={scaleRef}>
+          <group ref={innerRef}>
+            {/* Round-4 mined-effect layers — same camera-locked frame,
+                behind the particles (additive → ordering is cosmetic). */}
+            {build.membrane && (
+              <mesh
+                geometry={build.membrane.geometry}
+                material={build.membrane.material}
+                renderOrder={-2}
+                frustumCulled={false}
+              />
+            )}
+            {build.nebula && (
+              <mesh
+                geometry={build.nebula.geometry}
+                material={build.nebula.material}
+                renderOrder={-2}
+                frustumCulled={false}
+              />
+            )}
+            {/* ROUND-8-G — the plexus LINKS, as real line geometry: ONE
+                LineSegments (one draw call) built from the same getPlexus
+                tables the particles read, mounted with <primitive> exactly
+                like CrystalCluster mounts crystalPlexus's net. renderOrder /
+                culling are set on the object in the build. */}
+            <primitive object={build.links.object} />
+            <mesh
+              geometry={build.geometry}
+              material={build.material}
+              renderOrder={-1}
+              frustumCulled={false}
+            />
+          </group>
+        </group>
       </group>
     </group>
   );

@@ -7,6 +7,7 @@ import { useNeuralLatticeFallback } from "@/components/fx/use-neural-lattice-fal
 import { NeuralGraphFallback } from "@/components/fx/neural-graph-fallback";
 import { RollLetters } from "@/components/fx/roll-letters";
 import { useLedgerIgnition } from "@/components/fx/use-ledger-ignition";
+import { useDiagonalTraverse } from "@/components/fx/use-diagonal-traverse";
 import {
   useChapterReveal,
   useLedgerReveal,
@@ -271,6 +272,46 @@ const PLROW_CSS = `
   }
   .plrow__index { transition: none; }
 }
+
+/* === THE DIAGONAL TRAVERSE — ROUND 11 STAGE 1 (file-scoped, no globals.css
+   edits). Everything below the first rule is inert until useDiagonalTraverse
+   sets [data-traverse], so SSR / no-JS / reduced-motion / fallback-tier keep
+   today's document px for px (the D-10 rule: no primed pose in a className).
+
+   overflow-x: CLIP, not hidden (mechanism §3.1). "hidden" makes the section a
+   scroll CONTAINER, so tabbing to a row translated off-frame lets the browser
+   silently set section.scrollLeft and shear the composition — a bug this repo
+   has already patched twice elsewhere. "clip" creates no scroll container at
+   all, so that failure is structurally impossible; it also does not coerce the
+   other axis the way overflow-x: hidden does, and it would not defeat a future
+   position: sticky descendant. The full-bleed band is still trimmed exactly as
+   overflow-hidden trimmed it.
+
+   THE BAND IS PINNED TO THE VIEWPORT, and that is load-bearing: the anchor is
+   "inset-y-0" of the rows stack, so the runway growth would otherwise inflate
+   rect.h — and rect.h drives the net's depth, the net's rendered aspect, the
+   stone's size (1677 px, 186 % of the viewport, at a 4392 px band), the
+   stone's tumble scalar and the fog radius. Pinning it (mechanism §4.4-b)
+   keeps the 4392 px catastrophe away. It does NOT keep today's value at every
+   viewport — measured, it reproduces HEAD only at 1280×720 (619.0 vs 618.8)
+   and re-bases the band by +20.6 % at 1440×900, +50.4 % at 390×844 and
+   +70.8 % at 768×1024, moving the stone and uPlaneAspect with it. See
+   traverseConfig's header for the table and for mechanism §4.4-c, the fix that
+   would hold everywhere. 0.8597 = 619/720, the 1280×720 reference. */
+#problem {
+  overflow-x: clip;
+  overflow-y: visible;
+}
+#problem[data-traverse] {
+  --tv-gap: calc(var(--tv-gap-vh, 0) * 100svh);
+}
+#problem[data-traverse] [data-traverse-stack] { margin-top: var(--tv-gap); }
+#problem[data-traverse] .plrow + .plrow { margin-top: var(--tv-gap); }
+#problem[data-traverse] [data-traverse-tail] { height: var(--tv-gap); }
+#problem[data-traverse] [data-lattice-anchor] {
+  bottom: var(--tv-band-bottom, 0px);
+  height: var(--tv-band-h, auto);
+}
 `;
 
 /** Ghost callout placement — HISTORIC stream-v3 WEAVE values (the broken
@@ -331,6 +372,13 @@ export default function ProblemSection() {
   useChapterReveal(chapterRef, language);
   useLedgerReveal(rowRef, language);
   useTextDrift(sectionRef, language);
+  // ROUND 11 STAGE 1 — the diagonal traverse. Owns the `x` + `opacity` of the
+  // SAME `[data-drift]` wrappers useTextDrift owns the `y` of (three drivers,
+  // three properties, never a shared one). Armed only when the WebGL island is
+  // the one carrying the band — `!showFallback` is the exact complement of the
+  // island's mount gate, and sliding a static SVG 1.5 screens sideways would
+  // be worse than not arming.
+  useDiagonalTraverse(sectionRef, "problem", !showFallback, language);
 
   return (
     <section
@@ -349,7 +397,11 @@ export default function ProblemSection() {
       // its section-top edge the floating horizontal line after the plunge
       // landing. Removal also IMPROVES contrast (§B.5: ink-mute over the
       // tint core was 1.9:1 — failing AA — vs 6.1:1 on plain bg).
-      className="relative section-lg scroll-mt-24 overflow-hidden"
+      // Round 11: `overflow-hidden` moved into the file-scoped style block as
+      // `overflow-x: clip; overflow-y: visible` — same clip of the full-bleed
+      // band, without creating the scroll container that lets a keyboard focus
+      // shear the composition (mechanism §3.1/§3.3).
+      className="relative section-lg scroll-mt-24"
     >
       <style>{PLROW_CSS}</style>
       <div className="container-px relative">
@@ -364,7 +416,7 @@ export default function ProblemSection() {
             ref={chapterRef}
             className="grid gap-6 lg:grid-cols-[1fr_minmax(320px,30rem)] lg:items-end lg:gap-12"
           >
-            <div data-drift="0.5">
+            <div data-drift="0.5" data-traverse-alpha="display">
               {/* Plain `.eyebrow` (no [data-eyebrow-text]) → the global
                   LabelScrambler owns its decode reveal. */}
               <p className="eyebrow mb-5 inline-flex items-center gap-2 text-ink-mute">
@@ -413,7 +465,7 @@ export default function ProblemSection() {
                 Revealed in B3 spirit after the title; drifts at k=1.25. */}
             {/* max-sm 0.9rem: §Mobile budget trim (W2 scale-up overshot 390×844
                 by ~90px) — body scale on desktop, one step down on phones. */}
-            <div data-drift="1.25">
+            <div data-drift="1.25" data-traverse-alpha="body">
               <p
                 data-chapter-desc
                 className="max-w-[34em] text-[clamp(1rem,1.2vw,1.3rem)] max-sm:text-[0.9rem] leading-[1.5] text-ink-mute"
@@ -431,7 +483,11 @@ export default function ProblemSection() {
             `isolate` pins the negative-z band inside this container so it
             paints below every row (the section wash it once sat above was
             removed round 7-3). */}
-        <div ref={rowRef} className="relative isolate mt-4 sm:mt-12">
+        <div
+          ref={rowRef}
+          data-traverse-stack
+          className="relative isolate mt-4 sm:mt-12"
+        >
           {/* The WebGL anchor rect — the stream is camera-locked to this box
               (persistent canvas paints behind the DOM). Full-bleed: the x
               inset escapes the container gutter to the viewport edges (the
@@ -504,7 +560,7 @@ export default function ProblemSection() {
                   same element. The EFFECT word (solid amber since round 10)
                   rolls like the cause and carries the wave clip escape
                   (inset(0 -2em)). */}
-              <div data-drift={rowDriftK(i)}>
+              <div data-drift={rowDriftK(i)} data-traverse-alpha="display">
                 <h3 className="font-display text-[clamp(1.9rem,3.6vw,3.9rem)] leading-[1.05] tracking-[-0.01em] text-ink">
                   <span
                     data-row-rise
@@ -544,7 +600,11 @@ export default function ProblemSection() {
                   The row now moves as ONE plane; the depth is between rows.
                   max-sm 0.875rem/1.45 + mt-3: §Mobile budget trim (still body
                   Switzer, clearly not a caption). */}
-              <div data-drift={rowDriftK(i)} className="mt-3 sm:mt-5">
+              <div
+                data-drift={rowDriftK(i)}
+                data-traverse-alpha="body"
+                className="mt-3 sm:mt-5"
+              >
                 <p
                   key={language}
                   data-row-body
@@ -563,6 +623,11 @@ export default function ProblemSection() {
             </article>
           ))}
         </div>
+        {/* Round 11 runway tail — the last authored gap of the traverse's
+            vertical runway. Zero-height (and therefore invisible) until
+            [data-traverse] arms; it sits OUTSIDE the rows stack so it can
+            never enter the `[data-lattice-anchor]` box. */}
+        <div data-traverse-tail aria-hidden="true" />
       </div>
     </section>
   );
