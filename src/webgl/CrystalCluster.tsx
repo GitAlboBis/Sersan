@@ -495,6 +495,15 @@ export function CrystalCluster({
           spotGain: u.uSpotGain.value,
           drift: u.uDrift.value,
           shardSpin: u.uShardSpin.value,
+          // round-7 realism pass (crystalBuild header):
+          bodyDarken: u.uBodyDarken.value,
+          specPow: u.uSpecPow.value,
+          specGain: u.uSpecGain.value,
+          fillGain: u.uFillGain.value,
+          facetJit: u.uFacetJit.value,
+          caEdge: u.uCAEdge.value,
+          sparkleGain: u.uSparkleGain.value, // dead node on lite builds
+          frostAmp: u.uFrostAmp.value, // dead node on lite builds
         };
       },
     };

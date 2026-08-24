@@ -25,10 +25,12 @@
  * squash / noise displacement).
  *
  * BINDING BUDGET: zero storage buffers, zero textures (hash/value noise
- * in-shader — the no-textures contract). Vertex-buffer slots: broken uses 4
- * (position, normal, aCentr, aRand), healthy 2 — well inside the 8-slot wall
- * (gpgpuNodeSim.ts). No compute: the same node material compiles on the
- * WebGL2 fallback backend of three/webgpu.
+ * in-shader — the no-textures contract). Vertex-buffer slots: broken uses 5
+ * (position, normal, aCentr, aRand, aFacet), healthy 3 (position, normal,
+ * aFacet) — well inside the 8-slot wall (gpgpuNodeSim.ts). aFacet (round 7)
+ * is a per-FACE random vec3, constant across each triangle of the non-indexed
+ * soup — attributes are vertex-buffer slots, NOT bindings. No compute: the
+ * same node material compiles on the WebGL2 fallback backend of three/webgpu.
  */
 import type { LatticeMode } from "./neuralLatticeConfig";
 
@@ -56,14 +58,39 @@ export const SHARD_DETAIL_LITE = 3;
 export const SHARD_COUNT = 8;
 export const SHARD_COUNT_LITE = 6;
 /** 2-octave fractal displacement: n = noise(p·FREQ) + AMP2·noise(p·FREQ·2.1)
- * (lite drops the second octave), radius ×(1 + AMP·n). Igloo numbers. */
+ * (lite drops the second octave), radius ×(1 + AMP·n). Round 7 (igloo realism
+ * pass, §5 silhouette): low octave AMPLIFIED 0.25→0.34 and micro octave
+ * FLATTENED 0.5→0.22 — the washed "bland pebble" read came from micro-noise
+ * eating the big angular moves. */
 export const CRYSTAL_NOISE_FREQ = 1.6;
-export const CRYSTAL_NOISE_AMP = 0.25;
-export const CRYSTAL_NOISE_AMP2 = 0.5;
+export const CRYSTAL_NOISE_AMP = 0.34;
+export const CRYSTAL_NOISE_AMP2 = 0.22;
+/** Round 7 — TERRACED low octave: the low-frequency noise is quantized into
+ * QUANT ledges per noise unit and blended in by MIX, so the silhouette gets
+ * chiseled voronoi-ish plateaus (hard value ledges between vertex rings)
+ * instead of a smooth potato. Deterministic f(position) → coincident soup
+ * vertices still displace identically (no cracks). */
+export const CRYSTAL_FACET_QUANT = 2.5;
+export const CRYSTAL_FACET_MIX = 0.65;
 /** Shard-silhouette squash of the intact crystal (dossier: (1, 1.45, 0.85)). */
 export const CRYSTAL_SQUASH: [number, number, number] = [1, 1.45, 0.85];
 /** Per-shard icosahedron radius (crystal units) before displacement. */
 export const SHARD_RADIUS = 0.62;
+/** Round 7 — per-shard SIZE VARIANCE (§5): radius multiplier per shard index
+ * so the broken cluster reads as a real fractured meteorite family — 2 large
+ * bodies + mids + small chips — instead of 8 equal pebbles. The lite build
+ * (SHARD_COUNT_LITE=6) keeps the first 6 → still 2 large + mid + chips.
+ * BROKEN_CALLOUT_SHARDS [1,3,5] land on large/mid/chip — all visible sizes.
+ * NOTE the centroid RADIUS is no longer size-independent (CHIP_SCATTER
+ * stretches chip centroids below), but the callout-anchor twin stays exact by
+ * construction: the driver reads build.shardCentrs, pushed from the SAME
+ * `centr` that translates the shard verts and fills aCentr — one source. */
+export const SHARD_SIZES: readonly number[] = [
+  1.45, 1.22, 0.95, 0.78, 0.6, 0.5, 0.42, 0.36,
+];
+/** Round 7 — chips fling further than bodies: spread ×(1 + (1−size)·this)
+ * for sizes < 1 (large shards keep the mined spread). */
+export const CHIP_SCATTER = 0.35;
 /** Shard centroid distance from the cluster center: MIN + rnd·(MAX−MIN),
  * golden-spiral directions, then squashed by CRYSTAL_SQUASH so the cluster
  * keeps the intact crystal's tall silhouette. */
@@ -86,7 +113,14 @@ export const SHARD_SPIN = 0.15;
 
 // --- Material — TSL fake transmission (igloo WL numbers, dossier §2) --------
 export const CRYSTAL_IOR = 1.18;
-export const CRYSTAL_CA = 0.1; // uChromaticAberration
+/** Round 7 — dispersion visibility up (igloo's fringes are clearly visible):
+ * base uCA 0.1→0.16; igloo's 0.1 rode a real screen RT, our low-frequency
+ * procedural backdrop needs more per-channel eta spread to show fringes. */
+export const CRYSTAL_CA = 0.16; // uChromaticAberration
+/** Round 7 — fresnel-weighted CA boost: effective CA = uCA·(1 + fres·this),
+ * so the fringes concentrate on the SILHOUETTE (igloo's read) while the body
+ * stays coherent. Dev-tunable (uCAEdge). */
+export const CA_EDGE_BOOST = 2.5;
 export const CRYSTAL_THICKNESS = 2.0; // refraction-offset scale
 export const CRYSTAL_ROUGH = 0.6;
 /** Dispersion samples: 3 full / 1 lite (igloo AWESOME_SAMPLES=3). */
@@ -94,33 +128,112 @@ export const CRYSTAL_SAMPLES = 3;
 export const CRYSTAL_SAMPLES_LITE = 1;
 /** How far the refracted direction's view-xy shifts the backdrop coordinate
  * per unit thickness (the "screen sample offset" of the mined loop, re-scoped
- * to the procedural backdrop's coordinate space). */
-export const REFR_OFFSET_SCALE = 0.35;
+ * to the procedural backdrop's coordinate space). Round 7: 0.35→0.45 — more
+ * visible bend so tumbling actually swims the internal world. */
+export const REFR_OFFSET_SCALE = 0.45;
 /** Backdrop coordinate scale over the crystal-local xy. */
 export const BACKDROP_COORD_SCALE = 0.4;
 /** Procedural refraction backdrop — the structural substitution for igloo's
  * transmission RT: navy diagonal gradient, noise-modulated like the mined
- * `diagonalGradient`, with two soft cyan bloom spots. NO RT, NO textures. */
-export const BACKDROP_NAVY = "#0B1422";
-export const BACKDROP_NAVY2 = "#16233a";
+ * `diagonalGradient`, with two soft cyan bloom spots. NO RT, NO textures.
+ * Round 7 — CONTRAST UP so refraction has something to bend: deeper navy
+ * floor (#0B1422→#060D18), brighter ceiling (#16233A→#1C2E4E). */
+export const BACKDROP_NAVY = "#060D18";
+export const BACKDROP_NAVY2 = "#1C2E4E";
 export const BACKDROP_CYAN = "#3BE1FF";
 /** Two bloom spots: [x, y, gaussian sharpness] in backdrop-coordinate units
- * + the shared additive gain (sub-1.0 — the spots glow, never bloom). */
+ * + the shared additive gain (sub-1.0 — the spots glow, never bloom).
+ * Round 7: sharper (2.2/3.0→4.0/5.5) + brighter (0.45→0.75, peak channel
+ * still 0.75 < 1.0) — crisp internal highlights the dispersion can split. */
 export const BACKDROP_SPOTS: readonly [number, number, number][] = [
-  [0.55, 0.35, 2.2],
-  [-0.6, -0.5, 3.0],
+  [0.55, 0.35, 4.0],
+  [-0.6, -0.5, 5.5],
 ];
-export const BACKDROP_SPOT_GAIN = 0.45;
-/** Facet key-light response (view-space fixed direction) — sells the flat
- * shading without a real light rig. */
+export const BACKDROP_SPOT_GAIN = 0.75;
+
+// --- Round 7 — 2-lobe procedural environment (realism pass §1) --------------
+/** Key lobe direction (view-space fixed) — the soft white-cyan "sun". */
 export const FACET_KEY_DIR: [number, number, number] = [0.42, 0.62, 0.66];
-/** Fresnel rim: base glow + the >1.0 ignition flash (selective-bloom
- * contract — only the flashed rim crosses the threshold). */
+/** Fill lobe direction (view-space fixed) — cool navy from low-left-front. */
+export const FACET_FILL_DIR: [number, number, number] = [-0.45, -0.4, 0.55];
+/** Lobe colors — white-cyan key / navy fill (NO violet, round-7 contract). */
+export const FACET_KEY_COLOR = "#D8F4FF";
+export const FACET_FILL_COLOR = "#14283F";
+/** Key lobe: specular-ish pow(max(dot(N,H),0), SPEC_POW) with a LOWISH
+ * exponent (real spread — whole facets flash, not pinpricks) × SPEC_GAIN.
+ * Dev-tunable (uSpecPow / uSpecGain). */
+export const SPEC_POW = 14.0;
+export const SPEC_GAIN = 1.15;
+/** Fill lobe gain on max(dot(N, FILL), 0) — dev-tunable (uFillGain). */
+export const FILL_GAIN = 0.5;
+/** Per-FACET normal tilt (view-space, from the baked aFacet random) fed to
+ * the key lobe only — facets catch the sun independently, the #1 flatness
+ * killer. Dev-tunable (uFacetJit). */
+export const FACET_JITTER = 0.35;
+/** Per-facet key-lobe brightness jitter span: amp = 1−span/2 + span·rand —
+ * the mineral sparkle igloo's roughness map provides. */
+export const FACET_SPEC_JIT = 0.8;
+/** Per-facet BODY value jitter: body ×(0.85 + this·rand) — value separation
+ * survives even where the key lobe misses. */
+export const FACET_VALUE_JIT = 0.3;
+/** Round 7 — dark glass body (§2): transmitted color × this. The stone reads
+ * DARKER than the backdrop mid-tone (the "meteorite" read); brightness comes
+ * from lobes/rim/glints instead. Dev-tunable (uBodyDarken). */
+export const BODY_DARKEN = 0.5;
+
+// --- Round 7 — sparkle glints (igloo's triangle-sparkle layer, §3) ----------
+/** Hash-cell frequency over crystal-local position (cells ≈ 1/15 unit). */
+export const SPARKLE_FREQ = 15.0;
+/** Per-cell micro-normal spread around the facet normal. */
+export const SPARKLE_TILT = 0.8;
+/** Glint alignment exponent (view/normal/light gate) — high & tight. */
+export const SPARKLE_POW = 90.0;
+/** Fraction of cells DISABLED (gate = smoothstep(this, this+.08, hash)) —
+ * sparse: a few winks per second, not glitter. */
+export const SPARKLE_DENSITY = 0.72;
+/** Slow time wink (rad/s phase per cell) so glints breathe even at rest. */
+export const SPARKLE_TWINKLE = 1.7;
+/** Glint intensity — >1.0 so single pixels bloom. Dev-tunable
+ * (uSparkleGain); the lite build never compiles the sparkle branch. */
+export const SPARKLE_GAIN = 3.5;
+
+// --- Round 7 — frost grain (internal structure, §4) -------------------------
+/** 3D value-noise frequency over crystal-local position — vein scale. */
+export const FROST_FREQ = 5.5;
+/** Master frost amplitude (signed noise ×this) — dev-tunable (uFrostAmp);
+ * 0 = uniform glass. Lite never compiles the frost octave. */
+export const FROST_AMP = 1.0;
+/** Frost → roughness modulation: roughEff = rough·(1 + frost·this). */
+export const FROST_ROUGH_K = 0.9;
+/** Frost → thickness modulation (refraction depth veins). */
+export const FROST_THICK_K = 0.8;
+/** Frost → body density veining: body ×(1 + frost·this). */
+export const FROST_DENSITY_K = 0.55;
+
+/** Fresnel rim. Round 7 (§2): RIM_BASE 0.55→1.6 — the GRAZING rim now crosses
+ * 1.0 into bloom on its own (dark body, bright dispersive edges — the igloo
+ * read); the ignition flash still pushes far beyond. 1.6 (not 1.1): the bloom
+ * high-pass thresholds Rec709 LUMINANCE (0.2126/0.7152/0.0722 — BloomNode),
+ * not max-channel, and the framebuffer sees col×alpha (normal blending over
+ * the transparent clear). Whitened rim lum ≈ 0.79 at f1=1, so post-blend
+ * lum = RIM_BASE·0.79·0.94 → 1.1 peaked at 0.82 (never bloomed; its "1.03"
+ * was the blue channel, weighted 0.07); 1.6 crosses 1.0 for the f1 ≳ 0.95
+ * grazing band (peak ≈ 1.19 — restrained) on full AND lite. */
 export const FRESNEL_POW = 3.0;
-export const RIM_BASE = 0.55;
+export const RIM_BASE = 1.6;
 export const RIM_FLASH_GAIN = 2.2;
-/** Body alpha ceiling (the depth fade + reveal ride under it). */
-export const CRYSTAL_ALPHA = 0.92;
+/** Round 7 — per-channel fresnel exponent ratio (R×this / G / B÷this): blue
+ * reaches further inward than red → a spectral dispersion fringe on the
+ * silhouette with zero extra refraction samples. */
+export const RIM_DISPERSION = 1.45;
+/** Round 7 — rim whitening toward extreme grazing: mix(cyan, white,
+ * f·this) — the outermost edge reads white-hot, the inner fringe cyan-blue. */
+export const RIM_WHITEN = 0.45;
+/** Body alpha ceiling (the depth fade + reveal ride under it). Round 7:
+ * 0.92→0.94 — the darker glass body needs a touch more presence so it never
+ * dissolves into the page navy (§6: the rim/glints carry the silhouette;
+ * fade floor 0.94·(1−FADE_MAX) ≈ 0.047 still sits under the 0.05 Discard). */
+export const CRYSTAL_ALPHA = 0.94;
 
 // --- Depth fade (igloo §5 fog-mix, ADAPTED to alpha) ------------------------
 /**

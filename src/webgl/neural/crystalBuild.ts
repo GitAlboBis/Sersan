@@ -8,7 +8,8 @@
  *
  * GEOMETRY (procedural, dossier plan §1; Blender GLB is a later upgrade):
  *   healthy → ONE intact crystal: non-indexed IcosahedronGeometry displaced
- *     CPU-side by 2-octave fractal noise (~0.25 amplitude), squashed
+ *     CPU-side by 2-octave fractal noise (0.34 amplitude, low octave terraced
+ *     — round 7), squashed
  *     (1, 1.45, 0.85) for the shard silhouette, computeVertexNormals AFTER
  *     the squash → per-face FLAT normals (non-indexed), the facets that sell
  *     crystal.
@@ -24,14 +25,30 @@
  * that is GLSL/onBeforeCompile, dead on three/webgpu). The dossier §2 loop
  * with ONE structural substitution: the "screen texture sample" becomes a
  * PROCEDURAL BACKDROP evaluated in-shader at the refracted direction — a navy
- * #0B1422→#16233a diagonal gradient, noise-modulated like the mined
- * `diagonalGradient`, with two soft cyan bloom spots — so there is NO RT, NO
- * second pass, NO texture bindings. 3 samples (1 on lite), per-channel
- * ior·(1 + k·uCA·(i+noise)/3) with k = 0/1/2, thickness smear
- * uThickness·pow(rough, .33), normal jitter rough²·2·normalize(noiseVec);
- * hash noise (the repo's sin-dot family) stands in for igloo's blue-noise
- * texture. Fresnel rim + cyan emissive rim that exceeds 1.0 on ignition (the
- * selective-bloom contract — only the flashed rim trips the threshold).
+ * diagonal gradient, noise-modulated like the mined `diagonalGradient`, with
+ * two sharp cyan bloom spots — so there is NO RT, NO second pass, NO texture
+ * bindings. 3 samples (1 on lite), per-channel ior·(1 + k·CA·(i+noise)/3)
+ * with k = 0/1/2, thickness smear thick·pow(rough, .33), normal jitter
+ * rough²·2·normalize(noiseVec); hash noise (the repo's sin-dot family) stands
+ * in for igloo's blue-noise texture.
+ *
+ * ROUND 7 — the igloo REALISM pass (owner: "not so bland"). All procedural,
+ * zero new bindings (aFacet is a vertex-buffer slot, not a binding):
+ *   1. 2-lobe environment — white-cyan key spec lobe pow(max(dot(N,H),0),
+ *      SPEC_POW) + navy fill, with a baked per-FACE random (aFacet) tilting
+ *      the lobe normal + jittering brightness → per-facet value separation
+ *      (facets flash independently as the crystal tumbles).
+ *   2. Dark glass body (trans × uBodyDarken — darker than the backdrop
+ *      mid-tone) under a BRIGHT rim: RIM_BASE past 1.0 into bloom at grazing,
+ *      per-channel fresnel exponents (RIM_DISPERSION) → spectral fringe, and
+ *      fresnel-boosted CA (uCAEdge) → dispersion concentrated on the
+ *      silhouette.
+ *   3. Sparkle glints — hash cells over vLocal, per-cell micro-normal gated
+ *      on view/normal/light alignment (pow 90) + a slow time wink; gain >1.0
+ *      so single pixels bloom. FULL TIER ONLY.
+ *   4. Frost grain — 3D value noise over vLocal modulating roughness /
+ *      thickness / body density → internal veins instead of uniform glass.
+ *      FULL TIER ONLY (lite keeps the cheap facet lobe, drops sparkle+frost).
  *
  * FOG ADAPTATION (dossier §5): igloo's opaque mix(bg, color, vFade) repaint
  * would paint solid navy over the DOM (our canvas is transparent) — instead
@@ -57,8 +74,12 @@ import {
   CRYSTAL_NOISE_FREQ,
   CRYSTAL_NOISE_AMP,
   CRYSTAL_NOISE_AMP2,
+  CRYSTAL_FACET_QUANT,
+  CRYSTAL_FACET_MIX,
   CRYSTAL_SQUASH,
   SHARD_RADIUS,
+  SHARD_SIZES,
+  CHIP_SCATTER,
   SHARD_SPREAD_MIN,
   SHARD_SPREAD_MAX,
   FRACTURE_REST_GAP,
@@ -66,6 +87,7 @@ import {
   SHARD_SPIN,
   CRYSTAL_IOR,
   CRYSTAL_CA,
+  CA_EDGE_BOOST,
   CRYSTAL_THICKNESS,
   CRYSTAL_ROUGH,
   CRYSTAL_SAMPLES,
@@ -78,9 +100,32 @@ import {
   BACKDROP_SPOTS,
   BACKDROP_SPOT_GAIN,
   FACET_KEY_DIR,
+  FACET_FILL_DIR,
+  FACET_KEY_COLOR,
+  FACET_FILL_COLOR,
+  SPEC_POW,
+  SPEC_GAIN,
+  FILL_GAIN,
+  FACET_JITTER,
+  FACET_SPEC_JIT,
+  FACET_VALUE_JIT,
+  BODY_DARKEN,
+  SPARKLE_FREQ,
+  SPARKLE_TILT,
+  SPARKLE_POW,
+  SPARKLE_DENSITY,
+  SPARKLE_TWINKLE,
+  SPARKLE_GAIN,
+  FROST_FREQ,
+  FROST_AMP,
+  FROST_ROUGH_K,
+  FROST_THICK_K,
+  FROST_DENSITY_K,
   FRESNEL_POW,
   RIM_BASE,
   RIM_FLASH_GAIN,
+  RIM_DISPERSION,
+  RIM_WHITEN,
   CRYSTAL_ALPHA,
   FADE_FROM,
   FADE_TO,
@@ -121,6 +166,23 @@ export interface CrystalUniforms {
   uSpotGain: { value: number };
   uDrift: { value: number };
   uShardSpin: { value: number };
+  // --- round-7 realism tunables (dev-handle surfaced) -----------------------
+  /** Dark-glass body gain on the transmitted color (< 1 = meteorite read). */
+  uBodyDarken: { value: number };
+  /** Key-lobe exponent (lowish — whole facets flash). */
+  uSpecPow: { value: number };
+  /** Key-lobe gain (white-cyan sun). */
+  uSpecGain: { value: number };
+  /** Navy fill-lobe gain. */
+  uFillGain: { value: number };
+  /** Per-facet lobe-normal tilt (aFacet driven). */
+  uFacetJit: { value: number };
+  /** Fresnel CA boost — dispersion concentrated on the silhouette. */
+  uCAEdge: { value: number };
+  /** Sparkle glint gain (>1 blooms; dead node on lite — branch not built). */
+  uSparkleGain: { value: number };
+  /** Frost-grain master amplitude (dead node on lite). */
+  uFrostAmp: { value: number };
 }
 
 export interface CrystalBuild {
@@ -179,8 +241,14 @@ function displaceAndSquash(
     const z = pos.getZ(i);
     const f = CRYSTAL_NOISE_FREQ;
     let n = sNoise3(x * f + seed, y * f + seed * 1.7, z * f + seed * 0.6);
+    // Round 7 (§5 silhouette): terrace the low octave toward quantized
+    // ledges — chiseled angular plateaus instead of a smooth potato.
+    // Deterministic f(position) → coincident soup vertices stay matched.
+    const q = Math.round(n * CRYSTAL_FACET_QUANT) / CRYSTAL_FACET_QUANT;
+    n += (q - n) * CRYSTAL_FACET_MIX;
     if (!lite) {
-      // Second octave — dropped on the lite build (round-5 tier spec).
+      // Second octave — dropped on the lite build (round-5 tier spec);
+      // round 7 flattened its amplitude (micro-noise ate the big moves).
       n +=
         CRYSTAL_NOISE_AMP2 *
         sNoise3(
@@ -192,6 +260,35 @@ function displaceAndSquash(
     const k = 1 + CRYSTAL_NOISE_AMP * n;
     pos.setXYZ(i, x * k * squash[0], y * k * squash[1], z * k * squash[2]);
   }
+}
+
+/**
+ * Round 7 — bake a per-FACE random vec3 (`aFacet`, constant across each
+ * triangle of the non-indexed soup) for the 2-lobe facet response: .x/.y
+ * jitter key-lobe brightness / body value, the full vec3 tilts the lobe
+ * normal. A baked attribute (NOT a hash of an interpolated varying) so the
+ * value is bit-stable across the face — fp jitter through sin-hash would
+ * speckle. One extra vertex-buffer slot, zero bindings.
+ */
+function bakeFacetRand(
+  geometry: Any,
+  BufferAttribute: Any,
+  seed: number,
+): void {
+  const count = geometry.attributes.position.count as number;
+  const arr = new Float32Array(count * 3);
+  for (let fIdx = 0; fIdx * 3 < count; fIdx++) {
+    const r0 = h(fIdx, 17.23 + seed, 91.7);
+    const r1 = h(fIdx, 47.77 + seed, 13.9);
+    const r2 = h(fIdx, 83.13 + seed, 57.3);
+    const base = fIdx * 9;
+    for (let v = 0; v < 3; v++) {
+      arr[base + v * 3] = r0;
+      arr[base + v * 3 + 1] = r1;
+      arr[base + v * 3 + 2] = r2;
+    }
+  }
+  geometry.setAttribute("aFacet", new BufferAttribute(arr, 3));
 }
 
 export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
@@ -251,6 +348,7 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     );
     displaceAndSquash(geometry.attributes.position, 3.7, CRYSTAL_SQUASH, lite);
     geometry.computeVertexNormals(); // non-indexed → per-face flat normals
+    bakeFacetRand(geometry, BufferAttribute, 3.7); // round-7 facet randoms
   } else {
     // FRACTURED CLUSTER — shards merged into one geometry (one draw call).
     const count = lite ? SHARD_COUNT_LITE : SHARD_COUNT;
@@ -274,7 +372,15 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
       const t = (s + 0.5) / count;
       const phi = Math.acos(1 - 2 * t);
       const theta = GOLDEN * s;
-      const rad = SHARD_SPREAD_MIN + r0 * (SHARD_SPREAD_MAX - SHARD_SPREAD_MIN);
+      // Round 7 (§5): fractured-family size variance — 2 large + mid + chips;
+      // chips (size < 1) scatter further than the bodies (the centroid radius
+      // gains the CHIP_SCATTER factor). The callout twin stays exact: this
+      // SAME `centr` translates the verts, fills aCentr AND is pushed to
+      // shardCentrs — the driver never re-derives it from config.
+      const sizeMul = SHARD_SIZES[s % SHARD_SIZES.length];
+      const rad =
+        (SHARD_SPREAD_MIN + r0 * (SHARD_SPREAD_MAX - SHARD_SPREAD_MIN)) *
+        (1 + Math.max(0, 1 - sizeMul) * CHIP_SCATTER);
       const centr: [number, number, number] = [
         Math.sin(phi) * Math.cos(theta) * rad * CRYSTAL_SQUASH[0],
         Math.cos(phi) * rad * CRYSTAL_SQUASH[1] * 1.2,
@@ -282,7 +388,7 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
       ];
       const rand: [number, number, number] = [r0, r1, r2];
 
-      const shard = new IcosahedronGeometry(SHARD_RADIUS, detail);
+      const shard = new IcosahedronGeometry(SHARD_RADIUS * sizeMul, detail);
       displaceAndSquash(
         shard.attributes.position,
         11.3 + s * 9.7,
@@ -326,6 +432,7 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     geometry.setAttribute("normal", new BufferAttribute(mNrm, 3));
     geometry.setAttribute("aCentr", new BufferAttribute(mCentr, 3));
     geometry.setAttribute("aRand", new BufferAttribute(mRand, 3));
+    bakeFacetRand(geometry, BufferAttribute, 11.3); // round-7 facet randoms
   }
 
   // === Uniforms =============================================================
@@ -346,9 +453,22 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
   const uSpotGain = uniform(BACKDROP_SPOT_GAIN);
   const uDrift = uniform(CRYSTAL_IDLE_DRIFT);
   const uShardSpin = uniform(SHARD_SPIN);
+  // Round-7 realism tunables (all in the dev handle).
+  const uBodyDarken = uniform(BODY_DARKEN);
+  const uSpecPow = uniform(SPEC_POW);
+  const uSpecGain = uniform(SPEC_GAIN);
+  const uFillGain = uniform(FILL_GAIN);
+  const uFacetJit = uniform(FACET_JITTER);
+  const uCAEdge = uniform(CA_EDGE_BOOST);
+  const uSparkleGain = uniform(SPARKLE_GAIN);
+  const uFrostAmp = uniform(FROST_AMP);
   const uColNavy = uniform(new Color(BACKDROP_NAVY));
   const uColNavy2 = uniform(new Color(BACKDROP_NAVY2));
   const uColCyan = uniform(new Color(BACKDROP_CYAN));
+  // Lobe colors — plain constants (config-frozen, not uniforms): the dev
+  // handle exposes the scalar gains; hue stays the white-cyan/navy contract.
+  const keyCol = new Color(FACET_KEY_COLOR);
+  const fillCol = new Color(FACET_FILL_COLOR);
 
   // === Shared TSL helpers ===================================================
   /** Rodrigues rotation of p about unit axis by angle. */
@@ -382,6 +502,30 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     const n01 = hash2(ip.add(vec2(0.0, 1.0)));
     const n11 = hash2(ip.add(vec2(1.0, 1.0)));
     return mix(mix(n00, n10, wf.x), mix(n01, n11, wf.x), wf.y);
+  }
+  /** Trilinear 3D value noise (round-7 frost grain) — the vnoise2 recipe
+   * lifted to 3D on hash3. Same cross-backend op set (floor/fract/mix). */
+  function vnoise3(p: Any): Any {
+    const ip = floor(p).toVar();
+    const fp = fract(p).toVar();
+    const wf = fp.mul(fp).mul(float(3.0).sub(fp.mul(2.0))).toVar();
+    const nx00 = mix(hash3(ip), hash3(ip.add(vec3(1.0, 0.0, 0.0))), wf.x);
+    const nx10 = mix(
+      hash3(ip.add(vec3(0.0, 1.0, 0.0))),
+      hash3(ip.add(vec3(1.0, 1.0, 0.0))),
+      wf.x,
+    );
+    const nx01 = mix(
+      hash3(ip.add(vec3(0.0, 0.0, 1.0))),
+      hash3(ip.add(vec3(1.0, 0.0, 1.0))),
+      wf.x,
+    );
+    const nx11 = mix(
+      hash3(ip.add(vec3(0.0, 1.0, 1.0))),
+      hash3(ip.add(vec3(1.0, 1.0, 1.0))),
+      wf.x,
+    );
+    return mix(mix(nx00, nx10, wf.y), mix(nx01, nx11, wf.y), wf.z);
   }
   /** Igloo falloffsmooth VERBATIM (dossier §3, pretty-bundle L25961):
    * edge = mix(from − margin·sign, to, progress);
@@ -479,12 +623,42 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     normalize(modelViewMatrix.mul(vec4(nrm, 0.0)).xyz),
   );
   const vLocal = varying(pos);
+  // Round 7 — per-face random (constant across each soup triangle, so the
+  // interpolation is bit-stable; see bakeFacetRand).
+  const vFacet = varying(attribute("aFacet"));
 
   // === Fragment =============================================================
+  // Lobe colors as constant vec3 nodes (linear, via Color) — round 7.
+  const keyC = vec3(keyCol.r, keyCol.g, keyCol.b);
+  const fillC = vec3(fillCol.r, fillCol.g, fillCol.b);
+
   const shade = Fn(() => {
     const N = normalize(vNrmView).toVar();
     const V = normalize(vPosView.negate()).toVar();
     const I = V.negate().toVar(); // incident, camera → surface
+
+    // Fresnel FIRST (round 7: it now feeds the CA edge boost + the rim).
+    const f1 = clamp(float(1).sub(dot(N, V)), float(0), float(1)).toVar();
+    const fres = pow(f1, float(FRESNEL_POW)).toVar();
+
+    // --- Round 7 §4 — frost grain (FULL tier; lite keeps uniform glass):
+    // signed 3D value noise over the stable local position modulating
+    // roughness/thickness/density → internal veins, not white noise. ------
+    let frost: Any = null;
+    let roughEff: Any = uRough;
+    let thickEff: Any = uThickness;
+    if (!lite) {
+      frost = vnoise3(vLocal.mul(FROST_FREQ))
+        .sub(0.5)
+        .mul(uFrostAmp)
+        .toVar();
+      roughEff = clamp(
+        uRough.mul(frost.mul(FROST_ROUGH_K).add(1.0)),
+        float(0.05),
+        float(1.0),
+      ).toVar();
+      thickEff = uThickness.mul(frost.mul(FROST_THICK_K).add(1.0)).toVar();
+    }
 
     // Blue-noise stand-in trio (per-fragment, object-stable).
     const nz = vec3(
@@ -493,17 +667,21 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
       hash3(vLocal.mul(57.1).add(vec3(5.0, 17.0, 9.0))),
     ).toVar();
     // Igloo: distortionNormal = rough²·2·normalize(noise) — refraction-only
-    // jitter (frosted grain); shading keeps the clean facet normal.
+    // jitter (frosted grain); shading keeps the clean facet normal. Round 7:
+    // rough is the frost-veined roughEff, so the jitter has STRUCTURE.
     const Nj = normalize(
       N.add(
         normalize(nz.sub(0.5).add(vec3(1e-4, 2e-4, 3e-4))).mul(
-          uRough.mul(uRough).mul(2.0),
+          roughEff.mul(roughEff).mul(2.0),
         ),
       ),
     ).toVar();
 
-    // --- Dispersion ladder (igloo §2, 3 samples, k = 0/1/2 per channel) ----
-    const smear = uThickness.mul(pow(uRough, 0.33)).toVar();
+    // --- Dispersion ladder (igloo §2, 3 samples, k = 0/1/2 per channel).
+    // Round 7 §2: CA is fresnel-boosted — fringes concentrate on the
+    // silhouette (caEff = uCA·(1 + fres·uCAEdge)), igloo's visible fringes.
+    const caEff = uCA.mul(fres.mul(uCAEdge).add(1.0)).toVar();
+    const smear = thickEff.mul(pow(roughEff, 0.33)).toVar();
     const base = vLocal.xy.mul(BACKDROP_COORD_SCALE).toVar();
     const inv = float(1).div(uIor);
     let accR: Any = float(0);
@@ -511,15 +689,15 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     let accB: Any = float(0);
     for (let i = 0; i < samples; i++) {
       const fi = float(i);
-      const th = uThickness
+      const th = thickEff
         .add(smear.mul(fi.add(nz.y).div(3.0)))
         .mul(REFR_OFFSET_SCALE);
       const etaR = inv; // k = 0
       const etaG = float(1).div(
-        uIor.mul(float(1).add(uCA.mul(fi.add(nz.x)).div(3.0))),
+        uIor.mul(float(1).add(caEff.mul(fi.add(nz.x)).div(3.0))),
       );
       const etaB = float(1).div(
-        uIor.mul(float(1).add(uCA.mul(2.0).mul(fi.add(nz.z)).div(3.0))),
+        uIor.mul(float(1).add(caEff.mul(2.0).mul(fi.add(nz.z)).div(3.0))),
       );
       accR = accR.add(backdrop(base.add(refractDir(I, Nj, etaR).xy.mul(th))).x);
       accG = accG.add(backdrop(base.add(refractDir(I, Nj, etaG).xy.mul(th))).y);
@@ -527,19 +705,74 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     }
     const trans = vec3(accR, accG, accB).div(samples).toVar();
 
-    // --- Facet key response + fresnel rim ----------------------------------
+    // --- Round 7 §2 — DARK GLASS BODY: transmitted color × uBodyDarken (the
+    // stone reads darker than the backdrop mid-tone — the meteorite read),
+    // with per-facet value jitter (§1) + frost density veining (§4). -------
+    const fJit = vFacet;
+    let col: Any = trans
+      .mul(uBodyDarken)
+      .mul(fJit.y.mul(FACET_VALUE_JIT).add(1 - FACET_VALUE_JIT / 2));
+    if (frost !== null) {
+      col = col.mul(frost.mul(FROST_DENSITY_K).add(1.0));
+    }
+
+    // --- Round 7 §1 — 2-lobe environment: white-cyan key spec lobe + navy
+    // fill. The key lobe uses a PER-FACET tilted normal (baked aFacet) with
+    // a lowish exponent → facets catch distinct values and flash
+    // independently as the crystal tumbles (the #1 flatness killer). ------
     const key = normalize(vec3(...FACET_KEY_DIR));
-    const facet = dot(N, key).mul(0.5).add(0.5);
-    const fres = pow(
-      clamp(float(1).sub(dot(N, V)), float(0), float(1)),
-      float(FRESNEL_POW),
-    ).toVar();
-    let col: Any = trans.mul(facet.mul(0.5).add(0.75));
-    // Grazing-angle cool reflection tint (ice, sub-bloom).
-    col = col.add(mix(uColNavy2, uColCyan, 0.35).mul(fres).mul(0.25));
-    // Cyan emissive rim — >1.0 only while the ignition flash burns
-    // (selective-bloom contract: threshold ≈ 1.0 catches the rim alone).
-    col = col.add(uColCyan.mul(fres).mul(uRimBase.add(uFlash.mul(uRimFlash))));
+    const fill = normalize(vec3(...FACET_FILL_DIR));
+    const H = normalize(key.add(V)).toVar();
+    const Nf = normalize(N.add(fJit.sub(0.5).mul(uFacetJit))).toVar();
+    const spec = pow(max(dot(Nf, H), 0.0), uSpecPow);
+    const specAmp = fJit.x.mul(FACET_SPEC_JIT).add(1 - FACET_SPEC_JIT / 2);
+    col = col.add(keyC.mul(spec).mul(uSpecGain).mul(specAmp));
+    col = col.add(fillC.mul(max(dot(N, fill), 0.0)).mul(uFillGain));
+
+    // --- Round 7 §3 — sparkle glints (FULL tier): hash cells over the
+    // stable local position; each live cell owns a micro-normal, its glint
+    // gates on view/normal/light alignment (winks as the crystal tumbles)
+    // plus a slow time wink; gain >1.0 so single pixels bloom. Sparse by
+    // contract: SPARKLE_DENSITY culls ~72% of cells. ----------------------
+    if (!lite) {
+      const cell = floor(vLocal.mul(SPARKLE_FREQ)).toVar();
+      const c1 = hash3(cell.add(vec3(0.31, 0.47, 0.71))).toVar();
+      const c2 = hash3(cell.add(vec3(5.2, 1.3, 7.7)));
+      const c3 = hash3(cell.add(vec3(9.1, 3.7, 2.3)));
+      const micro = normalize(
+        N.add(vec3(c1, c2, c3).sub(0.5).mul(SPARKLE_TILT)),
+      );
+      const glint = pow(max(dot(micro, H), 0.0), float(SPARKLE_POW));
+      const gate = smoothstep(
+        float(SPARKLE_DENSITY),
+        float(SPARKLE_DENSITY + 0.08),
+        hash3(cell.add(vec3(2.4, 8.8, 4.4))),
+      );
+      const wink = smoothstep(
+        float(0.35),
+        float(0.9),
+        sin(uTime.mul(SPARKLE_TWINKLE).add(c1.mul(6.2832)))
+          .mul(0.5)
+          .add(0.5),
+      );
+      col = col.add(
+        keyC.mul(glint).mul(gate).mul(wink).mul(uSparkleGain),
+      );
+    }
+
+    // --- Round 7 §2 — BRIGHT DISPERSIVE RIM: per-channel fresnel exponents
+    // (blue reaches further inward than red → spectral fringe), whitened
+    // toward extreme grazing. RIM_BASE now pushes the grazing rim past 1.0
+    // into bloom on its own — sized on Rec709 LUMINANCE post-blend, the
+    // metric BloomNode's high-pass actually reads (see RIM_BASE comment);
+    // the ignition flash burns far beyond. --------------------------------
+    const rim3 = vec3(
+      pow(f1, float(FRESNEL_POW * RIM_DISPERSION)),
+      fres,
+      pow(f1, float(FRESNEL_POW / RIM_DISPERSION)),
+    );
+    const rimCol = mix(uColCyan, vec3(1.0, 1.0, 1.0), f1.mul(RIM_WHITEN));
+    col = col.add(rimCol.mul(rim3).mul(uRimBase.add(uFlash.mul(uRimFlash))));
 
     // --- Depth fade (igloo fog-mix window, adapted to ALPHA — header) ------
     const dRel = length(vPosView)
@@ -563,8 +796,11 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     // depthTest:true (lineNodeMaterial) and an invisible occluder would
     // punch holes in it (the SequenceSingularity depth-stamp post-mortem).
     // Same alpha-Discard idiom as particleNodeMaterial / neuralFieldCompute;
-    // 0.05 sits just above the fade floor so fully-faded shards vanish
-    // instead of holding a ghost film + phantom occlusion.
+    // 0.05 sits just above the fade floor (round 7: 0.94·(1−FADE_MAX) ≈
+    // 0.047 — still under) so fully-faded shards vanish instead of holding a
+    // ghost film + phantom occlusion. Round-7 §6 check: the darker body is
+    // carried through the fade window by the >1.0 rim + glints (additive on
+    // top of the body term), so the silhouette reads until Discard.
     Discard(alpha.lessThan(0.05));
     return vec4(col, alpha);
   })();
@@ -597,6 +833,14 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     uSpotGain,
     uDrift,
     uShardSpin,
+    uBodyDarken,
+    uSpecPow,
+    uSpecGain,
+    uFillGain,
+    uFacetJit,
+    uCAEdge,
+    uSparkleGain,
+    uFrostAmp,
   };
 
   return {
