@@ -8,7 +8,6 @@ import { NeuralGraphFallback } from "@/components/fx/neural-graph-fallback";
 import { RollLetters } from "@/components/fx/roll-letters";
 import { useLedgerIgnition } from "@/components/fx/use-ledger-ignition";
 import { useDiagonalTraverse } from "@/components/fx/use-diagonal-traverse";
-import { MAX_TRAVERSE_ISLANDS } from "@/webgl/neural/traverseConfig";
 import {
   useChapterReveal,
   useLedgerReveal,
@@ -313,50 +312,6 @@ const PLROW_CSS = `
   bottom: var(--tv-band-bottom, 0px);
   height: var(--tv-band-h, auto);
 }
-
-/* === ROUND 11 STAGE 1.5 — THE ISLAND LADDER =============================
-   Stage 1 pinned ONE 619 px band inside a 4335 px act, so the net was on
-   frame for 30.9 % of the run and 40.0 % of the act had neither net nor
-   copy on it — one unbroken 1116 px run of black immediately before the
-   section ends (measured, 1280×720, every 4 px). The fix is the
-   coverage-trilemma dossier's recommendation ①: FOUR MORE BANDS, each a
-   pure measurement box, at authored offsets from the shipped one.
-
-   They are positioned relative to [data-traverse-stack] — the SAME
-   containing block as the shipped anchor's inset-y-0 — so top: 0 is
-   the shipped band's own top and the ladder's PITCH is an authored
-   viewport-invariant rather than a layout accident. Offsets and the
-   display switch both arrive as custom properties written by
-   useDiagonalTraverse's armCss(), which makes the whole ladder live-
-   tunable from the console with no React involvement.
-
-   INERT WITHOUT [data-traverse] (the D-10 rule): no traverse ⇒ no
-   --tv-island-N-on ⇒ display: none ⇒ a zero rect ⇒ the WebGL island
-   disposes its build and costs nothing. SSR, no-JS, reduced motion and the
-   fallback tier therefore keep today's document and today's single band,
-   px for px. */
-#problem [data-traverse-island] {
-  position: absolute;
-  left: calc(50% - 50vw);
-  right: calc(50% - 50vw);
-  display: none;
-}
-#problem[data-traverse] [data-traverse-island="0"] {
-  display: var(--tv-island-0-on, none);
-  top: calc(var(--tv-island-0, 0) * 100svh);
-}
-#problem[data-traverse] [data-traverse-island="1"] {
-  display: var(--tv-island-1-on, none);
-  top: calc(var(--tv-island-1, 0) * 100svh);
-}
-#problem[data-traverse] [data-traverse-island="2"] {
-  display: var(--tv-island-2-on, none);
-  top: calc(var(--tv-island-2, 0) * 100svh);
-}
-#problem[data-traverse] [data-traverse-island="3"] {
-  display: var(--tv-island-3-on, none);
-  top: calc(var(--tv-island-3, 0) * 100svh);
-}
 `;
 
 /** Ghost callout placement — HISTORIC stream-v3 WEAVE values (the broken
@@ -380,11 +335,6 @@ const PLROW_CSS = `
  * webgl/neural/crystalConfig.ts CALLOUT_EDGE (`--callout-N-top` feeds
  * whichever edge property the callout uses). Placement only — strings are
  * byte-identical under the copy freeze. */
-/** ROUND 11 STAGE 1.5 — the extra island anchor slots this section authors.
- * The DOM is the ceiling: `traverseConfig.islands.extras` longer than this is
- * ignored, so a console tune can never ask for a band that has no box. */
-const ISLAND_SLOTS = Array.from({ length: MAX_TRAVERSE_ISLANDS }, (_, i) => i);
-
 const CALLOUT_POS: { left: string; edge: "top" | "bottom"; at: string }[] = [
   { left: "30%", edge: "top", at: "23%" },
   { left: "45%", edge: "bottom", at: "31%" },
@@ -592,24 +542,6 @@ export default function ProblemSection() {
               );
             })}
           </div>
-
-          {/* ROUND 11 STAGE 1.5 — the four EXTRA neural bands. Pure
-              measurement boxes: no children, no paint, aria-hidden,
-              pointer-events-none. The WebGL islands are camera-locked to
-              them exactly as they are to the anchor above; the stone, the
-              callouts, the dot grid and the SVG fallback all stay on the
-              PRIMARY anchor, which is unchanged. Placement + the display
-              switch come from the `--tv-island-*` custom properties (see
-              the ladder block in PLROW_CSS). */}
-          {ISLAND_SLOTS.map((n) => (
-            <div
-              key={n}
-              data-lattice-anchor={`problem-i${n}`}
-              data-traverse-island={n}
-              aria-hidden="true"
-              className="pointer-events-none -z-10"
-            />
-          ))}
 
           {/* The rows — full-width, chrome-less: [index + display line] over
               [body] over [hairline] (W2 — the right cell is dead). Hairline

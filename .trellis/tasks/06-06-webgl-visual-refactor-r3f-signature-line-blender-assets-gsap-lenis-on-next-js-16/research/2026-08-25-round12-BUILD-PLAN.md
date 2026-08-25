@@ -630,6 +630,34 @@ directly at 768x480, where `__sersanTraverse_problem.blocks` reports `unit: fals
 chapter blocks and their `unitH` collapses from the union (305) to their own heights
 (209 and 72).
 
+> **CORRECTION — ROUND 12 · STAGE 1 adversarial review, 2026-08-25, re-measured live.**
+> The `305 px` union and the `ih = 529.7 px` threshold above are WRONG, and so is the
+> `209` block height. Re-measured with a clean load per viewport, de-transformed exactly
+> the way `measure()` does (subtracting the drift `y`; a raw `getBoundingClientRect()` on a
+> `[data-drift]` wrapper reads the TRANSFORMED box and inflates the union by ~16 px):
+>
+> | viewport | chapter union | display / body `h` | `bandH` | fires below `ih` |
+> |---|---|---|---|---|
+> | 768 wide, EN | **264** | 168 / 72 (+24 grid gap) | 0.76·ih − 97.6 | **475.8** |
+> | 768 wide, IT | **288** | 168 / 96 | 0.76·ih − 97.6 | **507.4** |
+> | 1280 wide, EN | **407** | union = display alone (2-col) | 0.76·ih − 97.6 | **664.0** |
+> | 1280 wide, IT | **467** | union = display alone (2-col) | 0.76·ih − 97.6 | **742.9** |
+> | 1366 wide, EN | **367** | " | 0.76·ih − 97.6 | **611.3** |
+> | 1920 wide, EN | **407** | " | 0.76·ih − 99.6 | **666.6** |
+>
+> At 768 wide the union is a hard 264 px (EN) across every width from 660 to 800 and every
+> height from 420 to 1024 — 305 px is not reachable there in either language. The 305/209
+> pair is internally consistent with a chapter headline wrapped to FOUR lines instead of
+> three (`209 = 168 + one 40.8 px h2 line`, `305 = 209 + 24 + 72`), i.e. the read was taken
+> at a narrower effective content width than the nominal 768 — not at 768 itself.
+>
+> **The conclusion of this section survives and gets STRONGER.** The guard is reachable,
+> and the reachable case is the DESKTOP one the section never measured: at ≥ 1024 the
+> chapter is a two-column grid, so its union IS the display block, and the guard fires at
+> **1280×720 in Italian (k = 0.962)** — this project's own reference viewport — as well as
+> at 1280×640 and 1920×660 in English. Verified with the shipped instrument:
+> `__sersanTraverse_problem.coverage().unitPairing` / `.unitFallback`.
+
 **Why this matters more than its severity suggests.** The failure mode is not an artifact —
 it is HEAD's behaviour. When the guard fires, each block reverts to its own per-block
 window, which is exactly what shipped before round 11.5, so the round-11.5 tear comes back:

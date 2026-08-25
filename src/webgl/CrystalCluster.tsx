@@ -146,7 +146,7 @@ import { useTierStore } from "./store/tierStore";
 import { useTraverseStore, type TraverseFrame } from "./store/traverseStore";
 import {
   traverseConfig,
-  traverseRate,
+  bandLateralPx,
   type TraverseBandId,
 } from "./neural/traverseConfig";
 import { CLUSTER_COUNT, type LatticeMode } from "./neural/neuralLatticeConfig";
@@ -472,9 +472,13 @@ export function CrystalCluster({
     // uses, i.e. OUTSIDE the group scale by construction, exactly equivalent
     // to NeuralLattice's `rig.position.x = lateralPx·k` inside a scale-1 group.
     //
-    // The origin is this band's own arrival — the identical expression the
-    // island uses on the identical rect — so the stone and the net that share
-    // this anchor can never differ by more than float noise.
+    // The origin is this band's own arrival — the identical FUNCTION the
+    // island calls (`bandLateralPx`, `traverseConfig.ts`) on the identical
+    // rect — so the stone and the net that share this anchor can never differ
+    // by more than float noise. It was gated on `islands.compensate`; the
+    // ladder is gone (ROUND 12 · STAGE 1) and the gate with it, but the
+    // re-centring is unconditional and load-bearing: without it the stone
+    // detaches from the net and slides a screen off the side.
     let tv = traverseRef.current;
     if (!tv) {
       tv = useTraverseStore.getState().bands[anchorId] ?? null;
@@ -484,16 +488,18 @@ export function CrystalCluster({
     const scrollY = onBand ? tv!.scrollY : window.scrollY;
     let lateralPx = 0;
     if (onBand) {
-      lateralPx = tv!.xScenePx;
       const bcfg = traverseConfig.bands[anchorId as TraverseBandId];
-      if (bcfg && traverseConfig.islands.compensate) {
-        const centreScroll = rect.docTop + rect.h / 2 - ih / 2;
-        const travelledAtCentre = Math.min(
-          Math.max(centreScroll - tv!.secTop, 0),
-          tv!.secH,
-        );
-        lateralPx -= bcfg.dir * traverseRate(bcfg) * travelledAtCentre;
-      }
+      lateralPx = bcfg
+        ? bandLateralPx(
+            bcfg,
+            tv!.xScenePx,
+            tv!.secTop,
+            tv!.secH,
+            rect.docTop,
+            rect.h,
+            ih,
+          )
+        : tv!.xScenePx;
     }
 
     const vpTop = rect.docTop - scrollY;
@@ -928,9 +934,20 @@ export function CrystalCluster({
       rect,
       /**
        * ROUND 11 STAGE 1.5 QA — GATE 5. The stone's lateral, recomputed from
-       * the published frame by the SAME closed form the frame path uses, plus
-       * the net island that shares this anchor. `deltaPx` is the gate and it is
-       * 0 by construction: one frozen `scrollY`, one rect, one expression.
+       * the published frame by the SAME function the frame path calls
+       * (`bandLateralPx`), plus the net island that shares this anchor.
+       * `deltaPx` is the gate and it is 0 by construction: one frozen
+       * `scrollY`, one rect, one expression.
+       *
+       * ⚠ READ `deltaPx` ONLY WHILE THE NET IS ON FRAME. `netLateralPx` comes
+       * from the island's published `lWorld`, and the island's frame callback
+       * RETURNS AT ITS CULL — above the line that writes `rig.position.x` — so
+       * once the band leaves the viewport that number stops advancing while
+       * the stone's keeps moving. Measured at 1920×935: exactly 0.000 for
+       * every sample in p ∈ [0.20, 0.55] (the whole on-frame window), then a
+       * linear ramp to −1053.8 at p = 1 — that ramp is the stale read, not a
+       * disagreement. `__sersanNeuralLattice_problem.cost.onFrame` is the
+       * companion flag.
        */
       get traverse() {
         const frame = traverseRef.current;
@@ -938,15 +955,22 @@ export function CrystalCluster({
         if (!frame || !rect) return { bound: false };
         const ihNow = size.height;
         const bcfg = traverseConfig.bands[anchorId as TraverseBandId];
-        let origin = 0;
-        if (bcfg && traverseConfig.islands.compensate) {
-          const centreScroll = rect.docTop + rect.h / 2 - ihNow / 2;
-          origin =
-            bcfg.dir *
-            traverseRate(bcfg) *
-            Math.min(Math.max(centreScroll - frame.secTop, 0), frame.secH);
-        }
-        const stone = frame.active ? frame.xScenePx - origin : 0;
+        // Computed unconditionally so `originPx` still reports the RE-CENTRING
+        // when the band is off its own range; only `stoneLateralPx` collapses
+        // to 0 there, which is what the frame path does.
+        const lat = bcfg
+          ? bandLateralPx(
+              bcfg,
+              frame.xScenePx,
+              frame.secTop,
+              frame.secH,
+              rect.docTop,
+              rect.h,
+              ihNow,
+            )
+          : frame.xScenePx;
+        const stone = frame.active ? lat : 0;
+        const origin = frame.xScenePx - lat;
         const net = (
           window as unknown as Record<
             string,

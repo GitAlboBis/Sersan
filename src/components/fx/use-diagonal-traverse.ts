@@ -71,13 +71,9 @@ import { suspendSnap } from "@/lib/scroll-snap";
 import {
   traverseConfig,
   traverseRate,
-  traverseIslands,
-  fitTraverseLadder,
   onTraverseConfigChange,
   setTraverseConfig,
-  MAX_TRAVERSE_ISLANDS,
   type TraverseBandId,
-  type TraverseLadderFit,
 } from "@/webgl/neural/traverseConfig";
 import {
   registerTraverseBand,
@@ -188,13 +184,63 @@ interface Block {
    *     "never legible and fast at the same time" holds MORE strictly than it
    *     did per-block, not less.
    *  2. A unit TALLER than the band cannot satisfy (1) — the union could cover
-   *     the band while a member sits outside it — so such a unit keeps its
-   *     per-block windows (`opWin === win`). The rule is self-limiting and
-   *     needs no viewport table.
+   *     the band while a member sits outside it. ROUND 12 · STAGE 1 makes that
+   *     case DEGRADE rather than switch off: see `opK`.
    */
   opWin: RateWindow;
   /** Doc-space top the `opWin` is evaluated at (the unit's, or the block's). */
   opTop: number;
+  /** Height of the box `opWin` was built on — the paired box, see `opK`. */
+  opH: number;
+  /**
+   * PAIRING STRENGTH ∈ [0,1] — how far this block's opacity box is inflated
+   * from its OWN box toward its reading unit's union box.
+   *
+   * ⚠ THIS REPLACES A CLIFF, AND THE CLIFF WAS REACHABLE. The guard in (2)
+   * above used to be a hard switch: `unitH > bandH` ⇒ every member fell all the
+   * way back to its own window, i.e. straight back to the round-11.5 tear (a
+   * fully opaque paragraph under an invisible headline) with no signal but a
+   * dev-only getter. Measured live 2026-08-25, this build, against
+   * `bandH = 0.76·ih − headerPx` (headerPx 97.6, 99.6 at ≥ 1536 wide):
+   *
+   *    768 wide   chapter union 264 EN / 288 IT   fires below ih 475.8 / 507.4
+   *   1280 wide         "       407 EN / 467 IT     "     "    "  664.0 / 742.9
+   *   1366 wide         "       367 EN              "     "    "  611.3
+   *   1920 wide         "       407 EN              "     "    "  666.6
+   *
+   * ⚠ THE DESKTOP ROW IS THE REACHABLE ONE, NOT THE 768 CASE. At ≥ 1024 the
+   * chapter is a TWO-COLUMN grid, so its union is the display block ALONE —
+   * 407 px in EN and 467 px in IT at 1280 — and the switch therefore fires at
+   * **1280×720 in Italian (k = 0.962)**, which is this project's own reference
+   * viewport, and at 1280×640 / 1920×660 in English. Not a 13-inch edge case.
+   *
+   * So the box is INTERPOLATED instead:
+   *
+   *     k        = min(1, bandH / unitH)
+   *     top_i(k) = T_i − k·(T_i − T_unit)
+   *     h_i(k)   = h_i + k·(unitH − h_i)      = bandH + h_i·(1 − k)  when k<1
+   *
+   * `k = 1` (unitH ≤ bandH) reproduces the shared unit window EXACTLY — same
+   * object, same numbers, so the census-invariance gate is untouched wherever
+   * the lemma actually holds. Below it the two halves of a unit separate
+   * LINEARLY in `(1 − k)`: the residual tear between a unit's first and last
+   * member is `(1 − k)·[(T_last − T_first) + (h_last − h_first)]`, which is 0
+   * at k = 1 and is the full HEAD tear at k = 0. And the §B2.4 guarantee
+   * degrades with a bound rather than vanishing: since the inflated box
+   * exceeds the band by only `h_i·(1 − k)`, a block whose own V̂ would be 1
+   * under pairing still has `V̂_i ≥ smoothstep(k)` — with `smooth01`'s cubic
+   * that is 0.9958 at the worst ORDINARY viewport measured (1280×720 IT,
+   * k = 0.962) and 0.9941 at 768×460 / 1280×640 (k = 0.955), i.e. α within
+   * 0.6 % of α_slow. The instrument that proves it is `blocks[].opSpan`: the
+   * chapter's two halves differ by 13 px of scroll at 1280×720 IT and 14 px
+   * at 1280×640 EN, against a ~900 px window.
+   *
+   * `k = 0` on a block with no reading unit (it is its own unit, by definition
+   * un-paired).
+   */
+  opK: number;
+  /** Members sharing this block's reading unit (1 = it is its own unit). */
+  opN: number;
   appliedX: number;
   appliedOp: number;
   row: HTMLElement | null;
@@ -226,9 +272,6 @@ export function useDiagonalTraverse(
         const frame = registerTraverseBand(bandId);
 
         // --- arm the file-scoped CSS (runway growth + band pin) -------------
-        /** The last fitted island ladder (dev handle / QA gate 2). */
-        let ladderFit: TraverseLadderFit | null = null;
-
         const armCss = (): void => {
           const b = traverseConfig.bands[bandId];
           section.style.setProperty("--tv-gap-vh", `${b.gapVh}`);
@@ -246,77 +289,6 @@ export function useDiagonalTraverse(
           } else {
             section.style.removeProperty("--tv-band-bottom");
             section.style.removeProperty("--tv-band-h");
-          }
-          // The ladder is UNPLACED here and re-placed by `measure()` — it is a
-          // function of the measured act, not of the config alone.
-          if (!traverseConfig.islands.enabled) clearIslands();
-        };
-
-        /** Un-place every extra island: `display: none`, zero rect, no build. */
-        const clearIslands = (): void => {
-          for (let n = 0; n < MAX_TRAVERSE_ISLANDS; n++) {
-            section.style.removeProperty(`--tv-island-${n}`);
-            section.style.removeProperty(`--tv-island-${n}-on`);
-          }
-          ladderFit = null;
-        };
-
-        /**
-         * ROUND 11 STAGE 1.5 — PLACE THE ISLAND LADDER, fitted to the act we
-         * just measured. Each extra anchor is a pure measurement box authored
-         * by the section; this writes the only two things it needs (an offset
-         * and a display switch) as custom properties, so placement costs no
-         * React commit and is live-tunable from the console.
-         *
-         * ⚠ The offsets CANNOT be authored constants. The act is 6.020 vh at
-         * 1280×720, 5.590 at 1440×900 and 5.200 at 768×1024, and the primary
-         * band's own top moves with the chapter's height (1.803 / 1.554 /
-         * 1.419 vh, measured). A fixed ladder that covers the tail at one
-         * viewport overhangs `#work` at another, or opens a hole. So the two
-         * ends are pinned to the MEASURED act and the middle is spread evenly
-         * between them; `fitTraverseLadder` is pure and reports the pitch
-         * bounds it was fitted against.
-         */
-        const placeIslands = (): void => {
-          const cfgI = traverseConfig.islands;
-          if (!cfgI.enabled) {
-            clearIslands();
-            return;
-          }
-          const primary = section.querySelector<HTMLElement>(
-            `[data-lattice-anchor="${bandId}"]`,
-          );
-          if (!primary) {
-            clearIslands();
-            return;
-          }
-          const pr = primary.getBoundingClientRect();
-          if (pr.height < 2) {
-            clearIslands();
-            return;
-          }
-          const bandY = (pr.top + window.scrollY - secTop) / ih;
-          const bandVh = pr.height / ih;
-          const extras = traverseIslands();
-          const fit = fitTraverseLadder(
-            bandY,
-            bandVh,
-            secH / ih,
-            extras,
-            cfgI.leadVh,
-            cfgI.tailPin,
-          );
-          ladderFit = fit;
-          for (let n = 0; n < MAX_TRAVERSE_ISLANDS; n++) {
-            const isl = extras[n];
-            if (isl) {
-              const dy = isl.dy ?? fit.offsets[n] ?? 0;
-              section.style.setProperty(`--tv-island-${n}`, `${dy}`);
-              section.style.setProperty(`--tv-island-${n}-on`, "block");
-            } else {
-              section.style.removeProperty(`--tv-island-${n}`);
-              section.style.removeProperty(`--tv-island-${n}-on`);
-            }
           }
         };
         armCss();
@@ -342,8 +314,25 @@ export function useDiagonalTraverse(
         // per frame (see the `opWin` note in `Block`).
         const unitSpan = new Map<
           HTMLElement,
-          { top: number; bottom: number; win: RateWindow | null }
+          {
+            top: number;
+            bottom: number;
+            n: number;
+            /** Shared window — built ONLY in the fully-paired case (k = 1). */
+            win: RateWindow | null;
+          }
         >();
+        /**
+         * How many reading units are only PARTIALLY paired this measure
+         * (`unitH > bandH` ⇒ `k < 1`). Published on `coverage()` and warned in
+         * dev, so the round-11.5 tear can never again be silently half-true.
+         */
+        let unitFallback = 0;
+        /**
+         * De-dupes the dev warn: ONE warn per viewport, for the life of this
+         * arm. Keyed on the viewport alone (see the warn below).
+         */
+        let unitFallbackSig = "";
 
         const els = Array.from(
           section.querySelectorAll<HTMLElement>("[data-drift]"),
@@ -366,6 +355,9 @@ export function useDiagonalTraverse(
             win: buildRateWindow(1, headerPx, 1, 0.12, 0.25, 0.25, 0),
             opWin: buildRateWindow(1, headerPx, 1, 0.12, 0.25, 0.25, 0),
             opTop: 0,
+            opH: 1,
+            opK: 0,
+            opN: 1,
             appliedX: 0,
             appliedOp: 1,
             row: el.closest<HTMLElement>("[data-ledger-row]"),
@@ -490,10 +482,12 @@ export function useDiagonalTraverse(
                 if (blk.docTop < sp.top) sp.top = blk.docTop;
                 const bot = blk.docTop + blk.h;
                 if (bot > sp.bottom) sp.bottom = bot;
+                sp.n++;
               } else {
                 unitSpan.set(blk.unit, {
                   top: blk.docTop,
                   bottom: blk.docTop + blk.h,
+                  n: 1,
                   win: null,
                 });
               }
@@ -506,44 +500,110 @@ export function useDiagonalTraverse(
           // interleave is harmless, a layout write is not).
           //
           // A unit TALLER than the band cannot satisfy the `opWin` guarantee —
-          // the union could cover the band while a member sits outside it — so
-          // it keeps its per-block windows. Self-limiting, no viewport table.
-          // The census-invariance proof (QA gate 2) depends on this guard: the
-          // members' supports overlap only because
-          // `t_j − t_i ≤ unitH − h_j ≤ bandH < bandH + h_i`.
+          // the union could cover the band while a member sits outside it. It
+          // used to fall all the way back to per-block windows, i.e. straight
+          // back to the round-11.5 tear, silently, below ih 475.8 (EN) /
+          // 507.4 (IT) at 768 px wide — and, because the chapter is a
+          // two-column grid at ≥ 1024, below ih 664 (EN) / 743 (IT) at 1280,
+          // i.e. AT 1280×720 IN ITALIAN. It now DEGRADES: `k = bandH/unitH`
+          // inflates each member's own box toward the union instead of
+          // swapping between the two. See `opK` in `Block` for the algebra and
+          // the measured thresholds.
+          //
+          // `k = 1` is byte-identical to the shared-window path — same object,
+          // same numbers — so the census-invariance proof (QA gate 2) is
+          // untouched wherever its own precondition holds: the members'
+          // supports overlap only because
+          // `t_j − t_i ≤ unitH − h_j ≤ bandH < bandH + h_i`. At `k < 1` that
+          // precondition has failed by definition, and the census is no longer
+          // claimed invariant there — it is REPORTED instead (`unitFallback`).
+          unitFallback = 0;
+          for (const sp of unitSpan.values()) {
+            if (sp.bottom - sp.top > bandH) unitFallback++;
+          }
           for (let i = 0; i < blocks.length; i++) {
             const blk = blocks[i];
             const sp = blk.unit ? unitSpan.get(blk.unit) : undefined;
-            const unitH = sp ? sp.bottom - sp.top : 0;
-            if (!sp || unitH > bandH) {
+            if (!sp) {
               blk.opWin = blk.win;
               blk.opTop = blk.docTop;
+              blk.opH = blk.h;
+              blk.opK = 0;
+              blk.opN = 1;
               continue;
             }
-            if (!sp.win) {
-              // Only `windowAt` is ever evaluated on this window — it reads
-              // `d`/`e0..e3` only. NEVER call `rateAt` on it: `x` must stay the
-              // block's own, or the two halves of a row move as one flat plane
-              // and §B2.3's two depths are gone. α_read is therefore inert
-              // here; it is passed as the body value so the window is a pure
-              // function of the union geometry.
-              sp.win = buildRateWindow(
-                unitH,
-                headerPx,
-                ih,
-                cfg.bandInset,
-                cfg.alphaReadBody,
-                cfg.collapse ? cfg.alphaReadBody : cfg.alphaEdge,
-                0,
+            const unitH = Math.max(sp.bottom - sp.top, 1);
+            blk.opN = sp.n;
+            if (unitH <= bandH) {
+              if (!sp.win) {
+                // Only `windowAt` is ever evaluated on this window — it reads
+                // `d`/`e0..e3` only. NEVER call `rateAt` on it: `x` must stay
+                // the block's own, or the two halves of a row move as one flat
+                // plane and §B2.3's two depths are gone. α_read is therefore
+                // inert here; it is passed as the body value so the window is
+                // a pure function of the union geometry.
+                sp.win = buildRateWindow(
+                  unitH,
+                  headerPx,
+                  ih,
+                  cfg.bandInset,
+                  cfg.alphaReadBody,
+                  cfg.collapse ? cfg.alphaReadBody : cfg.alphaEdge,
+                  0,
+                );
+              }
+              blk.opWin = sp.win;
+              blk.opTop = sp.top;
+              blk.opH = unitH;
+              blk.opK = 1;
+              continue;
+            }
+            // PARTIAL PAIRING. One window per BLOCK now (the boxes differ by
+            // `h_i`), built once per measure — never per frame.
+            const k = bandH / unitH;
+            const opH = blk.h + k * (unitH - blk.h);
+            blk.opTop = blk.docTop - k * (blk.docTop - sp.top);
+            blk.opH = opH;
+            blk.opK = k;
+            blk.opWin = buildRateWindow(
+              opH,
+              headerPx,
+              ih,
+              cfg.bandInset,
+              cfg.alphaReadBody,
+              cfg.collapse ? cfg.alphaReadBody : cfg.alphaEdge,
+              0,
+            );
+          }
+          if (process.env.NODE_ENV !== "production") {
+            // ⚠ KEYED ON THE VIEWPORT ALONE, AND NEVER CLEARED. Keying it on
+            // the COUNT as well and resetting it whenever the count came back
+            // to 0 made "once per viewport" false: a refresh burst passes
+            // through measures where the unit momentarily fits, each of which
+            // re-armed the warn — measured 3× at ONE viewport (1920×660) on a
+            // single load. A language switch re-arms the whole hook (and this
+            // variable) from scratch, so an EN→IT that newly overflows still
+            // reports. One string, never a Set: it cannot grow across resizes.
+            const sig = `${iw}x${ih}`;
+            if (unitFallback > 0 && sig !== unitFallbackSig) {
+              unitFallbackSig = sig;
+              const worst = Math.min(
+                ...Array.from(unitSpan.values(), (sp) =>
+                  sp.bottom - sp.top > bandH
+                    ? bandH / (sp.bottom - sp.top)
+                    : 1,
+                ),
+              );
+              console.warn(
+                `[traverse:${bandId}] ${unitFallback} reading unit(s) taller ` +
+                  `than the reading band at ${iw}×${ih} (bandH ` +
+                  `${Math.round(bandH)} px). Opacity pairing degraded to ` +
+                  `k=${Math.round(worst * 1000) / 1000}; the unit's halves ` +
+                  `separate by (1−k) of the full round-11.5 tear. ` +
+                  `coverage().unitFallback reports this.`,
               );
             }
-            blk.opWin = sp.win;
-            blk.opTop = sp.top;
           }
-          // Placed LAST: the fit needs `secTop`/`secH`/`ih` from this pass, and
-          // the extras are absolutely positioned so re-placing them cannot
-          // move anything the pass above just measured.
-          placeIslands();
           const c = dbg.current.counters;
           c.secTop = secTop;
           c.secH = secH;
@@ -782,13 +842,31 @@ export function useDiagonalTraverse(
                   emCeiling: Math.round((b.h / denom) * 1000) / 1000,
                   capOk: drift <= b.h + 1e-6,
                   // The reading unit this block's OPACITY (and the mask lane)
-                  // is keyed to. `unit:false` = it kept its own window, i.e.
-                  // the union was taller than the band.
-                  unit: b.opWin !== b.win,
-                  // `d = min(unitH, bandH)`, and the unit window is only built
-                  // when `unitH ≤ bandH`, so on a unit-keyed block this IS the
-                  // union box's height.
-                  unitH: Math.round(b.opWin.d),
+                  // is keyed to. `unit` is now a MATTER OF DEGREE, not a
+                  // boolean: `unitK === 1` is full pairing (the members share
+                  // one window object), `0 < unitK < 1` is the degraded pairing
+                  // a too-short viewport forces, `unitK === 0` means the block
+                  // has no reading unit at all. `unit` is kept as the coarse
+                  // flag the round-11.5 QA quoted.
+                  unit: b.opK > 0,
+                  unitK: Math.round(b.opK * 1000) / 1000,
+                  unitFallback: b.opK > 0 && b.opK < 1,
+                  unitMembers: b.opN,
+                  /** Height of the box the opacity window was built on. */
+                  unitH: Math.round(b.opH),
+                  /**
+                   * THE TEAR INSTRUMENT. `[scrollY_in, scrollY_out]` — the
+                   * scroll interval over which this block is non-transparent
+                   * (`V̂ > 0`), read straight off the window that drives the
+                   * opacity. Two blocks of ONE reading unit must report the
+                   * SAME pair; the amount by which they differ IS the
+                   * round-11.5 tear, in px of scroll, and it is `(1 − unitK)`
+                   * of the un-paired figure.
+                   */
+                  opSpan: [
+                    Math.round(b.opTop - b.opWin.e3),
+                    Math.round(b.opTop - b.opWin.e0),
+                  ],
                 };
               });
             },
@@ -892,7 +970,7 @@ export function useDiagonalTraverse(
               const lenis = getLenis();
               if (lenis) lenis.scrollTo(targetY, { duration: 0.4 });
               else window.scrollTo({ top: targetY });
-              return { index, edge, targetY, unit: b.opWin !== b.win };
+              return { index, edge, targetY, unitK: b.opK };
             },
             /** THE A/B: collapse the window to a constant α (the rejected
              * design), and restore it. One number, no other code path. */
@@ -941,28 +1019,34 @@ export function useDiagonalTraverse(
               };
             },
             /**
-             * ROUND 11 STAGE 1.5 QA — GATE 1 + GATE 2, THE CENSUS.
+             * THE CENSUS — GATE 1 (`maxIslandsOnFrame`) + GATE 2 (invariance).
              *
              * Walks the WHOLE act at `step` px and asks two questions per
              * sample: is any neural band on frame, and is any copy block
              * non-transparent. "On frame" is a STRICT viewport intersection
              * (pad 0), not the island's 220 px cull pad, and it includes the
-             * LATERAL test — an island swept off the side is not on frame no
+             * LATERAL test — a band swept off the side is not on frame no
              * matter where its DOM box sits. "Copy on frame" is `V̂ > 0`, i.e.
              * exactly the opacity the traverse writes (§B2.4: outside the
              * window the block is transparent, so it is not on frame in any
              * sense the eye would agree with).
              *
-             * This reproduces the pre-change baseline exactly — 18.8 / 29.1 /
-             * 12.1 / 40.0 with a 1116 px longest run at 1280×720 — which is
-             * what makes the after/before comparison worth quoting.
+             * ⚠ ROUND 12 · STAGE 1 — THE LADDER IS GONE, SO THIS NUMBER GETS
+             * WORSE ON PURPOSE. With one band the act is back to the census
+             * that first justified the ladder (~31 % net presence at 1280×720,
+             * ~40 % of the act with nothing on it). That is the checkpoint's
+             * known void; STAGE 2's continuous ribbon is what closes it.
+             *
+             * The `origin` term below is NOT optional and is not a leftover of
+             * the ladder: it is the same lateral re-centring the frame path
+             * applies (`bandLateralPx`). An instrument that measured the raw
+             * `xScenePx` would report the band off-frame from mid-act onward.
              */
             coverage(step = 4) {
               const cfgL = traverseConfig;
               const b = cfgL.bands[bandId];
               const dir = b.dir;
               const r = traverseRate(b);
-              const compensate = cfgL.islands.compensate;
               const bands: {
                 id: string;
                 docTop: number;
@@ -989,7 +1073,7 @@ export function useDiagonalTraverse(
                     h: cr.height,
                     w: cr.width,
                     cx: cr.left + cr.width / 2,
-                    origin: compensate ? dir * r * trav : 0,
+                    origin: dir * r * trav,
                     on: 0,
                   });
                 });
@@ -1032,11 +1116,14 @@ export function useDiagonalTraverse(
                 if (on > maxOn) maxOn = on;
                 // MIRRORS `apply()`: the opacity the traverse actually writes
                 // is the READING UNIT's window. The census is invariant under
-                // that swap — for `unitH ≤ bandH` the unit window's support is
-                // exactly the union of its members' supports (the contiguity
-                // lemma; it is the `unitH > bandH` guard in `measure()` that
-                // makes it true) — and reproducing the pre-change figure to the
-                // sample is QA gate 2.
+                // that swap while every unit is FULLY paired — for
+                // `unitH ≤ bandH` the unit window's support is exactly the
+                // union of its members' supports (the contiguity lemma) — and
+                // reproducing the pre-(a) figure to the sample is QA gate 2.
+                // Where a unit is only PARTIALLY paired (`unitFallback > 0`)
+                // the lemma's precondition has failed and invariance is not
+                // claimed; `censusInvariant` then reports what it measures
+                // rather than what it assumes.
                 let copy = false;
                 let copyB = false;
                 for (let i = 0; i < blocks.length; i++) {
@@ -1098,6 +1185,24 @@ export function useDiagonalTraverse(
                 longestNothingRunPx: longest,
                 longestNothingAtSectionY: Math.round(longestAt),
                 nothingRuns: runs.sort((x, y) => y - x).slice(0, 6),
+                /**
+                 * ROUND 12 · STAGE 1 — THE READING-UNIT PAIRING, PUBLISHED.
+                 * How many reading units are taller than the reading band and
+                 * are therefore only PARTIALLY paired (`k < 1`). It must never
+                 * again be possible for this to be true and unreported: at
+                 * `k = 0` the round-11.5 tear is fully back, and the only
+                 * previous signal was a boolean on a dev-only getter.
+                 */
+                unitFallback,
+                unitPairing: Array.from(unitSpan.values(), (sp) => {
+                  const uh = Math.max(sp.bottom - sp.top, 1);
+                  return {
+                    members: sp.n,
+                    unitH: Math.round(uh),
+                    bandH: Math.round(bandH),
+                    k: Math.round(Math.min(1, bandH / uh) * 1000) / 1000,
+                  };
+                }),
                 islands: bands.map((bd) => ({
                   id: bd.id,
                   topVh: Math.round(((bd.docTop - secTop) / ih) * 1000) / 1000,
@@ -1105,28 +1210,6 @@ export function useDiagonalTraverse(
                   onFramePct: pct(bd.on),
                 })),
               };
-            },
-            /** ROUND 11 STAGE 1.5 QA — GATE 2, the ladder as fitted, with the
-             * two bounds it was fitted against. `ok` false means a bound was
-             * clamped and the placement is a compromise, not a fit. */
-            get ladder() {
-              return ladderFit
-                ? {
-                    ok: ladderFit.ok,
-                    maxPitchVh: Math.round(ladderFit.maxPitch * 1000) / 1000,
-                    minPitchVh: Math.round(ladderFit.minPitch * 1000) / 1000,
-                    topsVh: ladderFit.tops.map(
-                      (t) => Math.round(t * 1000) / 1000,
-                    ),
-                    pitchesVh: ladderFit.pitches.map(
-                      (p) => Math.round(p * 1000) / 1000,
-                    ),
-                    offsetsVh: ladderFit.offsets.map(
-                      (o) => Math.round(o * 1000) / 1000,
-                    ),
-                    runwayVh: Math.round((secH / ih) * 1000) / 1000,
-                  }
-                : null;
             },
             get counters() {
               return { ...dbg.current.counters };
@@ -1153,7 +1236,6 @@ export function useDiagonalTraverse(
           section.style.removeProperty("--tv-gap-vh");
           section.style.removeProperty("--tv-band-bottom");
           section.style.removeProperty("--tv-band-h");
-          clearIslands();
           // Clear our OWN properties only, and do not assume `x` survives the
           // drift driver's `clearProps:"transform"` teardown (lusion-type
           // `registerDrift`): both are RM-gated and unmount together, so

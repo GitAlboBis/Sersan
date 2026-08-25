@@ -1,5 +1,5 @@
 /**
- * traverseConfig — THE DIAGONAL TRAVERSE, Stage 1 (ROUND 11, `#problem` only).
+ * traverseConfig — THE DIAGONAL TRAVERSE, `#problem` only.
  *
  * Two authored numbers and everything else derived, per the mechanism dossier
  * §2B.0 (`2026-08-24-round11-diagonal-traverse-mechanism.md`):
@@ -67,6 +67,16 @@
  * shape (b) vs (c) an OWNER-VISIBLE decision. It has not been taken.
  * `BAND_VH` reproduces today's 619 px band on the 1280×720 reference (619/720).
  *
+ * ⚠ ROUND 12 · STAGE 1 — THE ISLAND LADDER IS GONE (owner decisions D14–D24).
+ * Stage 1.5 answered the coverage hole with FIVE stacked bands. The owner read
+ * the stack itself as the defect — *"la rete dev'essere una rete orizzontale
+ * continua, non spezzata in piu sezioni verso il basso"* — so `TraverseIsland`,
+ * `TraverseIslandsConfig`, `fitTraverseLadder()`, `MAX_TRAVERSE_ISLANDS` and
+ * `traverseIslands()` are deleted here rather than switched off. What did NOT
+ * die with them is the LATERAL RE-CENTRING: see `bandLateralPx()` below. It was
+ * the `islands.compensate` flag; it is now unconditional, because a band that
+ * is not re-centred on its own arrival is swept off the side of the frame.
+ *
  * three-free by construction: this module is imported by the DOM hook AND by
  * the WebGL island. No `three`, no `gsap`.
  */
@@ -86,165 +96,8 @@ export interface TraverseBandConfig {
   bandVh: number | null;
 }
 
-/**
- * ROUND 11 STAGE 1.5 — ONE EXTRA ISLAND. A band top expressed in viewport
- * heights RELATIVE TO THE PRIMARY BAND'S OWN TOP, plus the plexus master seed
- * that makes it a different constellation from the same code.
- *
- * Relative, not absolute, ON PURPOSE: the primary band is the shipped
- * `[data-lattice-anchor="problem"]` at `inset-y-0` of the rows stack, and its
- * position inside the section is layout-dependent (1.803 vh at 1280×720,
- * 1.554 at 1440×900, 1.419 at 768×1024 — measured, this build). Anchoring the
- * ladder to it makes the PITCH an authored viewport-invariant, which is what
- * both coverage gates are stated in:
- *
- *   presence of one band  = bandVh + 1        = 1.8597 vh   (invariant)
- *   no hole between two   ⇒ pitch ≤ 1.8597 vh
- *   never three on frame  ⇒ pitch > 0.9299 vh
- *
- * so every pitch must live in (0.930, 1.860] vh — and it does, at EVERY
- * viewport, because it is authored in vh and the band height is pinned in vh.
- */
-export interface TraverseIsland {
-  /** Plexus master seed (see PLEXUS_MASTER_SEED). */
-  seed: number;
-  /**
-   * Manual override of the FITTED offset (vh from the primary band's top).
-   * Leave undefined: the ladder is fitted to the MEASURED act every refresh
-   * (see `fitTraverseLadder`), which is the only way the pitch bounds hold at
-   * every viewport — the act is 6.02 vh at 1280×720 but 5.59 at 1440×900 and
-   * 5.20 at 768×1024, and the primary band's own position moves with it.
-   */
-  dy?: number;
-}
-
-export interface TraverseIslandsConfig {
-  /**
-   * THE A/B. `false` un-places every extra island (CSS `display:none` ⇒ zero
-   * rect ⇒ the island disposes its build and costs nothing), leaving Stage 1's
-   * single band exactly as it shipped. One switch, no other code path.
-   */
-  enabled: boolean;
-  /**
-   * Re-centre each island's lateral on its OWN arrival (the storyboard's
-   * strip-x compensation, §B3). MANDATORY for the sequence: an island 3.75 vh
-   * down the act rides `xScenePx ≈ −1725 px` and would be culled off-frame.
-   * `false` restores Stage 1's raw `xScenePx` on every island — useful only as
-   * the demonstration of WHY the compensation exists.
-   */
-  compensate: boolean;
-  /**
-   * How far ABOVE the primary band the first extra sits, in vh. It is the one
-   * placement number the fit does not derive, because nothing above the
-   * primary band constrains it: it only has to reach the act's start
-   * (top ≤ 1.0 vh) without opening a hole (pitch ≤ bandVh + 1). Both are
-   * clamped in `fitTraverseLadder`.
-   */
-  leadVh: number;
-  /**
-   * Pin the LAST extra's BOTTOM to the section's bottom.
-   *
-   * ⚠ THIS IS A D2 CONSTRAINT, NOT A TUNING PREFERENCE. Coverage of the act's
-   * final sample and "no net over `#work`" are the SAME condition from
-   * opposite sides: the last band's bottom must be at the section's bottom —
-   * one pixel short and the tail goes black, one pixel long and Act I's world
-   * bleeds into the interlude the storyboard closes (§A, D2). Pinning it is
-   * the only placement that satisfies both, and it has to be re-derived per
-   * viewport because the act's height in vh is not a constant.
-   */
-  tailPin: boolean;
-  /**
-   * The extras, in DOM/index order: ONE above the primary band, then the rest
-   * spread between the primary band and the pinned tail. The PRIMARY band is
-   * not in this list — it is the shipped anchor at offset 0, and it keeps the
-   * shipped seed, the crystal clearance well and the stone. Length is capped
-   * by the section's authored anchor count (MAX_TRAVERSE_ISLANDS).
-   */
-  extras: TraverseIsland[];
-}
-
-/** The fitted ladder, plus the two bounds it was fitted against (QA gate 2). */
-export interface TraverseLadderFit {
-  /** Offsets in vh from the primary band's top, DOM/index order. */
-  offsets: number[];
-  /** Band tops in vh from the SECTION's top, ascending, primary included. */
-  tops: number[];
-  /** Pitches between consecutive tops, in vh. */
-  pitches: number[];
-  /** `bandVh + 1` — a pitch above this opens a hole. */
-  maxPitch: number;
-  /** `(bandVh + 1)/2` — a pitch below this puts THREE bands on frame. */
-  minPitch: number;
-  ok: boolean;
-}
-
-/**
- * FIT THE LADDER TO THE MEASURED ACT. Pure arithmetic on four measured vh
- * quantities — no DOM, no `three`, no allocation beyond the returned arrays
- * (it runs on refresh, never per frame).
- *
- * The invariants, and they are the gates:
- *   presence of one band = bandVh + 1                 (viewport-invariant)
- *   no hole between two  ⇒ pitch ≤ bandVh + 1
- *   never three on frame ⇒ pitch > (bandVh + 1)/2
- *   act START covered    ⇒ first top ≤ 1.0
- *   act END covered      ⇒ last top ≥ runwayVh − bandVh
- *   world closed at #work⇒ last top ≤ runwayVh − bandVh      ← same line
- */
-export function fitTraverseLadder(
-  /** Primary band top, in vh from the section top. */
-  bandY: number,
-  /** Primary band height, in vh (the pinned 0.8597 by default). */
-  bandVh: number,
-  /** The act's height, in vh. */
-  runwayVh: number,
-  extras: TraverseIsland[],
-  leadVh: number,
-  tailPin: boolean,
-): TraverseLadderFit {
-  const maxPitch = bandVh + 1;
-  const minPitch = maxPitch / 2;
-  const n = extras.length;
-  const offsets: number[] = [];
-  if (n > 0) {
-    // (1) the lead band: high enough to cover the act's start, close enough
-    //     not to open a hole above the primary.
-    let tFirst = bandY - leadVh;
-    if (tFirst > 0.98) tFirst = 0.98;
-    if (tFirst < bandY - maxPitch) tFirst = bandY - maxPitch;
-    offsets.push(tFirst - bandY);
-    // (2) the tail, then everything between it and the primary, evenly.
-    const after = n - 1;
-    if (after > 0) {
-      let tLast = tailPin ? runwayVh - bandVh : bandY + after * leadVh;
-      // Never let the fit produce a pitch that puts three bands on frame; an
-      // overhang past the seam is the lesser of the two failures and it is
-      // reported rather than hidden (`ok`).
-      if (tLast < bandY + after * minPitch) tLast = bandY + after * minPitch;
-      if (tLast > bandY + after * maxPitch) tLast = bandY + after * maxPitch;
-      const step = (tLast - bandY) / after;
-      for (let i = 1; i <= after; i++) offsets.push(step * i);
-    }
-  }
-  const tops = [bandY, ...offsets.map((d) => bandY + d)].sort((a, b) => a - b);
-  const pitches: number[] = [];
-  for (let i = 1; i < tops.length; i++) pitches.push(tops[i] - tops[i - 1]);
-  const ok =
-    tops.length > 0 &&
-    tops[0] <= 1.0 + 1e-6 &&
-    tops[tops.length - 1] >= runwayVh - bandVh - 1e-6 &&
-    pitches.every((p) => p > minPitch - 1e-6 && p <= maxPitch + 1e-6);
-  return { offsets, tops, pitches, maxPitch, minPitch, ok };
-}
-
-/** How many extra anchors `problem-section.tsx` authors. `extras` longer than
- * this is ignored — the DOM is the ceiling, not this array. */
-export const MAX_TRAVERSE_ISLANDS = 4;
-
 export interface TraverseConfigShape {
   bands: Record<TraverseBandId, TraverseBandConfig>;
-  /** ROUND 11 STAGE 1.5 — the island sequence (Act I only). */
-  islands: TraverseIslandsConfig;
   /** α in the reading plateau — display type (storyboard §B2.3). */
   alphaReadDisplay: number;
   /** α in the reading plateau — body copy. */
@@ -314,65 +167,22 @@ export const traverseConfig: TraverseConfigShape = {
       // ANGLE is exact everywhere (D12's invariant); the RUN LENGTH is not,
       // so `L` is 26.0–29.4 world units rather than the spec's flat 29.847.
       //
-      // ⚠⚠ THE COMPOSITION HOLE THIS OPENS — measured, Chrome/CDP, 1280×720.
-      // The band is 619 px tall (pinned) inside a 4335 px act, so the net is
-      // on frame for 1339 px = 30.9 % of the run. Census of the whole act by
-      // what is on screen:  net+copy 18.8 % · copy only 29.1 % · net only
-      // 12.1 % · **NOTHING AT ALL 40.0 %** (three runs of 228 / 392 / 1115 px;
-      // the last is 1.55 viewports of black immediately before `#production`).
-      // Mechanism §4.4 priced exactly this as the cost of shape (b) ("the net
-      // is on frame for only ~2 of the 6.1 viewports") and the storyboard §B3
-      // assumes the opposite — its G1–G4 gaps are "wordless NET", not wordless
-      // void. Levers, in the order that costs least: `gapVh = 0` restores
-      // today's document px-for-px and puts the net behind the whole act;
-      // §4.4(c) (decouple the group scale from the rect) keeps the runway AND
-      // the net. Both are owner-visible. NOT RESOLVED IN STAGE 1.
+      // ⚠⚠ THE COMPOSITION HOLE IS OPEN AGAIN, AND THAT IS DELIBERATE HERE.
+      // One 619 px band inside a 4335 px act is on frame for ~31 % of the run,
+      // and the census that first justified the ladder measured 40.0 % of the
+      // act with neither net nor copy on it (1280×720, every 4 px, one
+      // unbroken 1116 px run). The ladder closed that by stacking five bands;
+      // the owner rejected the stack itself (D14–D24), so ROUND 12 · STAGE 1
+      // deletes it and STAGE 2 closes the same hole with ONE continuous
+      // ribbon — a band as long as the lateral run instead of five short ones.
+      // This file is therefore a CHECKPOINT with a known void, not a shippable
+      // state; `coverage().nothing` reports it honestly at every commit.
       gapVh: 1.06,
       gapCount: 4,
       // 619 / 720 — today's band on the 1280×720 reference, made viewport-
       // relative so it is the same band at every viewport and every runway.
       bandVh: 0.8597,
     },
-  },
-  // ── THE ISLAND SEQUENCE ───────────────────────────────────────────────
-  // Measured at 1280×720 on this build: act 4335 px (6.020 vh), primary band
-  // top 1298 px (1.803 vh), band height 619 px (0.8597 vh). The fit then puts
-  // the five band tops at, in vh from the section top:
-  //
-  //     0.600 · 1.803 (primary) · 2.922 · 4.041 · 5.161
-  //     pitch  1.203      1.119     1.119    1.119
-  //
-  // against maxPitch 1.8597 (a hole) and minPitch 0.9299 (three on frame).
-  // The last top is `runwayVh − bandVh` exactly, so the band's bottom edge
-  // and the section's bottom edge are the same line: the act is covered to
-  // its final sample AND the net never reaches `#work`.
-  //
-  // ⚠ WHY THIS IS NOT THE STORYBOARD'S OWN FIVE GAP CENTRES. §B3 places its
-  // wordless gaps at section-y 285/1236/2001/2766/3667 of a 4392 px act, and
-  // the last of those assumes beat M5 (THE WALL + the three callouts,
-  // 4089→4392) carries COPY. The shipped section has no M5: its last 1116 px
-  // are the runway tail, and the census proves it — that tail is the single
-  // longest "nothing at all" run in the whole act. A ladder that stopped at
-  // the G4 centre would leave it black. The fitted tops sit within 0.12 vh of
-  // §B3's first two gaps and redistribute the rest across G2/G3/G4 + the
-  // tail; the pitch (1.12 vh) is inside §B3's own 1.06–1.32 vh range.
-  //
-  // Seeds: 11.37 is the shipped Problem constellation and stays on the
-  // primary band (the stone's band — the only one that keeps the crystal
-  // clearance well). The four below are arbitrary, well-separated master
-  // seeds; their structural fingerprints are reported per island by
-  // `__sersanNeuralLattice_problem-i<N>.plexus`.
-  islands: {
-    enabled: true,
-    compensate: true,
-    leadVh: 1.203,
-    tailPin: true,
-    extras: [
-      { seed: 3.71 },
-      { seed: 23.09 },
-      { seed: 41.53 },
-      { seed: 68.27 },
-    ],
   },
   alphaReadDisplay: 0.5,
   alphaReadBody: 0.25,
@@ -396,6 +206,54 @@ export function traverseRate(band: TraverseBandConfig): number {
   return Math.tan((a * Math.PI) / 180);
 }
 
+/**
+ * THE BAND'S LATERAL, RE-CENTRED ON ITS OWN ARRIVAL — one definition, two
+ * callers (`NeuralLattice.tsx`'s rig and `CrystalCluster.tsx`'s `cx`).
+ *
+ * ⚠ THIS IS WHAT SURVIVED `islands.compensate`, AND IT IS NOT OPTIONAL.
+ * The scene lateral runs `R · secH` across the act — 2342 px at 1920×935,
+ * 5358 px once STAGE 2 takes the angle to 45°. A band drawn at the raw
+ * `xScenePx` would sit at `x = 0` only at `p = 0` and would be a full screen
+ * off the side by mid-act. Subtracting the scene lateral AT THE SCROLL
+ * POSITION WHERE THIS BAND IS CENTRED IN THE VIEWPORT puts `x = 0` exactly
+ * when the band is centred, and the band then sweeps symmetrically either
+ * side of that. It is the storyboard's own strip-x compensation (§B3) applied
+ * to the net rather than to the copy, with α ≡ 1.00.
+ *
+ * Pure arithmetic on the FROZEN frame plus the caller's already-cached rect:
+ * no DOM read, no allocation, safe on the frame path. The stone and the net
+ * that share an anchor pass identical arguments, so they can differ by float
+ * noise only — which is what `__sersanCrystal_*.traverse.deltaPx` measures.
+ *
+ * ⚠ STAGE 2 REPLACES THE ARGUMENT, NOT THE SHAPE. Under the ribbon the
+ * re-centring becomes the act's own midpoint (`secH/2`) because the band is on
+ * frame for the whole act. At today's geometry that is NOT the same number —
+ * measured 1920×935: the anchor-centred origin is −639.67 px and `secH/2`
+ * would be −1170.87 px, i.e. the stone would jump 531 px — so the swap belongs
+ * with the ribbon, not here.
+ */
+export function bandLateralPx(
+  band: TraverseBandConfig,
+  /** `frame.xScenePx` — the act's scene lateral at the frozen scroll. */
+  xScenePx: number,
+  /** `frame.secTop` / `frame.secH` — from the SAME frozen snapshot. */
+  secTop: number,
+  secH: number,
+  /** The band anchor's untransformed doc-space top and its height. */
+  rectDocTop: number,
+  rectH: number,
+  viewportH: number,
+): number {
+  const r = traverseRate(band);
+  if (r === 0) return xScenePx;
+  const centreScroll = rectDocTop + rectH / 2 - viewportH / 2;
+  const travelledAtCentre = Math.min(
+    Math.max(centreScroll - secTop, 0),
+    secH,
+  );
+  return xScenePx - band.dir * r * travelledAtCentre;
+}
+
 // --- live tuning ------------------------------------------------------------
 
 type Listener = () => void;
@@ -408,29 +266,16 @@ export function onTraverseConfigChange(fn: Listener): () => void {
   };
 }
 
-/** The single write path — bumps `revision` and re-measures every consumer.
- * `islands` is MERGED, not replaced, so `set({ islands: { enabled: false } })`
- * cannot silently drop the authored ladder. */
+/** The single write path — bumps `revision` and re-measures every consumer. */
 export function setTraverseConfig(
-  patch: Partial<
-    Omit<TraverseConfigShape, "bands" | "revision" | "islands">
-  > & {
+  patch: Partial<Omit<TraverseConfigShape, "bands" | "revision">> & {
     problem?: Partial<TraverseBandConfig>;
-    islands?: Partial<TraverseIslandsConfig>;
   },
 ): TraverseConfigShape {
-  const { problem, islands, ...rest } = patch;
+  const { problem, ...rest } = patch;
   Object.assign(traverseConfig, rest);
   if (problem) Object.assign(traverseConfig.bands.problem, problem);
-  if (islands) Object.assign(traverseConfig.islands, islands);
   traverseConfig.revision++;
   listeners.forEach((fn) => fn());
   return traverseConfig;
-}
-
-/** The ladder, resolved and clamped to what the DOM actually authors. */
-export function traverseIslands(): TraverseIsland[] {
-  const cfg = traverseConfig.islands;
-  if (!cfg.enabled) return [];
-  return cfg.extras.slice(0, MAX_TRAVERSE_ISLANDS);
 }

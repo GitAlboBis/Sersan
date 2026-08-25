@@ -119,7 +119,7 @@
  *     camera-locked inner group at renderOrder −2 (behind the particles; both
  *     additive, so ordering is cosmetic). Membrane: null since round-8.
  */
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { webgpuEnabled } from "./renderer/createRenderer";
@@ -132,9 +132,7 @@ import { useTierStore } from "./store/tierStore";
 import { useTraverseStore, type TraverseFrame } from "./store/traverseStore";
 import {
   traverseConfig,
-  traverseRate,
-  traverseIslands,
-  onTraverseConfigChange,
+  bandLateralPx,
   type TraverseBandId,
 } from "./neural/traverseConfig";
 import {
@@ -215,51 +213,32 @@ interface SectionRect {
 }
 
 /**
- * ROUND 11 STAGE 1.5 — ONE island of a band. Everything below this line is the
- * shipped driver; the only additions are the four props above `size` and the
- * ~15 lines they reach.
+ * ONE island of a band.
  *
  * `anchorId` is the DOM box it is camera-locked to and the dev-handle key.
- * `bandId` is the TRAVERSE band whose frozen frame it reads — the two are the
- * same for the shipped anchors and differ for the extra islands, which share
- * `#problem`'s one clock while owning their own box. There is exactly one
- * scroll snapshot per act, and five readers of it.
+ * `bandId` is the TRAVERSE band whose frozen frame it reads; they are the same
+ * for every shipped anchor. There is exactly one scroll snapshot per act.
+ *
+ * ⚠ ROUND 12 · STAGE 1 — THE LADDER'S FOUR PROPS ARE GONE. `plexusSeed`,
+ * `plexusWell`, `primary` and `strictCull` existed only to make four EXTRA
+ * islands differ from the shipped one, and the owner rejected the stack of
+ * bands they built (D14–D24). With one band per anchor there is no
+ * cross-island singleton to own (`primary`), no neighbour to overlap
+ * (`strictCull` — see the visibility note below, this is a real behaviour
+ * change), and no second constellation to decorrelate (`plexusSeed` /
+ * `plexusWell`). The DELETED prop that did not delete its idea is the lateral
+ * re-centring: it is now `bandLateralPx()`, unconditional, shared with the
+ * stone. See `traverseConfig.ts`.
  */
 function NeuralLatticeIsland({
   mode,
   anchorId,
   bandId,
-  plexusSeed,
-  plexusWell = true,
-  primary = true,
-  strictCull = false,
 }: {
   mode: LatticeMode;
   anchorId: string;
   /** Traverse band to read (defaults to `anchorId` for the shipped pair). */
   bandId?: string;
-  /** Plexus master seed — undefined = the mode's shipped constellation. */
-  plexusSeed?: number;
-  /** Carve the crystal clearance well (only the stone's band needs it). */
-  plexusWell?: boolean;
-  /**
-   * The band's ONE owner of the cross-island singletons: the store pulse
-   * decay write-back and the act DPR cap. Five islands each damping the same
-   * `neuralLatticeStore` pulse array would decay it five times per frame, and
-   * five DPR caps would fight over one ceiling. Everything else — reveal,
-   * surge, flash, row glow, the mask lane — is genuinely per-island state.
-   */
-  primary?: boolean;
-  /**
-   * Submit this band for drawing only while it GENUINELY intersects the frame,
-   * instead of throughout the 220 px cull-pad hysteresis. True for every band
-   * of a ladder — including the primary, whose padded window is 2.47 vh against
-   * a real presence of 1.86 vh and is therefore the thing that puts a THIRD
-   * (entirely off-screen) band into the draw list at a 0.98 vh pitch. False for
-   * a lone band, which is what `#production` is: no neighbour, nothing to
-   * overlap, and its expression stays byte-for-byte the shipped one.
-   */
-  strictCull?: boolean;
 }) {
   const band = bandId ?? anchorId;
   const { size, camera, gl } = useThree();
@@ -272,24 +251,8 @@ function NeuralLatticeIsland({
   /** The count the CURRENT build was allocated with (dev debug handle only). */
   const countRef = useRef(NEURAL_PARTICLE_COUNT);
 
-  /**
-   * ROUND 11 STAGE 1.5 — is this island's anchor actually laid out? An extra
-   * island whose `--tv-island-N-on` was never written is `display: none` and
-   * measures 0×0, so it must not allocate 9 000 particles, a material and a
-   * compute kernel. This is a BOOLEAN, deliberately, and NOT `rect !== null`:
-   * the rect object changes on every resize and the build must never be a
-   * function of the viewport. It flips only when the ladder is armed or torn
-   * down — which is also the whole A/B for `islands.enabled`.
-   */
-  const [anchorLive, setAnchorLive] = useState(false);
-  // ⚠ The gate is for EXTRAS ONLY. A primary band always has its anchor, and
-  // making its build wait for the first rect measure would delay every shipped
-  // lattice (`#production` included) by a commit for no reason. `primary` is a
-  // per-instance constant, so the dependency array's shape never changes.
-  const buildGate = primary || anchorLive;
-
   useEffect(() => {
-    if (!webgpuEnabled() || !buildGate) return;
+    if (!webgpuEnabled()) return;
     let cancelled = false;
     let built: NeuralFieldBuild | null = null;
 
@@ -322,8 +285,6 @@ function NeuralLatticeIsland({
         backendIsWebGPU,
         count,
         mode,
-        plexusSeed,
-        plexusWell,
       });
       built.uniforms.uFlowSpeed.value = FLOW_SPEED;
       built.uniforms.uFracture.value = FRACTURE_T;
@@ -336,7 +297,7 @@ function NeuralLatticeIsland({
       setBuild(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, gl, buildGate, plexusSeed, plexusWell]);
+  }, [mode, gl]);
 
   // --- Section rect: measured on measureVersion bumps -----------------------
   const [rect, setRect] = useState<SectionRect | null>(null);
@@ -345,22 +306,17 @@ function NeuralLatticeIsland({
       const el = document.querySelector<HTMLElement>(
         `[data-lattice-anchor="${anchorId}"]`,
       );
-      // ROUND 11 STAGE 1.5 — an UNPLACED extra island is `display: none` and
-      // measures 0×0. Treat that exactly like a missing anchor: no rect, no
-      // build, no frame work. `< 2` rather than `=== 0` so a sub-pixel box can
-      // never half-arm the island.
+      // A missing or zero-sized anchor means no rect, no frame work. `< 2`
+      // rather than `=== 0` so a sub-pixel box can never half-arm the island.
       if (!el) {
-        setAnchorLive(false);
         setRect(null);
         return;
       }
       const r = el.getBoundingClientRect();
       if (r.width < 2 || r.height < 2) {
-        setAnchorLive(false);
         setRect(null);
         return;
       }
-      setAnchorLive(true);
       const cxBase = r.left + r.width / 2;
       // ROUND 9-B: the copy column, measured rather than assumed. The band is
       // FULL-BLEED (rect.w = 100vw, so local x = 0 IS the viewport centre-line)
@@ -418,12 +374,15 @@ function NeuralLatticeIsland({
       });
     };
     measure();
-    // ROUND 11 STAGE 1.5 — the ladder is armed by writing CSS custom
-    // properties, which changes NO `[data-line-anchor]` span and NO document
-    // height, so `sectionStore.setMeasured` short-circuits and `measureVersion`
-    // never bumps. Listen to the remeasure event directly: it is the signal the
-    // traverse hook already dispatches on arm, on teardown and on every live
-    // config write, and it is event-driven (never per frame).
+    // ⚠ THE BAND PIN IS A CSS CUSTOM PROPERTY, AND `measureVersion` CANNOT SEE
+    // IT. `armCss()` writes `--tv-band-h` / `--tv-band-bottom`, which changes
+    // THIS ANCHOR'S OWN HEIGHT without changing any `[data-line-anchor]` span,
+    // so `sectionStore.setMeasured` can short-circuit and leave us camera-
+    // locked to the pre-pin box. Listen to the remeasure event directly: it is
+    // the signal the traverse hook already dispatches on arm, on teardown and
+    // on every live config write, and it is event-driven (never per frame).
+    // (It also predates ROUND 12 · STAGE 1's deletion of the island ladder,
+    // which is NOT why it is here — the band pin is.)
     window.addEventListener("sersan:remeasure", measure);
     return () => window.removeEventListener("sersan:remeasure", measure);
     // size.* is included DELIBERATELY: everything stored above is a PIXEL
@@ -566,36 +525,33 @@ function NeuralLatticeIsland({
     }
     const onBand = !!tv && tv.active;
     const scrollY = onBand ? tv!.scrollY : window.scrollY;
-    // ── ROUND 11 STAGE 1.5 — THIS ISLAND'S AUTHORED STRIP-X ────────────────
-    // The scene lateral runs 1895 px across the act. An island that is on
-    // frame at the END of that run would be drawn 1725 px left of its own box
-    // — off the side of the screen, and the lateral cull below would delete
-    // it, which is the whole reason five bands need five origins.
+    // ── THIS BAND'S AUTHORED STRIP-X ───────────────────────────────
+    // The scene lateral runs `R·secH` across the act — 2342 px at 1920×935. A
+    // band drawn at the raw `xScenePx` would sit at `x = 0` only at `p = 0`
+    // and would be most of a screen off the side by mid-act.
     //
-    // The origin is the scene lateral at the scroll position where THIS band
-    // is centred in the viewport, so `x = 0` exactly when the band is centred
-    // and the island sweeps a symmetric ±292 px either side of it. That is the
-    // storyboard's own strip-x compensation (§B3), applied to the net instead
-    // of the copy: `strip-x = designLane + α·1.5W·p_arrival`, α ≡ 1.00 here.
-    //
-    // Derived ENTIRELY from the frozen frame (`secTop`/`secH` travel with the
-    // snapshot) plus this island's already-cached rect — no second read of the
-    // section, no `getBoundingClientRect` in the frame path, no allocation.
-    // A one-line identity worth carrying: with the compensation on,
-    // `lateral = −dir·R·ih·a`, where `a` is the SAME centring scalar the stone
-    // tumbles on. Net and stone therefore share one number by construction.
+    // ONE definition, shared with the stone: `bandLateralPx()` in
+    // `traverseConfig.ts`. It was the `islands.compensate` flag and it is now
+    // unconditional — the ladder died, the re-centring did not. Pure
+    // arithmetic on the frozen frame plus this island's already-cached rect:
+    // no second read of the section, no `getBoundingClientRect` in the frame
+    // path, no allocation. `lateral = −dir·R·ih·a`, where `a` is the SAME
+    // centring scalar the stone tumbles on, so net and stone share one number
+    // by construction (`__sersanCrystal_*.traverse.deltaPx` is the gate).
     let lateralPx = 0;
     if (onBand) {
-      lateralPx = tv!.xScenePx;
       const bcfg = traverseConfig.bands[band as TraverseBandId];
-      if (bcfg && traverseConfig.islands.compensate) {
-        const centreScroll = rect.docTop + rect.h / 2 - ih / 2;
-        const travelledAtCentre = Math.min(
-          Math.max(centreScroll - tv!.secTop, 0),
-          tv!.secH,
-        );
-        lateralPx -= bcfg.dir * traverseRate(bcfg) * travelledAtCentre;
-      }
+      lateralPx = bcfg
+        ? bandLateralPx(
+            bcfg,
+            tv!.xScenePx,
+            tv!.secTop,
+            tv!.secH,
+            rect.docTop,
+            rect.h,
+            ih,
+          )
+        : tv!.xScenePx;
     }
     if (onBand && scrollY !== lastSeenScroll.current) {
       lastSeenScroll.current = scrollY;
@@ -608,9 +564,7 @@ function NeuralLatticeIsland({
     // inside a cinematic beat. Freeze the ceiling for the duration; a genuine
     // decline can still drop it, which is correct. One cap per act, never per
     // beat, and we only ever release the cap we ourselves armed.
-    // ⚠ PRIMARY ONLY. Five islands arming five caps on one ceiling would let
-    // the first to leave the frame release a cap four others still want.
-    if (tv && primary) {
+    if (tv) {
       const tier = useTierStore.getState();
       if (onBand && armedDprCap.current === null && traverseConfig.dprCap) {
         const capped = gl.getPixelRatio();
@@ -680,41 +634,39 @@ function NeuralLatticeIsland({
       group.visible = false;
       return;
     }
-    // ROUND 11 — the LATERAL cull (§5.4b). Every mesh here is
-    // `frustumCulled={false}` (which is what makes the rig safe against a
-    // stale bounding sphere), so a band that has travelled 1.5 screens
-    // off-frame would otherwise keep submitting ~9000 sprites and a
-    // 227-segment LineSegments every frame. Two comparisons, no allocation.
-    if (lateralPx !== 0) {
-      const cxNow = cx + lateralPx;
-      if (
-        cxNow + rect.w / 2 < -CULL_PAD ||
-        cxNow - rect.w / 2 > vw + CULL_PAD
-      ) {
-        group.visible = false;
-        return;
-      }
-    }
-    // ROUND 11 STAGE 1.5 — DRAW ONLY WHAT IS ACTUALLY ON FRAME.
-    // `CULL_PAD` (220 px) is hysteresis for the reveal ramp, not a visibility
-    // rule: it makes a band "visible" for `h + ih + 2·PAD` = 2.47 vh of scroll
-    // against a real on-frame presence of 1.86 vh. With ONE band that costs
-    // nothing (nobody is next to it); with a ladder at a 1.12 vh pitch it puts
-    // a THIRD band — entirely off screen — into the draw list, i.e. 9 000
-    // extra sprites vertex-shaded and clipped, and on the WebGL2 analytic tier
-    // that is 9 000 extra `anchorNode()` evaluations for zero pixels.
+    // ⚠ ROUND 12 · STAGE 1 — `#problem` GOES BACK TO PADDED VISIBILITY, AND
+    // THAT IS A DELIBERATE BEHAVIOUR CHANGE, NOT A DEAD-CODE REMOVAL.
+    // `strictCull` submitted a band only while it GENUINELY intersected the
+    // frame, because a ladder at a 1.12 vh pitch put a third, entirely
+    // off-screen band into the draw list. With ONE band there is no neighbour
+    // to overlap, so the shipped `CULL_PAD` hysteresis (220 px, which keeps
+    // the reveal ramp warm) is the whole rule again — exactly what
+    // `#production` has always had. Cost: the band is submitted for
+    // `h + ih + 2·PAD` ≈ 2.47 vh of scroll against a real presence of
+    // 1.86 vh, i.e. ~0.6 vh of scroll drawing 9 000 clipped sprites.
     //
-    // So the extras keep the padded state machine (the ramp stays warm) but
-    // are SUBMITTED only while they genuinely intersect the frame. The primary
-    // band keeps the shipped expression byte-for-byte — `#production` must not
-    // change, and an off-screen band draws nothing either way, so this is a
-    // cost fix with no pixel consequence.
-    group.visible =
-      !strictCull ||
-      (vpTop + rect.h > 0 &&
-        vpTop < ih &&
-        cx + lateralPx + rect.w / 2 > 0 &&
-        cx + lateralPx - rect.w / 2 < vw);
+    // ⚠ AND IT IS NOT QUITE PIXEL-NEUTRAL, IN THE SAFE DIRECTION. The field is
+    // NOT confined to its anchor box on screen: the box is `zWorld = 9.6215`
+    // deep at `CAMERA_Z = 12`, so perspective maps it to between 0.714× (far
+    // plane) and 1.669× (near plane) about the SCREEN CENTRE. A box that has
+    // just left the frame still has far-plane nodes inside it, and `strictCull`
+    // — a box test — clipped them. Padded visibility draws them again, which is
+    // what `#production` has always drawn, so this restores the contract
+    // rather than breaking it.
+    //
+    // The LATERAL cull went with it. It could only ever fire while the band
+    // was ALSO vertically on frame (the vertical cull returns first), and
+    // under the re-centring above `lateral = dir·R·(sy − sy_centre)` is linear
+    // in scroll, so it is extremal exactly at the ends of that window:
+    //   any pixel on frame  ⇒ |lateral| ≤ R·(ih + rect.h)/2
+    //   inside the 220 px pad ⇒ |lateral| ≤ R·((ih + rect.h)/2 + CULL_PAD)
+    // Measured against a firing point of ±(vw/2 + rect.w/2 + CULL_PAD):
+    //   1920×935  ±380 px on frame (±476 padded)  vs  ±2140 px — 5.6× clear
+    //    390×844  ±343 px on frame (±439 padded)  vs   ±610 px — 1.8× clear
+    // so it could never delete a band with a pixel on screen. Deleting it is
+    // pixel-neutral today; leaving it would have deleted STAGE 2's ribbon at
+    // both ends of the act (`p < 0.101`, `p > 0.899` at 45°).
+    group.visible = true;
 
     // Camera-locked placement of the OUTER group, scaled to the anchor rect.
     const wWorld = rect.w * k;
@@ -768,12 +720,7 @@ function NeuralLatticeIsland({
       decayed[i] = d < 0.001 ? 0 : d;
       if (target !== 0) anyPulse = true;
     }
-    // ⚠ PRIMARY ONLY (round 11 stage 1.5). The decay is a WRITE-BACK to a
-    // store slot shared by every island of the band: five islands each damping
-    // it once per frame would decay the DOM's bump five times as fast and the
-    // packet would die before it reached the fracture. Every island still
-    // READS the same targets — only the write-back is owned.
-    if (primary && anyPulse) store.setPulse(surfaceKey, decayed);
+    if (anyPulse) store.setPulse(surfaceKey, decayed);
     let maxPulse = 0;
     for (let i = 0; i < CLUSTER_COUNT; i++) {
       pulseEased.current[i] = THREE.MathUtils.damp(
@@ -1024,10 +971,10 @@ function NeuralLatticeIsland({
       hasBuild: !!build,
       webgpu: backendIsWebGPURef.current,
       rect,
-      primary,
       bandId: band,
-      /** ROUND 11 STAGE 1.5 QA — GATE 4. The structural fingerprint of this
-       * island's constellation. Five islands, five different rows. */
+      /** QA GATE 4 — the structural fingerprint of this band's
+       * constellation. The `#production` row is the byte-for-byte contract:
+       * `{nodes: 101, edges: 229}`, checksum −420.464007. */
       get plexus() {
         if (!build) return null;
         const st = build.stats;
@@ -1045,9 +992,10 @@ function NeuralLatticeIsland({
           particles: countRef.current,
         };
       },
-      /** ROUND 11 STAGE 1.5 QA — GATE 3. Is this island paying anything right
-       * now? `visible` false ⇒ the frame callback returned before the compute
-       * dispatch and before the draw (two comparisons, nothing else). */
+      /** QA GATE 3 — is this band paying anything right now? `onFrame` false
+       * ⇒ the frame callback returned at the vertical cull, before the
+       * compute dispatch and before the draw (two comparisons, nothing
+       * else). */
       get cost() {
         const g = groupRef.current;
         return {
@@ -1293,41 +1241,22 @@ function NeuralLatticeIsland({
 }
 
 /**
- * ROUND 11 STAGE 1.5 — THE ISLAND SEQUENCE.
+ * THE BAND. `Scene.tsx` mounts this exactly as it always did (`mode` +
+ * `anchorId`), and it is now what it says: ONE island on ONE anchor.
  *
- * Scene.tsx mounts this component exactly as it always did (`mode` + `anchorId`,
- * zero lines changed there). What it renders is now a LADDER: the shipped
- * island on the shipped anchor, plus the extras the traverse config authors.
+ * ⚠ ROUND 12 · STAGE 1 — THE LADDER IS DELETED, NOT SWITCHED OFF.
+ * Stage 1.5 rendered four EXTRA islands here, stacked down `#problem` at a
+ * fitted pitch, because one 619 px band inside a 4335 px act left 40.0 % of
+ * the act with neither net nor copy on it. The owner read the stack itself as
+ * the defect — *"la rete dev'essere una rete orizzontale continua, non
+ * spezzata in piu sezioni verso il basso"* (D14–D24) — so the extras, their
+ * per-island seeds, the `primary`/`strictCull` props and the dev-only
+ * `onTraverseConfigChange` subscription that re-derived them all go with it.
  *
- * WHY A SEQUENCE AT ALL. Stage 1 pinned one 619 px band inside a 4335 px act,
- * so the net was on frame for 30.9 % of the run and 40.0 % of the act had
- * neither net nor copy on it — measured every 4 px at 1280×720, with one
- * unbroken 1116 px run of black. Coverage is `(bandVh + 1)/runwayVh` and it is
- * arithmetic, not taste: the only ways out are a shorter act, a bigger cloud,
- * or MORE CLOUDS. The first two were priced and rejected (coverage-trilemma
- * dossier §2, §8⑤); this is §8①, and it is also the literal reading of the
- * owner's own sentence — *"si va avanti nella rete e ne appare un'altra."*
- *
- * WHAT IT COSTS, and why it is nearly free:
- *   - an off-frame island returns at the vertical cull, which is ABOVE the
- *     compute dispatch and above every draw — so it costs two comparisons;
- *   - the ladder's pitch guarantees at most TWO are on frame at once, so the
- *     shaded budget is 2 × per-island regardless of how many exist;
- *   - each island has its OWN material and therefore its own uniform-block
- *     budget, and that budget lands exactly where it was: five islands do not
- *     add a block, because nothing is shared between them. (The per-stage
- *     block counts live in ONE place — the BLOCK-COUNT BUDGET note in
- *     `neuralFieldCompute.ts`, measured live on the WebGL2 fallback. The
- *     "12 of 12" this line used to quote was never measured and was wrong;
- *     the load-bearing claim, that islands add nothing, is unaffected.)
- *   - and there is no shader edit anywhere. The seed reaches the GPU only as
- *     the CONTENTS of the plexus tables — `uNodePos` / `uNodeT` and the
- *     endpoint table, which ROUND 12 · STAGE 0B packed into `uEdgePack`
- *     (`uEdgeA` / `uEdgeB` reach the GPU only under the EDGE_PACKED
- *     rollback).
- *
- * `#production` and every non-traversed band take the `extras.length === 0`
- * path and are byte-for-byte the shipped single island.
+ * The coverage hole they were answering is therefore OPEN AGAIN at this
+ * commit, by design: this is a checkpoint, and STAGE 2 closes it with a single
+ * continuous ribbon as long as the lateral run. `coverage().nothing` reports
+ * the void honestly in the meantime.
  */
 export function NeuralLattice({
   mode,
@@ -1336,50 +1265,7 @@ export function NeuralLattice({
   mode: LatticeMode;
   anchorId: string;
 }) {
-  // Only the traversed band has a ladder. Everything else keeps ONE island.
-  const traversed = anchorId === "problem";
-  const [cfgRev, setCfgRev] = useState(0);
-  useEffect(() => {
-    // Dev only: `setTraverseConfig` is a console-handle write path, and this
-    // is the one subscription in the island tree that turns into a React
-    // commit. Production never calls it, so production never subscribes.
-    if (process.env.NODE_ENV === "production" || !traversed) return;
-    return onTraverseConfigChange(() => setCfgRev((r) => r + 1));
-  }, [traversed]);
-  const extras = useMemo(
-    () => (traversed ? traverseIslands() : []),
-    // cfgRev is the live-tuning trigger; traverseIslands() reads the mutable
-    // config object, so the dependency is deliberate.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [traversed, cfgRev],
-  );
-
   return (
-    <>
-      <NeuralLatticeIsland
-        mode={mode}
-        anchorId={anchorId}
-        bandId={anchorId}
-        primary
-        // A lone band keeps the shipped padded visibility; a band with
-        // neighbours must not be submitted while it is off screen.
-        strictCull={extras.length > 0}
-      />
-      {extras.map((isl, i) => (
-        // Keyed by SEED: a live seed change remounts (and rebuilds) that one
-        // island; a live `dy` change is pure CSS and must not.
-        <NeuralLatticeIsland
-          key={`${i}:${isl.seed}`}
-          mode={mode}
-          anchorId={`${anchorId}-i${i}`}
-          bandId={anchorId}
-          plexusSeed={isl.seed}
-          // No stone on an extra island ⇒ no silhouette clearance to carve.
-          plexusWell={false}
-          primary={false}
-          strictCull
-        />
-      ))}
-    </>
+    <NeuralLatticeIsland mode={mode} anchorId={anchorId} bandId={anchorId} />
   );
 }
