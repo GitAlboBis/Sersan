@@ -49,6 +49,16 @@
  * (it is the same staleness the shipped drift already has), while `x` at
  * α_edge is worth 57 px — which is why `x` must ride the frozen snapshot.
  *
+ * ── ROUND 12 · D21 — THE WINNER'S IDENTITY IS PUBLISHED, NOT THROWN AWAY ──
+ * `apply()` has always resolved a single winning block per frame (the
+ * `bestV`/`bestU` comparison) and kept only its VALUE, as `frame.laneWindow`.
+ * It now also writes `frame.laneRow` — the winner's cached ledger-row index —
+ * and mirrors it onto `traverseStore`'s edge-deduped lit-row channel, which is
+ * what lets the DOM type ignite from the SCROLL instead of the pointer
+ * (fx/scroll-ignition, `[data-lit]`). It costs no second read, no rect, no
+ * measurement and no allocation: the index is cached on `Block` at
+ * construction and the channel returns on its first line when nothing changed.
+ *
  * ── DEGRADATION ──────────────────────────────────────────────────────────
  *  - `prefers-reduced-motion` — the whole hook lives inside a matchMedia
  *    `(prefers-reduced-motion: no-preference)` context, so a runtime toggle
@@ -78,7 +88,13 @@ import {
 import {
   registerTraverseBand,
   deactivateTraverseBand,
+  publishLitRow,
 } from "@/webgl/store/traverseStore";
+import {
+  IGNITE_V,
+  setScrollIgnition,
+  scrollIgnitionEnabled,
+} from "./scroll-ignition";
 import {
   buildRateWindow,
   makeRateSample,
@@ -244,6 +260,16 @@ interface Block {
   appliedX: number;
   appliedOp: number;
   row: HTMLElement | null;
+  /**
+   * The ledger row's index, CACHED AT CONSTRUCTION — `-1` when the block does
+   * not live in a row (the chapter's two halves).
+   *
+   * ⚠ It is cached, not parsed, because `apply()` runs on every ScrollTrigger
+   * update: reading `row.dataset.ledgerRow` there would resolve a DOM
+   * attribute and allocate a string 8 blocks × 60 times a second for a value
+   * that changes only when the section is rebuilt.
+   */
+  rowIndex: number;
   /** The reading unit this block belongs to (null = it is its own unit). */
   unit: HTMLElement | null;
 }
@@ -340,6 +366,10 @@ export function useDiagonalTraverse(
         els.forEach((el) => {
           const kind =
             el.dataset.traverseAlpha === "display" ? "display" : "body";
+          const rowEl = el.closest<HTMLElement>("[data-ledger-row]");
+          const rowIdx = rowEl
+            ? Number.parseInt(rowEl.dataset.ledgerRow ?? "", 10)
+            : Number.NaN;
           blocks.push({
             el,
             copyEl: el.querySelector<HTMLElement>(COPY_BOX_SELECTOR) ?? el,
@@ -360,7 +390,8 @@ export function useDiagonalTraverse(
             opN: 1,
             appliedX: 0,
             appliedOp: 1,
-            row: el.closest<HTMLElement>("[data-ledger-row]"),
+            row: rowEl,
+            rowIndex: Number.isFinite(rowIdx) && rowIdx >= 0 ? rowIdx : -1,
             unit: el.closest<HTMLElement>(UNIT_SELECTOR),
           });
         });
@@ -677,6 +708,33 @@ export function useDiagonalTraverse(
           frame.secTop = secTop;
           frame.secH = secH;
           frame.xScenePx = dir * rate * travelled;
+          // ── ROUND 12 · D21 — THE LIT ROW ────────────────────────────────
+          // ⚠ OUTSIDE the `laneEnabled` branch below, deliberately. That flag
+          // is the mask lane's rollback lever; if the ignition rode inside it,
+          // rolling the mask back would silently freeze the type's ignition
+          // too and stop being a rollback.
+          //
+          // The winner is already resolved above, from the SAME frozen `sy`,
+          // in the SAME loop, over the SAME reading-unit windows that write
+          // the opacity. All that is added here is the threshold and the
+          // winner's identity.
+          //
+          // `IGNITE_V ≈ 1 − ε`, not 0.85, and the reason is the rate law:
+          // α = α_edge + (α_read − α_edge)·V̂, so V̂ = 0.85 is still ~1.9× the
+          // plateau rate. The row lights when it is opaque AND slowest, which
+          // is the same instant the reader is actually reading it. Every
+          // window reaches exactly 1 somewhere in its plateau (`windowAt`
+          // returns 1 on `[e1, e2]`, and `e2 > e1` for every block whose
+          // height differs from the band's), so the threshold is always
+          // reachable — including under the partially-paired `opWin`.
+          //
+          // A block outside any `[data-ledger-row]` — the chapter's headline
+          // and its description — carries `rowIndex === -1`, so while the
+          // chapter is the winner NOTHING is lit. That is correct: the
+          // chapter is not a row and has no ignited pose.
+          frame.laneRow =
+            best !== null && bestV >= IGNITE_V ? best.rowIndex : -1;
+          publishLitRow(bandId, frame.laneRow < 0 ? null : frame.laneRow);
           if (best && cfg.laneEnabled) {
             // ⚠ From the block's FINAL APPLIED `x` — the same number written
             // to its transform, in the same loop, in the same frame. Never a
@@ -685,10 +743,19 @@ export function useDiagonalTraverse(
             frame.laneCenterPx =
               best.copyLeft + best.appliedX + best.copyW / 2;
             frame.laneHalfPx = best.copyW / 2;
+            // ROUND 12 · STAGE 2 FIX — THE LANE'S VERTICAL TWIN. Same frozen
+            // `sy`, same `best`, same frame: the tracked READING UNIT's box
+            // (`opTop`/`opH`, never `docTop`/`h` — the unit is the statement,
+            // and a carve-out sized on the headline alone would leave its own
+            // paragraph over an unmasked net). Two subtractions, no
+            // measurement, no allocation.
+            frame.laneCyPx = best.opTop + best.opH / 2 - sy;
+            frame.laneHalfYPx = best.opH / 2;
             frame.laneWindow = bestV;
           } else {
             frame.laneWindow = 0;
             frame.laneHalfPx = 0;
+            frame.laneHalfYPx = 0;
           }
           // R1's clock instrument. `tick` counts FRAMES ON WHICH THE SCROLL
           // ADVANCED, not calls — ScrollTrigger also updates on native scroll
@@ -979,6 +1046,24 @@ export function useDiagonalTraverse(
             },
             restoreWindow() {
               return setTraverseConfig({ collapse: false });
+            },
+            /**
+             * ROUND 12 · D21 — THE ONE LIVE SWITCH for scroll-driven type
+             * ignition, so the owner can A/B it without a reload:
+             *
+             *   __sersanTraverse_problem.scrollIgnition(false)  // back to hover
+             *   __sersanTraverse_problem.scrollIgnition(true)   // scroll commands
+             *   __sersanTraverse_problem.scrollIgnition()       // read it
+             *
+             * It flips BOTH acts at once (`#problem` and `#trust`) — the whole
+             * point of D21 is one grammar, so a switch that split them would
+             * be measuring something the owner never asked for. Mirrored on
+             * `window.__sersanScrollIgnition` for the act that has no traverse
+             * handle of its own.
+             */
+            scrollIgnition(on?: boolean) {
+              if (typeof on === "boolean") setScrollIgnition(on);
+              return scrollIgnitionEnabled();
             },
             /**
              * QA gate 5 (R7 / R7c) — the published lane centre against where

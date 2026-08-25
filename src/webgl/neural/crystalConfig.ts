@@ -505,6 +505,43 @@ export const CRYSTAL_POS: Record<LatticeMode, [number, number]> = {
  */
 export const CRYSTAL_SCALE = 0.115;
 
+/**
+ * ROUND 12 · STAGE 2 — `CRYSTAL_SCALE` AND `FOG_RADIUS_Y` ARE PER-MODE NOW,
+ * AND THAT HAD TO HAPPEN BEFORE ANYTHING WAS REBASED.
+ *
+ * Both were plain scalars shared by `#problem` and `#production` (unlike
+ * `CRYSTAL_POS`, which has always been a record). The Stage-2 band pin takes
+ * `#problem`'s `bandVh` from 0.8597 to 1.0, i.e. its `rect.h` grows 16.3 %,
+ * and `s = rect.h·k·scale` grows with it — so the stone had to be rebased.
+ * Rebasing the SCALAR would have shrunk the `#production` stone by the same
+ * 16.3 % on a band that never moved. Hence the records: `#production` keeps
+ * the shipped number by construction, and a future per-mode value has a home.
+ *
+ * ⚠ THE REBASE ITSELF IS NOT IN THESE RECORDS, DELIBERATELY. It is a function
+ * of the live band pin — `CRYSTAL_BAND_VH_REF / bandVh`, applied in
+ * `CrystalCluster`'s driver to `feel.scale` AND `feel.fogRadiusY` in the same
+ * expression. Two reasons:
+ *   1. It is then exactly a no-op under the ROLLBACK (`bandVh` back to 0.8597
+ *      ⇒ factor 1 ⇒ the shipped stone, to the bit) and on any band with no
+ *      pin at all (`#production`: no traverse frame, factor 1).
+ *   2. `s` and `pxScale` (the callout projection's px-per-unit twin) BOTH read
+ *      `feel.scale`, so one factor moves both — which is the coupling the
+ *      "PREPARED CHANGE" table says must never be broken. A fog radius that
+ *      moves without the stone is §B4.2's "glowing blob" failure.
+ */
+export const CRYSTAL_SCALE_BY_MODE: Record<LatticeMode, number> = {
+  broken: CRYSTAL_SCALE,
+  healthy: CRYSTAL_SCALE,
+};
+
+/**
+ * The band pin `CRYSTAL_SCALE` / `FOG_RADIUS_Y` were measured against — the
+ * shipped `traverseConfig.bands.problem.bandVh`, 619/720 on the 1280×720
+ * reference. The driver's rebase factor is `this / bandVh`; at 1.0 it is
+ * 0.8597, which is exactly the 16.3 % the pin grew by.
+ */
+export const CRYSTAL_BAND_VH_REF = 0.8597;
+
 // --- Geometry ---------------------------------------------------------------
 // ⚠ ROUND 8-H — EVERYTHING IN THIS BLOCK IS FALLBACK-ONLY. The shipped mesh is
 // the Blender-authored slab (`/models/crystal-intact.glb` +
@@ -2370,6 +2407,14 @@ export const FOG_RADIUS_OUT = 0.203;
  * viewport-keyed `ry = ih · FRY_vp · k`, which restores the y-term to 0.6138
  * exactly. Full table on CRYSTAL_SCALE ("PREPARED CHANGE"). */
 export const FOG_RADIUS_Y = 0.311;
+/** Per-mode twin of `FOG_RADIUS_Y` — see `CRYSTAL_SCALE_BY_MODE` for why this
+ * had to stop being a shared scalar before the band pin moved, and for where
+ * the pin rebase actually lives (the driver, on the same factor as the
+ * stone: `s` and the fog-y must move together or `r = 0.7314` breaks). */
+export const FOG_RADIUS_Y_BY_MODE: Record<LatticeMode, number> = {
+  broken: FOG_RADIUS_Y,
+  healthy: FOG_RADIUS_Y,
+};
 /** Exponent on the `smoothstep(1,0,r)` radial falloff. The round-7-3 §B.4
  * spec names `smoothstep(1,0,r)²`; at 2.0 the mass concentrates inside
  * r < 0.4 and the stone (which spans out to r ≈ 0.7) sits almost entirely on

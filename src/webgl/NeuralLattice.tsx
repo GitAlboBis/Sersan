@@ -132,23 +132,48 @@ import { useTierStore } from "./store/tierStore";
 import { useTraverseStore, type TraverseFrame } from "./store/traverseStore";
 import {
   traverseConfig,
+  setTraverseConfig,
   bandLateralPx,
+  bandFieldLen,
+  bandFieldSlope,
+  bandRegisterPx,
+  onTraverseConfigChange,
   type TraverseBandId,
 } from "./neural/traverseConfig";
 import {
   CLUSTER_COUNT,
   FLOW_SPEED,
-  FRACTURE_T,
   SPARK_COUNT,
   NEURAL_PARTICLE_COUNT,
   NEURAL_PARTICLE_COUNT_COMPACT,
   NEURAL_DEPTH_SCALE_FACTOR,
   NEURAL_DEPTH_VIEWPORT_SPAN,
-  COPY_LANE_OPEN_W,
   COPY_RAMP_SOFT,
+  PLEXUS_RX,
+  PLEXUS_RY,
   PLEXUS_RZ,
+  FIELD_EXIT_VH,
+  RIBBON_PARTICLE_SCALE_MAX,
+  RIBBON_RY,
+  getPlexus,
+  ribbonPlexusParams,
   COPY_MASK_FLOOR,
   COPY_MASK_FLOOR_LINE,
+  COPY_MASK_FLOOR_STREAM,
+  DUST_SIZE_RIBBON,
+  CORE_SIZE_BOOST_RIBBON,
+  FRINGE_SIZE_DROP_RIBBON,
+  REST_OVERLAP,
+  SIZE_NORM_MAX,
+  RIVER_SIZE,
+  FRONT_LEAD,
+  FRONT_SPAN,
+  RIVER_RATE,
+  COPY_ROW_PAD,
+  COPY_ROW_SOFT,
+  COPY_ROW_SCREEN_C,
+  COPY_Y_IN,
+  COPY_Y_OUT,
   NEURAL_PARALLAX,
   NEURAL_AUTO_ORBIT,
   NEURAL_ORBIT_FREQ_Y,
@@ -177,6 +202,37 @@ import {
   type LatticeMode,
 } from "./neural/neuralLatticeConfig";
 import type { NeuralFieldBuild } from "./neural/neuralFieldCompute";
+
+/**
+ * ROUND 12 · D — CENTRE THE κ-WINDOW ON THE FRAME.
+ *
+ * `key` is the build's ASCENDING κ table (nodes or edges, sorted in
+ * `buildPlexus`); `ph` is the frame centre's phase in the same nodeT units.
+ * Binary search for the centre entry, then clamp a FIXED-WIDTH window around
+ * it — fixed width is the whole point: it is what makes each element's
+ * residue class, and therefore its particle population and its comb spacing,
+ * a build-time constant rather than something that re-strides as the reader
+ * scrolls.
+ *
+ * ~10 iterations, zero allocation, no `getBoundingClientRect`; safe to call
+ * twice a frame from `useFrame`.
+ */
+function windowFirst(
+  key: Float32Array | null,
+  ph: number,
+  win: number,
+): number {
+  if (!key || key.length === 0) return 0;
+  let lo = 0;
+  let hi = key.length - 1;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (key[mid] < ph) lo = mid + 1;
+    else hi = mid;
+  }
+  const first = lo - (win >> 1);
+  return Math.max(0, Math.min(key.length - win, first));
+}
 
 /** Off-screen cull margin in CSS px. */
 const CULL_PAD = 220;
@@ -245,23 +301,86 @@ function NeuralLatticeIsland({
   const measureVersion = useSectionStore((s) => s.measureVersion);
   const broken = mode === "broken";
 
+  /**
+   * ROUND 12 · STAGE 2 — the live-config revision this island last BUILT at.
+   * Bumped by `setTraverseConfig`, which is how the owner's density A/B and
+   * the `ribbon: false` rollback take effect without a reload. It is a build
+   * dependency and nothing else: no per-frame visual reads it, so the R3F
+   * island commit-wedge rule is intact (refs + `getState()` in `useFrame`).
+   */
+  const [cfgRev, setCfgRev] = useState(0);
+  /**
+   * ROUND 12 · STAGE 2 FIX — THE LEVER HAS TO WORK IN BOTH DIRECTIONS, AND
+   * THE RECORDED DEFECT IS THAT IT DID NOT.
+   *
+   * `rollbackToStage1()` took; the matching `set({ problem: { ribbon: true }})`
+   * left `field.ribbon === false`, i.e. a rollback lever that is one-way and
+   * therefore useless for the A/B it exists to serve.
+   *
+   * The asymmetry is structural, not random. `ribbon: false` needs NO rebuild
+   * to be VISIBLE — every ribbon consumer in the frame path is gated on
+   * `bcfg.ribbon && build.field.ribbon`, so clearing the config flag alone
+   * makes the island fall back to the shipped band on the very next frame,
+   * with or without a commit. `ribbon: true` needs an actual rebuild, because
+   * the node table, the link table and the baked per-particle roles are all
+   * GENERATOR arguments. And the rebuild was reached through
+   * `setCfgRev` → render → effect → `await import()` → `setBuild`, i.e.
+   * through TWO React commits inside the Canvas island — the exact dependency
+   * the island's own commit-wedge rule says never to take.
+   *
+   * So the signal now goes STRAIGHT to an imperative rebuild held in a ref.
+   * One commit (`setBuild`, unavoidable — the meshes are JSX), no render pass
+   * in between, no second effect, and no dynamic import on the re-entry: the
+   * module is already resolved and cached in `modRef`. `cfgRev` survives ONLY
+   * as the mount-time dependency it always was.
+   */
+  const rebuildRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    // TWO SIGNALS, ONE PATH. `onTraverseConfigChange` is the owner's live A/B
+    // and the rollback; `sersan:remeasure` is the traverse ARMING, and it
+    // matters for the same reason the RM path does — see the build gate.
+    // Falling back to the counter is what keeps the FIRST arm working, before
+    // any build exists to be rebuilt.
+    const bump = () => {
+      if (rebuildRef.current) rebuildRef.current();
+      else setCfgRev((n) => n + 1);
+    };
+    const off = onTraverseConfigChange(bump);
+    window.addEventListener("sersan:remeasure", bump);
+    return () => {
+      off();
+      window.removeEventListener("sersan:remeasure", bump);
+    };
+  }, []);
+
   // --- Lazy field build (three/webgpu chunk loads ONLY here) ----------------
   const [build, setBuild] = useState<NeuralFieldBuild | null>(null);
   const backendIsWebGPURef = useRef(false);
   /** The count the CURRENT build was allocated with (dev debug handle only). */
   const countRef = useRef(NEURAL_PARTICLE_COUNT);
 
+  /** ROUND 12 · STAGE 2 FIX — the resolved chunk, cached across rebuilds so
+   * the owner's A/B is SYNCHRONOUS (no second dynamic import, no await, no
+   * extra commit) once the island has booted once. */
+  const modsRef = useRef<
+    | [
+        typeof import("three/webgpu"),
+        typeof import("three/tsl"),
+        typeof import("./neural/neuralFieldCompute"),
+      ]
+    | null
+  >(null);
+
   useEffect(() => {
     if (!webgpuEnabled()) return;
     let cancelled = false;
     let built: NeuralFieldBuild | null = null;
 
-    void Promise.all([
-      import("three/webgpu"),
-      import("three/tsl"),
-      import("./neural/neuralFieldCompute"),
-    ]).then(([webgpu, tslNs, mod]) => {
-      if (cancelled) return;
+    const make = (
+      webgpu: typeof import("three/webgpu"),
+      tslNs: typeof import("three/tsl"),
+      mod: typeof import("./neural/neuralFieldCompute"),
+    ) => {
       const bk = (gl as unknown as { backend?: { isWebGLBackend?: boolean } })
         .backend;
       const backendIsWebGPU =
@@ -271,10 +390,65 @@ function NeuralLatticeIsland({
       backendIsWebGPURef.current = backendIsWebGPU;
 
       // Phone budget: `getState()`, never a subscription (island commit wedge).
-      const count =
-        useTierStore.getState().tier === "lite"
-          ? NEURAL_PARTICLE_COUNT_COMPACT
-          : NEURAL_PARTICLE_COUNT;
+      const lite = useTierStore.getState().tier === "lite";
+      let count = lite
+        ? NEURAL_PARTICLE_COUNT_COMPACT
+        : NEURAL_PARTICLE_COUNT;
+
+      // ── ROUND 12 · STAGE 2 — DOES THIS ISLAND CARRY THE RIBBON? ─────────
+      // Read from `traverseConfig`, not from a prop, because the stone and
+      // the lateral re-centring read the SAME field and a flag three
+      // consumers could disagree about is the class of bug the frozen frame
+      // exists to prevent. `getState()`-style: read once, at build time.
+      const bcfg = traverseConfig.bands[band as TraverseBandId];
+      // ⚠ THE BUILD IS GATED ON THE TRAVERSE BEING ARMED, NOT ON THE CONFIG.
+      // Under `prefers-reduced-motion` the hook never runs, `data-traverse` is
+      // never written and no band is registered — so `tv` is null in the frame
+      // path forever. A ribbon built there would have no rig, no shear and no
+      // registration: 7278 px of field crammed into a 1920 px band. Reading
+      // the STORE rather than the config is the only signal that answers "will
+      // this island actually be driven?", and it is the same `getState()` read
+      // the frame path uses (never a subscription).
+      //
+      // The arm normally lands well before this: the DOM section's effects run
+      // while `three/webgpu` is still loading. If it does not, `sersan:remeasure`
+      // bumps `cfgRev` on arm and this effect re-runs — one dispose, one build.
+      const armed = !!useTraverseStore.getState().bands[band];
+      const ribbonParams =
+        armed && bcfg && bcfg.ribbon
+          ? ribbonPlexusParams(
+              lite ? "lite" : "full",
+              bcfg.ribbonDensity,
+            )
+          : undefined;
+
+      if (ribbonParams) {
+        // ⚠ THE PARTICLE COUNT HAS TO RIDE THE NODE COUNT, and it is not a
+        // look preference. `seedBuffers` splits a FIXED count across the
+        // delivered nodes and links — 40.19 sprites per star and 21.27 per
+        // link at the shipped 9000/103/227. Leave `count` alone under a
+        // 389-node field and every star core is TWO sprites: the filled
+        // star-glow the owner approved becomes a pair of dots, and the
+        // "same density" A/B stops measuring density at all.
+        //
+        // The brake is `RIBBON_PARTICLE_SCALE_MAX` (4.0 desktop / 3.0 phone).
+        // Measured: onFrame/full asks ×3.78 and is granted in full (the
+        // allocation is EXACT); the phone asks ×12.68 and is capped at ×3, so
+        // its per-star allocation falls to 0.24×. THAT NUMBER IS STAGE 3's,
+        // not this stage's — it is exactly the GPU-capture question PART 6
+        // says nothing in source can answer.
+        const ref = getPlexus(mode, lite ? "lite" : "full");
+        const rib = getPlexus(
+          mode,
+          lite ? "lite" : "full",
+          undefined,
+          true,
+          ribbonParams,
+        );
+        const want = rib.nodes.length / Math.max(ref.nodes.length, 1);
+        const k = Math.min(want, RIBBON_PARTICLE_SCALE_MAX[lite ? "lite" : "full"]);
+        count = Math.round(count * k);
+      }
       countRef.current = count;
 
       built = mod.createNeuralFieldBuild({
@@ -285,19 +459,65 @@ function NeuralLatticeIsland({
         backendIsWebGPU,
         count,
         mode,
+        plexusParams: ribbonParams,
       });
-      built.uniforms.uFlowSpeed.value = FLOW_SPEED;
-      built.uniforms.uFracture.value = FRACTURE_T;
+      // ⚠ ROUND 12 · D — the RIBBON runs a faster ambient drift
+      // (`FLOW_SPEED_RIBBON` 0.25 vs 0.075: 8.4 → 28 px/s) and the build
+      // already seeded `uFlowSpeed` with the right one of the two. Writing
+      // the module constant unconditionally here would have quietly undone
+      // that on every build.
+      if (!built.field.ribbon) built.uniforms.uFlowSpeed.value = FLOW_SPEED;
+      // ⚠ NOT `FRACTURE_T`. On the ribbon `nodeT ≡ u`, so the fracture is
+      // "wherever the stone is" — inverted out of the DELIVERED cloud by the
+      // build (see `field.fractureT`). On the ellipsoid arm it is 0.62, the
+      // shipped constant, to the bit.
+      built.uniforms.uFracture.value = built.field.fractureT;
       setBuild(built);
+    };
+
+    const loaded = modsRef.current
+      ? Promise.resolve(modsRef.current)
+      : Promise.all([
+          import("three/webgpu"),
+          import("three/tsl"),
+          import("./neural/neuralFieldCompute"),
+        ]).then((m) => {
+          modsRef.current = m;
+          return m;
+        });
+
+    void loaded.then((m) => {
+      if (cancelled) return;
+      make(m[0], m[1], m[2]);
     });
+
+    // THE IMPERATIVE RE-ENTRY — the owner's A/B and the rollback, in ONE
+    // commit and with no render pass in between. Dispose-then-make in the
+    // same tick: React batches the two `setBuild` calls, so the meshes swap
+    // exactly once and the disposed objects are never mounted for a frame.
+    rebuildRef.current = () => {
+      const m = modsRef.current;
+      if (cancelled || !m) return;
+      built?.dispose();
+      built = null;
+      setBuild(null);
+      make(m[0], m[1], m[2]);
+    };
 
     return () => {
       cancelled = true;
+      rebuildRef.current = null;
       built?.dispose();
       setBuild(null);
     };
+    // ⚠ `cfgRev` IS A BUILD DEPENDENCY, NOT A UNIFORM. The ribbon arm and its
+    // density are GENERATOR arguments — the node table, the link table and the
+    // baked per-particle roles all change — so the D23 A/B is a dispose + a
+    // rebuild, and so is the `ribbon: false` rollback. `onTraverseConfigChange`
+    // only ever fires from `setTraverseConfig`, i.e. from the dev handle, so
+    // this costs one Set entry and zero frames in production.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, gl]);
+  }, [mode, gl, band, cfgRev]);
 
   // --- Section rect: measured on measureVersion bumps -----------------------
   const [rect, setRect] = useState<SectionRect | null>(null);
@@ -404,9 +624,14 @@ function NeuralLatticeIsland({
   // un-traversed band is byte-identical and keeps its measure-time write.
   useEffect(() => {
     if (!build || !rect) return;
-    build.uniforms.uCopyLaneC.value =
-      rect.copyEdge + COPY_EDGE_PAD - COPY_LANE_OPEN_W;
-    build.uniforms.uCopyLaneW.value = COPY_LANE_OPEN_W;
+    // ⚠ ROUND 12 · D — PER BUILD, not the module constant. See the note on
+    // the off-band restore branch: at 2.0 the lane's unused LEFT wall lands
+    // inside a ±1.895 ribbon and every node left of it reads UNMASKED. This
+    // effect fires on every ribbon build, so the defect was live from the
+    // first measure, not latent.
+    const openW = build.field.laneOpenW;
+    build.uniforms.uCopyLaneC.value = rect.copyEdge + COPY_EDGE_PAD - openW;
+    build.uniforms.uCopyLaneW.value = openW;
   }, [build, rect]);
 
   // Release the act DPR cap if this island unmounts while it holds one — a
@@ -458,6 +683,50 @@ function NeuralLatticeIsland({
   const armedDprCap = useRef<number | null>(null);
   /** True while the mask lane is being driven per frame by the traverse. */
   const laneDriven = useRef(false);
+  /**
+   * ROUND 12 · STAGE 2 QA — the last frame's ribbon state, for the dev handle.
+   * Mutated in place, never allocated, and only WRITTEN under a
+   * `NODE_ENV !== "production"` constant the bundler folds away.
+   */
+  const ribbonProbe = useRef({
+    on: false,
+    lateralPx: 0,
+    yRegPx: 0,
+    slope: 0,
+    len: 1,
+    fade: 1,
+    p: 0,
+  });
+  /**
+   * Last-written field mapping — the change guard for the three geometry
+   * uniforms (see the write site). Mutated in place; never allocated.
+   *
+   * ⚠ ROUND 12 · STAGE 2 FIX — IT CARRIES THE BUILD IT WROTE TO, AND IT HAD
+   * TO. A change guard keyed on VALUES alone is correct only while the thing
+   * it is guarding survives; a rebuild hands the driver a NEW uniform bag at
+   * the build defaults `(1, 0, 0)` while this ref still says it already wrote
+   * `(3.7906, 0, −2.0535)`, so the write is skipped and the field renders at
+   * `uFieldLen = 1` — one band-width of a 3.79-band-width ribbon, crammed
+   * back into the frame — FOREVER.
+   *
+   * MEASURED, and it is exactly the recorded "the A/B did not take": after a
+   * `ribbon: false` → `ribbon: true` round trip the field reported every
+   * healthy number (`ribbon: true`, 389 nodes, `centreScreenY() = ih/2`) and
+   * put **247 of 389 nodes on frame at p = 0.45 and 0 at p = 0.05/0.25/0.85**
+   * — an unmapped field sliding past the frame. Every rebuild lever (the D23
+   * density A/B, the rollback, the traverse arm) walked into it.
+   */
+  const fieldWritten = useRef<{
+    build: NeuralFieldBuild | null;
+    len: number;
+    origin: number;
+    slope: number;
+  }>({ build: null, len: 1, origin: 0, slope: 0 });
+  /** ROUND 12 · STAGE 2 QA — `mute()`'s ref. A REF, not state, so the A/B
+   * cannot depend on a React commit landing inside the Canvas island. Read
+   * once per frame at the top of the cull; never written outside the dev
+   * handle, so production pays one `if` on a `false`. */
+  const mutedRef = useRef(false);
   const scratch = useRef(new THREE.Vector3());
   const revealDamped = useRef(0);
   const clock = useRef(0);
@@ -491,6 +760,11 @@ function NeuralLatticeIsland({
   // Round-4 §B.3: damped scroll velocity + the integrated flow clock.
   const scrollVel = useRef(0);
   const flowTime = useRef(0);
+  // ROUND 12 · D — the two clocks of the travelling signal. `front` is the
+  // BIRTH front (a damped pure function of `p`); `riverClock` is the LIGHT's
+  // own clock, which is what keeps the crests moving when the reader stops.
+  const frontRef = useRef(0);
+  const riverClock = useRef(0);
   // Round-4 §B.1 (healthy): per-ring membrane seal latch + integrated band
   // phase. §B.2 (broken): integrated nebula wisp drift.
   const membraneSealTarget = useRef<number[]>(new Array(CLUSTER_COUNT).fill(0));
@@ -538,9 +812,9 @@ function NeuralLatticeIsland({
     // path, no allocation. `lateral = −dir·R·ih·a`, where `a` is the SAME
     // centring scalar the stone tumbles on, so net and stone share one number
     // by construction (`__sersanCrystal_*.traverse.deltaPx` is the gate).
+    const bcfg = traverseConfig.bands[band as TraverseBandId];
     let lateralPx = 0;
     if (onBand) {
-      const bcfg = traverseConfig.bands[band as TraverseBandId];
       lateralPx = bcfg
         ? bandLateralPx(
             bcfg,
@@ -552,6 +826,54 @@ function NeuralLatticeIsland({
             ih,
           )
         : tv!.xScenePx;
+    }
+
+    // ── ROUND 12 · STAGE 2 — THE RIBBON'S GEOMETRY ─────────────────────────
+    // Four numbers, all pure arithmetic on the FROZEN frame plus this
+    // island's already-cached rect: no DOM read, no allocation, and the SAME
+    // three functions the stone calls on the same arguments, so net and stone
+    // can differ by float noise only.
+    //
+    // `fieldSlope` is the one that earns its own gate. It is the shear that
+    // makes a field which translates diagonally sit STILL on the screen, and
+    // GATE 3 is its own prediction: the centreline's screen y at the frame's
+    // centre column is constant in `p` to ≤ 2 px. If μ is wrong by 1 % the
+    // net walks 54 px up or down the frame across the act.
+    //
+    // ⚠ `rect.h`, NEVER `size.height` — the band pin is `svh`, so on a phone
+    // with a collapsing URL bar the two differ by the toolbar and the shear
+    // would be wrong by that ratio for the whole act.
+    const ribbonOn = !!tv && !!bcfg && bcfg.ribbon && build.field.ribbon;
+    let fieldLen = 1;
+    let fieldSlope = 0;
+    let yRegPx = 0;
+    let fieldFade = 1;
+    if (ribbonOn) {
+      fieldLen = bandFieldLen(bcfg!, tv!.secH, rect.w);
+      fieldSlope = bandFieldSlope(bcfg!, rect.w, rect.h);
+      yRegPx = bandRegisterPx(
+        bcfg!,
+        tv!.secTop,
+        tv!.secH,
+        rect.docTop,
+        rect.h,
+        ih,
+      );
+      // THE EXIT FADE (a NEW BEAT — FIELD_EXIT_VH). The ribbon's screen y is
+      // constant in `p`, so at p = 1 the net is dead centre; and `frame.active`
+      // goes false at exactly p = 1, which is also where ScrollTrigger stops
+      // calling `apply()`. There is no natural exit to fall back on — without
+      // this the field would simply stop, frame-centred, and stay there. One
+      // smoothstep over the act's last `FIELD_EXIT_VH` viewport heights of
+      // scroll, reaching 0 at p = 1 so the cull can flip without cutting
+      // anything. `FIELD_EXIT_VH = 0` is the A/B that shows what it buys.
+      const exitPx = Math.max(FIELD_EXIT_VH * ih, 1);
+      const q = THREE.MathUtils.clamp(
+        ((1 - tv!.p) * tv!.secH) / exitPx,
+        0,
+        1,
+      );
+      fieldFade = q * q * (3 - 2 * q);
     }
     if (onBand && scrollY !== lastSeenScroll.current) {
       lastSeenScroll.current = scrollY;
@@ -618,19 +940,106 @@ function NeuralLatticeIsland({
       u.uCopySoft.value = COPY_RAMP_SOFT * v;
       u.uCopyFloor.value = 1 + (COPY_MASK_FLOOR - 1) * v;
       u.uCopyLineFloor.value = 1 + (COPY_MASK_FLOOR_LINE - 1) * v;
+      // ROUND 12 · D — the LINK/continuity role's own floor, on the same lane
+      // window. It is 170× the star floor and that is not an oversight: the
+      // 2.8e-4 ceiling the 1e-4 was sized against is derived from an UNMASKED
+      // STAR CENTRE of 69.4 and has no bearing on a role whose covered-pixel
+      // luminance is O(1). The shader hands it to RESTING dust only.
+      u.uCopyStreamFloor.value = 1 + (COPY_MASK_FLOOR_STREAM - 1) * v;
+      // ── ROUND 12 · STAGE 2 FIX — THE LANE GETS A CEILING AND A SILL ─────
+      // The five writes above are the shipped 1-D wall in x. On the D17
+      // ribbon that wall is 1408 px of a 1920 px frame at 1/10000 brightness,
+      // at EVERY y, for the whole act — the measured black frame (`meanL 3.95
+      // / 1.45 % > L24` against `#production`'s approved 21.27 / 15.73 %).
+      // These three bound it to the reading unit it exists to protect.
+      //
+      // ⚠ `bandH`, NOT `ih`, AND THE SAME `bandH` THE SHADER'S y IS IN. The
+      // shader reads mapped LOCAL y, whose unit is `rect.h`; `laneCyPx` and
+      // `laneHalfYPx` are viewport CSS px. Divide by `ih` instead and the
+      // carve-out is wrong by `rect.h/ih` for the whole act — exactly the
+      // `svh`-vs-`size.height` trap the shear note warns about, one axis over.
+      //
+      // ⚠ GATED ON `ribbonOn`, NOT ON `laneDriven`. A band whose field is no
+      // wider than the frame does not have this problem and must not pay for
+      // it: `uCopyRowLocal = 0` makes `mix(floor, 1, 0)` evaluate to `floor`
+      // to the bit, so `#production` and the `ribbon: false` rollback keep the
+      // shipped wall exactly, mis-sizing and all.
+      const bandH = Math.max(rect.h, 1);
+      u.uCopyYc.value = ribbonOn ? (cy - yRegPx - ih / 2) / bandH : 0;
+      u.uCopyRowC.value = ribbonOn
+        ? (ih * COPY_ROW_SCREEN_C - tv!.laneCyPx) / bandH
+        : 0;
+      u.uCopyRowH.value = ribbonOn
+        ? tv!.laneHalfYPx / bandH + COPY_ROW_PAD
+        : 1;
+      u.uCopyRowSoft.value = COPY_ROW_SOFT;
+      u.uCopyRowLocal.value = ribbonOn ? 1 : 0;
     } else if (laneDriven.current) {
       // Edge only (never per frame): the band left the traverse's range, so
       // hand the gate back to the shipped half-plane and the shipped floors
       // rather than leaving it parked wherever the copy last was.
       laneDriven.current = false;
-      u.uCopyLaneC.value = rect.copyEdge + COPY_EDGE_PAD - COPY_LANE_OPEN_W;
-      u.uCopyLaneW.value = COPY_LANE_OPEN_W;
+      // ⚠ ROUND 12 · D — THE OPEN LANE'S WIDTH IS PER BUILD, NOT A MODULE
+      // CONSTANT. At the shipped 2.0 the (unused) LEFT wall of the lane lands
+      // at local x ≈ −1.52, which is INSIDE a ±1.895 ribbon — and every node
+      // left of it then reads UNMASKED. The build already resolves the right
+      // one (`field.laneOpenW` = `COPY_LANE_OPEN_W_RIBBON` 4.0 on a ribbon,
+      // `COPY_LANE_OPEN_W` 2.0 otherwise). Not latent: live from the first
+      // measure of any ribbon band whose lane driving is off.
+      const openW = build.field.laneOpenW;
+      u.uCopyLaneC.value = rect.copyEdge + COPY_EDGE_PAD - openW;
+      u.uCopyLaneW.value = openW;
       u.uCopySoft.value = COPY_RAMP_SOFT;
       u.uCopyFloor.value = COPY_MASK_FLOOR;
       u.uCopyLineFloor.value = COPY_MASK_FLOOR_LINE;
+      u.uCopyStreamFloor.value = COPY_MASK_FLOOR_STREAM;
+      // The vertical twin hands back the SHIPPED state, not a ribbon-shaped
+      // one: this branch's whole contract is "the gate is the half-plane it
+      // has always been". `uCopyRowLocal = 0` restores it to the bit.
+      u.uCopyYc.value = 0;
+      u.uCopyRowC.value = 0;
+      u.uCopyRowH.value = 1;
+      u.uCopyRowLocal.value = 0;
     }
 
-    if (vpTop + rect.h < -CULL_PAD || vpTop > ih + CULL_PAD) {
+    // ── ROUND 12 · STAGE 2 — THE VERTICAL CULL IS KEYED TO THE SECTION ────
+    // and it HAD to be. The anchor box is one viewport tall inside a 5358 px
+    // act, so it leaves the frame after ~2 vh — while the ribbon, whose screen
+    // y is constant in `p`, is on frame for the whole act. Keyed to the anchor
+    // the net would be culled at p ≈ 0.35 with the reader still four screens
+    // from the end of the section.
+    //
+    // ⚠ AND A SECTION-KEYED FLIP ON ITS OWN WOULD CUT A FRAME-CENTRED NET —
+    // which is why the exit FADE above is a beat and not a nicety. The two are
+    // one mechanism: `fieldFade` reaches 0 at p = 1, and p = 1 is exactly where
+    // `frame.active` goes false.
+    //
+    // ⚠ `CULL_PAD` IS HYSTERESIS, NOT A VISIBILITY RULE. 220 px of padding is
+    // what once put an entirely off-screen band in the draw list, so it is
+    // applied on the ENTRY side only: past the end of the act the frozen frame
+    // stops advancing (ScrollTrigger's range ends at `bottom top` = p 1), so a
+    // padded exit test would read "just inside" forever and keep 34 000
+    // particles in the draw list for the rest of the page.
+    //
+    // A ribbon band that is NOT active is not drawn at all: its rig would fall
+    // back to `lateralPx = 0`, `yReg = 0` — the un-registered field, a screen
+    // and a half off — and one frame of that is a flash.
+    // The QA mute (dev handle `mute()`), read before every other cull so the
+    // A/B screenshot is the island and nothing else.
+    if (mutedRef.current) {
+      group.visible = false;
+      return;
+    }
+    if (ribbonOn) {
+      const secVpTop = tv!.secTop - scrollY;
+      if (secVpTop + tv!.secH < 1 || secVpTop > ih + CULL_PAD) {
+        group.visible = false;
+        return;
+      }
+    } else if (bcfg && bcfg.ribbon && build.field.ribbon) {
+      group.visible = false;
+      return;
+    } else if (vpTop + rect.h < -CULL_PAD || vpTop > ih + CULL_PAD) {
       group.visible = false;
       return;
     }
@@ -689,13 +1098,26 @@ function NeuralLatticeIsland({
     // the SAME `k` that placed the group — so the conversion constant is
     // written exactly once and `L = X·k` needs no fudge factor.
     rig.position.x = lateralPx * k;
+    // THE VERTICAL RE-CENTRING — the lateral's exact twin, and 0 unless this
+    // band carries a ribbon. The shear makes `screenY` constant; it does not
+    // make it `ih/2`. Without this the constant is `docTop − secTop + rectH/2
+    // − secH/2` ≈ −2500 px, i.e. the net sits two and a half screens above the
+    // frame for the entire act. Same `k` as the lateral and the placement, so
+    // the conversion constant is written once.
+    rig.position.y = yRegPx * k;
     scaleGroup.scale.set(wWorld, hWorld, zWorld);
 
     // Arrival ramp: assemble when the READER arrives (same shape as the
     // lattice build this replaces — scrollStore.reveal gated by a per-section
     // visibility ramp, damped slow enough that the coalesce reads on entry).
+    // ⚠ SECTION-KEYED UNDER THE RIBBON, for the same reason the cull is: the
+    // anchor's `vpTop` runs away down the act, so an anchor-keyed ramp
+    // saturates at 1 within the first screen and then means nothing. Keyed to
+    // the section it is the same SHAPE — the field is fully revealed ~110 px
+    // before p = 0, which is where the run starts.
+    const rampTop = ribbonOn ? tv!.secTop - scrollY : vpTop;
     const vis = THREE.MathUtils.clamp(
-      (ih + CULL_PAD / 2 - vpTop) / (ih * 0.7),
+      (ih + CULL_PAD / 2 - rampTop) / (ih * 0.7),
       0,
       1,
     );
@@ -754,7 +1176,12 @@ function NeuralLatticeIsland({
       if (broken) {
         // The pulse dies at the fracture (before the 4th layer ever lights):
         // small burst, flash decays at once.
-        if (s.t >= FRACTURE_T) {
+        // ⚠ `build.field.fractureT`, NOT the module constant. The surge runs
+        // in `nodeT`, and on the ribbon `nodeT ≡ u` — so the fracture is the
+        // stone's own `u` (0.7376), not the authored 0.62. Read off the same
+        // build the shader's `uFracture` was written from, so the wavefront
+        // cannot die 0.12 of the field short of the stone it dies AT.
+        if (s.t >= build.field.fractureT) {
           s.active = false;
           flashEnv.current = 1;
         }
@@ -857,14 +1284,121 @@ function NeuralLatticeIsland({
       4,
       delta,
     );
+    // ⚠ ROUND 12 · STAGE 2 — THE ORBIT ANGLES SCALE WITH THE FIELD, PER AXIS.
+    // `innerRef` rotates about the field ORIGIN, so a fixed 0.09 rad sweeps a
+    // point in z by `extent · sin θ` — and the ribbon's extents are 1.90 in x
+    // and 4.31 in y (the shear), not 0.48 and 0.42. Left alone the sweep takes
+    // camera distance to [4.7, 19.3] against the authored [10.08, 13.92]: the
+    // "nodes coming at the camera" failure `NEURAL_DEPTH_VIEWPORT_SPAN` exists
+    // to prevent, arrived at through the back door.
+    //
+    // Rotation about X sweeps the Y extent into z and vice versa, so the two
+    // factors are NOT the same number. Off the ribbon both are `PLEXUS_RX /
+    // PLEXUS_RX` and `PLEXUS_RY / PLEXUS_RY` — exactly 1.0, and a multiply by
+    // 1.0 is bit-exact, so `#production` is unmoved.
+    const halfX = ribbonOn ? 0.5 * fieldLen : PLEXUS_RX;
+    const halfY = ribbonOn
+      ? RIBBON_RY + Math.abs(fieldSlope) * halfX
+      : PLEXUS_RY;
+    const orbitKx = PLEXUS_RY / halfY;
+    const orbitKy = PLEXUS_RX / halfX;
     inner.rotation.set(
-      Math.sin(t * NEURAL_ORBIT_FREQ_X) * NEURAL_AUTO_ORBIT +
-        parallaxRef.current.y,
-      Math.sin(t * NEURAL_ORBIT_FREQ_Y) * NEURAL_AUTO_ORBIT +
-        parallaxRef.current.x,
+      (Math.sin(t * NEURAL_ORBIT_FREQ_X) * NEURAL_AUTO_ORBIT +
+        parallaxRef.current.y) *
+        orbitKx,
+      (Math.sin(t * NEURAL_ORBIT_FREQ_Y) * NEURAL_AUTO_ORBIT +
+        parallaxRef.current.x) *
+        orbitKy,
       0,
     );
     inner.position.z = Math.sin(t * 0.21) * NEURAL_Z_BREATHE;
+
+    // ── ROUND 12 · STAGE 2 — THE FIELD MAPPING, WRITTEN ON CHANGE ─────────
+    // Geometry, not look: it only moves when the section or the viewport does.
+    // Written through a change guard rather than unconditionally so a console
+    // tune of `uFieldSlope` (the fastest way to see what GATE 3 is measuring)
+    // survives more than one frame — the same discipline the lane pair keeps.
+    const fw = fieldWritten.current;
+    if (
+      fw.build !== build ||
+      fw.len !== fieldLen ||
+      fw.origin !== 0 ||
+      fw.slope !== fieldSlope
+    ) {
+      fw.build = build;
+      fw.len = fieldLen;
+      fw.origin = 0;
+      fw.slope = fieldSlope;
+      u.uFieldLen.value = fieldLen;
+      u.uFieldOrigin.value = 0;
+      u.uFieldSlope.value = fieldSlope;
+      // 1/L on the LOCAL-units forces (pointer bend, curl) — the recycle-snap
+      // invariant, see the `push` note in neuralFieldCompute.
+      u.uFieldK.value = 1 / Math.max(fieldLen, 1e-6);
+    }
+    u.uFieldFade.value = fieldFade;
+
+    // ══ ROUND 12 · D — THE ROLLING κ-WINDOW AND THE TRAVELLING SIGNAL ══════
+    //
+    // Both are one axis. `phase = y·uFrontKy + uFrontC` is nodeT along the
+    // band's centreline, un-sheared by the 45° slope, and it is exactly the
+    // key both tables were sorted on at build. So the window's centre and the
+    // crests' position are read off the SAME arithmetic — a net that lights up
+    // where the reader is looking cannot disagree with a window that keeps
+    // particles where the reader is looking.
+    //
+    //   phase(y) = (y − yMid_of_frame + yMid_of_frame)·Ky + C, with
+    //   Ky = dir·R·bandAspect / xSpan and C = −xMin/xSpan (see `phaseAt`).
+    //
+    // ⚠ `uWinYc` IS ITS OWN UNIFORM, not `uCopyYc`. The copy lane's centre is
+    // only written inside `traverseConfig.laneEnabled`; if the lane were ever
+    // disabled, a window fade keyed on `uCopyYc = 0` would mask the entire
+    // field off (mapped y spans ±4.34 band-heights under the shear).
+    const bandH = Math.max(rect.h, 1);
+    const winYc = ribbonOn ? (cy - yRegPx - ih / 2) / bandH : 0;
+    u.uWinYc.value = winYc;
+    u.uWinHalf.value = ih / (2 * bandH);
+    u.uWinOn.value = ribbonOn ? 1 : 0;
+    u.uBandPx.value = ribbonOn ? rect.h : 0;
+    if (ribbonOn) {
+      const frontKy = build.field.frontKy;
+      u.uFrontKy.value = frontKy;
+      u.uFrontC.value = build.field.frontC;
+      // THE BIRTH FRONT — a damped pure function of `p` from the FROZEN
+      // frame, never `Math.max(prev, next)`: a latch cannot go back when the
+      // reader does, and D16 rules that out. `uReveal` is NOT reusable here —
+      // it arms the recycle snap and drives the coalesce, and it saturates
+      // ~262 px before p = 0.
+      const frontTarget = FRONT_LEAD + tv!.p * FRONT_SPAN;
+      // Seed on the first ribbon frame rather than damping up from 0 — a
+      // damper starting at 0 leaves the whole field unborn for ~0.3 s.
+      frontRef.current = frontRef.current
+        ? THREE.MathUtils.damp(frontRef.current, frontTarget, 10, delta)
+        : frontTarget;
+      u.uFront.value = frontRef.current;
+      // ⚠ AND THE LIGHT GETS ITS OWN CLOCK. Without `RIVER_RATE` the crests
+      // are a pure function of `p`, so a reader who stops scrolling sees
+      // FROZEN BRIGHT PATCHES — the direct contradiction of the brief. At
+      // 0.09 nodeT/s a crest crosses the frame in ~2.9 s whether or not
+      // anyone is scrolling.
+      riverClock.current += delta * RIVER_RATE;
+      u.uRiver.value = frontRef.current + riverClock.current;
+      // THE WINDOW, CENTRED ON THE FRAME. Binary search the ascending κ table
+      // for the frame's centre entry, then clamp a fixed-width window around
+      // it: fixed width is what makes each element's residue class — and
+      // therefore its particle population and its comb — a build constant.
+      const phC = winYc * frontKy + build.field.frontC;
+      u.uWinFirstEdge.value = windowFirst(
+        build.field.edgeKey,
+        phC,
+        build.field.winEdges,
+      );
+      u.uWinFirstNode.value = windowFirst(
+        build.field.nodeKey,
+        phC,
+        build.field.winNodes,
+      );
+    }
 
     // --- Drive the field uniforms -------------------------------------------
     u.uTime.value = t;
@@ -945,9 +1479,27 @@ function NeuralLatticeIsland({
     // when idle, coarse, or outside the band's influence zone. Pure math on
     // the cached rect — zero layout reads in this loop.
     if (ptr.active) {
-      const lx = (ptr.smooth.x * vw - cx) / rect.w;
-      const ly = (cy - ptr.smooth.y * ih) / rect.h;
-      if (lx > -0.75 && lx < 0.75 && ly > -0.75 && ly < 0.75) {
+      // ⚠ ROUND 12 · STAGE 2 — THE RIG'S OFFSETS COME OUT HERE OR THE CURSOR
+      // BEND IS DEAD. `uPointer` is read in the field's LOCAL space, and under
+      // the ribbon the field is translated by `lateralPx` (up to ±2679 px) and
+      // `yRegPx` (≈ −2500 px). Un-subtracted, the pointer lands a screen and a
+      // half from where the reader's cursor is and `ly` is past the influence
+      // gate for essentially the whole act — the bend would simply never fire.
+      // Gated on `ribbonOn` so the rollback keeps the shipped registration
+      // byte-for-byte, mis-registration and all.
+      const lx = (ptr.smooth.x * vw - cx - (ribbonOn ? lateralPx : 0)) / rect.w;
+      const ly =
+        (cy - (ribbonOn ? yRegPx : 0) - ptr.smooth.y * ih) / rect.h;
+      // The influence ZONE is a different question from the coordinate. On the
+      // band it is a ±0.75 box around the cloud. On the ribbon `lx` spans the
+      // whole ±1.90 field by construction (the pointer is always inside the
+      // frame, and the frame is always inside the field), so an x box would
+      // clip the bend to mid-act; what still means something is the ACROSS
+      // distance, `ly − μ·lx`.
+      const inZone = ribbonOn
+        ? Math.abs(ly - fieldSlope * lx) < 0.75
+        : lx > -0.75 && lx < 0.75 && ly > -0.75 && ly < 0.75;
+      if (inZone) {
         u.uPointer.value.set(lx, ly, 0);
       } else {
         u.uPointer.value.set(1e9, 1e9, 1e9);
@@ -958,6 +1510,17 @@ function NeuralLatticeIsland({
     const dpr = Math.min(gl.getPixelRatio(), 2);
     u.uPixelRatio.value = dpr;
     u.uViewport.value.set(size.width * dpr, size.height * dpr);
+
+    if (process.env.NODE_ENV !== "production") {
+      const rp = ribbonProbe.current;
+      rp.on = ribbonOn;
+      rp.lateralPx = lateralPx;
+      rp.yRegPx = yRegPx;
+      rp.slope = fieldSlope;
+      rp.len = fieldLen;
+      rp.fade = fieldFade;
+      rp.p = tv ? tv.p : 0;
+    }
 
     // --- Advance the compute sim (WebGPU backend only) ----------------------
     if (backendIsWebGPURef.current) build.compute(delta);
@@ -1073,8 +1636,8 @@ function NeuralLatticeIsland({
           // ROUND-8-G: the link LINE layer + the traffic ramp that rides it.
           // linkLines/linkVerts are BUILD-TIME (baked geometry — LINK_SEGMENTS
           // needs a rebuild, not a uniform write).
-          linkLines: build?.links.edgeCount ?? 0,
-          linkVerts: build?.links.vertexCount ?? 0,
+          linkLines: build?.links?.edgeCount ?? 0,
+          linkVerts: build?.links?.vertexCount ?? 0,
           lineAlpha: u.uLineAlpha.value,
           lineEmissive: u.uLineEmissive.value,
           lineLumMax: u.uLineLumMax.value,
@@ -1176,6 +1739,495 @@ function NeuralLatticeIsland({
           dprCap: armedDprCap.current,
         };
       },
+      /**
+       * ROUND 12 · STAGE 2 QA — the field this island is actually drawing.
+       * `wrapSnapOk` is the one to read first: false means the recycle snap
+       * cannot arm and the bright spring-flight streak is back on the WebGPU
+       * tier. `packedEdgeKiB` is GATE 1 (≤ 6 KiB), read rather than asserted.
+       */
+      get field() {
+        if (!build) return null;
+        const f = build.field;
+        const rp = ribbonProbe.current;
+        const e = build.stats.edges;
+        const want = !!traverseConfig.bands[band as TraverseBandId]?.ribbon;
+        return {
+          ...f,
+          packedEdgeKiB: Math.round((Math.ceil(e / 4) * 16 * 100) / 1024) / 100,
+          density: traverseConfig.bands[band as TraverseBandId]?.ribbonDensity,
+          /** ROUND 12 · STAGE 2 FIX — what the CONFIG asks for, next to what
+           * the BUILD delivered, and whether the traverse was armed when the
+           * build ran. `ribbonWanted !== ribbon` is the one-way-lever defect,
+           * named rather than left to be inferred from a black frame: the
+           * recorded failure was a `ribbon: true` write that reported
+           * `field.ribbon === false` with nothing anywhere saying so. */
+          ribbonWanted: want,
+          armed: !!useTraverseStore.getState().bands[band],
+          leverOk: want === f.ribbon,
+          live: { ...rp },
+        };
+      },
+      /**
+       * GATE 3 — MEASURED, not derived. Returns the SCREEN y of the ribbon's
+       * centreline at the frame's centre column, walked through the real
+       * transform chain (inner → scale → rig → group → camera), so it prices
+       * the orbit and the parallax too. The algebra's prediction is that this
+       * is CONSTANT in `p`; ≤ 2 px across 20 samples is the gate, and 1 % of
+       * error in μ shows up as 54 px of walk across the act.
+       *
+       * `null` when the band is not drawing (culled, un-armed, or rolled back
+       * to the ellipsoid, which has no centreline to speak of).
+       */
+      centreScreenY(): number | null {
+        const g = groupRef.current;
+        const inner = innerRef.current;
+        const rp = ribbonProbe.current;
+        if (!g || !inner || !g.visible || !rect || !rp.on) return null;
+        // The field point currently at screen x = vw/2: local x·rect.w +
+        // lateralPx = 0 (the group's own centre IS the viewport centre-line on
+        // a full-bleed band), and the centreline is v = 0 ⇒ y = μ·x.
+        const xl = -rp.lateralPx / Math.max(rect.w, 1);
+        const v = new THREE.Vector3(xl, rp.slope * xl, 0);
+        inner.localToWorld(v);
+        v.project(camera);
+        return ((1 - v.y) / 2) * size.height;
+      },
+      /**
+       * GATE 6 — the frame gaps, MEASURED, and measured ACROSS THE RIBBON.
+       *
+       * ⚠ A NAIVE COLUMN SAMPLE IS THE WRONG INSTRUMENT HERE AND IT LIES BY
+       * HUNDREDS OF PIXELS. The ribbon is a 45° swath: its centreline at
+       * screen x is `ih/2 + (x − vw/2)/R`, so a ±60 px column catches ~8 of
+       * 389 nodes and its extremes are a small sample of a 784 px-tall
+       * distribution — measured `delta` swung to 402 px on pure sampling noise
+       * while the geometry was symmetric to the float.
+       *
+       * So every delivered node is projected through the real transform chain
+       * (perspective included — a near-plane node projects 1.67× off screen
+       * centre) and reduced to its ACROSS distance from the predicted
+       * centreline. The extremes of THAT are the ribbon's true half-widths in
+       * screen px, and the gaps are what is left of the frame beyond them.
+       *
+       * The gate is `|top − bottom| ≤ 20 px`, and it is closed BY CONSTRUCTION
+       * rather than by tuning: the generator re-centres the delivered cloud on
+       * its own y bbox-centre (`recentre`), which is what the shipped band's
+       * 77/153 asymmetry always needed. The MAGNITUDE (≈76 px a side) is `ry`.
+       */
+      frameGaps() {
+        const g = groupRef.current;
+        const inner = innerRef.current;
+        if (!g || !inner || !g.visible || !build) return null;
+        const arr = (
+          build.uniforms.uNodePos as unknown as { array: THREE.Vector3[] }
+        ).array;
+        const u2 = build.uniforms;
+        const cxPx = size.width / 2;
+        const cyPx = size.height / 2;
+        // Screen slope of the centreline: −μ·rect.h/rect.w, i.e. 1/R.
+        const m =
+          -u2.uFieldSlope.value * (rect ? rect.h / Math.max(rect.w, 1) : 0);
+        const v = new THREE.Vector3();
+        let lo = Infinity;
+        let hi = -Infinity;
+        let n = 0;
+        for (let i = 0; i < arr.length; i++) {
+          const p0 = arr[i];
+          // The same `fieldMap` the shader applies, in JS.
+          const x = p0.x * u2.uFieldLen.value + u2.uFieldOrigin.value;
+          v.set(x, p0.y + u2.uFieldSlope.value * x, p0.z);
+          inner.localToWorld(v);
+          v.project(camera);
+          const sx = ((v.x + 1) / 2) * size.width;
+          const sy = ((1 - v.y) / 2) * size.height;
+          const across = sy - (cyPx + (sx - cxPx) * m);
+          n++;
+          if (across < lo) lo = across;
+          if (across > hi) hi = across;
+        }
+        if (!n) return { nodes: 0, top: null, bottom: null, delta: null };
+        const top = cyPx + lo;
+        const bottom = cyPx - hi;
+        return {
+          nodes: n,
+          halfUp: Math.round(-lo * 10) / 10,
+          halfDown: Math.round(hi * 10) / 10,
+          top: Math.round(top * 10) / 10,
+          bottom: Math.round(bottom * 10) / 10,
+          delta: Math.round(Math.abs(top - bottom) * 10) / 10,
+        };
+      },
+      /**
+       * ═══ ROUND 12 · STAGE 2 — THE INSTRUMENT THAT WOULD HAVE CAUGHT IT ═══
+       *
+       * `cost.onFrame`, `centreScreenY()` and `frameGaps()` ALL reported
+       * healthy while the screen was black, and none of them was lying about
+       * what it measures. They measure "is the band in the draw list", "is the
+       * centreline at ih/2 at the centre COLUMN" and "is the swath symmetric
+       * ACROSS its own centreline". Not one of them measures *the viewer can
+       * see the net*, and two of them are structurally incapable of it:
+       *
+       *  - `centreScreenY()` samples ONE column. The ribbon's centreline has a
+       *    screen slope of `1/(dir·R)` = ±1 at 45°, so it is at `ih/2` at
+       *    x = vw/2 and 960 px off frame at either edge — and the single
+       *    sample cannot tell those two pictures apart.
+       *  - `frameGaps()` reduces every node to its ACROSS distance from that
+       *    same centreline, which is invariant along the ribbon. A swath that
+       *    covers 44 % of the frame in a diagonal bar and a swath that covers
+       *    100 % of it report the SAME `halfUp`/`halfDown`/`delta`.
+       *  - `cost.onFrame` is `group.visible`, i.e. a cull result. A field
+       *    multiplied by a 1e-4 mask is `visible === true`.
+       *
+       * This one answers the question the eye asks, in two independent
+       * halves, and either half alone would have failed loudly:
+       *
+       *  1. **COVERAGE** — every delivered node is projected through the REAL
+       *     transform chain and dropped into an `nx × ny` grid over the FRAME.
+       *     `coverPct` is the share of cells that contain at least one node.
+       *     A horizontal frame-height net reads ≈100; the measured Stage 2
+       *     ribbon reads ≈44 because a rigidly-translated straight strip
+       *     sheared by `μ` is a 45° BAR on screen, not a horizontal band.
+       *  2. **THE MASK, AT THE NODES** — the shipped mask chain evaluated in
+       *     JS at each ON-FRAME node (`copyGate × rowGate-floor × copyY ×
+       *     fieldFade`), reduced to a median and to the share of on-frame
+       *     nodes sitting below `1e-2`. `floored` near 100 % is the black
+       *     frame, and it is black for a reason no geometry instrument can
+       *     see.
+       *
+       * `litPct = coverPct × (1 − floored)` is the single number to read:
+       * the share of the frame that has net in it AND is not masked away.
+       *
+       * Pair it with a screenshot luminance census (`mute()` below) — this
+       * predicts the pixels, it does not read them, and the two disagreeing
+       * is itself information.
+       */
+      /**
+       * ROUND 12 · D — THE CONTINUITY GATE, MEASURED ON SCREEN.
+       *
+       * For every link currently inside the κ-window: project both endpoints
+       * through the SAME `fieldMap` + rig the shader uses, take the delivered
+       * SCREEN length in CSS px, and divide by the link's fixed sprite
+       * population to get the delivered along-link spacing `s`. Against it,
+       * the delivered sprite diameter `S = NEURAL_POINT_SIZE·sizeK/CAMERA_Z`
+       * — the unit law, stated once, that ten months of this project were
+       * spent compensating for by eye.
+       *
+       * REST must clear `S/s ≥ 1.65` (the comb criterion) at the MEAN link
+       * AND at the LONGEST one; the LIT regime needs `S_axial/s ≥ 6.0`, and
+       * `S_axial` is the anisotropic velocity stretch (up to ×2.95 at a
+       * crest), never a bigger disc.
+       */
+      strand() {
+        const g = groupRef.current;
+        const inner = innerRef.current;
+        if (!g || !inner || !build || !rect) return null;
+        const f = build.field;
+        if (!f.ribbon || !f.edgeAB) return null;
+        const u2 = build.uniforms;
+        const arr = (
+          u2.uNodePos as unknown as { array: THREE.Vector3[] }
+        ).array;
+        const v = new THREE.Vector3();
+        const sxy = (i: number): [number, number] => {
+          const p0 = arr[i];
+          const x = p0.x * u2.uFieldLen.value + u2.uFieldOrigin.value;
+          v.set(x, p0.y + u2.uFieldSlope.value * x, p0.z);
+          inner.localToWorld(v);
+          v.project(camera);
+          return [
+            ((v.x + 1) / 2) * size.width,
+            ((1 - v.y) / 2) * size.height,
+          ];
+        };
+        // The delivered CSS diameter at the three points of the radial size
+        // ramp. dpr-independent by construction (`sizeNode` is device px and
+        // is divided by the camera distance).
+        const sizeAt = (k: number) =>
+          (u2.uPointSize.value * k * DUST_SIZE_RIBBON) / CAMERA_Z;
+        const sMean = sizeAt(
+          (CORE_SIZE_BOOST_RIBBON + FRINGE_SIZE_DROP_RIBBON) / 2,
+        );
+        const per = Math.max(f.perLink, 1e-6);
+        /** The AXIAL growth of a sprite at a crest: the anisotropic velocity
+         * stretch (1 + min(RIVER_ADVECT·STRETCH_GAIN, STRETCH_MAX) = 2.95,
+         * along the chord only — a streak, never a bigger disc) times the
+         * crest's own transverse swell (1 + RIVER_SIZE). */
+        const CREST_AX = 2.95 * (1 + RIVER_SIZE);
+        const first = u2.uWinFirstEdge.value;
+        const rows: { len: number; s: number; ratio: number }[] = [];
+        let onFrame = 0;
+        for (let k = 0; k < f.winEdges; k++) {
+          const e = first + k;
+          if (e < 0 || e * 2 + 1 >= f.edgeAB.length) continue;
+          const [ax, ay] = sxy(f.edgeAB[e * 2]);
+          const [bx, by] = sxy(f.edgeAB[e * 2 + 1]);
+          const inFrame =
+            (ax >= 0 && ax < size.width && ay >= 0 && ay < size.height) ||
+            (bx >= 0 && bx < size.width && by >= 0 && by < size.height);
+          if (!inFrame) continue;
+          onFrame++;
+          const len = Math.hypot(bx - ax, by - ay);
+          const sp = len / per;
+          rows.push({ len, s: sp, ratio: sMean / Math.max(sp, 1e-6) });
+        }
+        if (!rows.length) return { onFrame: 0 };
+        rows.sort((p, q) => p.len - q.len);
+        const mean = (sel: (r: (typeof rows)[0]) => number) =>
+          rows.reduce((t, r) => t + sel(r), 0) / rows.length;
+        /** The DELIVERED overlap after the per-link normaliser. */
+        const dlv = (r: (typeof rows)[0]) =>
+          Math.max(r.ratio, Math.min(REST_OVERLAP, r.ratio * SIZE_NORM_MAX));
+        const longest = rows[rows.length - 1];
+        const r3 = (x: number) => Math.round(x * 1000) / 1000;
+        return {
+          onFrameLinks: onFrame,
+          winEdges: f.winEdges,
+          winNodes: f.winNodes,
+          perLink: r3(f.perLink),
+          starCount: f.starCount,
+          edgeTotal: f.edgeTotal,
+          particles: countRef.current,
+          sizeCss: {
+            core: r3(sizeAt(CORE_SIZE_BOOST_RIBBON)),
+            mean: r3(sMean),
+            fringe: r3(sizeAt(FRINGE_SIZE_DROP_RIBBON)),
+          },
+          meanLinkPx: r3(mean((r) => r.len)),
+          medianLinkPx: r3(rows[rows.length >> 1].len),
+          longestLinkPx: r3(longest.len),
+          spacingPx: {
+            mean: r3(mean((r) => r.s)),
+            longest: r3(longest.s),
+          },
+          /** THE NUMBER. Rest must clear 1.65 on BOTH rows. */
+          /** The RAW geometric overlap at the authored sprite size. */
+          restOverlapRaw: {
+            mean: r3(mean((r) => r.ratio)),
+            longest: r3(longest.ratio),
+          },
+          /** What the per-link normaliser DELIVERS: the size grows (capped at
+           * SIZE_NORM_MAX) wherever the raw overlap is under the law, and the
+           * alpha drops wherever it is over, so `A` is flat. BOTH rows must
+           * clear 1.65 at rest; the LIT rows carry the ×2.95 anisotropic
+           * stretch and want ≥ 6.0. */
+          restOverlap: {
+            mean: r3(mean(dlv)),
+            longest: r3(dlv(longest)),
+            litMean: r3(mean(dlv) * CREST_AX),
+            litLongest: r3(dlv(longest) * CREST_AX),
+          },
+          sizeNormAtLongest: r3(
+            Math.min(SIZE_NORM_MAX, Math.max(1, REST_OVERLAP / longest.ratio)),
+          ),
+          scaledLinks: rows.filter((r) => r.ratio < REST_OVERLAP).length,
+          front: r3(u2.uFront.value),
+          river: r3(u2.uRiver.value),
+          winFirstEdge: u2.uWinFirstEdge.value,
+          winFirstNode: u2.uWinFirstNode.value,
+          /** The phase axis, read at the frame's centre and at its two edges
+           * — the numbers `uFront` has to LEAD or the birth front eats the
+           * picture the reader is looking at. */
+          phase: {
+            centre: r3(u2.uWinYc.value * f.frontKy + f.frontC),
+            lo: r3(
+              (u2.uWinYc.value - u2.uWinHalf.value) * f.frontKy + f.frontC,
+            ),
+            hi: r3(
+              (u2.uWinYc.value + u2.uWinHalf.value) * f.frontKy + f.frontC,
+            ),
+          },
+          uniforms: {
+            bandPx: r3(u2.uBandPx.value),
+            winYc: r3(u2.uWinYc.value),
+            winHalf: r3(u2.uWinHalf.value),
+            winOn: u2.uWinOn.value,
+            planeAspect: r3(u2.uPlaneAspect.value),
+            dustAlpha: r3(u2.uDustAlpha.value),
+            beadAlpha: r3(u2.uBeadAlpha.value),
+            pointSize: r3(u2.uPointSize.value),
+            flowSpeed: r3(u2.uFlowSpeed.value),
+            reveal: r3(u2.uReveal.value),
+            fieldFade: r3(u2.uFieldFade.value),
+            copyFloor: u2.uCopyFloor.value,
+            copyStreamFloor: u2.uCopyStreamFloor.value,
+            fieldLen: r3(u2.uFieldLen.value),
+            fieldSlope: r3(u2.uFieldSlope.value),
+          },
+          winKeyRange: f.edgeKey
+            ? [
+                r3(f.edgeKey[Math.max(0, first)]),
+                r3(
+                  f.edgeKey[
+                    Math.min(f.edgeKey.length - 1, first + f.winEdges - 1)
+                  ],
+                ),
+              ]
+            : null,
+        };
+      },
+      /** ROUND 12 · D — the on-frame link segments in CSS px, so a PNG probe
+       * can sample luminance ALONG a link and 20 px OFF its axis (the
+       * localisation / not-fog gate) instead of guessing where the net is. */
+      linkScreen(limit = 40) {
+        const inner = innerRef.current;
+        if (!inner || !build || !rect) return null;
+        const f = build.field;
+        if (!f.ribbon || !f.edgeAB) return null;
+        const u2 = build.uniforms;
+        const arr = (
+          u2.uNodePos as unknown as { array: THREE.Vector3[] }
+        ).array;
+        const v = new THREE.Vector3();
+        const sxy = (i: number): [number, number] => {
+          const p0 = arr[i];
+          const x = p0.x * u2.uFieldLen.value + u2.uFieldOrigin.value;
+          v.set(x, p0.y + u2.uFieldSlope.value * x, p0.z);
+          inner.localToWorld(v);
+          v.project(camera);
+          return [
+            ((v.x + 1) / 2) * size.width,
+            ((1 - v.y) / 2) * size.height,
+          ];
+        };
+        const first = u2.uWinFirstEdge.value;
+        const segs: number[][] = [];
+        for (let k = 0; k < f.winEdges && segs.length < limit; k++) {
+          const e = first + k;
+          if (e < 0 || e * 2 + 1 >= f.edgeAB.length) continue;
+          const a = sxy(f.edgeAB[e * 2]);
+          const b = sxy(f.edgeAB[e * 2 + 1]);
+          const pad = 60;
+          const on = (q: number[]) =>
+            q[0] > pad &&
+            q[0] < size.width - pad &&
+            q[1] > pad &&
+            q[1] < size.height - pad;
+          if (!on(a) || !on(b)) continue;
+          segs.push([a[0], a[1], b[0], b[1]]);
+        }
+        return segs;
+      },
+      frameCoverage(nx = 24, ny = 12) {
+        const g = groupRef.current;
+        const inner = innerRef.current;
+        if (!g || !inner || !g.visible || !build || !rect) return null;
+        const arr = (
+          build.uniforms.uNodePos as unknown as { array: THREE.Vector3[] }
+        ).array;
+        const u2 = build.uniforms;
+        const cells = new Uint8Array(nx * ny);
+        const v = new THREE.Vector3();
+        const bandH = Math.max(rect.h, 1);
+        const masks: number[] = [];
+        let onFrame = 0;
+        let filled = 0;
+        const sstep = (a: number, b: number, x: number) => {
+          const t = Math.min(Math.max((x - a) / (b - a || 1e-6), 0), 1);
+          return t * t * (3 - 2 * t);
+        };
+        for (let i = 0; i < arr.length; i++) {
+          const p0 = arr[i];
+          const x = p0.x * u2.uFieldLen.value + u2.uFieldOrigin.value;
+          const y = p0.y + u2.uFieldSlope.value * x;
+          v.set(x, y, p0.z);
+          inner.localToWorld(v);
+          v.project(camera);
+          const sx = ((v.x + 1) / 2) * size.width;
+          const sy = ((1 - v.y) / 2) * size.height;
+          if (sx < 0 || sx >= size.width || sy < 0 || sy >= size.height)
+            continue;
+          onFrame++;
+          const ci =
+            Math.min(ny - 1, Math.floor((sy / size.height) * ny)) * nx +
+            Math.min(nx - 1, Math.floor((sx / size.width) * nx));
+          if (!cells[ci]) {
+            cells[ci] = 1;
+            filled++;
+          }
+          // The shipped mask chain, in JS, at this node — same order, same
+          // constants, same uniforms the shader reads this frame.
+          const d = Math.abs(x - u2.uCopyLaneC.value);
+          const gate = sstep(
+            u2.uCopyLaneW.value,
+            u2.uCopyLaneW.value + Math.max(u2.uCopySoft.value, 1e-3),
+            d,
+          );
+          const yl = y - u2.uCopyYc.value;
+          const dr = Math.abs(yl - u2.uCopyRowC.value);
+          const rowGate =
+            sstep(
+              u2.uCopyRowH.value,
+              u2.uCopyRowH.value + Math.max(u2.uCopyRowSoft.value, 1e-3),
+              dr,
+            ) * u2.uCopyRowLocal.value;
+          const floor =
+            u2.uCopyFloor.value + (1 - u2.uCopyFloor.value) * rowGate;
+          const bell = 1 - sstep(COPY_Y_IN, COPY_Y_OUT, Math.abs(yl));
+          const yTerm = 1 + (u2.uCopyYFloor.value - 1) * bell;
+          masks.push(
+            (floor + (1 - floor) * gate) * yTerm * u2.uFieldFade.value,
+          );
+        }
+        masks.sort((a, b) => a - b);
+        const median = masks.length
+          ? masks[masks.length >> 1]
+          : 0;
+        const floored = masks.length
+          ? masks.filter((m) => m < 1e-2).length / masks.length
+          : 1;
+        const coverPct = (filled / (nx * ny)) * 100;
+        return {
+          nodes: arr.length,
+          onFrame,
+          grid: `${nx}x${ny}`,
+          coverPct: Math.round(coverPct * 10) / 10,
+          maskMedian: Math.round(median * 1e5) / 1e5,
+          flooredPct: Math.round(floored * 1000) / 10,
+          litPct: Math.round(coverPct * (1 - floored) * 10) / 10,
+          /** Screen-y band-height unit, for reading `uCopyRow*` in px. */
+          bandH,
+        };
+      },
+      /**
+       * The A/B lever the screenshot census needs. `mute(true)` takes the
+       * whole island out of the draw list on the NEXT frame (a ref the frame
+       * path reads, never a React commit — the island commit wedge); the
+       * difference between the two screenshots is the net's contribution to
+       * the pixels, and nothing else. Hiding the `<canvas>` element instead
+       * also removes the signature line and the crystal and changes the page's
+       * own compositing, which is how a 17-mean "difference" was once read off
+       * a frame that had no net in it at all.
+       */
+      mute(on = true) {
+        mutedRef.current = !!on;
+        return mutedRef.current;
+      },
+      /**
+       * The explicit lever. `setTraverseConfig` already routes here, but a
+       * rebuild you can ask for BY NAME is what turns "the A/B did not take"
+       * from a mystery into a one-line check: call it, then read
+       * `field.leverOk`.
+       */
+      rebuild() {
+        rebuildRef.current?.();
+        return !!rebuildRef.current;
+      },
+      /**
+       * THE OWNER'S DENSITY A/B (D23), in one call. Rebuilds the field — it is
+       * a generator argument, not a uniform — and leaves everything else
+       * (scroll position, camera, stone) exactly where it was, which is the
+       * whole point: the three arms are meant to be compared at the SAME `p`.
+       */
+      setDensity(arm: "onFrame" | "areal" | "nearest") {
+        setTraverseConfig({ problem: { ribbonDensity: arm } });
+      },
+      /** The ROLLBACK, both halves, in one call — the shipped geometry AND the
+       * shipped constellation. Equivalent to
+       * `setTraverseConfig({ bands: { problem: { … } } })`. */
+      rollbackToStage1() {
+        setTraverseConfig({
+          problem: { angleDeg: 23.61, bandVh: 0.8597, ribbon: false },
+        });
+      },
       resetTraverseCounters() {
         // BASELINE, not zero — see glBase/domBase. Zeroing `frame.tick` here
         // would be undone on the next `apply()` (the hook's own `domFrames` is
@@ -1226,7 +2278,7 @@ function NeuralLatticeIsland({
                 tables the particles read, mounted with <primitive> exactly
                 like CrystalCluster mounts crystalPlexus's net. renderOrder /
                 culling are set on the object in the build. */}
-            <primitive object={build.links.object} />
+            {build.links && <primitive object={build.links.object} />}
             <mesh
               geometry={build.geometry}
               material={build.material}

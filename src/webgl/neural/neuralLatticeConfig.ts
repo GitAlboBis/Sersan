@@ -480,6 +480,19 @@ export interface PlexusBuildParams {
   /** Fraction of the SHORTEST DELIVERED link the snap threshold may take.
    * Default 0.69 — 0.038 / 0.0551, i.e. the shipped ratio. */
   wrapSnapFrac: number;
+  /**
+   * ROUND 12 · STAGE 2 — the factor the CALLER applies to the steady-state
+   * excursion (pointer push + curl) in `neuralFieldCompute`. Default 1 = the
+   * shipped, unscaled forces.
+   *
+   * It exists so `wrapSnapOk` tells the truth. This file cannot scale
+   * `POINTER_PUSH` (it is consumed in the kernel), so before Stage 2 the
+   * ribbon build warned "invariant unsatisfiable" even when the kernel was
+   * about to divide the force by `L`. Passing `1/L` here makes the check
+   * measure the force the kernel will actually apply. It changes NOTHING that
+   * reaches the GPU — it is a diagnostic argument, not a look constant.
+   */
+  excursionScale: number;
 }
 export type PlexusParams = Partial<PlexusBuildParams>;
 
@@ -567,6 +580,269 @@ export const RIBBON_DEFAULTS: Readonly<
   recentre: true,
 };
 
+// --- ROUND 12 · STAGE 2 · THE SHIPPED RIBBON ---------------------------------
+/**
+ * Reference field length in BAND-WIDTH units at 1920×935: `Λ + 1` where
+ * `Λ = R·secH/vw = 1.0 × 5358 / 1920 = 2.791` (45°, a 5358 px act).
+ *
+ * ⚠ IT IS A REFERENCE, NOT THE LIVE VALUE. The live one is `uFieldLen`,
+ * recomputed per measure from the frozen `secH` and the real `rect.w`, and on
+ * a phone it is **12.79**, not 3.791. This constant exists for the two things
+ * that must be decided BEFORE any rect is measured: the seed count (a build
+ * -time table) and the `excursionScale` the WRAP_SNAP audit is run at. Both
+ * are conservative at the desktop value — the phone's field is longer, so its
+ * links are longer in mapped units and its snap margin is wider, not thinner.
+ */
+export const RIBBON_FIELD_LEN_REF = 3.791;
+
+/**
+ * THE RIBBON'S ACROSS-EXTENT, and it is NOT `PLEXUS_RY`.
+ *
+ * `RIBBON_DEFAULTS.ry` keeps 0.42 because Stage 0C's gate was "the shipped
+ * tables, byte-identical". The delivered half-extent of a rect fill is
+ * 0.938 × `ry` (the across coordinate is warped and then normalised by the
+ * warp's own peak, so `ry` is a bound the rim approaches and never ties), so
+ * 0.42 delivers ±0.3939 = a **99 px** gap per side on a 935 px frame. The
+ * owner asked for the net to be exactly frame height. 0.42/0.938 = **0.448**
+ * delivers ±0.4192 = **76 px** per side, MEASURED, and it is the whole of the
+ * correction: the top/bottom ASYMMETRY (the shipped band's 77/153) is closed
+ * separately and by construction by `recentre`, never by `ry`.
+ *
+ * ⚠ Do NOT raise it to 0.5 to "fill the frame" and do NOT clamp the warp at
+ * ±ry: the clamp is what put 23–44 nodes bit-exactly on the rail before ROUND
+ * 12's review, and a rail is a cut edge, not an organic one.
+ */
+export const RIBBON_RY = 0.448;
+
+/**
+ * THE STONE'S POSITION ON THE RIBBON, in ribbon x (`u`-like, ∈ [−0.5, +0.5]).
+ *
+ * `CRYSTAL_POS.broken.x = 0.17` is a BAND-local fraction and means nothing on
+ * a field 3.79 band-widths long — read as a ribbon x it lands the stone at
+ * `p ∈ [0.382, 0.740]`, i.e. mid-act, when D3 asks for "first sighted late".
+ *
+ * A point at MAPPED local x `X` is on frame while
+ * `X ∈ [Λ(p − ½) − ½, Λ(p − ½) + ½]`, so first sighting is at
+ * `p = ½ + (X + ½)/Λ`. `X = Λ/2 − ½ = 0.8955` ⇒ first sighted at **p = 0.642**
+ * and still on frame at p = 1. Expressed in ribbon x (which is what the
+ * generator's well and everything else authored on the field take),
+ * `0.8955 / 3.791 = 0.23621` — and because it is authored as a FRACTION of the
+ * field it stays late at every viewport: on the phone (Λ = 11.79) the same
+ * 0.23621 is first sighted at p = 0.714.
+ */
+export const RIBBON_STONE_U = 0.23621;
+
+/**
+ * THE RIBBON'S CRYSTAL WELL — an explicit decision, with the measurement.
+ *
+ * `resolvePlexusParams` THROWS on `shape:"ribbon"` + `well:true` without an
+ * explicit centre, because inheriting the band's `CRYSTAL_CLEAR_OUTER` (0.40
+ * frame-heights) punches a hole 0.80 frame-heights tall through a ribbon whose
+ * own half-extent is 0.419 — it severs the net. MEASURED at the shipped ry and
+ * the three candidate densities, `wellCentre` at the stone:
+ *
+ *   inner/outer   N=389        N=656        N=825
+ *   0.14 / 0.22   1 comp 100%  3 comp 99%   5 comp 99%   x-swing 1.83/1.50/1.57
+ *   0.10 / 0.16   1 comp 100%  4 comp 99%   5 comp 99%   x-swing 1.29/1.29/1.22
+ *   off           1 comp 100%  4 comp 99%   5 comp 99%   x-swing 1.29/1.29/1.22
+ *
+ * 0.14/0.22 fully clears the stone's silhouette (half-width 1.3945 ×
+ * CRYSTAL_SCALE, half-height 1.66 × CRYSTAL_SCALE ⇒ 0.138 × 0.164 at the
+ * ribbon's 0.0989) but costs 0.2–0.5 of x-density swing — it is a visible
+ * local thinning on a net whose whole brief is evenness. 0.10/0.16 removes the
+ * nodes that would sit ON the stone's core and leaves the swing bit-identical
+ * to the un-welled build. It is the shipped choice; both are one argument.
+ */
+export const RIBBON_WELL_INNER = 0.1;
+export const RIBBON_WELL_OUTER = 0.16;
+
+/**
+ * THE OWNER'S DENSITY A/B (D23). Three honest definitions of "the same
+ * density as today", built, measured and ALL SHIPPED — the owner picks by eye
+ * at the same scroll position, live, via
+ * `setTraverseConfig({ problem: { ribbonDensity: "areal" } })`.
+ *
+ * Measured, broken, ry 0.448, well 0.10/0.16, `L = 3.791` desktop / 12.79 phone:
+ *
+ *  | arm       | seeds | N   | E    | packed | comps | swing | on frame  |
+ *  |-----------|-------|-----|------|--------|-------|-------|-----------|
+ *  | onFrame   |   391 | 389 |  814 | 3.19KiB| 1     | 1.29  | 102.6 / 214.7 |
+ *  | areal     |   662 | 656 | 1332 | 5.20KiB| 4     | 1.29  | 173.0 / 351.4 |
+ *  | nearest   |   835 | 825 | 1709 | 6.69KiB| 5     | 1.22  | 217.6 / 450.8 |
+ *  | lite/onFrame | 716 | 710 | 1478 | 5.78KiB| 3   | 1.37  |  55.5 / 115.6 |
+ *
+ * Today's band delivers 103 nodes / 227 links on frame, so `onFrame` is the
+ * SAME READ the owner has already approved, spread over the whole frame
+ * instead of a centre lens; `areal` is the same TEXTURE and 1.69× more net on
+ * frame; `nearest` equalises nearest-neighbour spacing.
+ *
+ * ⚠ TWO MEASURED CEILINGS, not opinions:
+ *  - `nearest` packs to **6.69 KiB**, over this stage's own 6 KiB gate (still
+ *    41 % of the 16 KiB WebGL2 floor, so it RUNS — it just is not a gated
+ *    default).
+ *  - the PHONE can only take `onFrame`. Its field is 12.79 band-widths, so
+ *    areal parity there is 1212 seeds and `buildPlexus` THROWS at
+ *    `PLEXUS_DEDUP_MAX_NODES` (1024). The lite tier is pinned to `onFrame`
+ *    and warns in dev if it is asked for anything else.
+ */
+export type RibbonDensity = "onFrame" | "areal" | "nearest";
+export const RIBBON_SEEDS: Record<
+  RibbonDensity,
+  Record<Exclude<PlexusDensity, "svg">, number>
+> = {
+  onFrame: { full: 195, lite: 358 },
+  areal: { full: 331, lite: 358 },
+  nearest: { full: 418, lite: 358 },
+};
+
+/**
+ * Ceiling on the PARTICLE-COUNT multiplier the ribbon may ask for.
+ *
+ * `seedBuffers` splits a FIXED `count` across the delivered nodes and links
+ * (measured: 40.19 sprites per star, 21.27 per link at 9000/103/227). Leave
+ * `count` alone and a 389-node ribbon gets **2.1 sprites per star** — the
+ * filled star-glow core the owner approved becomes two dots. So the count
+ * rides the node count, and this is the brake:
+ *
+ *   onFrame full  ×3.78 → 34 006  (uncapped: the allocation is EXACT)
+ *   areal   full  ×6.37 → capped 36 000, allocation 0.63×
+ *   nearest full  ×8.01 → capped 36 000, allocation 0.50×
+ *   onFrame lite ×12.68 → capped  9 600, allocation 0.24×
+ *
+ * ⚠ THE PHONE'S 0.24× IS A REAL, MEASURED LIMITATION AND IT IS STAGE 3's
+ * CALL, not a look constant to tune here: 12.7× the compact budget on a phone
+ * is exactly the number PART 6's open question 1 says nothing in source can
+ * answer. Stage 3's escalation ladder ((i) half the lite density, (ii) shorten
+ * the phone field) is the place it gets decided, WITH a GPU capture.
+ */
+export const RIBBON_PARTICLE_SCALE_MAX: Record<
+  Exclude<PlexusDensity, "svg">,
+  number
+> = { full: 2.2, lite: 1.8 };
+
+/**
+ * ── ROUND 12 · THE LINKS CURVE ─────────────────────────────────────────────
+ *
+ * The owner's own diagnosis, looking at the first particle build:
+ *
+ *   "sembra piu una struttura di vetro che una rete neurale, troppi angoli
+ *    simmetrici e retti. la rete neurale e curva, non sono linee rette."
+ *
+ * He is right, and it is structural rather than a tuning miss. Every link has
+ * always been a STRAIGHT CHORD between two node centres, and straight chords
+ * meeting at a point are a truss — the eye reads crystal, not dendrite. No
+ * amount of particle sizing fixes a topology drawn in straight segments.
+ *
+ * So each link becomes an ARC. In `edgeFrame`:
+ *
+ *   p(s) = mix(A, B, s) + perp · amp · 4s(1−s)
+ *
+ * `4s(1−s)` is zero at both ends and 1 at mid-span, so the link still lands
+ * EXACTLY on its two nodes — the topology is untouched, only the path between
+ * is. `perp` is a unit vector perpendicular to the chord, rolled about it by a
+ * per-link hash so successive links do not all bow in the same plane, and
+ * `amp` is a per-link SIGNED fraction of the chord length: a field where every
+ * link bows the same way is a fabric, not a net. The variance is the point.
+ *
+ * The tangent is the analytic derivative of the same expression and REPLACES
+ * the chord direction everywhere `edgeFrame` publishes `dir` — so the braid
+ * cross-section, the fray and (the one that would have shown) the velocity
+ * streak all follow the curve instead of cutting its corner.
+ *
+ * Peak lateral excursion is `LINK_BEND · |chord|` at mid-span, uniform in
+ * [−1, +1] × this — but SATURATED at `LINK_BEND_MAX_RIBBON` (see below),
+ * because a bow proportional to length all the way up turns the long links
+ * into wide loops that cross their neighbours, and a net whose links loop
+ * over each other reads as tangled string rather than as tissue.
+ *
+ * ⚠ RIBBON ONLY, via the build-time `RIB` ternary — `#production` keeps its
+ * straight chords and its byte-for-byte contract.
+ */
+export const LINK_BEND_RIBBON = 0.22;
+/**
+ * Absolute ceiling on the mid-span bow, in local units, before the per-link
+ * sign and magnitude hash. The delivered link length spans roughly 4× between
+ * the shortest and the longest, so an un-capped proportional bow spans 4× too:
+ * the short links read almost straight while the long ones swing far enough to
+ * cross two neighbours. Saturating at ~1.6× the median link's own bow keeps
+ * every link visibly curved and stops any of them from looping.
+ */
+export const LINK_BEND_MAX_RIBBON = 0.042;
+/**
+ * How far out of the ribbon plane the bow may roll, in radians, ± about the
+ * chord. Full 2π (the first pass) sends the arcs in every direction in 3-space
+ * and the field reads as a ball of wire. Dendritic tissue is broadly laminar:
+ * it curves within its sheet and only leans out of it. ~34° gives depth and
+ * parallax without the tangle.
+ */
+export const LINK_BEND_ROLL_RIBBON = 0.6;
+/**
+ * Dendritic taper. A real process is thickest where it leaves the soma and
+ * thinnest at mid-span between two of them; a constant-width tube is the
+ * single strongest "this was drawn by a computer" cue left once the path
+ * curves. Multiplies the resting sprite diameter by
+ * `mix(1, LINK_TAPER_RIBBON, 4s(1−s))`, i.e. full width at both nodes and this
+ * fraction of it at mid-span.
+ */
+export const LINK_TAPER_RIBBON = 0.62;
+
+/**
+ * THE EXIT FADE — a NEW BEAT, and the owner has to approve it (PART 5 §7).
+ *
+ * Under the ribbon the net's screen y is CONSTANT in `p` by construction, so
+ * at `p = 1` the net is still dead centre of the frame. `frame.active` is
+ * `sy < secTop + secH`, i.e. it goes false at exactly `p = 1`, and
+ * ScrollTrigger stops calling `apply()` there — so the frozen frame never
+ * advances past the end and the field would simply STOP, frame-centred,
+ * forever. There is no natural exit to fall back on; it has to be authored.
+ *
+ * Value: viewport heights of scroll, at the END of the act, over which the
+ * field's alpha (particles AND lines AND both discard thresholds — a fade that
+ * one of them misses is a pop) rides a smoothstep to zero. 1.0 vh means the
+ * net is fully gone by `p = 1` and the section-keyed cull can flip without
+ * cutting anything. Set to 0 for a hard cut (the A/B that shows what it buys).
+ */
+export const FIELD_EXIT_VH = 1.0;
+
+/**
+ * The ribbon's build arguments, in ONE place. `getPlexus(mode, density)` is
+ * still today to the bit — this is only ever reached through an explicit
+ * `ribbon` request.
+ */
+export function ribbonPlexusParams(
+  density: PlexusDensity,
+  ribbonDensity: RibbonDensity,
+): PlexusParams {
+  const tier: Exclude<PlexusDensity, "svg"> =
+    density === "lite" ? "lite" : "full";
+  let arm = ribbonDensity;
+  if (tier === "lite" && arm !== "onFrame") {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(
+        `[plexus] ribbonDensity "${arm}" is not available on the lite tier ` +
+          `(the phone field is 12.79 band-widths, so areal parity is 1212 ` +
+          `seeds and buildPlexus throws at PLEXUS_DEDUP_MAX_NODES 1024). ` +
+          `Falling back to "onFrame".`,
+      );
+    }
+    arm = "onFrame";
+  }
+  return {
+    shape: "ribbon",
+    seeds: RIBBON_SEEDS[arm][tier],
+    ry: RIBBON_RY,
+    // A guard, not a target: the largest arm delivers 1709.
+    edgeCap: 4000,
+    wellCentre: [RIBBON_STONE_U, CRYSTAL_POS.broken[1]],
+    wellInner: RIBBON_WELL_INNER,
+    wellOuter: RIBBON_WELL_OUTER,
+    // The kernel divides the pointer push and the curl by L (see
+    // `uFieldK` in neuralFieldCompute) — tell the audit so it measures the
+    // force that will actually be applied.
+    excursionScale: 1 / RIBBON_FIELD_LEN_REF,
+  };
+}
+
 /** Fully-resolved build arguments — every field present, no optionals. */
 type ResolvedPlexusParams = PlexusBuildParams;
 
@@ -637,6 +913,7 @@ function resolvePlexusParams(
     recentre: params?.recentre ?? (ribbon ? d.recentre : false),
     wrapSnapCeil: params?.wrapSnapCeil ?? WRAP_SNAP_DIST,
     wrapSnapFrac: params?.wrapSnapFrac ?? WRAP_SNAP_FRAC,
+    excursionScale: params?.excursionScale ?? 1,
   };
 }
 
@@ -668,6 +945,7 @@ function paramSig(p: ResolvedPlexusParams): string {
     p.recentre ? 1 : 0,
     p.wrapSnapCeil,
     p.wrapSnapFrac,
+    p.excursionScale,
   ].join(",");
 }
 
@@ -721,6 +999,21 @@ export interface Plexus {
    * was built with. Inert diagnostics: nothing on the frame path reads them.
    */
   shape: PlexusShape;
+  /**
+   * ROUND 12 · STAGE 2 FIX — the metric this cloud's TOPOLOGY was built in,
+   * published because `seedBuffers` needs it and was measuring in a different
+   * one. `sd()` un-squashes x by this before asking "how far apart are these
+   * two nodes ON SCREEN"; the per-link particle ALLOCATION was using raw
+   * `hypot(dx, dy, dz)` instead. On the shipped band the two differ by
+   * 1/0.45 = 2.2×; on the ribbon, whose `bandAspect` is 0.12846 BECAUSE
+   * `fieldMap` then stretches x by `uFieldLen` = 3.791, they differ by
+   * **7.784× — exactly the stretch** — so an x-dominant link is allocated
+   * 7.8× fewer particles per delivered screen pixel than a y-dominant one,
+   * and the delivered along-link spacing spreads instead of being uniform.
+   * Publishing it lets the allocation use the SAME metric the topology was
+   * chosen in, which is the only self-consistent choice available.
+   */
+  bandAspect: number;
   /** Delivered y bbox — `yMid` is the number the ribbon re-centres ON. Today's
    * shipped band reports −0.3363 / +0.4175 / **+0.0406**, and that +0.0406 IS
    * the measured 77 px-top / 153 px-bottom asymmetry on a 935 px frame. */
@@ -756,6 +1049,19 @@ export interface Plexus {
    */
   wrapSnapDist: number;
   wrapSnapOk: boolean;
+  /** The steady-state excursion the snap threshold had to clear, AFTER the
+   * caller's `excursionScale`. Reported so a `wrapSnapOk` verdict can be
+   * audited without re-deriving it. */
+  excursionFloor: number;
+  /**
+   * ROUND 12 · STAGE 2 — the delivered x bbox, published because `nodeT` is
+   * `(x − xMin)/xSpan` and the ribbon has to invert that: `FRACTURE_T` is no
+   * longer an authored 0.62 but "the stone's own `u`", and the only honest way
+   * to name it is to run the stone's ribbon x through the SAME normalisation
+   * the nodes went through. (On the ellipsoid arm nothing reads these.)
+   */
+  xMin: number;
+  xSpan: number;
   /** Deterministic checksum of every node position, 6 significant digits. */
   checksum: number;
 }
@@ -1103,6 +1409,53 @@ export function buildPlexus(
   for (const [a, b] of edges) minEdgeLocal = Math.min(minEdgeLocal, ld(a, b));
   if (!edges.length) minEdgeLocal = 0;
 
+  // --- 3a. ROUND 12 · D — THE κ REORDER (RIBBON ONLY) ----------------------
+  //
+  // Sort nodes AND edges by the on-frame key `κ = u + dir·R·bandAspect·v`, so
+  // that "on frame" is a CONTIGUOUS INDEX RANGE in both tables and the
+  // rolling window in `seedBuffers` / `edgeFrame` becomes one integer
+  // uniform each. See `RIBBON_WINDOW_PAD` for the derivation; the short form
+  // is that κ is `mapped y ÷ μ`, and mapped y is an exact affine function of
+  // SCREEN y for every point of a sheared band.
+  //
+  // ⚠ RIBBON ONLY, AND THAT IS A HARD GATE, not tidiness. Reordering nodes
+  // changes `checksum` (it is index-weighted) and re-hashes every per-link
+  // and per-node decorrelation in the shaders. `#production` is byte-for-byte
+  // ({101, 229}, checksum −420.464007) and the SVG twin builds at the `svg`
+  // density through this same function.
+  //
+  // ⚠ ORIENTATION SURVIVES. Edges are stored `[a, b]` with `nodeT[a] ≤
+  // nodeT[b]` so flow and packets run left→right; this remaps INDICES only
+  // and never re-pairs, so the invariant holds by construction.
+  if (P.shape === "ribbon" && N > 0) {
+    const kappa = (i: number) =>
+      nodes[i][0] + RIBBON_KAPPA_K * P.bandAspect * nodes[i][1];
+    const order = new Array<number>(N);
+    for (let i = 0; i < N; i++) order[i] = i;
+    order.sort((i, j) => kappa(i) - kappa(j) || i - j);
+    const rank = new Array<number>(N);
+    for (let r = 0; r < N; r++) rank[order[r]] = r;
+    const nodesSorted = order.map((i) => nodes[i]);
+    const nodeTSorted = order.map((i) => nodeT[i]);
+    for (let i = 0; i < N; i++) {
+      nodes[i] = nodesSorted[i];
+      nodeT[i] = nodeTSorted[i];
+    }
+    for (let e = 0; e < edges.length; e++) {
+      edges[e] = [rank[edges[e][0]], rank[edges[e][1]]];
+    }
+    // Edge key = the MIDPOINT's κ (the window's fade is keyed to each
+    // particle's own live screen y, so a link straddling the boundary is
+    // faded by geometry, not by its key).
+    const edgeKappa = edges.map(
+      ([a, b]) => (kappa(a) + kappa(b)) * 0.5,
+    );
+    const eOrder = edges.map((_, e) => e);
+    eOrder.sort((i, j) => edgeKappa[i] - edgeKappa[j] || i - j);
+    const edgesSorted = eOrder.map((e) => edges[e]);
+    for (let e = 0; e < edges.length; e++) edges[e] = edgesSorted[e];
+  }
+
   // --- 3b. THE PER-BUILD RECYCLE-SNAP THRESHOLD ----------------------------
   // Derived from the SHORTEST DELIVERED LINK, never assumed. See
   // `Plexus.wrapSnapDist`. Default build: min(0.038, 0.0551 × 0.69) = 0.038 —
@@ -1111,7 +1464,11 @@ export function buildPlexus(
   // The steady-state excursion floor the threshold has to clear: the pointer
   // spring's displacement plus the curl term (both LOCAL units, both quoted in
   // WRAP_SNAP_DIST's own docstring).
-  const excursionFloor = POINTER_PUSH / NEURAL_SPRING + CURL_GAIN * CURL_SCALE;
+  // ROUND 12 · STAGE 2: `excursionScale` is the 1/L the kernel applies to BOTH
+  // terms (see PlexusBuildParams.excursionScale). Default 1 = the shipped,
+  // unscaled forces, so the ellipsoid arm's verdict is unchanged to the bit.
+  const excursionFloor =
+    (POINTER_PUSH / NEURAL_SPRING + CURL_GAIN * CURL_SCALE) * P.excursionScale;
   const wrapSnapOk = wrapSnapDist > excursionFloor;
   if (!wrapSnapOk && process.env.NODE_ENV !== "production") {
     console.warn(
@@ -1189,12 +1546,16 @@ export function buildPlexus(
     largestComponent,
     meanEdgeLocal: edges.length ? edgeLenSum / edges.length : 0,
     shape: P.shape,
+    bandAspect: P.bandAspect,
     yMin: yLo,
     yMax: yHi,
     yMid,
     edgeCapHit,
     wrapSnapDist,
     wrapSnapOk,
+    excursionFloor,
+    xMin,
+    xSpan: span,
     checksum: Math.round(checksum * 1e6) / 1e6,
   };
 }
@@ -1294,6 +1655,41 @@ export const FLOW_SPEED = 0.075;
  * an edit + reload, not a uniform write. LINK_SEGMENTS is BUILD-TIME (baked
  * geometry).
  */
+/**
+ * ═══ ROUND 12 · D — THE CHORD IS OFF. THE PARTICLES ARE THE LINE. ═══
+ *
+ * The owner reversed D22 the same day he approved it: *"no, la linea sotto
+ * nitida non ci deve essere. sono le particelle che si illuminano in
+ * movimento che fanno la linea illuminata."* Everything below this flag stays
+ * in the tree — the baker, `buildLinkLineLayer`, all 20-odd `LINE_*`
+ * constants and the ~150 lines of prose that justify them — because he has
+ * reversed this decision once already and the next reversal must cost one
+ * constant, not an archaeology dig.
+ *
+ * ⚠ `LINE_ALPHA = 0` IS NOT A ROLLBACK. Every fragment would fail
+ * `Discard(alpha <= vLineCut)` so the fill goes to zero, but the draw call,
+ * the ~20 500 unculled vertices, the 401 KiB VBO and the 6 UBO blocks all
+ * remain. This flag skips the BUILD — the idiom `MEMBRANE_ALPHA` already
+ * ships (neuralFieldCompute `buildMembraneLayer`), mount gate included.
+ *
+ * ⚠ `: boolean`, NOT the inferred literal type. A literal `false` narrows
+ * `build.links` to `null` and the entire line branch STOPS BEING TYPE-CHECKED
+ * by `npx tsc --noEmit`, which is the only static gate this repo has. The
+ * price of the annotation is that the constant no longer guarantees a fold:
+ * "tree-shaken out" is UNVERIFIED (no bundle analysis was run).
+ *
+ * ⚠ TWO THINGS THAT LOOK LINE-ONLY AND ARE NOT — do not delete them:
+ *   - `copyMaskLineAt()` / `uCopyLineFloor` / `COPY_MASK_FLOOR_LINE` are read
+ *     by the NEBULA, not only by the line.
+ *   - `EDGE_FADE_IN/OUT`, `EDGE_MID_BRIGHT`, `DEBRIS_FADE` are read by the
+ *     PARTICLE path.
+ *
+ * WHAT THE CHORD CARRIED AND WHERE IT WENT — see the ROUND 12 · D block below
+ * (`DUST_SIZE_RIBBON`) for the replacement contract, and the round report for
+ * the two items that are HONESTLY LOST (1-device-px crispness; independence
+ * from the particle budget).
+ */
+export const LINE_LAYER: boolean = false;
 /** Sub-segments per link in the baked LineSegments (⇒ 2× this vertices/link).
  * The chord is straight and would need 2; the subdivision is there so the
  * VERTEX-stage terms that vary along a link resolve — the surge wavefront
@@ -1446,6 +1842,329 @@ export const FRINGE_SIZE_DROP = 0.55;
  * Stars are untouched (they scale by RING_POINT_SIZE_BOOST, not this).
  */
 export const DUST_SIZE = 0.55;
+
+// ═══ ROUND 12 · D — THE PARTICLE-DRAWN LINE (RIBBON ONLY) ═══════════════════
+//
+// THE UNIT LAW, stated once, because ten months of this project were spent
+// compensating for it by eye:
+//
+//     S_css = NEURAL_POINT_SIZE · sizeK / CAMERA_Z          CAMERA_Z = 12
+//
+// `buildVertex` computes a DEVICE-px diameter and divides by camera distance,
+// so every "px" quoted in the ledgers above (`NEURAL_POINT_SIZE`'s 9.4 px
+// core, `DUST_SIZE`'s 3.4 px grain, `PACKET_SIZE`'s 10.3 px bead) is **12×
+// the delivered CSS px**. Measured on the shipped ribbon: the link dust is
+// **0.283 CSS px** across at **3.95 CSS px** spacing — about 1.3 lit pixels
+// on an 84 px link. Nothing in this repo has ever been a particle-drawn line.
+//
+// That is also why `f6cac67` failed live: at "7.5" and then "10" the team was
+// compensating a 12× unit error by eye, and at that size a disc is a BEAD.
+// The idea was never wrong; the units were. The escape is not diameter, it is
+// ANISOTROPY — `buildVertex` scales only `corner.x` by the velocity stretch
+// and `vQuadUv` is the UNROTATED quad, so a sprite stretched 3× along its own
+// chord is a STREAK whose peak per-pixel alpha never moves, while the same
+// sprite grown isotropically is a bigger blob.
+//
+// THE TWO-REGIME LAW everything below is sized to:
+//
+//     REST (structure, always present):  S_css / s_css ≥ 1.65   (comb)
+//     LIT  (the travelling signal):      S_axial / s   ≥ 6.0
+//     accumulated A = 0.624 · P · S_axial / s
+//
+// 1.65 is the COMB criterion (ripple 2·exp(−2π²(S/4s)²) ≤ 7 %); a Poisson
+// train needs 6.0 for the same smoothness, which is why `basePhase` is
+// stratified in `seedBuffers` and `speedVar` moved to a per-LINK hash. A thin
+// line made of ABOVE-threshold sprites is arithmetically forced to read as
+// beads (the bloom highpass is a blob detector on every core peak), so the
+// resting strand is dense, overlapped and entirely SUB-threshold, and only
+// the travelling crest crosses 1.0.
+//
+// ⚠ EVERY CONSTANT IN THIS BLOCK IS A RIBBON-ONLY COMPANION, and that is not
+// tidiness: `#production` shares `DUST_SIZE`, `PACKET_SIZE`, `STREAM_ALPHA`,
+// `BEAD_ALPHA`, `STATIC_ELONG`, `FLOW_SPEED`, `CORE_SIZE_BOOST` and
+// `FRINGE_SIZE_DROP` with the ribbon, and its band is byte-for-byte gated
+// ({101, 229}, checksum −420.464007). The selection is a BUILD-TIME JS
+// ternary on `plexus.shape === "ribbon"`, so the non-ribbon node graph bakes
+// the identical `float()` literals it baked before this block existed.
+// `NEURAL_POINT_SIZE` is NOT touched — it scales the stars and the beads too.
+
+/**
+ * Resting sprite diameter carrier for RIBBON link particles.
+ *
+ * `sizeK = mix(CORE_SIZE_BOOST_RIBBON, FRINGE_SIZE_DROP_RIBBON, fringe) ·
+ * DUST_SIZE_RIBBON`, mean factor 0.95 ⇒
+ *   S_css = 7.5 · 0.95 · 4.72 / 12 = **2.80 CSS px**.
+ * That is 5.6 device px at dpr 2 — **5× the chord's 1 device px**, and that
+ * loss is real and not tunable: a 1-device-px particle line would need
+ * ~107 000 link sprites against the ~31 000 the budget has.
+ */
+export const DUST_SIZE_RIBBON = 7.1;
+/**
+ * F4 — narrow the per-particle size spread. A comb of UNEQUAL discs
+ * re-introduces ripple at the ratio of the spread (today 1.25/0.55 = 2.27×);
+ * ±15 % is invisible. Costs nothing.
+ */
+export const CORE_SIZE_BOOST_RIBBON = 1.15;
+export const FRINGE_SIZE_DROP_RIBBON = 0.75;
+/**
+ * The bead's job has SHRUNK — from "the only light on the link" to "a glint
+ * on a lit thread". As a ratio: bead = dust × (1 + this) = 1.35× ⇒ **3.8 CSS
+ * px** at rest size 2.8. At the shipped 2.0 it would be 8.4 CSS px, which is
+ * exactly the primitive `f6cac67` was killed for.
+ */
+export const PACKET_SIZE_RIBBON = 0.35;
+/**
+ * The analytic (WebGL2) tier has no `physVel`, so it fakes the streak with a
+ * fixed elongation along the link. At 0.28 its REST stretch is 1.42 against
+ * the compute tier's 1.01 — a 40 % brightness divergence between backends
+ * that only becomes visible now that the sprite is bright. 0.05 ⇒ 7 %.
+ */
+export const STATIC_ELONG_RIBBON = 0.05;
+/**
+ * Ambient drift 8.4 → 28 px/s. Anchor speed 0.026 local/s against the RIBBON'S
+ * OWN delivered snap threshold (`wrapSnapDist` 0.01060 ÷ damping/spring
+ * 0.1417 = 0.0748 local/s) — 2.9× margin. ⚠ Do NOT audit this against the
+ * `WRAP_SNAP_DIST` module constant: the ribbon's delivered value is 3.6×
+ * tighter.
+ */
+export const FLOW_SPEED_RIBBON = 0.25;
+/**
+ * THE RESTING STRAND'S ALPHA, and it is the number the whole read hangs on.
+ *
+ * `P = lum(COL_CYAN 0.6201) × (STREAM_EMISSIVE 2.1 × midProfile 1.15 ×
+ * rowBright 1.04 = 2.512) × alpha = 1.5577·alpha`. The rest target is
+ * `A = 0.624 · P · S_ax/s = 0.24` post-blend at S/s ≈ 1.65 ⇒ P = 0.233 ⇒
+ * **alpha = 0.150**. Sanity anchor: the chord the owner approved delivered
+ * 0.568 × 0.5 CSS px of light per unit length; this strand delivers
+ * 0.24 × 2.8 = **2.4× the chord**, and the river head ~15×.
+ *
+ * ⚠ THIS IS NOT THE ROUND-8-I HAZE COMING BACK. That fog was 4 800 sprites
+ * smeared across a 44 px TUBE (`STRAND_RADIUS` non-zero). Here
+ * `STRAND_RADIUS = 0` and `STRAND_THICKNESS = 0.0006` (0.56 px = 0.2 S), so
+ * the train is effectively 1-D and the light is ON the line, not over the
+ * band. The gate is localisation (L on axis ÷ L at ±3S ≥ 15), never an
+ * integral.
+ */
+export const STREAM_ALPHA_RIBBON = 0.125;
+/** Post-blend 3.65 → **1.80**. A 3.8 px sprite at 3.65 paints a bloom halo
+ * peaking at 0.64 over a ~4 px radius; 46–97 of those on frame is the new
+ * fog. A glint on a lit thread, not a lamp on a dark one. */
+export const BEAD_ALPHA_RIBBON = 0.32;
+/**
+ * THE ROLLING κ-WINDOW — the only lever big enough to pay for the strand.
+ *
+ * The band is 3.791 band-widths long and rides a 45° screen diagonal, so at
+ * any instant only `rect.h / (L · rect.w)` = `bandAspect` = **12.85 %** of it
+ * is on frame — a divisor of 7.78, not the naive 1/Λ = 3.79. (A plain edge
+ * -index window buys only the 3.79; at a given u only part of the v range is
+ * on frame.)
+ *
+ * THE KEY. Write the mapping as `x = u·L`, `y = v + μ·x`, `μ = dir·(W/H)/R`.
+ * A point's screen y is `C − y·rect.h` for every point, shear or no shear, so
+ * "on frame vertically" is a FIXED window in mapped `y` — and `y/μ = u +
+ * dir·R·bandAspect·v` is therefore the exact 1-D on-frame key. Its window is
+ * `bandAspect` wide in u, v-independent, and (this is the part that makes it
+ * buildable) **it is the same axis the light travels on**.
+ *
+ * Sort nodes and edges by κ once at build time; then a particle homes onto
+ *
+ *     idx = first + mod(baked − first, WINDOW)
+ *
+ * which is the IDENTITY for everything already inside the window and re-homes
+ * exactly the 1/WINDOW of particles on the departing element to the arriving
+ * one, both of them off frame. Every element keeps a FIXED residue class, so
+ * its particle population is a build-time constant and the comb never
+ * re-strides.
+ *
+ * PAD 1.45 ⇒ the window reaches 0.225 band-heights (≈210 px) past each frame
+ * edge — comfortably past half the longest link (170 px), so a re-home is
+ * always off frame. It is HYSTERESIS, not a visibility rule: the fade is keyed
+ * to the particle's own live screen y (`screenYAt`), never to the index, so a
+ * driver that mis-sets `first` loses links at the frame edge instead of
+ * popping them in the middle of it.
+ */
+export const RIBBON_WINDOW_PAD = 1.7;
+/** The REST regime's target geometric overlap `S_css / s_css`. 1.65 is the
+ * COMB criterion — ripple `2·exp(−2π²(S/4s)²)` = 6.9 %, verified against the
+ * shipped `smoothstep(0.5, 0.12, r)` disc profile at ±3 % peak-to-trough. A
+ * POISSON train (a hashed `basePhase`) would need 6.0 for the same read, and
+ * that factor of 3.6× in particle count is what F2/F3 buy. ⚠ It is never a
+ * licence to raise alpha where the overlap is BELOW it — that is the bead
+ * failure; below 1.65 the answer is more particles or a wider sprite. */
+export const REST_OVERLAP = 1.65;
+/** `dir · traverseRate` of the shipped traverse (`dir: -1`, rate 1). It is the
+ * sign+scale of κ's `v` term. ⚠ Re-derive if the band's direction or rate
+ * ever changes — the sort would otherwise key on the wrong diagonal and the
+ * window would over-include ~1.9× (i.e. fall back to the naive 3.79). */
+export const RIBBON_KAPPA_K = -1;
+/** Star particles per WINDOWED node. The approved read is 40.19/star
+ * (`NODE_FRACTION` 0.46 at 34 006/389); windowing keeps that intact while
+ * paying for only the ~73 nodes on frame instead of all 389. `NODE_FRACTION`
+ * is retired on the ribbon arm: the star and link budgets are computed
+ * independently now. */
+export const STAR_PER_NODE_RIBBON = 40;
+/**
+ * Where the window fade sits, as a MULTIPLE of the frame's own half-height in
+ * mapped-local units (1.0 = the frame edge exactly). Fully lit across the
+ * whole frame; gone by 1.16 half-frames, i.e. ≈75 px outside it.
+ *
+ * ⚠ A MULTIPLIER, NOT A CONSTANT IN BAND-HEIGHTS. The shader's y unit is
+ * `rect.h` while the frame is `size.height`, and the band pin is `svh` — on a
+ * phone with a collapsing URL bar the two differ by the toolbar, and a fixed
+ * 0.5 would put the fade inside the frame for the whole act. `uWinHalf`
+ * carries `ih / (2·rect.h)`; these ride it.
+ *
+ * ⚠ THE PAD INEQUALITY, and it is what sizes `RIBBON_WINDOW_PAD`:
+ *     pad/2 − halfLinkExtent  ≥  WINDOW_FADE_OUT · half
+ * A particle re-homes when its LINK's midpoint κ leaves the index window, and
+ * at that instant the particle itself can be half a link nearer the frame.
+ * Measured on the shipped band: longest delivered link 388 px on a 935 px
+ * frame ⇒ halfExtent ≤ 0.208 → 0.85 − 0.208 = 0.642 ≥ 0.58. 58 px of margin.
+ */
+export const WINDOW_FADE_IN = 1.02;
+export const WINDOW_FADE_OUT = 1.16;
+/**
+ * Ceiling on the per-link SIZE normalisation (see the normaliser in
+ * `particleScalars`). A link carries a fixed sprite count, so its delivered
+ * spacing rides its own length; the strand answers by growing the sprite just
+ * enough to keep `S/s = REST_OVERLAP` on EVERY link, and dropping the alpha in
+ * exact compensation so the accumulated `A` is flat. 1.45 caps the growth at
+ * 4.06 CSS px. MEASURED on the shipped band: only links past 291 px need any
+ * growth at all (median 158 px, longest 388 px — a handful of the 129 on
+ * frame), and the worst of them lands at 1.24 × 1.45 = **1.80**, clear of the
+ * 1.65 law. Past the cap a link would ride a lower overlap and a rippled read
+ * rather than a visibly fatter thread; that is the trade, and on the shipped
+ * band it is not reached.
+ */
+export const SIZE_NORM_MAX = 1.45;
+/** Star anchors JUMP now (they never did before), so the recycle snap has to
+ * cover them or a re-homed star core spring-flies across the frame. Local
+ * units; far above any legitimate star excursion (offsets are ≤
+ * STAR_FLARE_LEN) and far below the ≈1.0-local window jump. Armed by the same
+ * steady-state gate the link snap uses. RIBBON BUILDS ONLY — on every other
+ * build the star bound stays 1e9, to the bit. */
+export const STAR_WINDOW_SNAP = 0.25;
+
+// --- ROUND 12 · D — MOTION IS LIGHT (the travelling signal) ------------------
+//
+// A CONSTANT speed→brightness law is fatal: `uFlowSpeed` is uniform, so every
+// particle would lift equally and we would have re-derived the round-8-I haze
+// by a new route. And `|physVel|` is FORBIDDEN as the driver — it spikes at
+// every `fract()` wrap on the compute tier only, and does not exist at all on
+// the analytic tier, so a `|physVel|`-driven emissive shows two different
+// pictures on the two backends. Everything below rides ONE analytic scalar on
+// the SAME κ axis the window uses.
+//
+//     phase(nT, y) = nT − y·uFrontKy
+//     born(ph)     = smoothstep(ph, ph + uFrontW, uFront)     ← structure
+//     river(ph)    = Σ_m max( exp(−K·dw²), TAIL-smear )       ← light
+//
+/** Crests on the field at once. Pitch 1/3 nodeT = 2426 px ⇒ ~0.8 crests per
+ * 1920 px frame. */
+export const RIVER_M = 3;
+/** Gaussian sharpness. σ = 1/√(2K) = 0.0577 nodeT = **420 px** — deliberately
+ * WIDER than the 152 px mean link, so a crest lights a link END TO END
+ * instead of riding along it as a bead. ⚠ Do not narrow it toward
+ * `PACKET_WIDTH` 0.07; that width IS the anti-blob guarantee. */
+export const RIVER_K = 150;
+/** Trailing comet smear (matches `SURGE_TAIL`). Combined with `max(head,
+ * tail)`, never `min()` — a `min()` on a moving wavefront flat-tops it. */
+export const RIVER_TAIL = 0.035;
+/** Along-link advection added at a crest ⇒ `stretch = 1 + min(1.95, 2) =
+ * 2.95`. The SAME saturation the surge already produces; no new cap
+ * behaviour, and the stretch is anisotropic, so this is a streak. */
+export const RIVER_ADVECT = 1.3;
+/**
+ * Transverse swell at the crest: S 2.80 → 3.14 CSS px.
+ *
+ * ⚠ MEASURED-DOWN FROM THE DRAFT'S 0.35, together with `RIVER_GAIN` and
+ * `RIVER_TRAFFIC`. The draft's ledger sized the crest at `A = 1.24` assuming
+ * `S_ax/s = 6.57` — the LONGEST link's value. But the overlap normaliser
+ * holds `A_rest` FLAT across the net, so `A_lit / A_rest` is a pure product
+ * of the crest's own factors and is the same on every link: at 0.35/0.30/0.16
+ * it came out **1.83**, i.e. 48 % over the ledger, and the frame showed it —
+ * blown-out white segments with a bloom wash measuring 0.247 linear at 20 px
+ * off the axis. At 0.12/0.15/0.08 the product lands at **1.19**, which still
+ * crosses the bloom threshold (that is the point) at a 4.9× lift over rest.
+ */
+export const RIVER_SIZE = 0.12;
+/** Emissive lift into the existing additive chain. */
+export const RIVER_GAIN = 0.15;
+/** Whitening toward `COL_CORE` at the crest. Cyan→white only. NEVER violet. */
+export const RIVER_WHITE = 0.25;
+/** Lift into the dust→bead `traffic` ramp (so the strand thickens with the
+ * light rather than only brightening). */
+export const RIVER_TRAFFIC = 0.08;
+/** Star-core lift inside a crest — `.mul(cGate)` is mandatory. */
+export const RIVER_STAR = 0.45;
+/**
+ * ⚠ THE CRESTS MUST KEEP MOVING WHEN THE READER STOPS. `uRiver = uFront +
+ * riverClock`, `riverClock += delta·this` ⇒ 655 px/s, a crest crosses the
+ * frame in ~2.9 s. Without it a stopped reader sees FROZEN BRIGHT PATCHES —
+ * the direct contradiction of the owner's sentence. `uFront` (structure)
+ * stays a pure function of `p`; only the LIGHT gets its own clock.
+ */
+export const RIVER_RATE = 0.09;
+/**
+ * THE BIRTH front: `uFront = damp(prev, LEAD + p·SPAN, 10, delta)`, in nodeT.
+ *
+ * ⚠ `Math.max(prev, next)` would be a LATCH and violates D16 — the front must
+ * be able to go back when the reader does.
+ *
+ * ⚠ LEAD IS 0.30, NOT THE DRAFT'S 0.05, AND THAT MAKES THE FRONT INERT ON
+ * PURPOSE. MEASURED: the frame's own phase runs `≈ 0.92·p + 0.096` and spans
+ * ±0.065 either side of its centre, so at LEAD 0.05 the front sat at 0.683
+ * while the frame reached 0.713 — **the leading third of the picture was
+ * unborn**, and a fast scroll (the damper is λ = 10) would have widened that
+ * to most of the frame. At 0.30 the front clears `phase_hi + FRONT_W` by
+ * ≥ 0.08 for every `p` in the act, so birth never eats the picture.
+ *
+ * The consequence is reported rather than hidden: the chord's per-link
+ * STAGGERED REVEAL (`LINE_REVEAL_STAGGER`) is therefore NOT recovered — the
+ * field still knits in on the flat `uReveal` coalesce. Drop this toward 0.10
+ * and the front becomes visible again; that is the lever, and it costs
+ * picture at the leading edge.
+ */
+export const FRONT_LEAD = 0.3;
+export const FRONT_SPAN = 1.0;
+/** Birth knee width in nodeT — a C¹ knee, never a clamp. */
+export const FRONT_W = 0.06;
+/**
+ * THE CONTRACT `LINE_LUM_MAX` USED TO CARRY, RE-HOMED — AND IT IS A CEILING
+ * ON THE ACCUMULATED LUMINANCE, NOT ON THE SPRITE.
+ *
+ * `LINE_LUM_MAX` was the only place in this field where a layer was held
+ * UNDER the bloom threshold, and it leaves with the chord. Its replacement is
+ * a two-state contract: the RESTING strand caps at `DUST_A_MAX` (0.95 —
+ * sub-threshold, nothing on it ever blooms) while a bead or a crest is
+ * allowed up to `BEAD_A_MAX`.
+ *
+ * ⚠ MEASURED, AND THE FIRST ATTEMPT WAS WRONG IN A WAY WORTH RECORDING. The
+ * draft capped the per-SPRITE peak `P = lum·emis·alpha`, exactly as the line
+ * layer did. On a line made of sprites that is the wrong quantity: what the
+ * eye and the bloom highpass see is
+ *     A = 0.624 · P · (S_axial / s),
+ * and `S_axial/s` runs from 1.65 to **20** once the crest's swell and the
+ * anisotropic stretch are in. A surge sat at P = 0.62 — comfortably under a
+ * 2.0 sprite cap — and delivered **A = 7.8**: blown-out white links with a
+ * bloom wash reading 0.25 linear 20 px off the axis, and a 123× spread
+ * between a resting link and a swept one. The cap therefore divides by the
+ * delivered axial overlap, which the shader already computes for the
+ * normaliser: `emisCap = A_MAX / (0.624 · ovLit · lum · alpha)`.
+ *
+ * Same C¹ soft knee as the line's — exact below 0.7·cap, then asymptotic.
+ * ⚠ A hard `min()` on a moving wavefront FLAT-TOPS whole links and turns
+ * "the wavefront sweeps the line" into "links switch to the ceiling".
+ */
+export const DUST_A_MAX = 0.95;
+/** The other end of the same knee — a bead or a crest may reach this, and is
+ * MEANT to: over 1.0 is what makes the travelling segment bloom. */
+export const BEAD_A_MAX = 1.8;
+export const DUST_LUM_KNEE = 0.7;
+/** The through-centre chord mean of the shipped disc profile
+ * `smoothstep(0.5, inner, |vQuadUv|)` — the constant that turns a per-sprite
+ * peak into an accumulated one. */
+export const DISC_CHORD_MEAN = 0.624;
 /** Velocity-stretched sprites (AT streak look): total elongation =
  * 1 + min(|v|·GAIN, MAX). Static tier uses a mild fixed elongation along the
  * EDGE direction (STATIC_ELONG) plus the surge advection. */
@@ -2535,6 +3254,21 @@ export const COPY_RAMP_SOFT = 0.1;
  */
 export const COPY_LANE_OPEN_W = 2.0;
 /**
+ * ROUND 12 · STAGE 2 — THE SAME HINGE, SIZED FOR THE RIBBON.
+ *
+ * The identity above holds only while EVERY point of the field sits right of
+ * the lane's unused left wall at `laneC − W = edge + pad − W`. On the shipped
+ * band that wall is at local x ≈ −1.5 against a [−0.45, +0.51] cloud: five
+ * band-widths of margin. Under the D17 ribbon the field spans ±L/2 = **±1.895
+ * band-widths** at 1920×935 (±6.4 on the phone), so at the worst measured
+ * `edge + pad` (≈0.48) the wall lands at −1.52 — **inside** the field — and
+ * every node left of it reads UNMASKED. 4.0 puts the wall at ≈−3.5, clear of
+ * the desktop field; the phone never uses this value (its lane is driven per
+ * frame from the tracked block, where the half-width is ~0.2 and the wall
+ * question does not arise). This is the FALLBACK / pre-first-frame pair only.
+ */
+export const COPY_LANE_OPEN_W_RIBBON = 4.0;
+/**
  * Mask floor for the PARTICLE layer (stars, link dust/beads, debris, sparks).
  * Sized on the star core, which is the brightest thing in the band and the
  * acceptance test's subject: 6.5 (centre overlap) × 10.67 (post-blend) × this
@@ -2552,6 +3286,30 @@ export const COPY_LANE_OPEN_W = 2.0;
  * cost the resting star field its last 15× of visibility.
  */
 export const COPY_MASK_FLOOR = 0.0001;
+/**
+ * ROUND 12 · D — THE LINK ROLE'S OWN FLOOR, and the 2.8e-4 ceiling quoted
+ * above does NOT bind it.
+ *
+ * That ceiling belongs to `COPY_MASK_FLOOR` alone and is derived from an
+ * UNMASKED STAR CENTRE of 69.4. A link role whose covered-pixel luminance is
+ * O(1) is bounded by the ledger's own worst-pixel rule instead:
+ *   ΔL_max 0.01943 − star centre 0.00694 − bead 0.00186 = **0.01063**, which
+ * is 3.65× what the chord delivered (0.00291) into the same column.
+ * At 0.017 the in-column strand delivers 0.24 × 0.017 = 0.0041 (1.4× the
+ * chord's) and the pathological superposition 0.0110 ⇒ **≈5.1:1**, above AA.
+ *
+ * ⚠ IT MUST RIDE REST-NESS, NOT ROLE: `mix(COPY_MASK_FLOOR, this,
+ * (1−traffic)·(1−river))`. A bead at post-blend 1.80 on a 0.017 floor would
+ * deliver 0.031 — 1.6× the ENTIRE AA budget. Only the RESTING dust gets the
+ * high floor; every lift term is `.mul(cGate)` and vanishes in the column
+ * anyway.
+ * ⚠ AND IT MUST BE FOLDED INTO `cMask` AT ITS SINGLE CONSTRUCTION SITE,
+ * because `cMask` feeds BOTH the output alpha AND the discard threshold.
+ * Raise the alpha alone and you get a fill regression plus a hard edge at the
+ * role boundary; scale the alpha without the cut and particles DELETE instead
+ * of fading.
+ */
+export const COPY_MASK_FLOOR_STREAM = 0.017;
 /**
  * Mask floor for the LINE layer. 30× the particle floor ON PURPOSE: the star
  * core is 18.8× the link line, so a single shared floor either blinds the copy
@@ -2583,3 +3341,65 @@ export const COPY_Y_FLOOR = 0.6;
  * look knob) — an edit + reload, unlike the four uniforms above. */
 export const COPY_Y_IN = 0.18;
 export const COPY_Y_OUT = 0.46;
+/**
+ * ─── ROUND 12 · STAGE 2 FIX — THE DEEP FLOOR GETS A CEILING AND A SILL ──────
+ *
+ * THE DEFECT THIS CLOSES, MEASURED. The shipped copy mask is a **1-D wall in
+ * x**: `copyGateAt` floors everything within `laneHalfPx + COPY_EDGE_PAD` of
+ * the tracked block's centre column to `COPY_MASK_FLOOR` (1e-4) **at every
+ * y**. On the shipped band that wall shadowed a cloud NARROWER than the frame
+ * which could translate out from under it — `#production` measures
+ * `meanL 21.27 / 15.73 %` of its band above L24 with the wall live. The D17
+ * ribbon is WIDER than the frame and cannot move out from under it, and the
+ * wall is `2 × (636.81 + 0.035 × 1920) = 1408 px` of a 1920 px frame: **73 %
+ * of every frame, for the whole act, at 1/10000 brightness.** Measured at
+ * `p = 0.45`, 1920×935: `meanL 3.95 / 1.45 %` — **10.8× below the approved
+ * `#production` bar**, i.e. the black frame.
+ *
+ * The wall is 1408 px wide because it protects the block's CONTAINER width
+ * (`copyW = 1274` for the ledger `h3`, against 762 px of rendered glyphs —
+ * flagged in the build plan as its own owner decision, NOT fixed here). It is
+ * 935 px TALL for no reason at all: the reading unit measures **154 px** and
+ * never leaves `ih/2 ± 359 px` while its window is saturated. So the fix is
+ * not to weaken the floor — the legibility chain that sized 1e-4 is intact —
+ * it is to stop applying it 781 px away from any glyph.
+ *
+ * `COPY_ROW_PAD` is added above and below the reading unit's own box
+ * (`opH`, the PAIRED box — the unit, never the half-statement), and
+ * `COPY_ROW_SOFT` is the ramp out of it. Both in band-height fractions.
+ * 0.05 = 47 px at 935: comfortably past the descenders and the block's own
+ * leading, well inside the 154 px unit's own half-height + pad = 124 px.
+ *
+ * ⚠ THESE ARE INERT OFF THE RIBBON, BY CONSTRUCTION AND NOT BY TUNING. The
+ * driver writes `uCopyRowLocal = 0` on every non-ribbon band, and the shader
+ * multiplies the row gate by it before the `mix` — so `#production` and the
+ * `ribbon: false` rollback evaluate `mix(uCopyFloor, 1, 0)`, which is
+ * `uCopyFloor + (1 − uCopyFloor)·0` = `uCopyFloor` to the bit.
+ */
+export const COPY_ROW_PAD = 0.05;
+export const COPY_ROW_SOFT = 0.06;
+/**
+ * ROUND 12 · STAGE 2 FIX — the vertical term's coordinate, corrected.
+ *
+ * Stage 2 moved `copyYAt` onto the ACROSS-ribbon `v` (`y − μ·x`) because the
+ * mapped `y` spans ±4.34 band-heights under the shear and `|y|` is past
+ * `COPY_Y_OUT` everywhere except a sliver. That reasoning is right about the
+ * symptom and wrong about the cure: `v` is constant ALONG the 45° ribbon, so a
+ * bell on `v` is a **45° diagonal stripe**, and the reading zone is a
+ * HORIZONTAL screen band. The two coincide only at the frame's centre column;
+ * 637 px away — the tracked block's own half-width — they are 637 px apart.
+ *
+ * The mapped `y` is in fact a pure affine function of SCREEN y
+ * (`screen_y = C − y·rect.h`, `C = cy − yRegPx`), so the honest fix is to keep
+ * `copyYAt` on `y` and hand the driver the one number that re-centres it on
+ * the frame: `uCopyYc = (C − ih/2) / rect.h`. On frame that puts
+ * `y − uCopyYc` in exactly ±0.5 — the frame, in band-height units — and
+ * `copyYAt` becomes the "broad bell over the reading zone" its own docstring
+ * has always promised. Off the ribbon the driver writes 0 and `y.sub(0)` is
+ * bit-exact.
+ *
+ * This constant is the bell's CENTRE, as a fraction of the frame measured
+ * DOWN from the top: 0.5 = `ih/2`, which is where `centreScreenY()` pins the
+ * ribbon and where the traverse's reading band sits.
+ */
+export const COPY_ROW_SCREEN_C = 0.5;

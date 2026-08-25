@@ -111,8 +111,53 @@ export async function createWebGPURenderer(defaults: GLFactoryDefaults) {
     forceWebGL,
   };
 
+  /**
+   * ROUND 12 · STAGE 2 FIX — SIZE THE RENDERER BEFORE `init()`.
+   *
+   * THE DEFECT: on a cold start the WebGPU backend logs
+   *   "The depth stencil attachment [TextureView of Texture "depthBuffer"]
+   *    size (width: 300, height: 150) does not match the size of the other
+   *    attachments' base plane (width: 1920, height: 935)"
+   * — once, on the first frame. 300×150 is the HTML `<canvas>` DEFAULT
+   * drawing-buffer size, and it is what `init()` sees because R3F constructs
+   * the renderer from the `gl` factory BEFORE it applies its own `setSize`.
+   * `WebGPUBackend.init()` allocates the default depth texture at whatever
+   * `getDrawingBufferSize()` reports at that instant; R3F's later `setSize`
+   * re-configures the colour attachment, and the first submitted pass pairs a
+   * 1920×935 colour target with a 300×150 depth target.
+   *
+   * The canvas is already IN THE DOM and laid out by the time R3F builds the
+   * renderer, so its client box is the truth. Sizing from it costs one layout
+   * read at construction (never on the frame path) and makes the depth
+   * attachment right from the first allocation. `updateStyle: false` — the
+   * canvas's CSS box is R3F's to own, and writing it here would fight the
+   * `<Canvas>` element's own inline style.
+   *
+   * Guarded on a non-zero box: a canvas that genuinely has no layout yet
+   * (display:none, a detached container) must keep three's own default rather
+   * than be sized to 0, which is a validation error in its own right.
+   */
+  const sizeToCanvas = (r: {
+    setSize: (w: number, h: number, updateStyle?: boolean) => void;
+    setPixelRatio?: (dpr: number) => void;
+  }) => {
+    const c = props.canvas;
+    const w = c?.clientWidth ?? 0;
+    const h = c?.clientHeight ?? 0;
+    if (w > 0 && h > 0) {
+      r.setPixelRatio?.(
+        Math.min(
+          typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1,
+          2,
+        ),
+      );
+      r.setSize(w, h, false);
+    }
+  };
+
   try {
     const renderer = new WebGPURenderer(props);
+    sizeToCanvas(renderer);
     await renderer.init();
     return renderer;
   } catch (err) {
@@ -126,6 +171,7 @@ export async function createWebGPURenderer(defaults: GLFactoryDefaults) {
         );
       }
       const fallback = new WebGPURenderer({ ...props, forceWebGL: true });
+      sizeToCanvas(fallback);
       await fallback.init();
       return fallback;
     }

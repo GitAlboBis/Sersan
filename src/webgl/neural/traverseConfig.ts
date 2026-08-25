@@ -35,6 +35,20 @@
  *   - `capDisplayMultiline = false` → multi-line display type drifts uncapped.
  *   These last three are the round-12 copy fixes, each independently revertible
  *   at runtime; `capDisplayFrameK` (default 0) is their opt-in extension.
+ *   - `ribbon = false`  → ROUND 12 · STAGE 2's continuous field is gone: the
+ *                        shipped centre-dense constellation, the anchor-centred
+ *                        lateral, the anchor-keyed cull and no shear. The
+ *                        island REBUILDS on this write (it is a generator arm,
+ *                        not a uniform), so expect one dispose + one build.
+ *   - `angleDeg = 23.61, bandVh = 0.8597` → the shipped GEOMETRY at whatever
+ *                        field the `ribbon` flag currently selects. Both
+ *                        spellings work:
+ *                          setTraverseConfig({ problem: { angleDeg: 23.61,
+ *                                              bandVh: 0.8597, ribbon: false }})
+ *                          setTraverseConfig({ bands: { problem: { … } } })
+ *                        Together with `ribbon: false` this is a byte-for-byte
+ *                        return to the Stage 1 commit, live, with no reload.
+ *   - `ribbonDensity`   → the D23 A/B: "onFrame" | "areal" | "nearest".
  *
  * ⚠ THE BAND HEIGHT IS PINNED TO THE VIEWPORT, AND THAT IS LOAD-BEARING.
  * `[data-lattice-anchor]` is `absolute inset-y-0` of the rows stack, so a
@@ -83,6 +97,14 @@
 
 export type TraverseBandId = "problem";
 
+/**
+ * The three density arms of the D17 ribbon (D23 — the owner picks by eye).
+ * Structurally identical to `RibbonDensity` in `neuralLatticeConfig`; declared
+ * here rather than imported because THIS MODULE MUST STAY three-FREE (the DOM
+ * hook imports it, and `neuralLatticeConfig` pulls in the crystal config).
+ */
+export type TraverseRibbonDensity = "onFrame" | "areal" | "nearest";
+
 export interface TraverseBandConfig {
   /** Scene direction: −1 = the world runs LEFT (Act I), +1 = RIGHT (Act II). */
   dir: 1 | -1;
@@ -94,6 +116,22 @@ export interface TraverseBandConfig {
   gapCount: number;
   /** Band height in viewport heights (null = today's `inset-y-0`). */
   bandVh: number | null;
+  /**
+   * ROUND 12 · STAGE 2 — THE RIBBON FIELD (D17). `false` restores the shipped
+   * centre-dense band exactly: the ellipsoid constellation, the anchor-centred
+   * lateral, the anchor-keyed cull, no shear, no exit fade.
+   *
+   * It lives HERE rather than in the island because THREE consumers have to
+   * agree about it in the same frame and two of them are not the island: the
+   * net's rig, the stone's `cx`/`cy` (`CrystalCluster`), and the build effect
+   * that chooses the generator arm. A flag any of them could disagree about is
+   * the class of bug the frozen frame exists to prevent.
+   */
+  ribbon: boolean;
+  /** Which of the three measured density arms the ribbon builds at (D23).
+   * A live write rebuilds the field (build + dispose), which is why it is a
+   * config revision and not a uniform. */
+  ribbonDensity: TraverseRibbonDensity;
 }
 
 export interface TraverseConfigShape {
@@ -160,7 +198,12 @@ export const traverseConfig: TraverseConfigShape = {
   bands: {
     problem: {
       dir: -1,
-      angleDeg: 23.61,
+      // ROUND 12 · STAGE 2 — 23.61° → 45°. At R = tan 45° = 1 every scroll
+      // pixel is a lateral pixel: the act's 5358 px becomes 5358 px of run
+      // = 2.791 screen widths @1920 (D15), and the field that has to cover the
+      // frame for the whole of it is `Λ + 1` = 3.791 band-widths = 7278 px.
+      // 23.61 is the rollback value (`R = 0.437097`).
+      angleDeg: 45,
       // 1.85 vh of authored content today + 4 × 1.06 vh ⇒ ≈ 6.10 vh (D10).
       // Measured: 6.02 vh @1280×720, 5.74 @1440×900, 5.45 @390×844, 5.32
       // @768×1024 — the authored content is not 1.85 vh at every viewport. The
@@ -179,9 +222,16 @@ export const traverseConfig: TraverseConfigShape = {
       // state; `coverage().nothing` reports it honestly at every commit.
       gapVh: 1.06,
       gapCount: 4,
-      // 619 / 720 — today's band on the 1280×720 reference, made viewport-
-      // relative so it is the same band at every viewport and every runway.
-      bandVh: 0.8597,
+      // ROUND 12 · STAGE 2 — 0.8597 → 1.0. The band IS the frame now: the
+      // owner chose "alta esattamente quanto il frame", accepting that the
+      // net's top and bottom edges are visible, over a taller-than-frame net
+      // with no edges. 0.8597 (619/720, the 1280×720 reference) is the
+      // rollback value and the number `CRYSTAL_BAND_VH_REF` rebases against.
+      // ⚠ `NEURAL_DEPTH_VIEWPORT_SPAN` carries 0.8597 too, for a completely
+      // unrelated reason (the net's DEPTH). Do not touch it.
+      bandVh: 1.0,
+      ribbon: true,
+      ribbonDensity: "onFrame",
     },
   },
   alphaReadDisplay: 0.5,
@@ -225,12 +275,23 @@ export function traverseRate(band: TraverseBandConfig): number {
  * that share an anchor pass identical arguments, so they can differ by float
  * noise only — which is what `__sersanCrystal_*.traverse.deltaPx` measures.
  *
- * ⚠ STAGE 2 REPLACES THE ARGUMENT, NOT THE SHAPE. Under the ribbon the
- * re-centring becomes the act's own midpoint (`secH/2`) because the band is on
- * frame for the whole act. At today's geometry that is NOT the same number —
- * measured 1920×935: the anchor-centred origin is −639.67 px and `secH/2`
- * would be −1170.87 px, i.e. the stone would jump 531 px — so the swap belongs
- * with the ribbon, not here.
+ * ⚠ STAGE 2 TOOK THE SWAP THE OLD DOCSTRING PREPARED, AND IT IS GATED ON
+ * `band.ribbon`, NOT ON THE ANGLE.
+ * Under the ribbon the field is on frame for the WHOLE act, so the scroll
+ * position at which it is centred is the act's own midpoint (`secH/2`) — and
+ * that is the only origin under which the run is symmetric (`±R·secH/2`), i.e.
+ * the only one under which a field of length `Λ+1` covers the frame at both
+ * ends. Anchor-centred, `travelledAtCentre` is the scroll at which the ANCHOR
+ * BOX is centred, which under a `bandVh = 1` pin near the top of the section
+ * is a few hundred px: the run would go from 0 to −5358 instead of ±2679, the
+ * lead-in half of the field would never be seen and the far end would leave
+ * the frame before p = 1.
+ *
+ * The swap is worth 531 px on the stone at the SHIPPED geometry (measured
+ * 1920×935: anchor-centred −639.67 px, act-centred −1170.87 px) — which is
+ * exactly why Stage 1 refused it and why it is gated on the ribbon rather than
+ * applied unconditionally: `ribbon: false` restores the shipped stone to the
+ * pixel, in the same live write that restores the shipped constellation.
  */
 export function bandLateralPx(
   band: TraverseBandConfig,
@@ -246,12 +307,89 @@ export function bandLateralPx(
 ): number {
   const r = traverseRate(band);
   if (r === 0) return xScenePx;
+  if (band.ribbon) return xScenePx - band.dir * r * (secH / 2);
   const centreScroll = rectDocTop + rectH / 2 - viewportH / 2;
   const travelledAtCentre = Math.min(
     Math.max(centreScroll - secTop, 0),
     secH,
   );
   return xScenePx - band.dir * r * travelledAtCentre;
+}
+
+/**
+ * THE RIBBON'S SHEAR, `μ` — the one number that makes a field which translates
+ * diagonally sit STILL on the screen.
+ *
+ * A fixed point of the field moves `dir·R` px laterally and −1 px vertically
+ * per scroll px, i.e. it travels a screen line of slope `1/R`. For the slice
+ * of the field that is on frame to stay at ONE screen height, the field's
+ * centreline must be pre-sheared along that same line. Writing the local
+ * mapping as `y = v + μ·x` (x in band-width units, y in band-height units,
+ * local +y = screen UP) and solving `d(screenY)/d(travelled) = 0`:
+ *
+ *     screenY = (docTop − secTop − s) + rectH/2 + dir²·(τ − secH/2) − yReg
+ *     ⇒ μ = dir · (rectW / rectH) / R
+ *
+ * At `dir = −1`, R = 1, 1920×935 that is **−2.0535**, and the on-frame picture
+ * is a 45° diagonal swath — the road you are travelling ALONG, not a
+ * horizontal bar. GATE 3 IS THIS FUNCTION'S OWN PREDICTION: `screenY` of the
+ * centreline at the frame's centre column is constant in `p`.
+ *
+ * ⚠ `rectH`, NEVER `size.height`. The band pin is `svh`, so on a mobile
+ * browser with a collapsing URL bar the two differ by the toolbar height and
+ * the shear would be wrong by that ratio for the whole act.
+ */
+export function bandFieldSlope(
+  band: TraverseBandConfig,
+  rectW: number,
+  rectH: number,
+): number {
+  const r = traverseRate(band);
+  if (!band.ribbon || r === 0 || rectH <= 0) return 0;
+  return (band.dir * (rectW / Math.max(rectH, 1))) / r;
+}
+
+/**
+ * THE RIBBON'S FIELD LENGTH, in band-width units — `Λ + 1`.
+ *
+ * `Λ = R·secH/rectW` is the lateral run in screen widths. The field has to
+ * reach half a screen past each end of that run or the reader sees where the
+ * net stops: half-length ≥ rectW/2 + run/2 ⇒ length ≥ rectW + run. Anything
+ * longer is paid for in nodes and never seen.
+ */
+export function bandFieldLen(
+  band: TraverseBandConfig,
+  secH: number,
+  rectW: number,
+): number {
+  const r = traverseRate(band);
+  if (!band.ribbon || r === 0 || rectW <= 0) return 1;
+  return (r * secH) / rectW + 1;
+}
+
+/**
+ * THE RIBBON'S VERTICAL REGISTRATION, in CSS px, positive = lift the field UP.
+ *
+ * The shear above makes `screenY` constant; it does not make it `ih/2`. Solved
+ * out, the constant is `docTop − secTop + rectH/2 − secH/2` — for a band
+ * pinned near the top of a 5358 px act that is ≈ −2500 px, i.e. the net would
+ * sit two and a half screens above the frame. This is the lateral re-centring's
+ * exact vertical twin, and like it, it must be ONE definition shared by the
+ * net's rig and the stone or the two drift apart by a constant.
+ *
+ * Zero when the band carries no ribbon: `rig.position.y` then stays at the
+ * shipped 0 and nothing moves.
+ */
+export function bandRegisterPx(
+  band: TraverseBandConfig,
+  secTop: number,
+  secH: number,
+  rectDocTop: number,
+  rectH: number,
+  viewportH: number,
+): number {
+  if (!band.ribbon || traverseRate(band) === 0) return 0;
+  return rectDocTop - secTop + rectH / 2 - secH / 2 - viewportH / 2;
 }
 
 // --- live tuning ------------------------------------------------------------
@@ -266,15 +404,26 @@ export function onTraverseConfigChange(fn: Listener): () => void {
   };
 }
 
-/** The single write path — bumps `revision` and re-measures every consumer. */
+/**
+ * The single write path — bumps `revision` and re-measures every consumer.
+ *
+ * TWO SPELLINGS OF THE BAND PATCH, DELIBERATELY. `{ problem: {…} }` is the
+ * shipped shorthand; `{ bands: { problem: {…} } }` mirrors the config's own
+ * shape and is the form the ROUND 12 rollback is written in. Accepting both
+ * costs four lines and means a rollback typed from the handoff note cannot
+ * silently no-op — which, for a lever whose whole job is to be usable in a
+ * hurry with the owner watching, is the only acceptable failure mode.
+ */
 export function setTraverseConfig(
   patch: Partial<Omit<TraverseConfigShape, "bands" | "revision">> & {
     problem?: Partial<TraverseBandConfig>;
+    bands?: Partial<Record<TraverseBandId, Partial<TraverseBandConfig>>>;
   },
 ): TraverseConfigShape {
-  const { problem, ...rest } = patch;
+  const { problem, bands, ...rest } = patch;
   Object.assign(traverseConfig, rest);
   if (problem) Object.assign(traverseConfig.bands.problem, problem);
+  if (bands?.problem) Object.assign(traverseConfig.bands.problem, bands.problem);
   traverseConfig.revision++;
   listeners.forEach((fn) => fn());
   return traverseConfig;

@@ -147,12 +147,21 @@ import { useTraverseStore, type TraverseFrame } from "./store/traverseStore";
 import {
   traverseConfig,
   bandLateralPx,
+  bandFieldLen,
+  bandFieldSlope,
+  bandRegisterPx,
   type TraverseBandId,
 } from "./neural/traverseConfig";
-import { CLUSTER_COUNT, type LatticeMode } from "./neural/neuralLatticeConfig";
+import {
+  CLUSTER_COUNT,
+  RIBBON_STONE_U,
+  type LatticeMode,
+} from "./neural/neuralLatticeConfig";
 import {
   CRYSTAL_POS,
   CRYSTAL_SCALE,
+  CRYSTAL_SCALE_BY_MODE,
+  CRYSTAL_BAND_VH_REF,
   FRACTURE_REST_GAP,
   FRACTURE_SURGE_GAIN,
   CRYSTAL_IDLE_DRIFT,
@@ -196,6 +205,7 @@ import {
   FOG_OPACITY,
   FOG_RADIUS_OUT,
   FOG_RADIUS_Y,
+  FOG_RADIUS_Y_BY_MODE,
 } from "./neural/crystalConfig";
 import type { CrystalBuild } from "./neural/crystalBuild";
 import type { CrystalFogBuild } from "./neural/crystalFog";
@@ -417,7 +427,7 @@ export function CrystalCluster({
      * graph literals derived against this value (they hold their on-screen
      * period) — moving it live does NOT move them; bake a found value back
      * into crystalConfig and re-derive there. */
-    scale: CRYSTAL_SCALE,
+    scale: CRYSTAL_SCALE_BY_MODE[mode],
     deadzone: TUMBLE_DEADZONE,
     velNorm: CRYSTAL_VEL_NORM,
     velScaleK: CRYSTAL_VEL_SCALE_K,
@@ -442,7 +452,7 @@ export function CrystalCluster({
      * setting it higher from the console does nothing, by design. */
     fogClear: FOG_CLEAR,
     fogRadiusOut: FOG_RADIUS_OUT,
-    fogRadiusY: FOG_RADIUS_Y,
+    fogRadiusY: FOG_RADIUS_Y_BY_MODE[mode],
   });
 
   useFrame((_, rawDelta) => {
@@ -486,9 +496,9 @@ export function CrystalCluster({
     }
     const onBand = !!tv && tv.active;
     const scrollY = onBand ? tv!.scrollY : window.scrollY;
+    const bcfg = traverseConfig.bands[anchorId as TraverseBandId];
     let lateralPx = 0;
     if (onBand) {
-      const bcfg = traverseConfig.bands[anchorId as TraverseBandId];
       lateralPx = bcfg
         ? bandLateralPx(
             bcfg,
@@ -502,13 +512,50 @@ export function CrystalCluster({
         : tv!.xScenePx;
     }
 
+    // ── ROUND 12 · STAGE 2 — THE STONE RIDES THE RIBBON ────────────────────
+    // Same three functions, same frozen frame, same rect as the net island —
+    // which is the whole reason they live in `traverseConfig` and not in
+    // either component. `__sersanCrystal_*.traverse.deltaPx` is the gate.
+    const ribbonOn = !!tv && !!bcfg && bcfg.ribbon && tv!.active;
+    const fieldLen = ribbonOn ? bandFieldLen(bcfg!, tv!.secH, rect.w) : 1;
+    const fieldSlope = ribbonOn ? bandFieldSlope(bcfg!, rect.w, rect.h) : 0;
+    const yRegPx = ribbonOn
+      ? bandRegisterPx(bcfg!, tv!.secTop, tv!.secH, rect.docTop, rect.h, ih)
+      : 0;
+
     const vpTop = rect.docTop - scrollY;
     const pos = CRYSTAL_POS[mode];
+    // ⚠ THE STONE'S x IS A RIBBON COORDINATE NOW, AND `0.17` WAS NOT ONE.
+    // `CRYSTAL_POS.broken.x` is a fraction of the BAND; read as a fraction of
+    // a field 3.79 band-widths long it lands the stone at p ∈ [0.382, 0.740],
+    // i.e. mid-act, when D3 asks for "first sighted late". `RIBBON_STONE_U`
+    // (0.23621 = (Λ/2 − ½)/L) is the same authored intent expressed on the
+    // field: first sighted at p = 0.642, still there at p = 1, at EVERY
+    // viewport because it is a fraction of the field rather than of the frame.
+    //
+    // ⚠ AND THE y GAINS THE SHEAR TERM. Without `μ·x` the stone is registered
+    // to the band's centre-line while the net it is embedded in is a diagonal
+    // — the stone would sit a full frame above or below its own hole in the
+    // net for most of the act.
+    const xLocal = ribbonOn ? RIBBON_STONE_U * fieldLen : pos[0];
+    const yLocal = ribbonOn ? pos[1] + fieldSlope * xLocal : pos[1];
     // Crystal center in viewport px (CSS y down; config +y is up).
-    const cx = rect.cxBase + pos[0] * rect.w + lateralPx;
-    const cy = vpTop + rect.h / 2 - pos[1] * rect.h;
+    const cx = rect.cxBase + xLocal * rect.w + lateralPx;
+    const cy = vpTop + rect.h / 2 - yLocal * rect.h - yRegPx;
 
-    if (vpTop + rect.h < -CULL_PAD || vpTop > ih + CULL_PAD) {
+    // The cull follows the NET's: keyed to the section under the ribbon (the
+    // anchor box leaves the frame at p ≈ 0.35 while the stone is still four
+    // screens from its entrance), padded on the ENTRY side only.
+    if (ribbonOn) {
+      const secVpTop = tv!.secTop - scrollY;
+      if (secVpTop + tv!.secH < 1 || secVpTop > ih + CULL_PAD) {
+        group.visible = false;
+        return;
+      }
+    } else if (bcfg && bcfg.ribbon && !!tv) {
+      group.visible = false;
+      return;
+    } else if (vpTop + rect.h < -CULL_PAD || vpTop > ih + CULL_PAD) {
       group.visible = false;
       return;
     }
@@ -516,8 +563,12 @@ export function CrystalCluster({
 
     // Arrival ramp — the NeuralLattice shape (scrollStore.reveal × a
     // visibility ramp, damped slow enough to read on entry).
+    // Section-keyed under the ribbon, exactly as the net's is: the anchor's
+    // `vpTop` runs away down a 5358 px act, so an anchor-keyed ramp saturates
+    // in the first screen and stops meaning anything.
+    const rampTop = ribbonOn ? tv!.secTop - scrollY : vpTop;
     const vis = THREE.MathUtils.clamp(
-      (ih + CULL_PAD / 2 - vpTop) / (ih * 0.7),
+      (ih + CULL_PAD / 2 - rampTop) / (ih * 0.7),
       0,
       1,
     );
@@ -551,6 +602,24 @@ export function CrystalCluster({
     const scaleMul =
       (0.8 + 0.2 * reveal) * (1 - feelC.velScaleK * velEased.current);
 
+    // ⚠ ROUND 12 · STAGE 2 — THE BAND-PIN REBASE, AND IT MOVES BOTH LINES.
+    // `s` and `pxScale` are `rect.h · … · feelC.scale`, and Stage 2 takes this
+    // band's `bandVh` from 0.8597 to 1.0 — `rect.h` grows 16.3 % and the stone
+    // with it. The factor is the pin's own ratio, so it is EXACTLY 1 under the
+    // rollback (`bandVh` back to 0.8597), exactly 1 on a band with no pin, and
+    // exactly 1 on `#production` (no traverse frame at all) — which is why
+    // rebasing the shared CRYSTAL_SCALE scalar would have been wrong and the
+    // per-mode records had to come first.
+    //
+    // `fogRadiusY` takes the SAME factor in the same frame: it is half of the
+    // corner-radius identity `r = 0.7314` that BACKDROP_GAIN §B4.2 rests on,
+    // and a fog radius that moves without the stone is the "glowing blob"
+    // failure that section exists to prevent.
+    const pinK =
+      tv && bcfg && bcfg.bandVh != null && bcfg.bandVh > 0
+        ? CRYSTAL_BAND_VH_REF / bcfg.bandVh
+        : 1;
+
     // Camera-locked placement, UNIFORM scale (see header). ROUND 10-A reads
     // the size off the dev handle (`feel.scale`, default CRYSTAL_SCALE 0.115)
     // so it can be judged live; the callout projection below reads the SAME
@@ -563,7 +632,7 @@ export function CrystalCluster({
     // the two MUST move together. Full audit table on crystalConfig
     // CRYSTAL_SCALE ("PREPARED CHANGE"). Deliberately NOT applied yet — the
     // owner is still judging the 0.17 → 0.115 shrink at today's band size.
-    const s = rect.h * k * feelC.scale * scaleMul;
+    const s = rect.h * k * feelC.scale * pinK * scaleMul;
     scratch.current
       .set((cx - vw / 2) * k, (ih / 2 - cy) * k, -CAMERA_Z)
       .applyQuaternion(camera.quaternion)
@@ -579,7 +648,20 @@ export function CrystalCluster({
     // settling upright when the band is centered; + the verbatim idle wobble
     // sin(t·0.3 + seed)·0.1. Centering derives from the SAME vpTop/rect math
     // as the placement (no gBCR, no scroll listeners). ---------------------
-    const a = (vpTop + rect.h / 2 - ih / 2) / ih;
+    // ⚠ RE-KEYED TO THE STONE'S OWN SCREEN POSITION UNDER THE RIBBON.
+    // `a` is "how far the band is from centred", and it settles the tumble
+    // upright at 0. On the ribbon the ANCHOR runs ±5.7 viewport heights across
+    // the act, so an anchor-keyed `a` saturates the tumble for the whole of it
+    // and the stone never settles. The stone's own centring runs ±1.03 over
+    // its on-frame window — the same order as the shipped band's ±0.93 — and
+    // it is upright exactly when the stone is frame-centred, which is what the
+    // beat was ever about. Off the ribbon this is the shipped expression
+    // written through `cy` (`cy = vpTop + rect.h/2 − pos.y·rect.h`), so it
+    // differs by the authored `pos.y` offset alone; the ribbon branch is the
+    // only one that changes behaviour.
+    const a = ribbonOn
+      ? (cy - ih / 2) / ih
+      : (vpTop + rect.h / 2 - ih / 2) / ih;
     // Round 7-2b §B-f — settle deadzone: the TUMBLE reads a′ (remapped so a
     // ±deadzone window around center holds exactly upright) — native scroll
     // never rests at exact center, this is the no-hijack twin of igloo's
@@ -719,7 +801,7 @@ export function CrystalCluster({
       const clear = Math.min(Math.max(feelC.fogClear, 0), 1);
       const rxIn = Math.abs(pos[0]) * clear * rect.w * k;
       const rxOut = feelC.fogRadiusOut * rect.w * k;
-      const ry = feelC.fogRadiusY * rect.h * k;
+      const ry = feelC.fogRadiusY * pinK * rect.h * k;
       fogM.scale.set(rxOut / sSafe, ry / sSafe, 1);
       const fu = fog.uniforms;
       fu.uFogAsym.value = rxIn > 1e-4 ? Math.max(rxOut / rxIn, 1) : 1;
@@ -772,7 +854,7 @@ export function CrystalCluster({
       // HEALTHY_CALLOUT_ANCHORS) is a px-vs-px fit against 47 px label offsets,
       // so it survives the section growth ONLY under the viewport re-base —
       // band-keyed, pxScale triples and the labels scatter.
-      const pxScale = rect.h * feelC.scale * scaleMul;
+      const pxScale = rect.h * feelC.scale * pinK * scaleMul;
       // ⚠ ROUND 11 STAGE 1.5 — THE CALLOUTS FOLLOW THE STONE LATERALLY, and
       // they do it through `cx` alone. `rectLeft` is the DOM anchor's left
       // edge and the anchor does NOT move (it carries no transform); `cx` is

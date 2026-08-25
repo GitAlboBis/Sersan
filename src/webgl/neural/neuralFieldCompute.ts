@@ -298,6 +298,7 @@ import {
   type TslSymbolsGpgpu,
 } from "../gpgpu/gpgpuNodeSim";
 import { bakeLinkLineGeometry } from "./neuralLinkLines";
+import { CAMERA_Z } from "../constants";
 import {
   COL_CORE,
   COL_CYAN,
@@ -349,7 +350,47 @@ import {
   CORE_SIZE_BOOST,
   FRINGE_SIZE_DROP,
   DUST_SIZE,
+  // ROUND 12 · D — the ribbon-only companions of the eight sizing/alpha
+  // constants `#production` shares with the ribbon. Selected by a BUILD-TIME
+  // JS ternary on `plexus.shape`, so the non-ribbon node graph bakes the
+  // identical `float()` literals it baked before this round existed.
+  DUST_SIZE_RIBBON,
+  LINK_BEND_RIBBON,
+  LINK_BEND_MAX_RIBBON,
+  LINK_BEND_ROLL_RIBBON,
+  LINK_TAPER_RIBBON,
+  CORE_SIZE_BOOST_RIBBON,
+  FRINGE_SIZE_DROP_RIBBON,
+  PACKET_SIZE_RIBBON,
+  STATIC_ELONG_RIBBON,
+  FLOW_SPEED_RIBBON,
+  STREAM_ALPHA_RIBBON,
+  BEAD_ALPHA_RIBBON,
+  RIBBON_WINDOW_PAD,
+  RIBBON_KAPPA_K,
+  REST_OVERLAP,
+  STAR_PER_NODE_RIBBON,
+  WINDOW_FADE_IN,
+  WINDOW_FADE_OUT,
+  SIZE_NORM_MAX,
+  STAR_WINDOW_SNAP,
+  RIVER_M,
+  RIVER_K,
+  RIVER_TAIL,
+  RIVER_ADVECT,
+  RIVER_SIZE,
+  RIVER_GAIN,
+  RIVER_WHITE,
+  RIVER_TRAFFIC,
+  RIVER_STAR,
+  FRONT_W,
+  DUST_A_MAX,
+  BEAD_A_MAX,
+  DUST_LUM_KNEE,
+  DISC_CHORD_MEAN,
+  COPY_MASK_FLOOR_STREAM,
   // ROUND-8-G — the link LINE layer.
+  LINE_LAYER,
   LINK_SEGMENTS,
   LINE_ALPHA,
   LINE_EMISSIVE,
@@ -375,6 +416,7 @@ import {
   COPY_Y_FLOOR,
   COPY_Y_IN,
   COPY_Y_OUT,
+  COPY_ROW_SOFT,
   BEAD_ALPHA,
   STRETCH_GAIN,
   STRETCH_MAX,
@@ -472,13 +514,14 @@ import {
   NEURAL_SPRING,
   NEURAL_DAMPING,
   NEURAL_MAX_SPEED,
-  WRAP_SNAP_DIST,
   SPARK_SNAP_DIST,
   POINTER_PUSH,
   POINTER_RADIUS,
   SEED_SCATTER_XY,
   SEED_SCATTER_Z,
+  COPY_LANE_OPEN_W_RIBBON,
   type LatticeMode,
+  type PlexusParams,
 } from "./neuralLatticeConfig";
 
 // Loose structural typings — the real node/namespace types are vast & generic
@@ -617,6 +660,15 @@ export interface NeuralFieldUniforms {
   uCopyLineFloor: { value: number };
   /** Vertical term's floor over the text band (1 = inert). */
   uCopyYFloor: { value: number };
+  /** ROUND 12 · STAGE 2 FIX — the reading-band frame. `uCopyYc` re-centres the
+   * mapped local y on `ih/2` (0 = the shipped band, bit-exact); `uCopyRowC/H/
+   * Soft` bound the deep floor to the tracked reading unit; `uCopyRowLocal`
+   * (0/1) is the bit-exactness gate. Driver-written. */
+  uCopyYc: { value: number };
+  uCopyRowC: { value: number };
+  uCopyRowH: { value: number };
+  uCopyRowSoft: { value: number };
+  uCopyRowLocal: { value: number };
   /** Per-strand twist phases (rad) — write entries of `.array`. */
   uStrandPhase: { array: number[] };
   /** Per-strand tube-thickness biases — write entries of `.array`. */
@@ -668,6 +720,50 @@ export interface NeuralFieldUniforms {
   /** rect height/width — corrects the camera-facing quads to screen-circular
    * inside the anisotropically scaled (w·k, h·k) group. Driver-written. */
   uPlaneAspect: { value: number };
+  /** ROUND 12 · STAGE 2 — the field mapping (`fieldMap`). Driver-written on
+   * every measure; `(1, 0, 0)` is the shipped band, bit-exact. */
+  uFieldLen: { value: number };
+  uFieldOrigin: { value: number };
+  uFieldSlope: { value: number };
+  /** `1 / uFieldLen` — divides the LOCAL-units forces (pointer bend, curl). */
+  uFieldK: { value: number };
+  /** The authored exit fade, 1 → 0 over the act's last `FIELD_EXIT_VH`. */
+  uFieldFade: { value: number };
+  // --- ROUND 12 · D — the rolling κ-window + the travelling signal ----------
+  /** Index of the first table entry inside the κ-window (edges / nodes). Both
+   * tables were κ-sorted at build; a particle homes onto
+   * `first + mod(baked − first, WIN)`. Driver-written from the frame's own
+   * screen-y bounds, so the window and the picture can never disagree. */
+  uWinFirstEdge: { value: number };
+  uWinFirstNode: { value: number };
+  /** Screen-y of the frame's centre in mapped-local units — the window fade's
+   * origin. Its own uniform (not `uCopyYc`) so a disabled copy lane can never
+   * leave the fade masking the whole field off. */
+  uWinYc: { value: number };
+  /** `ih / (2·rect.h)` — the frame's half-height in the shader's y unit. The
+   * window fade's thresholds are multiples of this, never absolute. */
+  uWinHalf: { value: number };
+  /** 1 on a live ribbon, 0 everywhere else — gates the window fade only. */
+  uWinOn: { value: number };
+  /** The band anchor's height in CSS px: turns a local length into a
+   * delivered SCREEN length for the overlap normaliser. 0 = inert. */
+  uBandPx: { value: number };
+  /** BIRTH front, in nodeT — a pure function of `p`, damped, never latched. */
+  uFront: { value: number };
+  /** LIGHT phase = `uFront + riverClock`. ⚠ Its own clock is what keeps the
+   * crests travelling when the reader stops; without it a stopped reader sees
+   * frozen bright patches. */
+  uRiver: { value: number };
+  /** Birth knee width in nodeT (C¹, never a clamp). */
+  uFrontW: { value: number };
+  /** The phase axis: `phase = y·uFrontKy + uFrontC`. The x terms cancel
+   * exactly on a 45° sheared band (`bandAspect·(W/H) = 1/L`). */
+  uFrontKy: { value: number };
+  uFrontC: { value: number };
+  /** The LINK/continuity role's copy-lane floor (`COPY_MASK_FLOOR_STREAM`,
+   * ramped on the same lane window as `uCopyFloor`). Applied to RESTING dust
+   * only — a bead on this floor would eat 1.6× the whole AA budget. */
+  uCopyStreamFloor: { value: number };
   // --- Round-4 §B.2 — fracture nebula (broken builds; dead nodes on healthy) -
   /** Driver-integrated wisp drift (igloo t·0.05, kicked by uFlash). */
   uNebulaDrift: { value: number };
@@ -703,7 +799,10 @@ export interface NeuralFieldBuild {
   nebula: NeuralFieldLayer | null;
   /** Round-8-G: the plexus link lines — ALWAYS built (both modes, both
    * backends); the mesh the star cores hang in. */
-  links: NeuralFieldLines;
+  /** ROUND 12 · D — `null` when `LINE_LAYER` is off (the chord retired).
+   * `LINE_LAYER` is annotated `: boolean` on purpose so this stays a union
+   * and the whole line branch keeps being type-checked. */
+  links: NeuralFieldLines | null;
   /**
    * ROUND 11 STAGE 1.5 — the structural fingerprint of THIS build's cloud, so
    * the island sequence can PROVE its five constellations differ rather than
@@ -720,6 +819,41 @@ export interface NeuralFieldBuild {
     largestComponent: number;
     meanEdgeLocal: number;
     checksum: number;
+  };
+  /**
+   * ROUND 12 · STAGE 2 — the FIELD this build carries. Build-time facts the
+   * driver must not re-derive: which generator arm ran, the lane width that
+   * arm sized its uniforms with, the per-build recycle-snap threshold and its
+   * audit, and the fracture position in `nodeT` (which on the ribbon is the
+   * stone's own `u`, inverted out of the delivered cloud).
+   */
+  field: {
+    ribbon: boolean;
+    laneOpenW: number;
+    wrapSnapDist: number;
+    wrapSnapOk: boolean;
+    excursionFloor: number;
+    fractureT: number;
+    // --- ROUND 12 · D — the rolling κ-window, published for the driver -----
+    /** Fixed window WIDTHS (table entries) the node graph baked. Fixed on
+     * purpose: it is what makes each element's residue class — and therefore
+     * its particle population and its comb spacing — a build constant. */
+    winEdges: number;
+    winNodes: number;
+    /** ASCENDING κ keys, in nodeT units — the same axis `uFront`/`uRiver`
+     * ride. `null` off the ribbon (the window is compiled out there). */
+    edgeKey: Float32Array | null;
+    nodeKey: Float32Array | null;
+    /** Flat endpoint pairs — QA only, `null` off the ribbon. */
+    edgeAB: Uint16Array | null;
+    /** The phase axis resolved at build: `phase = y·frontKy + frontC`. */
+    frontKy: number;
+    frontC: number;
+    /** Sprites per link at any instant, and the delivered star/link split —
+     * the numbers the S/s continuity gate is computed from. */
+    perLink: number;
+    starCount: number;
+    edgeTotal: number;
   };
   /** Dispatch the compute step with a clamped frame delta (no-op on static). */
   compute: (delta: number) => void;
@@ -751,6 +885,17 @@ export interface NeuralFieldBuildArgs {
   /** Carve the crystal density well? Only the band the stone rides needs it
    * (default true = shipped). */
   plexusWell?: boolean;
+  /**
+   * ROUND 12 · STAGE 2 — the generator's per-build arguments, forwarded
+   * verbatim to `getPlexus`. Omitted (every shipped call before this stage)
+   * ⇒ the ellipsoid arm with the module constants, i.e. today to the bit.
+   *
+   * Supplied with `shape: "ribbon"` it selects the D17 continuous field, and
+   * THAT is also what arms the field mapping below: `uFieldLen`/`uFieldSlope`
+   * are meaningless on a band-shaped cloud, so the ribbon flag is read once
+   * here and nothing downstream has to be told twice.
+   */
+  plexusParams?: PlexusParams;
 }
 
 const QUAD_CORNERS = [-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0];
@@ -858,6 +1003,24 @@ function h(i: number, mulA: number, addB: number): number {
  * per link 21.3 traffic particles (was 28.4), enough that a PACKET_WIDTH bead
  * always spans ~3 sprites at ±1σ. Totals unchanged.
  */
+/**
+ * ROUND 12 · D — THE ROLLING κ-WINDOW's SIZE, in table entries.
+ *
+ * `bandAspect` IS the on-frame fraction of a 45° band (`rect.h / (L·rect.w)`
+ * = 935/7278 = 12.85 %); `RIBBON_WINDOW_PAD` is hysteresis on top of it. Both
+ * tables (nodes and edges) were sorted by κ in `buildPlexus`, so a window is
+ * a contiguous index range and a particle's home is
+ * `first + mod(baked − first, WINDOW)` — the identity inside the window, and
+ * a re-home from the departing element to the arriving one (both off frame)
+ * for exactly the 1/WINDOW of particles on the boundary.
+ */
+export function ribbonWindowSize(len: number, bandAspect: number): number {
+  return Math.max(
+    1,
+    Math.min(len, Math.ceil(len * bandAspect * RIBBON_WINDOW_PAD)),
+  );
+}
+
 function seedBuffers(count: number, mode: LatticeMode, plexus: Plexus) {
   const meta = new Float32Array(count * 4);
   const offA = new Float32Array(count * 3);
@@ -866,16 +1029,60 @@ function seedBuffers(count: number, mode: LatticeMode, plexus: Plexus) {
   const nodesTbl = plexus.nodes;
   const edgesTbl = plexus.edges;
   const nodeN = nodesTbl.length;
+  const ribbon = plexus.shape === "ribbon";
   const sparkCount = mode === "broken" ? SPARK_COUNT : 0;
-  const starCount = Math.floor(count * NODE_FRACTION);
+  // ROUND 12 · D — WINDOWED BUDGETS. `NODE_FRACTION` is RETIRED on the ribbon
+  // arm: the star and link budgets are computed independently now (its 0.28 →
+  // 0.46 raise was justified *because the line layer had taken over the thread
+  // job*, and that justification left with the chord). Stars pay for the ~73
+  // windowed nodes at the approved 40/star instead of all 389 — which is where
+  // the 13 000 particles the strand needs come from.
+  const winE = ribbon
+    ? ribbonWindowSize(edgesTbl.length, plexus.bandAspect)
+    : edgesTbl.length;
+  const winN = ribbon ? ribbonWindowSize(nodeN, plexus.bandAspect) : nodeN;
+  const starCount = ribbon
+    ? Math.min(
+        Math.max(count - sparkCount - 1, 0),
+        winN * STAR_PER_NODE_RIBBON,
+      )
+    : Math.floor(count * NODE_FRACTION);
   const edgeTotal = count - starCount - sparkCount;
 
   // Length-proportional per-link particle counts (remainder → round-robin).
+  //
+  // ⚠ ROUND 12 · STAGE 2 FIX — "LENGTH" IS A SCREEN LENGTH, AND ON THE RIBBON
+  // THE RAW ONE IS WRONG BY EXACTLY THE FIELD STRETCH.
+  //
+  // The generator chooses the topology in the SCREEN metric — `sd()` in
+  // neuralLatticeConfig divides x by `bandAspect` before measuring, and drops
+  // nothing — while this allocation measured `hypot(dx, dy, dz)` on the RAW
+  // node table. On the shipped band those differ by 1/0.45 = 2.2×. On the
+  // ribbon `bandAspect` is 0.12846 precisely BECAUSE `fieldMap` then stretches
+  // x by `uFieldLen` = 3.791 (0.12846 = rect.h / (L · rect.w) = 935/7278), so
+  // the two metrics differ by **7.784× — the stretch itself** — and an
+  // x-dominant link is allocated 7.8× fewer particles per delivered screen
+  // pixel than a y-dominant one. The delivered along-link spacing spreads
+  // instead of being uniform, which on a field made of near-horizontal links
+  // is most of the field.
+  //
+  // `dz` goes because z is DEPTH: it moves a particle toward or away from the
+  // camera, not along the link on screen, and counting it inflates the budget
+  // of the deepest links for a distance the reader never traverses.
+  //
+  // ⚠ RIBBON-ONLY, DELIBERATELY. `#production` and the `ribbon: false`
+  // rollback keep the raw metric to the bit — the shipped allocation is what
+  // the shipped look was approved at, and re-metricating it would re-cut every
+  // link's particle budget on a band that never had the 7.8× error.
+  const aspectK =
+    plexus.shape === "ribbon" ? 1 / Math.max(plexus.bandAspect, 1e-6) : 0;
   const lens = edgesTbl.map(([a, b]) => {
     const dx = nodesTbl[b][0] - nodesTbl[a][0];
     const dy = nodesTbl[b][1] - nodesTbl[a][1];
     const dz = nodesTbl[b][2] - nodesTbl[a][2];
-    return Math.hypot(dx, dy, dz);
+    return aspectK > 0
+      ? Math.hypot(dx * aspectK, dy)
+      : Math.hypot(dx, dy, dz);
   });
   const lenSum = lens.reduce((s, l) => s + l, 0) || 1;
   const perEdge = lens.map((l) => Math.floor((edgeTotal * l) / lenSum));
@@ -884,6 +1091,25 @@ function seedBuffers(count: number, mode: LatticeMode, plexus: Plexus) {
     perEdge[e]++;
     assigned++;
   }
+  // ROUND 12 · D — ON THE RIBBON THE ALLOCATION IS PER RESIDUE CLASS, AND IT
+  // IS UNIFORM. A particle's home edge is `first + mod(r − first, winE)`, so
+  // its residue `r` is fixed for the whole act while the EDGE under it
+  // changes; a length-proportional split would therefore be meaningless (the
+  // class sees links of every length as the window rolls). Uniform is the
+  // only self-consistent choice, and the delivered spacing is then
+  // `L_screen / perClass` — which is why the strand's alpha is normalised by
+  // its own delivered overlap in `particleScalars` rather than assumed flat.
+  const perClass = new Array<number>(winE).fill(0);
+  if (ribbon) {
+    const base = Math.floor(edgeTotal / winE);
+    for (let c = 0; c < winE; c++) perClass[c] = base;
+    let rem = edgeTotal - base * winE;
+    for (let c = 0; rem > 0; c = (c + 1) % winE) {
+      perClass[c]++;
+      rem--;
+    }
+  }
+  const alloc = ribbon ? perClass : perEdge;
 
   let edgeIdx = 0;
   let edgeFill = 0;
@@ -904,8 +1130,9 @@ function seedBuffers(count: number, mode: LatticeMode, plexus: Plexus) {
       offA[i * 3 + 1] = r2; // spare
       offA[i * 3 + 2] = (r1 - 0.5) * 2; // elevation −1..1
     } else if (i < edgeTotal) {
-      // LINK particle — advance the ∝-length assignment.
-      while (edgeFill >= perEdge[edgeIdx] && edgeIdx < perEdge.length - 1) {
+      // LINK particle — advance the assignment (∝ length off-ribbon, uniform
+      // per residue class on the ribbon).
+      while (edgeFill >= alloc[edgeIdx] && edgeIdx < alloc.length - 1) {
         edgeIdx++;
         edgeFill = 0;
       }
@@ -913,9 +1140,24 @@ function seedBuffers(count: number, mode: LatticeMode, plexus: Plexus) {
       const strand = Math.floor(r0 * STRAND_COUNT) % STRAND_COUNT;
       meta[i * 4] = 0;
       meta[i * 4 + 1] = edgeIdx * 2 + strand;
-      meta[i * 4 + 2] = 0.7 + r1 * 0.6; // flow-speed variance
+      // ── F3 — `speedVar` IS PER-LINK ON THE RIBBON, NOT PER-PARTICLE ──────
+      // or F2's comb shears back into a Poisson train within seconds, and
+      // with it the 3.6× in particle count the comb buys. Off-ribbon it stays
+      // the shipped per-particle hash, to the bit.
+      meta[i * 4 + 2] = ribbon
+        ? 0.7 + h(edgeIdx, 39.3467, 11.135) * 0.6
+        : 0.7 + r1 * 0.6; // flow-speed variance
       meta[i * 4 + 3] = r3;
-      offA[i * 3] = r2; // basePhase
+      // ── F2 — STRATIFY THE FLOW PHASE. Worth 3.6× on its own. ────────────
+      // Positions are `fract(basePhase + t·speed·speedVar)`; off a RANDOM
+      // basePhase that is a POISSON train, whose shot ripple (σ/μ = 0.84/√Ω)
+      // needs S/s ≥ 6.0 before it reads as a smooth line. A COMB needs
+      // **1.65** (ripple 2·exp(−2π²(S/4s)²) = 6.9 %, verified against the
+      // shipped `smoothstep(0.5, 0.12, r)` disc profile at ±3 % peak-to-
+      // trough). `edgeFill` is 1-based here, so `−0.5` centres the comb.
+      offA[i * 3] = ribbon
+        ? (edgeFill - 0.5) / Math.max(alloc[edgeIdx], 1)
+        : r2; // basePhase
       // Jitter magnitude biased toward the core (sqrt keeps a bright center,
       // a softer fringe) — also the white-cyan→cyan→blue radial tint driver.
       offA[i * 3 + 1] = Math.sqrt(r0);
@@ -924,7 +1166,7 @@ function seedBuffers(count: number, mode: LatticeMode, plexus: Plexus) {
       // STAR-CORE particle — round-robin across the cloud's nodes, then a
       // per-particle hash decides CORE blob vs FLARE ray. Both bake a literal
       // offset vector, so nothing orbits and nothing is hollow.
-      const node = (i - edgeTotal) % nodeN;
+      const node = (i - edgeTotal) % (ribbon ? winN : nodeN);
       meta[i * 4] = 1;
       meta[i * 4 + 1] = node;
       meta[i * 4 + 2] = 0.85 + r1 * 0.3; // per-particle size variance
@@ -957,7 +1199,17 @@ function seedBuffers(count: number, mode: LatticeMode, plexus: Plexus) {
     seed[i * 3 + 2] = (h(i, 419.2, 371.9) - 0.5) * SEED_SCATTER_Z;
   }
 
-  return { meta, offA, seed };
+  // `perLink` is the number of sprites a link carries at any instant — a
+  // build-time constant on the ribbon (every edge keeps a fixed residue
+  // class), and the denominator of the delivered along-link spacing.
+  return {
+    meta,
+    offA,
+    seed,
+    edgeTotal,
+    starCount,
+    perLink: edgeTotal / Math.max(ribbon ? winE : edgesTbl.length, 1),
+  };
 }
 
 export function createNeuralFieldBuild(
@@ -966,6 +1218,11 @@ export function createNeuralFieldBuild(
   const { webgpu, tsl, gl, backendIsWebGPU, count, mode } = args;
   const plexusSeed = args.plexusSeed;
   const plexusWell = args.plexusWell !== false;
+  const plexusParams = args.plexusParams;
+  /** ROUND 12 · STAGE 2 — is this build the D17 continuous field? Read ONCE,
+   * from the generator arm that was actually asked for, so the shader graph
+   * and the delivered constellation can never disagree about it. */
+  const ribbon = plexusParams?.shape === "ribbon";
   const {
     InstancedBufferGeometry,
     BufferGeometry,
@@ -1021,15 +1278,43 @@ export function createNeuralFieldBuild(
   // subscription inside the Canvas island — the R3F commit wedge).
   const density: PlexusDensity =
     count <= NEURAL_PARTICLE_COUNT_COMPACT ? "lite" : "full";
-  const plexus = getPlexus(mode, density, plexusSeed, plexusWell);
-  const { meta, offA, seed } = seedBuffers(count, mode, plexus);
+  const plexus = getPlexus(mode, density, plexusSeed, plexusWell, plexusParams);
+  const { meta, offA, seed, edgeTotal, starCount, perLink } = seedBuffers(
+    count,
+    mode,
+    plexus,
+  );
   const ctrlInit = plexus.centroids;
 
   // --- Shared uniforms ------------------------------------------------------
   const uTime = uniform(0);
   const uReveal = uniform(0);
   const uBroken = uniform(mode === "broken" ? 1 : 0);
-  const uFlowSpeed = uniform(FLOW_SPEED);
+  // ── ROUND 12 · D — THE RIBBON ARM'S OWN SIZING/ALPHA LEDGER ─────────────
+  // Eight constants `#production` shares with the ribbon, selected here by a
+  // BUILD-TIME JS ternary. On every non-ribbon build these evaluate to the
+  // shipped module constants, so the node graph bakes identical `float()`
+  // literals and the band is unmoved to the bit ({101, 229}, checksum
+  // −420.464007). See the ROUND 12 · D block in neuralLatticeConfig for the
+  // unit law (S_css = NEURAL_POINT_SIZE·sizeK/12) and the two-regime law.
+  const RIB = plexus.shape === "ribbon";
+  const K_DUST_SIZE = RIB ? DUST_SIZE_RIBBON : DUST_SIZE;
+  // ROUND 12 — the links curve. 0 on every non-ribbon build, so the node
+  // graph bakes the identical straight-chord expression `#production` has
+  // always baked (`bend` folds to a zero vector at build time is NOT relied
+  // on — the ternary skips the whole term, see edgeFrame).
+  const K_LINK_BEND = RIB ? LINK_BEND_RIBBON : 0;
+  const K_BEND_MAX = LINK_BEND_MAX_RIBBON;
+  const K_BEND_ROLL = LINK_BEND_ROLL_RIBBON;
+  const K_LINK_TAPER = RIB ? LINK_TAPER_RIBBON : 1;
+  const K_CORE_BOOST = RIB ? CORE_SIZE_BOOST_RIBBON : CORE_SIZE_BOOST;
+  const K_FRINGE_DROP = RIB ? FRINGE_SIZE_DROP_RIBBON : FRINGE_SIZE_DROP;
+  const K_PACKET_SIZE = RIB ? PACKET_SIZE_RIBBON : PACKET_SIZE;
+  const K_STATIC_ELONG = RIB ? STATIC_ELONG_RIBBON : STATIC_ELONG;
+  const K_FLOW_SPEED = RIB ? FLOW_SPEED_RIBBON : FLOW_SPEED;
+  const K_STREAM_ALPHA = RIB ? STREAM_ALPHA_RIBBON : STREAM_ALPHA;
+  const K_BEAD_ALPHA = RIB ? BEAD_ALPHA_RIBBON : BEAD_ALPHA;
+  const uFlowSpeed = uniform(K_FLOW_SPEED);
   const uFracture = uniform(FRACTURE_T);
   const uRecohere = uniform(0);
   const uSurgeT = uniform(-1);
@@ -1114,6 +1399,48 @@ export function createNeuralFieldBuild(
   const NODE_N = nodeTbl.length;
   const EDGE_N = edgeTbl.length;
   /**
+   * ROUND 12 · D — THE ROLLING κ-WINDOW. Both tables were sorted by
+   * `κ = u + dir·R·bandAspect·v` in `buildPlexus` (ribbon only), so the
+   * on-frame set is a contiguous index range in each and a particle's live
+   * home is `first + mod(baked − first, WIN)` — the identity everywhere
+   * inside the window. The two `first` scalars are plain `uniform()`s, so
+   * they cost ZERO UBO blocks in either stage (see the block budget above);
+   * the two sizes are build-time and bake as `float()` literals.
+   *
+   * OFF-RIBBON `WIN_E === EDGE_N` and `WIN_N === NODE_N` and the whole
+   * mechanism is compiled out by the `RIB` ternaries at its two call sites.
+   */
+  const WIN_E = RIB ? ribbonWindowSize(EDGE_N, plexus.bandAspect) : EDGE_N;
+  const WIN_N = RIB ? ribbonWindowSize(NODE_N, plexus.bandAspect) : NODE_N;
+  const uWinFirstEdge = uniform(0);
+  const uWinFirstNode = uniform(0);
+  /** Screen-y of the frame's centre in mapped-local units — the SAME number
+   * `uCopyYc` carries, on its own uniform so the window fade can never be
+   * left un-driven by a disabled copy lane. */
+  const uWinYc = uniform(0);
+  /** The frame's half-height in the shader's own y unit (`ih / (2·rect.h)`).
+   * The fade thresholds are MULTIPLES of it, never absolute band-heights —
+   * the band pin is `svh` and `rect.h` ≠ `size.height` on a phone. */
+  const uWinHalf = uniform(0.5);
+  /** 1 on a live ribbon, 0 everywhere else: gates the window FADE only (the
+   * re-home itself is compiled out off-ribbon). */
+  const uWinOn = uniform(0);
+  // ── ROUND 12 · D — MOTION IS LIGHT ──────────────────────────────────────
+  // Four plain `uniform()` scalars on one shared phase axis. `uFront` is the
+  // BIRTH front and a pure function of `p`; `uRiver` is the LIGHT phase and
+  // carries its own clock (`RIVER_RATE`) so the crests keep travelling when
+  // the reader stops — without that a stopped reader sees frozen bright
+  // patches, the direct contradiction of the brief.
+  const uFront = uniform(RIB ? 0 : 1e6);
+  const uRiver = uniform(0);
+  const uFrontW = uniform(FRONT_W);
+  const uFrontKy = uniform(0);
+  const uFrontC = uniform(0);
+  /** The copy lane's floor for the LINK/continuity role — the chord's vacated
+   * 15 % of the AA budget, given to the strand. Driver-written on the same
+   * lane window as `uCopyFloor` / `uCopyLineFloor`. */
+  const uCopyStreamFloor = uniform(COPY_MASK_FLOOR_STREAM);
+  /**
    * ROUND 12 · STAGE 0B — the PACKED endpoint table. Element j carries links
    * 4j … 4j+3 in x/y/z/w as `a + EDGE_PACK_RADIX·b`; the tail of the last
    * element is zero-padded and is NEVER read (both callers clamp their edge
@@ -1181,8 +1508,11 @@ export function createNeuralFieldBuild(
   // thread they ride is the LINE layer. All plain `uniform()` scalars — they
   // join an existing shared group, so they add ZERO uniform BLOCKS to either
   // program (the block-count budget note above is unmoved).
-  const uDustAlpha = uniform(STREAM_ALPHA);
-  const uBeadAlpha = uniform(BEAD_ALPHA);
+  // ROUND 12 · D — the ribbon's own ledger (`K_*`, selected at build). At
+  // 0.012 the strand was 0.0042 after the overlap normaliser: invisible, and
+  // the picture was beads on darkness — the exact failure this round removes.
+  const uDustAlpha = uniform(K_STREAM_ALPHA);
+  const uBeadAlpha = uniform(K_BEAD_ALPHA);
   const uLineAlpha = uniform(LINE_ALPHA);
   const uLineEmissive = uniform(LINE_EMISSIVE);
   const uLineLumMax = uniform(LINE_LUM_MAX);
@@ -1204,14 +1534,38 @@ export function createNeuralFieldBuild(
   // full-strength net over the copy.
   // ROUND 11: the half-plane is now a LANE, and its default pair is the
   // half-plane-equivalent one (COPY_LANE_OPEN_W's note carries the identity).
-  const uCopyLaneC = uniform(
-    COPY_EDGE_LOCAL + COPY_EDGE_PAD - COPY_LANE_OPEN_W,
-  );
-  const uCopyLaneW = uniform(COPY_LANE_OPEN_W);
+  // ROUND 12 · STAGE 2 — the half-plane-equivalent width is sized on the
+  // FIELD this build carries: 2.0 puts the lane's unused left wall at local
+  // x ≈ −1.5, which is outside a ±0.5 band and INSIDE a ±1.895 ribbon (see
+  // COPY_LANE_OPEN_W_RIBBON). Same identity, same two uniforms, no new state.
+  const laneOpenW = ribbon ? COPY_LANE_OPEN_W_RIBBON : COPY_LANE_OPEN_W;
+  const uCopyLaneC = uniform(COPY_EDGE_LOCAL + COPY_EDGE_PAD - laneOpenW);
+  const uCopyLaneW = uniform(laneOpenW);
   const uCopySoft = uniform(COPY_RAMP_SOFT);
   const uCopyFloor = uniform(COPY_MASK_FLOOR);
   const uCopyLineFloor = uniform(COPY_MASK_FLOOR_LINE);
   const uCopyYFloor = uniform(COPY_Y_FLOOR);
+  // ─── ROUND 12 · STAGE 2 FIX — THE DEEP FLOOR'S VERTICAL EXTENT ───────────
+  // Four plain `uniform()` scalars, i.e. ZERO new UBO blocks in either stage
+  // (they join one of three's shared groups, the same precedent as every knob
+  // above them — measured budget: particle vertex 10/12, fragment 8/12, line
+  // vertex 6/12, unmoved). Driver-written per frame from the traverse's own
+  // frozen snapshot; ALL FOUR DEFAULT TO THE SHIPPED BEHAVIOUR, and
+  // `uCopyRowLocal = 0` makes that byte-exact rather than merely close.
+  /** Reading-band centre in mapped local y — `(cy − yRegPx − ih/2)/rect.h`.
+   * 0 = the shipped band (`y.sub(0.0)` is bit-exact). */
+  const uCopyYc = uniform(0);
+  /** The carve-out's centre in the SAME re-centred coordinate: the tracked
+   * reading unit's screen centre, as a band-height fraction below `ih/2`. */
+  const uCopyRowC = uniform(0);
+  /** Its half-height + `COPY_ROW_PAD`, band-height fractions. */
+  const uCopyRowH = uniform(1);
+  /** The ramp out of it. */
+  const uCopyRowSoft = uniform(COPY_ROW_SOFT);
+  /** 0 = the shipped 1-D wall (bit-exact); 1 = the wall gets a ceiling and a
+   * sill. Written 1 ONLY on a band that is both a live ribbon and lane-driven,
+   * which is the only configuration whose field is wider than the frame. */
+  const uCopyRowLocal = uniform(0);
   // Round-3 (§B): row-reactive current + curl turbulence + depth-DOF. All
   // uniforms/uniformArrays — the storage-buffer and vertex-slot budgets are
   // untouched.
@@ -1239,8 +1593,44 @@ export function createNeuralFieldBuild(
   const uMembraneAlpha = uniform(MEMBRANE_ALPHA);
   const uMembraneBulge = uniform(MEMBRANE_BULGE);
   const uPlaneAspect = uniform(0.5);
+  /** The band anchor's height in CSS px — the one scalar that turns a LOCAL
+   * length into a delivered SCREEN length, which is what the continuity law
+   * is written in. Driver-written; 0 leaves the normalisation inert. */
+  const uBandPx = uniform(0);
   const uNebulaDrift = uniform(0);
   const uNebulaAlpha = uniform(NEBULA_ALPHA);
+  // ─── ROUND 12 · STAGE 2 — THE FIELD MAPPING ──────────────────────────────
+  // FIVE plain `uniform()` scalars, and "plain" is the whole reason they are
+  // affordable: `uniform()` joins one of three's SHARED groups, so these cost
+  // **zero UBO blocks** in either stage (the precedent is every knob above
+  // them; a `uniformArray` would have cost a block in BOTH stages that read
+  // it, against a measured 10/12 and 8/12).
+  //
+  // The mapping itself lives in `fieldMap()` and is called from exactly TWO
+  // accessors — `nodeAt()` and `streamCenter()` — which is every path by which
+  // authored plexus coordinates reach a position. Identity is `(1, 0, 0)` with
+  // the node's raw x carried straight through, so `#production` compiles to
+  // `x·1 + 0` and `y + 0·x`: bit-exact, which is what the byte-for-byte
+  // contract needs (`(u − 0.5)·L` would NOT be).
+  /** Field length in BAND-WIDTH units. 1 = the shipped band. */
+  const uFieldLen = uniform(1);
+  /** Field centre offset in band-width units. 0 = centred, always, today. */
+  const uFieldOrigin = uniform(0);
+  /** The ribbon shear `μ` — see `bandFieldSlope` in traverseConfig for the
+   * derivation and for why it is the sharpest available check on the driver. */
+  const uFieldSlope = uniform(0);
+  /** `1 / uFieldLen`. The LOCAL-units forces (the pointer bend, the curl) are
+   * divided by it so the steady-state excursion stays under the recycle-snap
+   * threshold, which falls with the shortest delivered link on a long field.
+   * 1 on the band ⇒ every force multiplied by exactly 1.0 ⇒ bit-exact. */
+  const uFieldK = uniform(1);
+  /** THE EXIT FADE (FIELD_EXIT_VH). 1 everywhere except the last ~1 vh of the
+   * act, where it rides a smoothstep to 0 — because the ribbon's screen y is
+   * constant in `p`, so the section ends with the net dead centre and there is
+   * no natural exit to fall back on. Multiplied into the copy masks, which is
+   * what makes it reach the ALPHA and the DISCARD THRESHOLD together on both
+   * layers: a fade one of them misses is a pop, not a fade. */
+  const uFieldFade = uniform(1);
 
   // --- Geometry: shared billboard quad + per-instance role attributes -------
   const geometry = new InstancedBufferGeometry();
@@ -1299,7 +1689,13 @@ export function createNeuralFieldBuild(
    * and the row windows read it, so their registration stays exact. */
   function streamCenter(t: Any): Any {
     const tc = clamp(t, float(0), float(1));
-    return splineCR(tc).add(
+    // ROUND 12 · STAGE 2 — mapped through the SAME `fieldMap` the nodes go
+    // through (the control points are the cloud's own x-slice centroids, in
+    // the cloud's own authored frame). The z-bow is added AFTER the map, on
+    // purpose: it is a camera-facing bow in FINAL local space, not a property
+    // of the authored field, and mapping it would shear it with everything
+    // else. Identity mapping ⇒ this whole line is a no-op, to the bit.
+    return fieldMap(splineCR(tc)).add(
       vec3(float(0), float(0), sin(tc.mul(Math.PI)).mul(uZBow)),
     );
   }
@@ -1316,10 +1712,40 @@ export function createNeuralFieldBuild(
   function strandThickAt(idx: Any): Any {
     return uStrandThick.element(int(clamp(idx, float(0), float(3)))) as Any;
   }
+  /**
+   * ROUND 12 · STAGE 2 — THE FIELD MAPPING. Authored plexus coordinates
+   * `(u, v, w)` → the LOCAL space everything downstream already works in.
+   *
+   *     x = u·uFieldLen + uFieldOrigin
+   *     y = v + uFieldSlope·x
+   *     z = w
+   *
+   * ⚠ `y` SHEARS ON THE MAPPED x, NOT ON `u`. The shear has to be a function
+   * of where the point IS on screen, and `uFieldOrigin` is part of that.
+   *
+   * IDENTITY IS BIT-EXACT AND THAT IS A REQUIREMENT, NOT A NICETY. At
+   * `(1, 0, 0)` this is `u·1 + 0` and `v + 0·(u·1 + 0)`: IEEE-754 multiply by
+   * 1.0 and add of a true zero are both exact, so `#production` delivers the
+   * same floats it delivered before this stage existed. Writing the map as
+   * `(u − 0.5)·L` instead would have been a subtract-then-multiply and would
+   * NOT have been bit-exact — the byte-for-byte contract would have died on
+   * an algebraic identity that is false in floating point.
+   *
+   * TWO CALLERS, AND THEY ARE EVERY PATH: `nodeAt()` (stars, link particles
+   * via `edgeFrame`, and the line layer's live chord) and `streamCenter()`
+   * (the centroid spine — the nebula, the row windows, the dormant membranes).
+   * The centroids are computed by the generator in the SAME authored frame as
+   * the nodes, so a map applied to one and not the other would put the smoke
+   * 5000 px from the fracture it is smoke from.
+   */
+  function fieldMap(p: Any): Any {
+    const x = p.x.mul(uFieldLen).add(uFieldOrigin);
+    return vec3(x, p.y.add(uFieldSlope.mul(x)), p.z);
+  }
   /** Node center by index node (uniformArray element — legal in any stage). */
   function nodeAt(idx: Any): Any {
-    return uNodePos.element(
-      int(clamp(idx, float(0), float(NODE_N - 1))),
+    return fieldMap(
+      uNodePos.element(int(clamp(idx, float(0), float(NODE_N - 1)))),
     ) as Any;
   }
   /** Node left→right cloud coordinate (0..1) by index node. */
@@ -1463,14 +1889,43 @@ export function createNeuralFieldBuild(
    * left→right. Pure function of attributes + uniforms — every stage, both
    * backends. (For star/spark roles the values are finite garbage; every
    * consumer gates by role.) */
+  /**
+   * ROUND 12 · D — THE WINDOW RE-HOME, one expression, both tables.
+   *
+   *     idx = first + mod(baked − first, WIN)
+   *
+   * For `baked ∈ [first, first+WIN)` this is the IDENTITY, so nothing inside
+   * the window ever moves; as `first` advances by one, exactly the particles
+   * whose residue matches the DEPARTING element jump to the ARRIVING one —
+   * and because the tables are κ-sorted and the window is padded past the
+   * frame by `RIBBON_WINDOW_PAD`, both of those are off screen. Note
+   * `idx ≡ baked (mod WIN)` identically, so an element's particle population
+   * is a build-time constant and the comb never re-strides.
+   *
+   * ⚠ The jump is ~1.0 LOCAL, i.e. ~94× the ribbon's derived `wrapSnapDist`
+   * (0.01060), so on the compute tier the RECYCLE SNAP fires and the particle
+   * hard-resets onto its new anchor instead of spring-flying. That is why
+   * `STAR_WINDOW_SNAP` had to be added — the star bound was 1e9 because star
+   * anchors never used to jump.
+   */
+  function windowIdx(baked: Any, first: Any, win: number): Any {
+    const d = baked.sub(first);
+    return first.add(d.sub(float(win).mul(floor(d.mul(float(1 / win))))));
+  }
+  /** The live NODE index of a star particle (windowed on the ribbon). */
+  function starNodeIdx(aux: Any): Any {
+    if (!RIB) return aux;
+    return windowIdx(aux, uWinFirstNode, WIN_N);
+  }
   function edgeFrame(metaN: Any, offN: Any) {
     const aux = metaN.y;
+    const edgeRaw = floor(aux.mul(0.5));
     const edgeIdx = clamp(
-      floor(aux.mul(0.5)),
+      RIB ? windowIdx(edgeRaw, uWinFirstEdge, WIN_E) : edgeRaw,
       float(0),
       float(EDGE_N - 1),
     ).toVar();
-    const strand = aux.sub(edgeIdx.mul(2.0)).toVar();
+    const strand = aux.sub(edgeRaw.mul(2.0)).toVar();
     const s = flowParam(offN.x, metaN.z).toVar();
     const { ia, ib } = edgeEnds(edgeIdx);
     const tA = nodeTAt(ia).toVar();
@@ -1493,11 +1948,62 @@ export function createNeuralFieldBuild(
     // degrades to a finite near-zero dir instead of NaN in the degenerate
     // case. Keep this guard if EDGE_MIN_LOCAL or NODE_DRIFT ever move again.
     const dRaw = B.sub(A).toVar();
-    const dir = dRaw.div(max(length(dRaw), float(1e-5))).toVar();
+    const chordDir = dRaw.div(max(length(dRaw), float(1e-5))).toVar();
+    // ── ROUND 12 · THE LINK IS AN ARC, NOT A CHORD ───────────────────────
+    // Straight segments meeting at a node read as a glass truss. Bend the
+    // path on a per-link hashed arc that vanishes at both endpoints, so the
+    // TOPOLOGY is untouched — the link still lands exactly on its two nodes —
+    // and only the route between them curves. See LINK_BEND_RIBBON.
+    //
+    // `home` replaces mix(A,B,s) for every consumer, and `dir` is now the
+    // analytic TANGENT of that arc rather than the chord: the braid
+    // cross-section, the fray basis and the velocity streak all follow the
+    // curve instead of cutting its corner. On a straight build (bend 0) the
+    // tangent reduces to the chord exactly, so `#production` is unmoved.
+    let home = mix(A, B, s).toVar();
+    let dir = chordDir;
+    if (K_LINK_BEND > 0) {
+      // Two independent per-link hashes: one signs and scales the bow, the
+      // other rolls its plane about the chord. A field where every link bows
+      // the same way is a fabric, not a net.
+      const hAmp = fract(
+        sin(edgeIdx.mul(83.17).add(29.3)).mul(43758.545),
+      ).toVar();
+      const hRoll = fract(
+        sin(edgeIdx.mul(151.7).add(7.9)).mul(43758.545),
+      ).toVar();
+      // A perpendicular frame on the chord. cross(dir, Z) is degenerate only
+      // for a link running along z; the field is essentially planar in xy
+      // (|z| ≤ PLEXUS_RZ), so guard it the same way the dir normalize above
+      // is guarded rather than branching.
+      const pRaw = cross(chordDir, vec3(0, 0, 1)).toVar();
+      const p0 = pRaw.div(max(length(pRaw), float(1e-5))).toVar();
+      const p1 = cross(chordDir, p0).toVar();
+      // Roll is CONSTRAINED, not free: dendritic tissue is broadly laminar,
+      // so the arc leans out of the ribbon plane rather than pointing
+      // anywhere in 3-space. A free 2π roll reads as a ball of wire.
+      const roll = hRoll.sub(0.5).mul(float(2 * K_BEND_ROLL)).toVar();
+      const perp = p0.mul(cos(roll)).add(p1.mul(sin(roll))).toVar();
+      // Signed magnitude, uniform in [−1,+1], on a bow that is proportional
+      // to chord length but SATURATES: un-capped, the longest links (≈4× the
+      // shortest) loop over their neighbours. `min` is legal here — this is a
+      // per-link constant evaluated once, not a moving wavefront, so the C¹
+      // rule that forbids clamping a travelling front does not apply.
+      const amp = min(length(dRaw).mul(float(K_LINK_BEND)), float(K_BEND_MAX))
+        .mul(hAmp.mul(2.0).sub(1.0))
+        .toVar();
+      // 4s(1−s): 0 at both ends, 1 at mid-span. Derivative 4(1−2s).
+      const bow = s.mul(float(1).sub(s)).mul(4.0).toVar();
+      home = home.add(perp.mul(amp).mul(bow)).toVar();
+      const tRaw = dRaw
+        .add(perp.mul(amp).mul(float(4).mul(float(1).sub(s.mul(2.0)))))
+        .toVar();
+      dir = tRaw.div(max(length(tRaw), float(1e-5))).toVar();
+    }
     // `ib` (target-node index) is exposed for the round-7 packet clocks:
     // traffic is keyed by the RECEIVING node so nodeKissAt can run the very
     // same clock and kiss exactly when a bead lands (see packetAt).
-    return { edgeIdx, strand, s, t, A, B, dir, ib };
+    return { edgeIdx, strand, s, t, A, B, dir, ib, home };
   }
   /** Round-3 row glow by JS-literal row index (uniformArray element — legal
    * in any stage, costs no buffer slot). */
@@ -1643,13 +2149,78 @@ export function createNeuralFieldBuild(
     );
     return mix(float(1), uCopyYFloor, bell);
   }
-  /** Full 2D mask for the PARTICLE layer at a LOCAL position. */
-  function copyMaskAt(p: Any, gate: Any): Any {
-    return mix(uCopyFloor, float(1), gate).mul(copyYAt(p.y));
+  /**
+   * ROUND 12 · STAGE 2 FIX — THE READING-BAND COORDINATE.
+   *
+   * `p.y` is the MAPPED local y, and it is a pure affine function of screen y
+   * — `screen_y = C − y·rect.h`, `C = cy − yRegPx` — for every local point,
+   * shear or no shear. Subtracting the driver's `uCopyYc = (C − ih/2)/rect.h`
+   * therefore yields the SIGNED SCREEN DISTANCE from the frame's centre line,
+   * in band-height units: exactly ±0.5 across the frame.
+   *
+   * ⚠ THIS REPLACES STAGE 2's `acrossV`, AND THE REPLACEMENT IS THE FIX.
+   * Stage 2 put the vertical bell on the across-ribbon `v = y − μ·x`, arguing
+   * that the mapped `y` spans ±4.34 band-heights under the shear. It does —
+   * but `v` is CONSTANT ALONG the 45° ribbon, so a bell on `v` is a 45°
+   * diagonal stripe, while the reading zone is a horizontal screen band. They
+   * coincide at the frame's centre column and are 637 px apart at the tracked
+   * block's own edge. Re-centring `y` answers the ±4.34 objection without
+   * rotating the bell 45° off the thing it is supposed to be a bell about.
+   *
+   * Off the ribbon the driver writes `uCopyYc = 0` and this is `y.sub(0.0)` —
+   * bit-exact, so `#production` and the `ribbon: false` rollback are unmoved.
+   */
+  function screenYAt(p: Any): Any {
+    return p.y.sub(uCopyYc);
+  }
+  /**
+   * ROUND 12 · STAGE 2 FIX — THE DEEP FLOOR'S OWN CEILING AND SILL.
+   *
+   * 0 across the tracked reading unit (where `COPY_MASK_FLOOR` must apply, and
+   * where the legibility chain that sized 1e-4 was measured) → 1 beyond
+   * `uCopyRowH + uCopyRowSoft` of it, where there is no glyph to protect and
+   * the shipped mask was floorng the net for nothing. Same shape and the same
+   * two ALU as `copyGateAt`, one axis over.
+   *
+   * ⚠ `uCopyRowLocal` IS THE BIT-EXACTNESS GATE, and it is a MULTIPLY, not a
+   * second `mix`. At 0 the caller evaluates `mix(floor, 1, 0)` =
+   * `floor + (1 − floor)·0` = `floor` exactly, for every float `floor`. Every
+   * band that is not a live ribbon — `#production`, `ribbon: false`, a band
+   * whose traverse never armed — gets 0 and is therefore unmoved to the bit.
+   */
+  function copyRowGateAt(y: Any): Any {
+    const d = y.sub(uCopyRowC);
+    return smoothstep(
+      uCopyRowH,
+      uCopyRowH.add(max(uCopyRowSoft, float(0.001))),
+      max(d, d.negate()),
+    ).mul(uCopyRowLocal);
+  }
+  /** Full 2D mask for the PARTICLE layer at a LOCAL position.
+   * ⚠ `uFieldFade` rides HERE, not on the alpha, because the caller uses this
+   * one value for BOTH the output alpha and the discard threshold — see the
+   * scale-invariance note on `cut`. A fade applied to only one of them stops
+   * being a fade and becomes a pop. */
+  function copyMaskAt(p: Any, gate: Any, floorN?: Any): Any {
+    const sy = screenYAt(p);
+    return mix(
+      mix(floorN ?? uCopyFloor, float(1), copyRowGateAt(sy)),
+      float(1),
+      gate,
+    )
+      .mul(copyYAt(sy))
+      .mul(uFieldFade);
   }
   /** Full 2D mask for the LINE layer — the SAME ramp, its own floor. */
   function copyMaskLineAt(p: Any): Any {
-    return mix(uCopyLineFloor, float(1), copyGateAt(p.x)).mul(copyYAt(p.y));
+    const sy = screenYAt(p);
+    return mix(
+      mix(uCopyLineFloor, float(1), copyRowGateAt(sy)),
+      float(1),
+      copyGateAt(p.x),
+    )
+      .mul(copyYAt(sy))
+      .mul(uFieldFade);
   }
   /** Ring flow-t by index (config constants — fixed topology). */
   function ringT(idx: Any): Any {
@@ -1745,7 +2316,11 @@ export function createNeuralFieldBuild(
   function anchorNode(opts: { metaN: Any; offN: Any; curl?: boolean }): Any {
     const { metaN, offN } = opts;
     const role = metaN.x;
-    const aux = metaN.y;
+    // ROUND 12 · D — `aux` is STAR-ONLY inside this function (the link branch
+    // goes through `edgeFrame`, which windows its own index), so the node
+    // re-home lands here once and covers nodeTAt / nodeAt / nodeDrift / the
+    // per-node hash / nodeKissAt together.
+    const aux = starNodeIdx(metaN.y).toVar();
     const speedVar = metaN.z;
     const rnd = metaN.w;
 
@@ -1797,16 +2372,21 @@ export function createNeuralFieldBuild(
     // with the analytic curl field sampled AT the braid position, so the
     // field varies along the edge AND across the cross-section; +uVelCurl·
     // vel gain while scrolling (amplitude-only, no phase discontinuity).
-    const preStream = mix(ef.A, ef.B, ef.s)
-      .add(strandOff.add(jit).mul(w))
-      .toVar();
+    // `ef.home` is the point ON the (now curved) link path — mix(A,B,s) plus
+    // the round-12 arc. Every consumer of the link's own position goes
+    // through it so the braid, the fray and the streak share one path.
+    const preStream = ef.home.add(strandOff.add(jit).mul(w)).toVar();
     const onEdge = (
       opts.curl
         ? preStream.add(
             curlAt(preStream)
               .mul(uCurl)
               .mul(float(1).add(uScrollVel.mul(uVelCurl)))
-              .mul(float(CURL_SCALE)),
+              .mul(float(CURL_SCALE))
+              // ×1/L, for the same WRAP_SNAP reason as the pointer push
+              // above. It is the smaller of the two terms (0.00078 of the
+              // 0.01078 floor) but it is in the same budget.
+              .mul(uFieldK),
           )
         : preStream
     ).toVar();
@@ -1930,6 +2510,107 @@ export function createNeuralFieldBuild(
     );
     return s.mul(float(1).sub(past.mul(uBroken)));
   }
+  /**
+   * ═══ ROUND 12 · D — MOTION IS LIGHT ════════════════════════════════════
+   *
+   * ONE shared phase axis for STRUCTURE (birth) and LIGHT (the crests), and
+   * it is the SAME κ axis the window rides: `nodeT` un-sheared by the band's
+   * own 45° slope, so a crest is a line of constant SCREEN x-plus-y — it
+   * sweeps ALONG the road, exactly as a signal would, rather than crossing it.
+   *
+   * AND IT COLLAPSES TO A SINGLE MULTIPLY-ADD ON THE MAPPED y. Writing the
+   * mapping as `x = u·L`, `y = v + μ·x`, the key is
+   *   `κ_u = u + dir·R·bandAspect·v`,  and  `bandAspect·(W/H) = 1/L`,
+   * so the x terms cancel EXACTLY and `phase = y·uFrontKy + uFrontC` with
+   * `uFrontKy = dir·R·bandAspect/xSpan`, `uFrontC = −xMin/xSpan`. (Sanity: at
+   * `v = 0`, `y = μx` and the expression returns `x/(L·xSpan) − xMin/xSpan` =
+   * `nodeT`, so the phase IS nodeT along the centreline and the front's
+   * constants stay in nodeT units.) Role-agnostic — stars and link particles
+   * read the same two scalars — and backend-agnostic.
+   *
+   * ⚠ `|physVel|` IS FORBIDDEN as the driver of any of this. It spikes at
+   * every `fract()` wrap on the COMPUTE tier only (the spring flight the
+   * recycle snap exists to kill) and does not exist at all on the ANALYTIC
+   * tier (`motionNode(…, null)`), so a `|physVel|`-driven emissive would show
+   * two different pictures on the two backends. Everything here is analytic.
+   */
+  function phaseAt(p: Any): Any {
+    return p.y.mul(uFrontKy).add(uFrontC);
+  }
+  /**
+   * STRUCTURE: 0 → 1 as the birth front passes. A C¹ knee, never a `min()` or
+   * a clamp — a hard edge on a moving wavefront is the flat-top scar. Folded
+   * into `cMask` at its single construction site so it scales `alpha` AND the
+   * discard `cut` by the identical factor: the surviving fragment SET is then
+   * byte-identical at every point of the ramp (`disc·vAlpha·born < 0.004·
+   * cMask·born` ⟺ the un-born test for every `born > 0`), which is what makes
+   * the birth free instead of a fill regression.
+   *
+   * ⚠ BIRTH IS VALUE-ONLY, NEVER ANCHOR-DRIVEN. An anchor-driven birth moves
+   * `|seedPos − liveAnchor| ≈ 0.7 local` against a ribbon snap threshold of
+   * 0.0748 local/s — a >9.4 s birth window — and `armed` is 1 on the healthy
+   * band, so the kernel would simply teleport every particle onto its anchor
+   * every frame the front is on the node.
+   */
+  function bornAt(ph: Any): Any {
+    if (!RIB) return float(1);
+    return smoothstep(ph, ph.add(uFrontW), uFront);
+  }
+  /**
+   * LIGHT: `RIVER_M` staggered crests running the phase axis, each a gaussian
+   * head with a trailing comet smear — the same asymmetry `surgeAt` has
+   * (sharp leading edge, trailing tail), and `max(head, tail)` never `min()`.
+   *
+   * σ = 1/√(2·RIVER_K) = 0.0577 nodeT ≈ **420 px**, deliberately wider than
+   * the 152 px mean link so a crest lights a link END TO END instead of
+   * riding it as a bead. The crest wraps on `d − floor(d + 0.5)`, so it is
+   * periodic and every link on the frame sees one within `1/M` of nodeT.
+   */
+  function riverAt(ph: Any): Any {
+    if (!RIB) return float(0);
+    let acc: Any = float(0);
+    for (let m = 0; m < RIVER_M; m++) {
+      const d = ph.sub(uRiver).add(float(m / RIVER_M));
+      const dw = d.sub(floor(d.add(float(0.5)))).toVar();
+      const head = exp(float(RIVER_K).mul(dw.mul(dw)).negate());
+      const tail = select(
+        dw.lessThan(float(0)),
+        exp(dw.div(float(RIVER_TAIL))),
+        float(0),
+      );
+      acc = max(acc, max(head, tail.mul(float(0.65))));
+    }
+    return acc;
+  }
+  /**
+   * THE WINDOW FADE — keyed to the particle's OWN live screen y, never to its
+   * index. `screenYAt` returns the signed screen distance from the frame's
+   * centre in band-height units (±0.5 across the frame), so this is 1 across
+   * the whole frame and 0 by 0.16 band-heights (≈150 px) outside it — well
+   * inside the ≈210 px the index window is padded by. Keying it to geometry
+   * rather than to `uWinFirstEdge` means a mis-driven window loses links at
+   * the frame edge instead of popping them in the middle of it.
+   *
+   * ⚠ It reads `uWinYc`, NOT `uCopyYc`: the copy lane's centre is only
+   * written inside `laneEnabled`, and a disabled lane would leave this
+   * masking the whole field off.
+   */
+  function windowFadeAt(p: Any): Any {
+    if (!RIB) return float(1);
+    const sy = p.y.sub(uWinYc);
+    const asy = max(sy, sy.negate());
+    return mix(
+      float(1),
+      float(1).sub(
+        smoothstep(
+          uWinHalf.mul(float(WINDOW_FADE_IN)),
+          uWinHalf.mul(float(WINDOW_FADE_OUT)),
+          asy,
+        ),
+      ),
+      uWinOn,
+    );
+  }
   /** Fracture death-flash brightness at flow-t (broken only). */
   function flashAt(t: Any): Any {
     const d = t.sub(uFracture);
@@ -2051,15 +2732,27 @@ export function createNeuralFieldBuild(
     const role = metaN.x;
     const ef = edgeFrame(metaN, offN);
     const surge = surgeAt(ef.t);
+    // ROUND 12 · D — THE CREST ADVECTS THE PARTICLE ALONG ITS OWN CHORD, and
+    // that anisotropy is the entire escape from `f6cac67`. `buildVertex`
+    // scales only `corner.x` by the stretch while `vQuadUv` stays the
+    // UNROTATED quad, so a sprite pulled 2.95× along its chord is a STREAK
+    // whose peak per-pixel alpha never moves — where the same sprite grown
+    // isotropically is a bead. At a crest `spd = RIVER_ADVECT 1.30` ⇒
+    // `stretch = 1 + min(1.95, STRETCH_MAX 2.0) = 2.95`: the same saturation
+    // the surge already produces, no new cap behaviour. BOTH branches.
+    const adv = RIB
+      ? surge
+          .mul(float(SURGE_ADVECT))
+          .add(
+            riverAt(phaseAt(ef.home)).mul(float(RIVER_ADVECT)),
+          )
+          .toVar()
+      : surge.mul(float(SURGE_ADVECT));
     const streamGate = float(1).sub(clamp(role, float(0), float(1)));
     if (physVel) {
-      return physVel.add(
-        ef.dir.mul(surge).mul(float(SURGE_ADVECT)).mul(streamGate),
-      );
+      return physVel.add(ef.dir.mul(adv).mul(streamGate));
     }
-    const streamMotion = ef.dir.mul(
-      float(STATIC_ELONG).add(surge.mul(float(SURGE_ADVECT))),
-    );
+    const streamMotion = ef.dir.mul(float(K_STATIC_ELONG).add(adv));
     const sparkMotion = sparkDir(offN).mul(uFlash.mul(1.2));
     return select(
       role.lessThan(float(0.5)),
@@ -2084,7 +2777,6 @@ export function createNeuralFieldBuild(
     // Hoisted here because the STAR branch needs the GATE (to switch its
     // ignition machinery off over the copy) as well as the mask.
     const cGate = copyGateAt(posN.x).toVar();
-    const cMask = copyMaskAt(posN, cGate).toVar();
     const ef = edgeFrame(metaN, offN);
     const t = ef.t;
     const disp = dispFactor(t);
@@ -2131,6 +2823,18 @@ export function createNeuralFieldBuild(
     // Round-7: the ambient packet bead at this particle (0..~1) — constant
     // small-scale traffic between the big pulses.
     const packet = packetAt(ef.ib, ef.edgeIdx, ef.s, t).toVar();
+    // ── ROUND 12 · D — THE SIGNAL, AND THE STRUCTURE IT TRAVELS ON ────────
+    // One phase read, three consumers: `river` is the travelling light,
+    // `born` is the birth front, `winFade` is the κ-window's geometric
+    // envelope. All three are pure functions of the particle's LIVE local
+    // position, so they are identical on both backends and cost no varying.
+    const ph = phaseAt(posN).toVar();
+    const river = riverAt(ph).toVar();
+    const born = bornAt(ph).toVar();
+    const winFade = windowFadeAt(posN).toVar();
+    /** 1 for the LINK role, 0 for stars and sparks — the same expression
+     * `motionNode` uses, and cheaper than waiting for `isStream` below. */
+    const streamSel = float(1).sub(clamp(role, float(0), float(1))).toVar();
 
     // --- LINK: white-cyan core → cyan body → blue fringe; ember fray;
     //     white-cyan pulse head with its trailing gradient. ---
@@ -2171,14 +2875,29 @@ export function createNeuralFieldBuild(
     // White-hot head: the surge OR a passing packet (packets are smaller
     // PACKET_WHITE-weighted beads of the same core tone).
     const headMix = clamp(
-      surge.mul(0.85).add(packet.mul(float(PACKET_WHITE))),
+      surge
+        .mul(0.85)
+        .add(packet.mul(float(PACKET_WHITE)))
+        // ROUND 12 · D — the crest whitens toward COL_CORE. Cyan→white only;
+        // the ONE sanctioned warm in this field is uColEmberTip on the broken
+        // fray (hue 36). NEVER violet.
+        .add(river.mul(float(RIVER_WHITE)).mul(cGate)),
       float(0),
       float(1),
     ).mul(float(1).sub(deadMix));
     const toneStream = mix(mix(gradCol, emberCol, deadMix), uColCore, headMix);
-    // Idle dignity: slow per-particle brightness shimmer (±uShimmer).
+    // Idle dignity: slow brightness shimmer (±uShimmer).
+    //
+    // ⚠ ROUND 12 · D — THE HASH MOVED FROM THE PARTICLE TO THE LINK on the
+    // ribbon. A per-PARTICLE shimmer was right when the particle was a bead
+    // riding a drawn chord; now that the particles ARE the line, a per-
+    // particle hash reads as BOILING GRAIN along it. The line layer had it
+    // right all along (`hLink`) and this is that expression, re-homed.
+    const shimmerH = RIB
+      ? fract(sin(ef.edgeIdx.mul(57.31).add(11.7)).mul(43758.545))
+      : metaN.w;
     const shimmer = float(1).add(
-      sin(uTime.mul(0.5).add(metaN.w.mul(37.0)).add(t.mul(9.0))).mul(uShimmer),
+      sin(uTime.mul(0.5).add(shimmerH.mul(37.0)).add(t.mul(9.0))).mul(uShimmer),
     );
     // Round-3 row-reactive brightness: the ignited row's zone glows. On
     // broken the window reaches into the debris (row 2 = the fracture) where
@@ -2191,15 +2910,19 @@ export function createNeuralFieldBuild(
     const midProfile = float(1 - EDGE_MID_BRIGHT / 2).add(
       ef.s.mul(float(1).sub(ef.s)).mul(4 * EDGE_MID_BRIGHT),
     );
-    const emisStream = float(1)
+    const emisStreamRaw = float(1)
       .add(surge.mul(uSurgeGain))
       .add(packet.mul(uPacketGain))
       .add(flash.mul(float(FLASH_GAIN)))
+      // ROUND 12 · D — the crest's emissive lift, inside the existing
+      // additive chain so the knee below still bounds it.
+      .add(river.mul(float(RIVER_GAIN)).mul(cGate))
       .mul(float(STREAM_EMISSIVE))
       .mul(midProfile)
       .mul(shimmer)
       .mul(rowBright)
-      .mul(float(1).sub(deadMix.mul(0.75)));
+      .mul(float(1).sub(deadMix.mul(0.75)))
+      .toVar();
     // Fringe alpha drop (edges dissolve into the navy) + the debris ceiling.
     const fringeA = mix(
       float(1),
@@ -2215,7 +2938,9 @@ export function createNeuralFieldBuild(
     // (post-blend 3.6 / 5.0 — over the ≈1.0 bloom floor, so the traffic BLOOMS
     // and the mesh under it does not; the bead end did NOT move).
     const traffic = clamp(
-      packet.add(surge.mul(0.8)),
+      packet
+        .add(surge.mul(0.8))
+        .add(river.mul(float(RIVER_TRAFFIC)).mul(cGate)),
       float(0),
       float(1),
     ).toVar();
@@ -2227,17 +2952,161 @@ export function createNeuralFieldBuild(
     const debrisA = float(DEBRIS_ALPHA_MAX).mul(
       float(1).sub(u.mul(float(DEBRIS_FADE))),
     );
-    const alphaStream = mix(liveA, debrisA, disp).mul(edge).mul(gap);
+    /**
+     * ── ROUND 12 · D — THE OVERLAP NORMALISER ─────────────────────────────
+     *
+     * On the ribbon a link carries a FIXED number of sprites (`perLink`,
+     * a build constant — every edge keeps its residue class), so the
+     * delivered along-link spacing is `L_screen / perLink` and varies with
+     * the link's own length: 0.75 px on the mean 152 px link, 1.67 px on the
+     * longest 341 px one. Left alone, the accumulated luminance
+     * `A = 0.624·P·S/s` would then be 2.2× brighter on a short link than on a
+     * long one — link-to-link brightness banding on a net whose whole brief
+     * is to read as ONE thing, and a bloom that fires on the short links
+     * only.
+     *
+     * So the strand is authored at a CONSTANT delivered `A`: hold the sprite
+     * WIDTH uniform (a uniform line weight is what "one continuous net"
+     * means) and scale the per-sprite alpha down wherever the geometry is
+     * over-dense. Normalising the SIZE instead would take the shortest links
+     * to a 0.2 px sprite, under the `Discard` crop.
+     *
+     * ⚠ Only ever scales DOWN (`min(1, …)`). Where the overlap is already
+     * below 1.65 the answer is not more alpha — that is the bead failure —
+     * it is more particles or a wider sprite, both of which are budget
+     * decisions and both of which are made at build time.
+     *
+     * `uBandPx = 0` (never driven / not a ribbon) leaves this exactly 1.
+     */
+    const restSizeK = mix(float(K_CORE_BOOST), float(K_FRINGE_DROP), fringe)
+      .mul(float(K_DUST_SIZE))
+      // ROUND 12 — DENDRITIC TAPER. A constant-width tube is the strongest
+      // "drawn by a computer" cue left once the path curves: a real process is
+      // widest where it leaves a soma and narrowest at mid-span. Same 4s(1−s)
+      // profile the arc rides, so the thinnest point and the deepest bow are
+      // the same point. Exactly 1 on every non-ribbon build.
+      .mul(
+        K_LINK_TAPER >= 1
+          ? float(1)
+          : mix(
+              float(1),
+              float(K_LINK_TAPER),
+              ef.s.mul(float(1).sub(ef.s)).mul(4.0),
+            ),
+      )
+      .toVar();
+    /** The RAW geometric overlap this link would deliver at the authored
+     * sprite size — `S_css / s_css`, both in delivered CSS px. */
+    const ov0 = !RIB
+      ? float(1)
+      : (() => {
+          const dAB = ef.B.sub(ef.A);
+          const spacingPx = length(
+            vec2(dAB.x.div(max(uPlaneAspect, float(1e-4))), dAB.y),
+          )
+            .mul(uBandPx)
+            .mul(float(1 / Math.max(perLink, 1e-6)));
+          return restSizeK
+            .mul(float(NEURAL_POINT_SIZE / CAMERA_Z))
+            .div(max(spacingPx, float(1e-4)))
+            .toVar();
+        })();
+    const normRatio = RIB
+      ? float(REST_OVERLAP).div(max(ov0, float(1e-4))).toVar()
+      : float(1);
+    /** > 1 where the link is SPARSER than the continuity law wants: grow the
+     * sprite along the whole link (capped at `SIZE_NORM_MAX`) rather than let
+     * it go dotted. */
+    const sizeNorm = RIB
+      ? clamp(normRatio, float(1), float(SIZE_NORM_MAX))
+      : float(1);
+    /** ≤ 1 where it is DENSER: drop the per-sprite alpha in exact
+     * compensation, so the accumulated `A = 0.624·P·S/s` is flat across the
+     * net and the bloom cannot fire on the short links only. */
+    const overlapNorm = RIB ? min(float(1), normRatio) : float(1);
+    const alphaStream = mix(liveA, debrisA, disp)
+      .mul(edge)
+      .mul(gap)
+      .mul(overlapNorm)
+      .toVar();
     // Size: the resting dust shrinks to DUST_SIZE (a 9.4px sprite sitting on
     // a 1px line is the chain-of-blobs read this round removes) and a passing
     // packet swells it back into a ~10.3px BEAD (PACKET_SIZE 2.0).
-    const sizeStream = mix(
-      float(CORE_SIZE_BOOST),
-      float(FRINGE_SIZE_DROP),
-      fringe,
-    )
-      .mul(float(DUST_SIZE))
-      .mul(float(1).add(surge.mul(0.45)).add(packet.mul(float(PACKET_SIZE))));
+    // ROUND 12 · D — on the ribbon the same expression delivers a 2.80 CSS px
+    // resting strand, a 3.78 px crest (`RIVER_SIZE`) and a 3.78 px bead
+    // (`PACKET_SIZE_RIBBON` 0.35, a GLINT, not the 8.4 px lamp 2.0 would give).
+    const sizeStream = restSizeK.mul(sizeNorm).mul(
+      float(1)
+        .add(surge.mul(0.45))
+        .add(packet.mul(float(K_PACKET_SIZE)))
+        .add(river.mul(float(RIVER_SIZE))),
+    );
+    /**
+     * ── ROUND 12 · D — THE CONTRACT `LINE_LUM_MAX` USED TO CARRY ──────────
+     *
+     * The chord was the only layer in this file held UNDER the bloom
+     * threshold, and it leaves with the chord. Its replacement is a TWO-STATE
+     * ceiling on the same C¹ soft knee: the RESTING strand caps at
+     * `DUST_LUM_MAX` (0.95, sub-threshold — nothing on it ever blooms, which
+     * is what keeps the static picture "stars on darkness") and a bead or a
+     * crest is allowed up to `BEAD_LUM_MAX`. Anything that lifts a resting
+     * particle over 1.0 is a bug.
+     *
+     * ⚠ SOFT KNEE, NEVER `min(x, CONST)`. A hard cap on a moving wavefront
+     * flat-tops whole links — measured at surge 0.436 in the round that
+     * authored this expression — and turns "the wavefront sweeps the line"
+     * into "links switch to the ceiling and back". Exact below 0.7·cap, then
+     * `knee + over·span/(over + span)`: C¹ (unit slope at the knee),
+     * monotonic, approaches the cap without reaching it.
+     */
+    const lumStream = toneStream.x
+      .mul(0.2126)
+      .add(toneStream.y.mul(0.7152))
+      .add(toneStream.z.mul(0.0722));
+    const emisStream = !RIB
+      ? emisStreamRaw
+      : (() => {
+          // THE DELIVERED AXIAL OVERLAP, in the same terms the size and the
+          // stretch are actually applied in — this is the quantity the eye
+          // and the bloom highpass integrate, and capping the per-SPRITE peak
+          // instead is what let a surge reach A = 7.8 (see `DUST_A_MAX`).
+          // The stretch is estimated from the ANALYTIC advection on both
+          // tiers: `physVel` is forbidden here (it exists on one backend
+          // only), and a brightness ceiling that differed per backend would
+          // be worse than one that is 7 % optimistic on the compute tier.
+          const sizeRel = float(1)
+            .add(surge.mul(0.45))
+            .add(packet.mul(float(K_PACKET_SIZE)))
+            .add(river.mul(float(RIVER_SIZE)));
+          const advA = float(K_STATIC_ELONG)
+            .add(surge.mul(float(SURGE_ADVECT)))
+            .add(river.mul(float(RIVER_ADVECT)));
+          const stretchA = float(1).add(
+            min(advA.mul(uStretchGain), uStretchMax),
+          );
+          const ovLit = ov0
+            .mul(sizeNorm)
+            .mul(sizeRel)
+            .mul(stretchA)
+            .toVar();
+          const lift = clamp(max(traffic, river), float(0), float(1)).toVar();
+          const cap = mix(float(DUST_A_MAX), float(BEAD_A_MAX), lift).div(
+            max(
+              lumStream
+                .mul(alphaStream)
+                .mul(ovLit)
+                .mul(float(DISC_CHORD_MEAN)),
+              float(1e-4),
+            ),
+          );
+          const knee = cap.mul(float(DUST_LUM_KNEE)).toVar();
+          const under = min(emisStreamRaw, knee).toVar();
+          const over = emisStreamRaw.sub(under).toVar();
+          const span = cap.sub(knee).toVar();
+          return under.add(
+            over.mul(span).div(max(over.add(span), float(1e-4))),
+          );
+        })();
 
     // --- STAR CORE: a FILLED white-blue point with radiating spikes. The
     //     star's radial parameter is re-derived from the baked offset —
@@ -2248,7 +3117,7 @@ export function createNeuralFieldBuild(
     //     the gaussian-blended uRingFlash/uRingGlow; the pulse and the packet
     //     kiss brighten them; degraded stars (broken, past the fracture) dim
     //     toward ember — pulled back by the uRecohere hover tease. ---
-    const nT = nodeTAt(metaN.y);
+    const nT = nodeTAt(starNodeIdx(metaN.y));
     // ROUND 9-B: the ignition machinery is GATED by the copy-column ramp. A
     // fully ignited star core reaches ≈165 post-blend (glow 1.9 × flash 3.4 ×
     // surge 1.6 × kiss 1.5 on the 10.67 resting value), and the ignition
@@ -2273,7 +3142,7 @@ export function createNeuralFieldBuild(
     // Round-7: the packet-arrival kiss — the same clock that swells the star
     // in anchorNode brightens + slightly whitens it here (subtler than an
     // ignition flash: PACKET_NODE_GAIN 0.5 vs 2.4).
-    const kiss = nodeKissAt(metaN.y, nT).toVar();
+    const kiss = nodeKissAt(starNodeIdx(metaN.y), nT).toVar();
     const emisRing = float(RING_EMISSIVE)
       .mul(uStarPunch)
       .mul(mix(float(STAR_CORE_EMIS), float(STAR_TIP_EMIS), dStar))
@@ -2284,6 +3153,11 @@ export function createNeuralFieldBuild(
       // (10.67), which is exactly what COPY_MASK_FLOOR is sized on.
       .mul(float(1).add(surgeAt(nT).mul(0.6).mul(cGate)))
       .mul(float(1).add(kiss.mul(float(PACKET_NODE_GAIN)).mul(cGate)))
+      // ROUND 12 · D — a star inside a crest lifts too, or the signal would
+      // visibly travel the links and step OVER the neurons. `.mul(cGate)` is
+      // mandatory: a fully ignited core is already ×15.5 its rest and the
+      // copy column's floor is sized on the RESTING value.
+      .mul(float(1).add(river.mul(float(RIVER_STAR)).mul(cGate)))
       .mul(float(1).sub(nodePast.mul(0.5)));
     // The CORE reads whitest and the spikes cool toward the link tone; stars
     // on the left of the cloud pick up a half-strength version of the links'
@@ -2352,6 +3226,44 @@ export function createNeuralFieldBuild(
     // preserved instead of being flattened back into the round-8-I haze, and
     // the spatial ramp reads as a smooth falloff rather than the near-step a
     // ramped cap would give.
+    /**
+     * ── ROUND 12 · D — THE MASK, ASSEMBLED LAST BECAUSE IT NOW READS THE
+     *    REST-NESS OF THE PARTICLE IT IS MASKING ──────────────────────────
+     *
+     * Three factors join `copyMaskAt` here, and all three had to land on
+     * `cMask` rather than on the alpha, because `cMask` feeds BOTH the output
+     * alpha AND the discard threshold. The file's own invariant: an identical
+     * factor on both makes the surviving fragment SET byte-identical at every
+     * point of the ramp (`disc·vAlpha·f < 0.004·cMask·f` ⟺ the un-factored
+     * test for every `f > 0`). Scale the alpha alone and particles DELETE
+     * instead of fading; scale it without the cut and you get a fill
+     * regression plus a hard edge at the role boundary.
+     *
+     *  1. `born` — the birth front (structure). Free, by the identity above.
+     *  2. `winFade` — the κ-window's geometric envelope, keyed to the
+     *     particle's own screen y so a re-home is always off frame.
+     *  3. the LINK role's own copy-column floor, and it must ride REST-NESS,
+     *     not role: a bead at post-blend 1.80 on a 0.017 floor would deliver
+     *     0.031 — 1.6× the ENTIRE AA budget. `(1−traffic)·(1−river)` hands
+     *     the high floor to the resting dust only; every lift term is
+     *     `.mul(cGate)` and vanishes inside the column anyway.
+     *
+     * ⚠ It also has to go through `copyMaskAt`, not around it: `cMask`
+     * carries `uFieldFade` (the EXIT beat) and `copyYAt`, and a role mask
+     * assembled without them would make `FIELD_EXIT_VH` miss the link role.
+     */
+    const restness = float(1)
+      .sub(traffic)
+      .mul(float(1).sub(river))
+      .mul(streamSel);
+    const cMask = copyMaskAt(
+      posN,
+      cGate,
+      RIB ? mix(uCopyFloor, uCopyStreamFloor, restness) : undefined,
+    )
+      .mul(born)
+      .mul(winFade)
+      .toVar();
     const alpha = select(
       isStream,
       alphaStream,
@@ -2405,7 +3317,15 @@ export function createNeuralFieldBuild(
         .mul(float(1).sub(v.vSoft.mul(0.2)))
         .toVar();
       const alpha = disc.mul(v.vAlpha).mul(uReveal).toVar();
-      Discard(alpha.lessThan(v.vCut));
+      // ⚠ ROUND 12 · STAGE 2 FIX — `lessThanEqual`, NOT `lessThan`.
+      // Under the D17 ribbon the copy mask can drive `vCut` to a TRUE ZERO
+      // (`uFieldFade` reaches 0 at p = 1, and the exit fade is the only thing
+      // that ends the act). With a strict `<`, `alpha = 0` fails `0 < 0` and
+      // the fragment RASTERISES at zero contribution forever instead of
+      // discarding — a fully faded field that still pays full fill rate, on a
+      // band that no longer has a lateral cull to save it (the vertical cull
+      // is section-keyed now). `<=` costs nothing and closes it.
+      Discard(alpha.lessThanEqual(v.vCut));
       return vec4(v.vColor.toVec3(), alpha);
     })();
   }
@@ -2808,7 +3728,30 @@ export function createNeuralFieldBuild(
     const tBL = nodeTAt(ibL).toVar();
     const AL = nodeAt(iaL).add(nodeDrift(iaL, tAL)).toVar();
     const BL = nodeAt(ibL).add(nodeDrift(ibL, tBL)).toVar();
-    const posL = mix(AL, BL, sL).toVar();
+    // ROUND 12 — the SAME arc the particles ride. `bakeLinkLineGeometry`
+    // already lays LINK_SEGMENTS (6) vertices per edge, so the polyline can
+    // follow a curve at zero extra cost; it was simply being told to draw a
+    // straight chord through all six. Identical hashes and identical
+    // expression to `edgeFrame`, so the thread and the dust cannot drift
+    // apart. Straight — and byte-identical — on every non-ribbon build.
+    const posL = (() => {
+      const straight = mix(AL, BL, sL);
+      if (K_LINK_BEND <= 0) return straight.toVar();
+      const dL = BL.sub(AL).toVar();
+      const dirL = dL.div(max(length(dL), float(1e-5))).toVar();
+      const hAmpL = fract(sin(eIdx.mul(83.17).add(29.3)).mul(43758.545)).toVar();
+      const hRollL = fract(sin(eIdx.mul(151.7).add(7.9)).mul(43758.545)).toVar();
+      const pRawL = cross(dirL, vec3(0, 0, 1)).toVar();
+      const p0L = pRawL.div(max(length(pRawL), float(1e-5))).toVar();
+      const p1L = cross(dirL, p0L).toVar();
+      const rollL = hRollL.sub(0.5).mul(float(2 * K_BEND_ROLL)).toVar();
+      const perpL = p0L.mul(cos(rollL)).add(p1L.mul(sin(rollL))).toVar();
+      const ampL = min(length(dL).mul(float(K_LINK_BEND)), float(K_BEND_MAX))
+        .mul(hAmpL.mul(2.0).sub(1.0))
+        .toVar();
+      const bowL = sL.mul(float(1).sub(sL)).mul(4.0).toVar();
+      return straight.add(perpL.mul(ampL).mul(bowL)).toVar();
+    })();
     const tL = mix(tAL, tBL, sL).toVar();
 
     mat.vertexNode = Fn(() => {
@@ -3016,7 +3959,15 @@ export function createNeuralFieldBuild(
         dsp,
       );
       const alpha = a0.mul(fade).mul(gapF).mul(dash).toVar();
-      Discard(alpha.lessThan(vLineCut));
+      // ⚠ ROUND 12 · STAGE 2 FIX — `lessThanEqual`, NOT `lessThan`.
+      // Under the D17 ribbon the copy mask can drive `vCut` to a TRUE ZERO
+      // (`uFieldFade` reaches 0 at p = 1, and the exit fade is the only thing
+      // that ends the act). With a strict `<`, `alpha = 0` fails `0 < 0` and
+      // the fragment RASTERISES at zero contribution forever instead of
+      // discarding — a fully faded field that still pays full fill rate, on a
+      // band that no longer has a lateral cull to save it (the vertical cull
+      // is section-keyed now). `<=` costs nothing and closes it.
+      Discard(alpha.lessThanEqual(vLineCut));
       return vec4(vLineCol.toVec3(), alpha);
     })();
 
@@ -3051,7 +4002,12 @@ export function createNeuralFieldBuild(
   // ROUND-8-G: the link lines are the mesh itself — built on every mode and
   // every backend (no storage buffers, no compute), so the analytic tier gets
   // the identical plexus.
-  const links = buildLinkLineLayer();
+  // ROUND 12 · D — THE CHORD IS OFF. `LINE_LAYER = false` skips the BUILD
+  // (no geometry, no material, no draw call, no 6 UBO blocks) — the shipped
+  // `MEMBRANE_ALPHA` idiom, mount gate included. Setting `LINE_ALPHA = 0`
+  // would NOT have been a rollback: the fill goes to zero but the ~20 500
+  // unculled vertices and the VBO all remain.
+  const links = LINE_LAYER ? buildLinkLineLayer() : null;
 
   /** Gate-4 fingerprint — shared by both backend branches (same tables). */
   const stats = {
@@ -3067,6 +4023,74 @@ export function createNeuralFieldBuild(
     largestComponent: plexus.largestComponent,
     meanEdgeLocal: plexus.meanEdgeLocal,
     checksum: plexus.checksum,
+  };
+
+  /**
+   * ROUND 12 · STAGE 2 — everything the DRIVER has to know about the field it
+   * just got, so it never has to re-derive a build-time decision from a config
+   * constant that could drift out from under it.
+   *
+   * `fractureT` is the one that matters. `FRACTURE_T = 0.62` is an authored
+   * position in `nodeT`, and on the ribbon `nodeT ≡ u` — so the fracture is no
+   * longer a number, it is "wherever the stone is". Inverting the generator's
+   * own normalisation (`nodeT = (x − xMin)/xSpan`) on the stone's ribbon x is
+   * the only way to name it that cannot disagree with the delivered cloud.
+   * On the ellipsoid arm it is `FRACTURE_T` untouched.
+   */
+  // ROUND 12 · D — THE κ KEYS, PUBLISHED FOR THE DRIVER. Both tables were
+  // sorted by κ in `buildPlexus`, so these come out ASCENDING and a plain
+  // binary search finds the frame's centre entry in ~10 steps, no allocation
+  // in the frame path. The key is expressed in nodeT units — the same units
+  // `uFront` / `uRiver` / `phaseAt` are in — so the window and the light
+  // literally read one axis.
+  const kappaKey = (n: [number, number, number]) =>
+    (n[0] + RIBBON_KAPPA_K * plexus.bandAspect * n[1] - plexus.xMin) /
+    Math.max(plexus.xSpan, 1e-6);
+  const nodeKey = RIB ? Float32Array.from(nodeTbl.map(kappaKey)) : null;
+  const edgeKey = RIB
+    ? Float32Array.from(
+        edgeTbl.map(
+          ([a, b]: [number, number]) =>
+            (kappaKey(nodeTbl[a]) + kappaKey(nodeTbl[b])) * 0.5,
+        ),
+      )
+    : null;
+  const field = {
+    ribbon,
+    laneOpenW,
+    wrapSnapDist: plexus.wrapSnapDist,
+    wrapSnapOk: plexus.wrapSnapOk,
+    excursionFloor: plexus.excursionFloor,
+    fractureT: ribbon
+      ? (((plexusParams?.wellCentre?.[0] ?? 0) - plexus.xMin) / plexus.xSpan)
+      : FRACTURE_T,
+    /** ROUND 12 · D — the κ-window. `winEdges`/`winNodes` are the fixed
+     * window SIZES the node graph baked; `edgeKey`/`nodeKey` are the ascending
+     * κ tables the driver binary-searches to centre it on the frame. */
+    winEdges: WIN_E,
+    winNodes: WIN_N,
+    edgeKey,
+    nodeKey,
+    /** The delivered endpoint pair, flat — QA only (the shaders read
+     * `uEdgePack`). 1.6 KiB on the largest arm, and it is what lets the S/s
+     * continuity gate be MEASURED on screen instead of asserted. */
+    edgeAB: RIB
+      ? Uint16Array.from(edgeTbl.flat() as number[])
+      : null,
+    /** The phase axis, resolved: `phase = y·frontKy + frontC`. Build-time by
+     * construction (`bandAspect`, `xMin` and `xSpan` are all properties of the
+     * delivered cloud), so the driver copies two numbers instead of
+     * re-deriving a shear it could get subtly wrong. */
+    frontKy: RIB
+      ? (RIBBON_KAPPA_K * plexus.bandAspect) / Math.max(plexus.xSpan, 1e-6)
+      : 0,
+    frontC: RIB ? -plexus.xMin / Math.max(plexus.xSpan, 1e-6) : 0,
+    /** Sprites per link at any instant (a build constant on the ribbon) and
+     * the star/link split actually delivered — the numbers the S/s gate is
+     * computed from. */
+    perLink,
+    starCount,
+    edgeTotal,
   };
 
   // === Static (no-compute) build ===========================================
@@ -3124,6 +4148,7 @@ export function createNeuralFieldBuild(
       nebula,
       links,
       stats,
+      field,
       compute: () => {},
       dispose() {
         geometry.dispose();
@@ -3132,8 +4157,8 @@ export function createNeuralFieldBuild(
         membrane?.material.dispose();
         nebula?.geometry.dispose();
         nebula?.material.dispose();
-        links.geometry.dispose();
-        links.material.dispose();
+        links?.geometry.dispose();
+        links?.material.dispose();
       },
     } satisfies NeuralFieldBuild;
   }
@@ -3214,11 +4239,27 @@ export function createNeuralFieldBuild(
       .mul(select(uRecohere.lessThan(float(0.02)), one, float(0)))
       .mul(select(dispersing.lessThan(float(0.02)), one, float(0)))
       .toVar();
-    const linkSnap = mix(float(1e9), float(WRAP_SNAP_DIST), armed);
+    // ROUND 12 · STAGE 2 — the threshold is DERIVED PER BUILD from the
+    // shortest delivered link (`min(WRAP_SNAP_DIST, minEdge × 0.69)`), not
+    // read off the module constant. On the default build that is
+    // `min(0.038, 0.0551 × 0.69)` = 0.038 exactly — the shipped number, to
+    // the bit — and on the ribbon it follows the field down to 0.01060
+    // instead of sitting 3.6× above the shortest link, where it would never
+    // fire. `WRAP_SNAP_DIST` stays imported as the CEILING it now is.
+    const linkSnap = mix(float(1e9), float(plexus.wrapSnapDist), armed);
+    // ROUND 12 · D — STAR CORES JUMP NOW. Their bound was 1e9 because a star
+    // anchor was continuous; under the κ-window a star's NODE changes when
+    // the window rolls (~1.0 local, ~94× the ribbon's derived link snap), and
+    // without a bound the spring would fly it across the frame. Same
+    // steady-state `armed` gate, and RIBBON BUILDS ONLY — every other build
+    // bakes the identical `float(1e9)` literal it baked before.
+    const starSnap = RIB
+      ? mix(float(1e9), float(STAR_WINDOW_SNAP), armed)
+      : float(1e9);
     const snapDist = select(
       role.lessThan(float(0.5)),
       linkSnap,
-      select(role.lessThan(float(1.5)), float(1e9), float(SPARK_SNAP_DIST)),
+      select(role.lessThan(float(1.5)), starSnap, float(SPARK_SNAP_DIST)),
     );
     If(length(anchor.sub(pos)).greaterThan(snapDist), () => {
       pos.assign(anchor);
@@ -3258,7 +4299,17 @@ export function createNeuralFieldBuild(
       // when idle/coarse → exactly zero at rest).
       attractor: {
         position: uPointer as Any,
-        push: float(POINTER_PUSH) as Any,
+        // ROUND 12 · STAGE 2 — ×`uFieldK` (= 1/L). MEASURED, and the reason
+        // is the recycle snap, not the feel: the snap threshold is derived
+        // from the SHORTEST DELIVERED LINK, which on the ribbon falls to
+        // 0.01536 raw (0.01060 after `wrapSnapFrac`) against a steady-state
+        // pointer+curl excursion of `POINTER_PUSH/NEURAL_SPRING + CURL_GAIN ×
+        // CURL_SCALE` = 0.01078. Unscaled the invariant is not merely
+        // violated, it is UNSATISFIABLE — the snap never arms, and the bright
+        // spring-flight streak the snap exists to kill comes back on the
+        // WebGPU tier. At 1/3.791 the floor is 0.00284, a 3.7× margin.
+        // `uFieldK` is 1 on the band ⇒ `POINTER_PUSH × 1.0` ⇒ bit-exact.
+        push: float(POINTER_PUSH).mul(uFieldK) as Any,
         radius: float(POINTER_RADIUS) as Any,
         orbit: float(0) as Any,
         orbitFalloff: float(1) as Any,
@@ -3331,6 +4382,7 @@ export function createNeuralFieldBuild(
     nebula,
     links,
     stats,
+    field,
     compute(delta: number) {
       uDelta.value = delta;
       gl.compute(simulate);
@@ -3342,8 +4394,8 @@ export function createNeuralFieldBuild(
       membrane?.material.dispose();
       nebula?.geometry.dispose();
       nebula?.material.dispose();
-      links.geometry.dispose();
-      links.material.dispose();
+      links?.geometry.dispose();
+      links?.material.dispose();
     },
   } satisfies NeuralFieldBuild;
 
@@ -3402,7 +4454,24 @@ export function createNeuralFieldBuild(
       uCopySoft,
       uCopyFloor,
       uCopyLineFloor,
+      uCopyStreamFloor,
+      uWinFirstEdge,
+      uWinFirstNode,
+      uWinYc,
+      uWinHalf,
+      uWinOn,
+      uBandPx,
+      uFront,
+      uRiver,
+      uFrontW,
+      uFrontKy,
+      uFrontC,
       uCopyYFloor,
+      uCopyYc,
+      uCopyRowC,
+      uCopyRowH,
+      uCopyRowSoft,
+      uCopyRowLocal,
       uStrandPhase: uStrandPhase as unknown as { array: number[] },
       uStrandThick: uStrandThick as unknown as { array: number[] },
       uRowGlow: uRowGlow as unknown as { array: number[] },
@@ -3423,6 +4492,11 @@ export function createNeuralFieldBuild(
       uMembraneAlpha,
       uMembraneBulge,
       uPlaneAspect,
+      uFieldLen,
+      uFieldOrigin,
+      uFieldSlope,
+      uFieldK,
+      uFieldFade,
       uNebulaDrift,
       uNebulaAlpha,
     };
