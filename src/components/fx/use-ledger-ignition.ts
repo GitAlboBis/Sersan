@@ -8,13 +8,27 @@
  * `setHovered(surface, i)` fires the existing WebGL store link (ring flare /
  * debris re-cohere tease).
  *
- * THREE TRIGGERS, one per input class:
- *   1. HOVER, fine pointer only — pointerenter/leave handlers (gated by the
+ * FOUR TRIGGERS, one per input class:
+ *   1. SCROLL (ROUND 12 · D21) — `scrollLit: true` puts the act under the
+ *      reading band: `setLit(i)` is called on EDGES by
+ *      fx/scroll-ignition's `useReadingBandLit`, which reads the row crossing
+ *      the band straight off the diagonal traverse's frozen scroll snapshot
+ *      (`#problem`) or off its own equivalent resolver (`#trust`). The visual
+ *      twin is `[data-lit="true"]` — a NEW attribute, deliberately not
+ *      `data-focus`: that one already has an owner (lib/use-centre-focus) and
+ *      two writers on one attribute fight on touch.
+ *      ⚠ WHILE THIS MODE IS ON, HOVER IS INERT. That is the owner's decision
+ *      D21, not an oversight: hovering row 2 while reading row 1 does nothing.
+ *   2. HOVER, fine pointer only — pointerenter/leave handlers (gated by the
  *      `(hover: hover) and (pointer: fine)` media query, subscribed) drive the
  *      store; the visual twin is the sections' `:hover` CSS under the same MQ.
- *   2. FOCUS, any input — rows carry tabIndex=0; onFocus/onBlur mirror hover
- *      (parity rule). Visual twin: `:focus-visible` CSS.
- *   3. CENTRE-BAND, touch only — lib/use-centre-focus writes
+ *      KEPT AS THE FALLBACK wherever the scroll source cannot exist (narrow
+ *      fine-pointer window, stepped-down phone, flag-off build) — the caller
+ *      detects that and passes `scrollLit: false`.
+ *   3. FOCUS, any input — rows carry tabIndex=0; onFocus/onBlur mirror hover
+ *      (parity rule). Visual twin: `:focus-visible` CSS. It OUTRANKS the
+ *      scroll source, and it keeps the ignition wave: WCAG, not a nicety.
+ *   4. CENTRE-BAND, touch only — lib/use-centre-focus writes
  *      `data-focus="true"` on whatever the reader scrolled to the middle of
  *      the viewport (inert on fine pointer, static-all under RM). The CSS
  *      keys off the attribute directly; the STORE link rides a
@@ -22,9 +36,15 @@
  *      Under reduced motion the observer is never armed: the island is
  *      unmounted there anyway and RM must stay timer/JS-motion-free.
  *
- * Store discipline: one resolved index (hover ?? focus ?? centre) per write,
- * setHovered is idempotent (store skips identical writes), cleared on
- * unmount so a stale ring never stays flared.
+ * Store discipline: one resolved index per write — `focus ?? lit ?? centre`
+ * under scroll ignition, `hover ?? focus ?? centre` otherwise — setHovered is
+ * idempotent (store skips identical writes), cleared on unmount so a stale
+ * ring never stays flared.
+ *
+ * `[data-lit]` mirrors the SCROLL index alone, never the focus one. A mouse
+ * click focuses a row (`onFocus` fires for pointer focus too), and painting
+ * that would make the pointer do something again through the back door;
+ * `:focus-visible` already carries keyboard focus in CSS.
  *
  * `onResolvedChange` (round 5, optional): fires with the resolved index on
  * every EDGE (a different row ignites, or none) — the hook for GSAP-side
@@ -50,11 +70,26 @@ export interface LedgerRowHandlers {
   onBlur: () => void;
 }
 
+export interface LedgerIgnitionOptions {
+  /**
+   * ROUND 12 · D21 — the act is commanded by the scroll. Hover goes inert and
+   * `[data-lit]` tracks the row crossing the reading band. The CALLER detects
+   * this (it is the exact complement of the lattice island's mount gate, plus
+   * reduced motion, plus the live A/B switch); this hook never assumes it.
+   */
+  scrollLit?: boolean;
+}
+
+/** The attribute the two acts' CSS keys the scroll-driven ignition off. */
+const LIT_ATTR = "data-lit";
+
 export function useLedgerIgnition(
   surface: Surface,
   count: number,
   onResolvedChange?: (index: number | null) => void,
+  options?: LedgerIgnitionOptions,
 ) {
+  const scrollLit = options?.scrollLit ?? false;
   const setHovered = useNeuralLatticeStore((s) => s.setHovered);
   const centreRef = useCentreFocus();
 
@@ -63,8 +98,11 @@ export function useLedgerIgnition(
     hover: number | null;
     focus: number | null;
     centre: number | null;
-  }>({ hover: null, focus: null, centre: null });
+    lit: number | null;
+  }>({ hover: null, focus: null, centre: null, lit: null });
   const canHoverRef = useRef(false);
+  /** The index `[data-lit]` is currently written on (null = none). */
+  const appliedLitRef = useRef<number | null>(null);
 
   // Ref-stored callback + last-resolved edge detector: sync stays stable
   // regardless of the caller's callback identity.
@@ -76,13 +114,49 @@ export function useLedgerIgnition(
 
   const sync = useCallback(() => {
     const s = stateRef.current;
-    const resolved = s.hover ?? s.focus ?? s.centre;
+    // Focus outranks the scroll source (WCAG 2.4.7: the thing you tabbed to
+    // must be the thing that lights). Hover is not consulted at all under
+    // scroll ignition — that is D21, and it is the visible half of it.
+    const resolved = scrollLit
+      ? (s.focus ?? s.lit ?? s.centre)
+      : (s.hover ?? s.focus ?? s.centre);
     setHovered(surface, resolved);
+    // `[data-lit]` mirrors the SCROLL index only — see the header note.
+    const lit = scrollLit ? s.lit : null;
+    if (appliedLitRef.current !== lit) {
+      const prev = appliedLitRef.current;
+      if (prev !== null) rowsRef.current[prev]?.removeAttribute(LIT_ATTR);
+      if (lit !== null) rowsRef.current[lit]?.setAttribute(LIT_ATTR, "true");
+      appliedLitRef.current = lit;
+    }
     if (lastResolvedRef.current !== resolved) {
       lastResolvedRef.current = resolved;
       onChangeRef.current?.(resolved);
     }
-  }, [setHovered, surface]);
+  }, [setHovered, surface, scrollLit]);
+
+  /**
+   * The SCROLL edge. Called by fx/scroll-ignition's `useReadingBandLit` only
+   * on a genuine change of winner (the channel is edge-deduped upstream), so
+   * this is a handful of calls per act, never a per-frame write.
+   */
+  const setLit = useCallback(
+    (index: number | null) => {
+      if (stateRef.current.lit === index) return;
+      stateRef.current.lit = index;
+      sync();
+    },
+    [sync],
+  );
+
+  // MODE FLIP (the live A/B switch, a tier step-down, an RM toggle): drop any
+  // stale hover the pointer left behind and re-resolve immediately, so the
+  // attribute and the wave land on the new grammar's answer rather than the
+  // old one's. Runs on mount too, where it is a no-op.
+  useEffect(() => {
+    stateRef.current.hover = null;
+    sync();
+  }, [sync]);
 
   // Hover capability — subscribed, never one-shot (a mouse plugged into a
   // tablet must re-resolve without a reload; D-18 discipline).
@@ -126,10 +200,17 @@ export function useLedgerIgnition(
   }, [sync, count]);
 
   // Clear the store (and the GSAP-side listener) on unmount so a stale ring
-  // never stays flared and a stale wave never stays shifted.
+  // never stays flared and a stale wave never stays shifted. `[data-lit]` is
+  // cleared here too: React reuses these row nodes across an EN/IT rebuild, so
+  // an attribute nobody un-sets would leave the last row lit forever.
   useEffect(() => {
     return () => {
       setHovered(surface, null);
+      const lit = appliedLitRef.current;
+      if (lit !== null) {
+        rowsRef.current[lit]?.removeAttribute(LIT_ATTR);
+        appliedLitRef.current = null;
+      }
       if (lastResolvedRef.current !== null) {
         lastResolvedRef.current = null;
         onChangeRef.current?.(null);
@@ -154,17 +235,21 @@ export function useLedgerIgnition(
   );
 
   /** Stable per-index pointer/focus handlers (store link only — the visual
-   * ignition is pure CSS on :hover / :focus-visible / [data-focus]). */
+   * ignition is pure CSS on [data-lit] / :hover / :focus-visible /
+   * [data-focus]). Re-memoized when the mode flips, which is what makes the
+   * pointer go inert; the ROW REFS are memoized separately and never change
+   * with it, so centre-focus observation is not detached. */
   const rowHandlers = useMemo<LedgerRowHandlers[]>(
     () =>
       Array.from({ length: count }, (_, i) => ({
         onPointerEnter: () => {
-          if (!canHoverRef.current) return;
+          // D21: under scroll ignition the pointer commands nothing.
+          if (scrollLit || !canHoverRef.current) return;
           stateRef.current.hover = i;
           sync();
         },
         onPointerLeave: () => {
-          if (!canHoverRef.current) return;
+          if (scrollLit || !canHoverRef.current) return;
           if (stateRef.current.hover === i) {
             stateRef.current.hover = null;
             sync();
@@ -181,8 +266,8 @@ export function useLedgerIgnition(
           }
         },
       })),
-    [count, sync],
+    [count, sync, scrollLit],
   );
 
-  return { rowRefs, rowHandlers };
+  return { rowRefs, rowHandlers, setLit };
 }

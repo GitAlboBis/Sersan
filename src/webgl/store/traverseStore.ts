@@ -72,11 +72,52 @@ export interface TraverseFrame {
   laneCenterPx: number;
   laneHalfPx: number;
   /**
+   * ROUND 12 · STAGE 2 FIX — the lane's VERTICAL twin, in viewport CSS px:
+   * the screen-y centre and half-height of the tracked block's READING UNIT
+   * (`opTop`/`opH` — the paired box, never the half-statement, or the mask
+   * would carve around a headline and leave its own paragraph unprotected).
+   *
+   * WHY IT HAS TO BE PUBLISHED. The shipped mask is a 1-D wall in x: it
+   * floors the net to `COPY_MASK_FLOOR` at EVERY y within `laneHalfPx` of
+   * `laneCenterPx`. On a cloud narrower than the frame that is survivable;
+   * on the D17 ribbon, which is wider than the frame and cannot translate
+   * out from under it, it is 73 % of every frame at 1/10000 brightness — the
+   * measured black frame. The reading unit is 154 px tall. These two numbers
+   * are what let the wall stop 47 px past the last descender instead of
+   * 781 px past it, and they come off the SAME frozen `scrollY` and the SAME
+   * `best` block as `laneCenterPx`, so they cannot disagree with it by a
+   * frame.
+   */
+  laneCyPx: number;
+  laneHalfYPx: number;
+  /**
    * The tracked block's window value V̂ ∈ [0,1]. ONE window drives the copy's
    * rate, the copy's opacity and the lane's depth — so when no copy is on
    * frame this is 0 and the gate opens completely (storyboard §E4).
    */
   laneWindow: number;
+  /**
+   * ROUND 12 · D21 — THE LIT ROW, i.e. WHO won `laneWindow`, not just by how
+   * much. `-1` = nobody (the chapter block is winning, or the act is off
+   * frame, or the winner is below the ignition threshold).
+   *
+   * ⚠ THIS NUMBER ALREADY EXISTED AND WAS BEING THROWN AWAY. `apply()` has
+   * always resolved a single winning block per frame from its ONE frozen
+   * `window.scrollY` (the `bestV`/`bestU` comparison), and has always kept
+   * only the winner's VALUE. Publishing its identity costs no second clock, no
+   * second measurement, no rect and no allocation — the row index is cached on
+   * the block at construction.
+   *
+   * It exists so the TYPE can be scroll-driven: the ledger row currently
+   * crossing the reading band lights itself (amber lift, glyph glow, the Hv1
+   * letter/arrow wave) instead of waiting for a pointer. The owner's rule is
+   * one grammar — scroll commands, the pointer is inert on these two acts.
+   *
+   * DOM-side consumers must NOT poll this field: it is mirrored, edge-deduped,
+   * onto `onLitRow` below, so a subscriber is woken only when the winner
+   * actually changes (a few times per act, never per frame).
+   */
+  laneRow: number;
   /** Monotone tick, incremented by every `apply()`. The R1 clock instrument. */
   tick: number;
 }
@@ -95,7 +136,10 @@ function makeFrame(): TraverseFrame {
     xScenePx: 0,
     laneCenterPx: 0,
     laneHalfPx: 0,
+    laneCyPx: 0,
+    laneHalfYPx: 0,
     laneWindow: 0,
+    laneRow: -1,
     tick: 0,
   };
 }
@@ -137,4 +181,85 @@ export function deactivateTraverseBand(id: string): void {
   frame.xScenePx = 0;
   frame.laneWindow = 0;
   frame.laneHalfPx = 0;
+  frame.laneHalfYPx = 0;
+  frame.laneRow = -1;
+  // ⚠ THE TEARDOWN FRONT, AND IT IS NOT OPTIONAL. Without it an EN/IT toggle,
+  // a runtime reduced-motion flip or a tier step-down would leave the last row
+  // lit AND displaced by the wave's 1.5em, forever: the DOM nodes survive
+  // those rebuilds, so nothing else ever un-sets `[data-lit]` or tweens the
+  // letters back.
+  publishLitRow(id, null);
+}
+
+// === THE LIT-ROW CHANNEL (ROUND 12 · D21) =================================
+//
+// A publish/subscribe edge, deliberately NOT a zustand slice: the writer runs
+// inside `apply()` on every ScrollTrigger update, so a `setState` there would
+// be a React commit per frame. `publishLitRow` returns on the FIRST LINE when
+// the value has not changed, which is the overwhelmingly common case, so the
+// frame path costs one map lookup and one integer compare and allocates
+// nothing. The Set is walked only on a genuine edge (a few times per act).
+//
+// Pinned on `globalThis` for the same Turbopack reason the store itself is:
+// this module is imported by the ROUTE bundle (the DOM hooks) and could
+// otherwise be inlined separately into a second chunk, splitting writers from
+// readers.
+//
+// TWO PUBLISHERS, ONE CHANNEL. `#problem` publishes from the diagonal
+// traverse's frozen snapshot (`use-diagonal-traverse.ts`). `#trust` has no
+// traverse band, so it publishes from its own reading-band resolver
+// (`scroll-ignition.ts`) under its own id. Consumers cannot tell them apart,
+// which is the point: one grammar, two acts.
+
+export type LitRowListener = (index: number | null) => void;
+
+interface LitRowChannel {
+  state: Map<string, number | null>;
+  listeners: Map<string, Set<LitRowListener>>;
+}
+
+declare global {
+  // eslint-disable-next-line no-var
+  var __sersanLitRowChannel: LitRowChannel | undefined;
+}
+
+const litRows: LitRowChannel = (globalThis.__sersanLitRowChannel ??= {
+  state: new Map(),
+  listeners: new Map(),
+});
+
+/** The row currently crossing `id`'s reading band, or `null`. */
+export function getLitRow(id: string): number | null {
+  return litRows.state.get(id) ?? null;
+}
+
+/**
+ * Publishes the lit row for `id`. Safe to call every frame: it is a no-op
+ * unless the value actually changed.
+ */
+export function publishLitRow(id: string, index: number | null): void {
+  if ((litRows.state.get(id) ?? null) === index) return;
+  litRows.state.set(id, index);
+  const set = litRows.listeners.get(id);
+  if (!set) return;
+  for (const fn of set) fn(index);
+}
+
+/**
+ * Subscribes to `id`'s lit row. Fires IMMEDIATELY with the current value, so a
+ * consumer mounting mid-act is never a frame behind the scroll position it is
+ * already at.
+ */
+export function onLitRow(id: string, fn: LitRowListener): () => void {
+  let set = litRows.listeners.get(id);
+  if (!set) {
+    set = new Set();
+    litRows.listeners.set(id, set);
+  }
+  set.add(fn);
+  fn(getLitRow(id));
+  return () => {
+    set.delete(fn);
+    if (set.size === 0) litRows.listeners.delete(id);
+  };
 }

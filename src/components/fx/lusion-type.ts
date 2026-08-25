@@ -28,8 +28,10 @@
  *   pose. The desc column follows in B3 spirit: whole-block autoAlpha 0→1 +
  *   y 30px→0, expo.out, cascaded at +0.5s.
  *
- * `useLedgerReveal(scope, language, onIgnite?)` — one replayable entrance
- *   timeline PER `[data-ledger-row]`:
+ * `useLedgerReveal(scope, language, onIgnite?, rollArmed?)` — one replayable
+ *   entrance timeline PER `[data-ledger-row]`. `rollArmed` moves the PLAY edge
+ *   from `top bottom` to the row's own reading-band threshold (ROUND 12 · D21,
+ *   see `createReplayTrigger`); the reset edge never moves:
  *     t=0.00  `[data-roll-word]` columns — recipe R1 EXACTLY: per-char column
  *             through the 1em clip, yPercent −500→0, expo.inOut, 1.25s,
  *             center-out cosine stagger (rollDelay: center leads, edges trail
@@ -115,13 +117,14 @@
  *   - Constant-shape deps including `language`: an EN/IT toggle re-renders
  *     row text → full rebuild re-splits, re-primes, re-measures drift.
  */
-import { useCallback, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useRef, type RefObject } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { SplitText } from "gsap/SplitText";
 import { useGSAP } from "@gsap/react";
 import { rollDelay } from "@/components/fx/roll-letters";
 import { lusionEase } from "@/components/fx/lusion-ease";
+import { readingBandArmPx } from "@/components/fx/scroll-ignition";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger, SplitText);
@@ -212,24 +215,78 @@ function refreshOnFontsReady() {
  * transit, so onLeave/onLeaveBack are exactly the fully-out edges. A trigger
  * created already inside the range never fires onEnter (GSAP only fires on an
  * active-state CHANGE), so the creation-time isActive check plays it.
+ *
+ * ── ROUND 12 · D21 — THE ARM POINT MOVES INTO THE READING BAND ────────────
+ * `armOffsetPx` (px above the viewport bottom) delays the PLAY edge to the
+ * moment the row's own reading-band window value crosses `ROLL_ARM_C` — the
+ * same window that writes the row's opacity. It closes the transparent-roll
+ * defect: on the traversed act the row is held at opacity 0 for the first
+ * ~150 px of its transit, so a slow scroll (< ~110 px/s) played the entire
+ * 1.25 s R1 INVISIBLY and the reader met the row already settled.
+ *
+ * Because `y = docTop − scrollY` is affine in scroll, that threshold crossing
+ * is a FIXED offset (`readingBandArmPx`), so it needs no per-frame source —
+ * just a start offset, recomputed on refresh. When no offset is passed the
+ * trigger is byte-for-byte the one that shipped.
+ *
+ * ⚠ TWO TRIGGERS, NOT ONE MOVED TRIGGER. Moving `start` down would move the
+ * `onLeaveBack` edge with it, and the row would visibly snap back to its
+ * hidden pose while still occupying the bottom ~180 px of the frame. So the
+ * RESET keeps the fully-out edges and only the PLAY moves in. The `needsPlay`
+ * latch is then load-bearing rather than decorative: with two different ranges
+ * `onEnter` can fire again without a `reset` in between (scroll down a little,
+ * back up past the inner start, down again), and without the latch the
+ * entrance would replay mid-viewport.
+ *
+ * ⚠ `armOffsetPx` IS A GETTER, NOT A FLAG, AND THAT IS DELIBERATE. It is read
+ * inside the `start` function — at build time and again on every
+ * `ScrollTrigger.refresh()` (`invalidateOnRefresh`) — so the arm point can
+ * start at `top bottom` and move into the reading band once the client has
+ * resolved its tier, WITHOUT the caller adding a dependency. That matters:
+ * `useGSAP` DEFERS its cleanup whenever a dependency array is present and
+ * `revertOnUpdate` is not set (@gsap/react 2.1.2, `deferCleanup`), so a
+ * dependency that flips right after hydration would add a SECOND set of
+ * timelines and triggers on top of the first instead of replacing them.
+ * Returning 0 reproduces the shipped `top bottom` exactly.
+ *
+ * Returns both triggers — `[0]` is the outer (full-transit) one, whose
+ * `progress` describes the row's position.
  */
 function createReplayTrigger(
   triggerEl: HTMLElement,
   tl: gsap.core.Timeline,
-): ScrollTrigger {
-  const play = () => tl.play(0);
-  const reset = () => tl.pause(0);
-  const st = ScrollTrigger.create({
+  armOffsetPx?: () => number,
+): ScrollTrigger[] {
+  let needsPlay = true;
+  const play = () => {
+    if (!needsPlay) return;
+    needsPlay = false;
+    tl.play(0);
+  };
+  const reset = () => {
+    needsPlay = true;
+    tl.pause(0);
+  };
+  const outer = ScrollTrigger.create({
     trigger: triggerEl,
     start: "top bottom",
     end: "bottom top",
-    onEnter: play,
-    onEnterBack: play,
     onLeave: reset,
     onLeaveBack: reset,
   });
-  if (st.isActive) play();
-  return st;
+  const inner = ScrollTrigger.create({
+    trigger: triggerEl,
+    start: () => {
+      const px = armOffsetPx ? armOffsetPx() : 0;
+      return px > 0 ? `top bottom-=${px}` : "top bottom";
+    },
+    end: "bottom top",
+    invalidateOnRefresh: true,
+    onEnter: play,
+    onEnterBack: play,
+  });
+  if (inner.isActive) play();
+  return [outer, inner];
 }
 
 // === Chapter reveal ========================================================
@@ -250,7 +307,7 @@ export function useChapterReveal(
       let cancelled = false;
       let split: SplitText | null = null;
       let tl: gsap.core.Timeline | null = null;
-      let st: ScrollTrigger | null = null;
+      let sts: ScrollTrigger[] = [];
 
       // Fonts must be settled or line boxes split wrong mid-swap (the
       // HeadingChoreographer discipline). Everything created inside this
@@ -315,14 +372,14 @@ export function useChapterReveal(
             0.5,
           );
         }
-        st = createReplayTrigger(scopeEl, tl);
+        sts = createReplayTrigger(scopeEl, tl);
       });
 
       refreshOnFontsReady();
 
       return () => {
         cancelled = true;
-        st?.kill();
+        sts.forEach((t) => t.kill());
         tl?.kill();
         if (desc) {
           gsap.killTweensOf(desc);
@@ -342,10 +399,21 @@ export function useLedgerReveal(
   scope: RefObject<HTMLElement | null>,
   language: string,
   onIgnite?: (row: number) => void,
+  rollArmed = false,
 ): void {
   // Once-per-page-life ignition latch — survives EN/IT rebuilds on purpose
   // (round-3 contract: the ring flash rides the FIRST landing only).
   const ignitedRef = useRef<boolean[]>([]);
+  // ROUND 12 · D21 — read through a REF, never a dependency: see
+  // `createReplayTrigger`. `rollArmed` flips false→true right after hydration
+  // on every load, and `useGSAP` would add a second context instead of
+  // replacing the first. Written in an effect on every render; the arm point
+  // is a `start` function, so the next `ScrollTrigger.refresh()` (the traverse
+  // dispatches one as it arms) picks the flip up.
+  const rollArmedRef = useRef(rollArmed);
+  useEffect(() => {
+    rollArmedRef.current = rollArmed;
+  });
 
   useGSAP(
     () => {
@@ -504,16 +572,28 @@ export function useLedgerReveal(
             );
           }
 
-          const st = createReplayTrigger(row, tl);
+          // ROUND 12 · D21 — the roll arms inside the reading band, not at
+          // `top bottom`, wherever the traverse's opacity window is live. Off
+          // that tier the window does not exist, the getter returns 0, and the
+          // arm point stays exactly where it shipped — the fallback the spec
+          // asks for, and the reason this is a getter and not a rewrite.
+          //
+          // `offsetHeight`, not a rect: this runs at trigger-build time and on
+          // every refresh, and the row's border box is what the window law is
+          // written on. It is an integer-px round of the same number.
+          const sts = createReplayTrigger(row, tl, () =>
+            rollArmedRef.current ? readingBandArmPx(row.offsetHeight) : 0,
+          );
           // A reload / SPA nav landing PAST the row: the entrance stays
           // reset (it replays on scroll-back), but the WebGL ring must read
-          // "already landed" — fire the latch without playing.
-          if (onIgnite && st.progress >= 1 && !ignitedRef.current[i]) {
+          // "already landed" — fire the latch without playing. `sts[0]` is
+          // the full-transit trigger, so this stays the row's real position.
+          if (onIgnite && sts[0].progress >= 1 && !ignitedRef.current[i]) {
             ignitedRef.current[i] = true;
             onIgnite(i);
           }
           timelines.push(tl);
-          triggers.push(st);
+          sts.forEach((t) => triggers.push(t));
         });
       });
 

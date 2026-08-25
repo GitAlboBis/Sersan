@@ -9,6 +9,10 @@ import { RollLetters } from "@/components/fx/roll-letters";
 import { useLedgerIgnition } from "@/components/fx/use-ledger-ignition";
 import { useDiagonalTraverse } from "@/components/fx/use-diagonal-traverse";
 import {
+  useReadingBandLit,
+  useScrollIgnitionActive,
+} from "@/components/fx/scroll-ignition";
+import {
   useChapterReveal,
   useLedgerReveal,
   useTextDrift,
@@ -18,6 +22,23 @@ import {
 
 /**
  * ProblemSection — names the pain (demo-to-production gap).
+ *
+ * ROUND 12 · D21 (2026-08-25) — THE TYPE IS SCROLL-DRIVEN, THE POINTER IS
+ * INERT. The owner, twice: *"le scritte … devono essere animate con lo scroll,
+ * non con il cursore se ci passo sopra"*, then with the symptom: *"attualmente
+ * la freccia sposta la scritta a destra se passo il cursore"*. So the amber
+ * lift, the glyph glow, the index accent and the Hv1 letter/arrow wave now
+ * follow the row crossing the reading band — the same row that is opaque and
+ * slowest at that instant — and hovering a DIFFERENT row does nothing at all.
+ * Nothing about the poses changed; only what decides them. The deciding number
+ * is not new either: `useDiagonalTraverse` already resolved a winning block
+ * every frame from ONE frozen `window.scrollY` and threw the winner's identity
+ * away, and now publishes it (`frame.laneRow` → the lit-row channel →
+ * `[data-lit]`). Hover is KEPT wherever that source cannot exist (narrow
+ * fine-pointer window / stepped-down phone / flag-off build / reduced motion),
+ * keyboard focus keeps its ignition AND its wave, and the whole grammar is
+ * behind one live switch (`__sersanTraverse_problem.scrollIgnition(false)`).
+ * Copy untouched, byte for byte.
  *
  * ROUND 10 (2026-08-24) — THE GHOST TYPE IS DEAD. The owner rejected the
  * outlined/hollow display word ("le scritte vuote dentro azzure non mi
@@ -243,29 +264,49 @@ const PLROW_CSS = `
   transition: color 0.6s var(--ease-lusion);
 }
 .plrow:focus-visible .plrow__effect,
-.plrow[data-focus="true"] .plrow__effect {
+.plrow[data-focus="true"] .plrow__effect,
+.plrow[data-lit="true"] .plrow__effect {
   color: hsl(36 75% 82%);
   filter:
     drop-shadow(0 0 10px hsl(36 60% 72% / 0.5))
     drop-shadow(0 0 28px hsl(36 60% 72% / 0.26));
 }
 .plrow:focus-visible .plrow__index,
-.plrow[data-focus="true"] .plrow__index { color: hsl(var(--accent)); }
+.plrow[data-focus="true"] .plrow__index,
+.plrow[data-lit="true"] .plrow__index { color: hsl(var(--accent)); }
+/* HOVER — THE FALLBACK ONLY, AND IT IS SCOPED, NOT DELETED (ROUND 12 · D21).
+   #problem[data-scroll-lit] is written by React exactly when the scroll
+   source is live, so on a client that HAS one the pointer paints nothing: the
+   owner's rule is that hovering row 2 while reading row 1 does nothing. On a
+   narrow fine-pointer window, a stepped-down phone and the flag-off build the
+   attribute is absent — the traverse never arms there, there is no scroll
+   source, and this block is the whole ignition. SSR and no-JS are the absent
+   case too, which is correct: the markup ships in its hover grammar and the
+   scroll grammar is added by the client that can honour it. */
 @media (hover: hover) and (pointer: fine) {
-  .plrow:hover .plrow__effect {
+  #problem:not([data-scroll-lit]) .plrow:hover .plrow__effect {
     color: hsl(36 75% 82%);
     filter:
       drop-shadow(0 0 10px hsl(36 60% 72% / 0.5))
       drop-shadow(0 0 28px hsl(36 60% 72% / 0.26));
   }
-  .plrow:hover .plrow__index { color: hsl(var(--accent)); }
+  #problem:not([data-scroll-lit]) .plrow:hover .plrow__index {
+    color: hsl(var(--accent));
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  /* Rest colour in EVERY state, no transitions (see header note). */
+  /* Rest colour in EVERY state, no transitions (see header note).
+     ⚠ THE HOVER SELECTOR MUST CARRY THE SAME PREFIX AS THE RULE IT IS
+     NEUTRALISING. Scoping the hover fallback to
+     #problem:not([data-scroll-lit]) took it to (1,4,0); a bare
+     .plrow:hover here is (0,3,0) and would LOSE, painting all three rows
+     ignited under the cursor with reduced motion on — measured, not
+     theorised. Equal specificity + later in the sheet is what wins. */
   .plrow__effect,
-  .plrow:hover .plrow__effect,
+  #problem:not([data-scroll-lit]) .plrow:hover .plrow__effect,
   .plrow:focus-visible .plrow__effect,
-  .plrow[data-focus="true"] .plrow__effect {
+  .plrow[data-focus="true"] .plrow__effect,
+  .plrow[data-lit="true"] .plrow__effect {
     color: hsl(36 60% 72%);
     filter: none;
     transition: none;
@@ -352,15 +393,37 @@ export default function ProblemSection() {
   const { ref: rowRef, inView } = useInView<HTMLDivElement>();
   useBrokenStreamOnEnter(inView);
 
-  // Ignition driver: centre-band on touch (data-focus), hover/focus on fine
-  // pointer — visual is CSS above + the Hv1 wave; the store link (debris
-  // re-cohere tease) rides the same edges via setHovered("broken", i). The
-  // wave callback is stable (useIgnitionWave contract).
+  // ROUND 12 · D21 — THE TYPE IS COMMANDED BY THE SCROLL. `scrollLit` is
+  // DETECTED, never assumed, and it is the conjunction of three things:
+  //   • the owner's live A/B switch (`__sersanTraverse_problem.scrollIgnition`),
+  //   • `!showFallback` — the EXACT complement of the lattice island's mount
+  //     gate, i.e. the same expression that arms the traverse below. On a
+  //     narrow fine-pointer window, a stepped-down phone and the flag-off
+  //     build the traverse never arms, so there is no scroll source there and
+  //     HOVER MUST SURVIVE (owner-accepted consequence 3),
+  //   • no reduced motion — RM neutralises every ignited pose anyway and must
+  //     stay motion-free, so it keeps the hover grammar and lights nothing,
+  //   • and hydration — the SERVER must not assert this grammar, or a no-JS
+  //     client receives markup with the hover fallback scoped off and nothing
+  //     to replace it (measured; see the hook's own note).
+  // The switch and RM are SUBSCRIBED, so a live flip or an OS reduced-motion
+  // toggle re-resolves the grammar without a reload. It is ONE shared hook so
+  // the two acts cannot drift apart.
+  const scrollLit = useScrollIgnitionActive(showFallback);
+
+  // Ignition driver: the reading band on scroll (data-lit), centre-band on
+  // touch (data-focus), keyboard focus always, hover only as the fallback —
+  // visual is CSS above + the Hv1 wave; the store link (debris re-cohere
+  // tease) rides the same edges via setHovered("broken", i). The wave callback
+  // is stable (useIgnitionWave contract) and is UNCHANGED: lusion-type does
+  // not know where the edge came from, which is why this conversion costs it
+  // zero lines.
   const onIgnitionChange = useIgnitionWave(rowRef);
-  const { rowRefs, rowHandlers } = useLedgerIgnition(
+  const { rowRefs, rowHandlers, setLit } = useLedgerIgnition(
     "broken",
     failures.length,
     onIgnitionChange,
+    { scrollLit },
   );
 
   // Round-5 text v3: replayable viewport-entry choreography (chapter H3 +
@@ -370,7 +433,7 @@ export default function ProblemSection() {
   const sectionRef = useRef<HTMLElement | null>(null);
   const chapterRef = useRef<HTMLDivElement | null>(null);
   useChapterReveal(chapterRef, language);
-  useLedgerReveal(rowRef, language);
+  useLedgerReveal(rowRef, language, undefined, scrollLit);
   useTextDrift(sectionRef, language);
   // ROUND 11 STAGE 1 — the diagonal traverse. Owns the `x` + `opacity` of the
   // SAME `[data-drift]` wrappers useTextDrift owns the `y` of (three drivers,
@@ -379,6 +442,20 @@ export default function ProblemSection() {
   // island's mount gate, and sliding a static SVG 1.5 screens sideways would
   // be worse than not arming.
   useDiagonalTraverse(sectionRef, "problem", !showFallback, language);
+  // ROUND 12 · D21 — the lit row. NO SECOND CLOCK: the traverse above already
+  // resolves the winning block every frame from its ONE frozen `window.scrollY`
+  // and now publishes the winner's identity (`frame.laneRow`) on the lit-row
+  // channel; this only subscribes to that edge. `source: "traverse"` therefore
+  // runs no resolver of its own, and `sectionRef` is passed purely so both acts
+  // call the hook the same way.
+  useReadingBandLit({
+    sectionRef,
+    bandId: "problem",
+    source: "traverse",
+    enabled: scrollLit,
+    language,
+    onLit: setLit,
+  });
 
   return (
     <section
@@ -402,6 +479,10 @@ export default function ProblemSection() {
       // band, without creating the scroll container that lets a keyboard focus
       // shear the composition (mechanism §3.1/§3.3).
       className="relative section-lg scroll-mt-24"
+      // ROUND 12 · D21 — the mode marker the hover fallback is scoped by. Set
+      // ONLY when a scroll source is live; absent on SSR, no-JS, reduced
+      // motion and every unarmed tier, where hover must keep working.
+      data-scroll-lit={scrollLit ? "true" : undefined}
     >
       <style>{PLROW_CSS}</style>
       <div className="container-px relative">

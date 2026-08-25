@@ -9,6 +9,10 @@ import { NeuralGraphFallback } from "@/components/fx/neural-graph-fallback";
 import { RollLetters } from "@/components/fx/roll-letters";
 import { useLedgerIgnition } from "@/components/fx/use-ledger-ignition";
 import {
+  useReadingBandLit,
+  useScrollIgnitionActive,
+} from "@/components/fx/scroll-ignition";
+import {
   useChapterReveal,
   useLedgerReveal,
   useTextDrift,
@@ -17,6 +21,18 @@ import {
 
 /**
  * ProductionGradeSection — the SIGNATURE section, ProblemSection's twin.
+ *
+ * ROUND 12 · D21 (2026-08-25) — THE TYPE IS SCROLL-DRIVEN, THE POINTER IS
+ * INERT, exactly as in the Problem ledger (read that header for the owner's
+ * words). The claim's icy lift, its accent glow and the mono kicker now follow
+ * the artifact row crossing the reading band instead of the cursor; hovering a
+ * different row does nothing. The ONE difference from the twin is where the
+ * number comes from: `#problem` reads it off the diagonal traverse's frozen
+ * scroll snapshot, while `#trust` has no traverse band and therefore runs the
+ * same reading-band law locally (fx/scroll-ignition, `source: "own"`). Both
+ * publish on one channel, so `[data-lit]` means the same thing in both acts.
+ * Hover survives wherever the source cannot exist; keyboard focus is
+ * unchanged; RM lights nothing. Copy untouched, byte for byte.
  *
  * ROUND 10 (2026-08-24) — THE GHOST TYPE IS DEAD. The owner rejected the
  * outlined/hollow display type ("le scritte vuote dentro azzure non mi
@@ -285,32 +301,49 @@ const PGROW_CSS = `
   transition: color 0.6s var(--ease-lusion);
 }
 .pgrow:focus-visible .pgrow__claim,
-.pgrow[data-focus="true"] .pgrow__claim {
+.pgrow[data-focus="true"] .pgrow__claim,
+.pgrow[data-lit="true"] .pgrow__claim {
   color: hsl(189 100% 96%);
   filter:
     drop-shadow(0 0 10px hsl(var(--accent) / 0.55))
     drop-shadow(0 0 28px hsl(var(--accent) / 0.3));
 }
 .pgrow:focus-visible .pgrow__label,
-.pgrow[data-focus="true"] .pgrow__label { color: hsl(var(--accent)); }
+.pgrow[data-focus="true"] .pgrow__label,
+.pgrow[data-lit="true"] .pgrow__label { color: hsl(var(--accent)); }
 .pgrow:focus-visible .pgrow__index,
-.pgrow[data-focus="true"] .pgrow__index { color: hsl(var(--accent)); }
+.pgrow[data-focus="true"] .pgrow__index,
+.pgrow[data-lit="true"] .pgrow__index { color: hsl(var(--accent)); }
+/* HOVER — THE FALLBACK ONLY, AND IT IS SCOPED, NOT DELETED (ROUND 12 · D21).
+   See the Problem ledger's twin note: #trust[data-scroll-lit] is written by
+   React exactly when the reading-band resolver is live, so on a client that
+   has one the pointer paints nothing; where it is absent (SSR, no-JS, reduced
+   motion, every unarmed tier) this block is the whole ignition. */
 @media (hover: hover) and (pointer: fine) {
-  .pgrow:hover .pgrow__claim {
+  #trust:not([data-scroll-lit]) .pgrow:hover .pgrow__claim {
     color: hsl(189 100% 96%);
     filter:
       drop-shadow(0 0 10px hsl(var(--accent) / 0.55))
       drop-shadow(0 0 28px hsl(var(--accent) / 0.3));
   }
-  .pgrow:hover .pgrow__label { color: hsl(var(--accent)); }
-  .pgrow:hover .pgrow__index { color: hsl(var(--accent)); }
+  #trust:not([data-scroll-lit]) .pgrow:hover .pgrow__label {
+    color: hsl(var(--accent));
+  }
+  #trust:not([data-scroll-lit]) .pgrow:hover .pgrow__index {
+    color: hsl(var(--accent));
+  }
 }
 @media (prefers-reduced-motion: reduce) {
-  /* Rest colour in EVERY state, no transitions (see header note). */
+  /* Rest colour in EVERY state, no transitions (see header note). The hover
+     selector carries the SAME #trust:not([data-scroll-lit]) prefix as the rule
+     it neutralises — see the Problem ledger's twin note; a bare .pgrow:hover
+     here loses the specificity war and paints the hovered claim ignited with
+     reduced motion on. */
   .pgrow__claim,
-  .pgrow:hover .pgrow__claim,
+  #trust:not([data-scroll-lit]) .pgrow:hover .pgrow__claim,
   .pgrow:focus-visible .pgrow__claim,
-  .pgrow[data-focus="true"] .pgrow__claim {
+  .pgrow[data-focus="true"] .pgrow__claim,
+  .pgrow[data-lit="true"] .pgrow__claim {
     color: hsl(var(--ink));
     filter: none;
     transition: none;
@@ -331,12 +364,22 @@ export default function ProductionGradeSection() {
   const { ref: rowRef, inView } = useInView<HTMLDivElement>();
   useProductionPulseOnEnter(inView);
 
-  // Ignition driver: centre-band on touch (data-focus), hover/focus on fine
-  // pointer — visual is CSS above; the store link (ring i flare) rides the
-  // same edges via setHovered("healthy", i). No arrows → no Hv1 wave here.
-  const { rowRefs, rowHandlers } = useLedgerIgnition(
+  // ROUND 12 · D21 — THE TYPE IS COMMANDED BY THE SCROLL (see the header
+  // note). Literally the SAME hook `#problem` asks, so the two acts cannot
+  // drift apart: the owner's live switch · hydration · `!showFallback` (the
+  // complement of the lattice island's mount gate) · no reduced motion.
+  // Wherever any of those is false this act keeps today's hover grammar.
+  const scrollLit = useScrollIgnitionActive(showFallback);
+
+  // Ignition driver: the reading band on scroll (data-lit), centre-band on
+  // touch (data-focus), keyboard focus always, hover only as the fallback —
+  // visual is CSS above; the store link (ring i flare) rides the same edges via
+  // setHovered("healthy", i). No arrows → no Hv1 wave here.
+  const { rowRefs, rowHandlers, setLit } = useLedgerIgnition(
     "healthy",
     artifacts.length,
+    undefined,
+    { scrollLit },
   );
 
   const bumpCluster = useNeuralLatticeStore((s) => s.bumpCluster);
@@ -358,8 +401,31 @@ export default function ProductionGradeSection() {
   const sectionRef = useRef<HTMLElement | null>(null);
   const chapterRef = useRef<HTMLDivElement | null>(null);
   useChapterReveal(chapterRef, language);
-  useLedgerReveal(rowRef, language, igniteRing);
+  useLedgerReveal(rowRef, language, igniteRing, scrollLit);
   useTextDrift(sectionRef, language);
+  // ROUND 12 · D21 — the lit row. `#trust` carries NO traverse band (there is
+  // no `[data-traverse]` here and `useDiagonalTraverse` is not called), so
+  // `source: "own"` runs the reading-band resolver locally: ONE plain
+  // un-pinned un-scrubbed ScrollTrigger, every rect read on refresh, `apply()`
+  // pure arithmetic over the cache from a single frozen `window.scrollY`. That
+  // is this act's FIRST clock, not a second one — and it publishes onto the
+  // same lit-row channel `#problem`'s traverse writes, so the two acts are one
+  // grammar and one consumer.
+  //
+  // ⚠ THE ID IS `"trust-type"`, NOT `"production"`. The lattice anchor here is
+  // named `production` and the WebGL islands look bands up BY ANCHOR ID
+  // (NeuralLattice / CrystalCluster). Publishing under that name would put a
+  // DOM-only concern inside the neural band namespace; if the merge ever gives
+  // `#trust` a real traverse band, flip this to
+  // `{ bandId: "production", source: "traverse" }` and delete nothing else.
+  useReadingBandLit({
+    sectionRef,
+    bandId: "trust-type",
+    source: "own",
+    enabled: scrollLit,
+    language,
+    onLit: setLit,
+  });
 
   return (
     <section
@@ -375,6 +441,10 @@ export default function ProductionGradeSection() {
       // PostFX carry the band, and the W4 cut now sweeps over a seamless
       // field instead of a tinted rectangle. Contrast improves (§B.5).
       className="relative section-lg scroll-mt-24 overflow-hidden"
+      // ROUND 12 · D21 — the mode marker the hover fallback is scoped by (the
+      // Problem ledger's twin). Absent on SSR, no-JS, RM and every unarmed
+      // tier, where hover must keep working.
+      data-scroll-lit={scrollLit ? "true" : undefined}
     >
       <style>{PGROW_CSS}</style>
       <div className="container-px relative">
