@@ -1314,11 +1314,17 @@ function NeuralLatticeIsland({
  *   - the ladder's pitch guarantees at most TWO are on frame at once, so the
  *     shaded budget is 2 × per-island regardless of how many exist;
  *   - each island has its OWN material and therefore its own uniform-block
- *     budget: the vertex stage stays at 12 of the WebGL2 floor of 12, exactly
- *     where it was. Five islands do not add a block, because nothing is
- *     shared between them;
+ *     budget, and that budget lands exactly where it was: five islands do not
+ *     add a block, because nothing is shared between them. (The per-stage
+ *     block counts live in ONE place — the BLOCK-COUNT BUDGET note in
+ *     `neuralFieldCompute.ts`, measured live on the WebGL2 fallback. The
+ *     "12 of 12" this line used to quote was never measured and was wrong;
+ *     the load-bearing claim, that islands add nothing, is unaffected.)
  *   - and there is no shader edit anywhere. The seed reaches the GPU only as
- *     the CONTENTS of `uNodePos` / `uNodeT` / `uEdgeA` / `uEdgeB`.
+ *     the CONTENTS of the plexus tables — `uNodePos` / `uNodeT` and the
+ *     endpoint table, which ROUND 12 · STAGE 0B packed into `uEdgePack`
+ *     (`uEdgeA` / `uEdgeB` reach the GPU only under the EDGE_PACKED
+ *     rollback).
  *
  * `#production` and every non-traversed band take the `extras.length === 0`
  * path and are byte-for-byte the shipped single island.

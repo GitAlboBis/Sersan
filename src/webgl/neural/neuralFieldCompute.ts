@@ -14,13 +14,14 @@
  * distance cutoff — a dense irregular triangulation, never columns. Node
  * positions, the weak left→right coordinate `nodeT` and the link endpoint
  * indices are generated once by `getPlexus(mode, density)` in
- * neuralLatticeConfig and ride in the SAME four uniformArrays as before
- * (uNodePos/uNodeT/uEdgeA/uEdgeB — `.element()` is legal in any stage, zero
- * buffer-slot cost). ZERO NEW BINDINGS: the arrays merely grew, and three's
- * UniformArrayNode pads each element to a vec4, so the largest of them is
- * EDGE_N·16 B ≈ 3.7 KB — far under the WebGPU maxUniformBufferBindingSize
- * (64 KiB) and the WebGL2 MAX_UNIFORM_BLOCK_SIZE floor (16 KiB). Node/edge
- * COUNTS are build-time (they size the arrays and the baked meta buffer).
+ * neuralLatticeConfig and ride in uniformArrays (`.element()` is legal in any
+ * stage, zero buffer-slot cost): uNodePos, uNodeT and — since ROUND 12 ·
+ * STAGE 0B — uEdgePack, which carries the link endpoint PAIR four links to a
+ * vec4 element (`a + 1024·b`) where uEdgeA/uEdgeB used to take a whole padded
+ * float array, AND a whole UBO block, EACH. That is the ROUND 12 capacity
+ * prerequisite, not a micro-optimisation — see the EDGE_PACKED note at module
+ * scope. Node/edge COUNTS are build-time (they size the arrays and the baked
+ * meta buffer).
  *
  * Flow-t is the CLOUD's left→right coordinate: t = mix(nodeT_A, nodeT_B, s)
  * with s the per-link flow parameter, and links are ORIENTED by nodeT so the
@@ -194,7 +195,7 @@
  *       vertex tables baked by neuralLinkLines.bakeLinkLineGeometry from the
  *       SAME getPlexus(mode, density) edge list the particles read (single
  *       source of truth; no second generator). The vertex stage re-derives the
- *       LIVE chord exactly as `edgeFrame` does (uEdgeA/uEdgeB → uNodePos +
+ *       LIVE chord exactly as `edgeFrame` does (edgeEnds → uNodePos +
  *       nodeDrift), so a drifted broken endpoint takes its line with it. Built
  *       BEFORE the backend split like the membrane/nebula layers, so the
  *       static/analytic tier gets the identical lines. Per-link effects that
@@ -219,10 +220,13 @@
  *       0.42 → 0.70: a full-tier star goes 25 → 40 particles and its four
  *       flare rays 2.6 → 7.0 each (the round-8-D check's own flag). Totals
  *       unchanged; fill ~7% cheaper. Budgets: the line material is a SEPARATE
- *       program — 2 vertex buffers of 8, 0 storage bindings, 5 uniformArray
- *       UBO blocks in its vertex stage (+ three's ≤3 shared groups) = 8 of the
- *       WebGL2 MAX_VERTEX_UNIFORM_BLOCKS floor of 12. The PARTICLE material's
- *       12/12 vertex-stage block count is untouched by this round.
+ *       program — 2 vertex buffers of 8, 0 storage bindings, and its own small
+ *       set of uniformArray UBO blocks. ⚠ THE BLOCK COUNTS THIS NOTE USED TO
+ *       QUOTE WERE NEVER MEASURED AND WERE WRONG IN BOTH DIRECTIONS. There is
+ *       exactly ONE authority for them in this file — the BLOCK-COUNT BUDGET
+ *       note in createNeuralFieldBuild, measured live on the WebGL2 fallback.
+ *       Read it there; do not restate a number here. This round moves none of
+ *       them.
  *
  * ROUND 9-B (2026-08-24) — THE NET SITS UNDER THE COPY. Owner: "la rete
  * neurale ora sta sopra le scritte, deve stare sotto, le scritte non si
@@ -521,6 +525,15 @@ export interface NeuralFieldUniforms {
   uNodeT: { array: number[] };
   uEdgeA: { array: number[] };
   uEdgeB: { array: number[] };
+  /** ROUND 12 - STAGE 0B: the PACKED link endpoint table - one Vector4 per
+   * FOUR links, each component `a + 1024*b` (see EDGE_PACKED). While
+   * EDGE_PACKED is true THIS is the table both shaders read; uEdgeA/uEdgeB
+   * are still built and still exported (they are the rollback path) but
+   * nothing references them in a node graph, so they emit no UBO block, are
+   * never uploaded, and a live write to them changes nothing. */
+  uEdgePack: {
+    array: { set: (x: number, y: number, z: number, w: number) => unknown }[];
+  };
   /** Cursor attractor in LOCAL space (park at 1e9 = off; compute tier only). */
   uPointer: { value: { set: (x: number, y: number, z: number) => unknown } };
   uPixelRatio: { value: number };
@@ -729,9 +742,10 @@ export interface NeuralFieldBuildArgs {
    * shipped call shape) ⇒ `PLEXUS_MASTER_SEED[mode]`, i.e. byte-identical to
    * every build before the island sequence existed. Supplied ⇒ a different
    * constellation from the SAME code and the SAME uniform-block budget: the
-   * seed only ever reaches the GPU as the CONTENTS of the four plexus
+   * seed only ever reaches the GPU as the CONTENTS of the plexus
    * uniformArrays that already exist, so there is no shader edit, no new
-   * binding, and the 12/12 vertex-stage block count does not move.
+   * binding, and the vertex-stage block count (10/12 since ROUND 12 · STAGE
+   * 0B, 11/12 before it — both measured, not derived) does not move.
    */
   plexusSeed?: number;
   /** Carve the crystal density well? Only the band the stone rides needs it
@@ -741,6 +755,62 @@ export interface NeuralFieldBuildArgs {
 
 const QUAD_CORNERS = [-0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0];
 const QUAD_INDEX = [0, 1, 2, 0, 2, 3];
+
+/**
+ * ROUND 12 - STAGE 0B - INDEX PACKING. `uEdgeA` + `uEdgeB` -> one `uEdgePack`.
+ *
+ * THE ROLLBACK LEVER, and it is part of the deliverable. `true` = the packed
+ * path (one `uniformArray(Vector4[])`, four links per element, value
+ * `a + 1024*b`). `false` = the two-array path EXACTLY as it shipped: both
+ * arrays are still built either way, and `edgeEnds()` falls back to
+ * `uEdgeA.element(int(e))` / `uEdgeB.element(int(e))` verbatim, so flipping
+ * this one constant restores the old node graph byte-for-byte. Do NOT delete
+ * the unpacked arm.
+ *
+ * WHY IT IS A PREREQUISITE, NOT AN OPTIMISATION. GLSLNodeBuilder emits ONE
+ * UBO block per `uniformArray`, and three r184's UniformArrayNode pads EVERY
+ * element to a vec4 = 16 B regardless of the declared element type
+ * (`getPaddedType()` in three/src/nodes/accessors/UniformArrayNode.js). A
+ * `float[]` of E links therefore costs E*16 B AND a whole block, while a
+ * `vec4[]` carrying the same E links costs ceil(E/4)*16 B and ONE block -
+ * 4x the size AND one block freed — measured on the WebGL2 fallback, the
+ * particle vertex stage goes 11 → 10 blocks of 12 and the line vertex stage
+ * 7 → 6 (see the BLOCK-COUNT BUDGET note in createNeuralFieldBuild; the
+ * long-standing "12/12, zero headroom" claim was never measured and is
+ * wrong). At the ROUND 12 continuous band (~1258
+ * links over a 7278 x 935 px field) the unpacked arrays are ~19.7 KiB EACH,
+ * over the 16 KiB MAX_UNIFORM_BLOCK_SIZE min-spec floor and past the hard
+ * 1024-element ceiling (16384/16); packed they are 4.92 KiB, 30 % of the
+ * floor. On the lite (phone) tier the same construction is ~1406 links and
+ * cannot ship at all unpacked.
+ *
+ * EXACTNESS - this is a LOSSLESS transform, not an approximation. Endpoints
+ * are node indices in [0, NODE_N) and neuralLatticeConfig's own dedup key is
+ * already `a*1024 + b`, so NODE_N <= 1024 is a pre-existing invariant of the
+ * generator. The largest packed value is then 1023 + 1024*1023 = 1,048,575 <
+ * 2^24 = 16,777,216: every packed value is an integer exactly representable
+ * in fp32, with 16x margin. The decode is exact for the same reason - v*2^-10
+ * only decrements the exponent (no rounding, no subnormal for v >= 1),
+ * `floor()` of it is b exactly, and v - 1024*b is an exact integer
+ * subtraction. Multiply by the exactly-representable 2^-10 rather than divide
+ * by 1024: GLSL ES only promises ~2.5 ULP on `/`, but a power-of-two `*` is
+ * exact on every conforming implementation.
+ *
+ * COST: ~3 ALU for the split, ~6 ALU for the dynamic vec4 component pick (3
+ * nested `select()` - neither GLSL ES nor WGSL has a runtime swizzle). Both
+ * `select` and dynamic uniform-array indexing are already exercised
+ * throughout this file and compile on WebGPU and the WebGL2 fallback.
+ */
+const EDGE_PACKED = true;
+
+/** Links per packed element. Fixed by the padding: an element IS a vec4. */
+const EDGE_PACK_STRIDE = 4;
+
+/** Radix of the endpoint pack (`v = a + EDGE_PACK_RADIX*b`). Must be >= NODE_N
+ * and a power of two so the decode's `*(1/RADIX)` is exact. 1024 is the same
+ * ceiling neuralLatticeConfig's `a*1024 + b` dedup key already imposes, so
+ * the two share one invariant rather than inventing a second. */
+const EDGE_PACK_RADIX = 1024;
 
 /** Deterministic [0,1) hash — the EXACT formula the compute kernel re-derives
  * for the reveal seed (fract(sin(i·127.1 + 311.7)·43758.545) family), so the
@@ -907,6 +977,7 @@ export function createNeuralFieldBuild(
     Color,
     Vector2,
     Vector3,
+    Vector4,
     AdditiveBlending,
     DoubleSide,
   } = webgpu as Any;
@@ -980,29 +1051,46 @@ export function createNeuralFieldBuild(
   // element to a vec4 = 16 B — see getPaddedType/setup):
   //   uNodePos  ~103 vec3  → 103·16 =  1,648 B
   //   uNodeT    ~103 float → 103·16 =  1,648 B
-  //   uEdgeA    ~227 float → 227·16 =  3,632 B
-  //   uEdgeB    ~227 float → 227·16 =  3,632 B      (Σ ≈ 10.6 KB, 4 bindings)
+  //   uEdgePack   57 vec4  →  57·16 =    912 B  (227 links, 4 per element)
+  //                                             (Σ ≈ 4.2 KB, 3 bindings)
   // vs. WebGPU maxUniformBufferBindingSize 64 KiB and the WebGL2
-  // MAX_UNIFORM_BLOCK_SIZE floor 16 KiB — the largest single array is at
-  // ~22% of the tighter wall. SIZE is therefore not the wall; BLOCK COUNT is,
-  // and round-8-D did not move it (these four arrays already existed; the
-  // three new star knobs are plain `uniform()` scalars, which join an existing
-  // shared group and add no block).
+  // MAX_UNIFORM_BLOCK_SIZE floor 16 KiB. ROUND 12 · STAGE 0B replaced the
+  // two float endpoint arrays (uEdgeA/uEdgeB — 3,632 B AND a whole UBO block
+  // EACH) with one packed vec4 array; see the EDGE_PACKED note at module
+  // scope for the arithmetic, the exactness proof and the rollback lever.
   //
-  // ⚠ BLOCK-COUNT BUDGET — READ BEFORE ADDING A TENTH ARRAY. GLSLNodeBuilder
+  // ⚠ BLOCK-COUNT BUDGET — READ BEFORE ADDING AN ARRAY. GLSLNodeBuilder
   // emits ONE UBO per uniformArray (`uniform.type === 'buffer'` → its own
   // `uniform Name { T name[N]; };`), and the particle material's VERTEX stage
-  // references nine of them: uNodePos, uNodeT, uEdgeA, uEdgeB (edgeFrame /
+  // references EIGHT of them: uNodePos, uNodeT, uEdgePack (edgeFrame /
   // anchorNode), uRingGlow, uRingFlash (zoneGlow / zoneFlash inside
   // particleScalars, which runs vertex-side because its outputs feed
   // varyings), uRowGlow (rowResponse + widthEnvelope) and uStrandPhase /
   // uStrandThick (anchorNode). On top of those sit three's own shared groups
-  // (object / render / frame). That is 9 + up to 3 = 12 against the WebGL2
-  // MAX_VERTEX_UNIFORM_BLOCKS guaranteed minimum of 12 — the fallback backend
-  // is AT the floor with ZERO headroom, not "9 of 12" as an earlier draft of
-  // this note read. A tenth uniformArray (e.g. the per-node in-degree table
-  // nodeKissAt's comment contemplates) can fail to link on a minimum-spec
-  // WebGL2 device. Fold new per-node scalars into a spare component of an
+  // (how many, exactly, is the measured question THE TRUE COUNT below answers
+  // — it is two, not the three every earlier draft assumed).
+  //
+  // ⚠ THE TRUE COUNT — MEASURED ON THE FALLBACK BACKEND, NOT DERIVED, AND IT
+  // IS NOT WHAT THIS NOTE USED TO SAY. Every earlier draft read "9 arrays +
+  // up to 3 shared groups = 12 of 12, ZERO headroom"; the shared-group term
+  // was never verified. ROUND 12 · STAGE 0B measured it: the WebGL2 GLSL was
+  // captured live (patch `WebGL2RenderingContext.prototype.shaderSource`,
+  // load `?backend=webgl2`, count `uniform <Name> { … };` in each stage) at
+  // HEAD and after packing. Three emits exactly **2** shared groups here,
+  // `object` and `render` — there is no `frame` group in these stages:
+  //
+  //   particle VERTEX    11 → 10 blocks   (9→8 arrays + object + render)
+  //   particle FRAGMENT   9 →  8 blocks   (8→7 arrays + object)
+  //   line     VERTEX     7 →  6 blocks   (5→4 arrays + object + render)
+  //
+  // So the shipped particle vertex stage was at **11 of 12**, not 12 of 12 —
+  // it had ONE spare block, not zero — and packing takes it to 10 of 12, two
+  // spare, against the WebGL2 MAX_VERTEX_UNIFORM_BLOCKS guaranteed minimum of
+  // 12 (and the same WebGPU maxUniformBuffersPerShaderStage default of 12).
+  // Note the FRAGMENT stage also carries the plexus arrays (it was 9 of 12
+  // against MAX_FRAGMENT_UNIFORM_BLOCKS, now 8): a new array costs a block in
+  // BOTH stages that read it. Two spare is not licence — the ROUND 12 band
+  // needs one of them. Fold new per-node scalars into a spare component of an
   // EXISTING array instead. uMembraneSeal / uMembranePhase do not count: they
   // are only read by buildMembraneLayer, which MEMBRANE_ALPHA = 0 skips.
   //
@@ -1014,11 +1102,41 @@ export function createNeuralFieldBuild(
     nodeTbl.map((p: [number, number, number]) => new Vector3(...p)),
   );
   const uNodeT = uniformArray([...plexus.nodeT]);
+  // ROUND 12 · STAGE 0B — the UNPACKED endpoint pair. Kept, built and
+  // exported so `EDGE_PACKED = false` is a byte-for-byte rollback; while
+  // packing is on NOTHING references these in a node graph, and a
+  // uniformArray no material reads emits no UBO block and is never uploaded
+  // (UniformArrayNode allocates its padded value buffer in setup(), and
+  // NodeUpdateType.RENDER only ticks nodes that ARE in a built graph).
   const uEdgeA = uniformArray(edgeTbl.map((e: [number, number]) => e[0]));
   const uEdgeB = uniformArray(edgeTbl.map((e: [number, number]) => e[1]));
   /** Node / link counts of THIS build (clamp ceilings for the aux decode). */
   const NODE_N = nodeTbl.length;
   const EDGE_N = edgeTbl.length;
+  /**
+   * ROUND 12 · STAGE 0B — the PACKED endpoint table. Element j carries links
+   * 4j … 4j+3 in x/y/z/w as `a + EDGE_PACK_RADIX·b`; the tail of the last
+   * element is zero-padded and is NEVER read (both callers clamp their edge
+   * index to EDGE_N-1 first, so no lane past the last link is reachable).
+   * Built once, zero per-frame allocation.
+   */
+  const uEdgePack = uniformArray(
+    (() => {
+      const n = Math.max(1, Math.ceil(EDGE_N / EDGE_PACK_STRIDE));
+      const packed: Any[] = new Array(n);
+      for (let j = 0; j < n; j++) {
+        const c = [0, 0, 0, 0];
+        for (let k = 0; k < EDGE_PACK_STRIDE; k++) {
+          const e = j * EDGE_PACK_STRIDE + k;
+          if (e < EDGE_N) {
+            c[k] = edgeTbl[e][0] + EDGE_PACK_RADIX * edgeTbl[e][1];
+          }
+        }
+        packed[j] = new Vector4(c[0], c[1], c[2], c[3]);
+      }
+      return packed;
+    })(),
+  );
   const uPointer = uniform(new Vector3(1e9, 1e9, 1e9));
   const uPixelRatio = uniform(1);
   const uViewport = uniform(new Vector2(1, 1));
@@ -1076,9 +1194,10 @@ export function createNeuralFieldBuild(
   // ROUND 9-B: the COPY-COLUMN MASK (see the config section of the same name).
   // SIX plain `uniform()` scalars — like the round-8-G traffic knobs they join
   // an existing shared group, so they add ZERO uniform BLOCKS to either program
-  // and the 12/12 particle-material budget noted above is unmoved (round 11
+  // and the particle-material block budget noted above is unmoved (round 11
   // added `uCopyLaneW`; it is a plain scalar, not a `uniformArray`, so the
-  // zero-headroom vertex stage is untouched). The lane pair is DRIVER-WRITTEN
+  // vertex stage is untouched — see the BLOCK-COUNT BUDGET note above for the
+  // measured figures). The lane pair is DRIVER-WRITTEN
   // from the measured `[data-row-body]` boxes (NeuralLattice); the default is
   // the 1280 worst case + COPY_EDGE_PAD so an un-driven build (a driver that
   // never runs, a measure that finds no body box) is the SAFE state, never a
@@ -1207,6 +1326,46 @@ export function createNeuralFieldBuild(
   function nodeTAt(idx: Any): Any {
     return uNodeT.element(int(clamp(idx, float(0), float(NODE_N - 1)))) as Any;
   }
+  /**
+   * ROUND 12 · STAGE 0B — a link's two endpoint node indices, by (float)
+   * edge index. THE single decode both stages share: `edgeFrame` (particles)
+   * and `buildLinkLineLayer`'s live chord (lines) call this and nothing else,
+   * so the two layers can never disagree about topology.
+   *
+   * Returns plain float nodes carrying exactly the values the shipped
+   * `uEdgeA/uEdgeB.element(int(e))` pair carried — see EDGE_PACKED for the
+   * exactness proof (max packed value 1,048,575 < 2^24, 16x fp32 margin) and
+   * for the rollback contract. `.element()` on a uniformArray is legal in any
+   * stage on both backends; the three nested `select()`s are the only
+   * cross-backend way to pick a vec4 component by a RUNTIME index (neither
+   * GLSL ES nor WGSL has a dynamic swizzle). `e` is already clamped to
+   * [0, EDGE_N-1] by both callers, so `j` cannot run off the array.
+   */
+  function edgeEnds(e: Any): { ia: Any; ib: Any } {
+    if (!EDGE_PACKED) {
+      return {
+        ia: uEdgeA.element(int(e)) as Any,
+        ib: uEdgeB.element(int(e)) as Any,
+      };
+    }
+    const j = floor(e.mul(float(1 / EDGE_PACK_STRIDE))).toVar();
+    const k = e.sub(j.mul(float(EDGE_PACK_STRIDE))).toVar();
+    const p = uEdgePack.element(int(j)) as Any;
+    const v = select(
+      k.lessThan(float(0.5)),
+      p.x,
+      select(
+        k.lessThan(float(1.5)),
+        p.y,
+        select(k.lessThan(float(2.5)), p.z, p.w),
+      ),
+    ).toVar();
+    // b = floor(v * 2^-10), then a = v - 1024*b. The reciprocal is a literal
+    // power of two on purpose: exact, unlike a `/`.
+    const ib = floor(v.mul(float(1 / EDGE_PACK_RADIX))).toVar();
+    const ia = v.sub(ib.mul(float(EDGE_PACK_RADIX))).toVar();
+    return { ia, ib };
+  }
   /** Gate 0/1 for a node's participation in the three ignition REGIONS — the
    * far left / far right fringes of the cloud stay neutral (they are the
    * unfed input and the already-delivered output of the story).
@@ -1313,8 +1472,7 @@ export function createNeuralFieldBuild(
     ).toVar();
     const strand = aux.sub(edgeIdx.mul(2.0)).toVar();
     const s = flowParam(offN.x, metaN.z).toVar();
-    const ia = uEdgeA.element(int(edgeIdx)) as Any;
-    const ib = uEdgeB.element(int(edgeIdx)) as Any;
+    const { ia, ib } = edgeEnds(edgeIdx);
     const tA = nodeTAt(ia).toVar();
     const tB = nodeTAt(ib).toVar();
     const A = nodeAt(ia).add(nodeDrift(ia, tA)).toVar();
@@ -1464,7 +1622,8 @@ export function createNeuralFieldBuild(
     // `smoothstep(edge, edge + soft, x)`, which is what keeps the un-traversed
     // band byte-identical. Two extra ALU (a subtract and an abs); zero new
     // uniform BLOCKS — `uCopyLaneW` is a plain scalar joining the existing
-    // shared group, so the 12/12 particle vertex stage is unmoved.
+    // shared group, so the particle vertex stage is unmoved (block counts:
+    // see the BLOCK-COUNT BUDGET note in createNeuralFieldBuild).
     const d = x.sub(uCopyLaneC);
     return smoothstep(
       uCopyLaneW,
@@ -2594,7 +2753,7 @@ export function createNeuralFieldBuild(
    * `bakeLinkLineGeometry(plexus, LINK_SEGMENTS)` from the SAME `plexus` the
    * particles read — there is no second generator and no second topology. The
    * vertex stage then re-derives the LIVE chord exactly the way `edgeFrame`
-   * does (uEdgeA/uEdgeB → uNodePos + nodeDrift), so a drifted broken endpoint
+   * does (edgeEnds → uNodePos + nodeDrift), so a drifted broken endpoint
    * takes its line with it and a live `uniforms.uNodePos` edit moves the line
    * and the particles together.
    *
@@ -2604,11 +2763,15 @@ export function createNeuralFieldBuild(
    *   - storage bindings: **0 of 8** (nothing here reads a storage buffer, so
    *     the layer is identical on the compute and analytic tiers).
    *   - uniform BLOCKS in the vertex stage: GLSLNodeBuilder emits one UBO per
-   *     uniformArray, and this stage references FIVE — uNodePos, uNodeT,
-   *     uEdgeA, uEdgeB (the chord) and uRowGlow (rowResponse). Plus three's
-   *     own shared groups (object / render / frame) that is **8 of the WebGL2
-   *     MAX_VERTEX_UNIFORM_BLOCKS floor of 12** — 4 spare, where the particle
-   *     material sits at 12/12. Deliberately NOT referenced: uRingGlow /
+   *     uniformArray, and since ROUND 12 · STAGE 0B this stage references
+   *     FOUR — uNodePos, uNodeT, uEdgePack (the chord: uEdgeA+uEdgeB packed
+   *     into one vec4 array, see EDGE_PACKED) and uRowGlow (rowResponse).
+   *     Plus three's own shared groups, which a live WebGL2 GLSL dump shows
+   *     are exactly TWO here (`object` and `render` — no `frame` group), that
+   *     is **6 of the WebGL2 MAX_VERTEX_UNIFORM_BLOCKS floor of 12** (was 7),
+   *     6 spare, where the particle material sits at 10/12 (was 11/12 — the
+   *     "12/12" this note used to claim was never measured). Deliberately NOT
+   *     referenced: uRingGlow /
    *     uRingFlash (ignition belongs to the STARS — the link particles never
    *     read them either, and adding them would spend headroom to make the
    *     mesh out-shout its own subject) and uStrandPhase / uStrandThick (a
@@ -2640,8 +2803,7 @@ export function createNeuralFieldBuild(
     // --- 1. The LIVE chord — `edgeFrame` minus the flow parameter ----------
     const eIdx = clamp(aLink.x, float(0), float(EDGE_N - 1)).toVar();
     const sL = aLink.y.toVar();
-    const iaL = uEdgeA.element(int(eIdx)) as Any;
-    const ibL = uEdgeB.element(int(eIdx)) as Any;
+    const { ia: iaL, ib: ibL } = edgeEnds(eIdx);
     const tAL = nodeTAt(iaL).toVar();
     const tBL = nodeTAt(ibL).toVar();
     const AL = nodeAt(iaL).add(nodeDrift(iaL, tAL)).toVar();
@@ -3208,6 +3370,7 @@ export function createNeuralFieldBuild(
       uNodeT: uNodeT as unknown as { array: number[] },
       uEdgeA: uEdgeA as unknown as { array: number[] },
       uEdgeB: uEdgeB as unknown as { array: number[] },
+      uEdgePack: uEdgePack as unknown as NeuralFieldUniforms["uEdgePack"],
       uPointer: uPointer as Any,
       uPixelRatio,
       uViewport: uViewport as Any,
