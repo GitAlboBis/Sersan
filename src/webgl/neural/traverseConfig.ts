@@ -28,6 +28,13 @@
  *   - `alphaEdge = alphaRead` (`collapseWindow()`) → the window collapses to a
  *                        constant α without touching any other code path.
  *                        THIS is the A/B that shows the owner what D11 bought.
+ *   - `windowOpacity = false`  → the READING UNIT's opacity window is inert
+ *                        (every block opaque); the mask lane keeps riding the
+ *                        real window, so this is a pure opacity rollback.
+ *   - `capBody = false`        → body copy drifts uncapped (pre-round-12).
+ *   - `capDisplayMultiline = false` → multi-line display type drifts uncapped.
+ *   These last three are the round-12 copy fixes, each independently revertible
+ *   at runtime; `capDisplayFrameK` (default 0) is their opt-in extension.
  *
  * ⚠ THE BAND HEIGHT IS PINNED TO THE VIEWPORT, AND THAT IS LOAD-BEARING.
  * `[data-lattice-anchor]` is `absolute inset-y-0` of the rows stack, so a
@@ -258,6 +265,35 @@ export interface TraverseConfigShape {
   windowOpacity: boolean;
   /** The per-block `tanh` cap on the SLOW component only (§B2b). */
   capBody: boolean;
+  /**
+   * D15-bis. Extend the §B2b cap to DISPLAY blocks that MEASURE more than one
+   * line. §C0's premise — "a single line has no return sweep, so display drift
+   * is free" — is true of the sweep and FALSE of the input: at 390×844 EN,
+   * `02· No traces` and `03· No boundaries` wrap to two lines (h 67 px at a
+   * 31.9 px line-height), so the row's two halves travel at 0.50 and 0.25 and
+   * visibly tear apart. `false` restores the uncapped display rate exactly.
+   */
+  capDisplayMultiline: boolean;
+  /**
+   * D15-bis RIDER — the frame-keyed closure, OFF by default (0 = inert).
+   *
+   * `capDisplayMultiline` cannot catch a display block that is ONE line and
+   * still slides half the frame: measured at 390×844, `01· No evals` (h 35) is
+   * one line and its uncapped plateau drift is 111 px at 23.61° / 208 px at
+   * 45° — 28 % / 53 % of a 390 px frame, next to a paragraph moving ~70 px. So
+   * the phone's three ledger rows behave differently from one another, which
+   * reads as a bug faster than the drift did.
+   *
+   * Set > 0 to also cap any DISPLAY block whose UNCAPPED plateau drift exceeds
+   * `k · innerWidth`. `k = 0.15` is the authored candidate: 58 px @390 (catches
+   * both phone headlines) and 288 px @1920 (leaves the desktop headline —
+   * 119 px at 23.61°, 234 px at 45° — byte-identical, so the ledger keeps the
+   * headline/paragraph parallax that IS its visible depth).
+   *
+   * Left at 0 because it is an OWNER-VISIBLE beat change on the phone, not a
+   * defect fix: `setTraverseConfig({ capDisplayFrameK: 0.15 })` is the A/B.
+   */
+  capDisplayFrameK: number;
   /** Drive the net's copy mask as a tracking LANE (§2B.4). */
   laneEnabled: boolean;
   /** Freeze the DPR ceiling for the duration of the act (§6.3). */
@@ -346,6 +382,8 @@ export const traverseConfig: TraverseConfigShape = {
   headerFallbackPx: 98,
   windowOpacity: true,
   capBody: true,
+  capDisplayMultiline: true,
+  capDisplayFrameK: 0,
   laneEnabled: true,
   dprCap: true,
   revision: 0,

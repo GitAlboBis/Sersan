@@ -68,7 +68,16 @@ export interface RateWindow {
   alphaRead: number;
   /** α at the frame edges (common to every layer). */
   alphaEdge: number;
-  /** `tanh` ceiling on the SLOW component, in CSS px. 0 = uncapped. */
+  /**
+   * `tanh` ceiling on the SLOW component, in CSS px. 0 = uncapped.
+   *
+   * ⚠ IT IS A CEILING ON |x_slow|, NOT ON THE DRIFT. `x_slow = r·α_read·(y_c −
+   * y)` is CENTRED and antisymmetric about `y_c` (see `rateAt`), so a block
+   * that lives out its whole on-screen life swings from `+capPx·tanh(…)` to
+   * `−capPx·tanh(…)`: peak-to-peak is **`2·capPx·tanh(…)`**. A caller that
+   * wants "this block may drift by at most its own height" must therefore pass
+   * `h / 2`, never `h`.
+   */
   capPx: number;
 }
 
@@ -215,4 +224,30 @@ export function excursionOf(
   const xLo = rateAt(w, yLo, r).x;
   const xHi = rateAt(w, yHi, r).x;
   return Math.abs(xLo - xHi);
+}
+
+/**
+ * THE PLATEAU DRIFT, in CSS px — QA gate 3, and the number the storyboard's
+ * "em/line" table is actually about.
+ *
+ * `excursionOf` measures the block's WHOLE on-screen swing, most of which
+ * happens at α_edge while the block is transparent (§B2.4). What the reader
+ * sees moving is the part travelled while the block is fully opaque and fully
+ * legible — the coverage plateau `[e1, e2]`, where V̂ ≡ 1, α ≡ α_read and (as
+ * `rateAt` shows) `dy − Ĝ = 0`, so the fast component vanishes identically and
+ * the drift is the CAPPED SLOW COMPONENT ALONE:
+ *
+ *   plateauDrift = |x(e1) − x(e2)| = 2·capPx·tanh( r·α_read·(e2 − e1) / (2·capPx) )
+ *
+ * which is why `capPx = h/2` — and only `h/2` — buys the authored "at most its
+ * own height" ceiling, at every viewport and every angle, since `tanh < 1`.
+ * Uncapped it is simply `r·α_read·(e2 − e1)`.
+ *
+ * Pure; measure-time / QA only (it calls `rateAt` twice against the shared
+ * scratch, so each `x` is read into a local before the next call).
+ */
+export function plateauDriftOf(w: RateWindow, r: number): number {
+  const x1 = rateAt(w, w.e1, r).x;
+  const x2 = rateAt(w, w.e2, r).x;
+  return Math.abs(x1 - x2);
 }

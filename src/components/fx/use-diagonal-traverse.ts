@@ -89,6 +89,7 @@ import {
   rateAt,
   windowAt,
   excursionOf,
+  plateauDriftOf,
   type RateSample,
   type RateWindow,
 } from "./traverse-rate";
@@ -111,6 +112,30 @@ const COPY_BOX_SELECTOR =
  */
 const UNIT_SELECTOR = "[data-ledger-row],[data-traverse-unit]";
 
+/** Type metrics scratch — module-scoped, so `measure()` allocates nothing. */
+const TYPE_METRICS = { linePx: 1, fontPx: 1 };
+
+/**
+ * Used line-height and used font-size of a COPY BOX, in px. **MEASURE TIME
+ * ONLY** — `getComputedStyle` is a style-resolution barrier and has no business
+ * anywhere near the frame path.
+ *
+ * `getComputedStyle` returns the USED value for a numeric or length
+ * `line-height`, so `parseFloat` is exact; `normal` is the one keyword that
+ * will not parse, and 1.2 × font-size is its CSS default. Writes into the
+ * caller's scratch rather than returning an object.
+ */
+function readTypeMetrics(
+  el: HTMLElement,
+  out: { linePx: number; fontPx: number },
+): void {
+  const cs = getComputedStyle(el);
+  const fs = parseFloat(cs.fontSize);
+  out.fontPx = Number.isFinite(fs) && fs > 0 ? fs : 16;
+  const lh = parseFloat(cs.lineHeight);
+  out.linePx = Number.isFinite(lh) && lh > 0 ? lh : out.fontPx * 1.2;
+}
+
 interface Block {
   el: HTMLElement;
   copyEl: HTMLElement;
@@ -123,6 +148,17 @@ interface Block {
   /** Untransformed viewport-x left of the COPY box (not the wrapper). */
   copyLeft: number;
   copyW: number;
+  /**
+   * Measured line count of the COPY BOX — `round(copyH / usedLineHeight)`.
+   * Drives the display cap (§C0's "a single line has no return sweep" premise
+   * is an INPUT, not an axiom: it is false at 390×844) and QA gate 3's
+   * em/line. Measured from the copy box (`h3` / `[data-chapter-h2]` / `p`),
+   * never from the wrapper — the chapter's display wrapper also carries the
+   * eyebrow, which would read as two extra lines.
+   */
+  lines: number;
+  /** Used font-size of the copy box, px — the denominator of `emPerLine`. */
+  fontPx: number;
   win: RateWindow;
   /**
    * ⚠ THE OPACITY WINDOW IS THE READING UNIT'S, NOT THE BLOCK'S — and the
@@ -291,6 +327,9 @@ export function useDiagonalTraverse(
         let secTop = 0;
         let secH = 1;
         let ih = 1;
+        let iw = 1;
+        /** The reading band's height in px — the reading unit's guard rail. */
+        let bandH = 1;
         let headerPx = traverseConfig.headerFallbackPx;
         let rate = 0;
         let domFrames = 0;
@@ -322,6 +361,8 @@ export function useDiagonalTraverse(
             h: 1,
             copyLeft: 0,
             copyW: 1,
+            lines: 1,
+            fontPx: 16,
             win: buildRateWindow(1, headerPx, 1, 0.12, 0.25, 0.25, 0),
             opWin: buildRateWindow(1, headerPx, 1, 0.12, 0.25, 0.25, 0),
             opTop: 0,
@@ -363,6 +404,13 @@ export function useDiagonalTraverse(
           const sr = section.getBoundingClientRect();
           secTop = sr.top + sy;
           secH = Math.max(sr.height, 1);
+          iw = Math.max(window.innerWidth, 1);
+          // The reading band, written out exactly as `buildRateWindow` derives
+          // it (`b1 − b0` with `m = bandInset·ih`). It is the guard rail for
+          // the reading unit below, so it must be the SAME number, not a
+          // second definition of it.
+          bandH = Math.max(ih - 2 * cfg.bandInset * ih - headerPx, 1);
+          unitSpan.clear();
 
           // THE A/B (QA gate 3): `collapse` makes α_edge equal each block's own
           // α_read, which flattens the window to the CONSTANT rate the owner
@@ -379,21 +427,118 @@ export function useDiagonalTraverse(
             const cr = blk.copyEl.getBoundingClientRect();
             blk.copyLeft = cr.left - blk.appliedX;
             blk.copyW = Math.max(cr.width, 1);
+            readTypeMetrics(blk.copyEl, TYPE_METRICS);
+            blk.fontPx = TYPE_METRICS.fontPx;
+            blk.lines = Math.max(
+              1,
+              Math.round(cr.height / TYPE_METRICS.linePx),
+            );
             const alphaRead =
               blk.kind === "display" ? cfg.alphaReadDisplay : cfg.alphaReadBody;
+            const alphaEdge = cfg.collapse ? alphaRead : cfg.alphaEdge;
+            // ⚠ HALF THE BLOCK'S HEIGHT, AND THE HALF IS THE WHOLE POINT.
+            // `capPx` is the `tanh` CEILING on |x_slow|, and
+            // `x_slow = R·α_read·(y_c − y)` is CENTRED and antisymmetric over
+            // the block's on-screen life (`traverse-rate.ts` — `y_c` is the
+            // exact midpoint of `y ∈ [headerH − h, ih]`). Peak-to-peak is
+            // therefore `2·capPx·tanh(…)`, NOT `capPx`: passing `blk.h` bought
+            // TWICE §B2b's authored law ("a paragraph may drift sideways by at
+            // most its own height"). With `blk.h/2` the ceiling is exactly
+            // `blk.h/(lines·fontSize)` — the block's own CSS leading for the
+            // two body wrappers — at every viewport AND every angle, because
+            // `tanh` saturates.
+            //
+            // §C0 exempted display type on the premise that a single line has
+            // no return sweep. The premise is an INPUT and it is FALSE on the
+            // phone (390×844 EN: `02· No traces` and `03· No boundaries` wrap
+            // to two lines), so the exemption is keyed to the MEASURED line
+            // count, not to the kind. `capDisplayFrameK` (default 0, inert) is
+            // the opt-in extension that also catches a one-line headline whose
+            // uncapped plateau drift is a large fraction of the frame.
+            let capOn =
+              blk.kind === "body"
+                ? cfg.capBody
+                : cfg.capDisplayMultiline && blk.lines > 1;
+            if (!capOn && blk.kind === "display" && cfg.capDisplayFrameK > 0) {
+              const probe = buildRateWindow(
+                blk.h,
+                headerPx,
+                ih,
+                cfg.bandInset,
+                alphaRead,
+                alphaEdge,
+                0,
+              );
+              capOn = plateauDriftOf(probe, rate) > cfg.capDisplayFrameK * iw;
+            }
             blk.win = buildRateWindow(
               blk.h,
               headerPx,
               ih,
               cfg.bandInset,
               alphaRead,
-              cfg.collapse ? alphaRead : cfg.alphaEdge,
-              // ⚠ The cap is the block's OWN HEIGHT — "a paragraph may drift
-              // sideways by at most its own height" (§B2b) — and display type
-              // is never capped (§C0: a single line has no return sweep, so
-              // its lateral drift is free).
-              cfg.capBody && blk.kind === "body" ? blk.h : 0,
+              alphaEdge,
+              capOn ? blk.h / 2 : 0,
             );
+            // Accumulate the reading unit's union span from the values we just
+            // de-transformed. NEVER from the unit element's own rect: a rect
+            // read here is the TRANSFORMED box (the stage-1 P0), and the unit
+            // is the parent of the very wrappers this hook is translating.
+            if (blk.unit) {
+              const sp = unitSpan.get(blk.unit);
+              if (sp) {
+                if (blk.docTop < sp.top) sp.top = blk.docTop;
+                const bot = blk.docTop + blk.h;
+                if (bot > sp.bottom) sp.bottom = bot;
+              } else {
+                unitSpan.set(blk.unit, {
+                  top: blk.docTop,
+                  bottom: blk.docTop + blk.h,
+                  win: null,
+                });
+              }
+            }
+          }
+          // ── SECOND PASS — ONE OPACITY WINDOW PER READING UNIT ────────────
+          // Separate from the loop above on purpose: the union span is only
+          // complete once every member's rect has been read, and nothing may
+          // run between those reads (a `getComputedStyle`/`buildRateWindow`
+          // interleave is harmless, a layout write is not).
+          //
+          // A unit TALLER than the band cannot satisfy the `opWin` guarantee —
+          // the union could cover the band while a member sits outside it — so
+          // it keeps its per-block windows. Self-limiting, no viewport table.
+          // The census-invariance proof (QA gate 2) depends on this guard: the
+          // members' supports overlap only because
+          // `t_j − t_i ≤ unitH − h_j ≤ bandH < bandH + h_i`.
+          for (let i = 0; i < blocks.length; i++) {
+            const blk = blocks[i];
+            const sp = blk.unit ? unitSpan.get(blk.unit) : undefined;
+            const unitH = sp ? sp.bottom - sp.top : 0;
+            if (!sp || unitH > bandH) {
+              blk.opWin = blk.win;
+              blk.opTop = blk.docTop;
+              continue;
+            }
+            if (!sp.win) {
+              // Only `windowAt` is ever evaluated on this window — it reads
+              // `d`/`e0..e3` only. NEVER call `rateAt` on it: `x` must stay the
+              // block's own, or the two halves of a row move as one flat plane
+              // and §B2.3's two depths are gone. α_read is therefore inert
+              // here; it is passed as the body value so the window is a pure
+              // function of the union geometry.
+              sp.win = buildRateWindow(
+                unitH,
+                headerPx,
+                ih,
+                cfg.bandInset,
+                cfg.alphaReadBody,
+                cfg.collapse ? cfg.alphaReadBody : cfg.alphaEdge,
+                0,
+              );
+            }
+            blk.opWin = sp.win;
+            blk.opTop = sp.top;
           }
           // Placed LAST: the fit needs `secTop`/`secH`/`ih` from this pass, and
           // the extras are absolutely positioned so re-placing them cannot
@@ -427,7 +572,21 @@ export function useDiagonalTraverse(
               blk.appliedX = x;
               blk.setX(x);
             }
-            const op = wantOpacity ? s.vhat : 1;
+            // ⚠ THE READING UNIT'S WINDOW, NOT THE BLOCK'S. A row is one
+            // statement; a statement with half of it invisible is a bug, not a
+            // beat. `s.vhat` (the block's own) still owns the RATE — the two
+            // halves stay at two depths (§B2.3) — but the opacity and the mask
+            // lane ride the union box (see the `opWin` note in `Block`).
+            //
+            // ⚠ `uv` IS EVALUATED UNCONDITIONALLY, AND THAT IS THE GUARD. The
+            // lane must ride `uv`, never `op`: with `windowOpacity: false` (or
+            // `angleDeg: 0` ⇒ `rate === 0`) every block would report `op ≡ 1`,
+            // pinning `frame.laneWindow` at 1 for the whole act — and
+            // `NeuralLattice.tsx` scales uCopyLaneW, uCopySoft, uCopyFloor AND
+            // uCopyLineFloor by it. The rollback would carve the mask lane
+            // permanently open, i.e. stop being a rollback.
+            const uv = windowAt(blk.opWin, blk.opTop - sy);
+            const op = wantOpacity ? uv : 1;
             if (Math.abs(op - blk.appliedOp) >= OPACITY_DEADBAND) {
               blk.appliedOp = op;
               blk.setOpacity(op);
@@ -436,8 +595,8 @@ export function useDiagonalTraverse(
             // broken by proximity to the viewport centre. By the storyboard's
             // own layout at most one block is in the reading zone at a time.
             const u = Math.abs(blk.docTop + blk.h / 2 - sy - ih / 2);
-            if (s.vhat > bestV + 1e-6 || (s.vhat > bestV - 1e-6 && u < bestU)) {
-              bestV = s.vhat;
+            if (uv > bestV + 1e-6 || (uv > bestV - 1e-6 && u < bestU)) {
+              bestV = uv;
               bestU = u;
               best = blk;
             }
@@ -539,7 +698,10 @@ export function useDiagonalTraverse(
             }
           }
           if (!blk) return;
-          const targetY = blk.docTop - blk.win.yc;
+          // WCAG 2.4.11 follows the READING UNIT: parking the row's display
+          // half at its OWN plateau centre would leave the paragraph — which is
+          // what the opacity window now keys off — part-way up its ramp.
+          const targetY = blk.opTop - blk.opWin.yc;
           if (Math.abs(window.scrollY - targetY) < 2) return;
           // Tracked so the teardown can release it: an unmount mid-glide (an
           // EN/IT rebuild, a runtime RM toggle) would otherwise leave snap
@@ -581,6 +743,8 @@ export function useDiagonalTraverse(
                 secTop,
                 secH,
                 ih,
+                iw,
+                bandH: Math.round(bandH * 10) / 10,
                 headerPx,
                 rate,
                 runwayVh: secH / ih,
@@ -589,22 +753,86 @@ export function useDiagonalTraverse(
               };
             },
             get blocks() {
-              return blocks.map((b, i) => ({
-                i,
-                kind: b.kind,
-                tag: b.copyEl.tagName.toLowerCase(),
-                h: Math.round(b.h),
-                copyW: Math.round(b.copyW),
-                alphaRead: b.win.alphaRead,
-                capPx: Math.round(b.win.capPx),
-                x: Math.round(b.appliedX * 10) / 10,
-                opacity: Math.round(b.appliedOp * 1000) / 1000,
-                plateauPx: Math.round(b.win.e2 - b.win.e1),
-                excursion:
-                  Math.round(
-                    excursionOf(b.win, rate, headerPx, ih, b.h) * 10,
-                  ) / 10,
-              }));
+              return blocks.map((b, i) => {
+                const drift = plateauDriftOf(b.win, rate);
+                const denom = Math.max(b.lines * b.fontPx, 1);
+                return {
+                  i,
+                  kind: b.kind,
+                  tag: b.copyEl.tagName.toLowerCase(),
+                  h: Math.round(b.h),
+                  copyW: Math.round(b.copyW),
+                  lines: b.lines,
+                  fontPx: Math.round(b.fontPx * 100) / 100,
+                  alphaRead: b.win.alphaRead,
+                  capPx: Math.round(b.win.capPx * 10) / 10,
+                  x: Math.round(b.appliedX * 10) / 10,
+                  opacity: Math.round(b.appliedOp * 1000) / 1000,
+                  plateauPx: Math.round(b.win.e2 - b.win.e1),
+                  excursion:
+                    Math.round(
+                      excursionOf(b.win, rate, headerPx, ih, b.h) * 10,
+                    ) / 10,
+                  // QA GATE 3 — the drift the reader actually sees, over the
+                  // plateau where the block is opaque, in px and in ems of its
+                  // OWN type. `emCeiling = h/(lines·fontSize)` is the block's
+                  // measured CSS leading; `capOk` is the gate.
+                  plateauDrift: Math.round(drift * 10) / 10,
+                  emPerLine: Math.round((drift / denom) * 1000) / 1000,
+                  emCeiling: Math.round((b.h / denom) * 1000) / 1000,
+                  capOk: drift <= b.h + 1e-6,
+                  // The reading unit this block's OPACITY (and the mask lane)
+                  // is keyed to. `unit:false` = it kept its own window, i.e.
+                  // the union was taller than the band.
+                  unit: b.opWin !== b.win,
+                  // `d = min(unitH, bandH)`, and the unit window is only built
+                  // when `unitH ≤ bandH`, so on a unit-keyed block this IS the
+                  // union box's height.
+                  unitH: Math.round(b.opWin.d),
+                };
+              });
+            },
+            /**
+             * QA GATE 3, as one table. `plateauDriftOf(w, r)` is the lateral
+             * distance a block travels while it is FULLY OPAQUE (V̂ ≡ 1), which
+             * is the only drift the reader can see; `emPerLine` divides it by
+             * the block's own `lines · fontSize`. The gate is
+             * `emPerLine ≤ h/(lines·fontSize)`, i.e. `plateauDrift ≤ h`.
+             *
+             * Run it at the committed 23.61° AND at 45°:
+             *   set({ problem: { angleDeg: 45 } }); plateauDrift();
+             *   set({ problem: { angleDeg: 23.61 } });
+             *
+             * `capped:false` rows are the blocks §C0 exempts (display type that
+             * measures ONE line); they are reported, not hidden, because they
+             * are exactly what `capDisplayFrameK` exists to close.
+             */
+            plateauDrift() {
+              const rows = blocks.map((b, i) => {
+                const drift = plateauDriftOf(b.win, rate);
+                const denom = Math.max(b.lines * b.fontPx, 1);
+                return {
+                  i,
+                  kind: b.kind,
+                  tag: b.copyEl.tagName.toLowerCase(),
+                  h: Math.round(b.h),
+                  lines: b.lines,
+                  fontPx: Math.round(b.fontPx * 100) / 100,
+                  capped: b.win.capPx > 0,
+                  driftPx: Math.round(drift * 10) / 10,
+                  frameFrac: Math.round((drift / iw) * 1000) / 1000,
+                  emPerLine: Math.round((drift / denom) * 1000) / 1000,
+                  emCeiling: Math.round((b.h / denom) * 1000) / 1000,
+                  ok: drift <= b.h + 1e-6,
+                };
+              });
+              return {
+                angleDeg: traverseConfig.bands[bandId].angleDeg,
+                viewport: [iw, ih],
+                pass: rows.every((r) => r.ok),
+                failing: rows.filter((r) => !r.ok).map((r) => r.i),
+                rows,
+              };
             },
             /** QA gate 4a — max |dx/dscrollY| sampled across a full transit. */
             rateMax(samples = 4000) {
@@ -643,16 +871,28 @@ export function useDiagonalTraverse(
                 yc: d2(b.win.yc),
               };
             },
-            /** Park a block at its WORST case — the outer edge of its ramp. */
+            /**
+             * Park a block at its WORST case — the outer edge of its ramp.
+             *
+             * ⚠ THE RAMP IS THE READING UNIT'S (`opWin`/`opTop`), NOT THE
+             * BLOCK'S, and that is what makes `laneCheck()` meaningful here:
+             * the lane is published from the unit's window value, so the worst
+             * case for the lane is the edge of the window the lane rides. On
+             * `b.win.e3` the row's paragraph would already be transparent
+             * while its headline still tracked, and the check would be
+             * measuring a block the lane is no longer following. `e0`/`e3` are
+             * the two ends of the support: V̂ = 0 outside, so these are the
+             * extremes of the tracked span, not of the drift.
+             */
             park(index = 0, edge: "top" | "bottom" = "bottom") {
               const b = blocks[index];
               if (!b) return null;
-              const y = edge === "bottom" ? b.win.e3 : b.win.e0;
-              const targetY = b.docTop - y;
+              const y = edge === "bottom" ? b.opWin.e3 : b.opWin.e0;
+              const targetY = b.opTop - y;
               const lenis = getLenis();
               if (lenis) lenis.scrollTo(targetY, { duration: 0.4 });
               else window.scrollTo({ top: targetY });
-              return { index, edge, targetY };
+              return { index, edge, targetY, unit: b.opWin !== b.win };
             },
             /** THE A/B: collapse the window to a constant α (the rejected
              * design), and restore it. One number, no other code path. */
@@ -674,12 +914,15 @@ export function useDiagonalTraverse(
               let bestV = -1;
               let bestU = Number.POSITIVE_INFINITY;
               const sy = window.scrollY;
+              // MIRRORS `apply()` EXACTLY — the unit's window, not the
+              // block's. A dev handle that selected the tracked block by a
+              // different rule than the frame path would make the gate lie.
               for (let i = 0; i < blocks.length; i++) {
                 const b = blocks[i];
-                const s = rateAt(b.win, b.docTop - sy, rate);
+                const v = windowAt(b.opWin, b.opTop - sy);
                 const u = Math.abs(b.docTop + b.h / 2 - sy - ih / 2);
-                if (s.vhat > bestV + 1e-6 || (s.vhat > bestV - 1e-6 && u < bestU)) {
-                  bestV = s.vhat;
+                if (v > bestV + 1e-6 || (v > bestV - 1e-6 && u < bestU)) {
+                  bestV = v;
                   bestU = u;
                   tracked = b;
                 }
@@ -755,6 +998,17 @@ export function useDiagonalTraverse(
               let copyOnly = 0;
               let netOnly = 0;
               let none = 0;
+              // ROUND 12 QA GATE 2 — the SAME census keyed on the PER-BLOCK
+              // windows, i.e. the pre-(a) instrument, run in the same walk so
+              // the two are compared sample-for-sample rather than across two
+              // builds. They must agree exactly: for `unitH ≤ bandH` the unit
+              // window's support is the union of its members' supports, so the
+              // "is any copy non-transparent" predicate is invariant. A
+              // divergence means the `unitH > bandH` guard is not holding.
+              let bothB = 0;
+              let copyOnlyB = 0;
+              let netOnlyB = 0;
+              let noneB = 0;
               let total = 0;
               let run = 0;
               let longest = 0;
@@ -776,13 +1030,26 @@ export function useDiagonalTraverse(
                   bd.on++;
                 }
                 if (on > maxOn) maxOn = on;
+                // MIRRORS `apply()`: the opacity the traverse actually writes
+                // is the READING UNIT's window. The census is invariant under
+                // that swap — for `unitH ≤ bandH` the unit window's support is
+                // exactly the union of its members' supports (the contiguity
+                // lemma; it is the `unitH > bandH` guard in `measure()` that
+                // makes it true) — and reproducing the pre-change figure to the
+                // sample is QA gate 2.
                 let copy = false;
+                let copyB = false;
                 for (let i = 0; i < blocks.length; i++) {
-                  if (rateAt(blocks[i].win, blocks[i].docTop - s, r).vhat > 0) {
-                    copy = true;
-                    break;
-                  }
+                  const bl = blocks[i];
+                  if (!copy && windowAt(bl.opWin, bl.opTop - s) > 0) copy = true;
+                  if (!copyB && rateAt(bl.win, bl.docTop - s, r).vhat > 0)
+                    copyB = true;
+                  if (copy && copyB) break;
                 }
+                if (on > 0 && copyB) bothB++;
+                else if (copyB) copyOnlyB++;
+                else if (on > 0) netOnlyB++;
+                else noneB++;
                 if (on > 0 && copy) both++;
                 else if (copy) copyOnly++;
                 else if (on > 0) netOnly++;
@@ -812,6 +1079,21 @@ export function useDiagonalTraverse(
                 netOnly: pct(netOnly),
                 nothing: pct(none),
                 netOnFrame: pct(both + netOnly),
+                /** QA GATE 2 — the pre-(a) per-block census, same walk. */
+                perBlockCensus: {
+                  netAndCopy: pct(bothB),
+                  copyOnly: pct(copyOnlyB),
+                  netOnly: pct(netOnlyB),
+                  nothing: pct(noneB),
+                  copySamples: bothB + copyOnlyB,
+                },
+                copySamples: both + copyOnly,
+                /** True iff (a) left the census invariant, sample for sample. */
+                censusInvariant:
+                  both === bothB &&
+                  copyOnly === copyOnlyB &&
+                  netOnly === netOnlyB &&
+                  none === noneB,
                 maxIslandsOnFrame: maxOn,
                 longestNothingRunPx: longest,
                 longestNothingAtSectionY: Math.round(longestAt),

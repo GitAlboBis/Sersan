@@ -462,8 +462,17 @@ export default function ProblemSection() {
             where the passage never arms. The drift wrappers live INSIDE it —
             the passage and the drift never share a transform target. */}
         <div data-emerge style={{ willChange: "transform" }}>
+          {/* ROUND 12 — THE READING UNIT. The H2 and its description are ONE
+              statement, so they must fade in and out as one: the traverse
+              takes its opacity window (and, with it, the mask lane) from the
+              UNION box of everything inside `[data-traverse-unit]`, never from
+              the half. Presentational marker only — no copy, no layout, no
+              style; `UNIT_SELECTOR` in `use-diagonal-traverse.ts` already
+              matched it, the grid simply never carried it. The ledger rows get
+              the same treatment for free through `[data-ledger-row]`. */}
           <div
             ref={chapterRef}
+            data-traverse-unit
             className="grid gap-6 lg:grid-cols-[1fr_minmax(320px,30rem)] lg:items-end lg:gap-12"
           >
             <div data-drift="0.5" data-traverse-alpha="display">
