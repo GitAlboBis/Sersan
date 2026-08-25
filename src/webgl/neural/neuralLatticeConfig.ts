@@ -58,8 +58,10 @@
  * origin (streamCenter(uFracture)), the row attention windows, and the
  * DORMANT membranes (retired round-8, off by default).
  *
- * TRANSPORT: node/edge data rides in the SAME four uniformArrays as before
- * (uNodePos/uNodeT/uEdgeA/uEdgeB) — `.element()` is legal in any stage and
+ * TRANSPORT: node/edge data rides in the SAME uniformArrays as before
+ * (uNodePos/uNodeT plus the endpoint tables, which ROUND 12 · STAGE 0B packed
+ * from uEdgeA+uEdgeB into the single vec4 uEdgePack) — `.element()` is legal
+ * in any stage and
  * costs zero storage buffers / zero vertex-buffer slots, and the round-8-D
  * cloud adds NO new binding. Each uniformArray element is padded to a vec4
  * (16 B) by three's UniformArrayNode, so the biggest array here is
@@ -241,7 +243,9 @@ export const PLEXUS_K: Record<PlexusDensity, number> = {
   lite: 4,
   svg: 3,
 };
-/** Hard ceiling on the delivered edge list — sizes uEdgeA/uEdgeB. */
+/** Hard ceiling on the delivered edge list — sizes the endpoint table
+ * (uEdgePack since ROUND 12 · STAGE 0B; uEdgeA/uEdgeB when EDGE_PACKED is
+ * rolled back). */
 export const PLEXUS_EDGE_CAP: Record<PlexusDensity, number> = {
   full: 250,
   lite: 132,
@@ -352,6 +356,335 @@ function smooth01(x: number, a: number, b: number): number {
   const t = Math.min(1, Math.max(0, (x - a) / Math.max(b - a, 1e-6)));
   return t * t * (3 - 2 * t);
 }
+function clamp01h(x: number): number {
+  return x < 0 ? 0 : x > 0.5 ? 0.5 : x;
+}
+
+// --- ROUND 12 STAGE 0C · THE GENERATOR'S BUILD ARGUMENTS ---------------------
+/**
+ * THE SHAPE ARM.
+ *
+ * `"ellipsoid"` is the shipped seeder and the DEFAULT: a centre-dense
+ * golden-spiral ball (§1 of buildPlexus). Every pre-round-12 call site gets it
+ * byte-for-byte by passing nothing.
+ *
+ * `"ribbon"` is the ROUND 12 / D17 arm: a RECT FILL in ribbon coordinates
+ * (u ∈ [0,1] along the run, v ∈ [−0.5,+0.5] across it, w in depth), uniform in
+ * u so the per-frame density is FLAT down the whole lateral run. It exists
+ * because cranking `seeds` on the ellipsoid does NOT give a rectangle — it
+ * gives a LENS. Measured at 454 nodes over a 7270 px field the end bins hold
+ * 18–20 nodes over 343 px and the per-frame count swings 2.6×, which
+ * re-creates the "three separate pieces" reading inside a single band.
+ *
+ * NOTHING CALLS THE RIBBON ARM YET. Stage 2 wires it (the field mapping, the
+ * driver, the consumer migration); this stage only guarantees it exists, is
+ * correct, and is inert.
+ */
+export type PlexusShape = "ellipsoid" | "ribbon";
+
+/**
+ * Every build-time constant the D17 ribbon has to move, as a PER-BUILD
+ * ARGUMENT. Each one defaults to the module constant of the same name, so
+ * `getPlexus(mode, density)` is byte-for-byte the shipped cloud — that is the
+ * whole gate of this stage.
+ *
+ * WHY EACH ONE IS HERE (every one of these is a SILENT failure if it is left
+ * at its band-shaped value under a 7278 × 935 field):
+ *
+ *  - `edgeCap` — `PLEXUS_EDGE_CAP.full` is 250. A net that wants ~1250 links
+ *    would simply TRUNCATE to 250. No error, no warning. (This build now warns
+ *    in dev and reports `edgeCapHit`.)
+ *  - `bandAspect` — 0.45 is the band's aspect; the D17 field's is
+ *    935/7278 = 0.1285. Left at 0.45, "nearest neighbour" is 3.5× more
+ *    permissive in x than in y and the topology comes out wrong.
+ *  - `edgeMinLocal` — 0.055 of a 1927 px-wide band is 106 px; 0.055 of a
+ *    7278 px field is 400 px, which rejects the ENTIRE short-link population.
+ *  - `seeds` / `k` / `linkCutoff` — they set N and E/N.
+ *  - `radialPow` / `rx,ry,rz` / `warp` / `cx,cy` — the seeder's shape.
+ *  - `wellCentre` / `wellInner` / `wellOuter` — CRYSTAL_POS is authored in
+ *    BAND-local coordinates; under the ribbon the stone's x is a ribbon `u`.
+ *  - `centroidK` — the 5-slice gaussian half-width is ≈0.10 of nodeT; over a
+ *    3.79-band-long field that is 2.8 frames wide.
+ *  - `wrapSnapCeil` / `wrapSnapFrac` — see `wrapSnapDist` on the Plexus.
+ */
+export interface PlexusBuildParams {
+  /** Seeder arm. Default `"ellipsoid"` (the shipped cloud). */
+  shape: PlexusShape;
+  /** Candidate seed count. Default `PLEXUS_SEEDS[density]`, or
+   * `PLEXUS_SEEDS_STONELESS[density]` when `well` is false. */
+  seeds: number;
+  /** k of the k-nearest pass. Default `PLEXUS_K[density]`. */
+  k: number;
+  /** Hard ceiling on the delivered edge list. Default
+   * `PLEXUS_EDGE_CAP[density]`. */
+  edgeCap: number;
+  /** Link cutoff × meanSpacing. Default `PLEXUS_LINK_CUTOFF`. */
+  linkCutoff: number;
+  /** Build-time aspect (field height / field length) used to put x and y in
+   * the same units before measuring. Default `BAND_ASPECT`. */
+  bandAspect: number;
+  /** Minimum RAW local link length. Default `EDGE_MIN_LOCAL`. */
+  edgeMinLocal: number;
+  /** Ellipsoid radial density exponent (r = U^(1/POW)). Default
+   * `PLEXUS_RADIAL_POW`. Ignored by the ribbon arm. */
+  radialPow: number;
+  /** Ellipsoid direction jitter. Default `PLEXUS_DIR_JITTER`. Ignored by the
+   * ribbon arm. */
+  dirJitter: number;
+  /**
+   * RIBBON ONLY — the across-ribbon taper exponent: |v| = 0.5·U^vTaper.
+   * `1` is a TRUE RECT FILL (uniform across v) and is the default, because
+   * "rect fill" is what the owner approved and it is the flattest thing
+   * available. `> 1` tapers toward the centreline (a thinner, more organic
+   * top/bottom edge); `< 1` pushes mass to the rails. The organic (non
+   * machined) rim is supplied by `warp`, which modulates the ACROSS extent
+   * only and therefore never disturbs the per-frame density.
+   */
+  vTaper: number;
+  /** RIBBON ONLY — the same law in depth. Default = `vTaper`. */
+  wTaper: number;
+  /** Cloud/ribbon centre, LOCAL units. Defaults `PLEXUS_CX` / 0. */
+  cx: number;
+  cy: number;
+  /** Half-extents, LOCAL units. Defaults `PLEXUS_RX/RY/RZ`. */
+  rx: number;
+  ry: number;
+  rz: number;
+  /** Low-frequency boundary warp. Default `PLEXUS_WARP`. */
+  warp: number;
+  /** Crystal clearance well centre, LOCAL units. Default `CRYSTAL_POS[mode]`.
+   * Only consulted when the build is welled (`well === true`). */
+  wellCentre: readonly [number, number];
+  /** Well radii, screen-round units. Defaults `CRYSTAL_CLEAR_INNER/OUTER`. */
+  wellInner: number;
+  wellOuter: number;
+  /** Gaussian sharpness of the 5-slice centroid spine. Default
+   * `PLEXUS_CENTROID_K`. */
+  centroidK: number;
+  /**
+   * Re-centre the DELIVERED cloud on its own y bbox-centre.
+   *
+   * `false` for the ellipsoid (the shipped cloud is NOT re-centred and must
+   * not become so), `true` for the ribbon. Measured today: the delivered band
+   * sits at y ∈ [−0.3363, +0.4175], bbox-centre **+0.0406**, which is exactly
+   * the measured 77 px top gap against 153 px bottom — a 2:1 asymmetry on a
+   * 935 px frame (0.0406 × 935 = 38 px = (153 − 77)/2). Subtracting the
+   * delivered bbox-centre closes it BY CONSTRUCTION, at any seed and under
+   * any well carve — which is why it must NOT be closed by raising `ry`
+   * (that would make the net taller than the frame instead of centred in it).
+   */
+  recentre: boolean;
+  /** Ceiling on the derived `wrapSnapDist`. Default `WRAP_SNAP_DIST` (0.038),
+   * so the default build derives exactly the shipped number. */
+  wrapSnapCeil: number;
+  /** Fraction of the SHORTEST DELIVERED link the snap threshold may take.
+   * Default 0.69 — 0.038 / 0.0551, i.e. the shipped ratio. */
+  wrapSnapFrac: number;
+}
+export type PlexusParams = Partial<PlexusBuildParams>;
+
+/**
+ * RIBBON DEFAULTS. Authored so that a caller can ask for `{ shape: "ribbon",
+ * seeds: N }` and get something GEOMETRICALLY CORRECT rather than a band-shaped
+ * cloud stretched over a field — every one of these is a trap if it is left at
+ * its ellipsoid value (see PlexusBuildParams).
+ *
+ * THE UNIT RIBBON: x ∈ [−0.5, +0.5] spans the WHOLE FIELD LENGTH; y and z
+ * stay in FRAME-HEIGHT fractions exactly as they are today, so `bandAspect` is
+ * the field's own aspect and everything authored in height fractions (rz,
+ * CRYSTAL_CLEAR_*, NEURAL_DEPTH_VIEWPORT_SPAN) keeps its physical meaning. At
+ * the reference 1920 × 935 the field is 3.791 band-widths = 7278 px long,
+ * hence 935/7278 = 0.1284694, TRUNCATED and FROZEN here as 0.12846.
+ * ⚠ It is a captured reference measurement, not a function of any module
+ * constant, so nothing upstream can move it — and nothing upstream will
+ * update it either (see the `edgeMinLocal` note below, which has the same
+ * property and the same hazard).
+ *
+ * `ry` STAYS AT `PLEXUS_RY` (0.42) AND THAT IS DELIBERATE. Unlike the
+ * ellipsoid — whose radial law and well leave it far short of its own rails —
+ * a rect fill APPROACHES ry: the across-ribbon extent is warped and then
+ * NORMALISED BY THE WARP'S OWN PEAK (see the `av` note in §1-RIBBON of
+ * buildPlexus), so `ry` is a bound the rim reaches for and never ties.
+ * MEASURED, broken/full, well:false, seeds 391/454/662/720: delivered
+ * half-extent 0.3921–0.3963 = 93.4–94.4 % of `ry`, with ZERO nodes on the rail
+ * at any of them. On a 935 px frame that is a ≈99 px edge gap per side rather
+ * than the ≈75 px an exact ±ry fill would give, and it is SYMMETRIC — which
+ * was the real complaint behind the measured 77 px / 153 px: the asymmetry was
+ * never `ry`, it was the delivered cloud's off-centre bbox (+0.0406), which
+ * `recentre` removes. If Stage 2 wants the 75 px gap back, raise `ry` to
+ * ≈0.448 (0.42 / 0.938) and the rim stays organic. **Do not raise `ry` to 0.5
+ * to "fill the frame", and do not chase the gap by clamping the warp at ±ry**
+ * — the clamp is exactly what put 23–44 nodes per build bit-exactly on the
+ * rail before ROUND 12's review, and a rail is a cut edge, not an organic one.
+ *
+ * `edgeMinLocal` — ⚠ AN AUTHORED CONSTANT, NOT A LIVE DERIVATION, AND IT DOES
+ * NOT TRACK `EDGE_MIN_LOCAL`. Its INTENT is the honest translation of today's
+ * guard: reject the same physical chord the band rejects — 0.055 of a ~1927 px
+ * band ≈ 106 px, and 106 px of the 7278 px field ≈ 0.0146. But 0.01457 is a
+ * captured number, and no quotient of the two aspect constants reproduces it:
+ * `EDGE_MIN_LOCAL · RIBBON_FIELD_ASPECT / BAND_ASPECT` = 0.015701, the inverse
+ * = 0.192667, and even the prose ratio `0.055 · 1927/7278` = 0.014562 (0.01457
+ * implies a 1928.0 px band). The aspects cannot compose because `BAND_ASPECT`
+ * (0.45) is an AUTHORED approximation of the band's true 935/1927 = 0.4852 —
+ * the correct relation is a LENGTH ratio, not an aspect quotient, and this
+ * file has no constant for either frame's pixel length. So: **a retune of
+ * `EDGE_MIN_LOCAL` will NOT propagate here.** Retune both by hand, or first
+ * give this file the two reference pixel lengths and derive both arms from
+ * them.
+ *
+ * `edgeCap` is a GUARD, not a target: 1600 clears the 1258–1406 links the
+ * areal-parity band delivers and still stops a runaway. Stage 2 sets it per
+ * density. It is far below the 4096-link ceiling of the index-packed uniform
+ * array (Stage 0B) and far above anything this arm should ever produce.
+ */
+export const RIBBON_FIELD_ASPECT = 0.12846;
+export const RIBBON_DEFAULTS: Readonly<
+  Pick<
+    PlexusBuildParams,
+    | "bandAspect"
+    | "edgeMinLocal"
+    | "edgeCap"
+    | "cx"
+    | "cy"
+    | "rx"
+    | "ry"
+    | "rz"
+    | "vTaper"
+    | "warp"
+    | "recentre"
+  >
+> = {
+  bandAspect: RIBBON_FIELD_ASPECT,
+  edgeMinLocal: 0.01457,
+  edgeCap: 1600,
+  cx: 0,
+  cy: 0,
+  rx: 0.5,
+  ry: PLEXUS_RY,
+  rz: PLEXUS_RZ,
+  vTaper: 1,
+  warp: PLEXUS_WARP,
+  recentre: true,
+};
+
+/** Fully-resolved build arguments — every field present, no optionals. */
+type ResolvedPlexusParams = PlexusBuildParams;
+
+function resolvePlexusParams(
+  mode: LatticeMode,
+  density: PlexusDensity,
+  well: boolean,
+  params?: PlexusParams,
+): ResolvedPlexusParams {
+  const shape: PlexusShape = params?.shape ?? "ellipsoid";
+  const ribbon = shape === "ribbon";
+  const d = RIBBON_DEFAULTS;
+  // ⚠ THE CRYSTAL DENSITY WELL HAS NO RIBBON GEOMETRY, AND INHERITING THE
+  // BAND'S SEVERS THE NET. `wellCentre` is authored in BAND local x
+  // (CRYSTAL_POS) while the clearance radii are FRAME-HEIGHT fractions, and
+  // the well test is screen-round — so on a field 7.8 frame-heights long it
+  // carves a hole nearly as TALL as the ribbon and cuts it clean through.
+  // MEASURED at the ribbon defaults, broken/full, with THIS guard lifted so
+  // the well:true build could be run — seeds 391: 4 components, largest
+  // 250/369 (68 %), 20-bin x-density swing 5.25×; seeds 662: 7 components,
+  // largest 413/626 (66 %), swing 7.40×; seeds 720: 6 components, largest
+  // 462/684 (68 %), swing 5.13× — each with a full-height hole at the well's
+  // x. With `well:false` the same builds are 3/5/5 components, largest
+  // 98.2/98.3/98.2 %, swing 1.11/1.23/1.24×. That is the
+  // "confetti, not a net" failure mode by a second route, so it FAILS LOUDLY
+  // rather than shipping a hole-punched ribbon. `RIBBON_DEFAULTS` deliberately
+  // does NOT carry a substitute well: what radius clears which stone on which
+  // island is a Stage 2 design decision, not a number this file may invent.
+  if (ribbon && well && params?.wellCentre === undefined) {
+    throw new Error(
+      `resolvePlexusParams: shape "ribbon" with well=true and no explicit ` +
+        `wellCentre. The crystal density well is authored for the BAND ` +
+        `frame; on the ribbon it carves a screen-round hole nearly as tall ` +
+        `as the field and severs the net (measured at seeds 391/662/720: ` +
+        `4/7/6 components, largest 66-68 %, 20-bin x-density swing ` +
+        `5.13-7.40x, against a 98 %-connected net at 1.11-1.24x with the ` +
+        `well off). Pass well=false — an island ` +
+        `with no stone in it needs no clearance — or author wellCentre / ` +
+        `wellInner / wellOuter for the ribbon frame explicitly.`,
+    );
+  }
+  const vTaper = params?.vTaper ?? (ribbon ? d.vTaper : 1);
+  return {
+    shape,
+    seeds:
+      params?.seeds ??
+      (well ? PLEXUS_SEEDS[density] : PLEXUS_SEEDS_STONELESS[density]),
+    k: params?.k ?? PLEXUS_K[density],
+    edgeCap: params?.edgeCap ?? (ribbon ? d.edgeCap : PLEXUS_EDGE_CAP[density]),
+    linkCutoff: params?.linkCutoff ?? PLEXUS_LINK_CUTOFF,
+    bandAspect: params?.bandAspect ?? (ribbon ? d.bandAspect : BAND_ASPECT),
+    edgeMinLocal:
+      params?.edgeMinLocal ?? (ribbon ? d.edgeMinLocal : EDGE_MIN_LOCAL),
+    radialPow: params?.radialPow ?? PLEXUS_RADIAL_POW,
+    dirJitter: params?.dirJitter ?? PLEXUS_DIR_JITTER,
+    vTaper,
+    wTaper: params?.wTaper ?? vTaper,
+    cx: params?.cx ?? (ribbon ? d.cx : PLEXUS_CX),
+    cy: params?.cy ?? (ribbon ? d.cy : 0),
+    rx: params?.rx ?? (ribbon ? d.rx : PLEXUS_RX),
+    ry: params?.ry ?? (ribbon ? d.ry : PLEXUS_RY),
+    rz: params?.rz ?? (ribbon ? d.rz : PLEXUS_RZ),
+    warp: params?.warp ?? (ribbon ? d.warp : PLEXUS_WARP),
+    wellCentre: params?.wellCentre ?? CRYSTAL_POS[mode],
+    wellInner: params?.wellInner ?? CRYSTAL_CLEAR_INNER,
+    wellOuter: params?.wellOuter ?? CRYSTAL_CLEAR_OUTER,
+    centroidK: params?.centroidK ?? PLEXUS_CENTROID_K,
+    recentre: params?.recentre ?? (ribbon ? d.recentre : false),
+    wrapSnapCeil: params?.wrapSnapCeil ?? WRAP_SNAP_DIST,
+    wrapSnapFrac: params?.wrapSnapFrac ?? WRAP_SNAP_FRAC,
+  };
+}
+
+/** Deterministic signature of the resolved arguments — the memo key. */
+function paramSig(p: ResolvedPlexusParams): string {
+  return [
+    p.shape,
+    p.seeds,
+    p.k,
+    p.edgeCap,
+    p.linkCutoff,
+    p.bandAspect,
+    p.edgeMinLocal,
+    p.radialPow,
+    p.dirJitter,
+    p.vTaper,
+    p.wTaper,
+    p.cx,
+    p.cy,
+    p.rx,
+    p.ry,
+    p.rz,
+    p.warp,
+    p.wellCentre[0],
+    p.wellCentre[1],
+    p.wellInner,
+    p.wellOuter,
+    p.centroidK,
+    p.recentre ? 1 : 0,
+    p.wrapSnapCeil,
+    p.wrapSnapFrac,
+  ].join(",");
+}
+
+/**
+ * The largest node count the edge de-duplication key `a * 1024 + b` can carry
+ * INJECTIVELY. Above it the key collides and the builder SILENTLY DROPS edges
+ * — it does not throw, it just delivers a thinner net than it built. The D17
+ * band is 662–720 nodes so it clears this, but the phone's 716 and any future
+ * density bump sit close enough that the failure has to be loud.
+ */
+export const PLEXUS_DEDUP_MAX_NODES = 1024;
+
+/**
+ * The shipped ratio of `WRAP_SNAP_DIST` to the shortest delivered link
+ * (0.038 / 0.0551). See `Plexus.wrapSnapDist`.
+ */
+export const WRAP_SNAP_FRAC = 0.69;
 
 export interface Plexus {
   /** Node centres [x, y, z] in LOCAL space — seeds uNodePos. */
@@ -362,7 +695,8 @@ export interface Plexus {
   nodeT: number[];
   /** Near-neighbour links [a, b], ORIENTED so nodeT[a] ≤ nodeT[b] (flow and
    * packet traffic therefore always run left→right and converge on the
-   * right-hand star) — seeds uEdgeA/uEdgeB. */
+   * right-hand star) — seeds the endpoint table (uEdgePack; uEdgeA/uEdgeB
+   * under the EDGE_PACKED rollback). */
   edges: [number, number][];
   /** The 5 x-slice centroids = the uC0..uC4 registration spine. */
   centroids: [number, number, number][];
@@ -382,6 +716,46 @@ export interface Plexus {
   components: number;
   largestComponent: number;
   meanEdgeLocal: number;
+  /**
+   * ROUND 12 STAGE 0C — the arm this cloud came out of, and the arguments it
+   * was built with. Inert diagnostics: nothing on the frame path reads them.
+   */
+  shape: PlexusShape;
+  /** Delivered y bbox — `yMid` is the number the ribbon re-centres ON. Today's
+   * shipped band reports −0.3363 / +0.4175 / **+0.0406**, and that +0.0406 IS
+   * the measured 77 px-top / 153 px-bottom asymmetry on a 935 px frame. */
+  yMin: number;
+  yMax: number;
+  yMid: number;
+  /** True when `edgeCap` bit — i.e. the generator BUILT more links than it
+   * delivered. Silent truncation is the sharpest trap in this generator, so it
+   * is reported (and warned about in dev) rather than swallowed. */
+  edgeCapHit: boolean;
+  /**
+   * PER-BUILD `WRAP_SNAP_DIST`, derived rather than assumed.
+   *
+   * The kernel's recycle snap teleports an edge particle's anchor by ONE EDGE
+   * LENGTH on a flow-s wrap, so the threshold must sit BELOW the shortest
+   * delivered link and ABOVE every steady-state excursion:
+   *
+   *   POINTER_PUSH/NEURAL_SPRING + curl < wrapSnapDist < shortest link
+   *
+   * `min(wrapSnapCeil, minEdgeLocal × wrapSnapFrac)`. On the default build
+   * that is `min(0.038, 0.0551 × 0.69 = 0.038019)` = **0.038 exactly**, the
+   * shipped constant — so wiring this up changes nothing today. Under the
+   * ribbon the shortest delivered link falls to 0.0146–0.0201 LOCAL (x is
+   * stretched 3.8×), the module constant 0.038 is 2× too large, the snap never
+   * fires, and the bright spring-flight streak returns on the WebGPU tier.
+   *
+   * ⚠ `wrapSnapOk` false means the invariant CANNOT be satisfied at these
+   * arguments — the pointer/curl excursion floor is above the derived
+   * threshold. On the ribbon that is a real finding, not a rounding error:
+   * POINTER_PUSH is a LOCAL-units force, so a 3.8×-longer local x-axis makes
+   * the same constant push 3.8× further in pixels. It must be scaled by 1/L
+   * in `neuralFieldCompute.ts` (Stage 2), which this file cannot do.
+   */
+  wrapSnapDist: number;
+  wrapSnapOk: boolean;
   /** Deterministic checksum of every node position, 6 significant digits. */
   checksum: number;
 }
@@ -398,37 +772,46 @@ const plexusCache = new Map<string, Plexus>();
  * the whole mechanism behind the island SEQUENCE (coverage-trilemma dossier
  * §7.1/§8①). Five islands of the same code, five seeds, five visibly different
  * constellations — and zero shader edits, because the seed only ever reaches
- * the GPU as the CONTENTS of the uNodePos / uNodeT / uEdgeA / uEdgeB tables
- * that already exist.
+ * the GPU as the CONTENTS of the plexus tables that already exist — uNodePos /
+ * uNodeT and the endpoint table (uEdgePack since ROUND 12 · STAGE 0B).
  */
 export const PLEXUS_MASTER_SEED: Record<LatticeMode, number> = {
   broken: 11.37,
   healthy: 57.19,
 };
 
-/** Memoized deterministic plexus for a mode + density (+ seed / clearance).
+/** Memoized deterministic plexus for a mode + density (+ seed / clearance /
+ * build arguments).
  * Pure — same inputs always give the same cloud, so the compute build, the
  * static/analytic build and the SVG twin all agree without sharing any runtime
  * state. Omitting `seed`/`well` reproduces the shipped cloud EXACTLY, so every
- * pre-round-11 call site is byte-identical. */
+ * pre-round-11 call site is byte-identical.
+ *
+ * ROUND 12 STAGE 0C — `params` is the fifth, optional argument: every build
+ * constant the D17 ribbon needs to move, each defaulting to the module
+ * constant it replaces (see PlexusBuildParams). **Omitting it is today, to the
+ * bit** — that is the whole gate of the stage, and it is why the shipped
+ * ellipsoid is the default arm rather than a flag anyone has to remember. */
 export function getPlexus(
   mode: LatticeMode,
   density: PlexusDensity = "full",
   seed?: number,
   well = true,
+  params?: PlexusParams,
 ): Plexus {
   const ms = Number.isFinite(seed as number)
     ? (seed as number)
     : PLEXUS_MASTER_SEED[mode];
-  const key = `${mode}:${density}:${ms}:${well ? 1 : 0}`;
+  const p = resolvePlexusParams(mode, density, well, params);
+  const key = `${mode}:${density}:${ms}:${well ? 1 : 0}:${paramSig(p)}`;
   const hit = plexusCache.get(key);
   if (hit) return hit;
-  const built = buildPlexus(mode, density, ms, well);
+  const built = buildPlexus(mode, density, ms, well, params);
   plexusCache.set(key, built);
   return built;
 }
 
-function buildPlexus(
+export function buildPlexus(
   mode: LatticeMode,
   density: PlexusDensity,
   // Decorrelates one cloud from another — the two modes by default, and since
@@ -440,43 +823,162 @@ function buildPlexus(
   // SAME void in the same place on all five, which is repetition where the
   // seed is trying to buy variety.
   well: boolean,
+  // ROUND 12 STAGE 0C — the per-build arguments. Every field defaults to the
+  // module constant of the same name, so `buildPlexus(mode, density, ms, well)`
+  // is byte-for-byte the shipped generator.
+  params?: PlexusParams,
 ): Plexus {
-  const seeds = well ? PLEXUS_SEEDS[density] : PLEXUS_SEEDS_STONELESS[density];
-  const [ccx, ccy] = CRYSTAL_POS[mode];
+  const P = resolvePlexusParams(mode, density, well, params);
+  const seeds = P.seeds;
+  const [ccx, ccy] = P.wellCentre;
   const GOLD = Math.PI * (3 - Math.sqrt(5));
 
-  // --- 1. Seed the volumetric cloud ----------------------------------------
+  // --- 1. Seed the cloud ---------------------------------------------------
   const nodes: [number, number, number][] = [];
-  for (let i = 0; i < seeds; i++) {
-    // Golden-spiral direction on the unit sphere + a jitter that breaks its
-    // regularity (organic, still deterministic).
-    const u = (i + 0.5) / seeds;
-    let dz = 1 - 2 * u;
-    const sr = Math.sqrt(Math.max(0, 1 - dz * dz));
-    const phi = i * GOLD + ms;
-    let dx = sr * Math.cos(phi) + (ph(i + ms, 12.9898, 78.233) - 0.5) * PLEXUS_DIR_JITTER;
-    let dy = sr * Math.sin(phi) + (ph(i + ms, 39.3467, 11.135) - 0.5) * PLEXUS_DIR_JITTER;
-    dz += (ph(i + ms, 73.156, 52.235) - 0.5) * PLEXUS_DIR_JITTER;
-    const dl = Math.hypot(dx, dy, dz) || 1;
-    dx /= dl;
-    dy /= dl;
-    dz /= dl;
-    // Centre-dense radius with a low-frequency organic boundary warp.
-    const rr = Math.pow(ph(i + ms, 91.318, 27.719), 1 / PLEXUS_RADIAL_POW);
-    const warp =
-      1 + PLEXUS_WARP * Math.sin(dx * 3.1 + ms) * Math.cos(dy * 2.7 - ms);
-    const r = Math.min(1, Math.max(0.05, rr * warp));
-    const x = PLEXUS_CX + dx * r * PLEXUS_RX;
-    const y = dy * r * PLEXUS_RY;
-    const z = dz * r * PLEXUS_RZ;
-    // Crystal density well (screen-round distance — silhouette clearance).
-    // Skipped on a stone-less island: no stone, no clearance to carve.
-    if (well) {
-      const d = Math.hypot((x - ccx) / BAND_ASPECT, y - ccy);
-      const keep = smooth01(d, CRYSTAL_CLEAR_INNER, CRYSTAL_CLEAR_OUTER);
-      if (ph(i + ms, 127.1, 311.7) > keep) continue;
+  // Well test, shared by both arms — a screen-ROUND 2D distance (x converted
+  // with the build aspect, z ignored: what must stay readable is the stone's
+  // SILHOUETTE). Skipped on a stone-less island: no stone, no clearance.
+  const keptByWell = (i: number, x: number, y: number): boolean => {
+    if (!well) return true;
+    const d = Math.hypot((x - ccx) / P.bandAspect, y - ccy);
+    const keep = smooth01(d, P.wellInner, P.wellOuter);
+    return ph(i + ms, 127.1, 311.7) <= keep;
+  };
+
+  if (P.shape === "ribbon") {
+    // --- 1-RIBBON. A RECT FILL in ribbon coordinates -----------------------
+    // u ∈ [0,1] along the run, v ∈ [−0.5,+0.5] across it, w in depth.
+    //
+    // UNIFORM IN u is the entire point: the per-frame node count must not vary
+    // down the run, or one band re-creates inside itself the "separate pieces"
+    // reading the ellipsoid's lens produces when it is stretched. MEASURED —
+    // 20 equal x-bins over the delivered bbox, max/min, broken/full,
+    // well:false, seeds 391 / 662 / 720: this rect fill delivers
+    // 1.11× / 1.23× / 1.24× (1.37× at 454, so call it 1.1–1.4× across the
+    // range), against 9.20× / 12.0× / 9.43× for the ellipsoid seeder given the
+    // SAME field, extents and guards. ⚠ The "2.98× against 1.03×" this note
+    // used to carry reproduces in neither direction at 20 bins; these numbers
+    // do. Re-measure the same way before quoting anything else.
+    //
+    // ⚠ THE STRATIFICATION MUST BE ISOTROPIC IN SCREEN UNITS, NOT IN RIBBON
+    // UNITS. This is the trap that ate the first draft. Any [0,1]^d uniform
+    // sequence (R2/R3, Halton, golden-angle) stratifies EQUALLY per axis, so
+    // mapping it onto a 9.3 : 1 box gives cells 837 × 90 × 43 px — the point
+    // set collapses into sheets normal to x and the "net" delivers ~35
+    // disconnected components with a largest of 38 out of 662. Deriving the
+    // strata counts from the field's own aspect A instead gives 93 × 87 px
+    // cells and one net.
+    //
+    //   A    = physical length / physical height, in frame-height units
+    //   nU   = round(sqrt(N·A)),  nV = N / nU  ⇒ square cells by construction
+    //
+    // Columns are then filled EVENLY (`floor(i·nU/N)`, never `i % nU`, which
+    // would pile every remainder column at the left and re-introduce a density
+    // gradient), each column stratifies its own members across v, and a
+    // per-point jitter breaks the grid. The taper is radial ACROSS v ONLY
+    // (`vTaper`; 1 = a true rect fill), and the organic, non-machined rim
+    // comes from `warp`, which modulates the ACROSS extent and never u.
+    const A = Math.max(
+      1e-3,
+      (P.rx * 2) / P.bandAspect / Math.max(P.ry * 2, 1e-6),
+    );
+    const nU = Math.max(1, Math.round(Math.sqrt(Math.max(seeds, 1) * A)));
+    for (let i = 0; i < seeds; i++) {
+      // Even column assignment + this point's index inside its column.
+      const col = Math.min(nU - 1, Math.floor((i * nU) / seeds));
+      const colLo = Math.ceil((col * seeds) / nU);
+      const colHi = Math.ceil(((col + 1) * seeds) / nU);
+      const m = Math.max(1, colHi - colLo);
+      const row = i - colLo;
+      // Jitter inside the cell — deterministic, and the only thing standing
+      // between a stratified fill and a visible lattice.
+      const ju = ph(i + ms, 12.9898, 78.233);
+      const jv = ph(i + ms, 39.3467, 11.135);
+      const jw = ph(i + ms, 73.156, 52.235);
+      const u = (col + ju) / nU;
+      // Signed across-ribbon coordinate, stratified within the column.
+      const tv = 2 * ((row + jv) / m) - 1;
+      const tw = 2 * jw - 1;
+      const warpV =
+        1 + P.warp * Math.sin(u * 12.9 + ms) * Math.cos(tv * 5.4 - ms);
+      // ⚠ NORMALISED BY THE WARP'S PEAK, NOT CLAMPED AT THE RAIL. `warpV`
+      // peaks at 1 + |warp| (1.22 at the shipped PLEXUS_WARP), so the first
+      // draft's `clamp01h(0.5·|tv|^vTaper·warpV)` SATURATED: every point whose
+      // warped extent passed 0.5 truncated to exactly 0.5 and landed on
+      // y = ±ry BIT-EXACTLY. Measured before this fix: 23/391, 24/454, 36/662
+      // and 44/720 delivered nodes sitting on the rail — precisely the
+      // "machined, cut edge" the arm's own docstring above forbids, arrived at
+      // through the back door. Dividing by the peak preserves the SAME
+      // relative modulation (warpV/(1+|warp|) ∈ [(1−|w|)/(1+|w|), 1]) and makes
+      // `ry` a bound the rim APPROACHES and never ties. `clamp01h` stays as a
+      // guard for exotic caller arguments; it is no longer load-bearing here.
+      const av = clamp01h(
+        (0.5 * Math.pow(Math.abs(tv), P.vTaper) * warpV) /
+          (1 + Math.abs(P.warp)),
+      );
+      const aw = clamp01h(0.5 * Math.pow(Math.abs(tw), P.wTaper));
+      const v = tv < 0 ? -av : av;
+      const w = tw < 0 ? -aw : aw;
+      const x = P.cx + (u - 0.5) * 2 * P.rx;
+      const y = P.cy + v * 2 * P.ry;
+      const z = w * 2 * P.rz;
+      if (!keptByWell(i, x, y)) continue;
+      nodes.push([x, y, z]);
     }
-    nodes.push([x, y, z]);
+  } else {
+    // --- 1-ELLIPSOID. The shipped volumetric cloud, unchanged --------------
+    for (let i = 0; i < seeds; i++) {
+      // Golden-spiral direction on the unit sphere + a jitter that breaks its
+      // regularity (organic, still deterministic).
+      const u = (i + 0.5) / seeds;
+      let dz = 1 - 2 * u;
+      const sr = Math.sqrt(Math.max(0, 1 - dz * dz));
+      const phi = i * GOLD + ms;
+      let dx =
+        sr * Math.cos(phi) + (ph(i + ms, 12.9898, 78.233) - 0.5) * P.dirJitter;
+      let dy =
+        sr * Math.sin(phi) + (ph(i + ms, 39.3467, 11.135) - 0.5) * P.dirJitter;
+      dz += (ph(i + ms, 73.156, 52.235) - 0.5) * P.dirJitter;
+      const dl = Math.hypot(dx, dy, dz) || 1;
+      dx /= dl;
+      dy /= dl;
+      dz /= dl;
+      // Centre-dense radius with a low-frequency organic boundary warp.
+      const rr = Math.pow(ph(i + ms, 91.318, 27.719), 1 / P.radialPow);
+      const warp = 1 + P.warp * Math.sin(dx * 3.1 + ms) * Math.cos(dy * 2.7 - ms);
+      const r = Math.min(1, Math.max(0.05, rr * warp));
+      const x = P.cx + dx * r * P.rx;
+      const y = P.cy + dy * r * P.ry;
+      const z = dz * r * P.rz;
+      if (!keptByWell(i, x, y)) continue;
+      nodes.push([x, y, z]);
+    }
+  }
+
+  // --- 1b. RE-CENTRE ON THE DELIVERED y BBOX-CENTRE ------------------------
+  // Ribbon only (`recentre`); the ellipsoid ships un-recentred and must stay
+  // that way. The delivered band sits at y ∈ [−0.3363, +0.4175] — bbox-centre
+  // +0.0406 — because the well carves the stone's side, and that +0.0406 is
+  // EXACTLY the measured 77 px top gap against 153 px at the bottom on a
+  // 935 px frame. Subtracting the delivered centre closes the 2:1 asymmetry at
+  // any seed and under any carve. It must NOT be closed by raising `ry`: that
+  // makes the net taller than the frame instead of centred in it.
+  let yLo = Infinity;
+  let yHi = -Infinity;
+  for (const n of nodes) {
+    if (n[1] < yLo) yLo = n[1];
+    if (n[1] > yHi) yHi = n[1];
+  }
+  if (!nodes.length) {
+    yLo = 0;
+    yHi = 0;
+  }
+  let yMid = (yLo + yHi) / 2;
+  if (P.recentre && nodes.length) {
+    for (const n of nodes) n[1] -= yMid;
+    yLo -= yMid;
+    yHi -= yMid;
+    yMid = 0;
   }
 
   // --- 2. The weak left→right coordinate -----------------------------------
@@ -491,10 +993,31 @@ function buildPlexus(
 
   // --- 3. Near-neighbour triangulation -------------------------------------
   const N = nodes.length;
-  /** Distance in SCREEN-height units (x un-squashed by BAND_ASPECT). */
+  // ⚠ THE DE-DUP KEY IS `a * PLEXUS_DEDUP_MAX_NODES + b` (below). It is
+  // injective only while N ≤ PLEXUS_DEDUP_MAX_NODES, and above that it
+  // SILENTLY DROPS EDGES rather than throwing — the net would simply come out
+  // thinner than it was built, with no error anywhere. Fail loudly instead.
+  // (uNodePos also runs out of uniform-array elements one node past it, and
+  // neuralFieldCompute's EDGE_PACK_RADIX packs against the SAME ceiling, so
+  // this is the real limit three times over — see the throw's own text.)
+  if (N > PLEXUS_DEDUP_MAX_NODES) {
+    throw new Error(
+      `buildPlexus: ${N} delivered nodes exceeds PLEXUS_DEDUP_MAX_NODES ` +
+        `(${PLEXUS_DEDUP_MAX_NODES}). The edge de-dup key ` +
+        `a*PLEXUS_DEDUP_MAX_NODES+b stops being injective above it and would ` +
+        `drop edges silently. THREE sites carry this one ceiling and must be ` +
+        `widened TOGETHER (e.g. all to 4096): PLEXUS_DEDUP_MAX_NODES here, ` +
+        `the uNodePos uniform-array binding, AND \`EDGE_PACK_RADIX\` in ` +
+        `neuralFieldCompute.ts — that last one packs both endpoints as ` +
+        `a + EDGE_PACK_RADIX*b, so leaving it at 1024 does NOT throw: every ` +
+        `link with an endpoint >= 1024 silently DECODES to two wrong nodes ` +
+        `(nodeAt/nodeTAt clamp rather than fail). Or lower \`seeds\`.`,
+    );
+  }
+  /** Distance in SCREEN-height units (x un-squashed by the build aspect). */
   const sd = (a: number, b: number) =>
     Math.hypot(
-      (nodes[a][0] - nodes[b][0]) / BAND_ASPECT,
+      (nodes[a][0] - nodes[b][0]) / P.bandAspect,
       nodes[a][1] - nodes[b][1],
       nodes[a][2] - nodes[b][2],
     );
@@ -509,7 +1032,7 @@ function buildPlexus(
     if (!well) return false;
     const mx = (nodes[a][0] + nodes[b][0]) / 2;
     const my = (nodes[a][1] + nodes[b][1]) / 2;
-    return Math.hypot((mx - ccx) / BAND_ASPECT, my - ccy) < CRYSTAL_CLEAR_INNER;
+    return Math.hypot((mx - ccx) / P.bandAspect, my - ccy) < P.wellInner;
   };
 
   let nnSum = 0;
@@ -518,7 +1041,7 @@ function buildPlexus(
     const cand: { j: number; d: number }[] = [];
     for (let j = 0; j < N; j++) {
       if (j === i) continue;
-      if (ld(i, j) < EDGE_MIN_LOCAL) continue;
+      if (ld(i, j) < P.edgeMinLocal) continue;
       if (midInWell(i, j)) continue;
       cand.push({ j, d: sd(i, j) });
     }
@@ -527,7 +1050,7 @@ function buildPlexus(
     nnSum += cand.length ? cand[0].d : 0;
   }
   const meanSpacing = N ? nnSum / N : 0;
-  const cutoff = meanSpacing * PLEXUS_LINK_CUTOFF;
+  const cutoff = meanSpacing * P.linkCutoff;
 
   const seen = new Set<number>();
   const must: { a: number; b: number; d: number }[] = [];
@@ -541,7 +1064,7 @@ function buildPlexus(
     // Orient by nodeT so flow + packets always run left→right.
     const a = nodeT[i] <= nodeT[j] ? i : j;
     const b = a === i ? j : i;
-    const key = a * 1024 + b;
+    const key = a * PLEXUS_DEDUP_MAX_NODES + b;
     if (seen.has(key)) return;
     seen.add(key);
     bucket.push({ a, b, d });
@@ -552,7 +1075,7 @@ function buildPlexus(
     if (c) push(must, i, c.j, c.d);
   }
   // Pass B — the remaining k-nearest inside the cutoff, shortest first.
-  const k = PLEXUS_K[density];
+  const k = P.k;
   for (let i = 0; i < N; i++) {
     const cand = ranked[i];
     for (let c = 1; c < Math.min(k, cand.length); c++) {
@@ -561,12 +1084,43 @@ function buildPlexus(
     }
   }
   extra.sort((p, q) => p.d - q.d || p.a - q.a || p.b - q.b);
-  const cap = PLEXUS_EDGE_CAP[density];
+  const cap = P.edgeCap;
+  const built = must.length + extra.length;
+  // ⚠ SILENT TRUNCATION. `slice(0, cap)` is the sharpest trap in this
+  // generator: at PLEXUS_EDGE_CAP.full = 250 a net that wants ~1250 links just
+  // becomes a 250-link net, with no error and no warning anywhere. Report it.
+  const edgeCapHit = built > cap;
+  if (edgeCapHit && process.env.NODE_ENV !== "production") {
+    console.warn(
+      `[plexus] ${mode}/${density} edgeCap ${cap} TRUNCATED ${built} built ` +
+        `links to ${cap}. Raise \`edgeCap\` (and size the uniform arrays for ` +
+        `it) or the delivered net is not the net you authored.`,
+    );
+  }
   const chosen = must.concat(extra).slice(0, cap);
   const edges: [number, number][] = chosen.map((e) => [e.a, e.b]);
   let minEdgeLocal = Infinity;
   for (const [a, b] of edges) minEdgeLocal = Math.min(minEdgeLocal, ld(a, b));
   if (!edges.length) minEdgeLocal = 0;
+
+  // --- 3b. THE PER-BUILD RECYCLE-SNAP THRESHOLD ----------------------------
+  // Derived from the SHORTEST DELIVERED LINK, never assumed. See
+  // `Plexus.wrapSnapDist`. Default build: min(0.038, 0.0551 × 0.69) = 0.038 —
+  // the shipped constant, to the bit.
+  const wrapSnapDist = Math.min(P.wrapSnapCeil, minEdgeLocal * P.wrapSnapFrac);
+  // The steady-state excursion floor the threshold has to clear: the pointer
+  // spring's displacement plus the curl term (both LOCAL units, both quoted in
+  // WRAP_SNAP_DIST's own docstring).
+  const excursionFloor = POINTER_PUSH / NEURAL_SPRING + CURL_GAIN * CURL_SCALE;
+  const wrapSnapOk = wrapSnapDist > excursionFloor;
+  if (!wrapSnapOk && process.env.NODE_ENV !== "production") {
+    console.warn(
+      `[plexus] ${mode}/${density} WRAP_SNAP invariant unsatisfiable: derived ` +
+        `wrapSnapDist ${wrapSnapDist.toFixed(5)} ≤ steady-state excursion ` +
+        `${excursionFloor.toFixed(5)}. POINTER_PUSH is a LOCAL-units force, so ` +
+        `a longer local x-axis pushes further in pixels — scale it by 1/L.`,
+    );
+  }
 
   // --- 4. The 5 x-slice centroids (the uC0..uC4 registration spine) --------
   const centroids: [number, number, number][] = [];
@@ -578,7 +1132,7 @@ function buildPlexus(
     let ws = 1e-6;
     for (let i = 0; i < N; i++) {
       const dt = nodeT[i] - t0;
-      const w = Math.exp(-PLEXUS_CENTROID_K * dt * dt);
+      const w = Math.exp(-P.centroidK * dt * dt);
       wx += nodes[i][0] * w;
       wy += nodes[i][1] * w;
       wz += nodes[i][2] * w;
@@ -634,6 +1188,13 @@ function buildPlexus(
     components: sizes.size,
     largestComponent,
     meanEdgeLocal: edges.length ? edgeLenSum / edges.length : 0,
+    shape: P.shape,
+    yMin: yLo,
+    yMax: yHi,
+    yMid,
+    edgeCapHit,
+    wrapSnapDist,
+    wrapSnapOk,
     checksum: Math.round(checksum * 1e6) / 1e6,
   };
 }
