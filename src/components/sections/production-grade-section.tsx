@@ -8,6 +8,7 @@ import { useNeuralLatticeFallback } from "@/components/fx/use-neural-lattice-fal
 import { NeuralGraphFallback } from "@/components/fx/neural-graph-fallback";
 import { RollLetters } from "@/components/fx/roll-letters";
 import { useLedgerIgnition } from "@/components/fx/use-ledger-ignition";
+import { useDiagonalTraverse } from "@/components/fx/use-diagonal-traverse";
 import {
   useReadingBandLit,
   useScrollIgnitionActive,
@@ -27,10 +28,13 @@ import {
  * words). The claim's icy lift, its accent glow and the mono kicker now follow
  * the artifact row crossing the reading band instead of the cursor; hovering a
  * different row does nothing. The ONE difference from the twin is where the
- * number comes from: `#problem` reads it off the diagonal traverse's frozen
- * scroll snapshot, while `#trust` has no traverse band and therefore runs the
- * same reading-band law locally (fx/scroll-ignition, `source: "own"`). Both
- * publish on one channel, so `[data-lit]` means the same thing in both acts.
+ * number comes from — and as of D19 (2026-08-26) there is no difference left:
+ * this act now carries a diagonal traverse of its own ("production"), so it
+ * reads the lit row off the SAME frozen scroll snapshot `#problem` does
+ * (`source: "traverse"`). The local `source: "own"` resolver it used while it
+ * was still a static block is gone with the second ScrollTrigger that backed
+ * it. Both acts publish on one channel, so `[data-lit]` means the same thing
+ * in both — and now moves by the same law in both.
  * Hover survives wherever the source cannot exist; keyboard focus is
  * unchanged; RM lights nothing. Copy untouched, byte for byte.
  *
@@ -286,6 +290,46 @@ const CALLOUT_POS: { left: string; edge: "top" | "bottom"; at: string }[] = [
  * next reader does not have to re-derive it.
  */
 const PGROW_CSS = `
+/* ══ D19 — ACT II'S TRAVERSE GEOMETRY (owner, 2026-08-26) ═══════════════════
+   #problem's block, mirrored onto this act verbatim except for the selectors
+   (#trust is this section's DOM id — "production" is the ANCHOR/band name).
+   Everything below the first rule is inert until useDiagonalTraverse writes
+   [data-traverse], so SSR / no-JS / reduced-motion / fallback-tier keep
+   today's document px for px (the D-10 rule: no primed pose in a className).
+
+   ⚠ overflow-x: CLIP, NOT hidden — and this section shipped overflow-hidden
+   until the merge armed it. "hidden" makes the section a scroll CONTAINER, so
+   tabbing to a row translated off-frame lets the browser silently set
+   section.scrollLeft and shear the composition; every row here is tabIndex=0,
+   so that path is reachable by keyboard alone. "clip" creates no scroll
+   container at all, so the failure is structurally impossible, and it trims
+   the full-bleed band exactly as overflow-hidden did.
+
+   THE BAND IS PINNED TO THE VIEWPORT, load-bearing for the same reason as
+   Act I: the anchor is "inset-y-0" of the rows stack, so the runway growth
+   would otherwise inflate rect.h — and rect.h drives the net's depth, its
+   rendered aspect, the stone's size and the fog radius. Pinning it keeps the
+   healthy field's geometry off the runway dial. */
+#trust {
+  overflow-x: clip;
+  overflow-y: visible;
+}
+#trust[data-traverse] {
+  --tv-gap: calc(var(--tv-gap-vh, 0) * 100svh);
+  /* No meteor hold on this act (traverseConfig: meteorHold null), so
+     --tv-hold-vh is never written and this resolves to 0px. Kept so the two
+     acts' tails are one expression, not two. */
+  --tv-hold: calc(var(--tv-hold-vh, 0) * 100svh);
+}
+#trust[data-traverse] [data-traverse-stack] { margin-top: var(--tv-gap); }
+#trust[data-traverse] .pgrow + .pgrow { margin-top: var(--tv-gap); }
+#trust[data-traverse] [data-traverse-tail] {
+  height: calc(var(--tv-gap) + var(--tv-hold, 0px));
+}
+#trust[data-traverse] [data-lattice-anchor] {
+  bottom: var(--tv-band-bottom, 0px);
+  height: var(--tv-band-h, auto);
+}
 .pgrow__claim {
   color: hsl(var(--ink));
   transition:
@@ -403,25 +447,29 @@ export default function ProductionGradeSection() {
   useChapterReveal(chapterRef, language);
   useLedgerReveal(rowRef, language, igniteRing, scrollLit);
   useTextDrift(sectionRef, language);
-  // ROUND 12 · D21 — the lit row. `#trust` carries NO traverse band (there is
-  // no `[data-traverse]` here and `useDiagonalTraverse` is not called), so
-  // `source: "own"` runs the reading-band resolver locally: ONE plain
-  // un-pinned un-scrubbed ScrollTrigger, every rect read on refresh, `apply()`
-  // pure arithmetic over the cache from a single frozen `window.scrollY`. That
-  // is this act's FIRST clock, not a second one — and it publishes onto the
-  // same lit-row channel `#problem`'s traverse writes, so the two acts are one
-  // grammar and one consumer.
+  // ══ D19 — THE MERGE CASHES IN THE NOTE THIS BLOCK USED TO CARRY ══════════
+  // It read: "if the merge ever gives `#trust` a real traverse band, flip this
+  // to `{ bandId: "production", source: "traverse" }` and delete nothing
+  // else." The merge happened (owner, 2026-08-26); this is that flip, and
+  // nothing else was deleted.
   //
-  // ⚠ THE ID IS `"trust-type"`, NOT `"production"`. The lattice anchor here is
-  // named `production` and the WebGL islands look bands up BY ANCHOR ID
-  // (NeuralLattice / CrystalCluster). Publishing under that name would put a
-  // DOM-only concern inside the neural band namespace; if the merge ever gives
-  // `#trust` a real traverse band, flip this to
-  // `{ bandId: "production", source: "traverse" }` and delete nothing else.
+  // `armed` is the exact complement of the island's mount gate, verbatim from
+  // `#problem`: a traverse over a static SVG would slide a still image
+  // sideways, which is worse than not arming at all. The band id is the
+  // ANCHOR id — the WebGL islands resolve `band = bandId ?? anchorId`, so
+  // "production" is what makes the net and the stone read this act's frozen
+  // frame instead of falling back to `window.scrollY`.
+  useDiagonalTraverse(sectionRef, "production", !showFallback, language);
+  // ROUND 12 · D21 — the lit row, now fed BY the traverse rather than by a
+  // local resolver. `source: "traverse"` consumes the same edge-deduped
+  // channel `#problem` writes, so the two acts stay one grammar and one
+  // consumer — and this act stops paying for a second ScrollTrigger it no
+  // longer needs. The id moves off the DOM-only `"trust-type"` onto the real
+  // band name for the same reason.
   useReadingBandLit({
     sectionRef,
-    bandId: "trust-type",
-    source: "own",
+    bandId: "production",
+    source: "traverse",
     enabled: scrollLit,
     language,
     onLit: setLit,
@@ -440,7 +488,10 @@ export default function ProductionGradeSection() {
       // section-sized ambience; the healthy constellation + starfield +
       // PostFX carry the band, and the W4 cut now sweeps over a seamless
       // field instead of a tinted rectangle. Contrast improves (§B.5).
-      className="relative section-lg scroll-mt-24 overflow-hidden"
+      // D19: `overflow-hidden` moved into PGROW_CSS as `overflow-x: clip`
+      // (see the note there) — a scroll container here would let a keyboard
+      // tab shear the act now that the rows translate off-frame.
+      className="relative section-lg scroll-mt-24"
       // ROUND 12 · D21 — the mode marker the hover fallback is scoped by (the
       // Problem ledger's twin). Absent on SSR, no-JS, RM and every unarmed
       // tier, where hover must keep working.
@@ -450,11 +501,18 @@ export default function ProductionGradeSection() {
       <div className="container-px relative">
         {/* Chapter heading + body-scale description column (the Problem
             section's twin grammar). */}
+        {/* D19 — THE READING UNIT (Act I's marker, mirrored). The H2 and its
+            description are ONE statement, so they take their opacity window
+            (and with it the mask lane) from the UNION box of everything inside
+            `[data-traverse-unit]`, never from a half. Presentational marker
+            only — no copy, no layout, no style. The ledger rows below get the
+            same treatment for free through `[data-ledger-row]`. */}
         <div
           ref={chapterRef}
+          data-traverse-unit
           className="grid gap-6 lg:grid-cols-[1fr_minmax(320px,30rem)] lg:items-end lg:gap-12"
         >
-          <div data-drift="0.5">
+          <div data-drift="0.5" data-traverse-alpha="display">
             {/* Plain `.eyebrow` (no [data-eyebrow-text]) → the global
                 LabelScrambler owns its decode reveal. */}
             <p className="eyebrow mb-5 inline-flex items-center gap-2 text-ink-mute">
@@ -499,7 +557,7 @@ export default function ProductionGradeSection() {
               max-sm 0.9rem: §Mobile budget trim (W2 scale-up overshot
               390×844 by ~90px) — body scale on desktop, one step down on
               phones. */}
-          <div data-drift="1.25">
+          <div data-drift="1.25" data-traverse-alpha="body">
             <p
               data-chapter-desc
               className="max-w-[34em] text-[clamp(1rem,1.2vw,1.3rem)] max-sm:text-[0.9rem] leading-[1.5] text-ink-mute"
@@ -526,7 +584,11 @@ export default function ProductionGradeSection() {
             pins the negative-z band inside this container so it paints below
             every row (the section wash it once sat above was removed round
             7-3). */}
-        <div ref={rowRef} className="relative isolate mt-4 sm:mt-12">
+        <div
+          ref={rowRef}
+          data-traverse-stack
+          className="relative isolate mt-4 sm:mt-12"
+        >
           {/* The WebGL anchor rect — full-bleed to the viewport edges; the
               rings ignite at 40/62/84% of this box (registration unchanged).
               Decorative layer: aria-hidden, pointer-events-none. */}
@@ -598,7 +660,7 @@ export default function ProductionGradeSection() {
                   gap between them monotone in the block center, so it can
                   only grow — the paragraph can never climb into the claim
                   again). */}
-              <div data-drift={rowDriftK(i)}>
+              <div data-drift={rowDriftK(i)} data-traverse-alpha="display">
                 {/* Kicker line: the mono index settles on entry (inline-block:
                     GSAP transforms are no-ops on plain inline boxes); the
                     cluster label's letter-roll is recipe R1 (goes accent on
@@ -637,7 +699,11 @@ export default function ProductionGradeSection() {
                   −44px on these very rows). The row now moves as ONE plane;
                   the depth is between rows. max-sm 0.875rem/1.45 + mt-3:
                   §Mobile budget trim (still body Switzer, not a caption). */}
-              <div data-drift={rowDriftK(i)} className="mt-3 sm:mt-5">
+              <div
+                data-drift={rowDriftK(i)}
+                data-traverse-alpha="body"
+                className="mt-3 sm:mt-5"
+              >
                 <p
                   key={language}
                   data-row-body
@@ -675,6 +741,11 @@ export default function ProductionGradeSection() {
             </>
           )}
         </p>
+        {/* D19 runway tail — Act I's marker, mirrored. The last authored gap
+            of this traverse's vertical runway. Zero-height (and therefore
+            invisible) until [data-traverse] arms; it sits OUTSIDE the rows
+            stack so it can never enter the `[data-lattice-anchor]` box. */}
+        <div data-traverse-tail aria-hidden="true" />
       </div>
     </section>
   );

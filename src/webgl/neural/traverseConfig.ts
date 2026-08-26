@@ -95,7 +95,7 @@
  * the WebGL island. No `three`, no `gsap`.
  */
 
-export type TraverseBandId = "problem";
+export type TraverseBandId = "problem" | "production";
 
 /**
  * The three density arms of the D17 ribbon (D23 — the owner picks by eye).
@@ -106,7 +106,18 @@ export type TraverseBandId = "problem";
 export type TraverseRibbonDensity = "onFrame" | "areal" | "nearest";
 
 export interface TraverseBandConfig {
-  /** Scene direction: −1 = the world runs LEFT (Act I), +1 = RIGHT (Act II). */
+  /**
+   * Scene direction: −1 = the world runs LEFT, +1 = RIGHT.
+   *
+   * ⚠ BOTH ACTS RUN −1 (D19 merge, owner 2026-08-26). An earlier note here
+   * promised Act II a MIRRORED +1, and the D19 reorder is exactly what makes
+   * that unshippable: the two acts are now ADJACENT, so a sign flip at the
+   * seam reverses the scene's lateral in a single frame. The world would jump
+   * by the full width of Act I's exit excursion — ~1870 px at 1920×935 — and
+   * the copy's windowed shear would mirror with it, which is the tearing the
+   * whole windowed-α design exists to avoid. Death → rebirth is ONE continuous
+   * shot; a continuous shot cannot change the direction of its dolly.
+   */
   dir: 1 | -1;
   /** The authored diagonal, degrees from vertical. 0 disables the lateral. */
   angleDeg: number;
@@ -259,6 +270,63 @@ export const traverseConfig: TraverseConfigShape = {
       // hold BEGINS half a ramp early (0.79) and the stone comes to rest at
       // dead centre. 1.15 vh of donated scroll, 22% ramps.
       meteorHold: { t0Frac: 0.79, holdVh: 1.9, rampFrac: 0.22 },
+    },
+    // ══ D19 — ACT II GETS ITS OWN TRAVERSE (owner, 2026-08-26) ═════════════
+    // "Sì, grammatica classica." The healthy act now sits directly under the
+    // broken one, so it can no longer be the only still thing in a moving
+    // page: the reorder put a 1.9 vh static block immediately after 6.1 vh of
+    // diagonal, and the scene stopping dead at the seam is what read as two
+    // pieces. This band is what makes the passage ONE shot.
+    //
+    // CLASSIC, NOT RIBBON (`ribbon: false`): the shipped centre-dense band —
+    // ellipsoid constellation, anchor-centred lateral, anchor-keyed cull, no
+    // shear, no exit fade. Deliberate on two counts. It is the grammar the
+    // owner picked, and it is the only one that leaves the healthy field's
+    // byte-identical contract ({101 nodes}, env 1.8, dust 0.012, dof 0.45,
+    // punch 3.2, count 9000) untouched — the ribbon arm rebuilds the field
+    // through `ribbonPlexusParams`, which would change every one of them.
+    //
+    // NO METEOR HOLD (`null`): the stone's beat belongs to Act I. Act II's
+    // crystal is whole; it has nothing to open.
+    production: {
+      // −1, NOT the mirrored +1 — see the `dir` note above. One continuous
+      // shot cannot reverse its dolly at the seam.
+      dir: -1,
+      // Act I's angle exactly: at tan 45° every scroll pixel is a lateral
+      // pixel, and the two acts must descend at the SAME diagonal or the
+      // merge reads as two camera moves instead of one.
+      angleDeg: 45,
+      // 1.91 vh of authored content (1470 px @1440x769) + 4 x 0.45 vh => 3.65
+      // vh (2806 px), against Act I's 7.72. The rebirth is deliberately the
+      // SHORTER act: the diagnosis earns its length, the answer should not
+      // outstay it.
+      //
+      // 0.45 IS MEASURED, NOT AUTHORED. The runway is this act's real dial,
+      // because the classic band is ONE FRAME TALL inside it - so the hole it
+      // leaves is VERTICAL, and `angleDeg` does not touch it (probed on
+      // camera: 45 deg -> 23.61 deg moved `coverage()` by exactly nothing).
+      // Halving the runway is what closes it. `coverage()` @1440x769:
+      //
+      //     gapVh   secH    net+copy   nothing   longest hole   holes
+      //     0.90    4190    26.8 %     36.6 %    1140 px        3
+      //     0.45    2806    54.7 %     28.3 %     796 px        1
+      //
+      // Act I, for scale: 55.3 % nothing, a 2636 px hole. Even at 0.45 this
+      // act still runs 2806 px of lateral at tan 45 deg ~ 1.95 screen widths,
+      // so the diagonal is not shortened - only the empty stretches are.
+      gapVh: 0.45,
+      // 3 ledger rows ⇒ 4 authored gaps (chapter→01, 01→02, 02→03, tail),
+      // the same count and the same CSS distribution as Act I.
+      gapCount: 4,
+      // The band IS the frame, exactly as Act I — same reason (the owner
+      // chose visible net edges over a taller-than-frame net), and the pin
+      // keeps the runway growth out of rect.h.
+      bandVh: 1.0,
+      ribbon: false,
+      // Inert while `ribbon` is false; kept a valid arm so a live A/B write
+      // of `{ ribbon: true }` has something to build against.
+      ribbonDensity: "onFrame",
+      meteorHold: null,
     },
   },
   alphaReadDisplay: 0.5,
