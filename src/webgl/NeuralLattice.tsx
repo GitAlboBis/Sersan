@@ -154,6 +154,7 @@ import {
   PLEXUS_RZ,
   FIELD_EXIT_VH,
   RIBBON_PARTICLE_SCALE_MAX,
+  CONDUIT_FILL_RIBBON,
   RIBBON_RY,
   getPlexus,
   ribbonPlexusParams,
@@ -446,7 +447,14 @@ function NeuralLatticeIsland({
           ribbonParams,
         );
         const want = rib.nodes.length / Math.max(ref.nodes.length, 1);
-        const k = Math.min(want, RIBBON_PARTICLE_SCALE_MAX[lite ? "lite" : "full"]);
+        // ROUND 13 — ×CONDUIT_FILL_RIBBON: the links are volumetric conduits
+        // now and need more grain than a 1-D strand; the star budget is
+        // per-node (STAR_PER_NODE_RIBBON), so the whole lift lands on the
+        // links. Still braked by RIBBON_PARTICLE_SCALE_MAX (36k / 9.6k).
+        const k = Math.min(
+          want * CONDUIT_FILL_RIBBON,
+          RIBBON_PARTICLE_SCALE_MAX[lite ? "lite" : "full"],
+        );
         count = Math.round(count * k);
       }
       countRef.current = count;

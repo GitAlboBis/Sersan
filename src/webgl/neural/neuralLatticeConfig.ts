@@ -1630,6 +1630,77 @@ export const STRAND_THICK_BIAS = [1.0, 0.75, 1.05, 0.6] as const;
 /** Per-strand twist-RATE multiplier = BASE + STEP·strandIndex. */
 export const STRAND_RATE_BASE = 0.82;
 export const STRAND_RATE_STEP = 0.12;
+
+// ═══ ROUND 13 — THE LINK BECOMES A VOLUMETRIC CONDUIT (ribbon only) ══════════
+/**
+ * Owner brief, 2026-08-26: "vorrei che gli archi siano dei tunnel, tubi, scie
+ * di particelle, non linee sottili, in modo tale che renda di più il 3d."
+ *
+ * The dormant round-8 braid machinery is revived AT RIBBON SCALE: the two
+ * strands per link stop being collinear dust and become a counter-rotating
+ * double helix around the round-12 arc — strand 0 a TIGHT BRIGHT CORE
+ * (STRAND_CORE_R× the radius, full alpha), strand 1 a WIDE SOFT SHEATH
+ * (full radius, STRAND_SHEATH_ALPHA× the alpha) — with the per-particle
+ * thickness jitter filling the volume between them. The whole cross-section
+ * slowly REVOLVES (STRAND_SWIRL, rad/s — strand 1 counter-revolves at
+ * −0.6×) so the conduit reads as a current, not a printed rope, and the
+ * radius PINCHES at mid-span on the same 4s(1−s) profile the arc and the
+ * sprite taper already ride (an axon is widest where it leaves its somata).
+ *
+ * Radii are band-height fractions and are multiplied by widthEnvelope's
+ * ENVELOPE_BASE 1.8 downstream, exactly like the round-8 braid was:
+ * delivered helix radius ≈ 0.0055·1.8·935 ≈ 9 px, full tube ≈ 26 px wide.
+ *
+ * All of it is RIB-gated through build-time ternaries — `#production` bakes
+ * the identical zero-radius graph it always has ({101, 229} unmoved).
+ */
+export const STRAND_RADIUS_RIBBON = 0.0042;
+export const STRAND_THICKNESS_RIBBON = 0.0048;
+export const BRAID_TURNS_RIBBON = 1.35;
+/**
+ * Extra particle budget for the conduit, multiplied into the node-ratio scale
+ * in NeuralLattice (still braked by RIBBON_PARTICLE_SCALE_MAX, so the ceiling
+ * stays 36 000 / 9 600). A volume needs more grain than a line: the same
+ * perLink spread over a ~15 px cross-section is a swarm of countable dots;
+ * at ×1.7 (≈29k total, ≈53/link) it closes into a continuous current.
+ * The star budget is per-node (STAR_PER_NODE_RIBBON), so ALL of this lift
+ * lands on the links — which is the point.
+ */
+export const CONDUIT_FILL_RIBBON = 1.7;
+export const STRAND_RATE_BASE_RIBBON = 1.0;
+/** −2.0 ⇒ strand 1 winds OPPOSITE (rate 1.0 / −1.0): a counter-helix crossing
+ * pattern is the strongest cheap "this has a 3-D cross-section" cue. */
+export const STRAND_RATE_STEP_RIBBON = -2.0;
+/** Slow revolve of the whole cross-section, rad/s. Strand 1 counter-revolves
+ * at −0.6× (two currents sliding past each other, not a rigid rotisserie). */
+export const STRAND_SWIRL_RIBBON = 0.5;
+/** Strand 0's radius factor — the bright core thread inside the sheath. */
+export const STRAND_CORE_R_RIBBON = 0.22;
+/** Strand 1's alpha factor — the sheath is atmosphere, not a second line.
+ * ROUND 13b: 0.6 → 0.38. At 0.6 the two strands were peers and the conduit
+ * read as an even dusty smear; the hierarchy IS the look — a bright compact
+ * current inside a soft volumetric halo. */
+export const STRAND_SHEATH_ALPHA_RIBBON = 0.38;
+/** Per-strand sprite-size factors (core / sheath). The core carries the
+ * line's continuity with slightly larger overlapping sprites; the sheath is
+ * finer grain, so the volume reads as haze around a filament, not as a
+ * second rope of countable dots. */
+export const STRAND_CORE_SIZE_RIBBON = 1.22;
+export const STRAND_SHEATH_SIZE_RIBBON = 0.8;
+/** Mid-span radius pinch on the 4s(1−s) profile (1 = constant-radius tube —
+ * the "drawn by a computer" cue the sprite taper already removes). */
+export const STRAND_RADIUS_TAPER_RIBBON = 0.6;
+/**
+ * ROUND 13b — LIVE-TUNED IN CHROME (variant B, 2026-08-26). Ribbon-only
+ * defaults for four uniforms whose non-ribbon defaults `#production` keeps:
+ * a tighter cross-section envelope (1.8 → 0.95: the tube reads as a braided
+ * CORD, not a dust cloud), a deeper DOF (0.45 → 0.75 — the volumetric read
+ * needs the near-strand bokeh), and stars punched ×1.35 so the somata anchor
+ * the brighter conduits.
+ */
+export const ENVELOPE_BASE_RIBBON = 0.95;
+export const DOF_STRENGTH_RIBBON = 0.75;
+export const STAR_PUNCH_RIBBON_K = 1.35;
 /** Base flow speed — cycles/sec a particle advances along ITS LINK. Links are
  * short now (≈ one mean node spacing), so this is a slow trickle along each
  * thread rather than a river current. */
@@ -1898,7 +1969,10 @@ export const DUST_SIZE = 0.55;
  * loss is real and not tunable: a 1-device-px particle line would need
  * ~107 000 link sprites against the ~31 000 the budget has.
  */
-export const DUST_SIZE_RIBBON = 7.1;
+// ROUND 13 — 7.1 → 5.6 (2.80 → 2.21 CSS px): the conduit reads as a smooth
+// current only if its grain is finer than its cross-section; the lost light
+// comes back through CONDUIT_FILL_RIBBON (more grain) + STREAM_ALPHA_RIBBON.
+export const DUST_SIZE_RIBBON = 6.6;
 /**
  * F4 — narrow the per-particle size spread. A comb of UNEQUAL discs
  * re-introduces ripple at the ratio of the spread (today 1.25/0.55 = 2.27×);
@@ -1945,7 +2019,11 @@ export const FLOW_SPEED_RIBBON = 0.25;
  * band. The gate is localisation (L on axis ÷ L at ±3S ≥ 15), never an
  * integral.
  */
-export const STREAM_ALPHA_RIBBON = 0.125;
+// ROUND 13 — 0.125 → 0.16: the tube spreads the same light over a cross-
+// section, so the surface brightness of the resting conduit needed a lift to
+// keep the "one continuous net" read. The DUST_A_MAX knee still holds the
+// resting accumulation under the bloom threshold.
+export const STREAM_ALPHA_RIBBON = 0.33;
 /** Post-blend 3.65 → **1.80**. A 3.8 px sprite at 3.65 paints a bloom halo
  * peaking at 0.64 over a ~4 px radius; 46–97 of those on frame is the new
  * fog. A glint on a lit thread, not a lamp on a dark one. */
@@ -2741,6 +2819,26 @@ export const VEL_FLOW = 0.4;
 export const VEL_CURL = 0.3;
 /** Fray/debris wander amplitude/acceleration +20%·vel (broken). */
 export const VEL_DEBRIS = 0.2;
+
+/**
+ * ═══ ROUND 13 — THE SCROLL-VELOCITY BOOSTS ARE KILLED ON THE RIBBON ═════════
+ *
+ * Owner, 2026-08-26: the construction particles "passano sopra e si vedono"
+ * during a fast scroll — and they must NOT be seen. The streaks he named are
+ * these four boosts. They were authored in round 4/8 for dust at STREAM_ALPHA
+ * 0.012 and 0.28 CSS px, where "the net energises under velocity" was a
+ * subliminal shimmer; round 12 · D made the same particles THE LINE (0.125,
+ * 2.8 px, 10× the light), so a flick now sends visible motes racing along and
+ * off the filaments — read, correctly, as particles flying ahead to build the
+ * next stretch. On the ribbon the flow keeps its calm 1×/s clock, the curl
+ * keeps its resting amplitude, and only a whisper of the stretch survives
+ * (the river/surge advection streak is authored light and is NOT part of
+ * this — it stays). `#production` keeps the round-8 values.
+ */
+export const VEL_SWELL_RIBBON = 0;
+export const VEL_STRETCH_RIBBON = 0.1;
+export const VEL_FLOW_RIBBON = 0.05;
+export const VEL_CURL_RIBBON = 0;
 
 // --- Depth-DOF illusion ------------------------------------------------------
 /**

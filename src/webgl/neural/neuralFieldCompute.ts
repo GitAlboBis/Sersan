@@ -355,6 +355,26 @@ import {
   // JS ternary on `plexus.shape`, so the non-ribbon node graph bakes the
   // identical `float()` literals it baked before this round existed.
   DUST_SIZE_RIBBON,
+  // ROUND 13 — the volumetric conduit + the ribbon's scroll-velocity kill.
+  // Same build-time-ternary discipline as the ROUND 12 · D block above.
+  STRAND_RADIUS_RIBBON,
+  STRAND_THICKNESS_RIBBON,
+  BRAID_TURNS_RIBBON,
+  STRAND_RATE_BASE_RIBBON,
+  STRAND_RATE_STEP_RIBBON,
+  STRAND_SWIRL_RIBBON,
+  STRAND_CORE_R_RIBBON,
+  STRAND_SHEATH_ALPHA_RIBBON,
+  STRAND_CORE_SIZE_RIBBON,
+  STRAND_SHEATH_SIZE_RIBBON,
+  STRAND_RADIUS_TAPER_RIBBON,
+  ENVELOPE_BASE_RIBBON,
+  DOF_STRENGTH_RIBBON,
+  STAR_PUNCH_RIBBON_K,
+  VEL_SWELL_RIBBON,
+  VEL_STRETCH_RIBBON,
+  VEL_FLOW_RIBBON,
+  VEL_CURL_RIBBON,
   LINK_BEND_RIBBON,
   LINK_BEND_MAX_RIBBON,
   LINK_BEND_ROLL_RIBBON,
@@ -1314,6 +1334,15 @@ export function createNeuralFieldBuild(
   const K_FLOW_SPEED = RIB ? FLOW_SPEED_RIBBON : FLOW_SPEED;
   const K_STREAM_ALPHA = RIB ? STREAM_ALPHA_RIBBON : STREAM_ALPHA;
   const K_BEAD_ALPHA = RIB ? BEAD_ALPHA_RIBBON : BEAD_ALPHA;
+  // ROUND 13 — the conduit. On every non-ribbon build these bake the exact
+  // literals the round-8 graph baked (radius 0 ⇒ the strand terms stay the
+  // sub-pixel jitter `#production` has always drawn).
+  const K_STRAND_RADIUS = RIB ? STRAND_RADIUS_RIBBON : STRAND_RADIUS;
+  const K_STRAND_THICK = RIB ? STRAND_THICKNESS_RIBBON : STRAND_THICKNESS;
+  const K_BRAID_TURNS = RIB ? BRAID_TURNS_RIBBON : BRAID_TURNS;
+  const K_RATE_BASE = RIB ? STRAND_RATE_BASE_RIBBON : STRAND_RATE_BASE;
+  const K_RATE_STEP = RIB ? STRAND_RATE_STEP_RIBBON : STRAND_RATE_STEP;
+  const K_SWIRL = RIB ? STRAND_SWIRL_RIBBON : 0;
   const uFlowSpeed = uniform(K_FLOW_SPEED);
   const uFracture = uniform(FRACTURE_T);
   const uRecohere = uniform(0);
@@ -1480,7 +1509,8 @@ export function createNeuralFieldBuild(
   // ROUND-8-F: this default was a bare literal 1 — it is ENVELOPE_BASE (1.8)
   // now, so the shipped filament width is authored in neuralLatticeConfig with
   // the rest of the look. Live overrides via the dev handle are unchanged.
-  const uEnvelope = uniform(ENVELOPE_BASE);
+  // ROUND 13b — ribbon-only envelope/DOF/punch defaults (live-tuned).
+  const uEnvelope = uniform(RIB ? ENVELOPE_BASE_RIBBON : ENVELOPE_BASE);
   const uBreathe = uniform(BREATHE_AMP);
   const uShimmer = uniform(SHIMMER_AMP);
   const uZBow = uniform(STREAM_Z_BOW);
@@ -1502,7 +1532,7 @@ export function createNeuralFieldBuild(
   // live-measured STAR_SPREAD / STAR_PUNCH config constants now (same dev
   // handle, same override path — only the shipped starting point moved).
   const uStarSpread = uniform(STAR_SPREAD);
-  const uStarPunch = uniform(STAR_PUNCH);
+  const uStarPunch = uniform(RIB ? STAR_PUNCH * STAR_PUNCH_RIBBON_K : STAR_PUNCH);
   const uNodeAlpha = uniform(NODE_ALPHA);
   // ROUND-8-G: link particles are TRAFFIC (dust floor ↔ bead peak) and the
   // thread they ride is the LINE layer. All plain `uniform()` scalars — they
@@ -1573,7 +1603,7 @@ export function createNeuralFieldBuild(
   const uCurl = uniform(CURL_GAIN);
   // ROUND-8-F: was a bare literal 1 — the live-measured DOF_STRENGTH (0.45)
   // now, since full-strength DOF was smearing the far stars into dust.
-  const uDof = uniform(DOF_STRENGTH);
+  const uDof = uniform(RIB ? DOF_STRENGTH_RIBBON : DOF_STRENGTH);
   const uRowGain = uniform(ROW_GAIN);
   const uRowSwell = uniform(ROW_SWELL);
   // Round-4 (§B): scroll-velocity net + membrane/nebula layers. All plain
@@ -1582,10 +1612,14 @@ export function createNeuralFieldBuild(
   // OTHER mode's build are dead nodes (never compiled into any material).
   const uScrollVel = uniform(0);
   const uFlowTime = uniform(0);
-  const uVelSwell = uniform(VEL_SWELL);
-  const uVelStretch = uniform(VEL_STRETCH);
-  const uVelFlow = uniform(VEL_FLOW); // driver-read only (flow-clock gain)
-  const uVelCurl = uniform(VEL_CURL);
+  // ROUND 13 — on the ribbon the velocity boosts init to their _RIBBON kills
+  // (the owner's "the construction particles must not be seen flying" note —
+  // see the config block). Same uniforms, same driver, ribbon-only defaults.
+  const uVelSwell = uniform(RIB ? VEL_SWELL_RIBBON : VEL_SWELL);
+  const uVelStretch = uniform(RIB ? VEL_STRETCH_RIBBON : VEL_STRETCH);
+  // driver-read only (flow-clock gain)
+  const uVelFlow = uniform(RIB ? VEL_FLOW_RIBBON : VEL_FLOW);
+  const uVelCurl = uniform(RIB ? VEL_CURL_RIBBON : VEL_CURL);
   const uVelDebris = uniform(VEL_DEBRIS);
   const uVelNorm = uniform(VEL_NORM); // driver-read only (normalization)
   const uMembraneSeal = uniformArray([0, 0, 0]);
@@ -2340,33 +2374,65 @@ export function createNeuralFieldBuild(
     ).toVar();
     const n1 = cross(ef.dir, perpRef).normalize().toVar();
     const n2 = cross(ef.dir, n1).toVar();
-    // Single-strand filament in the (n1, n2) plane: strand twist phase + rate
-    // (uniformArrays, live-tunable — entries 1..3 unused since round-8-D)
-    // plus a per-link golden-angle offset so the ~227 threads decorrelate.
-    const strandAng = strandPhaseAt(ef.strand)
+    // ROUND 13 — THE CONDUIT. Strand twist phase + rate (uniformArrays,
+    // live-tunable) plus a per-link golden-angle offset so the threads
+    // decorrelate. On the ribbon the two strands become a COUNTER-ROTATING
+    // double helix (K_RATE_STEP −2.0 ⇒ rates +1.0 / −1.0) and the whole
+    // cross-section slowly REVOLVES on uTime — strand 1 counter-revolving at
+    // −0.6× so the tube reads as two currents sliding past each other. The
+    // swirl term is a build-time ternary: `#production` (K_SWIRL 0) bakes the
+    // identical graph it always baked.
+    const strandAngBase = strandPhaseAt(ef.strand)
       .add(ef.edgeIdx.mul(2.39996))
       .add(
         ef.s
           .mul(float(Math.PI * 2))
           .mul(
-            float(BRAID_TURNS).mul(
-              float(STRAND_RATE_BASE).add(
-                ef.strand.mul(float(STRAND_RATE_STEP)),
+            float(K_BRAID_TURNS).mul(
+              float(K_RATE_BASE).add(
+                ef.strand.mul(float(K_RATE_STEP)),
               ),
             ),
           ),
       );
+    const strandAng =
+      K_SWIRL > 0
+        ? strandAngBase.add(
+            uTime
+              .mul(float(K_SWIRL))
+              .mul(float(1).add(ef.strand.mul(float(-1.6)))),
+          )
+        : strandAngBase;
+    // Per-strand radius: strand 0 is the TIGHT BRIGHT CORE (K_CORE_R×),
+    // strand 1 the full-radius sheath — and the radius PINCHES at mid-span on
+    // the same 4s(1−s) profile the arc and the sprite taper ride (an axon is
+    // widest where it leaves its somata, and a constant-radius tube is the
+    // strongest "extruded by a computer" cue). Ribbon-only by construction.
+    const radiusK = RIB
+      ? mix(float(STRAND_CORE_R_RIBBON), float(1), ef.strand)
+          .mul(
+            mix(
+              float(1),
+              float(STRAND_RADIUS_TAPER_RIBBON),
+              ef.s.mul(float(1).sub(ef.s)).mul(4.0),
+            ),
+          )
+          .toVar()
+      : float(1);
     const strandOff = n1
       .mul(sin(strandAng))
       .add(n2.mul(cos(strandAng)))
-      .mul(float(STRAND_RADIUS));
+      .mul(float(K_STRAND_RADIUS))
+      .mul(radiusK);
     // Thickness jitter within the strand — per-strand thickness BIAS keeps
     // the two filaments individually legible (thick lead, thin satellite).
+    // On the ribbon this jitter IS the tube's volumetric fill between the
+    // core helix and the sheath helix.
     const jit = n1
       .mul(sin(offN.z))
       .add(n2.mul(cos(offN.z)))
       .mul(offN.y)
-      .mul(float(STRAND_THICKNESS))
+      .mul(float(K_STRAND_THICK))
       .mul(strandThickAt(ef.strand));
     // Curl micro-turbulence (compute tier only): displace the strand offset
     // with the analytic curl field sampled AT the braid position, so the
@@ -2980,6 +3046,18 @@ export function createNeuralFieldBuild(
      */
     const restSizeK = mix(float(K_CORE_BOOST), float(K_FRINGE_DROP), fringe)
       .mul(float(K_DUST_SIZE))
+      // ROUND 13b — per-strand size hierarchy: the core strand carries the
+      // line with larger overlapping sprites, the sheath is finer grain.
+      // Build-time gated; non-ribbon bakes the identical chain.
+      .mul(
+        RIB
+          ? mix(
+              float(STRAND_CORE_SIZE_RIBBON),
+              float(STRAND_SHEATH_SIZE_RIBBON),
+              ef.strand,
+            )
+          : float(1),
+      )
       // ROUND 12 — DENDRITIC TAPER. A constant-width tube is the strongest
       // "drawn by a computer" cue left once the path curves: a real process is
       // widest where it leaves a soma and narrowest at mid-span. Same 4s(1−s)
@@ -3024,11 +3102,21 @@ export function createNeuralFieldBuild(
      * compensation, so the accumulated `A = 0.624·P·S/s` is flat across the
      * net and the bloom cannot fire on the short links only. */
     const overlapNorm = RIB ? min(float(1), normRatio) : float(1);
-    const alphaStream = mix(liveA, debrisA, disp)
+    // ROUND 13 — the sheath strand is ATMOSPHERE, not a second line: strand 1
+    // carries STRAND_SHEATH_ALPHA× the light so the tube reads as a bright
+    // core inside a soft volumetric halo. Build-time gated; `#production`'s
+    // alpha chain is untouched.
+    const alphaStreamBase = mix(liveA, debrisA, disp)
       .mul(edge)
       .mul(gap)
-      .mul(overlapNorm)
-      .toVar();
+      .mul(overlapNorm);
+    const alphaStream = (
+      RIB
+        ? alphaStreamBase.mul(
+            mix(float(1), float(STRAND_SHEATH_ALPHA_RIBBON), ef.strand),
+          )
+        : alphaStreamBase
+    ).toVar();
     // Size: the resting dust shrinks to DUST_SIZE (a 9.4px sprite sitting on
     // a 1px line is the chain-of-blobs read this round removes) and a passing
     // packet swells it back into a ~10.3px BEAD (PACKET_SIZE 2.0).
