@@ -715,10 +715,16 @@ export const RIBBON_SEEDS: Record<
  * answer. Stage 3's escalation ladder ((i) half the lite density, (ii) shorten
  * the phone field) is the place it gets decided, WITH a GPU capture.
  */
+// ROUND 13d — full 2.2 → 2.7. The 2.2 brake was sized for the 1-D strand
+// (it silently capped CONDUIT_FILL_RIBBON at ×2.2/1.874 = +17%); the
+// volumetric conduit plus the wider κ-window (RIBBON_WINDOW_PAD 2.08,
+// winE 81 → 99 = −18% perLink) needs the headroom. Delivered count
+// 9000·min(1.874·2.0, 2.7) = 24 300 — measured 59/55 fps at 19 800 on this
+// machine's two backends, and still far under the 36 000 hard budget.
 export const RIBBON_PARTICLE_SCALE_MAX: Record<
   Exclude<PlexusDensity, "svg">,
   number
-> = { full: 2.2, lite: 1.8 };
+> = { full: 2.7, lite: 1.8 };
 
 /**
  * ── ROUND 12 · THE LINKS CURVE ─────────────────────────────────────────────
@@ -1666,7 +1672,7 @@ export const BRAID_TURNS_RIBBON = 1.35;
  * The star budget is per-node (STAR_PER_NODE_RIBBON), so ALL of this lift
  * lands on the links — which is the point.
  */
-export const CONDUIT_FILL_RIBBON = 1.7;
+export const CONDUIT_FILL_RIBBON = 2.0;
 export const STRAND_RATE_BASE_RIBBON = 1.0;
 /** −2.0 ⇒ strand 1 winds OPPOSITE (rate 1.0 / −1.0): a counter-helix crossing
  * pattern is the strongest cheap "this has a 3-D cross-section" cue. */
@@ -2061,7 +2067,12 @@ export const BEAD_ALPHA_RIBBON = 0.32;
  * driver that mis-sets `first` loses links at the frame edge instead of
  * popping them in the middle of it.
  */
-export const RIBBON_WINDOW_PAD = 1.7;
+// ROUND 13d — 1.7 -> 2.08, re-derived from the pad inequality with the new
+// WINDOW_FADE_OUT 1.55: excess past the edge 0.55·half + longest-link extent
+// ~0.53·half = 1.08·half each side => pad = 1 + 2·0.54. CONDUIT_FILL_RIBBON
+// compensates the perLink dilution (same edgeTotal over ~22% more windowed
+// edges).
+export const RIBBON_WINDOW_PAD = 2.08;
 /** The REST regime's target geometric overlap `S_css / s_css`. 1.65 is the
  * COMB criterion — ripple `2·exp(−2π²(S/4s)²)` = 6.9 %, verified against the
  * shipped `smoothstep(0.5, 0.12, r)` disc profile at ±3 % peak-to-trough. A
@@ -2099,8 +2110,14 @@ export const STAR_PER_NODE_RIBBON = 40;
  * Measured on the shipped band: longest delivered link 388 px on a 935 px
  * frame ⇒ halfExtent ≤ 0.208 → 0.85 − 0.208 = 0.642 ≥ 0.58. 58 px of margin.
  */
-export const WINDOW_FADE_IN = 1.02;
-export const WINDOW_FADE_OUT = 1.16;
+// ROUND 13d — 1.02/1.16 -> 1.30/1.55: the fade used to START essentially ON
+// the frame edge (2% past) and complete ~60 px outside, so exiting filaments
+// visibly dissolved in the top-left corner (half of the conveyor read the
+// owner rejected). Now dimming starts 30% of a half-frame past the edge and
+// completes ~55% past (~200 px off-frame). RIBBON_WINDOW_PAD grows with it
+// (the pad inequality below).
+export const WINDOW_FADE_IN = 1.3;
+export const WINDOW_FADE_OUT = 1.55;
 /**
  * Ceiling on the per-link SIZE normalisation (see the normaliser in
  * `particleScalars`). A link carries a fixed sprite count, so its delivered
@@ -2203,7 +2220,16 @@ export const RIVER_RATE = 0.09;
  * and the front becomes visible again; that is the lever, and it costs
  * picture at the leading edge.
  */
-export const FRONT_LEAD = 0.3;
+// ROUND 13d — 0.3 -> 0.62. At 0.30 the front cleared the frame's leading
+// phase edge by -0.024 at p = 0 (i.e. it was INSIDE the frame) and the
+// driver's lambda=10 damp pulls it another ~0.033 in during a fast scroll:
+// the owner watched the right half of the frame BUILD ITSELF while the
+// trailing edge dissolved -- "si scompone quella prima e si sposta in
+// quella dopo", the conveyor read. At 0.62 the birth clears the leading
+// edge by a full ~0.27 phase (~1 frame) at p = 0, so building and
+// dismantling (D14/D16 both stand) happen entirely OFF CAMERA and the
+// on-frame net always reads as one persistent structure being travelled.
+export const FRONT_LEAD = 0.62;
 export const FRONT_SPAN = 1.0;
 /** Birth knee width in nodeT — a C¹ knee, never a clamp. */
 export const FRONT_W = 0.06;

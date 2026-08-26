@@ -4349,7 +4349,19 @@ export function createNeuralFieldBuild(
     // ≈0.017, comfortably inside the 0.038 threshold; at 0.5 it would be
     // ≈0.24 and would false-trigger, which is why the gate exists at all.
     const one = float(1);
-    const armed = select(uReveal.greaterThan(float(0.9)), one, float(0))
+    // ROUND 13d — THE REVEAL TERM IS DROPPED FROM THE ARMING ON THE RIBBON.
+    // The 0.9 gate existed to protect the round-2 coalesce, whose origin-
+    // scattered fly-in was a LEGITIMATE large |anchor − pos| that must not
+    // snap. The ribbon materialises in place (seed ≤ ~0.04 local from its own
+    // anchor), so no legitimate large excursion exists any more — while the
+    // un-armed window it left behind was actively harmful: the 13c re-entry
+    // reveal-restart plus a fast scroll rolled the κ-window during the ~0.4 s
+    // λ=9 ramp, and every re-homed particle spring-flew across the field with
+    // the snap disarmed — the condensing cloud the owner photographed, back
+    // by a second route. Non-ribbon builds bake the identical gated chain.
+    const armed = (
+      RIB ? one : select(uReveal.greaterThan(float(0.9)), one, float(0))
+    )
       .mul(select(uRecohere.lessThan(float(0.02)), one, float(0)))
       .mul(select(dispersing.lessThan(float(0.02)), one, float(0)))
       .toVar();
