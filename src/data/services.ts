@@ -82,8 +82,8 @@ export const services: ServiceContent[] = [
   {
     slug: "engineering",
     number: "01",
-    name: "Custom Software & AI Products",
-    nameIt: "Software su Misura & Prodotti AI",
+    name: "Custom Software & Platforms",
+    nameIt: "Software e piattaforme su misura",
     positioning: "Custom software built around how your business works.",
     positioningIt: "Software su misura, costruito su come lavorate davvero.",
     description:
@@ -201,8 +201,8 @@ export const services: ServiceContent[] = [
       {
         q: "Can you take over a prototype, or software another developer built?",
         qIt: "Potete riprendere un prototipo, o un software costruito da altri?",
-        a: "Yes. The Diagnose phase reviews what's there, what's salvageable, and what should be rebuilt. Usually it's a mix.",
-        aIt: "Sì. La fase di Diagnosi esamina cosa c'è, cosa è recuperabile e cosa va ricostruito. Di solito è un mix.",
+        a: "Yes. The Scope phase reviews what's there, what's salvageable, and what should be rebuilt. Usually it's a mix.",
+        aIt: "Sì. La fase di Scope esamina cosa c'è, cosa è recuperabile e cosa va ricostruito. Di solito è un mix.",
       },
       {
         q: "Is this just web development?",
@@ -348,8 +348,8 @@ export const services: ServiceContent[] = [
   {
     slug: "mlops",
     number: "03",
-    name: "AI Reliability & MLOps",
-    nameIt: "Affidabilità AI & MLOps",
+    name: "AI Features & Reliability",
+    nameIt: "Funzioni AI e affidabilità",
     positioning: "Make AI features reliable enough to depend on.",
     positioningIt: "Rendere le funzionalità AI affidabili davvero.",
     description:
@@ -574,7 +574,7 @@ export const services: ServiceContent[] = [
       { text: "Risk register with severities + mitigation", textIt: "Registro dei rischi con severità + mitigazione" },
       { text: "Build vs. buy vs. don't-build recommendation per component", textIt: "Raccomandazione build vs. buy vs. non costruire per ogni componente" },
       { text: "Reference architecture diagrams + sequencing plan", textIt: "Diagrammi di architettura di riferimento + piano di sequenziamento" },
-      { text: "60-min walkthrough call, in plain language", textIt: "Call di walkthrough di 60 min, in linguaggio chiaro" },
+      { text: "60–90 min walkthrough call, in plain language", textIt: "Call di walkthrough di 60–90 min, in linguaggio chiaro" },
       { text: "Optional: credit toward a follow-on build engagement", textIt: "Opzionale: credito a valere su un successivo ingaggio di build" },
     ],
     caseStudyIds: ["leonardo", "stealth-greentech", "salvatori", "regione-sardegna"],

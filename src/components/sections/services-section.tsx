@@ -167,7 +167,7 @@ function getServices(isEn: boolean): Service[] {
     },
     {
       num: "02",
-      title: isEn ? "Workflow Automation" : "Automazione dei flussi di lavoro",
+      title: isEn ? "Workflow Automation" : "Automazione dei Processi",
       positioning: isEn
         ? "Start with the process that eats the most time."
         : "Si parte dal processo che consuma più tempo.",
@@ -218,8 +218,8 @@ function getServices(isEn: boolean): Service[] {
     {
       num: "04",
       title: isEn
-        ? "Technical Audits & Product Strategy"
-        : "Audit tecnici e strategia di prodotto",
+        ? "Technical Audits & Architecture"
+        : "Audit Tecnici & Architettura",
       positioning: isEn
         ? "Find what should not be built, before code becomes debt."
         : "Capire cosa non andrebbe costruito, prima che il codice diventi debito.",

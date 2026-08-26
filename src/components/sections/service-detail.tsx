@@ -583,14 +583,14 @@ export default function ServiceDetail({
                   <>
                     Tell us what you&apos;re trying to build with{" "}
                     <span className="text-[hsl(var(--accent))] font-display font-medium">
-                      {name.toLowerCase()}.
+                      {name}.
                     </span>
                   </>
                 ) : (
                   <>
                     Raccontateci cosa volete costruire con{" "}
                     <span className="text-[hsl(var(--accent))] font-display font-medium">
-                      {name.toLowerCase()}.
+                      {name}.
                     </span>
                   </>
                 )}

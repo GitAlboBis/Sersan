@@ -25,6 +25,33 @@ import {
  * depth-parallax planes to the grid's [data-featured-media] rects;
  * usePlanesLive mirrors ownership per card.
  */
+/**
+ * Italian labels for the `industry` union in src/data/case-studies.ts.
+ * Keyed by the union itself, so adding a sector to the data is a type error
+ * here until it is translated — which is the point: the hand-written sector
+ * list this replaced had silently omitted Real Estate, the one sector whose
+ * only entry (Domus Tua) is the flagship proof point for the new market, and
+ * whose card renders inside this very section.
+ */
+const INDUSTRY_IT: Record<(typeof caseStudies)[number]["industry"], string> = {
+  FinTech: "FinTech",
+  Healthcare: "Healthcare",
+  Aerospace: "Aerospace",
+  "Public Sector": "Settore Pubblico",
+  Industrial: "Industriale",
+  Energy: "Energia",
+  Agritech: "Agritech",
+  "Real Estate": "Real Estate",
+};
+
+/** Distinct sectors, in first-appearance order, joined as "a, b and c". */
+function sectorList(isEn: boolean): string {
+  const seen = [...new Set(caseStudies.map((c) => c.industry))];
+  const labels = seen.map((i) => (isEn ? i : INDUSTRY_IT[i]));
+  if (labels.length < 2) return labels.join("");
+  return `${labels.slice(0, -1).join(", ")}${isEn ? " and " : " e "}${labels[labels.length - 1]}`;
+}
+
 export default function FeaturedWork() {
   const { language } = useLanguage();
   const isEn = language === "en";
@@ -54,8 +81,8 @@ export default function FeaturedWork() {
           }
           description={
             isEn
-              ? `${caseStudies.length} engagements across FinTech, Healthcare, Aerospace, Public Sector, Industrial, Energy, and Agritech. Sersan builds and prior senior delivery, each one labelled for what it is.`
-              : `${caseStudies.length} ingaggi tra FinTech, Healthcare, Aerospace, Settore Pubblico, Industriale, Energia e Agritech. Build di Sersan e precedenti consegne senior, ognuna etichettata per quello che è.`
+              ? `${caseStudies.length} engagements across ${sectorList(true)}. Sersan builds and prior senior delivery, each one labelled for what it is.`
+              : `${caseStudies.length} ingaggi tra ${sectorList(false)}. Build di Sersan e precedenti consegne senior, ognuna etichettata per quello che è.`
           }
         />
         <Link

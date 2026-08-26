@@ -51,6 +51,27 @@ export function pageMetadata({
   image,
   index = true,
 }: PageMetadataInput): Metadata {
+  /**
+   * Declaring `openGraph` here REPLACES the layout's block outright — Next
+   * does not deep-merge it. So every field the layout set has to be restated,
+   * or the page silently loses it. The first cut of this helper set only
+   * title/description/url and dropped og:image, siteName, locale and
+   * alternateLocale from fifteen indexable routes, which is a worse failure
+   * than the generic-title bug it was written to fix: a card with the right
+   * words and no image is a grey rectangle in a LinkedIn feed.
+   *
+   * Routes that ship their own `opengraph-image` file still win over this
+   * default — Next wires that up per-route and it takes precedence.
+   */
+  const images = [
+    {
+      url: image ?? "/og-image.png",
+      width: 1200,
+      height: 630,
+      alt: title,
+    },
+  ];
+
   return {
     title,
     description,
@@ -59,17 +80,21 @@ export function pageMetadata({
       ? { index: true, follow: true }
       : { index: false, follow: true },
     openGraph: {
+      type: "website",
       title,
       description,
       url: path,
-      type: "website",
-      ...(image ? { images: [{ url: image }] } : {}),
+      siteName: "SerSan",
+      locale: "en_GB",
+      alternateLocale: ["it_IT"],
+      images,
     },
     twitter: {
       card: "summary_large_image",
+      site: "@sersan_io",
       title,
       description,
-      ...(image ? { images: [image] } : {}),
+      images: [image ?? "/og-image.png"],
     },
   };
 }

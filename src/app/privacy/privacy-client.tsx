@@ -219,9 +219,16 @@ export function PrivacyClient() {
                   <strong className="text-foreground font-medium">
                     {isEn ? "Legal bases (GDPR Art. 6):" : "Basi giuridiche (Art. 6 GDPR):"}
                   </strong>{" "}
+                  {/* Marketing basis matches /trust, which states that marketing
+                      goes only to "opted-in business contacts". The two pages
+                      previously named DIFFERENT Art. 6 bases for the same
+                      activity — legitimate interests here, consent there — and
+                      where they disagree the stricter one is the one to publish:
+                      over-promising in the data subject's favour is safe, the
+                      reverse is not. */}
                   {isEn
-                    ? "delivering an engagement and the steps leading to it — Art. 6(1)(b), contract; security, audit logging and service improvement — Art. 6(1)(f), legitimate interests; business-to-business outreach — legitimate interests, with an opt-out in every message; cookies and similar technologies — consent."
-                    : "erogazione del progetto e fasi precontrattuali — Art. 6(1)(b), contratto; sicurezza, log di audit e miglioramento del servizio — Art. 6(1)(f), legittimo interesse; contatti commerciali B2B — legittimo interesse, con possibilità di opposizione in ogni messaggio; cookie e tecnologie simili — consenso."}
+                    ? "delivering an engagement and the steps leading to it — Art. 6(1)(b), contract; security, audit logging and service improvement — Art. 6(1)(f), legitimate interests; replying to you and following up on an enquiry you started — Art. 6(1)(b) and 6(1)(f); marketing communications — consent, to opted-in business contacts only, with an opt-out in every message; cookies and similar technologies — consent."
+                    : "erogazione del progetto e fasi precontrattuali — Art. 6(1)(b), contratto; sicurezza, log di audit e miglioramento del servizio — Art. 6(1)(f), legittimo interesse; risposta e follow-up su una richiesta che avete iniziato voi — Art. 6(1)(b) e 6(1)(f); comunicazioni marketing — consenso, solo verso contatti business che lo hanno dato, con possibilità di revoca in ogni messaggio; cookie e tecnologie simili — consenso."}
                 </p>
               </section>
               </Reveal>
