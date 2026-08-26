@@ -301,6 +301,14 @@ export function useDiagonalTraverse(
         const armCss = (): void => {
           const b = traverseConfig.bands[bandId];
           section.style.setProperty("--tv-gap-vh", `${b.gapVh}`);
+          // ROUND 13f — the meteor hold's donated scroll: the tail grows by
+          // holdVh·100svh (see the CSS in problem-section). Removed with the
+          // rest of the armed CSS, so reduced-motion / rollback documents are
+          // byte-identical.
+          section.style.setProperty(
+            "--tv-hold-vh",
+            `${b.meteorHold ? b.meteorHold.holdVh : 0}`,
+          );
           if (b.bandVh != null) {
             // Pin the band to the VIEWPORT so the runway growth cannot inflate
             // rect.h (which drives the net's depth + aspect and the stone's
@@ -648,6 +656,46 @@ export function useDiagonalTraverse(
           const sy = window.scrollY;
           const travelled = Math.min(Math.max(sy - secTop, 0), secH);
           const p = travelled / secH;
+          // ══ ROUND 13f — THE METEOR HOLD WARP ══════════════════════════
+          // C² closed-form plateau on the SCENE lateral (rate ramps are
+          // smoothstep ⇒ position is C², the traverse-rate law; stateless
+          // and teleport-safe like everything else in this frame). The
+          // donated tail (holdVh·ih) is exactly the swallowed total, so the
+          // EFFECTIVE run (warpSecH) — and with it the field length, the
+          // re-centrings and the end registration — is byte-identical to
+          // the no-hold document.
+          const hold = cfg.bands[bandId].meteorHold;
+          const holdL = hold ? hold.holdVh * ih : 0;
+          const warpSecH = holdL > 0 ? secH - holdL : secH;
+          let warped = travelled;
+          let swallowed = 0;
+          let meteorQ = 0;
+          if (hold && holdL > 0 && warpSecH > 200) {
+            const rho = hold.rampFrac;
+            const W = holdL / Math.max(1 - rho, 1e-3);
+            const T0 = hold.t0Frac * warpSecH;
+            if (travelled > T0) {
+              const q = Math.min((travelled - T0) / W, 1);
+              meteorQ = q;
+              // ∫v with v = 1−s01(q/ρ) · 0 · s01((q−(1−ρ))/ρ); s01Int is
+              // ∫smoothstep = c³ − c⁴/2 (sInt in traverse-rate).
+              let adv: number;
+              if (q < rho) {
+                const c = q / rho;
+                const c3 = c * c * c;
+                adv = W * rho * (c - (c3 - (c3 * c) / 2));
+              } else if (q < 1 - rho) {
+                adv = W * rho * 0.5;
+              } else {
+                const c = (q - (1 - rho)) / rho;
+                const c3 = c * c * c;
+                adv = W * rho * (0.5 + (c3 - (c3 * c) / 2));
+              }
+              warped =
+                travelled - T0 >= W ? travelled - holdL : T0 + adv;
+              swallowed = travelled - warped;
+            }
+          }
           const wantOpacity = cfg.windowOpacity && rate !== 0;
 
           let bestV = -1;
@@ -707,7 +755,10 @@ export function useDiagonalTraverse(
           // the section a second time (see traverseStore's `secTop`).
           frame.secTop = secTop;
           frame.secH = secH;
-          frame.xScenePx = dir * rate * travelled;
+          frame.xScenePx = dir * rate * warped;
+          frame.swallowedPx = swallowed;
+          frame.meteorQ = meteorQ;
+          frame.warpSecH = warpSecH;
           // ── ROUND 12 · D21 — THE LIT ROW ────────────────────────────────
           // ⚠ OUTSIDE the `laneEnabled` branch below, deliberately. That flag
           // is the mask lane's rollback lever; if the ignition rode inside it,
@@ -1319,6 +1370,7 @@ export function useDiagonalTraverse(
           deactivateTraverseBand(bandId);
           delete section.dataset.traverse;
           section.style.removeProperty("--tv-gap-vh");
+          section.style.removeProperty("--tv-hold-vh");
           section.style.removeProperty("--tv-band-bottom");
           section.style.removeProperty("--tv-band-h");
           // Clear our OWN properties only, and do not assume `x` survives the

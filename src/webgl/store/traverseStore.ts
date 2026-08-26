@@ -61,9 +61,28 @@ export interface TraverseFrame {
   /**
    * The SCENE's lateral in CSS px at the content plane, signed (negative =
    * the world runs left). The net rides α ≡ 1.00, so this is exactly
-   * `dir · tan(angle) · clamp(scrollY − secTop, 0, secH)`.
+   * `dir · tan(angle) · warp(clamp(scrollY − secTop, 0, secH))` — `warp` is
+   * the identity everywhere except inside the ROUND 13f meteor hold, where
+   * it plateaus (C², closed-form) so the scene freezes for the beat.
    */
   xScenePx: number;
+  /**
+   * ══ ROUND 13f — THE METEOR HOLD ══ Scroll px the warp has swallowed so
+   * far (0 outside a hold, → holdVh·ih after it). The vertical twin of the
+   * lateral plateau: native scroll keeps moving the anchors up, so every
+   * ribbon consumer adds this to its vertical base to freeze the scene on
+   * BOTH axes during the beat. One number, shared, or the stone and the net
+   * shear apart — the same doctrine as the lateral re-centring.
+   */
+  swallowedPx: number;
+  /** Beat progress 0→1 through the hold window (0 before, 1 after). */
+  meteorQ: number;
+  /**
+   * `secH − holdVh·ih` — the EFFECTIVE run for field geometry. Every ribbon
+   * band function (`bandFieldLen`, `bandLateralPx`, `bandRegisterPx`) takes
+   * THIS, not `secH`: the donated hold runway adds scroll, not field.
+   */
+  warpSecH: number;
   /**
    * The copy MASK LANE, in viewport CSS px, already including the block's
    * FINAL APPLIED `x` (§2B.4 — never a linearised α, never a separate
@@ -131,6 +150,9 @@ function makeFrame(): TraverseFrame {
     active: false,
     scrollY: 0,
     p: 0,
+    swallowedPx: 0,
+    meteorQ: 0,
+    warpSecH: 0,
     secTop: 0,
     secH: 1,
     xScenePx: 0,

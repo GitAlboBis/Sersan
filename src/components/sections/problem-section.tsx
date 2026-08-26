@@ -345,10 +345,17 @@ const PLROW_CSS = `
 }
 #problem[data-traverse] {
   --tv-gap: calc(var(--tv-gap-vh, 0) * 100svh);
+  /* ROUND 13f — the meteor hold's donated scroll (use-diagonal-traverse
+     writes --tv-hold-vh; 0 when no hold is configured). It grows the TAIL
+     only: the reading cadence above is untouched, and the traverse's warp
+     swallows exactly this much scroll while the scene holds for the beat. */
+  --tv-hold: calc(var(--tv-hold-vh, 0) * 100svh);
 }
 #problem[data-traverse] [data-traverse-stack] { margin-top: var(--tv-gap); }
 #problem[data-traverse] .plrow + .plrow { margin-top: var(--tv-gap); }
-#problem[data-traverse] [data-traverse-tail] { height: var(--tv-gap); }
+#problem[data-traverse] [data-traverse-tail] {
+  height: calc(var(--tv-gap) + var(--tv-hold, 0px));
+}
 #problem[data-traverse] [data-lattice-anchor] {
   bottom: var(--tv-band-bottom, 0px);
   height: var(--tv-band-h, auto);

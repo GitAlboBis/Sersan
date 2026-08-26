@@ -132,6 +132,28 @@ export interface TraverseBandConfig {
    * A live write rebuilds the field (build + dispose), which is why it is a
    * config revision and not a uniform. */
   ribbonDensity: TraverseRibbonDensity;
+  /**
+   * ══ ROUND 13f — THE METEOR HOLD (owner, 2026-08-26) ══════════════════════
+   * "si bloccasse la camera al centro, e che con lo scroll continuasse ad
+   * aprirsi il meteorite stando al centro e con un piccolo zoom in mentre si
+   * vede il logo, poi allo successivo scroll fa zoom out e continua lo
+   * scroll orizzontale." — the owner's own reversal of D7's no-pin rule, for
+   * this ONE beat.
+   *
+   * `null` = no hold (byte-identical traverse). Otherwise: the act's tail
+   * grows by `holdVh·100svh` of donated scroll (the `--tv-hold-vh` CSS var,
+   * gapVh's grammar), and the scene lateral rides a C² closed-form warp that
+   * plateaus over a window starting at `t0Frac` of the EFFECTIVE run
+   * (secH − donated) — so the field geometry, the copy cadence and the act's
+   * end registration are all byte-identical to the no-hold document; the
+   * beat is pure added scroll. `rampFrac` is each ramp's share of the
+   * window (smoothstep in rate ⇒ C² in position, the traverse-rate law).
+   */
+  meteorHold: {
+    t0Frac: number;
+    holdVh: number;
+    rampFrac: number;
+  } | null;
 }
 
 export interface TraverseConfigShape {
@@ -232,6 +254,11 @@ export const traverseConfig: TraverseConfigShape = {
       bandVh: 1.0,
       ribbon: true,
       ribbonDensity: "onFrame",
+      // Stone centred (a ≈ 0) measured at travelled ≈ 0.820·warpSecH; the
+      // deceleration ramp itself advances the scene ~W·ρ/2 ≈ 124 px, so the
+      // hold BEGINS half a ramp early (0.79) and the stone comes to rest at
+      // dead centre. 1.15 vh of donated scroll, 22% ramps.
+      meteorHold: { t0Frac: 0.79, holdVh: 1.15, rampFrac: 0.22 },
     },
   },
   alphaReadDisplay: 0.5,

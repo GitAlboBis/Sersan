@@ -167,6 +167,8 @@ import {
   METEOR_OPEN_IN,
   METEOR_OPEN_OUT,
   METEOR_PEAK_GAIN,
+  METEOR_OPEN_ARRIVE,
+  METEOR_ZOOM,
   MARK_MESH_SCALE,
   MARK_MESH_Y,
   MARK_LIT_BASE,
@@ -223,7 +225,6 @@ import { loadMarkGeometry } from "./RouteHeroLogo";
 /** Brand cyan #3BE1FF — the mark's lit tone (never violet). Module-cached so
  * the per-frame drive multiplies a copy, never re-parses the hex. */
 const MARK_CYAN = new THREE.Color("#3be1ff");
-const MARK_COLOR_SCRATCH = new THREE.Color();
 
 /** Off-screen cull margin in CSS px (the NeuralLattice value). */
 const CULL_PAD = 220;
@@ -257,10 +258,43 @@ export function CrystalCluster({
   // 6% RT above). Geometry is RouteHeroLogo's session-shared singleton —
   // NEVER disposed here; the material is ours and is.
   const [markGeo, setMarkGeo] = useState<THREE.BufferGeometry | null>(null);
-  const markMatRef = useRef<THREE.MeshBasicMaterial | null>(null);
-  if (!markMatRef.current) {
-    markMatRef.current = new THREE.MeshBasicMaterial({
-      color: MARK_CYAN,
+  const markMeshRef = useRef<THREE.Mesh | null>(null);
+  const markEnvRef = useRef<THREE.Texture | null>(null);
+  const markMatRef = useRef<THREE.MeshStandardMaterial | null>(null);
+  if (!markMatRef.current && typeof document !== "undefined") {
+    // ROUND 13f — the END-PAGE 3-D logo treatment (RouteHero's recipe, owner:
+    // "vorrei che il logo sia in 3d, come quello a fine pagina home"): dark
+    // metal body + bright cyan emissive (toneMapped:false rides the selective
+    // bloom) + a cheap procedural gradient env so the metal has something to
+    // reflect — form instead of flat plastic. depth flags keep the compositing
+    // reveal (fog −4 → mark −3.5 → crystal −3) intact.
+    const c = document.createElement("canvas");
+    c.width = 16;
+    c.height = 256;
+    const ctx = c.getContext("2d");
+    if (ctx) {
+      const g = ctx.createLinearGradient(0, 0, 0, 256);
+      g.addColorStop(0.0, "#0a1426");
+      g.addColorStop(0.4, "#2bd6ff");
+      g.addColorStop(0.52, "#16243f");
+      g.addColorStop(0.66, "#2a7fff");
+      g.addColorStop(1.0, "#060b16");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 16, 256);
+      const tex = new THREE.CanvasTexture(c);
+      tex.mapping = THREE.EquirectangularReflectionMapping;
+      tex.colorSpace = THREE.SRGBColorSpace;
+      markEnvRef.current = tex;
+    }
+    markMatRef.current = new THREE.MeshStandardMaterial({
+      color: "#0B1422",
+      metalness: 0.35,
+      roughness: 0.3,
+      envMap: markEnvRef.current ?? undefined,
+      envMapIntensity: 0.7,
+      emissive: MARK_CYAN,
+      emissiveIntensity: MARK_LIT_BASE,
+      toneMapped: false,
       depthWrite: false,
       depthTest: false,
     });
@@ -368,6 +402,8 @@ export function CrystalCluster({
       // RouteHeroLogo's session singleton and must never be.
       markMatRef.current?.dispose();
       markMatRef.current = null;
+      markEnvRef.current?.dispose();
+      markEnvRef.current = null;
       setMarkGeo(null);
       setBuild(null);
       setPlexus(null);
@@ -542,7 +578,9 @@ export function CrystalCluster({
             bcfg,
             tv!.xScenePx,
             tv!.secTop,
-            tv!.secH,
+            // ROUND 13f — the effective run (the hold donates scroll, not
+            // field); same fallback grammar as the net island.
+            tv!.warpSecH || tv!.secH,
             rect.docTop,
             rect.h,
             ih,
@@ -555,10 +593,23 @@ export function CrystalCluster({
     // which is the whole reason they live in `traverseConfig` and not in
     // either component. `__sersanCrystal_*.traverse.deltaPx` is the gate.
     const ribbonOn = !!tv && !!bcfg && bcfg.ribbon && tv!.active;
-    const fieldLen = ribbonOn ? bandFieldLen(bcfg!, tv!.secH, rect.w) : 1;
+    const fieldLen = ribbonOn
+      ? bandFieldLen(bcfg!, tv!.warpSecH || tv!.secH, rect.w)
+      : 1;
     const fieldSlope = ribbonOn ? bandFieldSlope(bcfg!, rect.w, rect.h) : 0;
+    // ROUND 13f — warpSecH + the swallowed-scroll fold: the same two numbers
+    // the net island folds, in the same places, so stone and net freeze as
+    // one body during the meteor hold (see NeuralLattice's note).
     const yRegPx = ribbonOn
-      ? bandRegisterPx(bcfg!, tv!.secTop, tv!.secH, rect.docTop, rect.h, ih)
+      ? bandRegisterPx(
+          bcfg!,
+          tv!.secTop,
+          tv!.warpSecH || tv!.secH,
+          rect.docTop,
+          rect.h,
+          ih,
+        ) -
+        (tv!.swallowedPx || 0)
       : 0;
 
     const vpTop = rect.docTop - scrollY;
@@ -637,6 +688,17 @@ export function CrystalCluster({
         : CRYSTAL_VEL_LAMBDA_DOWN,
       delta,
     );
+    // ══ ROUND 13f — THE BEAT SCALARS ══════════════════════════════════════
+    // `q` is the frozen frame's hold progress (0 before, 1 after). The zoom
+    // is a bump: in through the reveal's peak, out before the release — so
+    // the scroll after the logo beat reads as "zoom out, then the traverse
+    // resumes", exactly the owner's sentence. Pure functions of the frozen
+    // frame: reversible, stateless, D16 grammar.
+    const q = ribbonOn && broken ? tv!.meteorQ || 0 : 0;
+    const s01 = (x: number): number =>
+      x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
+    const zoomBump =
+      s01((q - 0.08) / 0.3) * (1 - s01((q - 0.6) / 0.32));
     const scaleMul =
       (0.8 + 0.2 * reveal) * (1 - feelC.velScaleK * velEased.current);
 
@@ -670,7 +732,15 @@ export function CrystalCluster({
     // the two MUST move together. Full audit table on crystalConfig
     // CRYSTAL_SCALE ("PREPARED CHANGE"). Deliberately NOT applied yet — the
     // owner is still judging the 0.17 → 0.115 shrink at today's band size.
-    const s = rect.h * k * feelC.scale * pinK * scaleMul;
+    // ROUND 13f — the beat's zoom-in rides the same uniform scale the
+    // velocity compression rides (never the camera; SignatureLine owns it).
+    const s =
+      rect.h *
+      k *
+      feelC.scale *
+      pinK *
+      scaleMul *
+      (1 + METEOR_ZOOM * zoomBump);
     scratch.current
       .set((cx - vw / 2) * k, (ih / 2 - cy) * k, -CAMERA_Z)
       .applyQuaternion(camera.quaternion)
@@ -769,13 +839,22 @@ export function CrystalCluster({
       // resealed on exit — and exactly reversed when the reader scrolls
       // back. The spin fix in crystalBuild (openK) is what makes gap → 0
       // actually recompose the slab instead of an interpenetrating tangle.
+      // The approach only CRACKS the stone (×METEOR_OPEN_ARRIVE); the hold's
+      // own scroll drives it the rest of the way open — "con lo scroll
+      // continuasse ad aprirsi il meteorite stando al centro". With no hold
+      // configured the ramp is 1 and the bell is the whole law, as before.
+      const holdRamp = bcfg?.meteorHold
+        ? METEOR_OPEN_ARRIVE +
+          (1 - METEOR_OPEN_ARRIVE) * s01(Math.min(q / 0.55, 1))
+        : 1;
       const openBell =
-        1 -
-        THREE.MathUtils.smoothstep(
-          Math.abs(a),
-          METEOR_OPEN_IN,
-          METEOR_OPEN_OUT,
-        );
+        (1 -
+          THREE.MathUtils.smoothstep(
+            Math.abs(a),
+            METEOR_OPEN_IN,
+            METEOR_OPEN_OUT,
+          )) *
+        holdRamp;
       gapRef.current =
         build.restGap *
         openBell *
@@ -784,13 +863,19 @@ export function CrystalCluster({
         (1 - Math.min(recohereEnv.current, 1));
       flashRef.current = Math.min(recohereEnv.current, 1);
       // The mark's light rides the SAME bell: 0.65 sealed (a 6% ghost in the
-      // ice) → 2.0 at full opening — over the bloom gate only at the peak.
+      // ice) → 2.0 at full opening, plus a half-step with the zoom bump so
+      // the logo blazes exactly while the beat leans in.
       if (markMatRef.current) {
-        markMatRef.current.color
-          .copy(MARK_COLOR_SCRATCH.copy(MARK_CYAN))
-          .multiplyScalar(
-            MARK_LIT_BASE + (MARK_LIT_PEAK - MARK_LIT_BASE) * openBell,
-          );
+        markMatRef.current.emissiveIntensity =
+          (MARK_LIT_BASE + (MARK_LIT_PEAK - MARK_LIT_BASE) * openBell) *
+          (1 + 0.5 * zoomBump);
+      }
+      // A gentle wobble sells the mark's depth (it is the END-PAGE 3-D logo
+      // treatment now — dark metal body + cyan emissive + env sheen).
+      const markMesh = markMeshRef.current;
+      if (markMesh) {
+        markMesh.rotation.y = Math.sin(t * 0.35) * 0.16;
+        markMesh.rotation.x = Math.sin(t * 0.27 + 1.3) * 0.06;
       }
     } else {
       // Healthy: the rim flashes with the ring ignitions.
@@ -1329,6 +1414,7 @@ export function CrystalCluster({
           RouteHeroLogo singleton — never disposed here. */}
       {broken && markGeo && markMatRef.current && (
         <mesh
+          ref={markMeshRef}
           geometry={markGeo}
           material={markMatRef.current}
           position={[0, MARK_MESH_Y, 0]}

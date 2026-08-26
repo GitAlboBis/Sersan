@@ -833,7 +833,9 @@ function NeuralLatticeIsland({
             bcfg,
             tv!.xScenePx,
             tv!.secTop,
-            tv!.secH,
+            // ROUND 13f — the EFFECTIVE run: the meteor hold donates scroll,
+            // not field. 0/undefined (no hold, stale frame) falls back.
+            tv!.warpSecH || tv!.secH,
             rect.docTop,
             rect.h,
             ih,
@@ -862,16 +864,24 @@ function NeuralLatticeIsland({
     let yRegPx = 0;
     let fieldFade = 1;
     if (ribbonOn) {
-      fieldLen = bandFieldLen(bcfg!, tv!.secH, rect.w);
+      fieldLen = bandFieldLen(bcfg!, tv!.warpSecH || tv!.secH, rect.w);
       fieldSlope = bandFieldSlope(bcfg!, rect.w, rect.h);
       yRegPx = bandRegisterPx(
         bcfg!,
         tv!.secTop,
-        tv!.secH,
+        tv!.warpSecH || tv!.secH,
         rect.docTop,
         rect.h,
         ih,
       );
+      // ROUND 13f — THE VERTICAL FREEZE. Native scroll keeps lifting the
+      // anchors while the lateral warp plateaus, so the scene would ride up
+      // and out of the beat. Folding the swallowed scroll into yRegPx here —
+      // its single definition — freezes the rig, the κ-window centre, the
+      // copy-mask lane's vertical and the pointer mapping together (every
+      // consumer reads THIS variable). The stone folds the identical number
+      // into its own yRegPx, so the pair cannot shear.
+      yRegPx -= tv!.swallowedPx || 0;
       // THE EXIT FADE (a NEW BEAT — FIELD_EXIT_VH). The ribbon's screen y is
       // constant in `p`, so at p = 1 the net is dead centre; and `frame.active`
       // goes false at exactly p = 1, which is also where ScrollTrigger stops
