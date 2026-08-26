@@ -19,6 +19,21 @@
  */
 export const CONTACT_EMAIL = "info@sersan.io";
 
+/**
+ * Where form submissions are DELIVERED. Deliberately separate from
+ * CONTACT_EMAIL, which is the address we PUBLISH.
+ *
+ * These are different jobs and they fail differently. A published address that
+ * bounces is visible and embarrassing; a delivery address that bounces loses
+ * leads silently, on the only working conversion path on the site. So the
+ * fallback here stays a mailbox that is known to receive mail today, and it is
+ * overridden in the environment rather than edited in source.
+ *
+ * SET `OPS_EMAIL` IN THE ENVIRONMENT. Once info@sersan.io is live and
+ * monitored, set OPS_EMAIL to it and this fallback becomes dead weight.
+ */
+export const OPS_EMAIL_FALLBACK = "alex.s@sersan.dev";
+
 /** Primary CTA destination — the written project-brief intake page. */
 export const START_HREF = "/start";
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { OPS_EMAIL_FALLBACK } from "@/lib/site";
 
 /**
  * POST /api/intake
@@ -87,7 +88,7 @@ export async function POST(request: Request) {
   // Resend integration — env-gated. If RESEND_API_KEY isn't set, we
   // simply log to the server console (dev mode).
   const resendKey = process.env.RESEND_API_KEY;
-  const opsEmail = process.env.OPS_EMAIL ?? "alex.s@sersan.dev";
+  const opsEmail = process.env.OPS_EMAIL ?? OPS_EMAIL_FALLBACK;
 
   if (resendKey) {
     try {

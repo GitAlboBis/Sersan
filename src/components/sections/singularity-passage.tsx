@@ -374,8 +374,8 @@ const HANDOVER_STAGE = {
     ),
   },
   body: {
-    en: "You own the code and the system, documented and handed over so your team can actually run it. And you talk to one of us, not to an account manager.",
-    it: "Il codice e il sistema sono vostri, documentati e consegnati perché il vostro team li gestisca davvero. E parlate con uno di noi, non con un account manager.",
+    en: "You own the code and the system, documented and handed over so whoever runs it day to day actually can. We train them, and we stay reachable.",
+    it: "Il codice e il sistema sono vostri, documentati e consegnati perché chi li usa ogni giorno sappia gestirli. Formiamo le persone e restiamo raggiungibili.",
   },
   // Closing proof (user decision 2026-06-10): categorical commit + real
   // counts pulled from the actual case-studies.ts data and founders.ts

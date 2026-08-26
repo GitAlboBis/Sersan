@@ -29,15 +29,20 @@ export function ConsultingClient() {
   // — second application of the ledger's "less cards, big text" direction).
   // All EN+IT strings carried over byte-identical; the cards held no links.
 
-  // Engagement FAQ — absorbed verbatim from the retired /faq page (which
-  // now 308-redirects to /consulting#faq). The pilot/trial answer moved to
-  // /audit's "Honest answers"; the data-privacy answers moved to /trust.
+  // Engagement FAQ — absorbed from the retired /faq page (which now
+  // 308-redirects to /consulting#faq); the data-privacy answers moved to
+  // /trust. 2026-08 repositioning: re-aimed at the buyer who has no
+  // internal engineering team — no minimum programme, and the post-launch
+  // answer (handover → stabilisation → optional scoped continuation)
+  // replaces the narrower knowledge-transfer question.
   const faqs = [
     {
-      q: isEn ? "How much does it cost?" : "Quanto costa?",
+      q: isEn
+        ? "How much does it cost, and how big does a project need to be?"
+        : "Quanto costa, e quanto deve essere grande un progetto?",
       a: isEn
-        ? "It depends on the work. Diagnostics are fixed-price. Builds are scoped and priced per project. Continued work is agreed phase by phase. Small, well-defined projects are welcome — you don't need a large budget to start. You'll get a clear proposal, usually within a business day."
-        : "Dipende dal lavoro. Le diagnosi sono a prezzo fisso. Gli sviluppi sono dimensionati e quotati progetto per progetto. Il lavoro continuativo si concorda fase per fase. Anche i progetti piccoli e ben definiti sono benvenuti: non serve un budget importante per iniziare. Ricevete una proposta chiara, di solito entro un giorno lavorativo.",
+        ? "It depends on the work. Diagnostics are fixed-price. Builds are scoped and priced per project, and continued work is agreed phase by phase. There's no minimum programme to buy into — one well-defined problem is a good place to start, and it can grow from there. You'll get a clear proposal, usually within a business day."
+        : "Dipende dal lavoro. Le diagnosi sono a prezzo fisso. Gli sviluppi sono dimensionati e quotati progetto per progetto, e il lavoro continuativo si concorda fase per fase. Non c'è un programma minimo da sottoscrivere: un singolo problema ben definito è un ottimo punto di partenza, e da lì può crescere. Ricevete una proposta chiara, di solito entro un giorno lavorativo.",
     },
     {
       q: isEn
@@ -48,12 +53,10 @@ export function ConsultingClient() {
         : `Una Diagnosi mirata dura ${pick(isEn, FACTS.auditDuration)}. Uno Sprint di delivery dura ${pick(isEn, FACTS.sprintDuration)}. Il lavoro continuativo si concorda per fasi, ognuna con il proprio scope, prezzo e fine. Definiamo tutto in anticipo, così non emergono sorprese in corso d'opera.`,
     },
     {
-      q: isEn
-        ? "How do you handle knowledge transfer?"
-        : "Come gestite il passaggio di conoscenze?",
+      q: isEn ? "What happens after launch?" : "Cosa succede dopo il lancio?",
       a: isEn
-        ? "Every engagement ends with documentation, architecture decision records, team walkthroughs, and a proper handover. You own the code and the system outright — no licensing, no lock-in, no source held back. If you want us to keep going, that is a separately scoped agreement, never an assumption."
-        : "Ogni ingaggio si chiude con documentazione, architecture decision record, walkthrough con il team e un handover formale. Il codice e il sistema sono vostri: nessuna licenza, nessun lock-in, nessun sorgente trattenuto. Se volete che proseguiamo, è un accordo con scope a parte, mai un automatismo.",
+        ? "Handover and a stabilisation period: documentation, architecture decision records, a walkthrough with whoever will run it, and us on hand while it settles. You own the code and the system outright — no licensing, no lock-in, no source held back. Continued development or support is available, scoped and priced separately, never an assumption."
+        : "Handover e un periodo di stabilizzazione: documentazione, architecture decision record, un walkthrough con chi dovrà gestirlo e noi a disposizione mentre il sistema si assesta. Il codice e il sistema sono vostri: nessuna licenza, nessun lock-in, nessun sorgente trattenuto. Sviluppo o supporto continuativo sono disponibili, con scope e prezzo a parte, mai un automatismo.",
     },
   ];
 

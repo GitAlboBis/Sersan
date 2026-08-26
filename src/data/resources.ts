@@ -52,7 +52,7 @@ At the end you get a written document, as long as it needs to be. Never a slide 
 
 ## What the report contains
 
-- Executive summary written for both your CEO and your CTO
+- Executive summary written for whoever decides and whoever builds
 - What's broken, ranked by business impact, not technical debt
 - What's manual, with realistic time-savings estimates
 - What AI can actually do inside your product, and what it can't, said honestly
@@ -76,7 +76,7 @@ Alla fine avete un documento scritto, lungo quanto serve. Mai una presentazione.
 
 ## Cosa contiene il report
 
-- Un executive summary scritto sia per il vostro CEO sia per il vostro CTO
+- Un executive summary scritto per chi decide e per chi lo dovrà realizzare
 - Cosa è rotto, ordinato per impatto sul business, non per debito tecnico
 - Cosa è manuale, con stime realistiche di tempo risparmiato
 - Cosa l'AI può fare davvero dentro il vostro prodotto, e cosa no, detto onestamente
@@ -89,12 +89,12 @@ Il deliverable è vostro. Datelo al vostro team interno, datelo a un altro forni
   },
   {
     slug: "weekly-scope-not-multi-year-retainers",
-    title: "Weekly scope, not multi-year retainers",
-    titleIt: "Scope settimanale, non retainer pluriennali",
+    title: "Scope you can stop after any phase",
+    titleIt: "Uno scope che potete fermare a fine fase",
     excerpt:
-      "Why we re-earn the next week of work every week, and why lock-in is a smell, not a feature.",
+      "Why every phase has its own scope, its own price and its own end — and why you can stop after any one of them.",
     excerptIt:
-      "Perché ci riguadagniamo la settimana di lavoro successiva ogni settimana, e perché il lock-in è un campanello d'allarme, non una feature.",
+      "Perché ogni fase ha il suo scope, il suo prezzo e la sua fine, e perché potete fermarvi dopo ognuna di esse.",
     category: "article",
     publishedAt: "2026-03-28",
     readMinutes: 5,
@@ -102,11 +102,11 @@ Il deliverable è vostro. Datelo al vostro team interno, datelo a un altro forni
     authorRole: "Co-Founder & CEO, SERSAN",
     authorRoleIt: "Co-Founder & CEO, SERSAN",
     tags: ["engagement-model", "pricing"],
-    body: `## Lock-in is a smell
+    body: `## Every phase has an end
 
 The traditional consulting model is built on lock-in. Long contracts, hard-to-quantify deliverables, and a steady hum of "we're working on it" that nobody wants to interrupt.
 
-We don't do that.
+We work the other way round.
 
 ## How weekly scope actually works
 
@@ -115,11 +115,11 @@ Every Friday, we send a one-page summary: what landed this week, what we believe
 ## Why this is good for both sides
 
 It forces us to ship something visible every week. It forces the conversation to be about value, not hours. And it keeps the engagement honest in a way that a twelve-month statement of work never can be.`,
-    bodyIt: `## Il lock-in è un campanello d'allarme
+    bodyIt: `## Ogni fase ha una fine
 
 Il modello di consulenza tradizionale è costruito sul lock-in. Contratti lunghi, deliverable difficili da quantificare e un costante brusio di "ci stiamo lavorando" che nessuno ha voglia di interrompere.
 
-Noi non lo facciamo.
+Noi lavoriamo al contrario.
 
 ## Come funziona davvero lo scope settimanale
 

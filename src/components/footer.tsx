@@ -10,6 +10,7 @@ import { SersanLogo } from "@/components/sersan-logo";
 import { useLanguage } from "@/components/language-provider";
 import { NowWidget } from "@/components/fx/now-widget";
 import { CONTACT_EMAIL, START_HREF } from "@/lib/site";
+import { track, EVENTS } from "@/lib/analytics";
 import { CTA, FACTS, pick } from "@/data/copy";
 import { usePressState } from "@/lib/use-press-state";
 
@@ -336,6 +337,15 @@ export function Footer() {
               <Link
                 ref={pressRef}
                 href={START_HREF}
+                // The footer renders on every route, so `source_section:
+                // "footer"` is what separates it from the in-page CTAs that
+                // all point at the same /start (PROMPT 17).
+                onClick={() =>
+                  track(EVENTS.CTA_PROJECT_BRIEF, {
+                    source_section: "footer",
+                    lang: language,
+                  })
+                }
                 className="tap-44 press-surface group inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.14em] uppercase text-[hsl(var(--accent))] hover:text-ink transition-colors"
               >
                 {pick(isEn, CTA.primary)}
@@ -349,6 +359,9 @@ export function Footer() {
               <a
                 ref={pressRef}
                 href={`mailto:${CONTACT_EMAIL}`}
+                onClick={() =>
+                  track(EVENTS.CTA_EMAIL, { source_section: "footer" })
+                }
                 className="tap-44 press-surface group inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.14em] uppercase text-ink hover:text-[hsl(var(--accent))] transition-colors"
               >
                 <span aria-hidden="true" className="status-dot" />
@@ -476,6 +489,9 @@ export function Footer() {
               ref={pressRef}
               data-footer-social
               href={`mailto:${CONTACT_EMAIL}`}
+              onClick={() =>
+                track(EVENTS.CTA_EMAIL, { source_section: "footer_social" })
+              }
               aria-label="Email"
               className="tap-icon-44 press-surface p-2 rounded-md text-ink-mute hover:text-[hsl(var(--accent))] transition-colors"
             >

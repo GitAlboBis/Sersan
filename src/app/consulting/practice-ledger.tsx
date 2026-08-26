@@ -519,7 +519,14 @@ export function PracticeLedger() {
                     aria-label={
                       isEn ? `Explore ${a.title}` : `Approfondisci ${a.title}`
                     }
-                    className="group/explore relative mt-3 inline-flex items-center gap-1.5 rounded-sm font-mono text-[11px] uppercase tracking-[0.18em] text-ink-mute outline-none transition-colors duration-200 hover:text-accent focus-visible:text-accent focus-visible:ring-1 focus-visible:ring-[hsl(var(--accent)/0.45)]"
+                    /* after:* — hit-area expander, NOT a spacing change. The
+                       link renders 17px tall, under the 24px WCAG 2.2 AA
+                       target-size minimum (2.5.8), and it is a standalone CTA
+                       so the inline-text exception does not apply. The
+                       pseudo-element is position:absolute, so it is out of
+                       flow and cannot shift a single pixel of layout; it only
+                       grows the region the thumb can hit. */
+                    className="group/explore relative mt-3 inline-flex items-center gap-1.5 rounded-sm font-mono text-[11px] uppercase tracking-[0.18em] text-ink-mute outline-none transition-colors duration-200 hover:text-accent focus-visible:text-accent focus-visible:ring-1 focus-visible:ring-[hsl(var(--accent)/0.45)] after:absolute after:inset-x-0 after:-inset-y-2 after:content-['']"
                   >
                     {isEn ? "Explore" : "Approfondisci"}
                     <span

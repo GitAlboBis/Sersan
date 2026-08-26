@@ -13,6 +13,7 @@ import { SersanLogo } from "@/components/sersan-logo";
 import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 import { START_HREF } from "@/lib/site";
+import { track, EVENTS } from "@/lib/analytics";
 import { CTA, pick } from "@/data/copy";
 import { SPINE_TRAVEL_VH, COMPACT_SPINE_TRAVEL_SVH } from "@/lib/spine";
 import { getLenis } from "@/lib/lenis-singleton";
@@ -1037,7 +1038,17 @@ export function Navbar() {
                 // two adjacent pills at different heights read as a mistake.
                 className="inline-flex text-[13px] tracking-[0.005em] h-11 px-5"
               >
-                <Link href={START_HREF}>
+                <Link
+                  href={START_HREF}
+                  // Fire-and-forget: track() swallows its own errors and the
+                  // navigation is never made to wait on it (PROMPT 17).
+                  onClick={() =>
+                    track(EVENTS.CTA_PROJECT_BRIEF, {
+                      source_section: "nav",
+                      lang: language,
+                    })
+                  }
+                >
                   {/* Magnetic's two-layer hook: the label counter-translates
                       under the shell. Inner span, NOT the Link — the button's
                       CSS transform transition would smear per-frame writes. */}
@@ -1190,7 +1201,16 @@ export function Navbar() {
                   size="lg"
                   className="w-full rounded-full"
                 >
-                  <Link href={START_HREF} onClick={() => setOpen(false)}>
+                  <Link
+                    href={START_HREF}
+                    onClick={() => {
+                      track(EVENTS.CTA_PROJECT_BRIEF, {
+                        source_section: "nav_mobile",
+                        lang: language,
+                      });
+                      setOpen(false);
+                    }}
+                  >
                     <span
                       data-magnetic-label
                       className="inline-block will-change-transform"

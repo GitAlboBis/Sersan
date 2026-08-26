@@ -18,7 +18,7 @@ if (typeof window !== "undefined") {
 /**
  * FitSection — "Verdict wall" (2026-08-21 home refactor, Noomo grammar).
  *
- * "Selective on purpose" as a pinned chapter statement: the title holds the
+ * "Honest about fit" as a pinned chapter statement: the title holds the
  * frame in giant display serif while SIX frosted-glass panes — one per
  * GOOD-FIT / NOT-A-FIT pair (index i pairs GOOD_FIT[i] with NOT_A_FIT[i]) —
  * fly through the frame at depth, in FRONT of the type. The backdrop-blur
@@ -148,19 +148,19 @@ if (typeof window !== "undefined") {
  */
 
 const GOOD_FIT_EN = [
-  "You have a real workflow with cost or revenue tied to it.",
+  "Something in the business costs you time or money today.",
   "You can explain the workflow, even if not the technology.",
   "You'd rather fix one real problem than buy another licence.",
-  "You're regulated, or heading there, and want it built right.",
+  "You want it built properly, whether or not you're regulated.",
   "Someone on your side can decide and unblock us, technical or not.",
   "You can give us the people, data or access to understand it.",
 ];
 
 const GOOD_FIT_IT = [
-  "Avete un workflow reale con costi o ricavi che ne dipendono.",
+  "C'è qualcosa che oggi vi costa tempo o denaro davvero.",
   "Sapete spiegare il processo, anche se non la tecnologia.",
   "Preferite risolvere un problema vero che comprare un'altra licenza.",
-  "Siete regolamentati, o lo sarete presto, e volete farlo bene.",
+  "Volete che sia costruito bene, che siate regolamentati o no.",
   "Qualcuno da parte vostra può decidere e sbloccarci, tecnico o no.",
   "Potete darci persone, dati o accessi per capire il problema.",
 ];
@@ -168,7 +168,7 @@ const GOOD_FIT_IT = [
 const NOT_A_FIT_EN = [
   "You want a chatbot gimmick for a press release.",
   "No one can explain what problem is actually being solved.",
-  "You want speculative work: unpaid pilots, equity-only builds.",
+  "You want a fixed price before anyone has defined the work.",
   "You want to skip compliance to ship faster.",
   "Nobody can actually decide, so nothing gets signed off.",
   "You won't give us the access or feedback the work needs.",
@@ -177,7 +177,7 @@ const NOT_A_FIT_EN = [
 const NOT_A_FIT_IT = [
   "Volete un chatbot d'effetto per un comunicato stampa.",
   "Nessuno sa spiegare quale problema si stia davvero risolvendo.",
-  "Volete lavoro speculativo: pilot non pagati, build solo in equity.",
+  "Volete un prezzo fisso prima che il lavoro sia definito.",
   "Volete saltare la compliance per rilasciare più in fretta.",
   "Nessuno può davvero decidere, quindi non si approva nulla.",
   "Non ci darete gli accessi o i riscontri necessari a lavorare.",
@@ -973,8 +973,8 @@ export default function FitSection() {
   // Single-sourced: the native branch renders it through SectionHeading,
   // the pinned branch hangs it top-right as the annotation.
   const description = isEn
-    ? "A clear no protects both of us. Some scoping calls end with us telling you to spend the money elsewhere, or to wait — and we'd rather say that on the first call than three weeks in."
-    : "Un no chiaro tutela entrambi. Alcune conversazioni iniziali si chiudono con il nostro consiglio di spendere quei soldi altrove, o di aspettare: preferiamo dirlo alla prima call, non dopo tre settimane.";
+    ? "What follows describes a good brief, not a hurdle. And if the honest answer is spend the money elsewhere, or wait, we'd rather say that on the first call than three weeks in."
+    : "Quella che segue è la descrizione di un buon brief, non un esame. E se la risposta onesta è spendere altrove, o aspettare, preferiamo dirlo alla prima call, non dopo tre settimane.";
 
   // NATIVE BRANCHES ONLY (the pinned branch sets the title as the in-frame
   // chapter statement instead). `mb-6` is the base-only value: below 640px
@@ -983,7 +983,7 @@ export default function FitSection() {
   const headingBlock = (
     <div className="relative mb-6 sm:mb-16">
       <SectionHeading
-        eyebrow={isEn ? "Selective on purpose" : "Selettivi per scelta"}
+        eyebrow={isEn ? "Honest about fit" : "Onesti sul fit"}
         title={
           isEn ? (
             <>
@@ -1323,7 +1323,7 @@ export default function FitSection() {
               {/* Plain `.eyebrow` (no [data-eyebrow-text]) → the global
                   LabelScrambler owns its decode reveal. */}
               <p className="eyebrow mb-6">
-                {isEn ? "Selective on purpose" : "Selettivi per scelta"}
+                {isEn ? "Honest about fit" : "Onesti sul fit"}
               </p>
               {/* key={language}: SplitText remount discipline — see the
                   statement-intro effect. */}

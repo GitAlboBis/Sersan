@@ -29,8 +29,8 @@ export default function OurWhy() {
     {
       title: isEn ? "Production-grade." : "Pronto alla produzione.",
       desc: isEn
-        ? `If we built it, we operate it. ${POSITIONING.productionGrade.en} No heavier than that.`
-        : `Quello che costruiamo, lo gestiamo. ${POSITIONING.productionGrade.it} Senza sovrastrutture inutili.`,
+        ? `We stay accountable through launch. ${POSITIONING.productionGrade.en} No heavier than that.`
+        : `Restiamo responsabili fino al lancio. ${POSITIONING.productionGrade.it} Senza sovrastrutture inutili.`,
     },
     {
       title: isEn ? "Honest scope." : "Scope onesto.",
@@ -171,7 +171,7 @@ export default function OurWhy() {
                 L&apos;intelligenza è artificiale.
                 <br />
                 <span className="italic text-accent">
-                  Il giudizio rimane umano.
+                  Il giudizio resta umano.
                 </span>
               </>
             )}

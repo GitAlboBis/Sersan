@@ -1179,11 +1179,7 @@ export default function ServicesSection() {
         ref={annotationRef}
         className="max-w-md text-[13px] leading-relaxed text-ink-mute"
       >
-        {`${pick(isEn, POSITIONING.range)} ${
-          isEn
-            ? "The same senior people scope it, build it and hand it over — with no account layer in between."
-            : "Le stesse persone senior definiscono, costruiscono e consegnano, senza nessun account manager in mezzo."
-        }`}
+        {`${pick(isEn, POSITIONING.range)} ${pick(isEn, POSITIONING.core)}`}
       </p>
     </div>
   );
@@ -1194,8 +1190,8 @@ export default function ServicesSection() {
   const closing = (
     <p className="max-w-xl text-[14px] text-ink-mute leading-relaxed">
       {isEn
-        ? "Not sure which one fits? Describe the problem. We'll tell you which engagement fits — or that none does."
-        : "Non sapete quale sia quello giusto? Descriveteci il problema. Vi diciamo quale ingaggio serve, o se non ne serve nessuno."}
+        ? "Not sure which one fits? Describe the problem. We'll tell you which one fits, and how small the first piece can be."
+        : "Non sapete quale sia quello giusto? Descriveteci il problema. Vi diciamo quale ingaggio serve e quanto può essere piccolo il primo passo."}
     </p>
   );
 

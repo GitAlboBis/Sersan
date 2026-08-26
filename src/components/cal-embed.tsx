@@ -10,6 +10,7 @@ import Link from "next/link";
 import { Mail, ArrowRight } from "lucide-react";
 import { useLanguage } from "@/components/language-provider";
 import { CAL_ENABLED, CONTACT_EMAIL, START_HREF } from "@/lib/site";
+import { track, EVENTS } from "@/lib/analytics";
 import { CTA, pick } from "@/data/copy";
 
 interface CalEmbedProps {
@@ -62,6 +63,15 @@ function CalFallbackCard() {
         <div className="flex flex-col sm:flex-row gap-3 justify-center items-center">
           <Link
             href={START_HREF}
+            // This card stands where the booking embed would be, so its
+            // conversions have to be readable separately from the page's own
+            // CTAs (PROMPT 17).
+            onClick={() =>
+              track(EVENTS.CTA_PROJECT_BRIEF, {
+                source_section: "cal_fallback",
+                lang: language,
+              })
+            }
             className="group inline-flex items-center justify-center gap-1.5 rounded-md px-5 py-2.5 text-sm font-medium bg-accent text-[hsl(var(--primary-foreground))] hover:opacity-90 transition-opacity"
           >
             {pick(isEn, CTA.primary)}
@@ -69,6 +79,9 @@ function CalFallbackCard() {
           </Link>
           <a
             href={`mailto:${CONTACT_EMAIL}`}
+            onClick={() =>
+              track(EVENTS.CTA_EMAIL, { source_section: "cal_fallback" })
+            }
             className="inline-flex items-center justify-center gap-1.5 rounded-md border border-rule/70 px-5 py-2.5 text-sm text-ink-mute hover:text-ink hover:border-[hsl(var(--accent)/0.42)] transition-colors"
           >
             <Mail className="h-3.5 w-3.5" />

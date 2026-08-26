@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ChevronDown, Cookie } from "lucide-react";
 import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
+import { CONTACT_EMAIL } from "@/lib/site";
 
 export function CookiesClient() {
   const { language } = useLanguage();
@@ -243,10 +244,10 @@ export function CookiesClient() {
                 <p>
                   Email:{" "}
                   <a
-                    href="mailto:alex.s@sersan.dev"
+                    href={`mailto:${CONTACT_EMAIL}`}
                     className="text-foreground underline underline-offset-2 hover:text-foreground/80 transition-colors"
                   >
-                    alex.s@sersan.dev
+                    {CONTACT_EMAIL}
                   </a>
                 </p>
               </section>

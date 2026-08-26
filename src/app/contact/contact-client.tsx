@@ -11,6 +11,7 @@ import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 import { CTA, FACTS, pick } from "@/data/copy";
+import { CONTACT_EMAIL } from "@/lib/site";
 
 export function ContactClient() {
   const { language } = useLanguage();
@@ -20,8 +21,8 @@ export function ContactClient() {
     {
       icon: Mail,
       title: "Email",
-      value: "alex.s@sersan.dev",
-      href: "mailto:alex.s@sersan.dev",
+      value: CONTACT_EMAIL,
+      href: `mailto:${CONTACT_EMAIL}`,
     },
     {
       icon: Phone,
@@ -115,8 +116,8 @@ export function ContactClient() {
             <Reveal delay={150}>
               <p className="text-lg text-ink-mute max-w-xl mx-auto">
                 {isEn
-                  ? "No SDR funnel, no automated triage. A few sentences is enough — a founder reads it."
-                  : "Nessun funnel di SDR, nessun triage automatico. Bastano poche frasi: le legge un founder."}
+                  ? "No sales funnel, no automated triage. A few sentences is enough — a founder reads it."
+                  : "Nessun funnel commerciale, nessun triage automatico. Bastano poche frasi: le legge un founder."}
               </p>
             </Reveal>
           </div>
@@ -138,7 +139,7 @@ export function ContactClient() {
                 {/* Outside the Reveal — the choreographer's line-mask owns it.
                     key={language} remounts the split subtree on EN/IT toggle. */}
                 <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
-                  {isEn ? "Same channels, no triage." : "Gli stessi canali, nessun triage."}
+                  {isEn ? "Every channel reaches us." : "Ogni canale arriva a noi."}
                 </h2>
 
                 <div className="space-y-5">
@@ -158,7 +159,7 @@ export function ContactClient() {
                         {info.href ? (
                           <a
                             href={info.href}
-                            className="text-ink hover:text-[hsl(var(--accent))] transition-colors text-sm break-all"
+                            className="relative text-ink hover:text-[hsl(var(--accent))] transition-colors text-sm break-all after:absolute after:inset-x-0 after:-inset-y-2 after:content-['']"
                           >
                             {info.value}
                           </a>
@@ -301,8 +302,8 @@ export function ContactClient() {
               </p>
               <p className="text-sm text-ink-mute leading-[1.55]">
                 {isEn
-                  ? "No SDR, no automated triage. Whoever replies is the person who would own the work itself."
-                  : "Niente SDR, niente triage automatico. Chi risponde è la stessa persona che seguirebbe il lavoro."}
+                  ? "Whoever replies is the person who would own the work itself, and they answer in their own words."
+                  : "Chi risponde è la stessa persona che seguirebbe il lavoro, e risponde con parole sue."}
               </p>
             </div>
             <div className="lg:col-span-3">

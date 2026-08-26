@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowRight, Check, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button, CTA_WRAP_SM } from "@/components/ui/button";
@@ -8,6 +8,8 @@ import { Input, FIELD_CONTROL } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useLanguage } from "@/components/language-provider";
 import { getLenis } from "@/lib/lenis-singleton";
+import { track, trackOnce, EVENTS } from "@/lib/analytics";
+import { CONTACT_EMAIL } from "@/lib/site";
 import {
   BUDGET_BANDS,
   BUDGET_REASSURANCE,
@@ -237,6 +239,27 @@ export default function StartIntakeForm() {
   const [invalidField, setInvalidField] = useState<keyof FormState | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
 
+  /**
+   * Funnel denominator (PROMPT 17): the form entering the viewport. One
+   * observer, disconnected the moment it fires and again on unmount, and
+   * `trackOnce` absorbs StrictMode's double-invoke in development. Nothing
+   * here touches scroll — this page is already carrying pinned triggers.
+   */
+  useEffect(() => {
+    const el = formRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        trackOnce(EVENTS.LEAD_FORM_VIEWED, { form: "start" }, "start");
+        obs.disconnect();
+      },
+      { threshold: 0.2 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }));
     if (invalidField === key) setInvalidField(null);
@@ -247,6 +270,8 @@ export default function StartIntakeForm() {
   // in the middle of the screen rather than wherever the browser drops it
   // (see focusFailedField).
   function fail(field: keyof FormState, message: string) {
+    // Field NAME only — never what was typed into it (PROMPT 17).
+    track(EVENTS.LEAD_FORM_ERROR, { form: "start", fields: field });
     setError(message);
     setInvalidField(field);
     requestAnimationFrame(() => {
@@ -304,14 +329,16 @@ export default function StartIntakeForm() {
         }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // The conversion — fired only once the server has accepted it.
+      track(EVENTS.LEAD_FORM_SUBMITTED, { form: "start", lang: language });
       setSubmitState("success");
     } catch (err) {
       console.error("[start] submit failed:", err);
       setSubmitState("error");
       setError(
         isEn
-          ? "Something went wrong on our end. Try again, or email alex.s@sersan.dev directly."
-          : "Qualcosa è andato storto dalla nostra parte. Riprovate, oppure scriveteci direttamente a alex.s@sersan.dev.",
+          ? `Something went wrong on our end. Try again, or email ${CONTACT_EMAIL} directly.`
+          : `Qualcosa è andato storto dalla nostra parte. Riprovate, oppure scriveteci direttamente a ${CONTACT_EMAIL}.`,
       );
     }
   }
@@ -355,7 +382,17 @@ export default function StartIntakeForm() {
   }
 
   return (
-    <form ref={formRef} onSubmit={onSubmit} className="flex flex-col gap-6" noValidate>
+    <form
+      ref={formRef}
+      onSubmit={onSubmit}
+      // Cheapest correct place for "they started filling it in": focus
+      // bubbles here from every control, and `trackOnce` keeps it to one.
+      onFocusCapture={() =>
+        trackOnce(EVENTS.LEAD_FORM_STARTED, { form: "start" }, "start")
+      }
+      className="flex flex-col gap-6"
+      noValidate
+    >
       {/* Self-locator — first question, optional. Pains moved verbatim from
           the retired homepage UseCasesSection. */}
       <div>
@@ -543,7 +580,17 @@ export default function StartIntakeForm() {
             aria-invalid={invalidField === "budget" || undefined}
             aria-describedby={invalidField === "budget" ? ERROR_ID : undefined}
             value={form.budget}
-            onChange={(e) => update("budget", e.target.value as Budget)}
+            onChange={(e) => {
+              const band = e.target.value as Budget;
+              update("budget", band);
+              // The enum VALUE from BUDGET_BANDS — never a typed amount, and
+              // never the empty "Select…" option.
+              if (band)
+                track(EVENTS.LEAD_FORM_BUDGET_SELECTED, {
+                  form: "start",
+                  budget_band: band,
+                });
+            }}
             className={SELECT_FIELD}
             style={SELECT_CHEVRON}
           >

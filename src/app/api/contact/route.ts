@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { CONTACT_EMAIL } from "@/lib/site";
+import { OPS_EMAIL_FALLBACK } from "@/lib/site";
 
 /**
  * POST /api/contact
@@ -46,7 +46,7 @@ export async function POST(request: Request) {
   const data = parsed.data;
 
   const resendKey = process.env.RESEND_API_KEY;
-  const opsEmail = process.env.OPS_EMAIL ?? CONTACT_EMAIL;
+  const opsEmail = process.env.OPS_EMAIL ?? OPS_EMAIL_FALLBACK;
 
   if (resendKey) {
     try {

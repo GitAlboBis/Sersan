@@ -11,6 +11,7 @@ import {
 import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
 import { START_HREF, CONTACT_EMAIL } from "@/lib/site";
+import { track, EVENTS } from "@/lib/analytics";
 import { CTA, FACTS, pick } from "@/data/copy";
 import { cn } from "@/lib/utils";
 
@@ -134,7 +135,16 @@ export default function FinalCTA() {
                     width — and a flex item's `min-width: auto` refuses to
                     compress past that, so at 320px it forced the column open.
                     CTA_FLUID_SM adds the wrap (see button.tsx). */}
-                <Link href={START_HREF} className={CTA_WRAPPER_SM}>
+                <Link
+                  href={START_HREF}
+                  className={CTA_WRAPPER_SM}
+                  onClick={() =>
+                    track(EVENTS.CTA_PROJECT_BRIEF, {
+                      source_section: "final_cta",
+                      lang: language,
+                    })
+                  }
+                >
                   <Button
                     variant="hero"
                     size="xl"
@@ -144,7 +154,13 @@ export default function FinalCTA() {
                     <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
                   </Button>
                 </Link>
-                <Link href={BRIEF_MAILTO} className={CTA_WRAPPER_SM}>
+                <Link
+                  href={BRIEF_MAILTO}
+                  className={CTA_WRAPPER_SM}
+                  onClick={() =>
+                    track(EVENTS.CTA_EMAIL, { source_section: "final_cta" })
+                  }
+                >
                   <Button
                     variant="heroOutline"
                     size="lg"

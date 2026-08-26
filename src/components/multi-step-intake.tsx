@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 import { CONTACT_EMAIL } from "@/lib/site";
+import { track, trackOnce, EVENTS } from "@/lib/analytics";
 import { BUDGET_BANDS, BUDGET_REASSURANCE, type BudgetValue } from "@/data/copy";
 
 // Idempotent (navbar registers it too); keeps @gsap/react's React-version
@@ -396,6 +397,27 @@ export function MultiStepIntake() {
     };
   }, []);
 
+  /**
+   * Funnel denominator (PROMPT 17): the card entering the viewport. The
+   * observer disconnects on its first hit and again on unmount, so it adds
+   * nothing to this page's scroll path; `trackOnce` absorbs StrictMode's
+   * double-invoke in development.
+   */
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        trackOnce(EVENTS.LEAD_FORM_VIEWED, { form: "consulting" }, "consulting");
+        obs.disconnect();
+      },
+      { threshold: 0.2 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
   // Refs for moving focus to the first invalid field after a failed step.
   // Chip-group steps (workType/size/budget) focus their group wrapper; text
   // fields focus the input/textarea directly.
@@ -419,6 +441,10 @@ export function MultiStepIntake() {
   }
 
   function update<K extends keyof IntakeData>(key: K, value: IntakeData[K]) {
+    // Half of this form's controls are chips (buttons), and a click does not
+    // reliably focus a button on every browser — so "started" is asserted
+    // here as well as on the focus handler. `trackOnce` keeps it to one.
+    trackOnce(EVENTS.LEAD_FORM_STARTED, { form: "consulting" }, "consulting");
     setData((d) => ({ ...d, [key]: value }));
     if (errors[key as string]) {
       setErrors((e) => {
@@ -427,6 +453,17 @@ export function MultiStepIntake() {
         return next;
       });
     }
+  }
+
+  /** Which fields blocked the step, by NAME. The messages and the typed
+   *  values never leave the browser (PROMPT 17). */
+  function trackValidationBlock(e: Record<string, string>) {
+    const fields = Object.keys(e);
+    if (!fields.length) return;
+    track(EVENTS.LEAD_FORM_ERROR, {
+      form: "consulting",
+      fields: fields.join(","),
+    });
   }
 
   function validate(s: number): boolean {
@@ -438,6 +475,7 @@ export function MultiStepIntake() {
       if (!r.success) {
         const e: Record<string, string> = {};
         if (data.outcome.trim().length < 8) e.outcome = t.errorOutcome;
+        trackValidationBlock(e);
         setErrors(e);
         focusFirstInvalid(e);
         return false;
@@ -461,6 +499,7 @@ export function MultiStepIntake() {
         const emailOk = z.string().email().safeParse(data.email).success;
         if (!emailOk) e.email = t.errorEmail;
         if (!data.company.trim()) e.company = t.errorCompany;
+        trackValidationBlock(e);
         setErrors(e);
         focusFirstInvalid(e);
         return false;
@@ -614,6 +653,8 @@ export function MultiStepIntake() {
           json && typeof json.error === "string" ? json.error : "Request failed";
         throw new Error(msg);
       }
+      // The conversion — only after the server said yes.
+      track(EVENTS.LEAD_FORM_SUBMITTED, { form: "consulting", lang: language });
       // Success beat, same deferred-commit pattern as the pane swap: dip the
       // whole form body out first, THEN commit `submitted` — the effect below
       // draws the check and cascades the confirmation copy in. (Back/Next are
@@ -711,7 +752,15 @@ export function MultiStepIntake() {
           never remounts, so the success beat can tween the card's height while
           its contents swap. Padding lives on the inner wrappers for the same
           reason (scrollHeight measures content directly). */}
-      <div ref={cardRef} className="bg-surface-elev border border-rule/40 rounded-xl">
+      <div
+        ref={cardRef}
+        // Focus bubbles here from the text fields; the chip path is covered
+        // in `update` (see the note there). Handler only — no markup change.
+        onFocusCapture={() =>
+          trackOnce(EVENTS.LEAD_FORM_STARTED, { form: "consulting" }, "consulting")
+        }
+        className="bg-surface-elev border border-rule/40 rounded-xl"
+      >
         {submitted ? (
           <div className="p-8 sm:p-10 text-center">
             {/* Drawn confirmation mark. Fully drawn by default (no dash attrs
@@ -935,7 +984,16 @@ export function MultiStepIntake() {
                         <Chip
                           key={opt.value}
                           active={data.budget === opt.value}
-                          onClick={() => update("budget", opt.value)}
+                          onClick={() => {
+                            update("budget", opt.value);
+                            // The band's enum VALUE, not its label and not a
+                            // number anyone typed. This is the reading the
+                            // repositioning exists to get.
+                            track(EVENTS.LEAD_FORM_BUDGET_SELECTED, {
+                              form: "consulting",
+                              budget_band: opt.value,
+                            });
+                          }}
                         >
                           {language === "it" ? opt.it : opt.en}
                         </Chip>

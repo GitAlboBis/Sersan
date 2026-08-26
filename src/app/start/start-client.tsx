@@ -7,6 +7,8 @@ import StartIntakeForm from "@/components/start-intake-form";
 import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
 import { CTA, pick } from "@/data/copy";
+import { track, EVENTS } from "@/lib/analytics";
+import { CONTACT_EMAIL } from "@/lib/site";
 
 /**
  * StartClient — the /start page body. The primary door into SerSan: one
@@ -31,7 +33,7 @@ export function StartClient() {
         {
           num: "02",
           title: "We reply within 1 business day",
-          body: "Read by one of the founders, not a queue. We say honestly whether we're the right fit.",
+          body: "Read by one of the founders. You get a straight answer on what we'd do first.",
         },
         {
           num: "03",
@@ -48,7 +50,7 @@ export function StartClient() {
         {
           num: "02",
           title: "Rispondiamo entro 1 giorno lavorativo",
-          body: "Letto da uno dei founder, non da una coda. Vi diciamo con onestà se siamo la scelta giusta.",
+          body: "Letto da uno dei founder. Ricevete una risposta chiara su cosa faremmo per primo.",
         },
         {
           num: "03",
@@ -137,13 +139,13 @@ export function StartClient() {
               <p className="text-[13.5px] text-ink-mute mb-8 leading-relaxed">
                 {isEn ? (
                   <>
-                    No marketing follow-ups. No demo decks. Read by one of the
-                    founders. Four required fields, everything else optional.
+                    Four required fields, everything else optional. Read by one
+                    of the founders, who replies with a recommended first step.
                   </>
                 ) : (
                   <>
-                    Nessun follow-up di marketing. Nessun deck demo. Letto da uno
-                    dei founder. Quattro campi obbligatori, il resto è facoltativo.
+                    Quattro campi obbligatori, il resto è facoltativo. Lo legge
+                    uno dei founder, che risponde con un primo passo consigliato.
                   </>
                 )}
               </p>
@@ -179,7 +181,7 @@ export function StartClient() {
                           href={f.linkedIn}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="block font-display text-[15px] leading-tight text-ink hover:text-[hsl(var(--accent))] transition-colors"
+                          className="relative block font-display text-[15px] leading-tight text-ink hover:text-[hsl(var(--accent))] transition-colors after:absolute after:inset-x-0 after:-inset-y-2 after:content-['']"
                         >
                           {f.name}
                         </Link>
@@ -194,18 +196,18 @@ export function StartClient() {
                 <p className="text-[14px] text-ink-mute leading-relaxed mb-6">
                   {isEn ? (
                     <>
-                      Your brief lands directly in our inbox. No account managers,
-                      no sales engineers, no automated sequences. If we can help,
-                      we come back with a recommended next step. If we can&apos;t,
-                      we say so — usually with a pointer to who can.
+                      Your brief lands directly in our inbox and one of us reads
+                      it the whole way through, the way we&apos;d read a spec. If
+                      we can help, we come back with a recommended next step. If
+                      we can&apos;t, we say so — usually with a pointer to who can.
                     </>
                   ) : (
                     <>
-                      Il vostro brief arriva direttamente nella nostra inbox.
-                      Niente account manager, niente sales engineer, niente
-                      sequenze automatiche. Se possiamo aiutarvi, vi proponiamo il
-                      prossimo passo. Se non possiamo, ve lo diciamo — di solito
-                      indicandovi chi fa al caso vostro.
+                      Il vostro brief arriva direttamente nella nostra inbox e uno
+                      di noi lo legge per intero, come leggerebbe una specifica.
+                      Se possiamo aiutarvi, vi proponiamo il prossimo passo. Se
+                      non possiamo, ve lo diciamo — di solito indicandovi chi fa
+                      al caso vostro.
                     </>
                   )}
                 </p>
@@ -225,6 +227,11 @@ export function StartClient() {
                   <li>
                     <a
                       href="/#work"
+                      onClick={() =>
+                        track(EVENTS.CTA_SELECTED_WORK, {
+                          source_section: "start_aside",
+                        })
+                      }
                       className="text-ink hover:text-[hsl(var(--accent))] transition-colors underline underline-offset-4 decoration-[hsl(var(--ink-mute)/0.3)] hover:decoration-[hsl(var(--accent))]"
                     >
                       {isEn ? "Selected work →" : "Lavori selezionati →"}
@@ -244,7 +251,14 @@ export function StartClient() {
                   </li>
                   <li>
                     <a
-                      href="mailto:alex.s@sersan.dev"
+                      href={`mailto:${CONTACT_EMAIL}`}
+                      // Someone emailing from the page that holds the form is
+                      // the form telling us something (PROMPT 17).
+                      onClick={() =>
+                        track(EVENTS.CTA_EMAIL, {
+                          source_section: "start_aside",
+                        })
+                      }
                       className="text-ink hover:text-[hsl(var(--accent))] transition-colors underline underline-offset-4 decoration-[hsl(var(--ink-mute)/0.3)] hover:decoration-[hsl(var(--accent))]"
                     >
                       {isEn ? "Or just email us →" : "Oppure scriveteci una email →"}

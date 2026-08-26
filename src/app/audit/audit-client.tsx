@@ -9,7 +9,7 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
 import { CTA, ENGAGEMENT, FACTS, pick } from "@/data/copy";
-import { START_HREF } from "@/lib/site";
+import { CONTACT_EMAIL, START_HREF } from "@/lib/site";
 import AuditWeekTimeline from "@/components/sections/audit-week-timeline";
 import { SurfacesLedger } from "./surfaces-ledger";
 import { DoorBeats } from "./door-beats";
@@ -68,24 +68,25 @@ export function AuditClient() {
 
   const faqs = isEn
     ? [
-        { q: "Why is it paid?", a: "Because the deliverable is real engineering work. A senior engineer spends 2–6 business days inside the business and writes up what's happening, what it's costing you, and what to do about it — ranked, sequenced and costed. Fixed scope, no discovery theatre, and no obligation to continue with us afterwards." },
+        { q: "Why is it paid?", a: `Because the deliverable is real engineering work. A senior engineer spends ${FACTS.auditDuration.en} inside the business and writes up what's happening, what it's costing you, and what to do about it — ranked, sequenced and costed. Fixed scope, no discovery theatre, and no obligation to continue with us afterwards.` },
         { q: "What do you need from us?", a: "Someone who knows how the work actually gets done, access to the tools you already use, and a couple of hours of their time. If you have repos, dashboards or a ticketing system, read access helps, but no internal engineering team is required. An NDA if you want one, we'll sign yours or use ours." },
-        { q: "Who runs the audit?", a: "A founder, with senior delivery behind them — the kind of systems that run at Revolut, J.P. Morgan and similar. Not a junior consultant, not an account manager. The person writing the report is the person who'd build the work." },
+        { q: "Who runs the audit?", a: "A founder. The technical side is led by our CPTO, whose prior senior delivery was at Revolut, J.P. Morgan, Deloitte and Accenture. Not a junior consultant, not an account manager. The person writing the report is the person who'd build the work." },
         { q: "What if we don't know what we need yet?", a: "Most clients don't, and that's the point. The audit exists to name the problem properly: what is quietly costing you, what is worth fixing first, and whether the answer is a piece of software, an automation, AI, or leaving something well alone. You bring the problem, not the solution." },
-        { q: "How is this different from a sales discovery call?", a: "A discovery call is 30 minutes of questions to qualify you. The audit is 2–6 business days of work inside your business, ending in a written deliverable you keep. The output is the same whether you hire us afterwards or not." },
+        { q: "How is this different from a sales discovery call?", a: `A discovery call is 30 minutes of questions to qualify you. The audit is ${FACTS.auditDuration.en} of work inside your business, ending in a written deliverable you keep. The output is the same whether you hire us afterwards or not.` },
         { q: "What if you find nothing?", a: "It happens, rarely, but it happens. If we genuinely think the work isn't there right now, we'll tell you, give you the reasoning in writing, and not waste anyone's time." },
-        // Absorbed from the retired /faq page (engagement answer that fits
-        // the audit: the audit IS the pilot).
-        { q: "Do you offer a pilot or trial?", a: "Yes. For larger builds we'll do a scoped pilot so the idea is proven before anyone commits to the whole thing. For everything else the focused diagnostic plays the same role: a small, fixed-price way to find out whether the work is worth doing at all." },
+        // Replaces the old pilot/trial answer (redundant: the focused
+        // diagnostic already IS the small, fixed-price way in). The buyer
+        // needs to understand their business problem, not the architecture.
+        { q: "What if we're not technical?", a: "That's normal, and it isn't a problem. What you need to know is your own business: where the time goes, what breaks, what it costs. Working out the architecture is our job. The report is written to be read by whoever has to decide, not only by an engineer." },
       ]
     : [
-        { q: "Perché è a pagamento?", a: "Perché il deliverable è lavoro ingegneristico vero. Un ingegnere senior passa 2–6 giorni lavorativi dentro l'azienda e mette per iscritto cosa sta succedendo, cosa vi sta costando e cosa farci — ordinato, sequenziato e stimato. Scope fisso, niente teatrino di discovery e nessun obbligo di proseguire con noi." },
+        { q: "Perché è a pagamento?", a: `Perché il deliverable è lavoro ingegneristico vero. Un ingegnere senior passa ${FACTS.auditDuration.it} dentro l'azienda e mette per iscritto cosa sta succedendo, cosa vi sta costando e cosa farci — ordinato, sequenziato e stimato. Scope fisso, niente teatrino di discovery e nessun obbligo di proseguire con noi.` },
         { q: "Cosa vi serve da noi?", a: "Qualcuno che sappia come si svolge davvero il lavoro, accesso agli strumenti che già usate e un paio d'ore del suo tempo. Se avete repo, dashboard o un sistema di ticketing, l'accesso in lettura aiuta, ma non serve un team tecnico interno. Un NDA se lo volete: firmiamo il vostro o usiamo il nostro." },
-        { q: "Chi conduce l'audit?", a: "Un founder, con alle spalle consegne senior del tipo che gira in Revolut, J.P. Morgan e simili. Non un consulente junior, non un account manager. La persona che scrive il report è la stessa che costruirebbe il lavoro." },
+        { q: "Chi conduce l'audit?", a: "Un founder. La parte tecnica è guidata dal nostro CPTO, con alle spalle consegne senior in Revolut, J.P. Morgan, Deloitte e Accenture. Non un consulente junior, non un account manager. La persona che scrive il report è la stessa che costruirebbe il lavoro." },
         { q: "E se ancora non sappiamo cosa ci serve?", a: "La maggior parte dei clienti non lo sa, ed è proprio il punto. L'audit serve a dare un nome preciso al problema: cosa vi costa in silenzio, cosa conviene sistemare per primo, e se la risposta è un software, un'automazione, l'AI o lasciare le cose come stanno. Voi portate il problema, non la soluzione." },
-        { q: "In cosa è diverso da una call di discovery commerciale?", a: "Una discovery call sono 30 minuti di domande per qualificarvi. L'audit sono 2–6 giorni lavorativi dentro la vostra azienda, che finiscono in un deliverable scritto che resta vostro. Il risultato è lo stesso, che ci ingaggiate poi o no." },
+        { q: "In cosa è diverso da una call di discovery commerciale?", a: `Una discovery call sono 30 minuti di domande per qualificarvi. L'audit sono ${FACTS.auditDuration.it} dentro la vostra azienda, che finiscono in un deliverable scritto che resta vostro. Il risultato è lo stesso, che ci ingaggiate poi o no.` },
         { q: "E se non trovate nulla?", a: "Succede, raramente, ma succede. Se pensiamo davvero che il lavoro adesso non ci sia, ve lo diciamo, vi diamo il ragionamento per iscritto e non facciamo perdere tempo a nessuno." },
-        { q: "Offrite un pilot o un periodo di prova?", a: "Sì. Per i progetti più grandi facciamo un pilot a scope definito, così l'idea è verificata prima di impegnarsi sull'intero lavoro. Per tutto il resto è la diagnosi mirata a svolgere lo stesso ruolo: un modo piccolo e a prezzo fisso per capire se il lavoro vale la pena." },
+        { q: "E se non siamo tecnici?", a: "È normale, e non è un problema. Quello che dovete conoscere è la vostra azienda: dove se ne va il tempo, cosa si rompe, quanto costa. Capire l'architettura è il nostro mestiere. Il report è scritto per essere letto da chi deve decidere, non solo da un ingegnere." },
       ];
 
   const fitItems = isEn
@@ -482,10 +483,10 @@ export function AuditClient() {
               </Link>
             </Button>
             <a
-              href="mailto:alex.s@sersan.dev"
+              href={`mailto:${CONTACT_EMAIL}`}
               className="inline-flex items-center justify-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
-              <Mail className="w-3.5 h-3.5" /> alex.s@sersan.dev
+              <Mail className="w-3.5 h-3.5" /> {CONTACT_EMAIL}
             </a>
           </div>
         </div>

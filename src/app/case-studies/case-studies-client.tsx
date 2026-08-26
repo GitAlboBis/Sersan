@@ -18,7 +18,7 @@ import {
 } from "@/components/work/work-card";
 import { cn } from "@/lib/utils";
 import { CTA, FACTS, PROOF_LINE, pick } from "@/data/copy";
-import { START_HREF } from "@/lib/site";
+import { CONTACT_EMAIL, START_HREF } from "@/lib/site";
 
 if (typeof window !== "undefined") gsap.registerPlugin(ScrollTrigger);
 
@@ -251,18 +251,18 @@ export function CaseStudiesClient() {
                 </Link>
               </Button>
               <a
-                href="mailto:alex.s@sersan.dev"
+                href={`mailto:${CONTACT_EMAIL}`}
                 className="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 {isEn ? (
                   <>
                     Or email{" "}
-                    <span className="underline decoration-dotted underline-offset-4">alex.s@sersan.dev</span>
+                    <span className="underline decoration-dotted underline-offset-4">{CONTACT_EMAIL}</span>
                   </>
                 ) : (
                   <>
                     Oppure scrivete a{" "}
-                    <span className="underline decoration-dotted underline-offset-4">alex.s@sersan.dev</span>
+                    <span className="underline decoration-dotted underline-offset-4">{CONTACT_EMAIL}</span>
                   </>
                 )}
               </a>

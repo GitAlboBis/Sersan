@@ -8,6 +8,7 @@ import { Reveal } from "@/components/ui/reveal";
 import { HonestFaq } from "@/components/ui/honest-faq";
 import { useLanguage } from "@/components/language-provider";
 import { COMPLIANCE, POSITIONING, pick } from "@/data/copy";
+import { CONTACT_EMAIL } from "@/lib/site";
 
 export function TrustClient() {
   const { language } = useLanguage();
@@ -143,7 +144,11 @@ export function TrustClient() {
   // 308-redirects to /consulting#faq). 2026-08: the IP answer now matches
   // the CONTRACT (/terms §5 — transfer on full payment, pre-existing
   // know-how reserved) instead of over-promising against it, and the
-  // hosting answer uses COMPLIANCE.hosting so it cannot drift again.
+  // data-protection answer uses COMPLIANCE.hosting so it cannot drift
+  // again. The standalone hosting question was redundant with it and now
+  // answers the de-scarer this page most needs: an SME reading a DORA /
+  // EU AI Act page has to be told the controls are proportional
+  // (COMPLIANCE.proportional) and that regulation is not an entry bar.
   const privacyFaqs = [
     {
       q: isEn
@@ -163,11 +168,11 @@ export function TrustClient() {
     },
     {
       q: isEn
-        ? "Where is your infrastructure hosted?"
-        : "Dove è ospitata la vostra infrastruttura?",
+        ? "Do we need to be a regulated company to work with you?"
+        : "Bisogna essere un'azienda regolamentata per lavorare con voi?",
       a: isEn
-        ? "With cloud providers in the UK and EU, encrypted at rest and in transit. Each engagement runs under its own project and credentials, so data stays separated by design."
-        : "Su cloud provider nel Regno Unito e nell'UE, con cifratura at-rest e in-transit. Ogni progetto ha il proprio ambiente e le proprie credenziali: la separazione dei dati è per costruzione.",
+        ? `No. Most of what we build carries no sector regulation at all. ${COMPLIANCE.proportional.en} Either way the work runs on cloud providers in the UK and EU, encrypted at rest and in transit, under its own project and credentials.`
+        : `No. Gran parte di ciò che costruiamo non è soggetta ad alcuna normativa di settore. ${COMPLIANCE.proportional.it} In ogni caso il lavoro gira su cloud provider nel Regno Unito e nell'UE, con cifratura at-rest e in-transit, sul proprio ambiente e con le proprie credenziali.`,
     },
   ];
 
@@ -214,7 +219,7 @@ export function TrustClient() {
           </p>
           <div className="flex flex-col sm:flex-row gap-3">
             <Button asChild variant="hero">
-              <a href="mailto:alex.s@sersan.dev?subject=DPA%20request">
+              <a href={`mailto:${CONTACT_EMAIL}?subject=DPA%20request`}>
                 {isEn ? "Request DPA" : "Richiedi il DPA"}
               </a>
             </Button>
@@ -430,9 +435,9 @@ export function TrustClient() {
             </p>
             <div className="flex flex-wrap gap-3">
               <Button asChild variant="hero">
-                <a href="mailto:alex.s@sersan.dev?subject=Trust%20%26%20Security">
+                <a href={`mailto:${CONTACT_EMAIL}?subject=Trust%20%26%20Security`}>
                   <Mail className="w-4 h-4 mr-2" />
-                  alex.s@sersan.dev
+                  {CONTACT_EMAIL}
                 </a>
               </Button>
               <Button asChild variant="outline">

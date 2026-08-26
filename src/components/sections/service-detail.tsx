@@ -16,6 +16,7 @@ import { caseStudies } from "@/data/case-studies";
 import { CTA, pick } from "@/data/copy";
 import type { ServiceContent } from "@/data/services";
 import { START_HREF } from "@/lib/site";
+import { track, EVENTS } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 
 /**
@@ -73,6 +74,26 @@ export default function ServiceDetail({
           ? CTA.discussProject
           : CTA.tellUsBuilding,
   );
+  /**
+   * PROMPT 17 — a service CTA fires two events on purpose:
+   *   - SERVICE_CTA_CLICKED answers "which of the four services converts",
+   *     and carries the finer position (hero vs the closing panel);
+   *   - CTA_PROJECT_BRIEF keeps this click inside the site-wide brief count,
+   *     tagged `service_cta` so it is separable from nav/footer/hero.
+   * Neither call is awaited and neither can block the navigation.
+   */
+  const trackServiceCta = (position: string) => {
+    track(EVENTS.SERVICE_CTA_CLICKED, {
+      service: service.slug,
+      source_section: position,
+    });
+    track(EVENTS.CTA_PROJECT_BRIEF, {
+      source_section: "service_cta",
+      service: service.slug,
+      lang: language,
+    });
+  };
+
   // Filter case studies by id, preserving the order given in services.ts
   const relevantCases = service.caseStudyIds
     .map((id) => caseStudies.find((c) => c.id === id))
@@ -141,7 +162,11 @@ export default function ServiceDetail({
                   nowrap label ("Raccontaci cosa state costruendo") is far
                   wider than the 256px column at 320px. Inert at sm and up. */}
               <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
-                <Link href={START_HREF} className={CTA_WRAPPER_SM}>
+                <Link
+                  href={START_HREF}
+                  className={CTA_WRAPPER_SM}
+                  onClick={() => trackServiceCta("service_hero")}
+                >
                   <Button
                     variant="hero"
                     size="xl"
@@ -151,7 +176,16 @@ export default function ServiceDetail({
                     <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
                   </Button>
                 </Link>
-                <Link href="#work" className={CTA_WRAPPER_SM}>
+                <Link
+                  href="#work"
+                  className={CTA_WRAPPER_SM}
+                  onClick={() =>
+                    track(EVENTS.CTA_SELECTED_WORK, {
+                      source_section: "service_hero",
+                      service: service.slug,
+                    })
+                  }
+                >
                   <Button variant="heroOutline" size="xl" className={CTA_FLUID_SM}>
                     {isEn ? "See related work" : "Vedi lavori correlati"}
                   </Button>
@@ -333,8 +367,8 @@ export default function ServiceDetail({
                   }
                   description={
                     isEn
-                      ? "Concrete artefacts handed to your team. Yours after handover: no licensing, no lock-in, no source held back."
-                      : "Artefatti concreti consegnati al vostro team. Vostri dopo l'handover: nessuna licenza, nessun lock-in, nessun codice trattenuto."
+                      ? "Concrete artefacts, handed over at the end. Yours to keep, extend or give to anyone else: the code, and the reasons behind it."
+                      : "Artefatti concreti, consegnati alla fine. Vostri da tenere, estendere o dare a chiunque: il codice e le ragioni dietro le scelte."
                   }
                 />
               </div>
@@ -567,7 +601,11 @@ export default function ServiceDetail({
                   : "Bastano due o tre frasi. Le legge un founder e torna con il prossimo passo consigliato: a volte un primo intervento piccolo, a volte una diagnosi, a volte «non costruitelo»."}
               </p>
               <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
-                <Link href={START_HREF} className={CTA_WRAPPER_SM}>
+                <Link
+                  href={START_HREF}
+                  className={CTA_WRAPPER_SM}
+                  onClick={() => trackServiceCta("service_close")}
+                >
                   <Button
                     variant="hero"
                     size="xl"

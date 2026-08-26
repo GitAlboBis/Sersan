@@ -112,8 +112,8 @@ export function AboutClient() {
       num: "01",
       title: isEn ? "Accountability stays senior" : "La responsabilità resta senior",
       body: isEn
-        ? "The people who scope the work stay accountable for it: a named commercial owner, a named technical owner, and no bait-and-switch after the proposal."
-        : "Chi definisce il lavoro ne resta responsabile: un referente commerciale e uno tecnico, con nome e cognome, e nessun cambio di squadra dopo la proposta.",
+        ? "The people who scope the work stay accountable for it: a named commercial owner and a named technical owner, the same two from proposal to launch."
+        : "Chi definisce il lavoro ne resta responsabile: un referente commerciale e uno tecnico, con nome e cognome, gli stessi dalla proposta al lancio.",
     },
     {
       num: "02",
@@ -372,14 +372,14 @@ export function AboutClient() {
                 <>
                   Three rules.{" "}
                   <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                    Non-negotiable.
+                    Every project.
                   </span>
                 </>
               ) : (
                 <>
                   Tre regole.{" "}
                   <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                    Non negoziabili.
+                    Su ogni progetto.
                   </span>
                 </>
               )

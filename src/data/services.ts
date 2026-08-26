@@ -116,8 +116,8 @@ export const services: ServiceContent[] = [
           "Copilot, retrieval, classificazione e agenti, scritti come moduli tipizzati con retry, timeout, tetti di costo e logging strutturato. E lasciati fuori del tutto quando un software normale fa meglio il lavoro.",
       },
       {
-        title: "Eval harness alongside the integration tests",
-        titleIt: "Eval harness accanto ai test di integrazione",
+        title: "The AI is tested like the rest of the code",
+        titleIt: "L'AI viene testata come il resto del codice",
         detail:
           "Versioned regression cases for AI behaviour, run in CI alongside the rest of the test suite. Same pipeline that catches a broken endpoint catches a broken prompt.",
         detailIt:
@@ -127,9 +127,9 @@ export const services: ServiceContent[] = [
         title: "Tracing from user click to model output to action",
         titleIt: "Tracing dal click dell'utente all'output del modello all'azione",
         detail:
-          "OpenTelemetry spans for the whole request: frontend submit, backend handler, retrieval, model call, tool execution, response. When something breaks you read a trace, not archaeology.",
+          "When something breaks you read one record instead of guessing. Every request is traced end to end — submit, backend, retrieval, model call, tool run, response — using OpenTelemetry.",
         detailIt:
-          "Span OpenTelemetry per l'intera richiesta: submit del frontend, handler del backend, retrieval, chiamata al modello, esecuzione dei tool, risposta. Quando qualcosa si rompe si legge una trace, non archeologia.",
+          "Quando qualcosa si rompe si legge un registro, non si indovina. Ogni richiesta è tracciata da capo a fondo — submit, backend, retrieval, chiamata al modello, tool, risposta — con OpenTelemetry.",
       },
       {
         title: "Handover: documentation, training, optional support",
@@ -181,10 +181,10 @@ export const services: ServiceContent[] = [
     timelineIt: `${FACTS.sprintDuration.it} · compenso fisso per fase`,
     faqs: [
       {
-        q: "Do you build on top of LangChain / LlamaIndex / framework X?",
-        qIt: "Costruite sopra LangChain / LlamaIndex / framework X?",
-        a: "Sometimes. We pick the framework by what the project actually needs. For tight production loops we often skip frameworks entirely and write the orchestration directly. Fewer abstractions to debug when something goes wrong.",
-        aIt: "A volte. Scegliamo il framework in base a ciò di cui il progetto ha realmente bisogno. Per loop di produzione serrati spesso saltiamo del tutto i framework e scriviamo l'orchestrazione direttamente. Meno astrazioni da debuggare quando qualcosa va storto.",
+        q: "Do we need an in-house engineering team?",
+        qIt: "Serve un team tecnico interno?",
+        a: "No. Many of our clients have no developers at all. We can own the whole technical side — design, build, deploy, documentation — and hand back a system you understand and control. Where you do have a team, we work alongside them rather than around them.",
+        aIt: "No. Molti dei nostri clienti non hanno sviluppatori interni. Possiamo occuparci noi di tutta la parte tecnica — progettazione, sviluppo, rilascio, documentazione — e lasciarvi un sistema che capite e controllate. Se invece un team tecnico ce l'avete, lavoriamo al suo fianco, non al suo posto.",
       },
       {
         q: "What about open-source models vs OpenAI / Anthropic?",
@@ -193,14 +193,14 @@ export const services: ServiceContent[] = [
         aIt: "Entrambi. Il modello è una scelta guidata da latenza, costo, data residency e dal task, non dall'ideologia. Rilasciamo abitualmente sistemi ibridi in cui un piccolo modello locale gestisce la classificazione e un modello di frontiera gestisce il reasoning.",
       },
       {
-        q: "How do you handle evals?",
-        qIt: "Come gestite le eval?",
-        a: "Versioned test cases checked into the repo. Each case is a specific input, an expected behaviour, and a grader (string match, LLM-as-judge, or human review queue). Day-zero baseline. Weekly drift run in CI. Page on regression.",
-        aIt: "Casi di test versionati e committati nel repo. Ogni caso è un input specifico, un comportamento atteso e un grader (string match, LLM-as-judge o coda di revisione umana). Baseline al day zero. Run settimanale sul drift in CI. Alert in caso di regressione.",
+        q: "Do you build complete products, or only add features?",
+        qIt: "Costruite prodotti completi o aggiungete solo funzionalità?",
+        a: "Both. Some engagements are a whole product from zero — an internal management system, a customer portal, a platform. Others add one feature to software you already run. The scope is set by the problem, not by a minimum project size.",
+        aIt: "Entrambe le cose. Alcuni progetti sono un prodotto intero da zero: un gestionale interno, un portale per i clienti, una piattaforma. Altri aggiungono una singola funzionalità a un software che già usate. Lo scope lo decide il problema, non una dimensione minima di progetto.",
       },
       {
-        q: "Can you start from a prototype we already have?",
-        qIt: "Potete partire da un prototipo che abbiamo già?",
+        q: "Can you take over a prototype, or software another developer built?",
+        qIt: "Potete riprendere un prototipo, o un software costruito da altri?",
         a: "Yes. The Diagnose phase reviews what's there, what's salvageable, and what should be rebuilt. Usually it's a mix.",
         aIt: "Sì. La fase di Diagnosi esamina cosa c'è, cosa è recuperabile e cosa va ricostruito. Di solito è un mix.",
       },
@@ -328,16 +328,16 @@ export const services: ServiceContent[] = [
         aIt: "Piccola. Un'automazione utile non deve diventare un programma di trasformazione da sei mesi. Molte partono da un processo, dimostrano il risparmio, poi si allargano. Basta anche una registrazione dello schermo di come lo fate oggi per iniziare.",
       },
       {
-        q: "How do you handle LLM cost when volume spikes?",
-        qIt: "Come gestite il costo degli LLM quando i volumi schizzano?",
-        a: "Per-workflow budget caps at the orchestrator. Per-step model fallback (frontier → smaller → cached). Pre-deploy load testing with cost projections. Production alerts at 70% of monthly budget.",
-        aIt: "Tetti di budget per workflow a livello di orchestratore. Fallback del modello per step (frontiera → più piccolo → cache). Load testing pre-deploy con proiezioni di costo. Alert in produzione al 70% del budget mensile.",
+        q: "Can you work with the tools we already use?",
+        qIt: "Potete lavorare con gli strumenti che già usiamo?",
+        a: "Yes, wherever it's technically sensible. Most of this work is connecting things you already pay for — your CRM, your accounting software, your website, your spreadsheets — through their APIs. Where a tool has no way in, we say so early and design around it instead of pretending.",
+        aIt: "Sì, ovunque abbia senso dal punto di vista tecnico. Gran parte di questo lavoro è collegare strumenti che già pagate — il CRM, il gestionale contabile, il sito, i fogli di calcolo — tramite le loro API. Se uno strumento non offre alcun accesso, lo diciamo subito e progettiamo un'alternativa, invece di far finta di nulla.",
       },
       {
-        q: "What if a step needs to wait for a human?",
-        qIt: "E se uno step deve attendere un intervento umano?",
-        a: "We model human steps as first-class workflow steps with their own timeout, escalation, and reminder behaviour. Slack, email, or in-app, whatever your team already lives in.",
-        aIt: "Modelliamo gli step umani come step di workflow di prima classe, con un proprio comportamento di timeout, escalation e reminder. Slack, email o in-app, qualunque strumento il vostro team già utilizzi.",
+        q: "What if AI isn't the right answer for our process?",
+        qIt: "E se l'AI non fosse la risposta giusta per il nostro processo?",
+        a: "Then we say so and build the ordinary version. Most workflows are fixed with rules, integrations and a small internal tool, with no model involved at all. AI earns its place on the steps that genuinely need judgement, and nowhere else.",
+        aIt: "Allora ve lo diciamo e costruiamo la versione normale. La maggior parte dei processi si risolve con regole, integrazioni e un piccolo strumento interno, senza alcun modello. L'AI se lo merita solo negli step in cui serve davvero del giudizio, e da nessun'altra parte.",
       },
     ],
   },
@@ -366,16 +366,16 @@ export const services: ServiceContent[] = [
     },
     builds: [
       {
-        title: "Evaluation suite: regression + drift + safety",
-        titleIt: "Suite di valutazione: regressione + drift + safety",
+        title: "Proof it still works, before every release",
+        titleIt: "La prova che funziona ancora, prima di ogni rilascio",
         detail:
           "A written definition of what 'good' means for this feature, turned into test cases anyone can re-run. Drift metrics on production inputs, safety checks on sensitive outputs, run in CI on every change.",
         detailIt:
           "Una definizione scritta di cosa significa «funziona bene» per questa funzionalità, tradotta in casi di test rieseguibili da chiunque. Metriche di drift sugli input di produzione, controlli di safety sugli output sensibili, in CI a ogni modifica.",
       },
       {
-        title: "Deployment pipeline + model registry",
-        titleIt: "Pipeline di deployment + model registry",
+        title: "Ship a new version, undo it in one command",
+        titleIt: "Rilasciare una versione nuova, annullarla con un comando",
         detail:
           "Versioned model artefacts in a registry. Promotion from staging → canary → production gated by eval pass. Rollback to any prior version in one command.",
         detailIt:
@@ -385,13 +385,13 @@ export const services: ServiceContent[] = [
         title: "Monitoring: latency, cost, accuracy",
         titleIt: "Monitoring: latenza, costo, accuratezza",
         detail:
-          "Per-model dashboards covering inference latency p50/p95/p99, cost per prediction, ground-truth accuracy where it's measurable. Threshold-based alerting that pages the team before users notice.",
+          "You see the cost and the slowdown before a customer does. Per-model dashboards on speed (p50/p95/p99), cost per prediction and accuracy where it's measurable, with threshold alerting.",
         detailIt:
-          "Dashboard per modello che coprono la latenza di inferenza p50/p95/p99, il costo per predizione e l'accuratezza rispetto al ground truth dove è misurabile. Alerting basato su soglie che avvisa il team prima che se ne accorgano gli utenti.",
+          "Vedete il costo e i rallentamenti prima dei clienti. Dashboard per modello su velocità (p50/p95/p99), costo per predizione e accuratezza dove è misurabile, con alerting su soglie.",
       },
       {
-        title: "Shadow / canary / rollback paths",
-        titleIt: "Percorsi shadow / canary / rollback",
+        title: "New versions proven on real traffic first",
+        titleIt: "Le versioni nuove provate prima sul traffico reale",
         detail:
           "New models run in shadow against production traffic first. Then a single-digit-percent canary. Then full rollout. Each gate has a kill switch.",
         detailIt:
@@ -465,8 +465,8 @@ export const services: ServiceContent[] = [
       {
         q: "Can you take an existing model into production without retraining?",
         qIt: "Potete portare in produzione un modello esistente senza riaddestrarlo?",
-        a: "Usually yes. About a third of this work is 'this model works, get it operable'. We wrap it with eval, monitoring, rollback and a deployment story, without touching the training code. That can be a focused hardening sprint, part of a larger build, or an independent review.",
-        aIt: "Di solito sì. Circa un terzo di questo lavoro è del tipo «questo modello funziona, rendetelo operabile». Lo avvolgiamo con eval, monitoring, rollback e una storia di deployment, senza toccare il codice di training. Può essere uno sprint mirato di hardening, parte di un progetto più ampio o una review indipendente.",
+        a: "Usually yes. About a third of this work is 'this model works, get it operable'. We wrap it with eval, monitoring, rollback and a deployment story, without touching the training code. We review it first and give you one verdict: build, harden or stop.",
+        aIt: "Di solito sì. Circa un terzo di questo lavoro è del tipo «questo modello funziona, rendetelo operabile». Lo avvolgiamo con eval, monitoring, rollback e una storia di deployment, senza toccare il codice di training. Prima lo esaminiamo e diamo un verdetto solo: costruire, irrobustire o fermarsi.",
       },
     ],
   },
@@ -584,8 +584,8 @@ export const services: ServiceContent[] = [
       {
         q: "What's the difference between this and a consultant's strategy deck?",
         qIt: "Qual è la differenza tra questo e lo strategy deck di un consulente?",
-        a: "We don't ship strategy decks. We ship architecture documents an engineer can implement and a risk register a compliance team can defend. The recommendation is concrete enough to act on without further interpretation.",
-        aIt: "Non consegniamo strategy deck. Consegniamo documenti di architettura che un ingegnere può implementare e un registro dei rischi che un team di compliance può difendere. La raccomandazione è abbastanza concreta da poterci agire senza ulteriore interpretazione.",
+        a: "We don't ship strategy decks. You get a written recommendation: the architecture, the honest arithmetic, and a risk register a compliance team can defend where one applies. Concrete enough to act on without further interpretation — whether we build it, your own people do, or another supplier does.",
+        aIt: "Non consegniamo strategy deck. Ricevete una raccomandazione scritta: l'architettura, i conti onesti e un registro dei rischi che un team di compliance può difendere, dove serve. Abbastanza concreta da poterci agire senza altre interpretazioni, che a costruirla siamo noi, le vostre persone o un altro fornitore.",
       },
       {
         q: "What if the audit recommends 'don't build this'?",

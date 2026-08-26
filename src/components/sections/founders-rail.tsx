@@ -2113,7 +2113,7 @@ export default function FoundersRail() {
         )
       }
       description={`${
-        isEn ? "No account layer." : "Nessun livello di account."
+        isEn ? "You work with the builders." : "Lavorate con chi costruisce."
       } ${pick(isEn, POSITIONING.accountabilityLong)}`}
       /* reveal='blur': soft CSS focus-in on the studio-intro heading, echoing
          the About page's manifesto beat (no WebGL, pure GPU-composited filter). */

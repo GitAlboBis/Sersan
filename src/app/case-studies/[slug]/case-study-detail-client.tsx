@@ -20,6 +20,7 @@ import { useReturnFlipSource } from "@/lib/use-flip-source";
 import { attributionLine, statusLabel } from "@/components/work/attribution";
 import { CTA, FACTS, pick } from "@/data/copy";
 import { START_HREF } from "@/lib/site";
+import { track, EVENTS } from "@/lib/analytics";
 
 if (typeof window !== "undefined") gsap.registerPlugin(ScrollTrigger);
 
@@ -337,7 +338,7 @@ export function CaseStudyDetailClient({
               <Link
                 href="/case-studies"
                 onClick={onReturnFlip}
-                className="inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.16em] text-ink-mute hover:text-[var(--cs-highlight)] transition-colors"
+                className="relative inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.16em] text-ink-mute hover:text-[var(--cs-highlight)] transition-colors after:absolute after:inset-x-0 after:-inset-y-2 after:content-['']"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 {isEn ? "All work" : "Tutti i lavori"}
@@ -572,7 +573,23 @@ export function CaseStudyDetailClient({
           </p>
           <div className="flex flex-col sm:flex-row gap-3">
             <Button asChild size="lg" className={cn("group", CTA_FLUID_SM)}>
-              <Link href={START_HREF}>
+              <Link
+                href={START_HREF}
+                // Two events on one click (PROMPT 17): CASE_STUDY_CTA_CLICKED
+                // attributes the enquiry to this specific project, while
+                // CTA_PROJECT_BRIEF keeps it in the site-wide brief count.
+                onClick={() => {
+                  track(EVENTS.CASE_STUDY_CTA_CLICKED, {
+                    case_study: study.id,
+                    source_section: "case_study_cta",
+                  });
+                  track(EVENTS.CTA_PROJECT_BRIEF, {
+                    source_section: "case_study_cta",
+                    case_study: study.id,
+                    lang: language,
+                  });
+                }}
+              >
                 {pick(isEn, CTA.primary)}
                 <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
               </Link>

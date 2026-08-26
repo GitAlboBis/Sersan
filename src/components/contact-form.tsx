@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useLanguage } from "@/components/language-provider";
 import { CONTACT_EMAIL } from "@/lib/site";
+import { track, trackOnce, EVENTS } from "@/lib/analytics";
 
 interface ContactFormState {
   name: string;
@@ -30,6 +31,51 @@ export function ContactForm() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
 
+  const formRef = useRef<HTMLFormElement>(null);
+  // Native `required` validation reports one `invalid` event per field, so the
+  // names are collected and flushed as ONE lead_form_error on the next tick.
+  const invalidFieldsRef = useRef<string[]>([]);
+  const invalidFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** Funnel denominator (PROMPT 17) + timer cleanup. The observer disconnects
+   *  on its first hit and on unmount; `trackOnce` absorbs StrictMode's
+   *  double-invoke in development. Nothing is attached to scroll. */
+  useEffect(() => {
+    const el = formRef.current;
+    let obs: IntersectionObserver | null = null;
+    if (el && typeof IntersectionObserver !== "undefined") {
+      obs = new IntersectionObserver(
+        ([entry]) => {
+          if (!entry.isIntersecting) return;
+          trackOnce(EVENTS.LEAD_FORM_VIEWED, { form: "contact" }, "contact");
+          obs?.disconnect();
+        },
+        { threshold: 0.2 },
+      );
+      obs.observe(el);
+    }
+    return () => {
+      obs?.disconnect();
+      if (invalidFlushRef.current) clearTimeout(invalidFlushRef.current);
+    };
+  }, []);
+
+  /** Field NAMES only — never what was typed into them. */
+  function noteInvalidField(e: React.FormEvent<HTMLFormElement>) {
+    const name = (e.target as HTMLInputElement | null)?.name;
+    if (!name) return;
+    if (!invalidFieldsRef.current.includes(name)) {
+      invalidFieldsRef.current.push(name);
+    }
+    if (invalidFlushRef.current) return;
+    invalidFlushRef.current = setTimeout(() => {
+      invalidFlushRef.current = null;
+      const fields = invalidFieldsRef.current.join(",");
+      invalidFieldsRef.current = [];
+      if (fields) track(EVENTS.LEAD_FORM_ERROR, { form: "contact", fields });
+    }, 0);
+  }
+
   function handleChange<K extends keyof ContactFormState>(key: K, value: ContactFormState[K]) {
     setData((d) => ({ ...d, [key]: value }));
   }
@@ -51,6 +97,8 @@ export function ContactForm() {
           json && typeof json.error === "string" ? json.error : "Request failed";
         throw new Error(msg);
       }
+      // The conversion — only after the server accepted it.
+      track(EVENTS.LEAD_FORM_SUBMITTED, { form: "contact", lang: language });
       setSubmitted(true);
     } catch {
       setSubmitError(
@@ -78,7 +126,13 @@ export function ContactForm() {
           {isEn ? (
             <>
               A founder reads every message. If it&apos;s urgent, email{" "}
-              <a href={`mailto:${CONTACT_EMAIL}`} className="underline decoration-dotted underline-offset-4">
+              <a
+                href={`mailto:${CONTACT_EMAIL}`}
+                onClick={() =>
+                  track(EVENTS.CTA_EMAIL, { source_section: "contact_form_sent" })
+                }
+                className="underline decoration-dotted underline-offset-4"
+              >
                 {CONTACT_EMAIL}
               </a>
               .
@@ -86,7 +140,13 @@ export function ContactForm() {
           ) : (
             <>
               Ogni messaggio viene letto da un founder. Se è urgente, scrivete a{" "}
-              <a href={`mailto:${CONTACT_EMAIL}`} className="underline decoration-dotted underline-offset-4">
+              <a
+                href={`mailto:${CONTACT_EMAIL}`}
+                onClick={() =>
+                  track(EVENTS.CTA_EMAIL, { source_section: "contact_form_sent" })
+                }
+                className="underline decoration-dotted underline-offset-4"
+              >
                 {CONTACT_EMAIL}
               </a>
               .
@@ -98,7 +158,18 @@ export function ContactForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form
+      ref={formRef}
+      onSubmit={handleSubmit}
+      // Cheapest correct place for "they started filling it in": focus
+      // bubbles here from every control, and `trackOnce` keeps it to one.
+      onFocusCapture={() =>
+        trackOnce(EVENTS.LEAD_FORM_STARTED, { form: "contact" }, "contact")
+      }
+      // `invalid` does not bubble, so this listens in the capture phase.
+      onInvalidCapture={noteInvalidField}
+      className="space-y-5"
+    >
       <div className="grid sm:grid-cols-2 gap-4">
         <label className="block">
           <span className="text-[10px] font-mono uppercase tracking-[0.16em] text-ink-mute mb-1.5 block">
