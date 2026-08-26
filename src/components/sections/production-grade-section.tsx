@@ -545,6 +545,15 @@ export default function ProductionGradeSection() {
                 className="absolute inset-0 h-full w-full opacity-90"
               />
             )}
+            {/* ROUND 14 — the no-JS server twin (owner call, 2026-08-26):
+                the problem section's noscript copy, kept identical. */}
+            <noscript>
+              <NeuralGraphFallback
+                variant="healthy"
+                staticPose
+                className="absolute inset-0 h-full w-full opacity-90"
+              />
+            </noscript>
             {/* Ghost callouts — the EXISTING cluster-label strings near the
                 rings, leader lines pointing into the field. */}
             {Array.from({ length: IGNITE_NODES }, (_, i) => {

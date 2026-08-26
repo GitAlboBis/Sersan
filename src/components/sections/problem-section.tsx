@@ -607,6 +607,20 @@ export default function ProblemSection() {
                 className="absolute inset-0 h-full w-full opacity-90"
               />
             )}
+            {/* ROUND 14 — the no-JS server twin (owner call, 2026-08-26):
+                without JS neither the island nor the live twin can ever mount
+                (useNeuralLatticeFallback stays false unresolved), so the band
+                was dot-grid only. A no-JS client displays this resting-pose
+                copy; a JS client never does (noscript). staticPose keeps the
+                hydrated-but-hidden instance inert — no timelines, no
+                subscriptions (see the prop's doc). */}
+            <noscript>
+              <NeuralGraphFallback
+                variant="broken"
+                staticPose
+                className="absolute inset-0 h-full w-full opacity-90"
+              />
+            </noscript>
             {/* Ghost callouts — EXISTING effect strings only, leader lines
                 pointing into the field. `.eyebrow` → LabelScrambler decode. */}
             {failures.map((f, i) => {

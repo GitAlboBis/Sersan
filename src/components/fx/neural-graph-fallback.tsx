@@ -246,20 +246,34 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 export function NeuralGraphFallback({
   variant,
   className,
+  staticPose = false,
 }: {
   variant: Variant;
   className?: string;
+  /**
+   * ROUND 14 — the no-JS server twin (owner call, 2026-08-26): render the
+   * RESTING FINAL pose unconditionally and run NO effect, ever. Used only by
+   * the `<noscript>` copies in the two sections, whose markup must be pure
+   * server output: a no-JS client displays it as-is, while a JS client still
+   * hydrates the (hidden) instance — so every GSAP/store effect below must
+   * stay inert or the invisible copy would duplicate timelines and
+   * subscriptions. The depth quantization above already makes this markup
+   * engine-independent, which is exactly what SSR needs.
+   */
+  staticPose?: boolean;
 }) {
   const broken = variant === "broken";
   const g = GRAPHS[variant];
   const rootRef = useRef<SVGSVGElement>(null);
-  const gradId = `plexus-grad-${variant}`;
+  const gradId = `plexus-grad-${variant}${staticPose ? "-static" : ""}`;
   // Reduced-motion: render the resting final frame (regions lit, scatter out).
-  const [rest, setRest] = useState(false);
+  const [restState, setRest] = useState(false);
+  const rest = staticPose || restState;
   useEffect(() => {
+    if (staticPose) return;
     if (typeof window === "undefined" || !window.matchMedia) return;
     setRest(window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-  }, []);
+  }, [staticPose]);
 
   // Row-reactive echo (trivial mapping only): the ledger rows write
   // setHovered on every tier, so when the WebGL island is absent this twin
@@ -290,6 +304,7 @@ export function NeuralGraphFallback({
 
   useGSAP(
     () => {
+      if (staticPose) return; // no-JS server twin: never animate (see prop doc)
       if (typeof window === "undefined") return;
       if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
       const root = rootRef.current;
