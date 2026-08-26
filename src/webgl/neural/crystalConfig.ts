@@ -693,7 +693,7 @@ export const METEOR_OPEN_OUT = 0.58;
  * with the mark 95% occluded behind the shards. 1.9 puts the peak at
  * gap ≈ 1.05: the shards genuinely part and the mark reads through the
  * aperture. The seal (bell → 0) is unaffected. */
-export const METEOR_PEAK_GAIN = 1.9;
+export const METEOR_PEAK_GAIN = 2.6;
 /** ROUND 13f — how far the APPROACH alone opens the stone (the bell is
  * multiplied by this before the hold's own scroll drives the rest): the
  * stone arrives at centre CRACKED, then the beat opens it fully. */
@@ -701,7 +701,7 @@ export const METEOR_OPEN_ARRIVE = 0.5;
 /** ROUND 13f — the beat's zoom-in on the camera-locked group's uniform
  * scale (never the camera). Peaks with the mark's reveal, released before
  * the traverse resumes. */
-export const METEOR_ZOOM = 0.16;
+export const METEOR_ZOOM = 0.3;
 /**
  * The mark inside the ice — the SAME 552-triangle shared geometry
  * RouteHeroLogo loads (module singleton; never dispose it). Camera-locked

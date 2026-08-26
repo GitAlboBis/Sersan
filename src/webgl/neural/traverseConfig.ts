@@ -258,7 +258,7 @@ export const traverseConfig: TraverseConfigShape = {
       // deceleration ramp itself advances the scene ~W·ρ/2 ≈ 124 px, so the
       // hold BEGINS half a ramp early (0.79) and the stone comes to rest at
       // dead centre. 1.15 vh of donated scroll, 22% ramps.
-      meteorHold: { t0Frac: 0.79, holdVh: 1.15, rampFrac: 0.22 },
+      meteorHold: { t0Frac: 0.79, holdVh: 1.9, rampFrac: 0.22 },
     },
   },
   alphaReadDisplay: 0.5,
