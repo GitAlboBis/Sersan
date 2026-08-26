@@ -1131,15 +1131,36 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     const axis = normalize(
       aRand.mul(2.0).sub(1.0).add(vec3(1e-4, 2e-4, 3e-4)),
     );
+    // ═══ ROUND 13e — THE METEORITE CAN CLOSE (the D20 blocker) ═══════════
+    // The spin used to carry a CONSTANT `aRand.z·2π` phase, independent of
+    // the gap and non-zero at gap 0: the eight shards sat at 17/49/8/255/
+    // 279/68/208/239 degrees even when "closed", so driving the gap to zero
+    // produced an interpenetrating tangle, never the slab — and the hover
+    // "recompact" had never actually recompacted anything. `openK` (0 at
+    // gap 0 → 1 by 35% of the rest gap) scales the WHOLE spin angle and the
+    // idle drift wander, so a closed stone has every piece in the exact
+    // orientation it was cut in and the partition tiles the slab again.
+    // Healthy builds never enter this branch — `#production` is unmoved.
+    const openK = smoothstep(
+      float(0),
+      float(Math.max(restGap * 0.35, 1e-4)),
+      uGap,
+    );
     const spinAng = uTime
       .mul(uShardSpin)
       .mul(aRand.x.sub(0.5).mul(2.0))
-      .add(aRand.z.mul(6.2832));
+      .add(aRand.z.mul(6.2832))
+      .mul(openK);
     const pR = rotate3D(positionLocal.sub(aCentr), axis, spinAng).add(aCentr);
     // Igloo explode, verbatim: += centr·(gap + rand.y·sin(rand.x·5+t·.5)·drift)
+    // — the wander term rides `openK` too, or a closed slab would still
+    // breathe its shards radially into one another.
     const explode = aCentr.mul(
       uGap.add(
-        aRand.y.mul(sin(aRand.x.mul(5.0).add(uTime.mul(0.5)))).mul(uDrift),
+        aRand.y
+          .mul(sin(aRand.x.mul(5.0).add(uTime.mul(0.5))))
+          .mul(uDrift)
+          .mul(openK),
       ),
     );
     pos = pR.add(explode);

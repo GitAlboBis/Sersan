@@ -667,6 +667,50 @@ export const FRACTURE_REST_GAP = 1.0;
  * the exploded cluster reads 350 px on a 725 px band (48.3 %, was 71.4 %).
  * The re-fitted BROKEN_CALLOUT_SHARDS were solved AT this gap. */
 export const FRACTURE_REST_GAP_AUTHORED = 0.55;
+
+// ═══ ROUND 13e — D20: THE METEORITE SHATTERS AND RECOMPOSES ═══════════════════
+/**
+ * "il meteorite, che si frantuma e si ricompone" + "si apre e dentro il logo
+ * sersan con qualche effetto di luce" — one arc, driven by the stone's own
+ * centring scalar `a` (CrystalCluster: `(cy − ih/2)/ih`, ±~1.03 over the
+ * stone's on-frame window). The stone arrives SEALED, shatters open through
+ * the middle of its pass — revealing the mark lit inside — and reseals as it
+ * leaves. Scroll back and the whole arc plays in reverse (a pure function of
+ * `a`: no latch, no state). Broken band only; `#production`'s healthy slab
+ * keeps its sealed-mark RT grammar (D20's "twice").
+ *
+ * openBell = 1 − smoothstep(OPEN_IN, OPEN_OUT, |a|):
+ *   fully open within |a| < OPEN_IN, fully sealed beyond OPEN_OUT.
+ */
+// 13e-b: IN 0.25→0.18, OUT 0.78→0.58 — measured on camera: at OUT 0.78 the
+// stone left the frame still open, so the RECOMPOSE half of the owner's
+// sentence played off-screen. At 0.58 it reseals while still well inside
+// the frame; the full-open beat is concentrated near dead centre.
+export const METEOR_OPEN_IN = 0.18;
+export const METEOR_OPEN_OUT = 0.58;
+/** Peak-gap gain over the (sealed-era) rest gap: at 1.0 the "open" state is
+ * the old authored rest — measured on camera as "cracked, not shattered",
+ * with the mark 95% occluded behind the shards. 1.9 puts the peak at
+ * gap ≈ 1.05: the shards genuinely part and the mark reads through the
+ * aperture. The seal (bell → 0) is unaffected. */
+export const METEOR_PEAK_GAIN = 1.9;
+/**
+ * The mark inside the ice — the SAME 552-triangle shared geometry
+ * RouteHeroLogo loads (module singleton; never dispose it). Camera-locked
+ * group, never the tumbling mesh (the tumble reaches ~55° and would make it
+ * unreadable); renderOrder −3.5, between the fog (−4) and the crystal (−3),
+ * so a sealed shard in front passes CRYSTAL_ALPHA's 6% and a moved shard
+ * passes 100% — the opening IS the reveal, zero shader work.
+ *
+ * Scale/offset measured (ROUND 12 plan §3): at scale 1.0 / offset 0, 46 of
+ * 468 vertices poke out of the slab's top bite — the offset is not optional.
+ */
+export const MARK_MESH_SCALE = 0.921;
+export const MARK_MESH_Y = -0.5;
+/** Mark brightness on cyan #3BE1FF: base 0.65 ⇒ luminance 0.40 (under the
+ * bloom gate); full opening 2.0 ⇒ 1.24 — it blooms ONLY at the peak. */
+export const MARK_LIT_BASE = 0.65;
+export const MARK_LIT_PEAK = 2.0;
 /** Gap boost per unit (eased) store pulse — the fracture-surge breathing. */
 export const FRACTURE_SURGE_GAIN = 0.5;
 /** Igloo idle sine drift amplitude (verbatim 0.05):

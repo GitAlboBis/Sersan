@@ -164,6 +164,13 @@ import {
   CRYSTAL_BAND_VH_REF,
   FRACTURE_REST_GAP,
   FRACTURE_SURGE_GAIN,
+  METEOR_OPEN_IN,
+  METEOR_OPEN_OUT,
+  METEOR_PEAK_GAIN,
+  MARK_MESH_SCALE,
+  MARK_MESH_Y,
+  MARK_LIT_BASE,
+  MARK_LIT_PEAK,
   CRYSTAL_IDLE_DRIFT,
   CRYSTAL_PULSE_DAMP,
   CRYSTAL_RECOHERE_ATTACK,
@@ -213,6 +220,11 @@ import type { MarkRTRig } from "./neural/crystalMarkRT";
 import type { CrystalPlexus } from "./neural/crystalPlexus";
 import { loadMarkGeometry } from "./RouteHeroLogo";
 
+/** Brand cyan #3BE1FF — the mark's lit tone (never violet). Module-cached so
+ * the per-frame drive multiplies a copy, never re-parses the hex. */
+const MARK_CYAN = new THREE.Color("#3be1ff");
+const MARK_COLOR_SCRATCH = new THREE.Color();
+
 /** Off-screen cull margin in CSS px (the NeuralLattice value). */
 const CULL_PAD = 220;
 
@@ -240,6 +252,19 @@ export function CrystalCluster({
   const [plexus, setPlexus] = useState<CrystalPlexus | null>(null);
   const [fog, setFog] = useState<CrystalFogBuild | null>(null);
   const markRigRef = useRef<MarkRTRig | null>(null);
+  // ROUND 13e — D20's FIRST appearance: the mark as a REAL MESH inside the
+  // opening meteorite (broken band only; the healthy slab keeps the sealed
+  // 6% RT above). Geometry is RouteHeroLogo's session-shared singleton —
+  // NEVER disposed here; the material is ours and is.
+  const [markGeo, setMarkGeo] = useState<THREE.BufferGeometry | null>(null);
+  const markMatRef = useRef<THREE.MeshBasicMaterial | null>(null);
+  if (!markMatRef.current) {
+    markMatRef.current = new THREE.MeshBasicMaterial({
+      color: MARK_CYAN,
+      depthWrite: false,
+      depthTest: false,
+    });
+  }
   const liteRef = useRef(false);
   /** Round 8-H — did the authored slab actually land (vs the procedural
    * fallback)? Dev-handle only; the render path never branches on it. */
@@ -294,6 +319,14 @@ export function CrystalCluster({
           if (!cancelled && geo) markRig?.setGeometry(geo);
         });
       }
+      // ROUND 13e — the BROKEN band mounts the mark as a real mesh in the
+      // camera-locked group instead (both backends: plain MeshBasicMaterial,
+      // no RT, no node graph — the reveal is pure compositing).
+      if (broken) {
+        void loadMarkGeometry().then((geo) => {
+          if (!cancelled && geo) setMarkGeo(geo);
+        });
+      }
       built = mod.createCrystalBuild({
         webgpu: webgpu as never,
         tsl: tslNs as never,
@@ -331,6 +364,11 @@ export function CrystalCluster({
       plexusBuilt?.dispose();
       fogBuilt?.dispose();
       markRigRef.current = null;
+      // ROUND 13e — the mark MATERIAL is ours to dispose; the geometry is
+      // RouteHeroLogo's session singleton and must never be.
+      markMatRef.current?.dispose();
+      markMatRef.current = null;
+      setMarkGeo(null);
       setBuild(null);
       setPlexus(null);
       setFog(null);
@@ -725,11 +763,35 @@ export function CrystalCluster({
       // centroids are ~1.9× longer than the procedural fallback's, so the two
       // paths need different rest values to occupy the same band (derivation on
       // FRACTURE_REST_GAP_AUTHORED). Surge/re-cohere multipliers are unchanged.
+      // ═══ ROUND 13e — D20: THE ARC. `openBell` is a pure function of the
+      // stone's own centring `a` (no latch, no state): sealed on approach
+      // (|a| ≥ METEOR_OPEN_OUT), shattered through the middle of the pass,
+      // resealed on exit — and exactly reversed when the reader scrolls
+      // back. The spin fix in crystalBuild (openK) is what makes gap → 0
+      // actually recompose the slab instead of an interpenetrating tangle.
+      const openBell =
+        1 -
+        THREE.MathUtils.smoothstep(
+          Math.abs(a),
+          METEOR_OPEN_IN,
+          METEOR_OPEN_OUT,
+        );
       gapRef.current =
         build.restGap *
+        openBell *
+        METEOR_PEAK_GAIN *
         (1 + FRACTURE_SURGE_GAIN * maxPulse) *
         (1 - Math.min(recohereEnv.current, 1));
       flashRef.current = Math.min(recohereEnv.current, 1);
+      // The mark's light rides the SAME bell: 0.65 sealed (a 6% ghost in the
+      // ice) → 2.0 at full opening — over the bloom gate only at the peak.
+      if (markMatRef.current) {
+        markMatRef.current.color
+          .copy(MARK_COLOR_SCRATCH.copy(MARK_CYAN))
+          .multiplyScalar(
+            MARK_LIT_BASE + (MARK_LIT_PEAK - MARK_LIT_BASE) * openBell,
+          );
+      }
     } else {
       // Healthy: the rim flashes with the ring ignitions.
       flashRef.current = Math.min(maxPulse, 1);
@@ -1255,6 +1317,23 @@ export function CrystalCluster({
           geometry={fog.geometry}
           material={fog.material}
           renderOrder={-4}
+          frustumCulled={false}
+        />
+      )}
+      {/* ROUND 13e — D20: the mark INSIDE the meteorite (broken only).
+          renderOrder −3.5: after the fog (−4), before the crystal (−3) — a
+          sealed shard in front passes CRYSTAL_ALPHA's 6%, a moved shard
+          passes 100%, so the opening IS the reveal. Mounted in the CAMERA-
+          LOCKED group, never the tumbling mesh (the tumble reaches ~55° and
+          would make the mark unreadable). Geometry is the session-shared
+          RouteHeroLogo singleton — never disposed here. */}
+      {broken && markGeo && markMatRef.current && (
+        <mesh
+          geometry={markGeo}
+          material={markMatRef.current}
+          position={[0, MARK_MESH_Y, 0]}
+          scale={MARK_MESH_SCALE}
+          renderOrder={-3.5}
           frustumCulled={false}
         />
       )}
