@@ -226,17 +226,28 @@ export const CUT_BOUNDARY_ROUTE = "/";
  *  - hero-fold→spine: NOT representable — the H1 fold and the pinned spine
  *    share the single "hero" anchor, and a mid-anchor cut would fight the
  *    spine's own scrubbed stage crossfades.
+ *  - problem→production (D19 merge, owner 2026-08-26): the broken act and the
+ *    healthy one are now adjacent ON PURPOSE — death → rebirth reads as ONE
+ *    continuous on-camera passage, so a seam-sweep there would cut the very
+ *    shot the merge exists to create.
  *  - founders→process, process→fit: small cuts, add here later if wanted.
  * Decorative anchors between a pair (work-in-progress, gateway) don't break
  * adjacency — `sections` already excludes them.
+ *
+ * ORDER CONTRACT: every pair must be LITERALLY adjacent in `sections`, i.e.
+ * this list mirrors src/app/page.tsx's DOM order. A pair that drifts out of
+ * order is silently skipped below and its cut simply stops firing, with
+ * nothing on screen to say so — dev builds warn once per broken pair.
  */
 export const CUT_BOUNDARY_PAIRS: readonly (readonly [string, string])[] = [
-  ["problem", "case-studies"], // problem → work
+  ["production", "case-studies"], // rebirth → work
   ["case-studies", "services"], // work → services
-  ["services", "production"], // services → production
-  ["production", "founders"], // production → founders
+  ["services", "founders"], // services → founders
   ["fit", "final-cta"], // fit → outro
 ];
+
+/** Dev-only: pair indices already reported as out-of-order (warn once each). */
+const warnedPairs = new Set<number>();
 
 /** Capacity hint for the caller's hoisted arrays. */
 export const MAX_CUT_BOUNDARIES = 8;
@@ -268,7 +279,26 @@ export function deriveCutBoundaries(
   for (let i = 0; i < CUT_BOUNDARY_PAIRS.length && n < outCuts.length; i++) {
     const pair = CUT_BOUNDARY_PAIRS[i];
     const ia = sections.indexOf(pair[0]);
-    if (ia === -1 || sections[ia + 1] !== pair[1]) continue;
+    if (ia === -1 || sections[ia + 1] !== pair[1]) {
+      // ORDER CONTRACT guard (dev only). Flag the unambiguous case: BOTH
+      // anchors are measured but not adjacent — that is always a stale pair
+      // list, never a transient. A merely missing anchor is legitimate during
+      // boot and on other routes, so it stays silent.
+      if (
+        process.env.NODE_ENV !== "production" &&
+        ia !== -1 &&
+        !warnedPairs.has(i) &&
+        sections.indexOf(pair[1]) !== -1
+      ) {
+        warnedPairs.add(i);
+        console.warn(
+          `[sectionStore] CUT_BOUNDARY_PAIRS[${i}] "${pair[0]}"→"${pair[1]}" is not adjacent in the measured DOM ` +
+            `(measured: "${pair[0]}"→"${sections[ia + 1] ?? "∅"}"). That cut will never fire. ` +
+            `Re-order CUT_BOUNDARY_PAIRS to mirror src/app/page.tsx.`,
+        );
+      }
+      continue;
+    }
     const sa = spans[pair[0]];
     const sb = spans[pair[1]];
     if (!sa || !sb) continue;

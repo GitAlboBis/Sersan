@@ -38,6 +38,15 @@ export const routeCurves: Record<string, RouteCurveConfig> = {
   // Services); "work-in-progress" survives as a zero-height anchor between
   // the case-studies section and Services (its entry joins the rail in
   // part B), and "process" now wraps the one-line fixed-scope strip.
+  //
+  // D19 MERGE (owner 2026-08-26): "production" moved UP to sit directly under
+  // "problem". Waypoint order is not decorative — it must mirror page.tsx's
+  // DOM order, because the curve is re-derived from each anchor's measured
+  // document fraction and an out-of-order entry makes the spline double back
+  // on itself. Moving one waypoint therefore breaks the +/-/+ alternation for
+  // everything between the old and new slot, so the four waypoints in between
+  // (production, case-studies, work-in-progress, services) had their x signs
+  // flipped to restore it. z is a free depth bias and rides along unchanged.
   "/": {
     waypoints: [
       // Hero: enter from beyond the right edge so the beam doesn't park
@@ -45,10 +54,10 @@ export const routeCurves: Record<string, RouteCurveConfig> = {
       { at: 0.0, x: 1.15, z: -1.0 },
       { anchor: "credibility", x: -1.2, z: 0.2 },
       { anchor: "problem", x: 1.15, z: -0.2 },
-      { anchor: "case-studies", x: -1.25, z: 0.2 },
-      { anchor: "work-in-progress", x: 1.2, z: 0.4 },
-      { anchor: "services", x: -1.25, z: 0.1 },
-      { anchor: "production", x: 1.1, z: 0.5 },
+      { anchor: "production", x: -1.1, z: 0.5 },
+      { anchor: "case-studies", x: 1.25, z: 0.2 },
+      { anchor: "work-in-progress", x: -1.2, z: 0.4 },
+      { anchor: "services", x: 1.25, z: 0.1 },
       { anchor: "founders", x: -1.2, z: -0.2 },
       { anchor: "process", x: 1.25, z: 0.3 },
       { anchor: "fit", x: -1.1, z: -0.4 },

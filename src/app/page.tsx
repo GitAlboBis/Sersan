@@ -21,9 +21,11 @@ import FinalCTA from "@/components/sections/final-cta";
  *                              (replaced the credibility reel, 2026-08-07;
  *                              institution-marks.tsx stays parked for reuse)
  *   03  Problem              — name the demo → production gap
- *   04  Work                 — sticky horizontal rail (13 engagements + WIP)
- *   05  Services             — what we build (pains surfaced per card)
- *   06  Production-grade     — operational definition + live artifacts
+ *   04  Production-grade     — the answer, DIRECTLY under the problem (D19
+ *                              merge, owner 2026-08-26: death → rebirth is one
+ *                              continuous on-camera passage, no interlude)
+ *   05  Work                 — sticky horizontal rail (13 engagements + WIP)
+ *   06  Services             — what we build (pains surfaced per card)
  *   07  Founders             — the people who ship every engagement
  *   08  Fixed-scope strip    — one-line process distillation (full map → /consulting)
  *   09  Fit                  — disqualify honestly
@@ -58,6 +60,14 @@ export default function Home() {
       <div data-line-anchor="problem">
         <ProblemSection />
       </div>
+      {/* D19 MERGE (owner 2026-08-26): the healthy act sits DIRECTLY under the
+          broken one — death → rebirth happens on camera, no interlude. The
+          problem→production boundary deliberately has NO PostFX cut
+          (CUT_BOUNDARY_PAIRS omits it): the passage owns its own transition.
+          routeCurves.ts "/" waypoints mirror this order — move them together. */}
+      <div data-line-anchor="production">
+        <ProductionGradeSection />
+      </div>
       {/* Work-section refactor (2026-08-20, ANALISI_LUSION_WORK.md): the
           Lusion-grammar Featured Work grid — two columns of large media
           cards with rolling titles. Replaces the sticky horizontal rail;
@@ -71,9 +81,6 @@ export default function Home() {
       <div data-line-anchor="work-in-progress" />
       <div data-line-anchor="services">
         <ServicesSection />
-      </div>
-      <div data-line-anchor="production">
-        <ProductionGradeSection />
       </div>
       <div data-line-anchor="founders">
         <FoundersRail />
