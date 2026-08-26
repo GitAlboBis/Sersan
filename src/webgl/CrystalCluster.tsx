@@ -741,8 +741,19 @@ export function CrystalCluster({
       pinK *
       scaleMul *
       (1 + METEOR_ZOOM * zoomBump);
+    // ROUND 13g — DEAD CENTRE. The stone's diagonal track misses the exact
+    // frame centre by ~90 px and no hold-start can zero both axes at once
+    // (x and y trade along the 45° track), so the beat PULLS the stone onto
+    // centre as it engages and releases it back onto its track before the
+    // traverse resumes (nudge → 0 by q = 1). Pure function of the frozen
+    // frame: smooth in, smooth out, exactly reversed on scroll-up. Visual
+    // placement only — `a`, the callout windows and the mask never see it.
+    const nudgeK =
+      s01(Math.min(q / 0.3, 1)) * (1 - s01((q - 0.78) / 0.22));
+    const cxB = cx + (vw / 2 - cx) * nudgeK;
+    const cyB = cy + (ih / 2 - cy) * nudgeK;
     scratch.current
-      .set((cx - vw / 2) * k, (ih / 2 - cy) * k, -CAMERA_Z)
+      .set((cxB - vw / 2) * k, (ih / 2 - cyB) * k, -CAMERA_Z)
       .applyQuaternion(camera.quaternion)
       .add(camera.position);
     group.position.copy(scratch.current);
