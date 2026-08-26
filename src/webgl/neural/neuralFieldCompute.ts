@@ -539,6 +539,8 @@ import {
   POINTER_RADIUS,
   SEED_SCATTER_XY,
   SEED_SCATTER_Z,
+  SEED_SCATTER_RIBBON,
+  SEED_SCATTER_Z_RIBBON,
   COPY_LANE_OPEN_W_RIBBON,
   type LatticeMode,
   type PlexusParams,
@@ -1214,9 +1216,18 @@ function seedBuffers(count: number, mode: LatticeMode, plexus: Plexus) {
     }
 
     // Scattered seed (loose cloud) — matches the kernel's analytic re-derive.
-    seed[i * 3] = (h(i, 127.1, 311.7) - 0.5) * SEED_SCATTER_XY;
-    seed[i * 3 + 1] = (h(i, 269.5, 183.3) - 0.5) * SEED_SCATTER_XY;
-    seed[i * 3 + 2] = (h(i, 419.2, 371.9) - 0.5) * SEED_SCATTER_Z;
+    // ROUND 13c — on the ribbon the seed is an OFFSET FROM THE ANCHOR (the
+    // materialise-in-place coalesce), so it bakes at the small local scatter;
+    // non-ribbon keeps the round-2 absolute origin-scatter values bit-exact.
+    seed[i * 3] =
+      (h(i, 127.1, 311.7) - 0.5) *
+      (ribbon ? SEED_SCATTER_RIBBON : SEED_SCATTER_XY);
+    seed[i * 3 + 1] =
+      (h(i, 269.5, 183.3) - 0.5) *
+      (ribbon ? SEED_SCATTER_RIBBON : SEED_SCATTER_XY);
+    seed[i * 3 + 2] =
+      (h(i, 419.2, 371.9) - 0.5) *
+      (ribbon ? SEED_SCATTER_Z_RIBBON : SEED_SCATTER_Z);
   }
 
   // `perLink` is the number of sprites a link carries at any instant — a
@@ -4192,7 +4203,14 @@ export function createNeuralFieldBuild(
     // PRE-shimmer center — cheap life on the no-sim tier).
     const anchorS = anchorNode({ metaN: aMeta, offN: aOff });
     const rvS = smoothstep(float(0), float(1), uReveal);
-    const centerBase = mix(aSeed, anchorS, rvS);
+    // ROUND 13c — on the ribbon `aSeed` is a small OFFSET from the anchor
+    // (materialise in place: `anchor + off·(1−rv)`), never an absolute
+    // origin-scattered position — a 3.79-frame field made origin scatter a
+    // visible cross-page flight on entry AND (in reverse) on scroll-up exit.
+    // Non-ribbon keeps the round-2 absolute mix bit-exact.
+    const centerBase = RIB
+      ? anchorS.add(aSeed.mul(float(1).sub(rvS)))
+      : mix(aSeed, anchorS, rvS);
     const centerS = centerBase.add(
       vec3(
         sin(centerBase.y.mul(7.0).add(uTime.mul(0.9))),
@@ -4281,13 +4299,21 @@ export function createNeuralFieldBuild(
     const s0 = fract(sin(idxF.mul(127.1).add(311.7)).mul(43758.545));
     const s1 = fract(sin(idxF.mul(269.5).add(183.3)).mul(43758.545));
     const s2 = fract(sin(idxF.mul(419.2).add(371.9)).mul(43758.545));
+    // ROUND 13c — same materialise-in-place split as the analytic tier: the
+    // ribbon treats the hashed seed as an OFFSET from the live anchor, so the
+    // spring target never crosses the page during the reveal (in either
+    // direction — the dissolve on scroll-up is the same flight reversed).
     const seedPos = vec3(
-      s0.sub(0.5).mul(SEED_SCATTER_XY),
-      s1.sub(0.5).mul(SEED_SCATTER_XY),
-      s2.sub(0.5).mul(SEED_SCATTER_Z),
+      s0.sub(0.5).mul(RIB ? SEED_SCATTER_RIBBON : SEED_SCATTER_XY),
+      s1.sub(0.5).mul(RIB ? SEED_SCATTER_RIBBON : SEED_SCATTER_XY),
+      s2.sub(0.5).mul(RIB ? SEED_SCATTER_Z_RIBBON : SEED_SCATTER_Z),
     );
     const rv = smoothstep(float(0), float(1), uReveal);
-    const anchor = mix(seedPos, liveAnchor, rv).toVar();
+    const anchor = (
+      RIB
+        ? liveAnchor.add(seedPos.mul(float(1).sub(rv)))
+        : mix(seedPos, liveAnchor, rv)
+    ).toVar();
 
     // Fracture: fraying link particles lose most of their spring and gain
     // wander. tSim is the cloud's left→right coordinate (edge-frame derived).
@@ -4349,6 +4375,22 @@ export function createNeuralFieldBuild(
       linkSnap,
       select(role.lessThan(float(1.5)), starSnap, float(SPARK_SNAP_DIST)),
     );
+    // ROUND 13c — WARM START (ribbon only). The island's frame loop early-
+    // returns while the band is off-screen, so the sim's first computed
+    // frames coincide EXACTLY with the band entering the viewport — with the
+    // buffer initialised at the seed cluster, the whole settle flight used to
+    // play on camera (the owner's "la rete si sposta per andare a costruirsi",
+    // both directions). While the band is invisible (uReveal < 0.02 ⇒
+    // delivered alpha ≈2% of rest on navy) every particle PINS to its anchor,
+    // so the spring always takes over from a settled state. A positional
+    // assign while invisible is the recycle snap's own contract; non-ribbon
+    // builds bake no such branch.
+    if (RIB) {
+      If(uReveal.lessThan(float(0.02)), () => {
+        pos.assign(anchor);
+        velH.assign(vec3(0.0, 0.0, 0.0));
+      });
+    }
     If(length(anchor.sub(pos)).greaterThan(snapDist), () => {
       pos.assign(anchor);
       velH.assign(vec3(0.0, 0.0, 0.0));

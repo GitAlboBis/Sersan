@@ -3063,6 +3063,27 @@ export const POINTER_RADIUS = 0.1;
 // --- Reveal seed cloud --------------------------------------------------------
 export const SEED_SCATTER_XY = 0.95;
 export const SEED_SCATTER_Z = 0.7;
+/**
+ * ═══ ROUND 13c — THE RIBBON MATERIALISES IN PLACE ════════════════════════════
+ *
+ * Owner (with screenshot, 2026-08-26): "vedo ancora la rete neurale che si
+ * sposta sopra con lo scroll, per andare nella posizione attuale della pagina
+ * e costruirsi". What he photographed is the REVEAL COALESCE: seeds are
+ * scattered about the FIELD ORIGIN (±SEED_SCATTER_XY/2 ≈ ±0.47 local), which
+ * covered the old one-frame ellipsoid band but on a 3.79-frame ribbon means a
+ * particle can fly ~2 local units ACROSS THE PAGE to reach its anchor — a
+ * condensing cloud, visible for the whole λ=2.5 ramp.
+ *
+ * On the ribbon the seed is reinterpreted as a SMALL OFFSET FROM THE
+ * PARTICLE'S OWN ANCHOR (`anchor + seed·(1−rv)` on both tiers), so the net
+ * fades in already assembled — each mote drifts ≤ ~30 px into place — and the
+ * driver's reveal damp quickens (2.5 → 9). Nothing flies anywhere.
+ * `#production` keeps the round-2 origin-scatter coalesce untouched.
+ */
+export const SEED_SCATTER_RIBBON = 0.07;
+export const SEED_SCATTER_Z_RIBBON = 0.05;
+/** Ribbon reveal damp λ (driver-side; non-ribbon keeps 2.5). */
+export const REVEAL_DAMP_RIBBON = 9;
 
 // --- Whole-group life (subtle — the net is layout-registered) ----------------
 export const NEURAL_PARALLAX = 0.06;

@@ -155,6 +155,7 @@ import {
   FIELD_EXIT_VH,
   RIBBON_PARTICLE_SCALE_MAX,
   CONDUIT_FILL_RIBBON,
+  REVEAL_DAMP_RIBBON,
   RIBBON_RY,
   getPlexus,
   ribbonPlexusParams,
@@ -737,6 +738,10 @@ function NeuralLatticeIsland({
   const mutedRef = useRef(false);
   const scratch = useRef(new THREE.Vector3());
   const revealDamped = useRef(0);
+  // ROUND 13c — true while the band was culled last frame (ribbon): the sim
+  // freezes with the frame loop, so a re-entry restarts the reveal from 0 and
+  // the invisibility pin re-settles every particle before the fade-in.
+  const wasCulled = useRef(true);
   const clock = useRef(0);
   const parallaxRef = useRef({ x: 0, y: 0 });
   // Store-pulse decay (bumpCluster targets → ring flashes on healthy; the
@@ -1042,7 +1047,19 @@ function NeuralLatticeIsland({
       const secVpTop = tv!.secTop - scrollY;
       if (secVpTop + tv!.secH < 1 || secVpTop > ih + CULL_PAD) {
         group.visible = false;
+        wasCulled.current = true;
         return;
+      }
+      // ROUND 13c — first frame back from the cull: the sim was FROZEN while
+      // the window/anchors kept a stale state, so a re-entry would otherwise
+      // play the whole spring settle on camera (the owner's report: the net
+      // visibly "arrives and builds itself", in BOTH scroll directions).
+      // Restarting the reveal from 0 makes the kernel's uReveal<0.02 pin
+      // teleport every particle onto its live anchor while the band is still
+      // invisible; the λ=9 ramp then fades the settled net in (~0.35 s).
+      if (wasCulled.current) {
+        wasCulled.current = false;
+        revealDamped.current = 0;
       }
     } else if (bcfg && bcfg.ribbon && build.field.ribbon) {
       group.visible = false;
@@ -1129,10 +1146,13 @@ function NeuralLatticeIsland({
       0,
       1,
     );
+    // ROUND 13c — the ribbon materialises in place (seed = anchor + small
+    // offset), so its reveal can be quick without a visible flight; the
+    // non-ribbon bands keep the round-2 cinematic coalesce at 2.5.
     revealDamped.current = THREE.MathUtils.damp(
       revealDamped.current,
       useScrollStore.getState().reveal * vis,
-      2.5,
+      ribbonOn ? REVEAL_DAMP_RIBBON : 2.5,
       delta,
     );
 
