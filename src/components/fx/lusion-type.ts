@@ -512,9 +512,28 @@ export function useLedgerReveal(
               0.1,
             );
           }
-          // Production claim — recipe H3 (ghost stroke inherits through the
-          // split wrappers; the line masks clip the y rise, x slides within).
+          // Production claim — H3, IN THREE INFLECTIONS (owner, 2026-08-26:
+          // "varia l'animazione gsap tra le 3, non usare la stessa").
+          //
+          // ONE recipe, three readings — not three unrelated animations. All
+          // three keep H3's materials exactly: SplitText words inside line
+          // masks, `lusionEase()`, `H3_DUR`, `H3_STAGGER`, and a y rise the
+          // mask clips. Only the STAGGER ORIGIN and the lateral differ, so the
+          // ledger still reads as one grammar down the stack:
+          //
+          //   row 0  ARRIVE   left→right, x trailing in from the right (the
+          //                   shipped H3, byte for byte — the act's baseline)
+          //   row 1  RETURN   right→left, x entering from the LEFT and landing
+          //                   with the rise instead of trailing it
+          //   row 2  CLAMP    centre-out, the halves converging inward — the
+          //                   two sides close on the line
+          //
+          // `immediateRender: true` on every FROM keeps the D-10 rule (no
+          // primed pose in a className; SSR/no-JS/RM paint the rest pose).
           if (claimSplit) {
+            const inflection = i % 3;
+            const staggerFrom =
+              inflection === 1 ? "end" : inflection === 2 ? "center" : "start";
             tl.fromTo(
               claimSplit.words,
               { yPercent: H3_Y_FROM },
@@ -522,22 +541,34 @@ export function useLedgerReveal(
                 yPercent: 0,
                 duration: H3_DUR,
                 ease: lusionEase(),
-                stagger: H3_STAGGER,
+                stagger: { each: H3_STAGGER, from: staggerFrom },
                 immediateRender: true,
               },
               0.15,
             );
+            // ROW 2 converges instead of sliding: each word enters from the
+            // side it sits on, so the line closes on itself. Half the travel
+            // of a full slide — it is a clamp, not an entrance from off-frame.
+            const xFrom =
+              inflection === 2
+                ? (idx: number, _t: unknown, targets: unknown[]) =>
+                    (idx < targets.length / 2 ? -1 : 1) * H3_X_FROM * 0.5
+                : inflection === 1
+                  ? -H3_X_FROM
+                  : H3_X_FROM;
             tl.fromTo(
               claimSplit.words,
-              { x: H3_X_FROM },
+              { x: xFrom },
               {
                 x: 0,
                 duration: H3_DUR,
                 ease: lusionEase(),
-                stagger: H3_STAGGER,
+                stagger: { each: H3_STAGGER, from: staggerFrom },
                 immediateRender: true,
               },
-              0.15 + H3_X_DELAY,
+              // ARRIVE trails its lateral; the other two land it WITH the
+              // rise, which is what makes them read as different beats.
+              inflection === 0 ? 0.15 + H3_X_DELAY : 0.15,
             );
           }
           // Body — recipe B1 word-wave, cascaded after the display roll.

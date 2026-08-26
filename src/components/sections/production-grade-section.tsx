@@ -685,7 +685,7 @@ export default function ProductionGradeSection() {
                 <h3
                   key={language}
                   data-claim
-                  className="pgrow__claim mt-2 sm:mt-3 font-display text-[clamp(1.9rem,3.6vw,3.9rem)] leading-[1.05] tracking-[-0.01em] text-balance"
+                  className="pgrow__claim mt-2 sm:mt-3 font-display text-[clamp(2.4rem,4.4vw,5.25rem)] leading-[1.0] tracking-[-0.02em] text-balance"
                 >
                   {a.claim}
                 </h3>

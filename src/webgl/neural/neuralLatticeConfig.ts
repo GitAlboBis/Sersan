@@ -690,7 +690,7 @@ export const RIBBON_SEEDS: Record<
   RibbonDensity,
   Record<Exclude<PlexusDensity, "svg">, number>
 > = {
-  onFrame: { full: 195, lite: 358 },
+  onFrame: { full: 110, lite: 210 },
   areal: { full: 331, lite: 358 },
   nearest: { full: 418, lite: 358 },
 };
@@ -1660,8 +1660,8 @@ export const STRAND_RATE_STEP = 0.12;
  * All of it is RIB-gated through build-time ternaries — `#production` bakes
  * the identical zero-radius graph it always has ({101, 229} unmoved).
  */
-export const STRAND_RADIUS_RIBBON = 0.0042;
-export const STRAND_THICKNESS_RIBBON = 0.0048;
+export const STRAND_RADIUS_RIBBON = 0.0062;
+export const STRAND_THICKNESS_RIBBON = 0.0075;
 export const BRAID_TURNS_RIBBON = 1.35;
 /**
  * Extra particle budget for the conduit, multiplied into the node-ratio scale
@@ -3430,7 +3430,7 @@ export const COPY_LANE_OPEN_W_RIBBON = 4.0;
  * flash 3.4 × surge 1.6 × kiss 1.5), and sizing this floor for THAT would have
  * cost the resting star field its last 15× of visibility.
  */
-export const COPY_MASK_FLOOR = 0.0001;
+export const COPY_MASK_FLOOR = 1;
 /**
  * ROUND 12 · D — THE LINK ROLE'S OWN FLOOR, and the 2.8e-4 ceiling quoted
  * above does NOT bind it.
@@ -3468,7 +3468,7 @@ export const COPY_MASK_FLOOR_STREAM = 0.017;
  * cap arithmetic upstream is untouched — so the copy column's line ceiling is
  * exactly 0.97 × this = 0.00291.
  */
-export const COPY_MASK_FLOOR_LINE = 0.003;
+export const COPY_MASK_FLOOR_LINE = 1;
 /**
  * The gentler VERTICAL term (task item 2 — "even outside the copy column the
  * mesh should read as background"). A broad bell centred on the band's middle,

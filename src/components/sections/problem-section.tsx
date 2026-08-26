@@ -672,7 +672,7 @@ export default function ProblemSection() {
                   rolls like the cause and carries the wave clip escape
                   (inset(0 -2em)). */}
               <div data-drift={rowDriftK(i)} data-traverse-alpha="display">
-                <h3 className="font-display text-[clamp(1.9rem,3.6vw,3.9rem)] leading-[1.05] tracking-[-0.01em] text-ink">
+                <h3 className="font-display text-[clamp(2.4rem,4.4vw,5.25rem)] leading-[1.0] tracking-[-0.02em] text-ink">
                   <span
                     data-row-rise
                     className="plrow__index inline-block font-mono text-[0.38em] align-middle tracking-[0.16em] tabular-nums"

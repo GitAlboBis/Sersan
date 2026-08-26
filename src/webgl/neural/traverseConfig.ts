@@ -237,23 +237,19 @@ export const traverseConfig: TraverseConfigShape = {
       // frame for the whole of it is `Λ + 1` = 3.791 band-widths = 7278 px.
       // 23.61 is the rollback value (`R = 0.437097`).
       angleDeg: 45,
-      // 1.85 vh of authored content today + 4 × 1.06 vh ⇒ ≈ 6.10 vh (D10).
-      // Measured: 6.02 vh @1280×720, 5.74 @1440×900, 5.45 @390×844, 5.32
-      // @768×1024 — the authored content is not 1.85 vh at every viewport. The
-      // ANGLE is exact everywhere (D12's invariant); the RUN LENGTH is not,
-      // so `L` is 26.0–29.4 world units rather than the spec's flat 29.847.
+      // ══ 2026-08-26 — THE MERGED PASSAGE GETS MUCH SHORTER ═════════════
+      // Owner: "vorrei che in generale tutta la sezione unita della rete
+      // neurale sia molto piu breve". 1.06 -> 0.6, i.e. 1.85 vh of authored
+      // content + 4 x 0.6 vh. Measured @1440x769: 7.72 vh -> 5.92 vh
+      // (5934 -> 4551 px). Together with Act II's cut the merged passage goes
+      // 8740 -> 6922 px, -21 %.
       //
-      // ⚠⚠ THE COMPOSITION HOLE IS OPEN AGAIN, AND THAT IS DELIBERATE HERE.
-      // One 619 px band inside a 4335 px act is on frame for ~31 % of the run,
-      // and the census that first justified the ladder measured 40.0 % of the
-      // act with neither net nor copy on it (1280×720, every 4 px, one
-      // unbroken 1116 px run). The ladder closed that by stacking five bands;
-      // the owner rejected the stack itself (D14–D24), so ROUND 12 · STAGE 1
-      // deletes it and STAGE 2 closes the same hole with ONE continuous
-      // ribbon — a band as long as the lateral run instead of five short ones.
-      // This file is therefore a CHECKPOINT with a known void, not a shippable
-      // state; `coverage().nothing` reports it honestly at every commit.
-      gapVh: 1.06,
+      // It also CLOSED coverage rather than costing it, because the ribbon is
+      // sized to the run: `nothing` 55.3 % -> 50.1 % and net+copy 16.8 % ->
+      // 31.0 % — the same field over a shorter act is a denser act. The
+      // 2636 px void the STAGE 2 note called an open hole is now 2280 px and
+      // sits in the meteor hold, where the scene is deliberately frozen.
+      gapVh: 0.6,
       gapCount: 4,
       // ROUND 12 · STAGE 2 — 0.8597 → 1.0. The band IS the frame now: the
       // owner chose "alta esattamente quanto il frame", accepting that the
@@ -278,13 +274,26 @@ export const traverseConfig: TraverseConfigShape = {
     // diagonal, and the scene stopping dead at the seam is what read as two
     // pieces. This band is what makes the passage ONE shot.
     //
-    // CLASSIC, NOT RIBBON (`ribbon: false`): the shipped centre-dense band —
-    // ellipsoid constellation, anchor-centred lateral, anchor-keyed cull, no
-    // shear, no exit fade. Deliberate on two counts. It is the grammar the
-    // owner picked, and it is the only one that leaves the healthy field's
-    // byte-identical contract ({101 nodes}, env 1.8, dust 0.012, dof 0.45,
-    // punch 3.2, count 9000) untouched — the ribbon arm rebuilds the field
-    // through `ribbonPlexusParams`, which would change every one of them.
+    // RIBBON, NOT CLASSIC — REVERSED BY THE OWNER ON CAMERA, 2026-08-26.
+    // The first pass shipped `ribbon: false` on his "grammatica classica",
+    // and seeing it he named the two things that answer are the SAME flag:
+    // "non c'e la rete neurale che continua nella parte con il meteorite
+    // chiuso" and "gli archi devono essere piu larghi, ma non linee 2d di
+    // particelle, ma piu dei tubi in 3d, tipo un flusso".
+    //
+    // Both live behind `RIB` in neuralFieldCompute. The classic arm sets
+    // STRAND_RADIUS 0, STRAND_THICKNESS 0.0006, K_LINK_BEND 0 and K_SWIRL 0 —
+    // a flat, unbent, hairline link, which is exactly the "linea 2d di
+    // particelle" he rejected; the ribbon arm is the volumetric braided
+    // conduit. And the classic field is centre-dense, so it is off-frame at
+    // the act's head — which is why the net was missing under the chapter.
+    // One flag, both complaints.
+    //
+    // ⚠ THIS SUPERSEDES THE #production BYTE-IDENTICAL PIN ({101 nodes},
+    // count 9000). The owner asked for "molti meno archi e nodi" on BOTH
+    // acts in the same breath, so the pin is retired deliberately, not
+    // broken silently: RIBBON_SEEDS.onFrame.full is 195 -> 110 and the
+    // strand radius/thickness are widened, for Act I and Act II alike.
     //
     // NO METEOR HOLD (`null`): the stone's beat belongs to Act I. Act II's
     // crystal is whole; it has nothing to open.
@@ -296,25 +305,24 @@ export const traverseConfig: TraverseConfigShape = {
       // pixel, and the two acts must descend at the SAME diagonal or the
       // merge reads as two camera moves instead of one.
       angleDeg: 45,
-      // 1.91 vh of authored content (1470 px @1440x769) + 4 x 0.45 vh => 3.65
-      // vh (2806 px), against Act I's 7.72. The rebirth is deliberately the
-      // SHORTER act: the diagnosis earns its length, the answer should not
-      // outstay it.
+      // 1.91 vh of authored content + 4 x 0.3 vh => 3.08 vh (2371 px),
+      // against Act I's 5.92. The rebirth stays the SHORTER act: the
+      // diagnosis earns its length, the answer should not outstay it.
       //
-      // 0.45 IS MEASURED, NOT AUTHORED. The runway is this act's real dial,
-      // because the classic band is ONE FRAME TALL inside it - so the hole it
-      // leaves is VERTICAL, and `angleDeg` does not touch it (probed on
-      // camera: 45 deg -> 23.61 deg moved `coverage()` by exactly nothing).
-      // Halving the runway is what closes it. `coverage()` @1440x769:
+      // THE RUNWAY IS MEASURED, NOT AUTHORED, and it is this act's real dial
+      // — `angleDeg` is not (probed on camera: 45 deg -> 23.61 deg moved
+      // `coverage()` by exactly nothing, because the hole a band leaves is
+      // VERTICAL). `coverage()` @1440x769, down the three passes:
       //
-      //     gapVh   secH    net+copy   nothing   longest hole   holes
-      //     0.90    4190    26.8 %     36.6 %    1140 px        3
-      //     0.45    2806    54.7 %     28.3 %     796 px        1
+      //     arm       gapVh   secH   net+copy   nothing   longest hole
+      //     classic   0.90    4190    26.8 %    36.6 %    1140 px
+      //     classic   0.45    2806    54.7 %    28.3 %     796 px
+      //     ribbon    0.30    2371    63.7 %    28.7 %     680 px
       //
-      // Act I, for scale: 55.3 % nothing, a 2636 px hole. Even at 0.45 this
-      // act still runs 2806 px of lateral at tan 45 deg ~ 1.95 screen widths,
-      // so the diagonal is not shortened - only the empty stretches are.
-      gapVh: 0.45,
+      // Shipped on the last row. 2371 px of lateral at tan 45 deg is still
+      // ~1.65 screen widths, so the diagonal is not shortened — only the
+      // empty stretches are.
+      gapVh: 0.3,
       // 3 ledger rows ⇒ 4 authored gaps (chapter→01, 01→02, 02→03, tail),
       // the same count and the same CSS distribution as Act I.
       gapCount: 4,
@@ -322,9 +330,9 @@ export const traverseConfig: TraverseConfigShape = {
       // chose visible net edges over a taller-than-frame net), and the pin
       // keeps the runway growth out of rect.h.
       bandVh: 1.0,
-      ribbon: false,
-      // Inert while `ribbon` is false; kept a valid arm so a live A/B write
-      // of `{ ribbon: true }` has something to build against.
+      ribbon: true,
+      // The arm the ribbon builds at — "onFrame" is the only one the lite
+      // tier accepts, and the one both acts now share.
       ribbonDensity: "onFrame",
       meteorHold: null,
     },
