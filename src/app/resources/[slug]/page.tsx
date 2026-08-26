@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { resources, getResourceBySlug } from "@/data/resources";
+import { pageMetadata } from "@/lib/metadata";
 import { ResourceDetailClient } from "./resource-detail-client";
 
 export async function generateStaticParams() {
@@ -17,11 +18,13 @@ export async function generateMetadata({
   if (!resource) {
     return { title: "Article not found" };
   }
-  return {
+  /* pageMetadata(): the root layout declares an openGraph block, so a bare
+     title here would leave every article sharing the generic studio card. */
+  return pageMetadata({
     title: resource.title,
     description: resource.excerpt,
-    alternates: { canonical: `/resources/${resource.slug}` },
-  };
+    path: `/resources/${resource.slug}`,
+  });
 }
 
 export default async function ResourceDetailPage({

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { caseStudies } from "@/data/case-studies";
 import { attributionLine, attributionTitle } from "@/components/work/attribution";
+import { pageMetadata } from "@/lib/metadata";
 import { CaseStudyDetailClient } from "./case-study-detail-client";
 
 export async function generateStaticParams() {
@@ -20,12 +21,20 @@ export async function generateMetadata({
   }
   /* A shared link or a search result must never read as a SerSan client
      engagement: "prior" entries lead with the qualifier, so even a truncated
-     SERP row carries it. (Metadata is English-only site-wide.) */
-  return {
+     SERP row carries it. (Metadata is English-only site-wide.)
+
+     pageMetadata() rather than a bare object: the root layout declares an
+     openGraph block, and Next does NOT derive og:title from a page's title
+     when the parent has one — so without this the social card for
+     /case-studies/revolut showed the generic studio pitch and dropped the
+     "Prior experience" qualifier in the one place a reader often sees nothing
+     but the title. The generated opengraph-image route still supplies the
+     image; only the text is set here. */
+  return pageMetadata({
     title: attributionTitle(study),
-    description: `${attributionLine(study, true)}. ${study.summary}`,
-    alternates: { canonical: `/case-studies/${study.id}` },
-  };
+    description: `${attributionLine(study, true)}. ${study.summary}`.slice(0, 300),
+    path: `/case-studies/${study.id}`,
+  });
 }
 
 export default async function CaseStudyDetailPage({

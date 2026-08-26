@@ -1,18 +1,16 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import ServiceDetail from "@/components/sections/service-detail";
 import { getService } from "@/data/services";
 
 const service = getService("engineering")!;
 
-export const metadata: Metadata = {
-  // Distinct search intent per service — the four pages used to share one
-  // template title and compete with each other.
+export const metadata: Metadata = pageMetadata({
   title: "Custom Software, Internal Tools & AI Products",
   description:
-    "Custom software built around how your business works: internal tools, management systems, customer portals, web apps, APIs and AI-powered products. No internal engineering team required.",
-  alternates: { canonical: `/services/${service.slug}` },
-  robots: { index: true, follow: true },
-};
+    "Custom software built around how your business actually works: internal tools, portals, platforms and AI products. No in-house engineering team required.",
+  path: `/services/${service.slug}`,
+});
 
 export default function EngineeringServicePage() {
   return <ServiceDetail service={service} />;

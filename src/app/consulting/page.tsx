@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { ConsultingClient } from "./consulting-client";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Consulting. Custom Software, AI & Automation",
   description:
-    "Three formats, depending on what you need. A Focused Diagnostic is a fixed-scope look at one workflow, system or automation opportunity, in 2–6 business days. A Delivery Sprint is the hands-on build, in 2–8 weeks. A Technical Partnership keeps development, support or technical leadership going, scoped phase by phase. Small, well-defined projects are welcome.",
-  alternates: { canonical: "/consulting" },
-};
+    "Three ways to work together: a focused diagnostic, a delivery sprint, or an ongoing technical partnership. Scoped before we build. Small projects stay small.",
+  path: "/consulting",
+});
 
 export default function ConsultingPage() {
   return <ConsultingClient />;

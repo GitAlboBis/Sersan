@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { AboutClient } from "./about-client";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "About. Founder-Led, Technically Owned",
   description:
-    "Sersan was founded by two people with opposite backgrounds: Alessandro Serratt (commercial — scoping, structure, client communication) and Michele Sanna (CPTO; PhD Applied Mathematics, LSE; prior senior delivery at Revolut, JPMorgan, Deloitte), with software engineer Mattia Scattu. Every project has a named commercial owner and a named technical owner. London-registered.",
-  alternates: { canonical: "/about" },
-};
+    "Founder-led, technically owned. Alessandro Serratt on the commercial side, Michele Sanna (PhD, LSE) on the technical, with named ownership on every project.",
+  path: "/about",
+});
 
 export default function AboutPage() {
   return <AboutClient />;

@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { ContactClient } from "./contact-client";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Contact",
   description:
-    "Talk to the people who'll build it. SerSan is a founder-led studio building custom software, automation and AI for founders, SMEs and growing teams. Reply within one business day.",
-  alternates: { canonical: "/contact" },
-};
+    "Tell us what you're trying to build, automate or fix. Two or three sentences is enough, and a founder reads it and replies within one business day.",
+  path: "/contact",
+});
 
 export default function ContactPage() {
   return <ContactClient />;

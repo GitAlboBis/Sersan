@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { TermsClient } from "./terms-client";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Terms of Service",
-  description: "Terms and conditions governing the use of SERSAN services and website.",
-  alternates: { canonical: "/terms" },
-  robots: { index: false, follow: true },
-};
+  description:
+    "Terms and conditions governing the use of SERSAN services and website.",
+  path: "/terms",
+  index: false,
+});
 
 export default function TermsPage() {
   return <TermsClient />;

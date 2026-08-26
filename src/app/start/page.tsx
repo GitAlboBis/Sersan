@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
+import { pageMetadata } from "@/lib/metadata";
 import { StartClient } from "./start-client";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = pageMetadata({
   title: "Send a project brief",
   description:
     "Tell us what's slowing you down — one workflow, one product idea, one system that needs fixing. Two or three sentences is enough. Reply within one business day.",
-  alternates: { canonical: "/start" },
-  robots: { index: true, follow: true },
-};
+  path: "/start",
+});
 
 /**
  * /start — the project-brief intake page.
