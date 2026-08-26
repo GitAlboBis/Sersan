@@ -85,64 +85,64 @@ function getAreas(isEn: boolean): PracticeArea[] {
   return [
     {
       num: "01",
-      title: isEn ? "Enterprise architecture" : "Architettura enterprise",
+      title: isEn ? "Software architecture" : "Architettura software",
       desc: isEn
-        ? "We design the system before we ship it. Boundaries, data flow, failure modes, and the upgrade path."
-        : "Progettiamo il sistema prima di metterlo in produzione. Confini, flussi dati, modalità di errore e percorso di upgrade.",
+        ? "We design the system before we build it: what it does, how it fails, what it costs — and what should not be built at all."
+        : "Progettiamo il sistema prima di costruirlo: cosa fa, come si rompe, quanto costa e cosa non andrebbe costruito affatto.",
       href: "/services/architecture",
     },
     {
       num: "02",
-      title: isEn ? "Workflow automation" : "Automazione dei workflow",
+      title: isEn ? "Workflow automation" : "Automazione dei processi",
       desc: isEn
-        ? "Repetitive, rule-bound work that humans shouldn't be doing. We map it, automate it, monitor it."
-        : "Lavoro ripetitivo e basato su regole che non dovrebbero fare le persone. Lo mappiamo, lo automatizziamo, lo monitoriamo.",
+        ? "The repetitive work your team still does by hand. We map it, automate the parts that should be, and make sure nothing goes missing."
+        : "Il lavoro ripetitivo che il team fa ancora a mano. Lo mappiamo, automatizziamo ciò che ha senso automatizzare e ci assicuriamo che nulla si perda.",
       href: "/services/automation",
     },
     {
       num: "03",
-      title: isEn ? "Data platforms" : "Piattaforme dati",
+      title: isEn ? "Data & reporting" : "Dati e reportistica",
       desc: isEn
-        ? "From ingest to warehouse to BI. Built to be queried, governed, and understood."
-        : "Dall'ingest al warehouse alla BI. Costruite per essere interrogate, governate e comprese.",
+        ? "One place where the numbers agree — ingest, warehouse and reporting your team can actually query and trust."
+        : "Un unico posto in cui i numeri coincidono: ingest, warehouse e reportistica che il team può davvero interrogare.",
       href: "/audit",
     },
     {
       num: "04",
-      title: isEn ? "ML & production AI" : "ML e AI in produzione",
+      title: isEn ? "Custom software" : "Software su misura",
       desc: isEn
-        ? "Models that get to production and stay there. Pre-training, fine-tuning, RAG, agentic systems."
-        : "Modelli che arrivano in produzione e ci restano. Pre-training, fine-tuning, RAG, sistemi agentici.",
+        ? "Internal tools, client portals and products built around how you actually work — with AI only where it earns its place."
+        : "Strumenti interni, portali per i clienti e prodotti costruiti su come lavorate davvero, con l'AI solo dove se lo merita.",
       href: "/services/engineering",
     },
     {
       num: "05",
-      title: "MLOps",
+      title: isEn ? "AI in production" : "AI in produzione",
       desc: isEn
-        ? "The boring infrastructure that makes AI shippable: feature stores, registries, monitoring, rollbacks."
-        : "L'infrastruttura noiosa che rende l'AI rilasciabile: feature store, registry, monitoring, rollback.",
+        ? "Assistants, retrieval and models that stay reliable after launch. The MLOps plumbing: evaluation, monitoring, rollback."
+        : "Assistenti, retrieval e modelli che restano affidabili dopo il lancio. L'impianto MLOps: valutazione, monitoring, rollback.",
       href: "/services/mlops",
     },
     {
       num: "06",
       title: isEn ? "FinTech engineering" : "Ingegneria FinTech",
       desc: isEn
-        ? "Low-latency, regulated, real money. Eight years of senior delivery at JPM, Revolut, Brevan Howard."
-        : "Bassa latenza, regolamentato, denaro reale. Otto anni di delivery senior in JPM, Revolut, Brevan Howard.",
+        ? "Low-latency, regulated, real money. Our CPTO spent eight years delivering it at J.P. Morgan, Revolut and Brevan Howard."
+        : "Bassa latenza, regolamentato, denaro reale. Il nostro CPTO l'ha fatto per otto anni in J.P. Morgan, Revolut e Brevan Howard.",
     },
     {
       num: "07",
-      title: isEn ? "Quantitative ML" : "ML quantitativo",
+      title: isEn ? "Forecasting & risk" : "Previsione e rischio",
       desc: isEn
-        ? "Forecasting, signal generation, risk. The mathematics behind the trading and treasury surfaces."
-        : "Forecasting, generazione di segnali, gestione del rischio. La matematica dietro trading e tesoreria.",
+        ? "Demand, pricing, signals, exposure. The mathematics behind decisions that are currently made on instinct."
+        : "Domanda, prezzi, segnali, esposizione. La matematica dietro decisioni che oggi si prendono a intuito.",
     },
     {
       num: "08",
       title: "Fractional CTO",
       desc: isEn
-        ? "We own the roadmap, architecture governance, hiring, and delivery rituals for 3–12 months."
-        : "Ci prendiamo carico di roadmap, governance architetturale, hiring e riti di delivery per 3–12 mesi.",
+        ? "A senior technical owner in the room for roadmap, architecture, hiring and vendor decisions. Scoped in phases."
+        : "Un responsabile tecnico senior al tavolo per roadmap, architettura, hiring e scelta dei fornitori. Definito per fasi.",
     },
   ];
 }

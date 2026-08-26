@@ -37,7 +37,7 @@ export default function GlobalError({
       </p>
 
       <h1 className="heading-1 mb-6 max-w-[20ch]">
-        Even our systems wake up at 3am{" "}
+        Even well-built systems break{" "}
         <span className="font-display font-medium" style={{ color: "hsl(var(--accent))" }}>
           sometimes.
         </span>

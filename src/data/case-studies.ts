@@ -49,9 +49,50 @@ export interface CaseStudyRailItem {
   labelIt?: string;
 }
 
+/**
+ * WHO DELIVERED THIS, AND UNDER WHAT BADGE.
+ *
+ * This must never be ambiguous. Before 2026-08 the archive had no attribution
+ * field at all: provenance survived only inside free-text `engagement`/`role`,
+ * the card component rendered neither, and two entries (Revolut, J.P. Morgan)
+ * carried no qualifier anywhere. The result read as a wall of tier-1 client
+ * logos under the heading "Engineering you can name."
+ *
+ *   "sersan" — Sersan Limited was itself contracted for this work.
+ *   "prior"  — prior professional experience of a named Sersan team member,
+ *              delivered at a previous employer or as a pre-Sersan freelancer.
+ *              `attributionPerson` and `attributionVia` say who and through whom.
+ *
+ * Never present a "prior" entry as a Sersan client engagement, and never build
+ * an aggregate count that silently blends the two.
+ */
+export type CaseStudyAttribution = "sersan" | "prior";
+
+/**
+ * Delivery status. Precise, and never rounded up: a preview deployment is not
+ * a production launch, and a planned feature is not an operational one.
+ */
+export type CaseStudyStatus =
+  | "live"
+  | "production-beta"
+  | "client-preview"
+  | "private-launch"
+  | "implementation"
+  | "ongoing"
+  | "planned"
+  | "completed";
+
 export interface CaseStudy {
   id: string;
   client: string;
+  /** Who delivered this, and under what badge. See CaseStudyAttribution. */
+  attribution: CaseStudyAttribution;
+  /** For "prior" entries: the Sersan team member whose experience this is. */
+  attributionPerson?: string;
+  /** For "prior" entries: the employer or intermediary it was delivered through. */
+  attributionVia?: string;
+  /** Precise delivery status. Drives the status chip on cards and detail pages. */
+  status: CaseStudyStatus;
   engagement: string;
   engagementIt: string;
   role: string;
@@ -100,6 +141,8 @@ export const caseStudies: CaseStudy[] = [
     palette: { highlight: "#3BE1FF" },
     depthImage: "/case-studies/depth/spherenode-depth.webp",
     client: "SphereNode",
+    attribution: "sersan",
+    status: "live",
     engagement: "Vertical trading-education platform (Sersan Build)",
     engagementIt: "Piattaforma verticale di trading education (Build Sersan)",
     role: "Sersan Team. End-to-End Product, AI & Platform",
@@ -114,7 +157,7 @@ export const caseStudies: CaseStudy[] = [
     techStack: ["TypeScript", "React", "Python", "FastAPI", "PostgreSQL", "Supabase", "Gemini RAG", "Vimeo", "Capacitor", "PWA", "Stripe / Whop", "OpenTelemetry"],
     metrics: [
       { value: "8 → 1", label: "SaaS tools consolidated into a single proprietary platform", labelIt: "Strumenti SaaS consolidati in una sola piattaforma proprietaria" },
-      { value: "Live", label: "Production at spherenode.com, launching now", labelIt: "In produzione su spherenode.com, in lancio" },
+      { value: "Live", label: "Production platform live at spherenode.com", labelIt: "Piattaforma in produzione su spherenode.com" },
       { value: "32", label: "Granular RBAC capabilities for safe team scaling", labelIt: "Capability RBAC granulari per scalare il team in sicurezza" },
       { value: "PWA + iOS + Android", label: "One codebase, three install paths via Capacitor", labelIt: "Una codebase, tre install path via Capacitor" },
       { value: "IT + EN", label: "Bilingual from day one, every public string", labelIt: "Bilingue dal day one, ogni stringa pubblica" },
@@ -138,6 +181,8 @@ export const caseStudies: CaseStudy[] = [
     palette: { highlight: "#2A7FFF" },
     depthImage: "/case-studies/depth/quantex-depth.webp",
     client: "Quantex.live",
+    attribution: "sersan",
+    status: "live",
     engagement: "AI-Native Quant Trading Platform (Sersan Build)",
     engagementIt: "Piattaforma di Trading Quantitativo AI-Native (Build Sersan)",
     role: "Sersan Team. End-to-End Product, AI & Platform",
@@ -171,6 +216,8 @@ export const caseStudies: CaseStudy[] = [
     palette: { highlight: "#58C97B" },
     depthImage: "/case-studies/depth/terranoa-depth.webp",
     client: "Terra Noa",
+    attribution: "sersan",
+    status: "implementation",
     engagement: "Integrated Agritech & Renewables (Sersan Engagement)",
     engagementIt: "Agritech & Rinnovabili Integrato (Engagement Sersan)",
     role: "Sersan Team. Board Leadership, Architecture & Data Platform",
@@ -198,6 +245,8 @@ export const caseStudies: CaseStudy[] = [
     featured: 3,
     depthImage: "/case-studies/depth/domus-tua-depth.webp",
     client: "Domus Tua",
+    attribution: "sersan",
+    status: "client-preview",
     engagement: "Real-estate agency digital platform (Sersan Build)",
     engagementIt: "Piattaforma digitale per agenzia immobiliare (Build Sersan)",
     role: "Sersan Team. Design, Engineering & Motion",
@@ -206,15 +255,21 @@ export const caseStudies: CaseStudy[] = [
     domainIt: "Real Estate · Sito Brand · Motion Design · Lead Generation",
     industry: "Real Estate",
     summary:
-      "Cinematic brand platform for Domus Tua, the Tradate (VA) real-estate agency led by Raffaela Rezza, operating since 2007. A session intro presents the founder hand-building the wordmark before an arched portal opens onto the hero; below it, the agency's method (data-driven valuation, documents verified before listing, Open Domus format) drives a single conversion path — the property-valuation request. Built and shipped by Sersan on the live deploy.",
+      "Cinematic brand platform for Domus Tua, the Tradate (VA) real-estate agency led by Raffaela Rezza, operating since 2007. A session intro presents the founder hand-building the wordmark before an arched portal opens onto the hero; below it, the agency's method (data-driven valuation, documents verified before listing, Open Domus format) drives a single conversion path — the property-valuation request. Designed, built and deployed by Sersan; currently on a client preview deploy ahead of the custom-domain launch.",
     summaryIt:
-      "Piattaforma brand cinematica per Domus Tua, l'agenzia immobiliare di Tradate (VA) guidata da Raffaela Rezza, attiva dal 2007. Un'intro di sessione presenta la fondatrice che costruisce il wordmark prima che un portale ad arco si apra sull'hero; sotto, il metodo dell'agenzia (valutazione sui dati, documenti verificati prima del mercato, formato Open Domus) guida un solo percorso di conversione — la richiesta di valutazione dell'immobile. Costruita e pubblicata da Sersan.",
+      "Piattaforma brand cinematica per Domus Tua, l'agenzia immobiliare di Tradate (VA) guidata da Raffaela Rezza, attiva dal 2007. Un'intro di sessione presenta la fondatrice che costruisce il wordmark prima che un portale ad arco si apra sull'hero; sotto, il metodo dell'agenzia (valutazione sui dati, documenti verificati prima del mercato, formato Open Domus) guida un solo percorso di conversione — la richiesta di valutazione dell'immobile. Progettata, costruita e pubblicata da Sersan; attualmente su un deploy di anteprima per il cliente, in attesa del lancio sul dominio.",
     techStack: ["Next.js", "TypeScript", "Tailwind CSS", "Lenis", "Vercel"],
+    /* PROMPT 10 (2026-08): these were the CLIENT's own credentials — 4.9/5 from
+       531 Google reviews, "Top 400 agencies", "operating since 2007" — rendered
+       as if they were outcomes Sersan produced. They are context for why the
+       agency deserved a platform, not results the build caused. Restated as
+       what was actually delivered; no quantitative outcome is claimed because
+       the site is a client preview and none has been measured yet. */
     metrics: [
-      { value: "4.9/5", label: "531 Google reviews", labelIt: "531 recensioni Google" },
-      { value: "Top 400", label: "among Italy's best agencies, 3 years running", labelIt: "fra le migliori agenzie d'Italia, 3 anni consecutivi" },
-      { value: "2007", label: "serving Tradate and the Varese province since", labelIt: "al servizio di Tradate e provincia di Varese dal" },
-      { value: "1 path", label: "every page funnels to the valuation request", labelIt: "ogni pagina converge sulla richiesta di valutazione" },
+      { value: "1 path", label: "Every page funnels to a single conversion: the valuation request", labelIt: "Ogni pagina converge su un'unica conversione: la richiesta di valutazione" },
+      { value: "Full build", label: "Brand platform designed, built and deployed end to end", labelIt: "Piattaforma brand progettata, costruita e pubblicata end-to-end" },
+      { value: "Preview", label: "Client preview deploy — custom domain launch pending", labelIt: "Deploy di anteprima per il cliente — lancio su dominio in attesa" },
+      { value: "Since 2007", label: "Client context: an established Tradate agency, not a new brand", labelIt: "Contesto cliente: agenzia storica di Tradate, non un brand nuovo" },
     ],
     liveUrl: "https://domus-tua-ten.vercel.app/",
     previewImage: "/case-studies/domus-tua-preview.webp",
@@ -231,6 +286,10 @@ export const caseStudies: CaseStudy[] = [
     featured: 5,
     palette: { highlight: "#8AB8FF" },
     client: "Revolut",
+    attribution: "prior",
+    attributionPerson: "Michele Sanna",
+    attributionVia: "Revolut",
+    status: "completed",
     engagement: "Real-Time Anti-Fraud ML Platform",
     engagementIt: "Piattaforma ML Anti-Frode in Tempo Reale",
     role: "Senior Data Scientist / ML Engineer",
@@ -256,6 +315,10 @@ export const caseStudies: CaseStudy[] = [
     featured: 6,
     palette: { highlight: "#9DB7D9" },
     client: "J.P. Morgan",
+    attribution: "prior",
+    attributionPerson: "Michele Sanna",
+    attributionVia: "J.P. Morgan",
+    status: "completed",
     engagement: "Quantitative ML across Treasury, Credit & Aerospace Research",
     engagementIt: "ML Quantitativo su Treasury, Credito e Ricerca Aerospaziale",
     role: "VP · Quantitative Data Scientist (Liquidity & Credit ML)",
@@ -282,6 +345,10 @@ export const caseStudies: CaseStudy[] = [
     featured: 7,
     palette: { highlight: "#B8C4D4" },
     client: "Apple UK (via Deloitte)",
+    attribution: "prior",
+    attributionPerson: "Michele Sanna",
+    attributionVia: "Deloitte",
+    status: "completed",
     engagement: "Retail Demand & Allocation Forecasting",
     engagementIt: "Forecasting Domanda & Allocazione Retail",
     role: "Data Scientist (Consulting)",
@@ -305,6 +372,10 @@ export const caseStudies: CaseStudy[] = [
     id: "pharma-deloitte",
     palette: { highlight: "#7FD1AE" },
     client: "Tier-1 Pharmaceutical (via Deloitte)",
+    attribution: "prior",
+    attributionPerson: "Michele Sanna",
+    attributionVia: "Deloitte",
+    status: "completed",
     engagement: "Clinical Trial Site Selection ML",
     engagementIt: "ML per Selezione Siti di Trial Clinici",
     role: "Data Scientist (Consulting)",
@@ -327,6 +398,10 @@ export const caseStudies: CaseStudy[] = [
     id: "regione-sardegna",
     palette: { highlight: "#4AA6DE" },
     client: "Regione Sardegna (via Accenture)",
+    attribution: "prior",
+    attributionPerson: "Michele Sanna",
+    attributionVia: "Accenture",
+    status: "completed",
     engagement: "FSE Sardegna · SISAR · SIBAR / SIBEAR",
     engagementIt: "FSE Sardegna · SISAR · SIBAR / SIBEAR",
     role: "Data Scientist / Solution Architect",
@@ -351,6 +426,10 @@ export const caseStudies: CaseStudy[] = [
     id: "salvatori",
     palette: { highlight: "#E8A33D" },
     client: "Salvatori",
+    attribution: "prior",
+    attributionPerson: "Michele Sanna",
+    attributionVia: "fractional CTO contract",
+    status: "completed",
     engagement: "Fractional CTO · Industrial AI programme (Sersan engagement)",
     engagementIt: "CTO frazionale · Programma AI Industriale (Ingaggio Sersan)",
     role: "Sersan / Michele Sanna. Chief Technology Officer (Contract)",
@@ -375,6 +454,10 @@ export const caseStudies: CaseStudy[] = [
     id: "leonardo",
     palette: { highlight: "#C4262E" },
     client: "Leonardo S.p.A. (Freelance)",
+    attribution: "prior",
+    attributionPerson: "Michele Sanna",
+    attributionVia: "freelance",
+    status: "completed",
     engagement: "SecDevOps Rebuild of Satellite-Imagery Platform",
     engagementIt: "Rebuild SecDevOps di Piattaforma di Imagery Satellitare",
     role: "SecDevOps / Platform Engineer (Freelance)",
@@ -400,6 +483,10 @@ export const caseStudies: CaseStudy[] = [
     featured: 8,
     palette: { highlight: "#4AA6DE" },
     client: "World Health Organization (Freelance Research Grant)",
+    attribution: "prior",
+    attributionPerson: "Michele Sanna",
+    attributionVia: "research grant",
+    status: "completed",
     engagement: "Early-Stage Breast-Cancer Nodule Detection",
     engagementIt: "Rilevamento Precoce di Noduli al Seno",
     role: "ML Research Lead (Freelance, Research Grant)",
@@ -424,6 +511,10 @@ export const caseStudies: CaseStudy[] = [
     id: "rsa-italy",
     palette: { highlight: "#6FCF97" },
     client: "Italian RSA Network (Freelance)",
+    attribution: "prior",
+    attributionPerson: "Michele Sanna",
+    attributionVia: "freelance",
+    status: "completed",
     engagement: "Clinical Risk & Operations Platform for Elderly Care",
     engagementIt: "Piattaforma Clinica di Rischio & Operations per Cura degli Anziani",
     role: "ML & Data Platform Lead (Freelance)",
@@ -447,6 +538,10 @@ export const caseStudies: CaseStudy[] = [
     id: "stealth-greentech",
     palette: { highlight: "#3ED598" },
     client: "Stealth Greentech (Smart Charter Fleet)",
+    attribution: "prior",
+    attributionPerson: "Michele Sanna",
+    attributionVia: "co-founder & CTO",
+    status: "completed",
     engagement: "Smart Private-Charter Platform · CTO · Full Build to Exit",
     engagementIt: "Piattaforma Smart Private-Charter · CTO · Dal Build all'Exit",
     role: "Co-Founder & CTO",

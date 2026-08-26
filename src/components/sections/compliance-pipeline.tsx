@@ -3,8 +3,10 @@
 /**
  * CompliancePipeline — the compliance conduit as a choreographed moment that
  * stands on its own on EVERY tier (M4 → M5). Input → PII redaction → router
- * → guardrail → audit log → output, each stage labelled with the regulation
- * it satisfies (copy unchanged, EN/IT).
+ * → guardrail → audit log → output, each stage labelled with the control
+ * reference it maps to (frozen copy, EN/IT). It shows what a system CAN be
+ * built to do when the data warrants it — NOT a universal regime every
+ * engagement passes: a workflow automation has no model router at all.
  *
  * Three beats, one GSAP master timeline per breakpoint variant:
  *
@@ -892,8 +894,8 @@ export default function CompliancePipeline() {
   const stageLabel = (k: StageKey) =>
     isEn ? STAGE_LABELS[k].en : STAGE_LABELS[k].it;
   const ariaLabel = isEn
-    ? "Compliance data flow: input through PII redaction, model routing, guardrail checks, and audit logging to output, satisfying GDPR, EU AI Act, DORA, and ISO 27001"
-    : "Flusso dati di conformità: input attraverso redazione PII, routing dei modelli, controllo guardrail e log di audit fino all'output, in conformità con GDPR, EU AI Act, DORA e ISO 27001";
+    ? "Compliance data flow: input through PII redaction, model routing, guardrail checks, and audit logging to output, mapped to GDPR, EU AI Act, DORA, and ISO 27001 control references"
+    : "Flusso dati di conformità: input attraverso redazione PII, routing dei modelli, controllo guardrail e log di audit fino all'output, mappati sui riferimenti di controllo GDPR, EU AI Act, DORA e ISO 27001";
 
   return (
     <section
@@ -938,8 +940,8 @@ export default function CompliancePipeline() {
           <RevealOnScroll delay={0}>
             <p className="text-base text-ink-mute leading-[1.55]">
               {isEn
-                ? "Every request through a Sersan system passes the same controlled pipeline. The diagram below mirrors the actual checkpoints your data crosses."
-                : "Ogni richiesta in un sistema Sersan attraversa la stessa pipeline controllata. Lo schema qui sotto rispecchia i checkpoint reali che i vostri dati attraversano."}
+                ? "When a system handles sensitive or regulated data, this is the shape we build it in. Simpler systems need fewer of these stages; the diagram shows the full set."
+                : "Quando un sistema tratta dati sensibili o regolamentati, questa è la forma in cui lo costruiamo. I sistemi più semplici richiedono meno fasi: lo schema mostra l'insieme completo."}
             </p>
           </RevealOnScroll>
         </div>
@@ -1003,8 +1005,8 @@ export default function CompliancePipeline() {
 
         <p className="mt-5 text-xs text-ink-mute leading-[1.55]">
           {isEn
-            ? "GDPR · EU AI Act · DORA · ISO 27001 — each checkpoint backed by the regulation it satisfies."
-            : "GDPR · EU AI Act · DORA · ISO 27001 — ogni checkpoint coperto dalla normativa che soddisfa."}
+            ? "GDPR · EU AI Act · DORA · ISO 27001 — the reference each checkpoint maps to, not a certification we hold."
+            : "GDPR · EU AI Act · DORA · ISO 27001 — il riferimento a cui ogni checkpoint si àncora, non una certificazione che possediamo."}
         </p>
       </div>
     </section>

@@ -7,52 +7,53 @@ import CompliancePipeline from "@/components/sections/compliance-pipeline";
 import { Reveal } from "@/components/ui/reveal";
 import { HonestFaq } from "@/components/ui/honest-faq";
 import { useLanguage } from "@/components/language-provider";
+import { COMPLIANCE, POSITIONING, pick } from "@/data/copy";
 
 export function TrustClient() {
   const { language } = useLanguage();
   const isEn = language === "en";
 
   // Ledger anatomy: the regulation NAME is the display element (mono,
-  // accent), the STATUS line is derived from each retired card title's own
-  // wording ("ISO 27001 (in progress)" → "In progress", "DORA-aligned" →
-  // "Aligned", …) — the engagement-acts precedent of rail labels derived
-  // from existing scope lines. Descriptions carry over byte-identical.
+  // accent), the STATUS line sits under it. 2026-08 repositioning: the
+  // status line is POSTURE, never an attestation — a bare "Compliant" /
+  // "Ready" / "In progress" reads as a held certification to a procurement
+  // reader, and SerSan holds none. See COMPLIANCE in @/data/copy.
   const standards = [
     {
       name: "ISO 27001",
-      status: isEn ? "In progress" : "In corso",
+      status: isEn ? "Not certified" : "Non certificati",
       desc: isEn
-        ? "Information security management system in active certification. Policies, controls, and audit trail aligned to the 2022 standard."
-        : "Sistema di gestione della sicurezza delle informazioni in fase di certificazione. Policy, controlli e audit trail allineati allo standard 2022.",
+        ? "We hold no ISO 27001 certification and don't claim one. We use the 2022 standard as a control reference where a client's procurement needs that vocabulary."
+        : "Non abbiamo la certificazione ISO 27001 e non la rivendichiamo. Usiamo lo standard 2022 come riferimento per i controlli quando le procedure d'acquisto del cliente lo richiedono.",
     },
     {
       name: "DORA",
-      status: isEn ? "Aligned" : "Allineato",
+      status: isEn ? "Design reference" : "Riferimento progettuale",
       desc: isEn
-        ? "Operational resilience controls aligned with the EU Digital Operational Resilience Act for financial-services clients."
-        : "Controlli di resilienza operativa allineati al Digital Operational Resilience Act (DORA) per clienti del settore finanziario.",
+        ? "Operational-resilience controls — continuity, incident handling, third-party risk — designed in where a financial-services client's obligations require them."
+        : "Controlli di resilienza operativa — continuità, gestione degli incidenti, rischio di terze parti — progettati quando gli obblighi del cliente lo richiedono.",
     },
     {
       name: "EU AI Act",
-      status: isEn ? "Ready" : "Pronti",
+      status: isEn ? "Scope-specific" : "Specifico per progetto",
       desc: isEn
-        ? "Risk classification, technical documentation, and human-oversight controls built into every AI engagement."
-        : "Classificazione del rischio, documentazione tecnica e controlli di supervisione umana integrati in ogni ingaggio AI.",
+        ? "Risk classification, technical documentation and human-oversight controls, built into AI systems whose intended use brings them into scope."
+        : "Classificazione del rischio, documentazione tecnica e controlli di supervisione umana, integrati nei sistemi AI il cui uso previsto rientra nell'ambito.",
     },
     {
       name: "GDPR",
-      status: isEn ? "Compliant" : "Conformi",
+      status: isEn ? "Contractual basis" : "Base contrattuale",
       desc: isEn
-        ? "DPA on file, data minimisation by default, EU-only data residency unless explicitly agreed otherwise."
-        : "DPA in archivio, minimizzazione dei dati di default, data residency esclusivamente nell'UE salvo diverso accordo esplicito.",
+        ? `DPA on file, data minimisation by default. ${COMPLIANCE.hosting.en}`
+        : `DPA in archivio, minimizzazione dei dati di default. ${COMPLIANCE.hosting.it}`,
     },
   ];
 
-  // The last three rows are the AI-specific controls the spec (AGENTS.md
-  // §Security) names outright — kill switch within 30s, eval gates
-  // pre-deploy, output review. They carry `accent: true` so their mono
-  // label renders in text-accent (owner decision: the spec wins over the
-  // earlier "no accent rows on this table" call).
+  // The last three rows are the AI-specific controls — stop path, graded
+  // release, human review. They carry `accent: true` so their mono label
+  // renders in text-accent. 2026-08: the measured absolutes ("within 30
+  // seconds", "all systems we operate", "never mixed") are gone — they were
+  // guarantees nobody had instrumented, on jobs that don't all carry them.
   const controls: { title: string; desc: string; accent?: boolean }[] = [
     {
       title: isEn ? "Data minimisation" : "Minimizzazione dei dati",
@@ -63,33 +64,33 @@ export function TrustClient() {
     {
       title: isEn ? "Access control" : "Controllo degli accessi",
       desc: isEn
-        ? "Access limited to the engagement team. All client-system access is audit-logged. Credentials rotate on engagement end."
-        : "Accesso limitato al team di ingaggio. Tutti gli accessi ai sistemi del cliente sono registrati su audit log. Le credenziali vengono ruotate al termine dell'ingaggio.",
+        ? "Access limited to the people working on your engagement, and logged on the systems we operate. Systems you own keep your own logging. Credentials are revoked at the end."
+        : "Accesso limitato alle persone che lavorano al vostro progetto, registrato sui sistemi che gestiamo noi. I vostri sistemi mantengono il vostro logging. Le credenziali vengono revocate alla fine.",
     },
     {
       title: isEn ? "Encryption" : "Cifratura",
       desc: isEn
-        ? "Encryption at rest (AES-256) and in transit (TLS 1.3) across all systems we operate. Client systems inherit the client's controls."
-        : "Cifratura at-rest (AES-256) e in-transit (TLS 1.3) su tutti i sistemi che gestiamo. I sistemi del cliente ereditano i controlli del cliente.",
+        ? "Encryption at rest and in transit on the systems we operate — AES-256 and modern TLS as standard. Systems you own keep the controls you already have."
+        : "Cifratura at-rest e in-transit sui sistemi che gestiamo: AES-256 e TLS moderno come impostazione standard. I sistemi vostri mantengono i controlli che avete già.",
     },
     {
       title: isEn ? "Subprocessors" : "Sub-responsabili",
       desc: isEn
-        ? "A controlled list of EU-based subprocessors (cloud, observability, document storage). Full list available on request under NDA."
-        : "Una lista controllata di sub-responsabili con sede UE (cloud, observability, archiviazione documenti). Elenco completo disponibile su richiesta sotto NDA.",
+        ? "Cloud hosting (AWS, Google Cloud, Azure), site and database (Vercel, Supabase), model APIs (Anthropic, OpenAI, Google), email (Resend). Named in the DPA, no NDA required."
+        : "Hosting cloud (AWS, Google Cloud, Azure), sito e database (Vercel, Supabase), API dei modelli (Anthropic, OpenAI, Google), email (Resend). Elencati nel DPA, senza NDA.",
     },
     {
-      title: isEn ? "AI kill switch" : "Kill switch AI",
+      title: isEn ? "AI stop path" : "Percorso di arresto AI",
       desc: isEn
-        ? "Every agentic system ships with a kill switch that halts it within 30 seconds."
-        : "Ogni sistema agentico include un kill switch che lo ferma entro 30 secondi.",
+        ? "Agentic systems ship with a documented way to stop them, operable by a named person on your side."
+        : "I sistemi agentici includono un modo documentato per fermarli, azionabile da una persona del vostro team.",
       accent: true,
     },
     {
       title: isEn ? "Eval gates" : "Eval gate",
       desc: isEn
-        ? "No model or agent change deploys without passing its evaluation suite."
-        : "Nessuna modifica a modelli o agenti va in produzione senza superare la sua suite di valutazione.",
+        ? "AI changes are graded against a test set before release, not judged by feel."
+        : "Le modifiche AI vengono valutate su un set di test prima del rilascio, non a sensazione.",
       accent: true,
     },
     {
@@ -138,31 +139,35 @@ export function TrustClient() {
     },
   ];
 
-  // Data-privacy answers absorbed verbatim from the retired /faq page
-  // (which now 308-redirects to /consulting#faq). Compliance claims match
-  // this page: ISO 27001 in progress, infrastructure in London (UK).
+  // Data-privacy answers absorbed from the retired /faq page (which now
+  // 308-redirects to /consulting#faq). 2026-08: the IP answer now matches
+  // the CONTRACT (/terms §5 — transfer on full payment, pre-existing
+  // know-how reserved) instead of over-promising against it, and the
+  // hosting answer uses COMPLIANCE.hosting so it cannot drift again.
   const privacyFaqs = [
     {
-      q: isEn ? "Are you GDPR compliant?" : "Siete conformi al GDPR?",
+      q: isEn
+        ? "How do you handle data protection?"
+        : "Come gestite la protezione dei dati?",
       a: isEn
-        ? "Yes. We have the usual data processing agreements, consent handling, and retention policies in place. Infrastructure is hosted in London (UK) and ISO 27001 certification is in progress."
-        : "Sì. Abbiamo in essere data processing agreement, gestione del consenso e policy di retention. L'infrastruttura è ospitata a Londra (Regno Unito) e la certificazione ISO 27001 è in corso.",
+        ? `Under a DPA, with data minimisation by default, documented retention and a named contact for rights requests. ${COMPLIANCE.hosting.en}`
+        : `Con un DPA, minimizzazione dei dati di default, retention documentata e un referente per le richieste degli interessati. ${COMPLIANCE.hosting.it}`,
     },
     {
       q: isEn
         ? "Who owns the intellectual property?"
         : "A chi appartiene la proprietà intellettuale?",
       a: isEn
-        ? "You do. All code, documentation, and deliverables produced during the engagement are yours. We don't retain rights to anything we build for you."
-        : "A voi. Tutto il codice, la documentazione e i deliverable prodotti durante l'ingaggio sono vostri. Non manteniamo diritti su nulla di ciò che costruiamo per voi.",
+        ? "You do. Code, documentation and deliverables transfer to you on full payment, with no licence back to us. We keep only our pre-existing know-how, frameworks and internal tooling — never your system."
+        : "A voi. Codice, documentazione e deliverable passano a voi a saldo avvenuto, senza licenze di ritorno. Tratteniamo solo know-how, framework e tooling interni preesistenti: mai il vostro sistema.",
     },
     {
       q: isEn
         ? "Where is your infrastructure hosted?"
         : "Dove è ospitata la vostra infrastruttura?",
       a: isEn
-        ? "Cloud providers in London (UK), with encryption at rest and in transit, ISO 27001 certification in progress, and regular security audits. Client data is never mixed between engagements."
-        : "Su cloud provider a Londra (Regno Unito), con cifratura at-rest e in-transit, certificazione ISO 27001 in corso e audit di sicurezza regolari. I dati dei clienti non vengono mai mescolati tra ingaggi diversi.",
+        ? "With cloud providers in the UK and EU, encrypted at rest and in transit. Each engagement runs under its own project and credentials, so data stays separated by design."
+        : "Su cloud provider nel Regno Unito e nell'UE, con cifratura at-rest e in-transit. Ogni progetto ha il proprio ambiente e le proprie credenziali: la separazione dei dati è per costruzione.",
     },
   ];
 
@@ -177,7 +182,9 @@ export function TrustClient() {
               style={{ background: "hsl(var(--accent))" }}
               aria-hidden="true"
             />
-            ISO 27001 {isEn ? "(in progress)" : "(in corso)"} · DORA · EU AI Act · GDPR
+            {isEn
+              ? "Ownership · Data handling · GDPR · DORA · EU AI Act"
+              : "Proprietà · Dati · GDPR · DORA · EU AI Act"}
           </p>
           {/* key={language} on every split heading here: SplitText owns the
               subtree once split; a language swap must remount it or React
@@ -185,24 +192,25 @@ export function TrustClient() {
           <h1 key={language} data-split-reveal className="font-display text-[clamp(2.25rem,6vw,4rem)] leading-[1.15] tracking-[-0.025em] text-ink text-balance mb-6 pb-1">
             {isEn ? (
               <>
-                Compliance is{" "}
+                Your code. Your data.{" "}
                 <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                  wired in.
+                  Your call.
                 </span>
               </>
             ) : (
               <>
-                La compliance è{" "}
+                Codice e dati sono vostri.{" "}
                 <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                  cablata dentro.
+                  La scelta anche.
                 </span>
               </>
             )}
           </h1>
           <p className="text-lg text-ink-mute leading-[1.55] mb-8">
+            {pick(isEn, POSITIONING.ownership)}
             {isEn
-              ? "Not bolted on. Every Sersan engagement passes the same control points, each backed by the regulation it satisfies."
-              : "Non appiccicata sopra. Ogni ingaggio Sersan attraversa gli stessi punti di controllo, ognuno ancorato alla normativa che soddisfa."}
+              ? " Controls scale with the build."
+              : " I controlli crescono con il sistema."}
           </p>
           <div className="flex flex-col sm:flex-row gap-3">
             <Button asChild variant="hero">
@@ -218,16 +226,23 @@ export function TrustClient() {
           </div>
           <p className="mt-5 text-xs text-ink-mute">
             {isEn
-              ? "Last updated: May 17, 2026 · This page is a summary; the Privacy Policy and DPA govern."
-              : "Ultimo aggiornamento: 17 maggio 2026 · Questa pagina è un riassunto; fanno fede la Privacy Policy e il DPA."}
+              ? "Last updated: August 27, 2026 · This page is a summary; the Privacy Policy and DPA govern."
+              : "Ultimo aggiornamento: 27 agosto 2026 · Questa pagina è un riassunto; fanno fede la Privacy Policy e il DPA."}
           </p>
         </div>
 
         {/* Standards */}
         <section className="mb-20">
-          <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
+          <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-3">
             {isEn ? "Standards" : "Standard"}
           </h2>
+          {/* Posture, never a status badge. SerSan holds no certification;
+              the honesty asset states that outright before the ledger. */}
+          <Reveal>
+            <p className="text-sm text-ink-mute leading-[1.55] mb-8 max-w-3xl">
+              {pick(isEn, COMPLIANCE.noClaims)} {pick(isEn, COMPLIANCE.posture)}
+            </p>
+          </Reveal>
           {/* Hairline ledger (service-detail "what we build" grammar):
               STATIC-OPEN rows, hover/focus brighten is the only interaction —
               all paint-only (color + a scaleY tick sweep on constant-space
@@ -331,9 +346,16 @@ export function TrustClient() {
 
         {/* Controls */}
         <section data-line-anchor="controls" className="mb-20">
-          <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-8">
+          <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[1.75rem] text-ink leading-tight mb-3">
             {isEn ? "Technical controls" : "Controlli tecnici"}
           </h2>
+          {/* Proportionality, stated before the list: a €5k workflow
+              automation does not carry a regulated platform's overhead. */}
+          <Reveal>
+            <p className="text-sm text-ink-mute leading-[1.55] mb-8 max-w-3xl">
+              {pick(isEn, COMPLIANCE.proportional)}
+            </p>
+          </Reveal>
           {/* Two-column hairline table (engagement-acts deliverables
               grammar): each control is a border-t row with a mono micro-caps
               label (uppercase is CSS-only — DOM strings stay byte-identical)
@@ -403,8 +425,8 @@ export function TrustClient() {
           <div className="border-y border-rule/70 py-7">
             <p className="max-w-3xl text-sm text-ink/85 mb-4 leading-[1.6]">
               {isEn
-                ? "For DPA requests, security questionnaires, or data subject requests, contact us directly. Founders answer the trust inbox personally."
-                : "Per richieste di DPA, questionari di sicurezza o richieste degli interessati, contattateci direttamente. I founder rispondono personalmente alla casella trust."}
+                ? "For DPA requests, security questionnaires or data subject requests, write to us directly. A founder answers, whether you have a procurement team or not."
+                : "Per richieste di DPA, questionari di sicurezza o richieste degli interessati, scriveteci direttamente. Risponde un founder, che abbiate un ufficio acquisti o no."}
             </p>
             <div className="flex flex-wrap gap-3">
               <Button asChild variant="hero">

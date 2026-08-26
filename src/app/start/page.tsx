@@ -2,15 +2,15 @@ import type { Metadata } from "next";
 import { StartClient } from "./start-client";
 
 export const metadata: Metadata = {
-  title: "Start with a technical scoping call",
+  title: "Send a project brief",
   description:
-    "Tell us what you're trying to build, automate, or harden. We'll review the context and reply within one business day with a recommended next step.",
+    "Tell us what's slowing you down — one workflow, one product idea, one system that needs fixing. Two or three sentences is enough. Reply within one business day.",
   alternates: { canonical: "/start" },
   robots: { index: true, follow: true },
 };
 
 /**
- * /start — the technical intake page.
+ * /start — the project-brief intake page.
  *
  * Replaces the old `mailto:` primary CTA across the site. Thin server
  * component (metadata + crisp initial paint); the full page body lives in

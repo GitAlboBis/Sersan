@@ -149,38 +149,38 @@ if (typeof window !== "undefined") {
 
 const GOOD_FIT_EN = [
   "You have a real workflow with cost or revenue tied to it.",
-  "You have an internal owner who'll run the system after handover.",
-  "You're moving prototype → production, or hardening live AI.",
-  "You're regulated (or about to be) and want to be ready.",
-  "You're technical, or have technical authority on the team.",
-  "You can budget for senior engineering, not just license costs.",
+  "You can explain the workflow, even if not the technology.",
+  "You'd rather fix one real problem than buy another licence.",
+  "You're regulated, or heading there, and want it built right.",
+  "Someone on your side can decide and unblock us, technical or not.",
+  "You can give us the people, data or access to understand it.",
 ];
 
 const GOOD_FIT_IT = [
   "Avete un workflow reale con costi o ricavi che ne dipendono.",
-  "Avete un referente interno che gestirà il sistema dopo il passaggio di consegne.",
-  "State portando un prototipo in produzione, o irrobustendo un'AI già live.",
-  "Siete regolamentati (o lo sarete a breve) e volete farvi trovare pronti.",
-  "Siete tecnici, o avete autorità tecnica nel team.",
-  "Potete mettere a budget ingegneria senior, non solo i costi di licenza.",
+  "Sapete spiegare il processo, anche se non la tecnologia.",
+  "Preferite risolvere un problema vero che comprare un'altra licenza.",
+  "Siete regolamentati, o lo sarete presto, e volete farlo bene.",
+  "Qualcuno da parte vostra può decidere e sbloccarci, tecnico o no.",
+  "Potete darci persone, dati o accessi per capire il problema.",
 ];
 
 const NOT_A_FIT_EN = [
   "You want a chatbot gimmick for a press release.",
-  "No internal owner, no roadmap, no operational plan.",
-  "You're at the slide-deck stage with no engineering budget.",
+  "No one can explain what problem is actually being solved.",
+  "You want speculative work: unpaid pilots, equity-only builds.",
   "You want to skip compliance to ship faster.",
-  "You need a partner to convince your CTO this is a good idea.",
-  "“Can you do it for equity?”",
+  "Nobody can actually decide, so nothing gets signed off.",
+  "You won't give us the access or feedback the work needs.",
 ];
 
 const NOT_A_FIT_IT = [
   "Volete un chatbot d'effetto per un comunicato stampa.",
-  "Nessun referente interno, nessuna roadmap, nessun piano operativo.",
-  "Siete alla fase di slide-deck, senza budget per l'ingegneria.",
+  "Nessuno sa spiegare quale problema si stia davvero risolvendo.",
+  "Volete lavoro speculativo: pilot non pagati, build solo in equity.",
   "Volete saltare la compliance per rilasciare più in fretta.",
-  "Vi serve un partner per convincere il vostro CTO che sia una buona idea.",
-  "«Lo fareste in cambio di equity?»",
+  "Nessuno può davvero decidere, quindi non si approva nulla.",
+  "Non ci darete gli accessi o i riscontri necessari a lavorare.",
 ];
 
 /* ------------------------------------------------------------------ *
@@ -973,8 +973,8 @@ export default function FitSection() {
   // Single-sourced: the native branch renders it through SectionHeading,
   // the pinned branch hangs it top-right as the annotation.
   const description = isEn
-    ? "A clear no protects both of us. About a third of scoping calls end with us recommending you don't engage SerSan: sometimes because it's the wrong moment, sometimes because we're the wrong studio."
-    : "Un no chiaro tutela entrambi. Circa un terzo delle scoping call si chiude con la nostra raccomandazione di non ingaggiare SerSan: a volte perché è il momento sbagliato, a volte perché siamo lo studio sbagliato.";
+    ? "A clear no protects both of us. Some scoping calls end with us telling you to spend the money elsewhere, or to wait — and we'd rather say that on the first call than three weeks in."
+    : "Un no chiaro tutela entrambi. Alcune conversazioni iniziali si chiudono con il nostro consiglio di spendere quei soldi altrove, o di aspettare: preferiamo dirlo alla prima call, non dopo tre settimane.";
 
   // NATIVE BRANCHES ONLY (the pinned branch sets the title as the in-frame
   // chapter statement instead). `mb-6` is the base-only value: below 640px
@@ -1011,12 +1011,12 @@ export default function FitSection() {
     <p className="text-[14px] text-ink-mute max-w-md">
       {isEn ? (
         <>
-          If you&apos;re unsure, book the call. We&apos;ll tell you quickly,
+          If you&apos;re unsure, send the brief. We&apos;ll tell you quickly,
           and in writing.
         </>
       ) : (
         <>
-          Se avete dubbi, prenotate la call. Ve lo diremo in fretta, e per
+          Se avete dubbi, inviateci il brief. Ve lo diremo in fretta, e per
           iscritto.
         </>
       )}

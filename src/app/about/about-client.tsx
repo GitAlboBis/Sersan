@@ -17,6 +17,14 @@ import OurWhy from "@/components/sections/our-why";
 import { Reveal } from "@/components/ui/reveal";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { founders } from "@/data/founders";
+import {
+  CONTINUATION,
+  CTA,
+  FACTS,
+  POSITIONING,
+  pick,
+  sersanBuildCount,
+} from "@/data/copy";
 import { useLanguage } from "@/components/language-provider";
 import { START_HREF } from "@/lib/site";
 import { useCentreFocus } from "@/lib/use-centre-focus";
@@ -102,24 +110,26 @@ export function AboutClient() {
   const pillars = [
     {
       num: "01",
-      title: isEn ? "Senior or nothing" : "Senior o niente",
+      title: isEn ? "Accountability stays senior" : "La responsabilità resta senior",
       body: isEn
-        ? "The people who scoped the work do the work. No bait-and-switch. No layer of juniors between you and the engineer."
-        : "Chi ha definito il lavoro lo esegue. Niente bait-and-switch. Nessuno strato di junior tra voi e l'ingegnere.",
+        ? "The people who scope the work stay accountable for it: a named commercial owner, a named technical owner, and no bait-and-switch after the proposal."
+        : "Chi definisce il lavoro ne resta responsabile: un referente commerciale e uno tecnico, con nome e cognome, e nessun cambio di squadra dopo la proposta.",
     },
     {
       num: "02",
-      title: isEn ? "Weekly scope" : "Scope settimanale",
-      body: isEn
-        ? "No multi-year retainers. We re-earn the next week of work every week. Lock-in is a smell, not a feature."
-        : "Niente retainer pluriennali. Ci riconquistiamo la settimana successiva ogni settimana. Il lock-in è un campanello d'allarme, non una feature.",
+      title: isEn ? "Scope with an end" : "Uno scope con una fine",
+      body: `${pick(isEn, CONTINUATION)} ${
+        isEn
+          ? "Start focused, expand when the value is proven."
+          : "Si parte mirati, si amplia quando il valore è dimostrato."
+      }`,
     },
     {
       num: "03",
-      title: isEn ? "We operate it" : "Lo facciamo girare noi",
+      title: isEn ? "Accountable through launch" : "Responsabili fino al lancio",
       body: isEn
-        ? "We don't write a deck and ship the codebase offshore. If we built it, we're on the bridge when it goes wrong."
-        : "Non scriviamo una slide e mandiamo il codice offshore. Se l'abbiamo costruito, siamo in plancia quando qualcosa va storto.",
+        ? "We don't hand over a document and disappear. We stay accountable through launch, and we can keep supporting or running the system afterwards when that's agreed."
+        : "Non consegniamo un documento e spariamo. Restiamo responsabili fino al lancio, e possiamo continuare a supportare o gestire il sistema quando è concordato.",
     },
   ];
 
@@ -177,21 +187,22 @@ export function AboutClient() {
               <Reveal delay={150}>
                 <p className="text-lg sm:text-xl text-ink-mute max-w-2xl mx-auto leading-[1.5]">
                   {isEn
-                    ? "Deep engineering and deep commercial in the same room. Both founders senior. Both staffed on every engagement. No layer of juniors between you and the people doing the work."
-                    : "Ingegneria profonda e dimensione commerciale profonda nella stessa stanza. Entrambi i fondatori senior. Entrambi assegnati a ogni ingaggio. Nessuno strato di junior tra voi e le persone che fanno il lavoro."}
+                    ? "Business context and engineering judgment in the same room. "
+                    : "Contesto di business e giudizio ingegneristico nella stessa stanza. "}
+                  {pick(isEn, POSITIONING.accountabilityLong)}
                 </p>
                 {/* CTA_FLUID_SM: the nowrap label is wider than the 256px
                     column at 320px (see button.tsx). Inert at sm and up. */}
                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center mt-10">
                   <Button asChild size="lg" className={cn("group", CTA_FLUID_SM)}>
                     <Link href={START_HREF}>
-                      {isEn ? "Book a 30-min scoping call" : "Prenota una call di scoping di 30 min"}
+                      {pick(isEn, CTA.primary)}
                       <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
                     </Link>
                   </Button>
                   <Button asChild variant="outline" size="lg" className={CTA_FLUID_SM}>
                     <Link href="/consulting">
-                      {isEn ? "Practice areas" : "Aree di intervento"}
+                      {pick(isEn, CTA.seeHowWeWork)}
                     </Link>
                   </Button>
                 </div>
@@ -209,8 +220,8 @@ export function AboutClient() {
           <div className="text-center mb-12 max-w-3xl mx-auto">
             <p className="text-[11px] font-mono uppercase tracking-[0.25em] text-muted-foreground mb-4">
               {isEn
-                ? "Two founders, one engineer, one thesis."
-                : "Due fondatori, un ingegnere, un'unica tesi."}
+                ? "Two founders, one engineer. Named owners on every project."
+                : "Due fondatori, un ingegnere. Referenti con nome su ogni progetto."}
             </p>
           </div>
 
@@ -324,8 +335,8 @@ export function AboutClient() {
 
           <p className="text-center italic font-serif text-muted-foreground/80 max-w-2xl mx-auto mt-12 text-lg leading-relaxed">
             {isEn
-              ? "The founding thesis: deep engineering and deep commercial in the same room. The combination is uncommon, and is the firm."
-              : "La tesi fondante: ingegneria profonda e dimensione commerciale profonda nella stessa stanza. La combinazione è rara, ed è la firma."}
+              ? "The founding thesis: business context and engineering judgment in the same room. It is what lets us scope honestly and build only what earns its place."
+              : "La tesi fondante: contesto di business e giudizio ingegneristico nella stessa stanza. È ciò che ci permette di definire lo scope con onestà e costruire solo ciò che se lo merita."}
           </p>
         </section>
 
@@ -341,8 +352,8 @@ export function AboutClient() {
               >
                 <span className="block pl-6 text-left">
                   {isEn
-                    ? "“Strategy without execution is a slideshow. We ship production systems, and we operate them when they break.”"
-                    : "“La strategia senza esecuzione è una presentazione. Noi mandiamo in produzione sistemi reali, e li facciamo girare quando si rompono.”"}
+                    ? "“Strategy without execution is a slideshow. We start with the problem, build the smallest useful solution, and scale what works.”"
+                    : "“La strategia senza esecuzione è una presentazione. Si parte dal problema, si costruisce la soluzione utile più piccola, e si scala ciò che funziona.”"}
                 </span>
               </blockquote>
               </Reveal>
@@ -405,15 +416,19 @@ export function AboutClient() {
                     </span>
                   </div>
                   <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
-                    {isEn ? "Senior delivery" : "Delivery senior"}
+                    {isEn ? "Senior delivery, pre-Sersan" : "Delivery senior, pre-Sersan"}
                   </p>
                 </Reveal>
                 <Reveal delay={80}>
                   <div className="font-display text-4xl md:text-5xl text-ink leading-none mb-2">
-                    <CountUp value="5" duration={0.8} force />
+                    {/* Derived, never a literal: the tile must not drift from
+                        the archive. Counts only entries Sersan itself was
+                        contracted to deliver — prior-employer work is credited
+                        separately, in the strip below. */}
+                    <CountUp value={String(sersanBuildCount())} duration={0.8} force />
                   </div>
                   <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
-                    {isEn ? "Tier-1 institutions" : "Istituzioni tier-1"}
+                    {isEn ? "Systems built as Sersan" : "Sistemi costruiti come Sersan"}
                   </p>
                 </Reveal>
                 <Reveal delay={160} className="col-span-2 md:col-span-1">
@@ -430,7 +445,7 @@ export function AboutClient() {
                 </Reveal>
               </div>
               <p className="eyebrow text-center text-[10px] tracking-[0.18em] mt-10">
-                Revolut · JP Morgan · Deloitte · Brevan Howard · Accenture
+                {isEn ? "Prior senior delivery" : "Delivery senior precedente"} · Revolut · JP Morgan · Deloitte · Brevan Howard · Accenture
               </p>
             </div>
           </div>
@@ -447,20 +462,20 @@ export function AboutClient() {
             <SectionHeading
               align="center"
               className="mx-auto mb-8 max-w-3xl"
-              eyebrow={isEn ? "The next step" : "Il prossimo passo"}
+              eyebrow={pick(isEn, FACTS.auditDurationScoped)}
               title={
                 isEn ? (
                   <>
-                    One week. Inside your stack.{" "}
+                    Start with one problem.{" "}
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                      A written verdict.
+                      Get a written answer.
                     </span>
                   </>
                 ) : (
                   <>
-                    Una settimana. Dentro il vostro stack.{" "}
+                    Si parte da un problema.{" "}
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                      Un verdetto scritto.
+                      Arriva una risposta scritta.
                     </span>
                   </>
                 )
@@ -469,13 +484,13 @@ export function AboutClient() {
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
               <Button asChild size="lg" className={cn("group", CTA_FLUID_SM)}>
                 <Link href={START_HREF}>
-                  {isEn ? "Book a 30-min scoping call" : "Prenota una call di scoping di 30 min"}
+                  {pick(isEn, CTA.primary)}
                   <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
                 </Link>
               </Button>
               <Button asChild variant="outline" size="lg" className={CTA_FLUID_SM}>
                 <Link href="/contact">
-                  {isEn ? "Or just say hello" : "O semplicemente salutaci"}
+                  {isEn ? "Or just say hello" : "O semplicemente salutateci"}
                 </Link>
               </Button>
             </div>

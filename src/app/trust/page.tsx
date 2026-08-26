@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { TrustClient } from "./trust-client";
 
 export const metadata: Metadata = {
-  title: "Trust & Security. ISO 27001, DORA, EU AI Act Posture",
+  title: "Trust & Security. Ownership, Data Handling, Compliance Posture",
   description:
-    "Sersan operates with an ISO 27001 (in progress) information security framework and is aligned with DORA, the EU AI Act, and GDPR. London Co. No. 16878386.",
+    "You own the code and the data. Controls scaled to the system we build, designed to support applicable GDPR, DORA and EU AI Act requirements. London Co. No. 16878386.",
   alternates: { canonical: "/trust" },
 };
 

@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { QUESTIONS, TOTAL_QUESTIONS, matchFindings } from "@/data/audit-questions";
+import { CTA, pick } from "@/data/copy";
 
 /**
  * SelfAudit — the 60-second self-audit as /audit's participation beat,
@@ -92,7 +93,7 @@ import { QUESTIONS, TOTAL_QUESTIONS, matchFindings } from "@/data/audit-question
  *
  * The padding is then given straight back to the layout, so ≥1440px is
  * visually unchanged:
- *   - flex children ("← Back", "Book a scoping call", "Run again") pair it
+ *   - flex children ("← Back", the diagnostic CTA, "Run again") pair it
  *     with `-my-3.5`; margins count toward a flex item's outer cross size,
  *     so each line keeps its old height and `items-baseline` still aligns
  *     "← Back" to the NN / NN counter beside it;
@@ -372,7 +373,7 @@ export function SelfAudit({ isEn }: { isEn: boolean }) {
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
                       A first read
                     </span>{" "}
-                    on where your AI stands.
+                    on where the work gets stuck.
                   </>
                 ) : (
                   <>
@@ -380,7 +381,7 @@ export function SelfAudit({ isEn }: { isEn: boolean }) {
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
                       Una prima lettura
                     </span>{" "}
-                    di dove sta la vostra AI.
+                    di dove il lavoro si blocca.
                   </>
                 )}
               </h3>
@@ -551,11 +552,11 @@ export function SelfAudit({ isEn }: { isEn: boolean }) {
               )}
 
               {/* Closing bridge to the real thing — grounded in the page's
-                  own hero copy (a week inside, a written report). */}
+                  own hero copy: 2–6 business days, a written report. */}
               <p className="mt-8 max-w-xl text-[15px] leading-[1.6] text-ink-mute sm:text-base">
                 {isEn
-                  ? "That was the 60-second read. The real audit is a week inside your systems, with a written report at the end."
-                  : "Questa era la lettura in 60 secondi. L'audit vero è una settimana dentro i vostri sistemi, con un report scritto alla fine."}
+                  ? "That was the 60-second read. The real thing is 2–6 business days inside the business, with a written report and a recommended next step at the end."
+                  : "Questa era la lettura in 60 secondi. Quello vero sono 2–6 giorni lavorativi dentro l'azienda, con un report scritto e un passo successivo consigliato alla fine."}
               </p>
 
               <div className="mt-8 flex flex-wrap items-center gap-x-8 gap-y-4">
@@ -568,7 +569,7 @@ export function SelfAudit({ isEn }: { isEn: boolean }) {
                   href="#book-call"
                   className="group/cta relative -my-3.5 inline-flex items-center gap-1.5 rounded-sm py-3.5 font-mono text-[12px] uppercase tracking-[0.18em] text-accent outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--accent)/0.45)]"
                 >
-                  {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
+                  {pick(isEn, CTA.discussDiagnostic)}
                   <span
                     aria-hidden="true"
                     className="transition-transform duration-200 group-hover/cta:translate-x-0.5 group-focus-visible/cta:translate-x-0.5 motion-reduce:transition-none"

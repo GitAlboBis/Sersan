@@ -42,7 +42,7 @@ export function CookiesClient() {
             <span className="status-pill">
               <Cookie className="w-3 h-3 text-muted-foreground" aria-hidden="true" />
               <span className="text-xs text-muted-foreground">
-                {isEn ? "Last updated: January 2026" : "Ultimo aggiornamento: gennaio 2026"}
+                {isEn ? "Last updated: August 2026" : "Ultimo aggiornamento: agosto 2026"}
               </span>
             </span>
           </div>
@@ -51,8 +51,8 @@ export function CookiesClient() {
           </h1>
           <p className="text-lg text-muted-foreground leading-[1.65]">
             {isEn
-              ? "How SERSAN uses cookies and similar tracking technologies on our website."
-              : "Come SERSAN utilizza cookie e tecnologie di tracciamento simili sul nostro sito."}
+              ? "How SERSAN uses cookies and similar technologies on our website — and how few of them there are."
+              : "Come SERSAN utilizza cookie e tecnologie simili sul nostro sito — e quanto pochi ne servono."}
           </p>
         </div>
 
@@ -123,8 +123,8 @@ export function CookiesClient() {
                 </h2>
                 <p>
                   {isEn
-                    ? "This Cookie Policy explains how SERSAN uses cookies and similar technologies to recognise you when you visit our website. It also explains what these technologies are, why we use them, and your rights to control our use of them."
-                    : "Questa Cookie Policy spiega come SERSAN utilizza cookie e tecnologie simili per riconoscervi quando visitate il nostro sito. Spiega inoltre cosa sono queste tecnologie, perché le utilizziamo e i vostri diritti per controllarne l'uso."}
+                    ? "This Cookie Policy explains what SERSAN actually stores on your device when you visit our website, and what it is for. It is a short list on purpose: we do not run advertising tags, and we do not build profiles of visitors."
+                    : "Questa Cookie Policy spiega cosa SERSAN memorizza davvero sul vostro dispositivo quando visitate il sito, e a cosa serve. L'elenco è volutamente breve: non usiamo tag pubblicitari e non profiliamo i visitatori."}
                 </p>
               </section>
               </Reveal>
@@ -150,35 +150,35 @@ export function CookiesClient() {
                 <ul className="list-disc pl-6 space-y-2.5">
                   <li>
                     <strong className="text-foreground font-medium">
-                      {isEn ? "Strictly necessary cookies:" : "Cookie strettamente necessari:"}
+                      {isEn ? "Strictly necessary:" : "Strettamente necessari:"}
                     </strong>{" "}
                     {isEn
-                      ? "Required to operate our website (e.g. accessibility, security)."
-                      : "Necessari al funzionamento del sito (es. accessibilità, sicurezza)."}
+                      ? "Set by our hosting provider to serve and secure the site. Nothing here identifies you personally."
+                      : "Impostati dal nostro provider di hosting per servire e proteggere il sito. Nessuno di questi vi identifica personalmente."}
                   </li>
                   <li>
                     <strong className="text-foreground font-medium">
                       {isEn ? "Performance & analytics:" : "Performance e analitici:"}
                     </strong>{" "}
                     {isEn
-                      ? "Help us understand how visitors interact with the site so we can improve it."
-                      : "Ci aiutano a capire come i visitatori interagiscono con il sito per migliorarlo."}
+                      ? "Vercel Analytics counts page views without cookies, without cross-site tracking and without advertising profiles."
+                      : "Vercel Analytics conta le visualizzazioni di pagina senza cookie, senza tracciamento cross-site e senza profilazione pubblicitaria."}
                   </li>
                   <li>
                     <strong className="text-foreground font-medium">
                       {isEn ? "Functionality:" : "Funzionalità:"}
                     </strong>{" "}
                     {isEn
-                      ? "Remember preferences such as language or theme."
-                      : "Ricordano preferenze come lingua o tema."}
+                      ? "A sersan_language cookie and local storage remember whether you read the site in English or Italian, for 12 months."
+                      : "Un cookie sersan_language e il local storage ricordano se leggete il sito in inglese o in italiano, per 12 mesi."}
                   </li>
                   <li>
                     <strong className="text-foreground font-medium">
                       {isEn ? "Marketing:" : "Marketing:"}
                     </strong>{" "}
                     {isEn
-                      ? "Track campaign attribution and measure outreach effectiveness. Used only with consent."
-                      : "Tracciano l'attribuzione delle campagne e misurano l'efficacia delle attività. Utilizzati solo con il consenso."}
+                      ? "None. We run no advertising, retargeting or campaign-attribution cookies on this site."
+                      : "Nessuno. Su questo sito non usiamo cookie pubblicitari, di retargeting o di attribuzione delle campagne."}
                   </li>
                 </ul>
               </section>
@@ -191,8 +191,8 @@ export function CookiesClient() {
                 </h2>
                 <p>
                   {isEn
-                    ? "Some cookies are placed by third-party services that appear on our pages (e.g. analytics, embedded calendars or videos). We do not control these cookies; please review the third-party privacy and cookie notices."
-                    : "Alcuni cookie sono installati da servizi di terze parti presenti sulle nostre pagine (es. analytics, calendari o video integrati). Non controlliamo questi cookie; vi invitiamo a consultare le rispettive informative su privacy e cookie."}
+                    ? "We currently embed no third-party calendars, video players or advertising tags. Our hosting and analytics providers are named in the Privacy Policy. If we ever add an embed that sets cookies, this page is updated before it goes live."
+                    : "Al momento non integriamo calendari, video player o tag pubblicitari di terze parti. I nostri provider di hosting e analytics sono indicati nell'Informativa sulla Privacy. Se aggiungeremo un embed che imposta cookie, questa pagina verrà aggiornata prima della pubblicazione."}
                 </p>
               </section>
               </Reveal>
@@ -209,8 +209,8 @@ export function CookiesClient() {
                 </p>
                 <p>
                   {isEn
-                    ? "Note that disabling some cookies may affect the functionality of the website and limit certain features."
-                    : "Disattivando alcuni cookie potreste compromettere la funzionalità del sito e limitarne alcune funzionalità."}
+                    ? "You will not see a consent banner here, because we do not set advertising or profiling cookies. Clearing the language cookie only means the site opens in English again."
+                    : "Non troverete un banner di consenso, perché non impostiamo cookie pubblicitari o di profilazione. Cancellare il cookie della lingua significa soltanto che il sito si riaprirà in inglese."}
                 </p>
               </section>
               </Reveal>
@@ -238,7 +238,8 @@ export function CookiesClient() {
                     ? "For any questions about this policy or our use of cookies, contact:"
                     : "Per qualsiasi domanda su questa policy o sul nostro uso dei cookie, contattate:"}
                 </p>
-                <p className="text-foreground font-medium">SERSAN</p>
+                <p className="text-foreground font-medium">Sersan Limited</p>
+                <p>128 City Road, London, EC1V 2NX, United Kingdom</p>
                 <p>
                   Email:{" "}
                   <a

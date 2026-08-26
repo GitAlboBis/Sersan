@@ -19,6 +19,7 @@ import {
   type PreloaderTunnel,
 } from "@/components/fx/preloader-tunnel";
 import { SPINE_COPY } from "@/components/sections/cinematic-system-scroll";
+import { POSITIONING, projectCount, sersanBuildCount } from "@/data/copy";
 import { getLenis } from "@/lib/lenis-singleton";
 import { suspendSnap } from "@/lib/scroll-snap";
 import { START_HREF } from "@/lib/site";
@@ -350,7 +351,8 @@ const TUNNEL_COEF_LERP = 0.02;
 
 // ── Stage 05 — THE single source (moved wholesale from the spine's
 // STAGE_CONTENT "handover" block, owner 2026-08-07: it must exist ONCE).
-// Copy byte-identical to the pre-move spine strings, EN + IT. ───────────────
+// EN + IT live side by side here; the proof chips derive their counts from
+// case-studies.ts (2026-08 repositioning) so they can never go stale. ────────
 const HANDOVER_STAGE = {
   eyebrow: { en: "05 / Handover", it: "05 / Consegna" },
   title: {
@@ -372,8 +374,8 @@ const HANDOVER_STAGE = {
     ),
   },
   body: {
-    en: "A production system with its evals, traces, and boundaries documented. Your team owns it from day one, and you talk to one of us, not an account manager.",
-    it: "Un sistema in produzione con eval, trace e limiti documentati. Il vostro team lo gestisce dal primo giorno, e parlate con uno di noi, non con un account manager.",
+    en: "You own the code and the system, documented and handed over so your team can actually run it. And you talk to one of us, not to an account manager.",
+    it: "Il codice e il sistema sono vostri, documentati e consegnati perché il vostro team li gestisca davvero. E parlate con uno di noi, non con un account manager.",
   },
   // Closing proof (user decision 2026-06-10): categorical commit + real
   // counts pulled from the actual case-studies.ts data and founders.ts
@@ -388,13 +390,13 @@ const HANDOVER_STAGE = {
           <span aria-hidden="true">·</span> Audits
           <br />
           <span className="text-ink-mute/80">
-            For SaaS, fintech &amp; regulated teams
+            {POSITIONING.audience.en}
           </span>
         </p>
         <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-mono uppercase tracking-[0.14em] text-ink/75 list-none">
-          <ProofChip value="13" label="named engagements" />
+          <ProofChip value={String(projectCount())} label="named projects" />
           <li aria-hidden="true" className="text-ink-mute/55">/</li>
-          <ProofChip value="5" label="tier-1 institutions" />
+          <ProofChip value={String(sersanBuildCount())} label="built by SerSan" />
           <li aria-hidden="true" className="text-ink-mute/55">/</li>
           <ProofChip value="1" label="PhD, applied maths" />
         </ul>
@@ -409,13 +411,13 @@ const HANDOVER_STAGE = {
           <span aria-hidden="true">·</span> Audit
           <br />
           <span className="text-ink-mute/80">
-            Per SaaS, fintech e team regolamentati
+            {POSITIONING.audience.it}
           </span>
         </p>
         <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] font-mono uppercase tracking-[0.14em] text-ink/75 list-none">
-          <ProofChip value="13" label="progetti nominali" />
+          <ProofChip value={String(projectCount())} label="progetti documentati" />
           <li aria-hidden="true" className="text-ink-mute/55">/</li>
-          <ProofChip value="5" label="istituzioni tier-1" />
+          <ProofChip value={String(sersanBuildCount())} label="costruiti da SerSan" />
           <li aria-hidden="true" className="text-ink-mute/55">/</li>
           <ProofChip value="1" label="PhD, matematica applicata" />
         </ul>
@@ -2422,8 +2424,8 @@ export default function SingularityPassage() {
               {HANDOVER_STAGE.extras[language]}
               {/* CTA_*_SM: this pair is the one MEASURED offender behind the
                   10px horizontal overflow at 320px — `whitespace-nowrap` made
-                  "Book a 30-min scoping call" a 298px min-content block inside
-                  a 256px column, and a flex item's `min-width: auto` refused
+                  the old "Book a 30-min scoping call" label a 298px min-content
+                  block inside a 256px column, and `min-width: auto` refused
                   to compress it. Below `sm` it now fills the column and wraps;
                   ≥sm is untouched (see button.tsx). */}
               <div className="mt-7 flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">

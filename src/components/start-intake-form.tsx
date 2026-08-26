@@ -8,14 +8,22 @@ import { Input, FIELD_CONTROL } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useLanguage } from "@/components/language-provider";
 import { getLenis } from "@/lib/lenis-singleton";
+import {
+  BUDGET_BANDS,
+  BUDGET_REASSURANCE,
+  CTA,
+  type BudgetValue,
+  pick,
+} from "@/data/copy";
 
 /**
  * StartIntakeForm — the /start page form.
  *
  * Field contract mirrors src/app/api/intake/route.ts (zod schema). Keep
  * the two in sync. The form intentionally renders all fields on one page —
- * a CTO scanning the form should see the full ask up front, not be
- * surprised by a five-step wizard.
+ * whoever fills it in should see the full ask up front, not be surprised by
+ * a five-step wizard. Only four fields are required (name, email, company,
+ * objective); everything else is optional context.
  *
  * State machine: idle → submitting → success | error
  *   - success replaces the form with a confirmation panel
@@ -35,16 +43,18 @@ import { getLenis } from "@/lib/lenis-singleton";
  */
 
 type Situation =
-  | "demo-fails-production"
-  | "automation-duct-tape"
-  | "models-in-notebooks"
-  | "committing-cycles"
-  | "readiness-review"
-  | "senior-judgment"
+  | "manual-process"
+  | "tools-not-talking"
+  | "software-to-build"
+  | "product-idea"
+  | "system-struggling"
+  | "ai-worth-it"
   | "none";
-type Stage = "idea" | "prototype" | "internal-pilot" | "production" | "broken-system";
+type Stage = "manual-today" | "idea" | "prototype" | "in-use" | "needs-fixing";
 type Timeline = "asap" | "this-month" | "this-quarter" | "exploring";
-type Budget = "under-15k" | "15-50k" | "50-150k" | "150k-plus" | "not-sure";
+/** Budget values are owned by BUDGET_BANDS in @/data/copy so the two intake
+ *  forms and the API zod enum cannot drift apart again. */
+type Budget = BudgetValue;
 
 interface FormState {
   situation: Situation | "";
@@ -76,38 +86,39 @@ const EMPTY: FormState = {
   links: "",
 };
 
-/** Self-locator pains — moved verbatim from the retired homepage
- *  UseCasesSection (restyle step 2: the six pains open the intake). */
+/** Self-locator — the business problems a visitor can recognise themselves
+ *  in, from one manual process up to a system that is struggling. Optional,
+ *  and deliberately readable by someone who is not an engineer. */
 const SITUATION_OPTIONS: { value: Situation; label: string; labelIt: string }[] = [
   {
-    value: "demo-fails-production",
-    label: "Your agent works in demo, but fails in production.",
-    labelIt: "Il tuo agente funziona nelle demo, ma fallisce in produzione.",
+    value: "manual-process",
+    label: "A manual process is eating your team's time.",
+    labelIt: "Un processo manuale sta divorando il tempo del vostro team.",
   },
   {
-    value: "automation-duct-tape",
-    label: "Your automation stack is duct tape.",
-    labelIt: "Il tuo stack di automazioni è fatto di nastro adesivo.",
+    value: "tools-not-talking",
+    label: "Your tools don't talk to each other.",
+    labelIt: "I vostri strumenti non si parlano tra loro.",
   },
   {
-    value: "models-in-notebooks",
-    label: "Your models are still trapped in notebooks.",
-    labelIt: "I tuoi modelli sono ancora intrappolati nei notebook.",
+    value: "software-to-build",
+    label: "You need internal software that doesn't exist yet.",
+    labelIt: "Vi serve un software interno che ancora non esiste.",
   },
   {
-    value: "committing-cycles",
-    label: "You're about to commit engineering cycles to an AI product.",
-    labelIt: "Stai per impegnare cicli di sviluppo su un prodotto AI.",
+    value: "product-idea",
+    label: "You have a product idea and need it built properly.",
+    labelIt: "Avete un'idea di prodotto e vi serve costruirla bene.",
   },
   {
-    value: "readiness-review",
-    label: "You need readiness before a board, customer, or regulator.",
-    labelIt: "Ti serve essere pronti prima di un consiglio, un cliente o un'autorità.",
+    value: "system-struggling",
+    label: "An existing system is slow, fragile, or breaking.",
+    labelIt: "Un sistema esistente è lento, fragile o si rompe.",
   },
   {
-    value: "senior-judgment",
-    label: "You need senior AI engineering judgment without hiring a full team.",
-    labelIt: "Ti serve giudizio ingegneristico AI senior senza assumere un team completo.",
+    value: "ai-worth-it",
+    label: "You want to know whether AI is worth it here.",
+    labelIt: "Volete capire se qui l'AI valga davvero la pena.",
   },
   {
     value: "none",
@@ -118,29 +129,29 @@ const SITUATION_OPTIONS: { value: Situation; label: string; labelIt: string }[] 
 
 const STAGE_OPTIONS: { value: Stage; label: string; labelIt: string }[] = [
   {
+    value: "manual-today",
+    label: "Manual today: people, spreadsheets, email",
+    labelIt: "Oggi è manuale: persone, fogli di calcolo, email",
+  },
+  {
     value: "idea",
-    label: "Idea: exploring whether to build",
-    labelIt: "Idea: stiamo valutando se costruire",
+    label: "Idea: deciding whether to build it",
+    labelIt: "Idea: stiamo decidendo se costruirlo",
   },
   {
     value: "prototype",
-    label: "Prototype: works in a notebook / demo",
-    labelIt: "Prototipo: funziona in un notebook / demo",
+    label: "Early version exists, not in real use",
+    labelIt: "Esiste una prima versione, non ancora in uso",
   },
   {
-    value: "internal-pilot",
-    label: "Internal pilot: limited users, no SLA",
-    labelIt: "Pilota interno: utenti limitati, nessuno SLA",
+    value: "in-use",
+    label: "In use: people depend on it daily",
+    labelIt: "In uso: ci lavorano persone ogni giorno",
   },
   {
-    value: "production",
-    label: "Production: live users depending on it",
-    labelIt: "Produzione: utenti reali che ci fanno affidamento",
-  },
-  {
-    value: "broken-system",
-    label: "Broken existing system: needs rescue",
-    labelIt: "Sistema esistente in difficoltà: serve un rescue",
+    value: "needs-fixing",
+    label: "Existing system that needs fixing",
+    labelIt: "Un sistema esistente che va sistemato",
   },
 ];
 
@@ -151,13 +162,9 @@ const TIMELINE_OPTIONS: { value: Timeline; label: string; labelIt: string }[] = 
   { value: "exploring", label: "Exploring", labelIt: "In esplorazione" },
 ];
 
-const BUDGET_OPTIONS: { value: Budget; label: string; labelIt: string }[] = [
-  { value: "under-15k", label: "Under £15k", labelIt: "Meno di £15k" },
-  { value: "15-50k", label: "£15–50k", labelIt: "£15–50k" },
-  { value: "50-150k", label: "£50–150k", labelIt: "£50–150k" },
-  { value: "150k-plus", label: "£150k+", labelIt: "£150k+" },
-  { value: "not-sure", label: "Not sure yet", labelIt: "Non ancora sicuri" },
-];
+/** Bands come from @/data/copy — the single source shared with the
+ *  /consulting intake and the /api/intake zod enum. */
+const BUDGET_OPTIONS = BUDGET_BANDS;
 
 type SubmitState = "idle" | "submitting" | "success" | "error";
 
@@ -258,7 +265,7 @@ export default function StartIntakeForm() {
     // Client-side gates — the server is authoritative but these stop the
     // obvious early misses without a round-trip.
     if (!form.name.trim())
-      return fail("name", isEn ? "Add your name." : "Inserisci il tuo nome.");
+      return fail("name", isEn ? "Add your name." : "Inserite il vostro nome.");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email))
       return fail(
         "email",
@@ -271,36 +278,30 @@ export default function StartIntakeForm() {
         "company",
         isEn ? "Company name?" : "Nome dell'azienda?",
       );
-    if (!form.role.trim())
-      return fail("role", isEn ? "Your role?" : "Il tuo ruolo?");
     if (form.objective.trim().length < 8)
       return fail(
         "objective",
         isEn
-          ? "A sentence or two about what you're trying to build."
-          : "Una frase o due su cosa state cercando di costruire.",
+          ? "A sentence or two about what you're trying to solve."
+          : "Una frase o due su cosa volete risolvere.",
       );
-    if (!form.stage)
-      return fail("stage", isEn ? "Pick a stage." : "Scegli una fase.");
-    if (!form.timeline)
-      return fail(
-        "timeline",
-        isEn ? "Pick a timeline." : "Scegli una tempistica.",
-      );
-    if (!form.budget)
-      return fail(
-        "budget",
-        isEn ? "Pick a budget range." : "Scegli una fascia di budget.",
-      );
+    // Everything below (role, situation, stage, timeline, budget, stack,
+    // constraints, links) is optional context — it never blocks a brief.
 
     setSubmitState("submitting");
     try {
       const res = await fetch("/api/intake", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // The optional self-locator is an enum server-side — omit it when
-        // unanswered instead of sending an empty string.
-        body: JSON.stringify({ ...form, situation: form.situation || undefined }),
+        // Optional enums are unions server-side — omit them when unanswered
+        // instead of sending an empty string (which no enum accepts).
+        body: JSON.stringify({
+          ...form,
+          situation: form.situation || undefined,
+          stage: form.stage || undefined,
+          timeline: form.timeline || undefined,
+          budget: form.budget || undefined,
+        }),
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSubmitState("success");
@@ -310,7 +311,7 @@ export default function StartIntakeForm() {
       setError(
         isEn
           ? "Something went wrong on our end. Try again, or email alex.s@sersan.dev directly."
-          : "Qualcosa è andato storto dalla nostra parte. Riprova, oppure scrivi direttamente a alex.s@sersan.dev.",
+          : "Qualcosa è andato storto dalla nostra parte. Riprovate, oppure scriveteci direttamente a alex.s@sersan.dev.",
       );
     }
   }
@@ -332,13 +333,14 @@ export default function StartIntakeForm() {
         <p className="text-[15px] text-ink leading-relaxed mb-3">
           {isEn ? (
             <>
-              Thanks, {form.name.split(" ")[0]}. We&apos;ll review your brief
-              and reply with a recommended next step within one business day.
+              Thanks, {form.name.split(" ")[0]}. A founder reads it, and
+              we&apos;ll reply with a recommended next step within one
+              business day.
             </>
           ) : (
             <>
-              Grazie, {form.name.split(" ")[0]}. Esamineremo il tuo brief e ti
-              risponderemo con un prossimo passo consigliato entro un giorno
+              Grazie, {form.name.split(" ")[0]}. Lo legge un founder, e vi
+              risponderemo con il prossimo passo consigliato entro un giorno
               lavorativo.
             </>
           )}
@@ -346,7 +348,7 @@ export default function StartIntakeForm() {
         <p className="text-[13.5px] text-ink-mute leading-relaxed">
           {isEn
             ? "If it's urgent, reply to the confirmation email and we'll prioritise."
-            : "Se è urgente, rispondi all'email di conferma e daremo priorità."}
+            : "Se è urgente, rispondete all'email di conferma e daremo priorità."}
         </p>
       </div>
     );
@@ -358,7 +360,9 @@ export default function StartIntakeForm() {
           the retired homepage UseCasesSection. */}
       <div>
         <label htmlFor="situation" className={LABEL}>
-          {isEn ? "Which situation are you in?" : "In quale situazione ti trovi?"}
+          {isEn
+            ? "Which of these sounds like you? (optional)"
+            : "Quale di queste vi somiglia? (facoltativo)"}
         </label>
         <select
           id="situation"
@@ -437,19 +441,22 @@ export default function StartIntakeForm() {
         </div>
         <div>
           <label htmlFor="role" className={LABEL}>
-            {isEn ? "Role" : "Ruolo"} {REQ}
+            {isEn ? "Role (optional)" : "Ruolo (facoltativo)"}
           </label>
           <Input
             id="role"
             name="role"
             type="text"
             autoComplete="organization-title"
-            required
             aria-invalid={invalidField === "role" || undefined}
             aria-describedby={invalidField === "role" ? ERROR_ID : undefined}
             value={form.role}
             onChange={(e) => update("role", e.target.value)}
-            placeholder={isEn ? "CTO · Head of AI · Founder" : "CTO · Head of AI · Fondatore"}
+            placeholder={
+              isEn
+                ? "Founder · Operations · Product · Other"
+                : "Founder · Operations · Prodotto · Altro"
+            }
           />
         </div>
       </div>
@@ -473,8 +480,8 @@ export default function StartIntakeForm() {
           onChange={(e) => update("objective", e.target.value)}
           placeholder={
             isEn
-              ? "Two or three sentences is plenty. We'll dig in on the call."
-              : "Due o tre frasi bastano. Approfondiremo in call."
+              ? "Two or three sentences is plenty. What's slow, manual, or missing?"
+              : "Bastano due o tre frasi. Cosa è lento, manuale o manca del tutto?"
           }
           className="min-h-[8rem]"
         />
@@ -484,12 +491,11 @@ export default function StartIntakeForm() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-5">
         <div>
           <label htmlFor="stage" className={LABEL}>
-            {isEn ? "Stage" : "Fase"} {REQ}
+            {isEn ? "Where you are" : "A che punto siete"}
           </label>
           <select
             id="stage"
             name="stage"
-            required
             aria-invalid={invalidField === "stage" || undefined}
             aria-describedby={invalidField === "stage" ? ERROR_ID : undefined}
             value={form.stage}
@@ -497,9 +503,7 @@ export default function StartIntakeForm() {
             className={SELECT_FIELD}
             style={SELECT_CHEVRON}
           >
-            <option value="" disabled>
-              {isEn ? "Select…" : "Seleziona…"}
-            </option>
+            <option value="">{isEn ? "Select…" : "Seleziona…"}</option>
             {STAGE_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {isEn ? o.label : o.labelIt}
@@ -509,12 +513,11 @@ export default function StartIntakeForm() {
         </div>
         <div>
           <label htmlFor="timeline" className={LABEL}>
-            {isEn ? "Timeline" : "Tempistiche"} {REQ}
+            {isEn ? "Timeline" : "Tempistiche"}
           </label>
           <select
             id="timeline"
             name="timeline"
-            required
             aria-invalid={invalidField === "timeline" || undefined}
             aria-describedby={invalidField === "timeline" ? ERROR_ID : undefined}
             value={form.timeline}
@@ -522,9 +525,7 @@ export default function StartIntakeForm() {
             className={SELECT_FIELD}
             style={SELECT_CHEVRON}
           >
-            <option value="" disabled>
-              {isEn ? "Select…" : "Seleziona…"}
-            </option>
+            <option value="">{isEn ? "Select…" : "Seleziona…"}</option>
             {TIMELINE_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
                 {isEn ? o.label : o.labelIt}
@@ -534,12 +535,11 @@ export default function StartIntakeForm() {
         </div>
         <div>
           <label htmlFor="budget" className={LABEL}>
-            {isEn ? "Budget" : "Budget"} {REQ}
+            {isEn ? "Budget" : "Budget"}
           </label>
           <select
             id="budget"
             name="budget"
-            required
             aria-invalid={invalidField === "budget" || undefined}
             aria-describedby={invalidField === "budget" ? ERROR_ID : undefined}
             value={form.budget}
@@ -547,22 +547,28 @@ export default function StartIntakeForm() {
             className={SELECT_FIELD}
             style={SELECT_CHEVRON}
           >
-            <option value="" disabled>
-              {isEn ? "Select…" : "Seleziona…"}
-            </option>
+            <option value="">{isEn ? "Select…" : "Seleziona…"}</option>
             {BUDGET_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
-                {isEn ? o.label : o.labelIt}
+                {isEn ? o.en : o.it}
               </option>
             ))}
           </select>
         </div>
       </div>
 
+      {/* Budget reassurance — the question above is optional, and a visitor
+          who has no number yet should not stall here. */}
+      <p className="-mt-2 text-[12.5px] text-ink-mute leading-relaxed">
+        {pick(isEn, BUDGET_REASSURANCE)}
+      </p>
+
       {/* Optional context */}
       <div>
         <label htmlFor="stack" className={LABEL}>
-          {isEn ? "Existing stack" : "Stack esistente"}
+          {isEn
+            ? "Current tools or technology (optional)"
+            : "Strumenti o tecnologie attuali (facoltativo)"}
         </label>
         <Input
           id="stack"
@@ -574,16 +580,16 @@ export default function StartIntakeForm() {
           onChange={(e) => update("stack", e.target.value)}
           placeholder={
             isEn
-              ? "e.g. Python · Postgres · OpenAI · LangChain · Vercel"
-              : "es. Python · Postgres · OpenAI · LangChain · Vercel"
+              ? "Excel, HubSpot, WordPress, custom software — or leave blank."
+              : "Excel, HubSpot, WordPress, software su misura — o lasciate vuoto."
           }
         />
       </div>
       <div>
         <label htmlFor="compliance" className={LABEL}>
           {isEn
-            ? "Compliance / security constraints"
-            : "Vincoli di compliance / sicurezza"}
+            ? "Security or regulatory constraints (optional)"
+            : "Vincoli di sicurezza o normativi (facoltativo)"}
         </label>
         <Input
           id="compliance"
@@ -594,14 +600,16 @@ export default function StartIntakeForm() {
           onChange={(e) => update("compliance", e.target.value)}
           placeholder={
             isEn
-              ? "e.g. EU data residency · SOC2 in flight · HIPAA-adjacent"
-              : "es. data residency UE · SOC2 in corso · ambito HIPAA"
+              ? "Customer data, an industry regulator, an internal policy…"
+              : "Dati dei clienti, un'autorità di settore, una policy interna…"
           }
         />
       </div>
       <div>
         <label htmlFor="links" className={LABEL}>
-          {isEn ? "Links or extra context" : "Link o contesto aggiuntivo"}
+          {isEn
+            ? "Links or extra context (optional)"
+            : "Link o contesto aggiuntivo (facoltativo)"}
         </label>
         <Textarea
           id="links"
@@ -618,8 +626,8 @@ export default function StartIntakeForm() {
           onChange={(e) => update("links", e.target.value)}
           placeholder={
             isEn
-              ? "Loom · repo · doc · deck. Anything that helps us read in."
-              : "Loom · repo · doc · deck. Qualsiasi cosa ci aiuti a entrare nel contesto."
+              ? "A link, a document, a screenshot — anything that helps us read in."
+              : "Un link, un documento, uno screenshot — qualsiasi cosa ci aiuti a capire."
           }
           className="min-h-[6rem]"
         />
@@ -654,9 +662,7 @@ export default function StartIntakeForm() {
             ? isEn
               ? "Sending…"
               : "Invio in corso…"
-            : isEn
-              ? "Send project brief"
-              : "Invia il brief di progetto"}
+            : pick(isEn, CTA.primary)}
           {submitState !== "submitting" && (
             <ArrowRight
               className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1"
@@ -667,7 +673,7 @@ export default function StartIntakeForm() {
         <p className="text-[12px] text-ink-mute/80 leading-relaxed">
           {isEn
             ? "By submitting you agree we may reply by email. We don't use your brief for marketing."
-            : "Inviando, acconsenti a che ti rispondiamo via email. Non usiamo il tuo brief per finalità di marketing."}
+            : "Inviando, acconsentite a ricevere una nostra risposta via email. Non usiamo il vostro brief per finalità di marketing."}
         </p>
       </div>
     </form>

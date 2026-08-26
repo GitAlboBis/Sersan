@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import { CaseStudiesClient } from "./case-studies-client";
 
 export const metadata: Metadata = {
-  title: "Selected Work. AI-Powered Software Track Record",
+  title: "Selected Work — Builds & Prior Senior Delivery",
+  /* Never an aggregate that blends the two: the SerSan builds are the
+     invitation, the tier-1 record is the depth behind it. */
   description:
-    "AI-powered software shipped to production. Our CPTO Michele Sanna's prior systems at Revolut, JPMorgan, Deloitte, Brevan Howard, and Accenture, plus the AI-native products Sersan is currently building.",
+    "Selected SerSan work and prior senior delivery experience. Custom software, automation and AI — from a real-estate agency platform to a trading-education product — plus prior tier-1 delivery by Michele Sanna at Revolut, J.P. Morgan, Deloitte and Accenture.",
   alternates: { canonical: "/case-studies" },
 };
 

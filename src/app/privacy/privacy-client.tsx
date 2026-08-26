@@ -18,7 +18,7 @@ export function PrivacyClient() {
         { id: "security", label: "Data Security" },
         { id: "retention", label: "Data Retention" },
         { id: "rights", label: "Your Rights" },
-        { id: "cookies", label: "Cookies & Tracking" },
+        { id: "cookies", label: "Cookies" },
         { id: "third-party", label: "Third-Party Links" },
         { id: "changes", label: "Changes to This Policy" },
         { id: "contact", label: "Contact Us" },
@@ -31,7 +31,7 @@ export function PrivacyClient() {
         { id: "security", label: "Sicurezza dei dati" },
         { id: "retention", label: "Conservazione dei dati" },
         { id: "rights", label: "I vostri diritti" },
-        { id: "cookies", label: "Cookie e tracciamento" },
+        { id: "cookies", label: "Cookie" },
         { id: "third-party", label: "Link a terze parti" },
         { id: "changes", label: "Modifiche a questa policy" },
         { id: "contact", label: "Contatti" },
@@ -50,7 +50,7 @@ export function PrivacyClient() {
             <span className="status-pill">
               <FileText className="w-3 h-3 text-muted-foreground" aria-hidden="true" />
               <span className="text-xs text-muted-foreground">
-                {isEn ? "Last updated: January 2026" : "Ultimo aggiornamento: gennaio 2026"}
+                {isEn ? "Last updated: August 2026" : "Ultimo aggiornamento: agosto 2026"}
               </span>
             </span>
           </div>
@@ -131,8 +131,8 @@ export function PrivacyClient() {
                 </h2>
                 <p>
                   {isEn
-                    ? "SERSAN (“we,” “our,” or “us”) is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our consulting services, interact with our website, or contact our team."
-                    : "SERSAN (“noi”, “nostro”, “ci”) si impegna a proteggere la vostra privacy. Questa Informativa spiega come raccogliamo, utilizziamo, divulghiamo e proteggiamo le vostre informazioni quando usate i nostri servizi di consulenza, interagite con il nostro sito o contattate il nostro team."}
+                    ? "Sersan Limited (“we,” “our,” or “us”) — registered in England and Wales, Co. No. 16878386, at 128 City Road, London EC1V 2NX — is the data controller for personal data collected through this website. This Privacy Policy explains how we collect, use, disclose and safeguard your information when you interact with our website, contact us, or engage us to build something."
+                    : "Sersan Limited (“noi”, “nostro”, “ci”) — registrata in Inghilterra e Galles, n. 16878386, con sede in 128 City Road, London EC1V 2NX — è il titolare del trattamento dei dati personali raccolti tramite questo sito. Questa Informativa spiega come raccogliamo, utilizziamo, divulghiamo e proteggiamo le vostre informazioni quando interagite con il sito, ci contattate o ci affidate un progetto."}
                 </p>
               </section>
               </Reveal>
@@ -214,6 +214,14 @@ export function PrivacyClient() {
                     <li key={line}>{line}</li>
                   ))}
                 </ul>
+                <p className="mt-4">
+                  <strong className="text-foreground font-medium">
+                    {isEn ? "Legal bases (GDPR Art. 6):" : "Basi giuridiche (Art. 6 GDPR):"}
+                  </strong>{" "}
+                  {isEn
+                    ? "delivering an engagement and the steps leading to it — Art. 6(1)(b), contract; security, audit logging and service improvement — Art. 6(1)(f), legitimate interests; business-to-business outreach — legitimate interests, with an opt-out in every message; cookies and similar technologies — consent."
+                    : "erogazione del progetto e fasi precontrattuali — Art. 6(1)(b), contratto; sicurezza, log di audit e miglioramento del servizio — Art. 6(1)(f), legittimo interesse; contatti commerciali B2B — legittimo interesse, con possibilità di opposizione in ogni messaggio; cookie e tecnologie simili — consenso."}
+                </p>
               </section>
               </Reveal>
 
@@ -253,6 +261,22 @@ export function PrivacyClient() {
                       : "Quando richiesto dalla legge o per tutelare i nostri diritti."}
                   </li>
                 </ul>
+                <p className="mt-4">
+                  <strong className="text-foreground font-medium">
+                    {isEn ? "Subprocessors:" : "Sub-responsabili:"}
+                  </strong>{" "}
+                  {isEn
+                    ? "cloud hosting (AWS, Google Cloud, Azure), site and database hosting (Vercel, Supabase), model APIs (Anthropic, OpenAI, Google), and email delivery (Resend). The list is published, not held behind an NDA, and is named in full in the DPA."
+                    : "hosting cloud (AWS, Google Cloud, Azure), hosting del sito e del database (Vercel, Supabase), API dei modelli (Anthropic, OpenAI, Google) e invio email (Resend). L'elenco è pubblico, non soggetto a NDA, ed è riportato per esteso nel DPA."}
+                </p>
+                <p className="mt-4">
+                  <strong className="text-foreground font-medium">
+                    {isEn ? "International transfers:" : "Trasferimenti internazionali:"}
+                  </strong>{" "}
+                  {isEn
+                    ? "infrastructure is hosted in the UK and EU, and data residency is agreed per engagement. Where a provider processes data outside the UK or EEA, the transfer relies on UK/EU Standard Contractual Clauses and the UK International Data Transfer Addendum."
+                    : "l'infrastruttura è ospitata nel Regno Unito e nell'UE e la residenza dei dati è concordata per ogni progetto. Quando un fornitore tratta dati fuori da Regno Unito o SEE, il trasferimento si basa sulle Clausole Contrattuali Standard UK/UE e sull'Addendum UK per i trasferimenti internazionali."}
+                </p>
                 <p className="mt-4">
                   {isEn
                     ? "We do not sell your personal information to third parties."
@@ -319,20 +343,25 @@ export function PrivacyClient() {
                     <li key={line}>{line}</li>
                   ))}
                 </ul>
+                <p className="mt-4">
+                  {isEn
+                    ? "Email us to exercise any of these; we respond within 30 days. Where we process data on a client's instructions, we route the request to that client and tell you we have. You can also complain to the ICO (UK) or the Garante per la protezione dei dati personali (Italy)."
+                    : "Scriveteci per esercitare uno di questi diritti: rispondiamo entro 30 giorni. Quando trattiamo dati su istruzioni di un cliente, inoltriamo la richiesta a quel cliente e ve lo comunichiamo. Potete inoltre presentare reclamo all'ICO (Regno Unito) o al Garante per la protezione dei dati personali (Italia)."}
+                </p>
               </section>
               </Reveal>
 
               <Reveal>
               <section id="cookies" className="scroll-mt-24">
                 <h2 className="heading-3 font-semibold text-foreground mb-4">
-                  {isEn ? "8. Cookies and Tracking" : "8. Cookie e tracciamento"}
+                  {isEn ? "8. Cookies" : "8. Cookie"}
                 </h2>
                 <p>
                   {isEn ? (
                     <>
-                      We use cookies and similar tracking technologies to enhance your experience, analyse usage, and
-                      deliver personalised content. You can manage cookie preferences through your browser settings or
-                      our{" "}
+                      We use a small number of cookies and similar technologies: one remembers your language choice,
+                      and a privacy-friendly analytics script measures traffic without cross-site tracking or
+                      advertising profiles. You can manage them through your browser settings or our{" "}
                       <Link
                         href="/cookies"
                         className="text-foreground underline underline-offset-2 hover:text-foreground/80 transition-colors"
@@ -343,9 +372,9 @@ export function PrivacyClient() {
                     </>
                   ) : (
                     <>
-                      Utilizziamo cookie e tecnologie di tracciamento simili per migliorare la vostra esperienza,
-                      analizzare l&apos;utilizzo e fornire contenuti personalizzati. Potete gestire le preferenze dei
-                      cookie nelle impostazioni del browser o nella nostra{" "}
+                      Utilizziamo un numero ridotto di cookie e tecnologie simili: uno ricorda la lingua scelta e uno
+                      script di analytics rispettoso della privacy misura il traffico senza tracciamento cross-site né
+                      profilazione pubblicitaria. Potete gestirli dalle impostazioni del browser o dalla nostra{" "}
                       <Link
                         href="/cookies"
                         className="text-foreground underline underline-offset-2 hover:text-foreground/80 transition-colors"
@@ -395,7 +424,9 @@ export function PrivacyClient() {
                     ? "If you have any questions about this Privacy Policy or our data practices, please contact us at:"
                     : "Per qualsiasi domanda su questa Informativa o sulle nostre pratiche di trattamento dei dati, contattateci a:"}
                 </p>
-                <p className="text-foreground font-medium">SERSAN</p>
+                <p className="text-foreground font-medium">Sersan Limited</p>
+                <p>128 City Road, London, EC1V 2NX, United Kingdom</p>
+                <p>{isEn ? "Company No. 16878386" : "N. registrazione 16878386"}</p>
                 <p>
                   Email:{" "}
                   <a

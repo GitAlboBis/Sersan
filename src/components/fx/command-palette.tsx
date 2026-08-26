@@ -4,7 +4,7 @@
  * CommandPalette — ⌘K / Ctrl+K quick navigation, in the site's mono grammar.
  *
  * One Radix Dialog (focus trap, portal, Esc, aria) holding a filter input and
- * a keyboard-driven list: every route plus three actions (book a call, switch
+ * a keyboard-driven list: every route plus three actions (send a brief, switch
  * language, copy the studio email). Substring filter over label + keywords in
  * BOTH languages, ArrowUp/Down + Enter, pointer hover moves the selection.
  * Fires from anywhere except editable fields; closes itself before routing so
@@ -27,6 +27,7 @@ import { useRouter, usePathname } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useLanguage } from "@/components/language-provider";
 import { CONTACT_EMAIL, START_HREF } from "@/lib/site";
+import { CTA } from "@/data/copy";
 import { cn } from "@/lib/utils";
 
 interface PaletteItem {
@@ -52,7 +53,7 @@ const ITEMS: PaletteItem[] = [
   { id: "about", group: "navigate", label: "Team", labelIt: "Team", keywords: "about founders alessandro michele mattia chi siamo", href: "/about", hint: "/about" },
   { id: "trust", group: "navigate", label: "Trust & compliance", labelIt: "Trust e compliance", keywords: "security gdpr dora iso privacy sicurezza", href: "/trust", hint: "/trust" },
   { id: "contact", group: "navigate", label: "Contact", labelIt: "Contatti", keywords: "email phone reach talk contatto", href: "/contact", hint: "/contact" },
-  { id: "book", group: "actions", label: "Book a scoping call", labelIt: "Prenota una scoping call", keywords: "call meeting start brief prenota chiamata", href: START_HREF, hint: "↵" },
+  { id: "book", group: "actions", label: CTA.primary.en, labelIt: CTA.primary.it, keywords: "call meeting start brief prenota chiamata", href: START_HREF, hint: "↵" },
   { id: "lang", group: "actions", label: "Switch to Italiano", labelIt: "Passa all'inglese", keywords: "language lingua english italiano en it", hint: "EN⇄IT" },
   { id: "email", group: "actions", label: "Copy email address", labelIt: "Copia l'indirizzo email", keywords: "mail clipboard copia scrivi", hint: "⧉" },
 ];

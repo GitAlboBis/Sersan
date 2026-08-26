@@ -24,7 +24,7 @@ import FinalCTA from "@/components/sections/final-cta";
  *   04  Production-grade     — the answer, DIRECTLY under the problem (D19
  *                              merge, owner 2026-08-26: death → rebirth is one
  *                              continuous on-camera passage, no interlude)
- *   05  Work                 — sticky horizontal rail (13 engagements + WIP)
+ *   05  Work                 — sticky horizontal rail (caseStudies + WIP)
  *   06  Services             — what we build (pains surfaced per card)
  *   07  Founders             — the people who ship every engagement
  *   08  Fixed-scope strip    — one-line process distillation (full map → /consulting)

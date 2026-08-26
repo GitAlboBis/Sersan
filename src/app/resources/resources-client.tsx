@@ -17,6 +17,8 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { Button, CTA_FLUID_SM } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { usePressState, type PressStateRef } from "@/lib/use-press-state";
+import { START_HREF } from "@/lib/site";
+import { CTA, pick } from "@/data/copy";
 import { useTierStore } from "@/webgl/store/tierStore";
 import { webgpuEnabled } from "@/webgl/renderer/createRenderer";
 import {
@@ -553,8 +555,8 @@ export function ResourcesClient() {
               }
               description={
                 isEn
-                  ? "A free scoping call is the easiest way to find out where it would have the highest impact."
-                  : "Una call di scoping gratuita è il modo più semplice per capire dove avrebbe l'impatto maggiore."
+                  ? "Describe the problem in two or three sentences. A founder reads it and replies within one business day."
+                  : "Raccontateci il problema in due o tre frasi. Legge un founder e risponde entro un giorno lavorativo."
               }
             />
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -566,8 +568,12 @@ export function ResourcesClient() {
                   CTA_FLUID_SM,
                 )}
               >
-                <Link href="/audit">
-                  {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
+                {/* /start, not /audit, and no booking language: nothing on
+                    this site can schedule a time (CAL_ENABLED is false), so a
+                    "Book a scoping call" label promised a calendar and
+                    delivered a written form. */}
+                <Link href={START_HREF}>
+                  {pick(isEn, CTA.primary)}
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
               </Button>

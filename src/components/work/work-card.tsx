@@ -10,6 +10,7 @@ import { useFlipSource } from "@/lib/use-flip-source";
 import { useFeaturedStore } from "@/webgl/store/featuredStore";
 import { cn } from "@/lib/utils";
 import { lusionEase } from "@/components/fx/lusion-ease";
+import { attributionLine } from "@/components/work/attribution";
 
 if (typeof window !== "undefined") gsap.registerPlugin(ScrollTrigger, CustomEase);
 
@@ -131,6 +132,13 @@ export function WorkCard({
   const onFlip = useFlipSource(study.id, study.previewImage);
   const engagement = isEn ? study.engagement : study.engagementIt;
   const domain = isEn ? study.domain : study.domainIt;
+  /* PROVENANCE, in the slot that already exists. The eyebrow leads with who
+     delivered the work ("SerSan delivery" / "Prior experience — Michele
+     Sanna at Revolut") and keeps the sector line after it, so a wall of
+     tier-1 marks can never read as a wall of SerSan clients. ONE template
+     literal on purpose: the entrance types this element via textContent, so
+     it must resolve to a single text node (see components/work/attribution). */
+  const metaLine = `${attributionLine(study, isEn)} · ${domain}`;
   const side = index % 2 ? 1 : -1; // right column enters from the right
 
   /* Live plane-ownership for the ENTRANCE-FIRE moment (the flag can flip
@@ -328,7 +336,7 @@ export function WorkCard({
       ref={cardRef}
       href={`/case-studies/${study.id}`}
       className={cn("fw-card group", className)}
-      aria-label={`${study.client}, ${engagement}`}
+      aria-label={`${study.client}, ${engagement} — ${attributionLine(study, isEn)}`}
       data-cursor="view"
       data-flip-source={study.id}
       onClick={onFlip}
@@ -369,7 +377,7 @@ export function WorkCard({
         className={cn("eyebrow fw-line-1", INDUSTRY_COLOR[study.industry])}
         data-scramble-done="1"
       >
-        {domain}
+        {metaLine}
       </p>
 
       {/* line-2: the rolling title. */}

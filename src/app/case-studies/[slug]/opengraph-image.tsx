@@ -115,7 +115,7 @@ export default async function Image({ params }: { params: { slug: string } }) {
               color: "#a5adb8",
             }}
           >
-            AI-powered software engineering
+            Custom software · automation · AI
           </div>
         </div>
       </div>

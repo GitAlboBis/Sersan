@@ -8,9 +8,9 @@ import { coFounders } from "@/data/founders";
 import { ContactForm } from "@/components/contact-form";
 import { CalEmbed } from "@/components/cal-embed";
 import { Reveal } from "@/components/ui/reveal";
-import { SectionHeading } from "@/components/ui/section-heading";
 import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
+import { CTA, FACTS, pick } from "@/data/copy";
 
 export function ContactClient() {
   const { language } = useLanguage();
@@ -90,9 +90,7 @@ export function ContactClient() {
                 style={{ background: "hsl(var(--accent))" }}
                 aria-hidden="true"
               />
-              {isEn
-                ? "Senior reply within 1 business day"
-                : "Risposta senior entro 1 giorno lavorativo"}
+              {pick(isEn, FACTS.replyTime)}
             </p>
             {/* key={language}: SplitText owns this subtree once split; a language
                 swap must remount it or React reconciles against orphaned nodes
@@ -117,8 +115,8 @@ export function ContactClient() {
             <Reveal delay={150}>
               <p className="text-lg text-ink-mute max-w-xl mx-auto">
                 {isEn
-                  ? "No SDR funnel, no junior triage. A short note and a senior engineer reads it."
-                  : "Nessun funnel di SDR, nessun triage junior. Una nota breve, e la legge un ingegnere senior."}
+                  ? "No SDR funnel, no automated triage. A few sentences is enough — a founder reads it."
+                  : "Nessun funnel di SDR, nessun triage automatico. Bastano poche frasi: le legge un founder."}
               </p>
             </Reveal>
           </div>
@@ -176,7 +174,7 @@ export function ContactClient() {
                 {/* Founder LinkedIns */}
                 <div className="pt-8 mt-8 border-t border-rule/50">
                   <p className="text-[10px] font-mono uppercase tracking-[0.16em] text-ink-mute mb-3">
-                    {isEn ? "Talk to a founder" : "Scrivi a un founder"}
+                    {isEn ? "Message a founder" : "Scrivete a un founder"}
                   </p>
                   <div className="flex flex-col gap-2">
                     {coFounders.map((f) => (
@@ -220,24 +218,24 @@ export function ContactClient() {
                 <h3 className="font-display text-xl text-ink mb-3 leading-tight">
                   {isEn ? (
                     <>
-                      Skip the form.{" "}
+                      Not sure yet?{" "}
                       <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                        Book a working call.
+                        Start with a diagnostic.
                       </span>
                     </>
                   ) : (
                     <>
-                      Salta il modulo.{" "}
+                      Non avete ancora deciso?{" "}
                       <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                        Prenota una working call.
+                        Partite da una diagnosi.
                       </span>
                     </>
                   )}
                 </h3>
                 <p className="text-sm text-ink-mute mb-5 leading-relaxed">
                   {isEn
-                    ? "One week, inside your stack. A written report on what's broken, what's manual, and what AI can actually do."
-                    : "Una settimana, dentro il vostro stack. Un report scritto su cosa non funziona, cosa è manuale e cosa l'AI può davvero fare."}
+                    ? "2–6 business days, fixed scope. A written verdict on what's slowing you down, what to build first, and where AI actually earns its place."
+                    : "2–6 giorni lavorativi, scope fisso. Un verdetto scritto su cosa vi rallenta, cosa costruire per primo e dove l'AI se lo merita davvero."}
                 </p>
                 {/* w-full is the DESIGN here (card CTA at every width), so
                     only the wrap half applies: inside a `p-6` card at 320px
@@ -250,9 +248,7 @@ export function ContactClient() {
                   size="lg"
                   className={cn("w-full", CTA_WRAP_SM)}
                 >
-                  <Link href="/audit">
-                    {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
-                  </Link>
+                  <Link href="/audit">{pick(isEn, CTA.discussDiagnostic)}</Link>
                 </Button>
               </div>
             </div>
@@ -267,15 +263,16 @@ export function ContactClient() {
         </div>
       </section>
 
-      {/* Or request the call directly — written-intake fallback while the
-          Cal embed is disabled (see CAL_ENABLED in @/lib/site) */}
+      {/* Or send a full brief — written-intake fallback while the Cal embed
+          is disabled (see CAL_ENABLED in @/lib/site). Nothing on this page
+          promises a scheduled slot, because nothing can be scheduled yet. */}
       <section data-line-anchor="intake" className="section relative border-t border-rule/40">
         <div className="container-px">
           <div className="max-w-6xl mx-auto grid lg:grid-cols-5 gap-10 lg:gap-14 items-start">
             <div className="lg:col-span-2">
               <Reveal>
                 <p className="eyebrow mb-4" style={{ color: "hsl(var(--accent))" }}>
-                  {isEn ? "Or request the call directly" : "O richiedete la call direttamente"}
+                  {isEn ? "Or send a project brief" : "Oppure inviate un brief"}
                 </p>
               </Reveal>
               {/* Outside the Reveal — the choreographer's line-mask owns it.
@@ -283,29 +280,29 @@ export function ContactClient() {
               <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-[2rem] text-ink leading-[1.15] tracking-tight mb-5">
                 {isEn ? (
                   <>
-                    Want the call?{" "}
+                    More to say?{" "}
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                      Start in writing.
+                      Send a full brief.
                     </span>
                   </>
                 ) : (
                   <>
-                    Volete la call?{" "}
+                    Avete più da dire?{" "}
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                      Iniziate per iscritto.
+                      Inviate un brief completo.
                     </span>
                   </>
                 )}
               </h2>
               <p className="text-base text-ink-mute leading-[1.6] mb-4">
                 {isEn
-                  ? "Send a written intake — a senior engineer replies within 1 business day to set up a 30-minute call."
-                  : "Inviate un intake scritto — un ingegnere senior risponde entro 1 giorno lavorativo per fissare una call di 30 minuti."}
+                  ? "Send a written brief — a founder replies within one business day with a recommended next step."
+                  : "Inviate un brief scritto: un founder risponde entro un giorno lavorativo con il prossimo passo consigliato."}
               </p>
               <p className="text-sm text-ink-mute leading-[1.55]">
                 {isEn
-                  ? "No SDR, no junior triage. The person on the call is a senior engineer who'd also be doing the work."
-                  : "Niente SDR, niente triage junior. La persona in call è un ingegnere senior che farebbe anche il lavoro."}
+                  ? "No SDR, no automated triage. Whoever replies is the person who would own the work itself."
+                  : "Niente SDR, niente triage automatico. Chi risponde è la stessa persona che seguirebbe il lavoro."}
               </p>
             </div>
             <div className="lg:col-span-3">

@@ -11,9 +11,10 @@ import {
 import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
 import { START_HREF, CONTACT_EMAIL } from "@/lib/site";
+import { CTA, FACTS, pick } from "@/data/copy";
 import { cn } from "@/lib/utils";
 
-const BRIEF_MAILTO = `mailto:${CONTACT_EMAIL}?subject=Technical%20scoping%20brief`;
+const BRIEF_MAILTO = `mailto:${CONTACT_EMAIL}?subject=Project%20brief`;
 
 /**
  * FinalCTA — the page closer.
@@ -87,9 +88,7 @@ export default function FinalCTA() {
                   aria-hidden="true"
                   className="inline-block h-px w-6 bg-[hsl(var(--accent))]"
                 />
-                <span>
-                  {isEn ? "Start with a scoping call" : "Si parte da una scoping call"}
-                </span>
+                <span>{pick(isEn, CTA.startWithProblem)}</span>
               </p>
 
               {/* key={language}: SplitText owns this subtree once split; a
@@ -100,16 +99,16 @@ export default function FinalCTA() {
               <h2 key={language} data-split-reveal data-reveal="skew" className="font-display text-[clamp(2.25rem,4.5vw,3.75rem)] font-semibold leading-[1.02] tracking-[-0.028em] text-ink text-balance">
                 {isEn ? (
                   <>
-                    Bring us the system you{" "}
+                    Bring us the problem.{" "}
                     <span className="font-medium text-[hsl(var(--accent))]">
-                      need to ship.
+                      We&apos;ll bring the plan.
                     </span>
                   </>
                 ) : (
                   <>
-                    Portateci il sistema che{" "}
+                    Portateci il problema.{" "}
                     <span className="font-medium text-[hsl(var(--accent))]">
-                      dovete mandare in produzione.
+                      Noi portiamo il piano.
                     </span>
                   </>
                 )}
@@ -117,14 +116,16 @@ export default function FinalCTA() {
 
               <p className="max-w-xl text-base leading-relaxed text-ink-mute sm:text-lg">
                 {isEn
-                  ? "Thirty minutes, one founder. Bring your workflow, your current stack, and where it breaks. We tell you whether to build, harden, or stop."
-                  : "Trenta minuti, un fondatore. Portate il vostro flusso di lavoro, lo stack attuale e il punto in cui si rompe. Vi diciamo se conviene costruire, consolidare o fermarsi."}
+                  ? "One workflow, one product idea, one system that keeps breaking, or something your team still does manually. Tell us what's happening. We'll tell you what we'd do next."
+                  : "Un processo, un'idea di prodotto, un sistema che continua a rompersi o qualcosa che il vostro team fa ancora a mano. Raccontateci cosa succede. Vi diciamo cosa faremmo dopo."}
               </p>
 
               <p className="max-w-xl text-sm leading-relaxed text-ink-mute">
-                {isEn
-                  ? "Read by one of the founders, not a queue. No marketing follow-ups, no demo decks."
-                  : "La legge uno dei fondatori, non una coda di ticket. Nessun follow-up commerciale, nessuna presentazione demo."}
+                {`${pick(isEn, FACTS.briefIsEnough)}. ${
+                  isEn
+                    ? "No marketing follow-ups, no demo decks."
+                    : "Nessun follow-up commerciale, nessuna presentazione demo."
+                }`}
               </p>
 
               <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -139,9 +140,7 @@ export default function FinalCTA() {
                     size="xl"
                     className={cn("group", CTA_FLUID_SM)}
                   >
-                    {isEn
-                      ? "Book a 30-min scoping call"
-                      : "Prenota una scoping call di 30 min"}
+                    {pick(isEn, CTA.primary)}
                     <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
                   </Button>
                 </Link>
@@ -151,7 +150,7 @@ export default function FinalCTA() {
                     size="lg"
                     className={CTA_FLUID_SM}
                   >
-                    {isEn ? "Send a brief by email" : "Inviate un brief via email"}
+                    {pick(isEn, CTA.emailUs)}
                   </Button>
                 </Link>
               </div>
@@ -188,8 +187,8 @@ export default function FinalCTA() {
                   <span className="cta-code-line" style={{ animationDelay: "0ms" }}>
                     <span className="text-ink-mute">
                       {isEn
-                        ? `// after the scoping call`
-                        : `// dopo la scoping call`}
+                        ? `// after your brief`
+                        : `// dopo il vostro brief`}
                     </span>
                   </span>
                   <span className="cta-code-line" style={{ animationDelay: "120ms" }}>
@@ -199,9 +198,9 @@ export default function FinalCTA() {
                   </span>
                   <span className="cta-code-line" style={{ animationDelay: "240ms" }}>
                     {"  "}
-                    <span className="text-ink">duration</span>:{" "}
+                    <span className="text-ink">readBy</span>:{" "}
                     <span className="text-[hsl(var(--accent))]">
-                      {isEn ? `"30 min, 1 founder"` : `"30 min, 1 fondatore"`}
+                      {isEn ? `"a founder"` : `"un fondatore"`}
                     </span>
                     <span className="text-ink-mute">,</span>
                   </span>
@@ -242,9 +241,7 @@ export default function FinalCTA() {
 
               <p className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.14em] text-ink-mute">
                 <span aria-hidden="true" className="status-dot" />
-                {isEn
-                  ? "Reply within 1 business day"
-                  : "Risposta entro 1 giorno lavorativo"}
+                {pick(isEn, FACTS.replyTime)}
               </p>
             </div>
           </div>

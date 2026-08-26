@@ -6,6 +6,7 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
+import { POSITIONING, pick } from "@/data/copy";
 import { getLenis } from "@/lib/lenis-singleton";
 import { applyRailOverscroll } from "@/lib/rail-overscroll";
 import { snapPoint } from "@/lib/scroll-snap";
@@ -134,32 +135,32 @@ function getServices(isEn: boolean): Service[] {
     {
       num: "01",
       title: isEn
-        ? "AI-Native Software Development"
-        : "Sviluppo software AI-native",
+        ? "Custom Software & Platforms"
+        : "Software e piattaforme su misura",
       positioning: isEn
-        ? "Production software, AI wired in, not bolted on."
-        : "Software in produzione, con l'AI integrata nel codice, non incollata sopra.",
+        ? "The software your business runs on, built to fit."
+        : "Il software su cui gira la vostra azienda, costruito su misura.",
       includes: isEn
         ? [
-            "Full-stack product engineering",
-            "Typed AI integration modules",
-            "Eval harness running in CI",
-            "Tracing from click to model to action",
+            "Internal tools and management systems",
+            "Customer portals and web applications",
+            "SaaS products and academy/LMS platforms",
+            "Integrations across the tools you use",
           ]
         : [
-            "Ingegneria di prodotto full-stack",
-            "Moduli di integrazione AI tipizzati",
-            "Eval harness eseguita in CI",
-            "Tracing dal click al modello all'azione",
+            "Strumenti interni e gestionali",
+            "Portali clienti e applicazioni web",
+            "Prodotti SaaS e piattaforme LMS/academy",
+            "Integrazioni con gli strumenti che usate",
           ],
       solves: isEn
         ? [
-            "Your agent works in demo, but fails in production.",
-            "You need senior AI engineering judgment without hiring a full team.",
+            "The tools you run on don't talk to each other.",
+            "You need software built properly, without hiring a team.",
           ]
         : [
-            "Il tuo agente funziona nelle demo, ma fallisce in produzione.",
-            "Ti serve giudizio ingegneristico AI senior senza assumere un team completo.",
+            "Gli strumenti che usate non si parlano tra loro.",
+            "Vi serve software fatto bene, senza assumere un team.",
           ],
       ctaLabel: isEn ? "Engineering" : "Ingegneria",
       ctaHref: "/services/engineering",
@@ -168,79 +169,81 @@ function getServices(isEn: boolean): Service[] {
       num: "02",
       title: isEn ? "Workflow Automation" : "Automazione dei flussi di lavoro",
       positioning: isEn
-        ? "Automation that compounds, not breaks."
-        : "Automazione che si consolida, non che si rompe.",
+        ? "Start with the process that eats the most time."
+        : "Si parte dal processo che consuma più tempo.",
       includes: isEn
         ? [
-            "LLM workflows wired into existing systems",
-            "Human-in-the-loop where it matters",
-            "Retry, rollback, dead-letter paths",
-            "Cost-per-run instrumentation",
+            "Repetitive back-office work, handed off",
+            "Documents read, checked and filed",
+            "Leads, orders and CRM data kept in sync",
+            "Nothing lost: failures surfaced and retried",
           ]
         : [
-            "Flussi LLM integrati nei sistemi esistenti",
-            "Human-in-the-loop dove conta",
-            "Percorsi di retry, rollback, dead-letter",
-            "Strumentazione del costo per esecuzione",
+            "Lavoro ripetitivo di back-office, delegato",
+            "Documenti letti, controllati e archiviati",
+            "Lead, ordini e dati CRM sempre allineati",
+            "Niente si perde: errori visibili e ripresi",
           ],
       solves: isEn
-        ? ["Your automation stack is duct tape."]
-        : ["Il tuo stack di automazioni è fatto di nastro adesivo."],
+        ? ["Your team retypes the same data every week."]
+        : ["Il vostro team riscrive gli stessi dati ogni settimana."],
       ctaLabel: isEn ? "Automation" : "Automazione",
       ctaHref: "/services/automation",
     },
     {
       num: "03",
-      title: isEn ? "MLOps & Evaluation" : "MLOps e valutazione",
+      title: isEn ? "AI Features & Reliability" : "Funzioni AI e affidabilità",
       positioning: isEn
-        ? "Models in production, not in notebooks."
-        : "Modelli in produzione, non nei notebook.",
+        ? "AI that holds up once real customers use it."
+        : "AI che regge quando la usano i clienti veri.",
       includes: isEn
         ? [
-            "Evaluation suite: regression, drift, safety",
-            "Deployment pipeline and model registry",
-            "Monitoring: latency, cost, accuracy",
-            "Shadow, canary, rollback paths",
+            "Assistants and copilots on your own content",
+            "Agents that act, with the limits you set",
+            "Tested against real cases before release",
+            "Monitored live: cost, quality, accuracy",
           ]
         : [
-            "Suite di valutazione: regressione, drift, sicurezza",
-            "Pipeline di deployment e model registry",
-            "Monitoraggio: latenza, costo, accuratezza",
-            "Percorsi shadow, canary, rollback",
+            "Assistenti e copiloti sui vostri contenuti",
+            "Agenti che agiscono, con i limiti che decidete",
+            "Testati su casi reali prima del rilascio",
+            "Monitorati dal vivo: costo, qualità, precisione",
           ],
       solves: isEn
-        ? ["Your models are still trapped in notebooks."]
-        : ["I tuoi modelli sono ancora intrappolati nei notebook."],
-      ctaLabel: isEn ? "MLOps" : "MLOps",
+        ? ["The AI demo impressed everyone, then stalled."]
+        : ["La demo AI ha entusiasmato tutti, poi si è fermata."],
+      ctaLabel: isEn ? "AI features" : "Funzioni AI",
       ctaHref: "/services/mlops",
     },
     {
       num: "04",
-      title: isEn ? "AI Architecture & Audits" : "Architettura e audit AI",
+      title: isEn
+        ? "Technical Audits & Product Strategy"
+        : "Audit tecnici e strategia di prodotto",
       positioning: isEn
         ? "Find what should not be built, before code becomes debt."
         : "Capire cosa non andrebbe costruito, prima che il codice diventi debito.",
       includes: isEn
         ? [
-            "Systems audit: architecture, data, risk",
+            "Systems and process audit: where it hurts",
             "Build vs. buy vs. don't-build call",
-            "Reference architecture and sequencing",
-            "Risk register: technical and regulatory",
+            "Where AI would actually pay off",
+            "Target architecture, sequenced and costed",
           ]
         : [
-            "Audit dei sistemi: architettura, dati, rischio",
+            "Audit di sistemi e processi: dove fa male",
             "Decisione costruire, acquistare o non costruire",
-            "Architettura di riferimento e sequenziamento",
-            "Registro dei rischi: tecnici e normativi",
+            "Dove l'AI conviene davvero",
+            "Architettura di riferimento, sequenziata e stimata",
           ],
       solves: isEn
         ? [
-            "You're about to commit engineering cycles to an AI product.",
+            "You know what's broken, not what to build first.",
             "You need readiness before a board, customer, or regulator.",
           ]
         : [
-            "Stai per impegnare cicli di sviluppo su un prodotto AI.",
-            "Ti serve essere pronti prima di un consiglio, un cliente o un'autorità.",
+            "Sapete cosa non funziona, non da dove partire.",
+            "Vi serve essere pronti prima di un consiglio, un cliente o un'autorità.",
           ],
       ctaLabel: isEn ? "Architecture & Audits" : "Architettura e audit",
       ctaHref: "/services/architecture",
@@ -1176,9 +1179,11 @@ export default function ServicesSection() {
         ref={annotationRef}
         className="max-w-md text-[13px] leading-relaxed text-ink-mute"
       >
-        {isEn
-          ? "Every engagement is delivered by senior engineers from scoping to handover. No account layer, no junior bench, no roadmap that quietly becomes a multi-year retainer."
-          : "Ogni ingaggio è seguito da ingegneri senior, dallo scoping al passaggio di consegne. Nessun livello di account management, nessuna panchina di junior, nessuna roadmap che si trasforma silenziosamente in un retainer pluriennale."}
+        {`${pick(isEn, POSITIONING.range)} ${
+          isEn
+            ? "The same senior people scope it, build it and hand it over — with no account layer in between."
+            : "Le stesse persone senior definiscono, costruiscono e consegnano, senza nessun account manager in mezzo."
+        }`}
       </p>
     </div>
   );
@@ -1189,8 +1194,8 @@ export default function ServicesSection() {
   const closing = (
     <p className="max-w-xl text-[14px] text-ink-mute leading-relaxed">
       {isEn
-        ? "Not sure which one fits? The scoping call diagnoses the problem first, then names the engagement."
-        : "Non sai quale sia quello giusto? La call di scoping prima diagnostica il problema, poi definisce l'ingaggio."}
+        ? "Not sure which one fits? Describe the problem. We'll tell you which engagement fits — or that none does."
+        : "Non sapete quale sia quello giusto? Descriveteci il problema. Vi diciamo quale ingaggio serve, o se non ne serve nessuno."}
     </p>
   );
 

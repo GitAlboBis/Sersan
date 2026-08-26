@@ -13,8 +13,18 @@ const BASE = "https://www.sersan.io";
 export default function sitemap(): MetadataRoute.Sitemap {
   const now = new Date();
 
+  // The four /services/* routes and /start were indexable but absent here,
+  // and unreachable from the navbar and footer — the pages that describe what
+  // SerSan actually builds, plus the page every primary CTA points at, were
+  // the only ones a crawler could not find. Priority sits with /audit and
+  // /consulting: these are the buying pages.
   const staticRoutes: MetadataRoute.Sitemap = [
     { url: `${BASE}/`,             priority: 1.0, changeFrequency: "weekly",  lastModified: now },
+    { url: `${BASE}/services/engineering`,   priority: 0.9, changeFrequency: "monthly", lastModified: now },
+    { url: `${BASE}/services/automation`,    priority: 0.9, changeFrequency: "monthly", lastModified: now },
+    { url: `${BASE}/services/mlops`,         priority: 0.9, changeFrequency: "monthly", lastModified: now },
+    { url: `${BASE}/services/architecture`,  priority: 0.9, changeFrequency: "monthly", lastModified: now },
+    { url: `${BASE}/start`,        priority: 0.9, changeFrequency: "monthly", lastModified: now },
     { url: `${BASE}/audit`,        priority: 0.9, changeFrequency: "monthly", lastModified: now },
     { url: `${BASE}/consulting`,   priority: 0.9, changeFrequency: "monthly", lastModified: now },
     { url: `${BASE}/case-studies`, priority: 0.8, changeFrequency: "monthly", lastModified: now },

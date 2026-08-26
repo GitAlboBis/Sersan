@@ -11,6 +11,8 @@ import { PracticeLedger } from "./practice-ledger";
 import { EngagementActs } from "./engagement-acts";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { useLanguage } from "@/components/language-provider";
+import { CTA, FACTS, POSITIONING, pick } from "@/data/copy";
+import { START_HREF } from "@/lib/site";
 
 export function ConsultingClient() {
   const { language } = useLanguage();
@@ -34,24 +36,24 @@ export function ConsultingClient() {
     {
       q: isEn ? "How much does it cost?" : "Quanto costa?",
       a: isEn
-        ? "It depends on the work. Tech Audits are fixed-price. Delivery Sprints are scoped per project. Fractional CTO is based on time allocation. After a short scoping call we'll come back with a clear proposal, usually within a business day."
-        : "Dipende dal lavoro. I Tech Audit sono a prezzo fisso. I Delivery Sprint sono dimensionati progetto per progetto. Il Fractional CTO è basato sull'allocazione di tempo. Dopo una breve call di scoping vi mandiamo una proposta chiara, di solito entro un giorno lavorativo.",
+        ? "It depends on the work. Diagnostics are fixed-price. Builds are scoped and priced per project. Continued work is agreed phase by phase. Small, well-defined projects are welcome — you don't need a large budget to start. You'll get a clear proposal, usually within a business day."
+        : "Dipende dal lavoro. Le diagnosi sono a prezzo fisso. Gli sviluppi sono dimensionati e quotati progetto per progetto. Il lavoro continuativo si concorda fase per fase. Anche i progetti piccoli e ben definiti sono benvenuti: non serve un budget importante per iniziare. Ricevete una proposta chiara, di solito entro un giorno lavorativo.",
     },
     {
       q: isEn
         ? "How long does a typical engagement last?"
         : "Quanto dura un ingaggio tipico?",
       a: isEn
-        ? "Tech Audits are usually 1–2 weeks. Delivery Sprints run 4–8 weeks. Fractional CTO engagements are ongoing, typically 3–12 months. We scope each one up front so nothing comes out of nowhere later."
-        : "I Tech Audit durano in genere 1–2 settimane. I Delivery Sprint 4–8 settimane. Gli ingaggi di Fractional CTO sono continuativi, tipicamente 3–12 mesi. Definiamo lo scope in anticipo, così non emergono sorprese in corso d'opera.",
+        ? `A Focused Diagnostic runs ${pick(isEn, FACTS.auditDuration)}. A Delivery Sprint runs ${pick(isEn, FACTS.sprintDuration)}. Continued work is agreed in phases, each with its own scope, price and end. We scope each one up front so nothing comes out of nowhere later.`
+        : `Una Diagnosi mirata dura ${pick(isEn, FACTS.auditDuration)}. Uno Sprint di delivery dura ${pick(isEn, FACTS.sprintDuration)}. Il lavoro continuativo si concorda per fasi, ognuna con il proprio scope, prezzo e fine. Definiamo tutto in anticipo, così non emergono sorprese in corso d'opera.`,
     },
     {
       q: isEn
         ? "How do you handle knowledge transfer?"
         : "Come gestite il passaggio di conoscenze?",
       a: isEn
-        ? "Every engagement ends with documentation, architecture decision records, team walkthroughs, and a proper handover. The goal is that your team owns the thing long after we've gone. We'd rather you don't need us next year than that you do."
-        : "Ogni ingaggio si chiude con documentazione, architecture decision record, walkthrough con il team e un handover formale. L'obiettivo è che il vostro team mantenga in autonomia il sistema molto dopo la nostra uscita. Preferiamo che l'anno prossimo non abbiate bisogno di noi piuttosto che il contrario.",
+        ? "Every engagement ends with documentation, architecture decision records, team walkthroughs, and a proper handover. You own the code and the system outright — no licensing, no lock-in, no source held back. If you want us to keep going, that is a separately scoped agreement, never an assumption."
+        : "Ogni ingaggio si chiude con documentazione, architecture decision record, walkthrough con il team e un handover formale. Il codice e il sistema sono vostri: nessuna licenza, nessun lock-in, nessun sorgente trattenuto. Se volete che proseguiamo, è un accordo con scope a parte, mai un automatismo.",
     },
   ];
 
@@ -81,35 +83,35 @@ export function ConsultingClient() {
             <h1 key={language} data-split-reveal className="font-display text-[clamp(2.25rem,7vw,4.75rem)] leading-[1.15] tracking-[-0.025em] text-ink text-balance mb-8 pb-1">
               {isEn ? (
                 <>
-                  Senior engineering.{" "}
+                  Custom software, AI and automation.{" "}
                   <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                    No layer of juniors.
+                    Built to earn its place.
                   </span>
                 </>
               ) : (
                 <>
-                  Ingegneria senior.{" "}
+                  Software su misura, AI e automazione.{" "}
                   <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                    Nessuno strato di junior.
+                    Costruiti dove servono davvero.
                   </span>
                 </>
               )}
             </h1>
             <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto leading-relaxed mb-10">
               {isEn
-                ? "Three engagement formats. The people who scope the work do the work. From £15K, scoped weekly. London-registered."
-                : "Tre formati di ingaggio. Chi definisce il lavoro lo esegue. Da £15K, con scope settimanale. Società con sede a Londra."}
+                ? `Three formats. The people who scope the work do the work. ${pick(isEn, POSITIONING.range)} London-registered.`
+                : `Tre formati. Chi definisce il lavoro lo esegue. ${pick(isEn, POSITIONING.range)} Sede legale a Londra.`}
             </p>
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
               <Button asChild size="lg" className={cn("group", CTA_FLUID_SM)}>
-                <Link href="/audit">
-                  {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
+                <Link href={START_HREF}>
+                  {pick(isEn, CTA.primary)}
                   <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
                 </Link>
               </Button>
               <Button asChild variant="outline" size="lg" className={CTA_FLUID_SM}>
                 <Link href="/case-studies">
-                  {isEn ? "See the work" : "Guarda i lavori"}
+                  {pick(isEn, CTA.seeWork)}
                 </Link>
               </Button>
             </div>
@@ -131,11 +133,11 @@ export function ConsultingClient() {
             title={
               isEn ? (
                 <>
-                  Eight surfaces. <span className="italic" style={{ color: "hsl(var(--accent))" }}>One team.</span>
+                  Eight things we do. <span className="italic" style={{ color: "hsl(var(--accent))" }}>One team.</span>
                 </>
               ) : (
                 <>
-                  Otto superfici. <span className="italic" style={{ color: "hsl(var(--accent))" }}>Un solo team.</span>
+                  Otto cose che facciamo. <span className="italic" style={{ color: "hsl(var(--accent))" }}>Un solo team.</span>
                 </>
               )
             }
@@ -160,14 +162,14 @@ export function ConsultingClient() {
                 <>
                   Three formats.{" "}
                   <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                    Pick the one that fits.
+                    Start as small as you need.
                   </span>
                 </>
               ) : (
                 <>
                   Tre formati.{" "}
                   <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                    Scegliete quello giusto.
+                    Si può iniziare in piccolo.
                   </span>
                 </>
               )
@@ -290,8 +292,8 @@ export function ConsultingClient() {
             }
             description={
               isEn
-                ? "Four short steps. A senior engineer replies within one business day with what we'd ship first and where we'd push back."
-                : "Quattro passaggi brevi. Un ingegnere senior risponde entro un giorno lavorativo con cosa porteremmo in produzione per primo e dove faremmo obiezione."
+                ? "Four short steps. Two or three sentences is enough. A founder reads it and replies within one business day with what we'd build first."
+                : "Quattro passaggi brevi. Bastano due o tre frasi. Un founder lo legge e risponde entro un giorno lavorativo con cosa costruiremmo per primo."
             }
           />
           <div className="max-w-2xl mx-auto">
@@ -318,16 +320,16 @@ export function ConsultingClient() {
               title={
                 isEn ? (
                   <>
-                    Tell us what&apos;s broken.{" "}
+                    Tell us the problem.{" "}
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                      We&apos;ll tell you what we&apos;d ship first.
+                      We&apos;ll tell you what we&apos;d build first.
                     </span>
                   </>
                 ) : (
                   <>
-                    Diteci cosa non funziona.{" "}
+                    Diteci qual è il problema.{" "}
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                      Vi diciamo cosa metteremmo in produzione per primo.
+                      Vi diciamo cosa costruiremmo per primo.
                     </span>
                   </>
                 )
@@ -335,8 +337,8 @@ export function ConsultingClient() {
             />
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
               <Button asChild size="lg" className={cn("group", CTA_FLUID_SM)}>
-                <Link href="/audit">
-                  {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
+                <Link href={START_HREF}>
+                  {pick(isEn, CTA.discussProject)}
                   <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
                 </Link>
               </Button>

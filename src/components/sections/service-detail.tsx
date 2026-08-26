@@ -13,6 +13,7 @@ import { Reveal } from "@/components/ui/reveal";
 import { UseCaseBeats } from "@/components/sections/use-case-beats";
 import { useLanguage } from "@/components/language-provider";
 import { caseStudies } from "@/data/case-studies";
+import { CTA, pick } from "@/data/copy";
 import type { ServiceContent } from "@/data/services";
 import { START_HREF } from "@/lib/site";
 import { cn } from "@/lib/utils";
@@ -38,6 +39,9 @@ import { cn } from "@/lib/utils";
  *   07 FAQs          accordion-style stack
  *   08 Final CTA     primary → /start, secondary → /#process
  *
+ * CTA labels come from src/data/copy.ts. They must never promise a booking:
+ * CAL_ENABLED is false and /start is a written brief, not a calendar.
+ *
  * No invented copy — everything comes from src/data/services.ts and
  * src/data/case-studies.ts.
  */
@@ -57,14 +61,47 @@ export default function ServiceDetail({
   const problemTitle = isEn ? service.problem.title : service.problem.titleIt;
   const problemBody = isEn ? service.problem.body : service.problem.bodyIt;
   const timeline = isEn ? service.timeline : service.timelineIt;
-  const bookCallLabel =
-    language === "it"
-      ? "Prenota una call di scoping di 30 min"
-      : "Book a 30-min scoping call";
+  // The primary action is a written brief, never a booking. The contextual
+  // variant matches the surface's subject (see CTA in src/data/copy.ts).
+  const primaryCtaLabel = pick(
+    isEn,
+    service.slug === "automation"
+      ? CTA.showWorkflow
+      : service.slug === "architecture"
+        ? CTA.discussDiagnostic
+        : service.slug === "mlops"
+          ? CTA.discussProject
+          : CTA.tellUsBuilding,
+  );
   // Filter case studies by id, preserving the order given in services.ts
   const relevantCases = service.caseStudyIds
     .map((id) => caseStudies.find((c) => c.id === id))
     .filter((c): c is NonNullable<typeof c> => Boolean(c));
+  // Attribution split — a "prior" entry is a founder's pre-SerSan delivery and
+  // must never be counted as a SerSan client engagement (see case-studies.ts).
+  const sersanCases = relevantCases.filter(
+    (c) => c.attribution === "sersan",
+  ).length;
+  const priorCases = relevantCases.length - sersanCases;
+  const workNote = isEn
+    ? priorCases === 0
+      ? `${relevantCases.length} projects that exemplify this service, all built by SerSan.`
+      : sersanCases === 0
+        ? `${relevantCases.length} projects that exemplify this service, from prior senior delivery before SerSan.`
+        : `${relevantCases.length} projects that exemplify this service — ${sersanCases} built by SerSan, ${priorCases} from prior senior delivery.`
+    : priorCases === 0
+      ? `${relevantCases.length} progetti che esemplificano questo servizio, tutti realizzati da SerSan.`
+      : sersanCases === 0
+        ? `${relevantCases.length} progetti che esemplificano questo servizio, da precedenti consegne senior prima di SerSan.`
+        : `${relevantCases.length} progetti che esemplificano questo servizio — ${sersanCases} realizzati da SerSan, ${priorCases} da precedenti consegne senior.`;
+  // Section 04's heading counts the use cases it is about to render. It used
+  // to say "Three" while /services/architecture ships four.
+  const useCaseCountWord =
+    (isEn
+      ? ["", "One", "Two", "Three", "Four", "Five", "Six"]
+      : ["", "Una", "Due", "Tre", "Quattro", "Cinque", "Sei"])[
+      service.useCases.length
+    ] ?? String(service.useCases.length);
 
   return (
     <div className="relative min-h-[100svh]">
@@ -101,7 +138,7 @@ export default function ServiceDetail({
                 {description}
               </p>
               {/* CTA_*_SM: `items-start` makes these shrink-to-fit, and the
-                  nowrap label ("Prenota una call di scoping di 30 min") is far
+                  nowrap label ("Raccontaci cosa state costruendo") is far
                   wider than the 256px column at 320px. Inert at sm and up. */}
               <div className="mt-8 flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
                 <Link href={START_HREF} className={CTA_WRAPPER_SM}>
@@ -110,7 +147,7 @@ export default function ServiceDetail({
                     size="xl"
                     className={cn("group", CTA_FLUID_SM)}
                   >
-                    {bookCallLabel}
+                    {primaryCtaLabel}
                     <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
                   </Button>
                 </Link>
@@ -171,8 +208,8 @@ export default function ServiceDetail({
               }
               description={
                 isEn
-                  ? "Each item below appears in most engagements of this service. The exact mix is set in the Diagnose phase, never speculatively, never as a default checklist."
-                  : "Ogni voce qui sotto compare nella maggior parte degli ingaggi di questo servizio. Il mix esatto si definisce nella fase di Diagnosi, mai in modo speculativo, mai come checklist di default."
+                  ? "Each item below appears in most projects of this kind. The exact mix is agreed before we start, sized to the problem — never a default checklist, and never more process than the work deserves."
+                  : "Ogni voce qui sotto compare nella maggior parte dei progetti di questo tipo. Il mix esatto si concorda prima di iniziare, dimensionato sul problema: mai una checklist di default, mai più processo di quanto il lavoro meriti."
               }
               className="mb-12 sm:mb-16 max-w-3xl"
             />
@@ -237,12 +274,13 @@ export default function ServiceDetail({
               title={
                 isEn ? (
                   <>
-                    Three places SerSan typically gets called in for{" "}
-                    <span className="font-display italic">{name}.</span>
+                    {useCaseCountWord} places SerSan typically gets called in
+                    for <span className="font-display italic">{name}.</span>
                   </>
                 ) : (
                   <>
-                    Tre situazioni in cui SerSan viene tipicamente chiamata per{" "}
+                    {useCaseCountWord} situazioni in cui SerSan viene
+                    tipicamente chiamata per{" "}
                     <span className="font-display italic">{name}.</span>
                   </>
                 )
@@ -349,21 +387,17 @@ export default function ServiceDetail({
                   title={
                     isEn ? (
                       <>
-                        {name} engagements you can{" "}
-                        <span className="font-display italic">name.</span>
+                        Projects behind this{" "}
+                        <span className="font-display italic">service.</span>
                       </>
                     ) : (
                       <>
-                        Ingaggi di {name} che potete{" "}
-                        <span className="font-display italic">nominare.</span>
+                        I progetti dietro questo{" "}
+                        <span className="font-display italic">servizio.</span>
                       </>
                     )
                   }
-                  description={
-                    isEn
-                      ? `${relevantCases.length} of SerSan's ${caseStudies.length} engagements that exemplify this service.`
-                      : `${relevantCases.length} dei ${caseStudies.length} ingaggi di SerSan che esemplificano questo servizio.`
-                  }
+                  description={workNote}
                   className="mb-12 sm:mb-16 max-w-3xl"
                 />
 
@@ -442,22 +476,22 @@ export default function ServiceDetail({
                       <>
                         Answers from{" "}
                         <span className="font-display italic">
-                          scoping calls.
+                          real projects.
                         </span>
                       </>
                     ) : (
                       <>
-                        Risposte dalle{" "}
+                        Risposte da{" "}
                         <span className="font-display italic">
-                          scoping call.
+                          progetti reali.
                         </span>
                       </>
                     )
                   }
                   description={
                     isEn
-                      ? "If your question isn't here, the scoping call is where it gets answered. Reply within one business day."
-                      : "Se la vostra domanda non è qui, la scoping call è il momento in cui trova risposta. Risposta entro un giorno lavorativo."
+                      ? "If your question isn't here, send it with your brief and a founder will answer it. Reply within one business day."
+                      : "Se la vostra domanda non è qui, inviatela insieme al brief: risponde un founder. Risposta entro un giorno lavorativo."
                   }
                 />
               </div>
@@ -506,8 +540,8 @@ export default function ServiceDetail({
                 <span aria-hidden="true" className="status-dot" />
                 <span>
                   {isEn
-                    ? "Start with a scoping call"
-                    : "Si parte da una scoping call"}
+                    ? "Start with the problem"
+                    : "Si parte dal problema"}
                 </span>
               </p>
               <h2 className="font-display text-[clamp(2.25rem,4.5vw,3.75rem)] leading-[1.02] tracking-[-0.028em] text-ink mb-5 text-balance">
@@ -529,8 +563,8 @@ export default function ServiceDetail({
               </h2>
               <p className="text-base sm:text-lg text-ink-mute leading-relaxed max-w-2xl mb-7">
                 {isEn
-                  ? "Read by one of the founders. We'll review the context and reply within one business day with a recommended next step. Sometimes that's a build, sometimes an audit, sometimes “don't do this.”"
-                  : "La legge uno dei fondatori. Esaminiamo il contesto e rispondiamo entro un giorno lavorativo con il prossimo step consigliato. A volte è un build, a volte un audit, a volte «non fatelo»."}
+                  ? "Two or three sentences is enough. A founder reads it, and comes back with a recommended next step: sometimes a small first piece of work, sometimes a diagnostic, sometimes “don't build this.”"
+                  : "Bastano due o tre frasi. Le legge un founder e torna con il prossimo passo consigliato: a volte un primo intervento piccolo, a volte una diagnosi, a volte «non costruitelo»."}
               </p>
               <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
                 <Link href={START_HREF} className={CTA_WRAPPER_SM}>
@@ -539,7 +573,7 @@ export default function ServiceDetail({
                     size="xl"
                     className={cn("group", CTA_FLUID_SM)}
                   >
-                    {bookCallLabel}
+                    {primaryCtaLabel}
                     <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
                   </Button>
                 </Link>

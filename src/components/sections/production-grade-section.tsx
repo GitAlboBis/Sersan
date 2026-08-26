@@ -123,10 +123,21 @@ import {
  *     styling is pure CSS colour on real text, rows are tabIndex=0 with the
  *     global :focus-visible ring; focus = ignition.
  *
- * Copy is byte-identical to the pre-refactor section (EN + IT) — the closing
- * disclaimer included — with ONE owner-approved exception, 2026-08-24: the
- * D-17 description's trailing "Open a panel…" sentence is deleted in both
- * locales (see the note at the string).
+ * COPY, 2026-08-27 REPOSITIONING — strings only (EN + IT together), no
+ * layout, no behaviour, no counts. THE ABSOLUTISM IS GONE: the act used to
+ * assert that its three artifacts ship on every system "before we call it
+ * done", which read as a mandatory heavyweight engagement and contradicted the
+ * brand line "Production-grade when production-grade is actually required."
+ * The artifacts still always ship — they are now explicitly SCALED to the
+ * system, in the H2's own second half, in the chapter description and in
+ * artifact 01's body. The eyebrow no longer asserts production-grade as the
+ * unconditional standard. The 3am motif is deleted. PRESERVED verbatim:
+ * "Traceable from input to action.", "Boundaries before features.", "The
+ * default answer to an unscoped action is no.", "These are artifacts you can
+ * ask to see in any scoping call." and the closing disclaimer (which is the
+ * exact wording of COMPLIANCE.noClaims in src/data/copy.ts — it stays authored
+ * here only because the two-line <br> lockup would be lost by importing it).
+ * Counts untouched: 3 artifacts = IGNITE_NODES = RING_T.length = CALLOUT_POS.
  */
 
 // === Shared: run a quiet status pulse only while in view ==================
@@ -174,27 +185,27 @@ function getArtifacts(isEn: boolean): Artifact[] {
   return [
     {
       claim: isEn
-        ? "Every system ships with a regression set."
-        : "Ogni sistema viene rilasciato con un set di regressione.",
+        ? "Proof it still works after every change."
+        : "La prova che funziona ancora dopo ogni modifica.",
       why: isEn
-        ? "Versioned cases and day-zero baselines mean you can prove the system still works after every change, instead of hoping."
-        : "Casi versionati e baseline al day-zero ti permettono di dimostrare che il sistema funziona ancora dopo ogni modifica, invece di sperarlo.",
+        ? "Versioned test cases, sized to the system: a handful for a workflow tool, a full regression set for a platform. You prove it, instead of hoping."
+        : "Casi di test versionati, proporzionati al sistema: pochi per un'automazione, un set di regressione completo per una piattaforma. Lo dimostrate, invece di sperarlo.",
     },
     {
       claim: isEn
         ? "Traceable from input to action."
         : "Tracciabile dall'input all'azione.",
       why: isEn
-        ? "When something breaks at 3am, the answer is in the trace: retrieval, plan, tool call, human review. Not in Slack archaeology."
-        : "Quando qualcosa si rompe alle 3 di notte, la risposta è nel trace: retrieval, plan, chiamata a tool, revisione umana. Non in un'archeologia su Slack.",
+        ? "When something goes wrong, the answer is in the record: what came in, what it decided, what it did, who reviewed it. Not Slack archaeology."
+        : "Quando qualcosa va storto, la risposta è nel registro: cosa è entrato, cosa è stato deciso, cosa è stato fatto, chi ha revisionato. Non un'archeologia su Slack.",
     },
     {
       claim: isEn
         ? "Boundaries before features."
         : "I confini prima delle feature.",
       why: isEn
-        ? "Data access and agent tools are scoped before the first feature ships. The default answer to an unscoped action is no."
-        : "L'accesso ai dati e i tool degli agenti vengono definiti prima della prima feature. La risposta di default a un'azione non prevista è no.",
+        ? "What the system can reach — data, accounts, actions — is agreed before the first feature. The default answer to an unscoped action is no."
+        : "Ciò che il sistema può raggiungere — dati, account, azioni — si decide prima della prima feature. La risposta di default a un'azione non prevista è no.",
     },
   ];
 }
@@ -522,8 +533,8 @@ export default function ProductionGradeSection() {
               />
               <span>
                 {isEn
-                  ? "What production-grade actually means"
-                  : "Cosa significa davvero production-grade"}
+                  ? "What production-grade means, when it's needed"
+                  : "Cosa vuol dire production-grade, quando serve"}
               </span>
             </p>
             {/* max-sm override — the Problem chapter title's twin (same
@@ -541,13 +552,19 @@ export default function ProductionGradeSection() {
                 <>
                   Three things every SerSan system ships with,
                   <br className="hidden sm:block" />
-                  <span className="text-ink-mute"> before we call it done.</span>
+                  <span className="text-ink-mute">
+                    {" "}
+                    scaled to what it actually carries.
+                  </span>
                 </>
               ) : (
                 <>
                   Tre cose che ogni sistema SerSan porta con sé,
                   <br className="hidden sm:block" />
-                  <span className="text-ink-mute"> prima di dirlo finito.</span>
+                  <span className="text-ink-mute">
+                    {" "}
+                    proporzionate a ciò che regge.
+                  </span>
                 </>
               )}
             </h2>
@@ -570,11 +587,14 @@ export default function ProductionGradeSection() {
                   description — the pointer was both wrong and redundant. The
                   earlier D-17 note here recorded the choice of a
                   device-neutral verb inside that sentence; that decision has
-                  no subject left. ONE string per locale; the remaining two
-                  sentences are byte-identical under the copy freeze. */}
+                  no subject left. ONE string per locale. 2026-08-27: a middle
+                  sentence carries the proportionality claim ("Each one is
+                  scaled to the system.") that the H2 asserts above — the
+                  artifacts are not a fixed heavyweight package. The closing
+                  sentence is a preserved brand asset, byte for byte. */}
               {isEn
-                ? "Not a list of compliance buzzwords. These are artifacts you can ask to see in any scoping call."
-                : "Non un elenco di buzzword sulla compliance. Sono artefatti che puoi chiedere di vedere in qualsiasi call di scoping."}
+                ? "Not a list of compliance buzzwords. Each one is scaled to the system. These are artifacts you can ask to see in any scoping call."
+                : "Non un elenco di buzzword sulla compliance. Ognuno è proporzionato al sistema. Sono artefatti che potete chiedere di vedere in qualsiasi call di scoping."}
             </p>
           </div>
         </div>

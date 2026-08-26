@@ -13,6 +13,7 @@ import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { founders, type FounderProfile } from "@/data/founders";
+import { POSITIONING, pick } from "@/data/copy";
 import { useLanguage } from "@/components/language-provider";
 import { getLenis } from "@/lib/lenis-singleton";
 import { snapPoint, snapBarrier } from "@/lib/scroll-snap";
@@ -2088,8 +2089,8 @@ export default function FoundersRail() {
 
   // Copy below is verbatim from the retired founders-section.tsx.
   const eyebrow = isEn
-    ? "Founder-led AI engineering studio"
-    : "Studio di AI engineering guidato dai fondatori";
+    ? "Founder-led software, AI & automation"
+    : "Software, AI e automazione, guidati dai fondatori";
 
   const heading = (className?: string) => (
     <SectionHeading
@@ -2097,25 +2098,23 @@ export default function FoundersRail() {
       title={
         isEn ? (
           <>
-            Built by engineers who{" "}
+            Built by the people who{" "}
             <span className="font-display italic text-ink">
-              ship production systems.
+              build and run it.
             </span>
           </>
         ) : (
           <>
-            Costruito da ingegneri che{" "}
+            Costruito dalle persone che{" "}
             <span className="font-display italic text-ink">
-              portano sistemi in produzione.
+              lo realizzano e lo gestiscono.
             </span>
           </>
         )
       }
-      description={
-        isEn
-          ? "Every engagement is owned by the people who scope, architect, and ship it. No account layer, no junior bench, no second team you didn't sign for."
-          : "Ogni ingaggio è seguito dalle persone che ne definiscono lo scope, lo progettano e lo portano in produzione. Nessun livello di account, nessuna panchina di junior, nessun secondo team che non hai ingaggiato."
-      }
+      description={`${
+        isEn ? "No account layer." : "Nessun livello di account."
+      } ${pick(isEn, POSITIONING.accountabilityLong)}`}
       /* reveal='blur': soft CSS focus-in on the studio-intro heading, echoing
          the About page's manifesto beat (no WebGL, pure GPU-composited filter). */
       reveal="blur"

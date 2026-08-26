@@ -60,15 +60,15 @@ function getSurfaces(isEn: boolean): Surface[] {
       num: "01",
       title: isEn ? "Your systems & architecture" : "I vostri sistemi e l'architettura",
       desc: isEn
-        ? "Cloud, services, data flows, infra. Where the bottlenecks, single points of failure, and undocumented complexity actually live."
-        : "Cloud, servizi, flussi di dati, infrastruttura. Dove vivono davvero i colli di bottiglia, i single point of failure e la complessità non documentata.",
+        ? "The systems the business runs on — cloud, services, data flows, infra. Where the bottlenecks, single points of failure and undocumented complexity actually live."
+        : "I sistemi su cui gira l'azienda: cloud, servizi, flussi di dati, infrastruttura. Dove vivono davvero i colli di bottiglia, i single point of failure e la complessità non documentata.",
     },
     {
       num: "02",
-      title: isEn ? "Your data & ML readiness" : "Dati e readiness ML",
+      title: isEn ? "Your data, and whether it's usable" : "I dati, e se sono utilizzabili",
       desc: isEn
-        ? "What data you have, where it lives, how clean it is, and whether it's in a state where anything (AI included) can actually use it."
-        : "Quali dati avete, dove risiedono, quanto sono puliti, e se sono in uno stato tale da poter essere usati (AI inclusa).",
+        ? "What data you have, where it lives, how clean it is, and whether it's in a state where anything — a report, an automation, a model — can actually use it."
+        : "Quali dati avete, dove risiedono, quanto sono puliti, e se sono in uno stato in cui qualcosa — un report, un'automazione, un modello — possa davvero usarli.",
     },
     {
       num: "03",
@@ -86,14 +86,14 @@ function getSurfaces(isEn: boolean): Surface[] {
     },
     {
       num: "05",
-      title: isEn ? "Your team & delivery cadence" : "Team e cadenza di delivery",
+      title: isEn ? "Your team & how work gets done" : "Il team e come si porta a casa il lavoro",
       desc: isEn
-        ? "How decisions get made, where work gets stuck, and what's slowing engineering velocity."
-        : "Come vengono prese le decisioni, dove il lavoro si blocca e cosa rallenta la velocity dell'ingegneria.",
+        ? "How decisions get made, where work gets stuck, and what's slowing delivery down — whether that's an internal team, a supplier, or you."
+        : "Come vengono prese le decisioni, dove il lavoro si blocca e cosa rallenta la delivery: che si tratti di un team interno, di un fornitore o di voi.",
     },
     {
       num: "06",
-      title: isEn ? "Where AI could power your product" : "Dove l'AI può alimentare il vostro prodotto",
+      title: isEn ? "Where AI would earn its place" : "Dove l'AI se lo merita",
       desc: isEn
         ? "Concrete, named opportunities, not generic 'AI could help here.' Which surface, which model, what changes. Plus the parts where AI is the wrong answer and you should ship a rebuild or an automation instead."
         : "Opportunità concrete e specifiche, non un generico 'l'AI potrebbe aiutare'. Quale superficie, quale modello, cosa cambia. E le parti in cui l'AI è la risposta sbagliata e vi conviene fare un rebuild o un'automazione.",

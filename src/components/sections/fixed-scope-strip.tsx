@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
+import { CONTINUATION, pick } from "@/data/copy";
 
 /**
  * FixedScopeStrip — the one-line distillation of the four-phase delivery
@@ -34,9 +35,11 @@ export default function FixedScopeStrip() {
               {isEn ? "Fixed scope" : "Perimetro fisso"}
             </span>
             <p className="text-[13.5px] text-ink leading-relaxed flex-1">
-              {isEn
-                ? "Scope and price are agreed before work starts. No open-ended retainers, no hours billed against a moving target, no creep."
-                : "Perimetro e prezzo concordati prima di iniziare. Nessun retainer a tempo indeterminato, nessuna ora fatturata su un obiettivo mobile, nessuna dilatazione."}
+              {`${
+                isEn
+                  ? "Scope and price are agreed before work starts."
+                  : "Perimetro e prezzo concordati prima di iniziare."
+              } ${pick(isEn, CONTINUATION)}`}
             </p>
             <Link
               href="/consulting#process"

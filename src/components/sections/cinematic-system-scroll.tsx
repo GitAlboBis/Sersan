@@ -80,6 +80,7 @@ import { isIntroSkipped, markIntroSkipped } from "@/lib/intro-skip";
 import { snapPoint, snapBarrier } from "@/lib/scroll-snap";
 import type { Language } from "@/data/translations/types";
 import { START_HREF } from "@/lib/site";
+import { CTA } from "@/data/copy";
 import {
   SPINE_HEIGHT_VH,
   COMPACT_SPINE_SVH,
@@ -140,49 +141,47 @@ const STAGE_CONTENT: LocalizedStage[] = [
   {
     id: "dormant",
     eyebrow: {
-      en: "AI engineering studio · production systems",
-      it: "Studio di ingegneria AI · sistemi in produzione",
+      en: "Custom software, automation & AI studio · London",
+      it: "Studio di software su misura, automazione e AI · Londra",
     },
     title: {
       en: (
         <>
-          We build production software with{" "}
+          We build the software your business is{" "}
           <span className="text-[hsl(var(--accent))] font-display font-medium">
-            AI agents
-          </span>{" "}
-          inside.
+            missing.
+          </span>
         </>
       ),
       it: (
         <>
-          Costruiamo software di produzione con{" "}
+          Costruiamo il software che alla vostra azienda{" "}
           <span className="text-[hsl(var(--accent))] font-display font-medium">
-            agenti AI
-          </span>{" "}
-          dentro.
+            manca.
+          </span>
         </>
       ),
     },
     body: {
-      en: "SerSan builds custom software, AI agents, automations, MLOps architecture, and audit-ready systems for teams that need production reliability, not polished demos.",
-      it: "SerSan costruisce software su misura, agenti AI, automazioni, architetture MLOps e sistemi pronti per l'audit per team che hanno bisogno di affidabilità in produzione, non di demo patinate.",
+      en: "SerSan builds custom software, workflow automation and AI for growing businesses — from one manual process to a full production platform.",
+      it: "SerSan costruisce software su misura, automazione dei processi e AI per aziende in crescita: da un singolo processo manuale a una piattaforma completa in produzione.",
     },
   },
   {
     id: "signals",
-    eyebrow: { en: "01 / Signals", it: "01 / Segnali" },
+    eyebrow: { en: "01 / Problem", it: "01 / Problema" },
     title: {
-      en: <>Every production system starts with messy signals.</>,
-      it: <>Ogni sistema in produzione parte da segnali confusi.</>,
+      en: <>It starts with one problem worth solving.</>,
+      it: <>Si parte da un problema che vale la pena risolvere.</>,
     },
     body: {
-      en: "Roadmaps, workflows, tools, data, constraints, and risks. The first thing we do is map what you actually have, not what the deck says.",
-      it: "Roadmap, workflow, strumenti, dati, vincoli e rischi. La prima cosa che facciamo è mappare ciò che avete davvero, non ciò che dice il deck.",
+      en: "The manual work, the spreadsheet nobody trusts, the thing that keeps breaking. We map what you actually have, not what the org chart says.",
+      it: "Il lavoro manuale, il file Excel di cui nessuno si fida, la cosa che si rompe. Mappiamo ciò che avete davvero, non ciò che dice l'organigramma.",
     },
   },
   {
     id: "audit",
-    eyebrow: { en: "02 / Audit", it: "02 / Audit" },
+    eyebrow: { en: "02 / Scope", it: "02 / Scope" },
     title: {
       en: (
         <>
@@ -204,8 +203,8 @@ const STAGE_CONTENT: LocalizedStage[] = [
       ),
     },
     body: {
-      en: "Architecture, risk, cost, data quality, compliance, and failure modes. About a third of ideas don't survive this step. That's the point.",
-      it: "Architettura, rischio, costi, qualità dei dati, compliance e modalità di guasto. Circa un terzo delle idee non supera questo passaggio. Ed è proprio il punto.",
+      en: "We scope it before anyone writes code: cost, risk, effort, and what it actually saves. Sometimes the honest answer is to build less, or nothing.",
+      it: "Definiamo lo scope prima che qualcuno scriva codice: costi, rischi, effort e quanto vi fa risparmiare davvero. A volte la risposta onesta è costruire meno.",
     },
   },
   {
@@ -216,20 +215,20 @@ const STAGE_CONTENT: LocalizedStage[] = [
       it: <>Poi progettiamo e costruiamo il sistema.</>,
     },
     body: {
-      en: "Agents, retrieval, automation, model workflows, APIs, and evaluation loops. Production-grade by the time it ships, not bolted on after launch.",
-      it: "Agenti, retrieval, automazione, workflow di modelli, API e loop di valutazione. Pronto per la produzione già al rilascio, non aggiunto dopo il lancio.",
+      en: "Internal tools, integrations, automations, web and mobile apps, and AI where it earns its place. Production-grade when it is actually required.",
+      it: "Strumenti interni, integrazioni, automazioni, app web e mobile, e AI dove se lo merita. Production-grade quando serve davvero, non per abitudine.",
     },
   },
   {
     id: "operate",
-    eyebrow: { en: "04 / Operate", it: "04 / Operatività" },
+    eyebrow: { en: "04 / Proof", it: "04 / Prova" },
     title: {
-      en: <>Production is not launch day.</>,
-      it: <>La produzione non è il giorno del lancio.</>,
+      en: <>Working software is the only proof.</>,
+      it: <>L'unica prova è il software che funziona.</>,
     },
     body: {
-      en: "Monitoring, evals, human review, rollback paths, and handover are wired in from day one. The system that ships and the system in production are the same system.",
-      it: "Monitoring, eval, revisione umana, percorsi di rollback e handover sono integrati dal primo giorno. Il sistema che rilasciate e il sistema in produzione sono lo stesso sistema.",
+      en: "We measure whether it saved the time or the money it was meant to. Monitoring, human review and rollback paths are wired in from day one, not bolted on later.",
+      it: "Misuriamo se ha davvero fatto risparmiare il tempo o il denaro promessi. Monitoraggio, revisione umana e rollback sono integrati dal primo giorno, non aggiunti dopo.",
     },
   },
   // NOTE: the 6th canonical block ("handover", 05) moved WHOLESALE into
@@ -321,23 +320,23 @@ const SNAP_STATION_PROGRESS = DESKTOP_GROUPS.map((g) => (g.start + g.end) / 2);
 // source, zero copy drift).
 export const SPINE_COPY = {
   en: {
-    ctaPrimary: "Book a 30-min scoping call",
+    ctaPrimary: CTA.primary.en,
     seeSelectedWork: "See selected work",
     // Hero cluster — the DOM payoff the intro gate releases onto (the
     // [data-hero-stagger] cascade in StagePanel's isHero branch). Eyebrow is
     // the brand's canonical positioning line (same string as the OG image).
-    heroEyebrow: "AI-powered software engineering · London",
+    heroEyebrow: "Custom software, automation & AI · London",
     heroSub:
-      "We build it. We operate it. If it breaks at 3am, we're the ones who wake up.",
+      "From one manual workflow to a full production platform. You don't need a CTO to start.",
     // Intro-gate skip affordance (HeroIntroGate's bottom-right mono label).
     skipIntro: "Skip intro",
   },
   it: {
-    ctaPrimary: "Prenota una call di scoping di 30 min",
+    ctaPrimary: CTA.primary.it,
     seeSelectedWork: "Guarda i nostri lavori",
-    heroEyebrow: "Ingegneria software AI-powered · Londra",
+    heroEyebrow: "Software su misura, automazione e AI · Londra",
     heroSub:
-      "Lo costruiamo. Lo gestiamo. Se si rompe alle 3 di notte, siamo noi a svegliarci.",
+      "Da un processo manuale a una piattaforma in produzione. Non serve un CTO per iniziare.",
     skipIntro: "Salta l'intro",
   },
 } as const;
@@ -705,8 +704,9 @@ function StagePanel({
                   never make an invisible CTA clickable. */}
               {/* CTA_*_SM: below `sm` the pair fills the 256px content column
                   and the labels wrap — the nowrap min-content width of
-                  "Book a 30-min scoping call" is what pushed the document past
-                  a 320px viewport (see button.tsx). Inert at sm and up. */}
+                  the old "Book a 30-min scoping call" label is what pushed
+                  the document past a 320px viewport (see button.tsx). Inert at
+                  sm and up. */}
               <div className="mt-7 flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center pointer-events-auto">
                 {/* The stagger wrappers own the cascade transform; Magnetic
                     owns its own x/y chase on the node inside — separate

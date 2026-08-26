@@ -52,7 +52,7 @@ export function TermsClient() {
             <span className="status-pill">
               <Scale className="w-3 h-3 text-muted-foreground" aria-hidden="true" />
               <span className="text-xs text-muted-foreground">
-                {isEn ? "Last updated: January 2026" : "Ultimo aggiornamento: gennaio 2026"}
+                {isEn ? "Last updated: August 2026" : "Ultimo aggiornamento: agosto 2026"}
               </span>
             </span>
           </div>
@@ -61,8 +61,8 @@ export function TermsClient() {
           </h1>
           <p className="text-lg text-muted-foreground leading-[1.65]">
             {isEn
-              ? "The legal agreement governing your use of SERSAN's platform and services."
-              : "L'accordo legale che disciplina l'utilizzo della piattaforma e dei servizi SERSAN."}
+              ? "The legal agreement governing your use of SERSAN's website and services."
+              : "L'accordo legale che disciplina l'utilizzo del sito e dei servizi SERSAN."}
           </p>
         </div>
 
@@ -133,8 +133,8 @@ export function TermsClient() {
                 </h2>
                 <p>
                   {isEn
-                    ? "By engaging SERSAN for consulting, AI, or engineering services, or by using our website, you agree to be bound by these Terms of Service. If you do not agree, do not use our services."
-                    : "Ingaggiando SERSAN per servizi di consulenza, AI o ingegneria, o utilizzando il nostro sito, accettate di essere vincolati da questi Termini di Servizio. Se non li accettate, non utilizzate i nostri servizi."}
+                    ? "By engaging SERSAN to build software, automation or AI, by using our advisory services, or by using our website, you agree to be bound by these Terms of Service. If you do not agree, do not use our services."
+                    : "Affidando a SERSAN lo sviluppo di software, automazioni o AI, utilizzando i nostri servizi di consulenza o il nostro sito, accettate di essere vincolati da questi Termini di Servizio. Se non li accettate, non utilizzate i nostri servizi."}
                 </p>
               </section>
               </Reveal>
@@ -146,8 +146,8 @@ export function TermsClient() {
                 </h2>
                 <p>
                   {isEn
-                    ? "SERSAN provides technical consulting, software engineering, AI/ML implementation, and fractional CTO services. The specific scope of any engagement is governed by a signed statement of work or proposal."
-                    : "SERSAN fornisce servizi di consulenza tecnica, ingegneria del software, implementazione AI/ML e Fractional CTO. L'ambito specifico di ogni ingaggio è regolato da uno statement of work o da una proposta firmata."}
+                    ? "SERSAN builds custom software, workflow automation and AI systems, and provides technical audits and fractional technical leadership. The specific scope of any engagement is governed by a signed statement of work or proposal."
+                    : "SERSAN sviluppa software su misura, automazioni di processo e sistemi AI, e fornisce audit tecnici e direzione tecnica frazionale. L'ambito specifico di ogni progetto è regolato da uno statement of work o da una proposta firmata."}
                 </p>
               </section>
               </Reveal>
@@ -203,8 +203,8 @@ export function TermsClient() {
                 </h2>
                 <p>
                   {isEn
-                    ? "Unless otherwise agreed in writing, all deliverables produced during an engagement become the property of the client upon full payment. SERSAN retains rights to its pre-existing know-how, frameworks, and tooling."
-                    : "Salvo diverso accordo scritto, tutti i deliverable prodotti durante un ingaggio diventano di proprietà del cliente a saldo avvenuto. SERSAN mantiene i diritti sul proprio know-how preesistente, framework e tooling."}
+                    ? "Unless otherwise agreed in writing, all deliverables — including source code — become the property of the client upon full payment, with no licence back to SERSAN and no source withheld. SERSAN retains rights to its pre-existing know-how, frameworks and tooling."
+                    : "Salvo diverso accordo scritto, tutti i deliverable — codice sorgente incluso — diventano di proprietà del cliente a saldo avvenuto, senza licenze di ritorno a SERSAN e senza sorgenti trattenuti. SERSAN mantiene i diritti sul proprio know-how preesistente, framework e tooling."}
                 </p>
               </section>
               </Reveal>
@@ -297,8 +297,9 @@ export function TermsClient() {
                     ? "For any questions about these Terms, contact:"
                     : "Per qualsiasi domanda su questi Termini, contattate:"}
                 </p>
-                <p className="text-foreground font-medium">SERSAN Limited</p>
+                <p className="text-foreground font-medium">Sersan Limited</p>
                 <p>128 City Road, London, EC1V 2NX, United Kingdom</p>
+                <p>{isEn ? "Company No. 16878386" : "N. registrazione 16878386"}</p>
                 <p>
                   Email:{" "}
                   <a

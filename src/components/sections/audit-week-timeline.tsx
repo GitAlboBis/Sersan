@@ -272,6 +272,10 @@ export default function AuditWeekTimeline({ week, isEn }: AuditWeekTimelineProps
     // inside the range).
     progressRef.current = st.progress;
     store.setProgress(st.progress);
+    // Publish the phase count so SignatureLine's per-phase emissive ticks are
+    // derived from the live `week` array instead of a hard-coded 6 (see the
+    // WHY THIS EXISTS note on auditTimelineStore.count).
+    store.setCount(count);
     store.setActive(true);
 
     // --- Snap stations (site-wide engine, lib/scroll-snap) ------------------
@@ -401,21 +405,21 @@ export default function AuditWeekTimeline({ week, isEn }: AuditWeekTimelineProps
     <SectionHeading
       align="center"
       className="mx-auto mb-12"
-      eyebrow={isEn ? "The week, day by day" : "La settimana, giorno per giorno"}
+      eyebrow={isEn ? "How the audit runs" : "Come si svolge l'audit"}
       titleClassName="font-display text-3xl sm:text-[2.5rem] text-ink leading-[1.12] tracking-tight text-balance"
       title={
         isEn ? (
           <>
-            Six days.{" "}
+            Fixed scope.{" "}
             <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-              Real work each.
+              Two to six days.
             </span>
           </>
         ) : (
           <>
-            Sei giorni.{" "}
+            Scope fisso.{" "}
             <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-              Lavoro vero ognuno.
+              Da due a sei giorni.
             </span>
           </>
         )

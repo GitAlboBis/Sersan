@@ -18,6 +18,7 @@ import { FlipHandoffOverlay } from "@/components/fx/flip-handoff-overlay";
 import { CommandPalette } from "@/components/fx/command-palette";
 import { AudioTriggers } from "@/components/fx/audio-triggers";
 import { Analytics } from "@vercel/analytics/next";
+import { POSITIONING } from "@/data/copy";
 
 // Brand type stack (self-hosted via next/font, no runtime CDN requests):
 // - Brand: Sersan Display — the custom logotype face (Jost, SIL OFL, see
@@ -113,32 +114,35 @@ export const metadata: Metadata = {
   },
   // Title structure: page-specific value goes first (template appends the
   // brand). Default fronts the hero promise + the buyer query.
+  // NOTE: the template appends " · SerSan" to CHILD routes only — the default
+  // below is rendered verbatim, so it carries the brand itself.
   title: {
-    default: "SerSan — Production AI Systems Beyond the Demo",
+    default: "SerSan — Custom Software, Automation & AI Studio",
     template: "%s · SerSan",
   },
-  // ~155 chars — under the 160 cap, leads with the value (production AI
-  // that works), names the actual deliverables, names the audience.
-  description:
-    "Founder-led AI engineering studio for SaaS, fintech, and regulated teams. We build custom software and web apps with AI agents inside — plus automation, MLOps, architecture, and audits to keep them reliable in production.",
+  // 155 chars — under the 160 cap this time (the previous value was 221 and
+  // silently truncated). Seeded from POSITIONING.oneLiner so the canonical
+  // description cannot drift from the rest of the site, then closed with the
+  // entry point: one problem, scoped before anyone writes code.
+  description: `${POSITIONING.oneLiner.en} Start with one painful problem — we scope it before we build.`,
   keywords: [
-    "AI engineering studio",
-    "production AI",
-    "AI agents",
-    "AI workflow automation",
-    "MLOps",
-    "AI systems architecture",
-    "technical AI audit",
+    "custom software development",
+    "workflow automation",
     "AI consulting",
-    "AI product builds",
-    "AI engineering",
-    "AI infrastructure",
+    "business process automation",
+    "internal tools",
+    "custom web applications",
+    "software development studio",
+    "AI integration",
+    "AI agents",
+    "MLOps",
+    "technical audit",
+    "software architecture",
+    "fractional CTO",
+    "software for SMEs",
+    "founder-led software studio",
+    "London software studio",
     "EU AI Act",
-    "DORA",
-    "agentic systems",
-    "fintech AI",
-    "regulated AI",
-    "AI software development",
   ],
   authors: [{ name: "SerSan Limited" }],
   creator: "SerSan",
@@ -148,9 +152,9 @@ export const metadata: Metadata = {
   },
   openGraph: {
     type: "website",
-    title: "Production AI systems that work beyond the demo",
+    title: "Software, automation and AI that earns its place",
     description:
-      "Founder-led AI engineering studio for technical teams. Custom software and web apps with AI agents inside — plus automation, MLOps, architecture, and audits. Built for real operations, not stage demos.",
+      "Founder-led studio building custom software, workflow automation and AI for founders, SMEs and growing teams. Start with one painful problem — scoped before we build, from a focused fix to a full platform.",
     url: "https://www.sersan.io/",
     siteName: "SerSan",
     locale: "en_GB",
@@ -160,16 +164,16 @@ export const metadata: Metadata = {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "SerSan — production AI systems beyond the demo. Founder-led engineering studio.",
+        alt: "SerSan — custom software, automation and AI. Founder-led studio for growing businesses.",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
     site: "@sersan_io",
-    title: "Production AI systems that work beyond the demo",
+    title: "Software, automation and AI that earns its place",
     description:
-      "Founder-led AI engineering studio. Custom software and web apps with AI agents inside — plus automation, MLOps, architecture, and audits. Reliable systems, not prototypes.",
+      "Founder-led studio building custom software, workflow automation and AI. From one manual workflow to a full production platform — scoped before we build.",
     images: ["/og-image.png"],
   },
   robots: {
@@ -207,16 +211,16 @@ export default function RootLayout({
     url: "https://www.sersan.io",
     logo: "https://www.sersan.io/og-image.png",
     description:
-      "AI engineering studio. Production-grade AI systems — agents, automation, MLOps, architecture, and audits.",
+      "Founder-led software studio. Custom software, workflow automation and AI systems for founders, SMEs and growing businesses.",
     foundingLocation: { "@type": "Place", name: "London, United Kingdom" },
-    areaServed: ["United Kingdom", "European Union"],
+    areaServed: ["United Kingdom", "Italy", "European Union"],
     knowsAbout: [
-      "AI agents",
+      "Custom software development",
       "Workflow automation",
+      "Internal tools and platforms",
+      "AI integration",
       "MLOps",
-      "AI systems architecture",
-      "Technical AI audits",
-      "Production AI",
+      "Technical audits",
     ],
     sameAs: [
       "https://www.linkedin.com/company/sersan-limited/",

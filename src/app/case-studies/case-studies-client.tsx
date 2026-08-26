@@ -17,6 +17,8 @@ import {
   prefersReducedMotion,
 } from "@/components/work/work-card";
 import { cn } from "@/lib/utils";
+import { CTA, FACTS, PROOF_LINE, pick } from "@/data/copy";
+import { START_HREF } from "@/lib/site";
 
 if (typeof window !== "undefined") gsap.registerPlugin(ScrollTrigger);
 
@@ -128,8 +130,8 @@ export function CaseStudiesClient() {
               className="cs-archive-title font-display text-ink"
               aria-label={
                 isEn
-                  ? "Work — engineering track record"
-                  : "Lavori — track record di ingegneria"
+                  ? "Work — SerSan projects and prior senior delivery"
+                  : "Lavori — progetti SerSan e consegne senior precedenti"
               }
             >
               <span aria-hidden="true">
@@ -169,7 +171,7 @@ export function CaseStudiesClient() {
       {/* Grid — the shared Lusion-grammar cards, full population. */}
       <section data-line-anchor="grid" className="pb-16 sm:pb-24">
         <div className="container-px">
-          <h2 className="sr-only">{isEn ? "Case studies" : "Case study"}</h2>
+          <h2 className="sr-only">{pick(isEn, PROOF_LINE)}</h2>
           <WorkGrid
             studies={archiveStudies()}
             isEn={isEn}
@@ -184,8 +186,8 @@ export function CaseStudiesClient() {
           <div className="max-w-3xl mx-auto">
             <p className="text-xs text-muted-foreground leading-relaxed text-center italic">
               {isEn
-                ? "All figures reflect measured impact in production or validated simulation environments. Engagements are labelled by the delivery context in which they were performed; some predate Sersan or were delivered through previous employers or consulting partners. Specific client data and proprietary methods are abstracted where required by confidentiality."
-                : "Tutti i numeri riflettono l'impatto misurato in produzione o in ambienti di simulazione validati. Gli ingaggi sono etichettati in base al contesto di delivery in cui sono stati svolti; alcuni precedono Sersan o sono stati erogati tramite precedenti datori di lavoro o partner di consulenza. Dati specifici dei clienti e metodi proprietari sono astratti dove richiesto dalla riservatezza."}
+                ? "Figures reflect measured impact in production or in validated simulation environments. Every entry names its own delivery context: SerSan engagements, and prior senior delivery at previous employers or as a freelancer. Client data and proprietary methods are abstracted where confidentiality requires."
+                : "I numeri riflettono l'impatto misurato in produzione o in ambienti di simulazione validati. Ogni voce indica il proprio contesto di delivery: progetti SerSan ed esperienze senior precedenti, presso datori di lavoro o come freelance. Dati dei clienti e metodi proprietari sono astratti dove la riservatezza lo richiede."}
             </p>
           </div>
         </div>
@@ -230,8 +232,8 @@ export function CaseStudiesClient() {
               }
               description={
                 isEn
-                  ? "A free scoping call is the easiest way to find out where it would have the highest impact."
-                  : "Una call di scoping gratuita è il modo più semplice per capire dove avrebbe l'impatto maggiore."
+                  ? `Tell us the problem you would start with. ${FACTS.briefIsEnough.en}, and a founder reads it.`
+                  : `Raccontateci il problema da cui partireste. ${FACTS.briefIsEnough.it}, e a leggere è un founder.`
               }
             />
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
@@ -243,8 +245,8 @@ export function CaseStudiesClient() {
                   CTA_FLUID_SM,
                 )}
               >
-                <Link href="/audit">
-                  {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
+                <Link href={START_HREF}>
+                  {pick(isEn, CTA.primary)}
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
               </Button>

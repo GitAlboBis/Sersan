@@ -1,6 +1,7 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "Sersan — AI-powered software engineering for fintech, SaaS & tech";
+export const alt =
+  "SerSan — custom software, workflow automation and AI for growing businesses";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -54,7 +55,7 @@ export default async function Image() {
               display: "block",
             }}
           />
-          AI-powered software engineering · London
+          Custom software · automation · AI · London
         </div>
 
         <div
@@ -73,7 +74,7 @@ export default async function Image() {
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ fontSize: 92, lineHeight: 0.98, letterSpacing: -2, maxWidth: 1000 }}>
-            We build AI-powered software.
+            Start with the problem.
           </div>
           <div
             style={{
@@ -85,7 +86,7 @@ export default async function Image() {
               maxWidth: 1000,
             }}
           >
-            It has to run at 3am.
+            Build what earns its place.
           </div>
         </div>
 
@@ -104,7 +105,7 @@ export default async function Image() {
           }}
         >
           <div>sersan.io</div>
-          <div>From £15K · scoped weekly · no multi-year retainers</div>
+          <div>Scoped before we build · you own what we build</div>
         </div>
       </div>
     ),

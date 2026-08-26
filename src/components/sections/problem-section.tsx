@@ -21,7 +21,7 @@ import {
 } from "@/components/fx/lusion-type";
 
 /**
- * ProblemSection — names the pain (demo-to-production gap).
+ * ProblemSection — names the pain (the build-to-payoff gap).
  *
  * ROUND 12 · D21 (2026-08-25) — THE TYPE IS SCROLL-DRIVEN, THE POINTER IS
  * INERT. The owner, twice: *"le scritte … devono essere animate con lo scroll,
@@ -124,7 +124,17 @@ import {
  *     EFFECT styling is pure CSS colour on real text, rows are tabIndex=0
  *     with the global :focus-visible ring; focus = ignition (hover parity).
  *
- * Copy is byte-identical to the pre-refactor section (EN + IT).
+ * COPY, 2026-08-27 REPOSITIONING — the ONLY thing that changed since D21 is
+ * the strings (EN + IT together). The act used to name exactly one failure:
+ * "your AI demo didn't survive production", which an SME founder with a manual
+ * back-office cannot see themselves in. It now names the broader one — the
+ * thing you built (or never built) stopped paying off. The dramatic structure,
+ * the row count (3, welded to CLUSTER_COUNT and CALLOUT_POS), the effect
+ * labels ("no signal" / "no debugging" / "no trust" — they render VERBATIM as
+ * whitespace-nowrap ghost callouts over the band) and the timing insight
+ * ("They fail two months after.") are untouched. The 3am motif is deleted;
+ * "A system you can't measure is a system you can't fix." is preserved.
+ * No layout, no behaviour, no count, no JSX shape was touched.
  */
 
 type Failure = {
@@ -138,27 +148,27 @@ function getFailures(isEn: boolean): Failure[] {
   return [
     {
       num: "01",
-      cause: isEn ? "No evals" : "Niente valutazioni",
+      cause: isEn ? "No baseline" : "Niente baseline",
       effect: isEn ? "no signal" : "niente segnale",
       body: isEn
-        ? "A system you can't measure is a system you can't fix. Most teams ship without a regression set, then debug at 3am with prompt diffs and screenshots."
-        : "Un sistema che non puoi misurare è un sistema che non puoi correggere. La maggior parte dei team va in produzione senza un set di regressione, poi fa debugging alle 3 di notte con diff dei prompt e screenshot.",
+        ? "A system you can't measure is a system you can't fix. Most projects launch with no agreed definition of what working means, so nobody can tell improvement from noise."
+        : "Un sistema che non potete misurare è un sistema che non potete correggere. Quasi tutti i progetti partono senza una definizione condivisa di cosa significhi funzionare, e nessuno distingue i miglioramenti dal rumore.",
     },
     {
       num: "02",
-      cause: isEn ? "No traces" : "Niente tracce",
+      cause: isEn ? "No trail" : "Niente tracce",
       effect: isEn ? "no debugging" : "niente debugging",
       body: isEn
-        ? "When the agent makes the wrong call, you need to know which step failed. Without structured tracing, every incident becomes archaeology."
-        : "Quando l'agente prende la decisione sbagliata, devi sapere quale passo ha fallito. Senza un tracing strutturato, ogni incidente diventa un lavoro di archeologia.",
+        ? "When the system does the wrong thing, you need to know which step failed. Without a recorded trail, every incident turns into archaeology."
+        : "Quando il sistema fa la cosa sbagliata, dovete sapere quale passaggio ha fallito. Senza una traccia registrata, ogni problema diventa un lavoro di archeologia.",
     },
     {
       num: "03",
       cause: isEn ? "No boundaries" : "Niente confini",
       effect: isEn ? "no trust" : "niente fiducia",
       body: isEn
-        ? "Tools and data without a permission model become a liability the first time the agent does something a regulator notices."
-        : "Tool e dati senza un modello di permessi diventano un rischio la prima volta che l'agente fa qualcosa che un'autorità di vigilanza nota.",
+        ? "Access to data, money and customers without a permission model becomes a liability the first time something acts without asking."
+        : "L'accesso a dati, denaro e clienti senza un modello di permessi diventa un rischio la prima volta che qualcosa agisce senza chiedere.",
     },
   ];
 }
@@ -523,8 +533,8 @@ export default function ProblemSection() {
                 />
                 <span>
                   {isEn
-                    ? "The demo-to-production gap"
-                    : "Il divario tra demo e produzione"}
+                    ? "The build-to-payoff gap"
+                    : "Il divario tra progetto e risultato"}
                 </span>
               </p>
               {/* max-sm override: the chapter clamp's 2.6rem floor costs a
@@ -542,14 +552,15 @@ export default function ProblemSection() {
               >
                 {isEn ? (
                   <>
-                    Most AI projects don&apos;t fail at the prototype.{" "}
+                    Most projects don&apos;t fail on the day they go live.{" "}
                     <span className="font-display italic text-ink-mute">
                       They fail two months after.
                     </span>
                   </>
                 ) : (
                   <>
-                    La maggior parte dei progetti AI non fallisce al prototipo.{" "}
+                    La maggior parte dei progetti non fallisce il giorno del
+                    lancio.{" "}
                     <span className="font-display italic text-ink-mute">
                       Fallisce due mesi dopo.
                     </span>
@@ -568,8 +579,8 @@ export default function ProblemSection() {
                 className="max-w-[34em] text-[clamp(1rem,1.2vw,1.3rem)] max-sm:text-[0.9rem] leading-[1.5] text-ink-mute"
               >
                 {isEn
-                  ? "The demo worked. The board nodded. Then real volume hit and the agent started lying, the retrieval drifted, cost-per-run tripled, and no-one on the team could tell which of the seven things you changed last week broke it."
-                  : "La demo funzionava. Il consiglio ha annuito. Poi è arrivato il volume reale e l'agente ha iniziato a inventare, il retrieval è andato in deriva, il costo per esecuzione è triplicato e nessuno nel team sapeva quale delle sette cose cambiate la settimana scorsa l'avesse rotto."}
+                  ? "The demo worked. Everyone nodded. Then real volume arrived, the edge cases piled up, someone quietly went back to doing it by hand, and no-one could say which of the seven changes made last month broke it."
+                  : "La demo funzionava. Tutti hanno annuito. Poi è arrivato il volume reale, i casi limite si sono moltiplicati, qualcuno è tornato in silenzio a farlo a mano e nessuno sapeva quale delle sette modifiche del mese scorso l'avesse rotto."}
               </p>
             </div>
           </div>

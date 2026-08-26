@@ -2,14 +2,15 @@
 
 import { useRef } from "react";
 import Link from "next/link";
-import { Mail } from "lucide-react";
+import { ArrowRight, Mail } from "lucide-react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
 import { SersanLogo } from "@/components/sersan-logo";
 import { useLanguage } from "@/components/language-provider";
 import { NowWidget } from "@/components/fx/now-widget";
-import { CONTACT_EMAIL } from "@/lib/site";
+import { CONTACT_EMAIL, START_HREF } from "@/lib/site";
+import { CTA, FACTS, pick } from "@/data/copy";
 import { usePressState } from "@/lib/use-press-state";
 
 if (typeof window !== "undefined") {
@@ -51,24 +52,35 @@ const InstagramIcon = ({ className }: { className?: string }) => (
 
 type LinkRow = { href: string; label: string; labelIt: string; external?: boolean };
 
+// FOUR columns, and the count is load-bearing — the entrance timeline
+// staggers [data-footer-col] and [data-footer-rule] in document order. Link
+// counts per column (4 · 3 · 4 · 4) are unchanged too; only the destinations
+// and labels moved in the 2026-08 repositioning.
+//
+// The first column used to be headed "Consulting" and named two offers —
+// "Technical audit" and "Fractional CTO" — neither of which says the studio
+// BUILDS anything, while the four /services/* routes that do describe
+// buildable work were unreachable from every piece of site chrome. It now
+// carries those four routes and the audit moved down to the engagement
+// column, where the thing you buy belongs.
 const COLUMNS: Array<{ heading: string; headingIt: string; links: LinkRow[] }> = [
   {
-    heading: "Consulting",
-    headingIt: "Consulenza",
+    heading: "What we build",
+    headingIt: "Cosa costruiamo",
     links: [
-      { href: "/#services", label: "Services", labelIt: "Servizi" },
-      { href: "/#process", label: "Process", labelIt: "Processo" },
-      { href: "/audit", label: "Technical audit", labelIt: "Audit tecnico" },
-      { href: "/consulting", label: "Fractional CTO", labelIt: "Fractional CTO" },
+      { href: "/services/engineering", label: "Custom software", labelIt: "Software su misura" },
+      { href: "/services/automation", label: "Workflow automation", labelIt: "Automazione processi" },
+      { href: "/services/mlops", label: "AI systems", labelIt: "Sistemi AI" },
+      { href: "/services/architecture", label: "Architecture & data", labelIt: "Architettura e dati" },
     ],
   },
   {
-    heading: "Work",
-    headingIt: "Lavori",
+    heading: "How we work",
+    headingIt: "Come lavoriamo",
     links: [
-      { href: "/#work", label: "Selected engagements", labelIt: "Incarichi selezionati" },
-      { href: "/case-studies", label: "Full archive", labelIt: "Archivio completo" },
-      { href: "/#trust", label: "Production-grade", labelIt: "Pronto per la produzione" },
+      { href: "/audit", label: "Technical audit", labelIt: "Audit tecnico" },
+      { href: "/consulting", label: "Engagement models", labelIt: "Modelli di ingaggio" },
+      { href: "/case-studies", label: "Selected work", labelIt: "Lavori selezionati" },
     ],
   },
   {
@@ -292,27 +304,43 @@ export function Footer() {
             >
               {isEn ? (
                 <>
-                  Production-grade AI systems,{" "}
+                  Custom software, automation and AI,{" "}
                   <span className="text-ink-mute">
-                    engineered from the ground up.
+                    built around one real problem.
                   </span>
                 </>
               ) : (
                 <>
-                  Sistemi AI pronti per la produzione,{" "}
+                  Software su misura, automazione e AI,{" "}
                   <span className="text-ink-mute">
-                    ingegnerizzati dalle fondamenta.
+                    costruiti su un problema reale.
                   </span>
                 </>
               )}
             </p>
             <p data-footer-brand className="text-[14px] text-ink-mute leading-relaxed max-w-md">
               {isEn
-                ? "AI & Technology Consulting. AI agents, automation, MLOps, architecture, and the engineering rescue work that gets prototypes into production."
-                : "Consulenza AI e tecnologica. Agenti AI, automazione, MLOps, architettura e il lavoro di rescue ingegneristico che porta i prototipi in produzione."}
+                ? "A founder-led studio for founders, SMEs and growing teams. From one manual workflow to a full production platform — and the honest answer about which one you need."
+                : "Uno studio guidato dai founder, per founder, PMI e team in crescita. Da un singolo processo manuale a una piattaforma completa — con una risposta onesta su cosa vi serve davvero."}
             </p>
 
             <div data-footer-brand className="flex flex-col gap-2 pt-3">
+              {/* The footer's conversion action. Until the repositioning the
+                  block below called the bare mailto "the page's most direct
+                  conversion action" — which was true, and was the problem:
+                  the footer renders on every route and offered no CTA at all,
+                  only an email address. This row is the site's primary CTA
+                  (CTA.primary → /start), sized and coloured like the mono
+                  rows beneath it so it reads as chrome, not as a second hero
+                  button competing with the section CTA above it. */}
+              <Link
+                ref={pressRef}
+                href={START_HREF}
+                className="tap-44 press-surface group inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.14em] uppercase text-[hsl(var(--accent))] hover:text-ink transition-colors"
+              >
+                {pick(isEn, CTA.primary)}
+                <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+              </Link>
               {/* The page's most direct conversion action, and ~16.5px tall
                   (D-14). It is already a full-width row inside this column
                   stack, so it only fails the vertical axis: `tap-44` raises the
@@ -327,9 +355,7 @@ export function Footer() {
                 {CONTACT_EMAIL}
               </a>
               <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-ink-mute">
-                {isEn
-                  ? "Reply within 1 business day"
-                  : "Risposta entro 1 giorno lavorativo"}
+                {pick(isEn, FACTS.replyTime)}
               </span>
               <NowWidget />
             </div>
@@ -461,9 +487,14 @@ export function Footer() {
             data-footer-meta
             className="sm:col-span-3 sm:text-right text-[10.5px] font-mono uppercase tracking-[0.14em] text-ink-mute"
           >
+            {/* The ISO 27001 claim is gone from this badge. It rendered on
+                EVERY route as "(in progress)" — a certification status SerSan
+                does not hold and cannot evidence — and /trust is dropping the
+                same claim. What is left is what is actually true: systems
+                designed against those regimes (COMPLIANCE.posture). */}
             {isEn
-              ? "ISO 27001 (in progress) · DORA · EU AI Act"
-              : "ISO 27001 (in corso) · DORA · EU AI Act"}
+              ? "Built for GDPR · DORA · EU AI Act"
+              : "Progettati per GDPR · DORA · EU AI Act"}
             {/* Palette discoverability — desktop/fine-pointer only (the
                 shortcut is keyboard-first by nature). */}
             <span className="hidden lg:block pt-1 text-ink-mute/60">

@@ -1,9 +1,16 @@
 /**
- * Data + matching logic for the homepage 60-second self-audit.
+ * Data + matching logic for the /audit 60-second self-audit.
  *
- * Five engineering-shaped questions. Each answer carries one or more
- * `signal` tags. After Q5 we match those signals against a bank of
- * possible first-moves (findings) and surface the top 3 by priority.
+ * Five business-shaped questions — manual work, tools that don't talk to
+ * each other, information trapped in documents, a process nobody trusts,
+ * software that has outgrown itself. AI is ONE possible answer among
+ * conventional software and automation, never the destination.
+ *
+ * Each answer carries one or more `signal` tags. After Q5 we match those
+ * signals against a bank of possible first-moves (findings) and surface the
+ * top 3 by priority. COUNTS ARE LOAD-BEARING: five questions, seven
+ * findings — the stage choreography in ../app/audit/self-audit.tsx is
+ * count-driven. Change the copy, never the arity, the ids or the signals.
  *
  * The matching is deterministic: same answers → same findings.
  * Priorities are integer weights; we sort and take top 3.
@@ -45,57 +52,57 @@ export type Finding = {
 export const QUESTIONS: Question[] = [
   {
     id: "maturity",
-    promptEn: "How much AI is in production today?",
-    promptIt: "Quanta AI avete oggi in produzione?",
+    promptEn: "How much of this work is handled by software today?",
+    promptIt: "Quanta parte di questo lavoro è gestita da software oggi?",
     choices: [
-      { id: "none",     labelEn: "None yet, planning",                 labelIt: "Ancora niente, stiamo pianificando",     signals: ["mat:none"] },
-      { id: "pilot",    labelEn: "A pilot or two",                       labelIt: "Uno o due pilot",                         signals: ["mat:pilot"] },
-      { id: "feature",  labelEn: "One core feature",                     labelIt: "Una feature centrale",                   signals: ["mat:feature"] },
-      { id: "multi",    labelEn: "Multiple production systems",          labelIt: "Più sistemi in produzione",              signals: ["mat:multi"] },
+      { id: "none",     labelEn: "Almost none — people, spreadsheets, email",   labelIt: "Quasi niente: persone, fogli di calcolo, email",  signals: ["mat:none"] },
+      { id: "pilot",    labelEn: "A few tools, loosely connected",                labelIt: "Qualche strumento, collegato alla meglio",        signals: ["mat:pilot"] },
+      { id: "feature",  labelEn: "One system does most of it",                    labelIt: "Un sistema fa quasi tutto",                        signals: ["mat:feature"] },
+      { id: "multi",    labelEn: "Several systems, all in daily use",             labelIt: "Più sistemi, tutti in uso quotidiano",             signals: ["mat:multi"] },
     ],
   },
   {
     id: "killswitch",
-    promptEn: "If your AI misbehaves, can you turn it off in under 30 seconds?",
-    promptIt: "Se l'AI inizia a comportarsi male, riuscite a spegnerla in meno di 30 secondi?",
+    promptEn: "When something goes wrong in the process, how do you find out?",
+    promptIt: "Quando qualcosa va storto nel processo, come ve ne accorgete?",
     choices: [
-      { id: "yes",     labelEn: "Yes, single flag, fast rollback",      labelIt: "Sì, un flag solo e rollback rapido",     signals: ["ks:yes"] },
-      { id: "partial", labelEn: "Partially, depends on the surface",    labelIt: "In parte, dipende dove",                  signals: ["ks:partial"] },
-      { id: "no",      labelEn: "Honestly, no",                          labelIt: "No, sinceramente",                         signals: ["ks:no"] },
-      { id: "na",      labelEn: "No AI in prod yet",                     labelIt: "Non abbiamo ancora AI in produzione",     signals: ["ks:na", "mat:none"] },
+      { id: "yes",     labelEn: "Automatically, before the customer does",       labelIt: "In automatico, prima del cliente",                signals: ["ks:yes"] },
+      { id: "partial", labelEn: "Sometimes — depends who's looking",              labelIt: "A volte, dipende da chi sta guardando",           signals: ["ks:partial"] },
+      { id: "no",      labelEn: "A customer or a colleague tells us",            labelIt: "Ce lo dice un cliente o un collega",              signals: ["ks:no"] },
+      { id: "na",      labelEn: "It's all manual, nothing to monitor",           labelIt: "È tutto manuale, non c'è nulla da monitorare",     signals: ["ks:na", "mat:none"] },
     ],
   },
   {
     id: "evals",
-    promptEn: "How is AI output quality graded before shipping?",
-    promptIt: "Come valutate la qualità dell'output AI prima di rilasciarlo?",
+    promptEn: "How do you know the output is right before it goes out?",
+    promptIt: "Come sapete che il risultato è corretto prima che esca?",
     choices: [
-      { id: "ci",      labelEn: "100+ test cases on CI",                 labelIt: "Oltre 100 test case in CI",               signals: ["eval:strong"] },
-      { id: "manual",  labelEn: "Manual spot-checks",                    labelIt: "Controlli a campione manuali",            signals: ["eval:weak"] },
-      { id: "vibes",   labelEn: "Vibes / a few prompts",                 labelIt: "A intuito, con qualche prompt",           signals: ["eval:none"] },
-      { id: "ship",    labelEn: "We ship and see",                       labelIt: "Rilasciamo e vediamo come va",            signals: ["eval:none"] },
+      { id: "ci",      labelEn: "Automated checks catch the mistakes",           labelIt: "Controlli automatici intercettano gli errori",    signals: ["eval:strong"] },
+      { id: "manual",  labelEn: "Someone reviews a sample",                      labelIt: "Qualcuno controlla a campione",                   signals: ["eval:weak"] },
+      { id: "vibes",   labelEn: "We rely on people being careful",               labelIt: "Contiamo sull'attenzione delle persone",          signals: ["eval:none"] },
+      { id: "ship",    labelEn: "We find out when it's already wrong",           labelIt: "Ce ne accorgiamo quando è già sbagliato",         signals: ["eval:none"] },
     ],
   },
   {
     id: "cost",
-    promptEn: "How is AI cost tracked today?",
-    promptIt: "Come tenete sotto controllo i costi dell'AI oggi?",
+    promptEn: "Do you know what this process costs you each month?",
+    promptIt: "Sapete quanto vi costa ogni mese questo processo?",
     choices: [
-      { id: "perreq",  labelEn: "Per-request attribution + dashboards",  labelIt: "Attribuzione per richiesta e dashboard",  signals: ["cost:strong"] },
-      { id: "aggr",    labelEn: "Aggregate dashboard",                   labelIt: "Una dashboard aggregata",                  signals: ["cost:weak"] },
-      { id: "surprise",labelEn: "Surprise bill at end of month",         labelIt: "Fattura a sorpresa a fine mese",          signals: ["cost:none"] },
-      { id: "dunno",   labelEn: "Don't know",                            labelIt: "Non lo sappiamo",                          signals: ["cost:none"] },
+      { id: "perreq",  labelEn: "Yes — hours and money, measured",                labelIt: "Sì: ore e denaro, misurati",                      signals: ["cost:strong"] },
+      { id: "aggr",    labelEn: "Roughly, from an estimate",                     labelIt: "All'incirca, a stima",                            signals: ["cost:weak"] },
+      { id: "surprise",labelEn: "Only when it goes badly wrong",                 labelIt: "Solo quando va davvero male",                     signals: ["cost:none"] },
+      { id: "dunno",   labelEn: "Never actually worked it out",                  labelIt: "Non l'abbiamo mai calcolato",                     signals: ["cost:none"] },
     ],
   },
   {
     id: "owner",
-    promptEn: "Who owns AI quality on your team?",
-    promptIt: "Nel vostro team, chi risponde della qualità dell'AI?",
+    promptEn: "Who owns this process today?",
+    promptIt: "Chi è responsabile di questo processo oggi?",
     choices: [
-      { id: "ml",      labelEn: "A dedicated ML/AI lead",                labelIt: "Un lead ML/AI dedicato",                 signals: ["own:strong"] },
-      { id: "backend", labelEn: "A backend engineer wears the hat",      labelIt: "Se ne occupa un backend engineer",        signals: ["own:weak"] },
-      { id: "pm",      labelEn: "Product / PM",                          labelIt: "Il product manager",                      signals: ["own:weak"] },
-      { id: "none",    labelEn: "No one yet",                            labelIt: "Nessuno, per ora",                        signals: ["own:none"] },
+      { id: "ml",      labelEn: "One person, clearly, with time for it",         labelIt: "Una persona, chiaramente, e con il tempo",        signals: ["own:strong"] },
+      { id: "backend", labelEn: "Someone technical, on top of their day job",    labelIt: "Qualcuno di tecnico, oltre al proprio lavoro",    signals: ["own:weak"] },
+      { id: "pm",      labelEn: "An operations or product person",               labelIt: "Una persona di operations o prodotto",            signals: ["own:weak"] },
+      { id: "none",    labelEn: "Nobody, really",                                labelIt: "In realtà nessuno",                                signals: ["own:none"] },
     ],
   },
 ];
@@ -107,86 +114,86 @@ export const QUESTIONS: Question[] = [
 export const FINDINGS: Finding[] = [
   {
     id: "killswitch",
-    nameEn: "Kill switch + circuit breaker",
-    nameIt: "Kill switch e circuit breaker",
+    nameEn: "Make failures visible",
+    nameIt: "Rendere visibili i guasti",
     descEn:
-      "A single flag your on-call can flip in 30 seconds, plus rate limits and graceful fallback to a non-AI path.",
+      "Work never silently disappears. Anything that can't complete is captured, surfaced and safely retried — with an alert that reaches a person, not a log nobody opens.",
     descIt:
-      "Un flag che chi è di reperibilità può attivare in 30 secondi, più rate limit e un fallback pulito a un percorso non-AI.",
+      "Il lavoro non sparisce mai in silenzio. Ciò che non riesce a completarsi viene intercettato, segnalato e ritentato in sicurezza, con un alert che arriva a una persona, non in un log che nessuno apre.",
     effortEn: "~1 week",
     effortIt: "circa 1 settimana",
     triggers: { "ks:no": 12, "ks:partial": 8 },
   },
   {
     id: "evals",
-    nameEn: "Eval set + retrieval router",
-    nameIt: "Eval set e router di retrieval",
+    nameEn: "A check before it goes out",
+    nameIt: "Un controllo prima che esca",
     descEn:
-      "A 200-case graded eval set tied to weekly CI. Type-aware retrieval so the agent stops mixing engineering and marketing content.",
+      "Automated checks on the output, run every time, so mistakes are caught before a customer sees them instead of after. The rules come from your own past errors.",
     descIt:
-      "Un eval set da 200 casi valutati, agganciato alla CI settimanale. Un retrieval che distingue i tipi di contenuto, così l'agent smette di mescolare materiale di engineering e marketing.",
-    effortEn: "~3 weeks",
-    effortIt: "circa 3 settimane",
+      "Controlli automatici sull'output, eseguiti ogni volta, così gli errori si intercettano prima che li veda un cliente e non dopo. Le regole nascono dai vostri errori passati.",
+    effortEn: "~2 weeks",
+    effortIt: "circa 2 settimane",
     triggers: { "eval:none": 12, "eval:weak": 7 },
   },
   {
     id: "cost",
-    nameEn: "Cost attribution + ceiling",
-    nameIt: "Attribuzione dei costi e tetto di spesa",
+    nameEn: "Put a number on it",
+    nameIt: "Mettere un numero sul problema",
     descEn:
-      "Per-call cost tracking, per-tenant budgets with hard ceilings, and dashboards that page someone before you get a surprise invoice.",
+      "Measure what the process really costs in hours and money before changing anything, so the business case is arithmetic rather than opinion — and so you can tell whether the fix worked.",
     descIt:
-      "Costi tracciati per ogni chiamata, budget per tenant con tetti invalicabili, e dashboard che fanno scattare un alert prima che arrivi la fattura a sorpresa.",
-    effortEn: "~2 weeks",
-    effortIt: "circa 2 settimane",
+      "Misurare quanto costa davvero il processo, in ore e in denaro, prima di cambiare qualsiasi cosa: così il business case è aritmetica e non opinione, e si capisce se la soluzione ha funzionato.",
+    effortEn: "~1 week",
+    effortIt: "circa 1 settimana",
     triggers: { "cost:none": 10, "cost:weak": 5 },
   },
   {
     id: "observability",
-    nameEn: "Production observability + on-call",
-    nameIt: "Observability di produzione e reperibilità",
+    nameEn: "See what's actually running",
+    nameIt: "Vedere cosa sta davvero girando",
     descEn:
-      "OpenTelemetry traces on every AI call, drift detection, latency/cost/quality alerts, and a real on-call rotation, not just dashboards no one reads.",
+      "One place that shows the state of the work: what's queued, what's stuck, what's slow, who's waiting. Alerts that reach a named person, so problems surface before customers do.",
     descIt:
-      "Trace OpenTelemetry su ogni chiamata AI, drift detection, alert su latenza, costo e qualità, e una vera rotazione di reperibilità. Non l'ennesima dashboard che nessuno apre.",
-    effortEn: "~3 weeks",
-    effortIt: "circa 3 settimane",
+      "Un unico posto che mostra lo stato del lavoro: cosa è in coda, cosa è bloccato, cosa è lento, chi sta aspettando. Alert che arrivano a una persona precisa, così i problemi emergono prima dei clienti.",
+    effortEn: "~2 weeks",
+    effortIt: "circa 2 settimane",
     triggers: { "mat:multi": 10, "own:none": 8, "own:weak": 5 },
   },
   {
     id: "architecture",
-    nameEn: "AI architecture + scoping",
-    nameIt: "Architettura AI e scoping",
+    nameEn: "The smallest useful build",
+    nameIt: "La soluzione utile più piccola",
     descEn:
-      "A reference architecture for your first production AI surface, model gateway, data path, eval harness, sized for your team and SLA.",
+      "A scoped first version that solves one painful problem end to end — designed so it can grow, but priced and shipped as the small thing it is. Conventional software, automation or AI, whichever fits.",
     descIt:
-      "Un'architettura di riferimento per la vostra prima superficie AI in produzione: model gateway, data path, eval harness. Dimensionata sul vostro team e sui vostri SLA.",
+      "Una prima versione a scope definito che risolve un solo problema doloroso dall'inizio alla fine: progettata per poter crescere, ma con prezzo e tempi della cosa piccola che è. Software tradizionale, automazione o AI, a seconda di cosa serve.",
     effortEn: "~2 weeks",
     effortIt: "circa 2 settimane",
     triggers: { "mat:none": 14, "mat:pilot": 8 },
   },
   {
     id: "ownership",
-    nameEn: "Fractional AI lead",
-    nameIt: "AI lead frazionale",
+    nameEn: "Someone technical, accountable",
+    nameIt: "Un responsabile tecnico, con un nome",
     descEn:
-      "Until you can hire one, a fractional AI lead who owns quality, evals, and on-call. We embed for 90 days and hand back a hiring spec.",
+      "You don't need to hire a CTO to get technical ownership. A named engineer owns the roadmap, the decisions and whatever is running, for as long as it's useful — then hands it back documented.",
     descIt:
-      "Finché non riuscite ad assumerne uno, un AI lead frazionale che si prende in carico qualità, eval e reperibilità. Ci integriamo per 90 giorni e vi consegniamo la job spec per l'assunzione definitiva.",
-    effortEn: "90-day contract",
-    effortIt: "contratto di 90 giorni",
+      "Non serve assumere un CTO per avere una vera proprietà tecnica. Un ingegnere con nome e cognome si prende in carico roadmap, decisioni e ciò che è in funzione, finché serve, e poi ve lo restituisce documentato.",
+    effortEn: "Monthly, rolling",
+    effortIt: "mensile, rinnovabile",
     triggers: { "own:none": 12 },
   },
   {
     id: "enablement",
-    nameEn: "Team enablement + AI playbook",
-    nameIt: "Abilitazione del team e AI playbook",
+    nameEn: "A handover your team can use",
+    nameIt: "Un passaggio di consegne utilizzabile",
     descEn:
-      "A short playbook for your engineers covering prompts, evals, guardrails, and when to escalate. Plus a hands-on workshop.",
+      "Short written documentation of how the system works, what to do when it doesn't, and how to change the parts you'll want to change. Plus a working session with the people who'll use it.",
     descIt:
-      "Un playbook breve per i vostri engineer: prompt, eval, guardrail e quando far scattare un'escalation. Più un workshop hands-on.",
-    effortEn: "~2 weeks",
-    effortIt: "circa 2 settimane",
+      "Documentazione scritta e breve su come funziona il sistema, cosa fare quando non funziona e come modificare le parti che vorrete modificare. Più una sessione di lavoro con chi lo userà.",
+    effortEn: "~1 week",
+    effortIt: "circa 1 settimana",
     triggers: { "mat:none": 5, "mat:pilot": 6, "own:weak": 4 },
   },
 ];

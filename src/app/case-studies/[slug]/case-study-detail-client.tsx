@@ -17,6 +17,9 @@ import {
 } from "@/data/case-studies";
 import { isFlipArmedFor } from "@/lib/flip-handoff-store";
 import { useReturnFlipSource } from "@/lib/use-flip-source";
+import { attributionLine, statusLabel } from "@/components/work/attribution";
+import { CTA, FACTS, pick } from "@/data/copy";
+import { START_HREF } from "@/lib/site";
 
 if (typeof window !== "undefined") gsap.registerPlugin(ScrollTrigger);
 
@@ -393,6 +396,27 @@ export function CaseStudyDetailClient({
                 className="inline-block w-1 h-1 rounded-full bg-rule"
               />
               <span>{domain}</span>
+              {/* PROVENANCE — the single highest-value line on this page. A
+                  deep link used to show an institution mark, a role and no
+                  attribution at all; the flex-wrap row already existed, so
+                  this repairs every detail page with no layout change. */}
+              <span
+                aria-hidden="true"
+                className="inline-block w-1 h-1 rounded-full bg-rule"
+              />
+              <span className="text-ink">{attributionLine(study, isEn)}</span>
+              <span
+                aria-hidden="true"
+                className="inline-block w-1 h-1 rounded-full bg-rule"
+              />
+              <span>
+                <span className="text-ink/70">
+                  {isEn ? "Status:" : "Stato:"}
+                </span>{" "}
+                <span className="text-ink">
+                  {statusLabel(study.status, isEn)}
+                </span>
+              </span>
             </div>
 
             <p className="text-[15px] text-ink-mute leading-[1.6] max-w-prose">
@@ -534,22 +558,22 @@ export function CaseStudyDetailClient({
           <p className="text-sm text-ink-mute mb-6 max-w-2xl">
             {isEn ? (
               <>
-                One week, inside your stack. We hand you a written report on
-                what&apos;s broken, what&apos;s manual, and what AI can
-                actually do.
+                Start with the problem, not the platform. Tell us what&apos;s
+                slow, manual or breaking. {FACTS.briefIsEnough.en} — a founder
+                reads it.
               </>
             ) : (
               <>
-                Una settimana, dentro il vostro stack. Vi consegniamo un
-                report scritto su cosa è rotto, cosa è manuale e cosa
-                l&apos;AI può davvero fare.
+                Si parte dal problema, non dalla piattaforma. Raccontateci cosa
+                è lento, manuale o si rompe. {FACTS.briefIsEnough.it}: a
+                leggere è un founder.
               </>
             )}
           </p>
           <div className="flex flex-col sm:flex-row gap-3">
             <Button asChild size="lg" className={cn("group", CTA_FLUID_SM)}>
-              <Link href="/audit">
-                {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
+              <Link href={START_HREF}>
+                {pick(isEn, CTA.primary)}
                 <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
               </Link>
             </Button>

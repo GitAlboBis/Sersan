@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { AuditClient } from "./audit-client";
 
 export const metadata: Metadata = {
-  title: "Technical Audit. One Week Inside Your Stack",
+  title: "Technical Audit. Know What to Build Next",
   description:
-    "A paid one-week engagement. Senior engineers inside your stack looking at the product, the systems, the data, and where AI could actually power what you ship. Written report at the end. Fixed scope.",
+    "A paid diagnostic in 2–6 business days, fixed scope. A senior engineer looks at your systems, workflows, data and where software, automation or AI would actually pay off. You leave with a written report and a recommended next step — no obligation to continue.",
   alternates: { canonical: "/audit" },
 };
 

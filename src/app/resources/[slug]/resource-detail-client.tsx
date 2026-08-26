@@ -6,6 +6,8 @@ import { Button, CTA_FLUID_SM } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useLanguage } from "@/components/language-provider";
 import type { Resource } from "@/data/resources";
+import { START_HREF } from "@/lib/site";
+import { CTA, pick } from "@/data/copy";
 
 /**
  * Lightweight markdown-ish renderer.
@@ -145,24 +147,26 @@ export function ResourceDetailClient({ resource, prev, next }: ResourceDetailCli
           <h3 className="font-display text-xl text-ink mb-3 leading-tight">
             {isEn ? (
               <>
-                Want this kind of thinking in{" "}
+                Want this kind of thinking on{" "}
                 <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                  your engagement?
+                  your problem?
                 </span>
               </>
             ) : (
               <>
-                Volete questo modo di ragionare nel{" "}
+                Volete questo modo di ragionare sul{" "}
                 <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                  vostro ingaggio?
+                  vostro problema?
                 </span>
               </>
             )}
           </h3>
           <div className="flex flex-col sm:flex-row gap-3 mt-5">
             <Button asChild size="lg" className={cn("group", CTA_FLUID_SM)}>
-              <Link href="/audit">
-                {isEn ? "Book a scoping call" : "Prenota una call di scoping"}
+              {/* /start + a written brief: CAL_ENABLED is false, so no CTA on
+                  this site may promise a booking. */}
+              <Link href={START_HREF}>
+                {pick(isEn, CTA.primary)}
                 <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
               </Link>
             </Button>

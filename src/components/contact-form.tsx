@@ -56,7 +56,7 @@ export function ContactForm() {
       setSubmitError(
         isEn
           ? `We couldn't send that. Mind retrying, or email ${CONTACT_EMAIL} directly?`
-          : `Non siamo riusciti a inviare. Riprova, o scrivi direttamente a ${CONTACT_EMAIL}.`,
+          : `Non siamo riusciti a inviare. Riprovate, o scriveteci direttamente a ${CONTACT_EMAIL}.`,
       );
     } finally {
       setSubmitting(false);
@@ -77,7 +77,7 @@ export function ContactForm() {
         <p className="text-sm text-ink-mute leading-[1.55]">
           {isEn ? (
             <>
-              A senior engineer reads every inbound. If it&apos;s urgent, email{" "}
+              A founder reads every message. If it&apos;s urgent, email{" "}
               <a href={`mailto:${CONTACT_EMAIL}`} className="underline decoration-dotted underline-offset-4">
                 {CONTACT_EMAIL}
               </a>
@@ -85,7 +85,7 @@ export function ContactForm() {
             </>
           ) : (
             <>
-              Ogni messaggio viene letto da un ingegnere senior. Se è urgente, scrivete a{" "}
+              Ogni messaggio viene letto da un founder. Se è urgente, scrivete a{" "}
               <a href={`mailto:${CONTACT_EMAIL}`} className="underline decoration-dotted underline-offset-4">
                 {CONTACT_EMAIL}
               </a>
@@ -135,7 +135,7 @@ export function ContactForm() {
 
       <label className="block">
         <span className="text-[10px] font-mono uppercase tracking-[0.16em] text-ink-mute mb-1.5 block">
-          {isEn ? "Company" : "Azienda"}
+          {isEn ? "Company (optional)" : "Azienda (facoltativo)"}
         </span>
         <Input
           type="text"
@@ -149,8 +149,8 @@ export function ContactForm() {
       <label className="block">
         <span className="text-[10px] font-mono uppercase tracking-[0.16em] text-ink-mute mb-1.5 block">
           {isEn
-            ? "What's broken, what's manual, what you want to ship"
-            : "Cosa non funziona, cosa è manuale, cosa volete portare in produzione"}
+            ? "What are you trying to build, automate, or fix?"
+            : "Cosa volete costruire, automatizzare o sistemare?"}
         </span>
         <Textarea
           name="message"
@@ -171,8 +171,8 @@ export function ContactForm() {
       <div className="pt-2 flex items-center justify-between gap-4 flex-wrap">
         <p className="text-xs text-ink-mute">
           {isEn
-            ? "A senior engineer reads it. One business day."
-            : "Lo legge un ingegnere senior. Un giorno lavorativo."}
+            ? "Two or three sentences is enough. Read by a founder."
+            : "Bastano due o tre frasi. Lo legge un founder."}
         </p>
         <Button type="submit" variant="hero" size="lg" disabled={submitting} className="gap-2">
           {submitting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}

@@ -68,12 +68,23 @@ export async function POST(request: Request) {
       if (!res.ok) {
         const text = await res.text();
         console.error("[contact] Resend rejected:", res.status, text);
-        // Don't fail the user — log it and return success. We have the
-        // payload server-side and can recover the lead.
+        // Don't fail the visitor — but "we can recover the lead" is only true
+        // if the lead is actually IN the log. Print it.
+        console.error("[contact] UNDELIVERED MESSAGE — recover manually:", JSON.stringify(data));
       }
     } catch (e) {
       console.error("[contact] Email forward failed:", e);
+      console.error("[contact] UNDELIVERED MESSAGE — recover manually:", JSON.stringify(data));
     }
+  } else if (process.env.NODE_ENV === "production") {
+    // See the matching branch in /api/intake: a production deploy with no
+    // RESEND_API_KEY accepts messages and delivers none, while telling the
+    // visitor it worked.
+    console.error(
+      "[contact] MISCONFIGURED — RESEND_API_KEY is not set in production. " +
+        "Messages are being accepted and NOT delivered.",
+    );
+    console.error("[contact] UNDELIVERED MESSAGE — recover manually:", JSON.stringify(data));
   } else {
     // Dev fallback — surface in the server log so we can verify shape.
     console.log("[contact] (dev — no RESEND_API_KEY set) payload:", data);

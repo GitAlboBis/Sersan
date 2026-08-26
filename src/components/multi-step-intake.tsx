@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 import { CONTACT_EMAIL } from "@/lib/site";
+import { BUDGET_BANDS, BUDGET_REASSURANCE, type BudgetValue } from "@/data/copy";
 
 // Idempotent (navbar registers it too); keeps @gsap/react's React-version
 // interop shims active for the hooks below.
@@ -62,10 +63,11 @@ function prefersReducedMotion() {
   );
 }
 
-type WorkType = "custom-ai" | "ai-audit" | "fractional" | "other";
-type CompanySize = "pre-seed" | "seed-a" | "series-b" | "pe-enterprise";
-// Budget enum values match the /api/intake zod schema exactly.
-type Budget = "15-50k" | "50-150k" | "150k-plus" | "not-sure";
+type WorkType = "custom-software" | "automation" | "ai-feature" | "not-sure";
+type CompanySize = "founder-led" | "sme" | "scaling" | "enterprise";
+// Budget values come from BUDGET_BANDS in @/data/copy, which is also what
+// the /api/intake zod enum is written against — they cannot drift apart.
+type Budget = BudgetValue;
 
 interface IntakeData {
   workType: WorkType | "";
@@ -88,34 +90,28 @@ const initial: IntakeData = {
 };
 
 const workTypeOptions: { value: WorkType; en: string; it: string }[] = [
-  { value: "custom-ai", en: "Custom AI build", it: "Sviluppo AI su misura" },
-  { value: "ai-audit", en: "AI/ML audit", it: "Audit AI/ML" },
-  { value: "fractional", en: "Fractional CTO/CPTO", it: "CTO/CPTO frazionale" },
-  { value: "other", en: "Other", it: "Altro" },
+  { value: "custom-software", en: "Custom software", it: "Software su misura" },
+  { value: "automation", en: "Automation", it: "Automazione" },
+  { value: "ai-feature", en: "AI feature", it: "Funzionalità AI" },
+  { value: "not-sure", en: "Not sure yet", it: "Non ancora chiaro" },
 ];
 
 const sizeOptions: { value: CompanySize; en: string; it: string }[] = [
-  { value: "pre-seed", en: "Pre-seed", it: "Pre-seed" },
-  { value: "seed-a", en: "Seed – Series A", it: "Seed – Serie A" },
-  { value: "series-b", en: "Series B+", it: "Serie B+" },
-  { value: "pe-enterprise", en: "PE / Enterprise", it: "PE / Enterprise" },
+  { value: "founder-led", en: "Founder-led team", it: "Team dei founder" },
+  { value: "sme", en: "Established SME", it: "PMI consolidata" },
+  { value: "scaling", en: "Scaling company", it: "Azienda in crescita" },
+  { value: "enterprise", en: "Enterprise", it: "Enterprise" },
 ];
 
-const budgetOptions: { value: Budget; en: string; it: string }[] = [
-  { value: "15-50k", en: "£15–50K", it: "£15–50K" },
-  { value: "50-150k", en: "£50–150K", it: "£50–150K" },
-  { value: "150k-plus", en: "£150K+", it: "£150K+" },
-  { value: "not-sure", en: "Not sure yet", it: "Non sono ancora sicuro" },
-];
+/** Six bands from @/data/copy — two clean chip rows at `sm`, and a genuine
+ *  bottom rung so a focused workflow project has a door to walk through. */
+const budgetOptions = BUDGET_BANDS;
 
 const step1Schema = z.object({
-  workType: z.enum(["custom-ai", "ai-audit", "fractional", "other"]),
+  workType: z
+    .enum(["custom-software", "automation", "ai-feature", "not-sure"])
+    .optional(),
   outcome: z.string().min(8),
-});
-
-const step2Schema = z.object({
-  size: z.enum(["pre-seed", "seed-a", "series-b", "pe-enterprise"]),
-  budget: z.enum(["15-50k", "50-150k", "150k-plus", "not-sure"]),
 });
 
 const step3Schema = z.object({
@@ -128,21 +124,21 @@ const TOTAL_STEPS = 4;
 
 function copy(language: "en" | "it") {
   const en = {
-    eyebrow: "Scoping intake",
+    eyebrow: "Project brief",
     stepLabel: "Step",
     of: "/",
     titles: [
       "Tell us about the work",
-      "Scale & stakes",
+      "Shape & budget",
       "You",
       "Review & send",
     ],
-    workQuestion: "What kind of engagement is this?",
-    outcomeLabel: "What outcome do you need?",
+    workQuestion: "What kind of work is this?",
+    outcomeLabel: "What are you trying to build, automate, or fix?",
     outcomePlaceholder:
-      "A few sentences: the problem, the constraint, what 'shipped' looks like.",
-    sizeQuestion: "Where is the company today?",
-    budgetQuestion: "Budget range for the first engagement",
+      "Two or three sentences: the problem, who it slows down, what good looks like.",
+    sizeQuestion: "What kind of company are you?",
+    budgetQuestion: "Budget range for a first project (optional)",
     name: "Name",
     email: "Email",
     company: "Company",
@@ -151,74 +147,68 @@ function copy(language: "en" | "it") {
     companyPh: "Your company",
     back: "Back",
     next: "Next",
-    send: "Send intake",
+    send: "Send brief",
     review: "Review what you're about to send",
     reviewWork: "Work",
-    reviewOutcome: "Outcome",
-    reviewSize: "Company stage",
+    reviewOutcome: "Problem",
+    reviewSize: "Company type",
     reviewBudget: "Budget",
     reviewName: "Name",
     reviewEmail: "Email",
     reviewCompany: "Company",
     successEyebrow: "Received",
     successTitle: "Thanks. We'll reply within 1 business day.",
-    successBody: `A senior engineer reads every inbound. If it's urgent, email ${CONTACT_EMAIL}.`,
-    requiredHint: "All fields required to continue.",
-    errorWork: "Pick one option.",
+    successBody: `A founder reads every brief. If it's urgent, email ${CONTACT_EMAIL}.`,
+    requiredHint: "Name, email and company — that's all we need.",
     errorOutcome: "A couple of sentences is enough.",
-    errorSize: "Pick the closest match.",
-    errorBudget: "Pick a range. 'Not sure' is fine.",
     errorName: "Required.",
     errorEmail: "Use a working email.",
     errorCompany: "Required.",
-    footer: "Senior reply within 1 business day · No automated funnels",
+    footer: "Read by a founder · Reply within one business day",
   };
 
   const it = {
-    eyebrow: "Scoping intake",
+    eyebrow: "Brief di progetto",
     stepLabel: "Passo",
     of: "/",
     titles: [
-      "Raccontaci il lavoro",
-      "Scala & posta in gioco",
-      "Tu",
-      "Rivedi e invia",
+      "Raccontateci il lavoro",
+      "Dimensione e budget",
+      "Voi",
+      "Rivedete e inviate",
     ],
-    workQuestion: "Che tipo di engagement è?",
-    outcomeLabel: "Quale risultato ti serve?",
+    workQuestion: "Di che tipo di lavoro si tratta?",
+    outcomeLabel: "Cosa volete costruire, automatizzare o sistemare?",
     outcomePlaceholder:
-      "Due righe: il problema, il vincolo, cosa significa 'spedito'.",
-    sizeQuestion: "Dove si trova l'azienda oggi?",
-    budgetQuestion: "Fascia di budget per il primo engagement",
+      "Due o tre frasi: il problema, chi rallenta, cosa significa risolverlo.",
+    sizeQuestion: "Che tipo di azienda siete?",
+    budgetQuestion: "Fascia di budget per un primo progetto (facoltativo)",
     name: "Nome",
     email: "Email",
     company: "Azienda",
-    namePh: "Il tuo nome",
-    emailPh: "tu@azienda.com",
-    companyPh: "La tua azienda",
+    namePh: "Il vostro nome",
+    emailPh: "voi@azienda.com",
+    companyPh: "La vostra azienda",
     back: "Indietro",
     next: "Avanti",
-    send: "Invia intake",
-    review: "Rivedi cosa stai per inviare",
+    send: "Invia il brief",
+    review: "Rivedete cosa state per inviare",
     reviewWork: "Lavoro",
-    reviewOutcome: "Risultato",
-    reviewSize: "Fase azienda",
+    reviewOutcome: "Problema",
+    reviewSize: "Tipo di azienda",
     reviewBudget: "Budget",
     reviewName: "Nome",
     reviewEmail: "Email",
     reviewCompany: "Azienda",
     successEyebrow: "Ricevuto",
     successTitle: "Grazie. Risponderemo entro 1 giorno lavorativo.",
-    successBody: `Ogni messaggio è letto da un senior engineer. Se è urgente, scrivici a ${CONTACT_EMAIL}.`,
-    requiredHint: "Tutti i campi sono richiesti per continuare.",
-    errorWork: "Scegli un'opzione.",
+    successBody: `Ogni brief è letto da un founder. Se è urgente, scriveteci a ${CONTACT_EMAIL}.`,
+    requiredHint: "Nome, email e azienda: è tutto ciò che serve.",
     errorOutcome: "Due righe sono sufficienti.",
-    errorSize: "Scegli l'opzione più vicina.",
-    errorBudget: "Scegli una fascia. 'Non sono sicuro' va bene.",
     errorName: "Richiesto.",
-    errorEmail: "Usa un'email funzionante.",
+    errorEmail: "Usate un'email funzionante.",
     errorCompany: "Richiesto.",
-    footer: "Risposta senior entro 1 giorno lavorativo · Nessun funnel automatico",
+    footer: "Letto da un founder · Risposta entro un giorno lavorativo",
   };
 
   return language === "it" ? it : en;
@@ -231,42 +221,43 @@ function copy(language: "en" | "it") {
 // role/objective so no captured info is lost; stage/timeline are derived
 // sensibly (this short form doesn't ask for them explicitly).
 const WORK_TYPE_LABEL: Record<WorkType, string> = {
-  "custom-ai": "Custom AI build",
-  "ai-audit": "AI/ML audit",
-  fractional: "Fractional CTO/CPTO",
-  other: "Other",
+  "custom-software": "Custom software",
+  automation: "Automation",
+  "ai-feature": "AI feature",
+  "not-sure": "Not sure yet",
 };
 
 const SIZE_LABEL: Record<CompanySize, string> = {
-  "pre-seed": "Pre-seed",
-  "seed-a": "Seed – Series A",
-  "series-b": "Series B+",
-  "pe-enterprise": "PE / Enterprise",
+  "founder-led": "Founder-led team",
+  sme: "Established SME",
+  scaling: "Scaling company",
+  enterprise: "Enterprise",
 };
 
 type IntakeStage =
+  | "manual-today"
   | "idea"
   | "prototype"
-  | "internal-pilot"
-  | "production"
-  | "broken-system";
+  | "in-use"
+  | "needs-fixing";
 
 function deriveStage(workType: WorkType | ""): IntakeStage {
-  // An audit implies an existing system; everything else defaults to prototype.
-  return workType === "ai-audit" ? "broken-system" : "prototype";
+  // Automation implies work being done by hand today; everything else
+  // defaults to an early version existing.
+  return workType === "automation" ? "manual-today" : "prototype";
 }
 
 function toIntakePayload(data: IntakeData, language: "en" | "it") {
-  const workLabel = data.workType ? WORK_TYPE_LABEL[data.workType] : "Engagement";
+  const workLabel = data.workType ? WORK_TYPE_LABEL[data.workType] : "Project";
   return {
     name: data.name,
     email: data.email,
     company: data.company,
-    role: data.size ? SIZE_LABEL[data.size] : "—",
+    role: data.size ? SIZE_LABEL[data.size] : "",
     objective: `${workLabel}: ${data.outcome}`,
     stage: deriveStage(data.workType),
     timeline: "exploring" as const,
-    budget: data.budget || "not-sure",
+    budget: data.budget || undefined,
     language,
   };
 }
@@ -446,7 +437,6 @@ export function MultiStepIntake() {
       });
       if (!r.success) {
         const e: Record<string, string> = {};
-        if (!data.workType) e.workType = t.errorWork;
         if (data.outcome.trim().length < 8) e.outcome = t.errorOutcome;
         setErrors(e);
         focusFirstInvalid(e);
@@ -455,18 +445,8 @@ export function MultiStepIntake() {
       return true;
     }
     if (s === 2) {
-      const r = step2Schema.safeParse({
-        size: data.size || undefined,
-        budget: data.budget || undefined,
-      });
-      if (!r.success) {
-        const e: Record<string, string> = {};
-        if (!data.size) e.size = t.errorSize;
-        if (!data.budget) e.budget = t.errorBudget;
-        setErrors(e);
-        focusFirstInvalid(e);
-        return false;
-      }
+      // Company shape and budget are context, not a gate. Nobody is turned
+      // away for not knowing their number yet.
       return true;
     }
     if (s === 3) {
@@ -962,6 +942,11 @@ export function MultiStepIntake() {
                       ))}
                     </div>
                     <ErrorLine id={errId("budget")} msg={errors.budget} />
+                    <p className="mt-2.5 text-[11.5px] text-ink-mute leading-relaxed">
+                      {language === "it"
+                        ? BUDGET_REASSURANCE.it
+                        : BUDGET_REASSURANCE.en}
+                    </p>
                   </div>
                 </div>
               )}
@@ -1148,7 +1133,7 @@ export function MultiStepIntake() {
                 <p>
                   {language === "en"
                     ? `We couldn't send that. Mind retrying, or email ${CONTACT_EMAIL} directly?`
-                    : `Non siamo riusciti a inviare. Riprova, o scrivi direttamente a ${CONTACT_EMAIL}.`}
+                    : `Non siamo riusciti a inviare. Riprovate, o scriveteci direttamente a ${CONTACT_EMAIL}.`}
                 </p>
                 <p className="mt-1 text-[11px] text-ink-mute font-mono">
                   {submitError}

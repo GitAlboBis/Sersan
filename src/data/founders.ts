@@ -50,8 +50,8 @@ export const founders: FounderProfile[] = [
     linkedIn: "https://www.linkedin.com/in/alessandro-serratt/",
     badges: ["USAAI CAIC", "Dual MBA + AI"],
     kind: "founder",
-    roleEn: "CEO · Commercial Systems Lead",
-    roleIt: "CEO · Lead Sistemi Commerciali",
+    roleEn: "CEO · Commercial Lead",
+    roleIt: "CEO · Lead Commerciale",
     accent: "warm",
     credentialsEn: [
       "USAAI Certified AI Consultant (CAIC)",
@@ -89,27 +89,27 @@ export const founders: FounderProfile[] = [
     accent: "cool",
     credentialsEn: [
       "PhD Applied Mathematics, LSE",
-      "8 years senior delivery at tier-1 institutions",
+      "8 years senior delivery at tier-1 institutions, pre-Sersan",
     ],
     credentialsIt: [
       "PhD in Matematica Applicata, LSE",
-      "8 anni di delivery senior in istituzioni Tier-1",
+      "8 anni di delivery senior in istituzioni Tier-1, pre-Sersan",
     ],
     previouslyAt: ["J.P. Morgan", "Revolut", "Deloitte", "Brevan Howard", "Accenture"],
     shortBioEn:
-      "Architects and ships AI-powered software in regulated, high-stakes environments. Owns the product build, AI layer, data path, evaluation strategy, and what runs in production.",
+      "The named technical owner on an engagement — from a single automation to a platform in production. Owns the build, the data path, and the AI layer where it earns its place.",
     shortBioIt:
-      "Progetta e porta in produzione software AI-powered in contesti regolamentati e ad alta criticità. Guida la build di prodotto, il layer AI, il data path, la strategia di evaluation e tutto ciò che gira in produzione.",
+      "È il responsabile tecnico di un progetto: da una singola automazione a una piattaforma in produzione. Guida la costruzione, il percorso dei dati e il layer AI dove se lo merita.",
     bioEn:
-      "PhD Applied Mathematics, LSE (Stochastic Differential Geometry for Optimization in Deep Learning). Eight years senior delivery across fintech, public sector, aerospace, and renewables: full-stack engineering at Revolut, financial consulting at J.P. Morgan, ML/MLOps at Deloitte, quantitative market analysis at Brevan Howard (Cayman), business architecture at Accenture. Shipped autonomous orbit management for a LEO satellite constellation, regional healthcare workflows for Sardegna (SIBAR/SISAR/FSE), and ML-based PV+BESS forecasting. CTO of a greentech startup that exited Oct 2024. Currently CPTO of Sersan and Presidente CDA & CTO at Cooperativa Agricola Terra Noa.",
+      "PhD Applied Mathematics, LSE (Stochastic Differential Geometry for Optimization in Deep Learning). Eight years of senior delivery before Sersan, across fintech, public sector, aerospace, and renewables: full-stack engineering at Revolut, quantitative ML on liquidity and credit at J.P. Morgan, ML/MLOps at Deloitte, quantitative market analysis at Brevan Howard (Cayman), business architecture at Accenture. That prior work included autonomous orbit management for a LEO satellite constellation, regional healthcare workflows for Sardegna (SIBAR/SISAR/FSE), and ML-based PV+BESS forecasting. CTO of a greentech startup that exited Oct 2024. Now CPTO of Sersan and Presidente CDA & CTO at Cooperativa Agricola Terra Noa.",
     bioIt:
-      "PhD in Matematica Applicata, LSE (Geometria Differenziale Stocastica per l'Ottimizzazione nel Deep Learning). Otto anni di delivery senior tra fintech, settore pubblico, aerospace e rinnovabili: full-stack in Revolut, financial consulting in J.P. Morgan, ML/MLOps in Deloitte, analisi quantitativa in Brevan Howard (Cayman), architettura di business in Accenture. Ha consegnato orbit management autonomo per una costellazione di satelliti LEO, workflow sanitari regionali per la Sardegna (SIBAR/SISAR/FSE), e forecasting ML per impianti PV+BESS. CTO di una startup greentech con exit Oct 2024. Attualmente CPTO di Sersan e Presidente CDA & CTO di Cooperativa Agricola Terra Noa.",
+      "PhD in Matematica Applicata, LSE (Geometria Differenziale Stocastica per l'Ottimizzazione nel Deep Learning). Otto anni di delivery senior prima di Sersan, tra fintech, settore pubblico, aerospace e rinnovabili: full-stack in Revolut, ML quantitativo su liquidità e credito in J.P. Morgan, ML/MLOps in Deloitte, analisi quantitativa in Brevan Howard (Cayman), architettura di business in Accenture. Quel lavoro precedente comprende orbit management autonomo per una costellazione di satelliti LEO, workflow sanitari regionali per la Sardegna (SIBAR/SISAR/FSE), e forecasting ML per impianti PV+BESS. CTO di una startup greentech con exit Oct 2024. Oggi CPTO di Sersan e Presidente CDA & CTO di Cooperativa Agricola Terra Noa.",
     expertiseEn: ["Architecture", "ML/MLOps", "FinTech Engineering", "Production AI"],
     expertiseIt: ["Architettura", "ML/MLOps", "FinTech Engineering", "AI in Produzione"],
     stack: ["Python", "PyTorch", "TypeScript / React", "FastAPI", "Kubernetes", "Terraform", "AWS / GCP", "Postgres", "Kafka", "MQTT", "OpenTelemetry", "LangChain"],
     authorRole: "Co-Founder & CPTO, SERSAN",
     authorBio:
-      "Enterprise architect and ML engineer. Builds AI-powered software, data platforms, and the production systems that run them.",
+      "Enterprise architect and ML engineer. Builds custom software, data platforms, and the AI layers that earn their place in them.",
   },
   {
     name: "Mattia Scattu",
@@ -141,9 +141,9 @@ export const founders: FounderProfile[] = [
     shortBioIt:
       "Progetta e realizza sistemi gestionali interni dall'inizio alla fine: requisiti, modello dati, interfaccia, rilascio. Ha realizzato un sistema di gestione della manutenzione e dell'inventario per un operatore turistico, dall'analisi formale dei requisiti fino al software in esercizio.",
     bioEn:
-      "Software engineer with a Computer Science degree from Università di Camerino. At L'Ultima Spiaggia S.r.l. he designed and built the information system for a campsite resort, covering maintenance operations and inventory tracking: formal requirements analysis, logical and physical database modelling, interface design, and implementation across the full software lifecycle. Previously an IT intern at ARES Sardegna. Co-author of \"Knowledge Graphs as a Semantic Layer for Understanding Robotic Video\".",
+      "Builds the internal systems that take manual work out of a business, end to end. At L'Ultima Spiaggia S.r.l. he designed and delivered the information system for a campsite resort, covering maintenance operations and inventory tracking: formal requirements analysis, logical and physical database modelling, interface design, and implementation across the full software lifecycle. Computer Science degree, Università di Camerino. Co-author of \"Knowledge Graphs as a Semantic Layer for Understanding Robotic Video\".",
     bioIt:
-      "Software engineer, laureato in Informatica all'Università di Camerino. In L'Ultima Spiaggia S.r.l. ha progettato e realizzato il sistema informativo di un villaggio turistico, per la gestione della manutenzione e il tracciamento dell'inventario: analisi formale dei requisiti, modellazione logica e fisica della base dati, progettazione dell'interfaccia e implementazione lungo l'intero ciclo di vita del software. In precedenza stagista IT presso ARES Sardegna. Co-autore di \"Knowledge Graphs as a Semantic Layer for Understanding Robotic Video\".",
+      "Realizza dall'inizio alla fine i sistemi interni che tolgono lavoro manuale a un'azienda. In L'Ultima Spiaggia S.r.l. ha progettato e consegnato il sistema informativo di un villaggio turistico, per la gestione della manutenzione e il tracciamento dell'inventario: analisi formale dei requisiti, modellazione logica e fisica della base dati, progettazione dell'interfaccia e implementazione lungo l'intero ciclo di vita del software. Laurea in Informatica, Università di Camerino. Co-autore di \"Knowledge Graphs as a Semantic Layer for Understanding Robotic Video\".",
     expertiseEn: ["Software Design", "Data Modelling", "Process Optimisation", "Applied AI"],
     expertiseIt: ["Progettazione Software", "Modellazione Dati", "Ottimizzazione Processi", "AI Applicata"],
     // `stack` deliberately OMITTED — the source lists no languages or

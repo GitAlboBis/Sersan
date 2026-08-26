@@ -2,6 +2,7 @@
 
 import { RevealOnScroll } from "@/components/reveal-on-scroll";
 import { useLanguage } from "@/components/language-provider";
+import { POSITIONING } from "@/data/copy";
 
 /**
  * OurWhy — the manifesto beat for the About page. The thesis stated in long
@@ -16,8 +17,8 @@ export default function OurWhy() {
     {
       title: isEn ? "Opposite backgrounds." : "Background opposti.",
       desc: isEn
-        ? "One deeply technical. One deeply commercial. Both founders senior. Both in the room from week one."
-        : "Uno fortemente tecnico. Uno fortemente commerciale. Entrambi i fondatori senior. Entrambi presenti dalla prima settimana.",
+        ? "One deeply technical. One deeply commercial. Every project has a named technical owner and a named commercial one."
+        : "Uno fortemente tecnico. Uno fortemente commerciale. Ogni progetto ha un responsabile tecnico e uno commerciale, con nome e cognome.",
     },
     {
       title: isEn ? "AI that extends." : "AI che estende.",
@@ -28,8 +29,8 @@ export default function OurWhy() {
     {
       title: isEn ? "Production-grade." : "Pronto alla produzione.",
       desc: isEn
-        ? "If we built it, we operate it. Demos are easy. Surviving 3am, regulated workloads, and a real bill is not."
-        : "Quello che costruiamo, lo gestiamo. Le demo sono facili. Sopravvivere alle 3 di notte, ai carichi regolamentati e a un costo reale no.",
+        ? `If we built it, we operate it. ${POSITIONING.productionGrade.en} No heavier than that.`
+        : `Quello che costruiamo, lo gestiamo. ${POSITIONING.productionGrade.it} Senza sovrastrutture inutili.`,
     },
     {
       title: isEn ? "Honest scope." : "Scope onesto.",

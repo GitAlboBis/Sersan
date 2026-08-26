@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { useLanguage } from "@/components/language-provider";
+import { ENGAGEMENT, FACTS, pick } from "@/data/copy";
 
 /**
  * EngagementActs — the /consulting engagement formats as a sequential
@@ -69,61 +70,61 @@ function getFormats(isEn: boolean): EngagementFormat[] {
     {
       num: "01",
       qual: isEn ? "Fixed scope" : "Scope fisso",
-      name: "Tech Audit",
-      timing: isEn ? "1–2 weeks" : "1–2 settimane",
+      name: pick(isEn, ENGAGEMENT.diagnostic.name),
+      timing: pick(isEn, FACTS.auditDuration),
       desc: isEn
-        ? "Fixed-scope architecture review ending in a prioritised backlog and written report."
-        : "Review architetturale a scope fisso che si chiude con un backlog prioritizzato e un report scritto.",
+        ? "One workflow, product problem or system, looked at properly — or widened to a full technical audit when the whole picture matters."
+        : "Un processo, un problema di prodotto o un sistema, guardati sul serio; oppure allargati a un audit tecnico completo quando serve il quadro intero.",
       includes: isEn
         ? [
-            "Architecture review",
-            "Data/ML readiness check",
-            "Performance & reliability scan",
-            "Workflow bottleneck map",
-            "Prioritised backlog",
+            "The problem, framed in writing",
+            "Build, buy or leave it alone",
+            "Prioritised next steps",
+            "Effort and cost estimate",
+            "Optional: full technical audit",
           ]
         : [
-            "Review architetturale",
-            "Check di readiness dati/ML",
-            "Scan di performance e affidabilità",
-            "Mappa dei colli di bottiglia nei workflow",
-            "Backlog prioritizzato",
+            "Il problema messo per iscritto",
+            "Costruire, comprare o lasciar stare",
+            "Prossimi passi in ordine",
+            "Stima di effort e costo",
+            "Opzionale: audit tecnico completo",
           ],
     },
     {
       num: "02",
       qual: isEn ? "Build + ship" : "Build operativo",
-      name: "Delivery Sprint",
-      timing: isEn ? "4–8 weeks" : "4–8 settimane",
+      name: pick(isEn, ENGAGEMENT.sprint.name),
+      timing: pick(isEn, FACTS.sprintDuration),
       desc: isEn
-        ? "Hands-on build: design, implementation, testing, handover."
-        : "Build operativo: design, implementazione, test, handover.",
+        ? "Hands-on build in visible increments: design, implementation, testing, handover."
+        : "Build operativo in incrementi visibili: design, implementazione, test, handover.",
       includes: isEn
-        ? ["Design + implementation", "Testing + QA", "Handover docs", "Team walkthrough"]
-        : ["Design + implementazione", "Testing + QA", "Documenti di handover", "Walkthrough con il team"],
+        ? ["Design + implementation", "Written acceptance criteria", "Testing + QA", "Handover docs + training"]
+        : ["Design + implementazione", "Criteri di accettazione scritti", "Testing + QA", "Handover documentato + formazione"],
     },
     {
       num: "03",
-      qual: "Retainer",
-      name: "Fractional CTO",
-      timing: isEn ? "3–12 months" : "3–12 mesi",
+      qual: isEn ? "Continuation" : "Continuità",
+      name: pick(isEn, ENGAGEMENT.partnership.name),
+      timing: isEn ? "Scoped per phase, renewed on merit" : "Scope per fase, rinnovata sui risultati",
       desc: isEn
-        ? "We own the roadmap, architecture governance, and delivery leadership."
-        : "Ci prendiamo carico di roadmap, governance architetturale e leadership di delivery.",
+        ? "Continued development, support or fractional technical leadership — scoped separately each time."
+        : "Sviluppo continuativo, supporto o direzione tecnica frazionale, con uno scope definito ogni volta.",
       includes: isEn
         ? [
-            "Roadmap ownership",
-            "Architecture governance",
-            "Delivery rituals",
-            "Vendor alignment",
-            "Hiring support",
+            "Continued development",
+            "Maintenance + support",
+            "Optimisation + iteration",
+            "Fractional technical leadership",
+            "Roadmap + vendor decisions",
           ]
         : [
-            "Ownership della roadmap",
-            "Governance dell'architettura",
-            "Riti di delivery",
-            "Allineamento dei fornitori",
-            "Supporto al hiring",
+            "Sviluppo continuativo",
+            "Manutenzione + supporto",
+            "Ottimizzazione + iterazione",
+            "Direzione tecnica frazionale",
+            "Roadmap + scelta dei fornitori",
           ],
     },
   ];

@@ -14,6 +14,7 @@ import { SectionHeading } from "@/components/ui/section-heading";
 import { Reveal } from "@/components/ui/reveal";
 import { SectionGlow } from "@/components/ui/section-glow";
 import { useLanguage } from "@/components/language-provider";
+import { CONTINUATION, CTA, FACTS, PROPORTIONALITY, pick } from "@/data/copy";
 import { cn } from "@/lib/utils";
 
 if (typeof window !== "undefined") {
@@ -21,7 +22,7 @@ if (typeof window !== "undefined") {
 }
 
 /**
- * ProcessSection — "Four phases. No retainer creep."
+ * ProcessSection — "Four phases. Sized to the job."
  *
  * A DRAWN LEFT-TO-RIGHT SEQUENCE (third application of the /consulting
  * "less cards" direction, completing the PracticeLedger → EngagementActs
@@ -78,83 +79,83 @@ function getPhases(isEn: boolean): Phase[] {
   return [
     {
       num: "01",
-      name: isEn ? "Diagnose" : "Diagnosi",
-      duration: isEn ? "1 call + ~1 week" : "1 call + ~1 settimana",
+      name: isEn ? "Understand" : "Comprensione",
+      duration: isEn ? "One call" : "Una call",
       inputs: isEn
-        ? "Your stack, workflow, constraints, data sample."
-        : "Stack, flussi di lavoro, vincoli, campione di dati.",
+        ? "The problem in your words, and what it costs you today."
+        : "Il problema nelle vostre parole e quanto vi costa oggi.",
       outputs: isEn
-        ? "Signal map, risk register, build vs. don't-build call."
-        : "Mappa dei segnali, registro rischi, decisione se costruire.",
+        ? "Agreement on the problem, and on what a good outcome is."
+        : "Accordo sul problema e su cosa sia un buon risultato.",
       delivers: isEn
-        ? "A written recommendation. You can stop here with it in hand."
-        : "Una raccomandazione scritta. Puoi fermarti qui con l'analisi.",
+        ? "A written summary of what we heard and the options open."
+        : "Un riepilogo scritto di ciò che abbiamo capito e delle opzioni.",
       reducesRisk: isEn
-        ? "Spending a quarter on the wrong system."
-        : "Spendere un trimestre sul sistema sbagliato.",
+        ? "Buying a solution before the problem is clear."
+        : "Comprare una soluzione prima che il problema sia chiaro.",
       decision: isEn
-        ? "Continue to Architect, or stop with the recommendation."
-        : "Proseguire con Architettura, o fermarsi con la raccomandazione.",
+        ? "Stop here, or scope the smallest useful piece of work."
+        : "Fermarsi qui, o definire il pezzo di lavoro utile più piccolo.",
     },
     {
       num: "02",
-      name: isEn ? "Architect" : "Architettura",
-      duration: isEn ? "1 to 2 weeks" : "1 o 2 settimane",
+      name: isEn ? "Scope" : "Definizione",
+      duration: pick(isEn, FACTS.auditDuration),
       inputs: isEn
-        ? "Agreed scope, technical interviews, representative data."
-        : "Perimetro concordato, interviste tecniche, dati rappresentativi.",
+        ? "Access to the workflow, system or data involved."
+        : "Accesso al processo, al sistema o ai dati coinvolti.",
       outputs: isEn
-        ? "Reference architecture, evaluation plan, cost model, sequencing."
-        : "Architettura di riferimento, piano di valutazione, modello di costo, sequenza.",
+        ? "The smallest valuable scope, priced, with acceptance criteria."
+        : "Lo scope utile più piccolo, quotato, con criteri di accettazione.",
       delivers: isEn
-        ? "The system on paper, reviewable by your team or an auditor."
-        : "Il sistema sulla carta, revisionabile dal tuo team o da un auditor.",
+        ? "A written plan you can act on, with us or without us."
+        : "Un piano scritto su cui potete agire, con noi o senza di noi.",
       reducesRisk: isEn
-        ? "Rebuilds at week 8 when the design meets reality."
-        : "Riscritture alla settimana 8 quando il progetto incontra la realtà.",
+        ? "Paying for a project nobody defined properly."
+        : "Pagare per un progetto che nessuno ha definito davvero.",
       decision: isEn
-        ? "Continue to Build, or pause with the architecture document."
-        : "Proseguire con la Costruzione, o fermarsi con il documento di architettura.",
+        ? "Approve the scope, widen it to a full audit, or stop."
+        : "Approvare lo scope, allargarlo a un audit completo, o fermarsi.",
     },
     {
       num: "03",
       name: isEn ? "Build" : "Costruzione",
-      duration: isEn ? "2 to 8 weeks, fixed scope" : "2 a 8 settimane, perimetro fisso",
+      duration: pick(isEn, FACTS.sprintDuration),
       inputs: isEn
-        ? "Signed architecture, access, an internal owner."
-        : "Architettura approvata, accessi, un responsabile interno.",
+        ? "Agreed scope, access, and one person who can decide."
+        : "Scope concordato, accessi e una persona che possa decidere.",
       outputs: isEn
-        ? "The system, eval harness, traces, runbook, handover docs."
-        : "Il sistema, la suite di valutazione, tracce, runbook, documentazione.",
+        ? "Working software in visible increments, tested against real use."
+        : "Software funzionante in incrementi visibili, testato sull'uso reale.",
       delivers: isEn
-        ? "Production code in your repo, with owner training."
-        : "Codice di produzione nel tuo repository, con formazione.",
+        ? "Code, accounts and documentation in your name. You own it."
+        : "Codice, account e documentazione a vostro nome. È vostro.",
       reducesRisk: isEn
-        ? "An agency black box your team can't operate."
-        : "Una scatola nera in stile agenzia che il team non sa gestire.",
+        ? "A system only the people who built it can run."
+        : "Un sistema che solo chi l'ha costruito sa far funzionare.",
       decision: isEn
-        ? "Continue to Harden, or take the production system as-is."
-        : "Proseguire con il Consolidamento, o prendere il sistema così com'è.",
+        ? "Launch, extend the scope, or stop with what already works."
+        : "Lanciare, estendere lo scope, o fermarsi con ciò che funziona.",
     },
     {
       num: "04",
-      name: isEn ? "Harden" : "Consolidamento",
-      duration: isEn ? "Post-launch, scoped" : "Post-lancio, su perimetro",
+      name: isEn ? "Operate" : "Operatività",
+      duration: isEn ? "Post-launch, scoped" : "Post-lancio, su scope",
       inputs: isEn
-        ? "Live telemetry, first month of incidents, real user signal."
-        : "Telemetria reale, primo mese di incidenti, segnali degli utenti.",
+        ? "Real usage, the first weeks of incidents, user feedback."
+        : "Uso reale, le prime settimane di incidenti, feedback degli utenti.",
       outputs: isEn
-        ? "Drift checks tuned, rollback drills run, observability calibrated."
-        : "Controlli di drift tarati, prove di rollback, osservabilità calibrata.",
+        ? "Measured results, fixes, tuning, an honest verdict."
+        : "Risultati misurati, correzioni, tuning, un verdetto onesto.",
       delivers: isEn
-        ? "A system your on-call team trusts and keeps running."
-        : "Un sistema di cui il team di on-call si fida e che resta acceso.",
+        ? "Proof it did what it was supposed to do."
+        : "La prova che ha fatto quello che doveva fare.",
       reducesRisk: isEn
-        ? "Day-90 incidents nobody knows how to triage."
-        : "Incidenti al novantesimo giorno che nessuno sa gestire.",
+        ? "A launch nobody measured and nobody owns."
+        : "Un lancio che nessuno misura e di cui nessuno risponde.",
       decision: isEn
-        ? "Hand over to your on-call team. The engagement closes."
-        : "Consegna al team di on-call. L'ingaggio si chiude.",
+        ? "Hand over, or continue under a separately scoped agreement."
+        : "Consegna, o proseguire con un accordo con scope a parte.",
     },
   ];
 }
@@ -165,7 +166,7 @@ function getRows(isEn: boolean) {
     { key: "duration" as const, label: isEn ? "Duration" : "Durata", accent: false },
     { key: "inputs" as const, label: isEn ? "Inputs" : "Input", accent: false },
     { key: "outputs" as const, label: isEn ? "Outputs" : "Output", accent: false },
-    { key: "delivers" as const, label: isEn ? "What you get" : "Cosa ottieni", accent: false },
+    { key: "delivers" as const, label: isEn ? "What you get" : "Cosa ottenete", accent: false },
     { key: "reducesRisk" as const, label: isEn ? "Risk reduced" : "Rischio ridotto", accent: true },
     { key: "decision" as const, label: isEn ? "Decision point" : "Punto di decisione", accent: false },
   ];
@@ -356,29 +357,29 @@ export default function ProcessSection() {
               <>
                 Four phases.{" "}
                 <span className="text-[hsl(var(--accent))] font-semibold">
-                  No retainer creep.
+                  Sized to the job.
                 </span>
               </>
             ) : (
               <>
                 Quattro fasi.{" "}
                 <span className="text-[hsl(var(--accent))] font-semibold">
-                  Nessun retainer che si dilata.
+                  Dimensionate sul lavoro.
                 </span>
               </>
             )
           }
           description={
             isEn
-              ? "Every engagement maps to one of these four phases. You can start at any phase, and stop after any phase. Pricing and scope are fixed before work begins."
-              : "Ogni ingaggio corrisponde a una di queste quattro fasi. Puoi iniziare da qualsiasi fase e fermarti dopo qualsiasi fase. Prezzo e perimetro vengono fissati prima dell'inizio dei lavori."
+              ? `Start at any phase, stop after any phase. Price and scope are fixed before work begins. ${pick(isEn, PROPORTIONALITY)}`
+              : `Potete iniziare da qualsiasi fase e fermarvi dopo qualsiasi fase. Prezzo e scope sono fissati prima di iniziare. ${pick(isEn, PROPORTIONALITY)}`
           }
           className="mb-10 sm:mb-12 max-w-3xl"
         />
 
-        {/* Fixed-scope guarantee strip — makes "No retainer creep" concrete
-            and prominent: one accent-bordered band stating the three rules
-            that distinguish this from open-ended retainers. */}
+        {/* Fixed-scope guarantee strip — makes "sized to the job" concrete
+            and prominent: one accent-bordered band stating that scope and
+            price are agreed first and that continuation is earned. */}
         <Reveal>
           <div
             className="
@@ -392,8 +393,8 @@ export default function ProcessSection() {
             </span>
             <p className="text-[13.5px] text-ink leading-relaxed">
               {isEn
-                ? "Scope and price are agreed before work starts. No open-ended retainers, no hours billed against a moving target, no creep."
-                : "Perimetro e prezzo concordati prima di iniziare. Nessun retainer a tempo indeterminato, nessuna ora fatturata su un obiettivo mobile, nessuna dilatazione."}
+                ? `Scope and price are agreed before work starts. ${pick(isEn, CONTINUATION)}`
+                : `Perimetro e prezzo concordati prima di iniziare. ${pick(isEn, CONTINUATION)}`}
             </p>
           </div>
         </Reveal>
@@ -509,9 +510,9 @@ export default function ProcessSection() {
             {isEn ? (
               <>
                 Most engagements run the full sequence. Many start at{" "}
-                <span className="text-ink">Architect</span> or{" "}
-                <span className="text-ink">Build</span> because the diagnosis was
-                already done. About a third of Diagnose engagements end with
+                <span className="text-ink">Scope</span> or{" "}
+                <span className="text-ink">Build</span> because the problem was
+                already clear. About a third of early engagements end with
                 &ldquo;don&apos;t build this,&rdquo; and that&apos;s a successful
                 outcome.
               </>
@@ -519,9 +520,9 @@ export default function ProcessSection() {
               <>
                 La maggior parte degli ingaggi percorre l&apos;intera sequenza.
                 Molti iniziano da{" "}
-                <span className="text-ink">Architettura</span> o{" "}
-                <span className="text-ink">Costruzione</span> perché la diagnosi
-                era già stata fatta. Circa un terzo degli ingaggi di Diagnosi si
+                <span className="text-ink">Definizione</span> o{" "}
+                <span className="text-ink">Costruzione</span> perché il problema
+                era già chiaro. Circa un terzo degli ingaggi iniziali si
                 chiude con &ldquo;non costruire questo&rdquo;, ed è un esito di
                 successo.
               </>
@@ -534,7 +535,7 @@ export default function ProcessSection() {
                 size="lg"
                 className={cn("group", CTA_FLUID_SM)}
               >
-                {isEn ? "Start with Diagnose" : "Inizia dalla Diagnosi"}
+                {pick(isEn, CTA.startWithProblem)}
                 <ArrowRight
                   className="ml-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1"
                   aria-hidden="true"

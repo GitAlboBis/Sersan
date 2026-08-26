@@ -54,8 +54,8 @@ export default function FeaturedWork() {
           }
           description={
             isEn
-              ? `${caseStudies.length} engagements across FinTech, Healthcare, Aerospace, Public Sector, Industrial, Energy, and Agritech. Sersan-led builds running live in production. No anonymised stand-ins.`
-              : `${caseStudies.length} ingaggi tra FinTech, Healthcare, Aerospace, Settore Pubblico, Industriale, Energia e Agritech. Build guidate da Sersan live in produzione. Nessun caso anonimizzato di facciata.`
+              ? `${caseStudies.length} engagements across FinTech, Healthcare, Aerospace, Public Sector, Industrial, Energy, and Agritech. Sersan builds and prior senior delivery, each one labelled for what it is.`
+              : `${caseStudies.length} ingaggi tra FinTech, Healthcare, Aerospace, Settore Pubblico, Industriale, Energia e Agritech. Build di Sersan e precedenti consegne senior, ognuna etichettata per quello che è.`
           }
         />
         <Link

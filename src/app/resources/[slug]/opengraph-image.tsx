@@ -72,7 +72,7 @@ export default async function Image({ params }: { params: { slug: string } }) {
           }}
         >
           <div>sersan.io / writing</div>
-          <div>AI engineering, plainly written</div>
+          <div>Notes from the build, plainly written</div>
         </div>
       </div>
     ),

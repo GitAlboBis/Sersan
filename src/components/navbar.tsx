@@ -13,6 +13,7 @@ import { SersanLogo } from "@/components/sersan-logo";
 import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
 import { START_HREF } from "@/lib/site";
+import { CTA, pick } from "@/data/copy";
 import { SPINE_TRAVEL_VH, COMPACT_SPINE_TRAVEL_SVH } from "@/lib/spine";
 import { getLenis } from "@/lib/lenis-singleton";
 import { useAudioStore } from "@/webgl/store/audioStore";
@@ -59,15 +60,24 @@ type NavItem = { href: string; label: string; labelIt: string };
  */
 const HERO_HEADER_REVEAL = 0.8;
 
+// EIGHT items, and the count is load-bearing (the bar's horizontal fit and
+// the dropdown's per-item magnetic measurement both live at this size) — so
+// the 2026-08 repositioning RE-POINTED one rather than adding a ninth.
+// "Trust" gave up its slot: it is a compliance reference page, still one click
+// away in the footer's Legal column, and it was occupying the position where
+// the site had no answer at all to "what do you actually build?". "Services"
+// takes the slot immediately after Home — the homepage #services band is the
+// index route the four /services/* pages never had, and it resolves today
+// (services-section.tsx renders id="services").
 const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Home", labelIt: "Home" },
+  { href: "/#services", label: "Services", labelIt: "Servizi" },
   { href: "/audit", label: "Audit", labelIt: "Audit" },
   { href: "/consulting", label: "Consulting", labelIt: "Consulenza" },
   { href: "/case-studies", label: "Work", labelIt: "Case Study" },
   { href: "/resources", label: "Writing", labelIt: "Articoli" },
   { href: "/about", label: "About", labelIt: "Chi siamo" },
   { href: "/contact", label: "Contact", labelIt: "Contatti" },
-  { href: "/trust", label: "Trust", labelIt: "Trust" },
 ];
 
 // CustomEase ships with this gsap 3.15 install and is registerable, so the
@@ -990,7 +1000,7 @@ export function Navbar() {
     >
       {/* The nav bar uses its own gutter rather than the page `container-px`
           (whose --margin jumps to 10rem at ≥1280px). That jump squeezed the
-          right cluster and clipped the "Book a call" pill right at 1280. A
+          right cluster and clipped the CTA pill right at 1280. A
           flat px-6/lg:px-10 gutter + max-w keeps the toggle + CTA fully
           visible at 1280 AND 1440 with consistent spacing. */}
       <div className="mx-auto w-full max-w-[1600px] px-4 sm:px-6 lg:px-10">
@@ -1007,7 +1017,7 @@ export function Navbar() {
             />
           </div>
 
-          {/* Right cluster — on desktop: EN/IT · audio · Book a call · Menu.
+          {/* Right cluster — on desktop: EN/IT · audio · Start a project · Menu.
               Below lg: only the Menu toggle (EN/IT, audio and the CTA live
               inside the dropdown). */}
           <div className="flex items-center gap-3 sm:gap-4 shrink-0">
@@ -1035,7 +1045,14 @@ export function Navbar() {
                     data-magnetic-label
                     className="inline-block will-change-transform"
                   >
-                    {language === "it" ? "Prenota una call" : "Book a call"}
+                    {/* CTA.primaryShort, NOT CTA.primary: nothing on this
+                        site can book a time (CAL_ENABLED is false and the
+                        Cal slug 404s), so "Book a call" had to go — but the
+                        full 20-char primary ("Send a project brief") adds
+                        ~55px to a cluster that already clipped at exactly
+                        1280px (see the gutter note above). The pill gets the
+                        short label; every other surface gets the long one. */}
+                    {pick(language === "en", CTA.primaryShort)}
                   </span>
                 </Link>
               </Button>
@@ -1178,7 +1195,10 @@ export function Navbar() {
                       data-magnetic-label
                       className="inline-block will-change-transform"
                     >
-                      {language === "it" ? "Prenota una call" : "Book a call"}
+                      {/* Full-width row inside the dropdown — no 1280px
+                          cluster to clip here, so this one takes the full
+                          primary label. */}
+                      {pick(language === "en", CTA.primary)}
                     </span>
                   </Link>
                 </Button>

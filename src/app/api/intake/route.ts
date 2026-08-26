@@ -20,33 +20,41 @@ import { z } from "zod";
  */
 
 const IntakeSchema = z.object({
-  // Optional self-locator (restyle step 2): the six buyer pains from the
-  // retired homepage UseCasesSection, now the intake's first question.
+  // Optional self-locator: the seven business problems a visitor can
+  // recognise themselves in, rendered as the intake's first question.
   situation: z
     .enum([
-      "demo-fails-production",
-      "automation-duct-tape",
-      "models-in-notebooks",
-      "committing-cycles",
-      "readiness-review",
-      "senior-judgment",
+      "manual-process",
+      "tools-not-talking",
+      "software-to-build",
+      "product-idea",
+      "system-struggling",
+      "ai-worth-it",
       "none",
     ])
     .optional(),
   name: z.string().min(1).max(120),
   email: z.string().email(),
   company: z.string().min(1).max(120),
-  role: z.string().min(1).max(120),
+  // Only name / email / company / objective are required. Everything below
+  // is context we are glad to get and will never block a brief on.
+  role: z.string().max(120).optional().default(""),
   objective: z.string().min(8, "Please describe what you're trying to build."),
-  stage: z.enum([
-    "idea",
-    "prototype",
-    "internal-pilot",
-    "production",
-    "broken-system",
-  ]),
-  timeline: z.enum(["asap", "this-month", "this-quarter", "exploring"]),
-  budget: z.enum(["under-15k", "15-50k", "50-150k", "150k-plus", "not-sure"]),
+  stage: z
+    .enum([
+      "manual-today",
+      "idea",
+      "prototype",
+      "in-use",
+      "needs-fixing",
+    ])
+    .optional(),
+  timeline: z
+    .enum(["asap", "this-month", "this-quarter", "exploring"])
+    .optional(),
+  budget: z
+    .enum(["under-5k", "5-10k", "10-25k", "25-50k", "50k-plus", "not-sure"])
+    .optional(),
   stack: z.string().max(500).optional().default(""),
   compliance: z.string().max(500).optional().default(""),
   links: z.string().max(1000).optional().default(""),
@@ -94,19 +102,31 @@ export async function POST(request: Request) {
           from: "Sersan Intake <ops@sersan.io>",
           to: [opsEmail],
           reply_to: data.email,
-          subject: `New brief — ${data.name} · ${data.company} (${data.stage})`,
+          subject: `New brief — ${data.name} · ${data.company}${data.stage ? ` (${data.stage})` : ""}`,
           html,
         }),
       });
       if (!res.ok) {
         const text = await res.text();
         console.error("[intake] Resend rejected:", res.status, text);
-        // Don't fail the user — log it and return success. We have the
-        // payload server-side and can recover the lead.
+        // Don't fail the visitor — but the claim "we can recover the lead"
+        // is only true if the lead is actually IN the log. Print it.
+        console.error("[intake] UNDELIVERED LEAD — recover manually:", JSON.stringify(data));
       }
     } catch (e) {
       console.error("[intake] Email forward failed:", e);
+      console.error("[intake] UNDELIVERED LEAD — recover manually:", JSON.stringify(data));
     }
+  } else if (process.env.NODE_ENV === "production") {
+    // A production deploy with no RESEND_API_KEY silently swallowed every
+    // brief on the site's only working conversion path, while still returning
+    // ok:true to the visitor. Make it loud, and keep the payload so the lead
+    // survives in the log until the key is set.
+    console.error(
+      "[intake] MISCONFIGURED — RESEND_API_KEY is not set in production. " +
+        "Briefs are being accepted and NOT delivered.",
+    );
+    console.error("[intake] UNDELIVERED LEAD — recover manually:", JSON.stringify(data));
   } else {
     // Dev fallback — surface in the server log so we can verify shape.
     console.log("[intake] (dev — no RESEND_API_KEY set) payload:", data);
@@ -121,33 +141,34 @@ const SITUATION_LABEL: Record<
   NonNullable<IntakePayload["situation"]>,
   string
 > = {
-  "demo-fails-production": "Agent works in demo, fails in production",
-  "automation-duct-tape": "Automation stack is duct tape",
-  "models-in-notebooks": "Models still trapped in notebooks",
-  "committing-cycles": "About to commit engineering cycles to an AI product",
-  "readiness-review": "Needs readiness before a board, customer, or regulator",
-  "senior-judgment": "Needs senior AI engineering judgment without hiring",
+  "manual-process": "A manual process is eating the team's time",
+  "tools-not-talking": "Tools don't talk to each other",
+  "software-to-build": "Needs internal software that doesn't exist yet",
+  "product-idea": "Has a product idea and needs it built",
+  "system-struggling": "Existing system is slow, fragile or breaking",
+  "ai-worth-it": "Wants to know whether AI is worth it here",
   none: "None of these quite fit",
 };
 
-const STAGE_LABEL: Record<IntakePayload["stage"], string> = {
+const STAGE_LABEL: Record<NonNullable<IntakePayload["stage"]>, string> = {
+  "manual-today": "Manual today",
   idea: "Idea",
-  prototype: "Prototype",
-  "internal-pilot": "Internal pilot",
-  production: "Production system",
-  "broken-system": "Broken existing system",
+  prototype: "Early version exists",
+  "in-use": "Live system in use",
+  "needs-fixing": "Existing system needs fixing",
 };
-const TIMELINE_LABEL: Record<IntakePayload["timeline"], string> = {
+const TIMELINE_LABEL: Record<NonNullable<IntakePayload["timeline"]>, string> = {
   asap: "ASAP",
   "this-month": "This month",
   "this-quarter": "This quarter",
   exploring: "Exploring",
 };
-const BUDGET_LABEL: Record<IntakePayload["budget"], string> = {
-  "under-15k": "Under £15k",
-  "15-50k": "£15–50k",
-  "50-150k": "£50–150k",
-  "150k-plus": "£150k+",
+const BUDGET_LABEL: Record<NonNullable<IntakePayload["budget"]>, string> = {
+  "under-5k": "£2.5k–£5k",
+  "5-10k": "£5k–£10k",
+  "10-25k": "£10k–£25k",
+  "25-50k": "£25k–£50k",
+  "50k-plus": "£50k+",
   "not-sure": "Not sure yet",
 };
 
@@ -159,13 +180,13 @@ function renderIntakeEmail(d: IntakePayload): string {
   return `
     <div style="background:#0e1424;padding:32px;color:#f3f1ec;font-family:-apple-system,Segoe UI,sans-serif;">
       <h2 style="font-family:Georgia,serif;font-weight:400;font-size:24px;margin:0 0 8px;">New brief from ${escape(d.name)}.</h2>
-      <p style="margin:0 0 24px;color:#9aa3ad;font-size:13px;">${escape(d.company)} · ${escape(d.role)}</p>
+      <p style="margin:0 0 24px;color:#9aa3ad;font-size:13px;">${escape(d.company)}${d.role ? ` · ${escape(d.role)}` : ""}</p>
       <table style="border-collapse:collapse;width:100%;">
         ${row("Email", d.email)}
         ${row("Situation", d.situation ? SITUATION_LABEL[d.situation] : "")}
-        ${row("Stage", STAGE_LABEL[d.stage])}
-        ${row("Timeline", TIMELINE_LABEL[d.timeline])}
-        ${row("Budget", BUDGET_LABEL[d.budget])}
+        ${row("Stage", d.stage ? STAGE_LABEL[d.stage] : "")}
+        ${row("Timeline", d.timeline ? TIMELINE_LABEL[d.timeline] : "")}
+        ${row("Budget", d.budget ? BUDGET_LABEL[d.budget] : "")}
         ${row("Objective", d.objective)}
         ${row("Stack", d.stack ?? "")}
         ${row("Compliance", d.compliance ?? "")}

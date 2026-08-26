@@ -1408,10 +1408,16 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     if (pathname === "/audit") {
       const at = useAuditTimelineStore.getState();
       if (at.active) {
-        // Six Day "bands" over [0,1]; the pulse peaks at the centre of each
-        // band and folds to 0 at the band edges (1 - |2f - 1| triangle),
-        // sharpened by squaring so the tick reads as a discrete per-Day beat.
-        const days = 6;
+        // One "band" per phase chapter over [0,1]; the pulse peaks at the
+        // centre of each band and folds to 0 at the band edges (1 - |2f - 1|
+        // triangle), sharpened by squaring so the tick reads as a discrete
+        // per-phase beat.
+        //
+        // The count comes from the store (written by audit-week-timeline from
+        // the live `week` array) rather than a literal: this was hard-coded to
+        // 6 against an array of a different length, which put every tick out of
+        // step with the chapter it was punctuating.
+        const days = at.count;
         const band = Math.min(0.999999, Math.max(0, at.progress)) * days;
         const frac = band - Math.floor(band);
         const tri = 1 - Math.abs(2 * frac - 1);

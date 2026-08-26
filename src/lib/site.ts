@@ -4,10 +4,22 @@
  * hardcoding emails / hrefs across components.
  */
 
-/** Canonical contact email. Used for mailto links and "email us" copy. */
-export const CONTACT_EMAIL = "alex.s@sersan.dev";
+/**
+ * Canonical contact email. Used for mailto links and "email us" copy.
+ *
+ * CHANGED 2026-08 (repositioning): was `alex.s@sersan.dev` — a personal
+ * mailbox on the non-canonical domain — rendered in ~21 visitor-facing mailto
+ * links while the site's canonical domain is sersan.io and outbound mail
+ * sends from ops@sersan.io. A role address on the canonical domain is the
+ * only one of the three that survives a founder being unavailable.
+ *
+ * ACTION REQUIRED BY THE OWNER: `info@sersan.io` must exist and be monitored
+ * (or aliased to the founders) before this ships, or the site's most direct
+ * conversion action bounces.
+ */
+export const CONTACT_EMAIL = "info@sersan.io";
 
-/** Primary CTA destination — the scoping-call intake page. */
+/** Primary CTA destination — the written project-brief intake page. */
 export const START_HREF = "/start";
 
 /**

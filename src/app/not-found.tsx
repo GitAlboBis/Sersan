@@ -27,17 +27,24 @@ import { Home, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
+import { START_HREF } from "@/lib/site";
+import { CTA, pick } from "@/data/copy";
 
 export default function NotFound() {
   const { language } = useLanguage();
   const isEn = language === "en";
 
+  // SEVEN chips — the count drives the 45ms cascade below (delay 420 + i*45),
+  // so it stays seven. "About" gave up its slot to "Services": a visitor who
+  // landed on a dead URL needs to know what the studio builds before it needs
+  // to know who runs it, and /#services is the index route the four
+  // /services/* pages never had.
   const suggestedLinks = [
     { href: "/", label: isEn ? "Home" : "Home", icon: Home },
+    { href: "/#services", label: isEn ? "Services" : "Servizi", icon: Search },
     { href: "/audit", label: isEn ? "Audit" : "Audit", icon: Search },
     { href: "/consulting", label: isEn ? "Consulting" : "Consulenza", icon: Search },
     { href: "/case-studies", label: isEn ? "Work" : "Lavori", icon: Search },
-    { href: "/about", label: isEn ? "About" : "Chi siamo", icon: Search },
     { href: "/resources", label: isEn ? "Writing" : "Articoli", icon: Search },
     { href: "/contact", label: isEn ? "Contact" : "Contatti", icon: Search },
   ];
@@ -60,8 +67,8 @@ export default function NotFound() {
                 aria-hidden="true"
               />
               {isEn
-                ? "404 · Off the production path"
-                : "404 · Fuori dal percorso di produzione"}
+                ? "404 · Nothing built at this path"
+                : "404 · Nessuna pagina a questo indirizzo"}
             </p>
 
             {/* key={language}: SplitText owns this subtree once split; a
@@ -94,8 +101,8 @@ export default function NotFound() {
             <Reveal delay={150}>
               <p className="text-lg sm:text-xl text-muted-foreground mb-10 leading-[1.55] text-balance max-w-lg mx-auto">
                 {isEn
-                  ? "Either the link is stale, the page moved, or it never shipped at all. Pick a destination below — these are live."
-                  : "Il link è obsoleto, la pagina è stata spostata, oppure non è mai stata pubblicata. Scegliete una destinazione qui sotto — queste sono attive."}
+                  ? "Either the link is stale, the page moved, or it never shipped at all. Pick a destination below — or just tell us the problem you came here with."
+                  : "Il link è obsoleto, la pagina è stata spostata, oppure non è mai stata pubblicata. Scegliete una destinazione qui sotto — o raccontateci il problema per cui siete qui."}
               </p>
             </Reveal>
 
@@ -118,8 +125,8 @@ export default function NotFound() {
                   size="lg"
                   className="w-full sm:w-auto px-8 py-6 rounded-full font-semibold"
                 >
-                  <Link href="/contact">
-                    {isEn ? "Contact us" : "Contattaci"}
+                  <Link href={START_HREF}>
+                    {pick(isEn, CTA.primary)}
                   </Link>
                 </Button>
               </div>

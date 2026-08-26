@@ -25,12 +25,12 @@ export interface Resource {
 export const resources: Resource[] = [
   {
     slug: "what-an-ai-audit-actually-looks-like",
-    title: "What an AI audit actually looks like inside your stack",
-    titleIt: "Com'è fatto davvero un audit AI dentro il vostro stack",
+    title: "What a technical audit actually finds in your business",
+    titleIt: "Cosa trova davvero un audit tecnico dentro la vostra azienda",
     excerpt:
-      "Most AI audits are a discovery call in a trench coat. Here's what a real one produces, and why we charge for it.",
+      "Most audits are a discovery call in a trench coat. Here's what a real one produces, and why we charge for it.",
     excerptIt:
-      "La maggior parte degli audit AI è una call conoscitiva travestita. Ecco cosa produce uno vero, e perché lo facciamo pagare.",
+      "La maggior parte degli audit è una call conoscitiva travestita. Ecco cosa produce uno vero, e perché lo facciamo pagare.",
     category: "article",
     publishedAt: "2026-04-12",
     readMinutes: 7,
@@ -38,15 +38,17 @@ export const resources: Resource[] = [
     authorRole: "Co-Founder & CPTO, SERSAN",
     authorRoleIt: "Co-Founder & CPTO, SERSAN",
     tags: ["audit", "ai-strategy", "process"],
-    body: `## Why most AI audits are theatre
+    body: `## Why most audits are theatre
 
 A discovery call in a trench coat. Thirty minutes of qualification questions and a deck full of "AI could help here" platitudes. That is not an audit. That is a sales process pretending to be a deliverable.
 
 ## What we actually do
 
-We send a senior engineer into your stack for a week. Read access to repos, dashboards, the data warehouse, the ticketing system. Calendar time with four to eight people across engineering, ops, and leadership.
+A senior engineer spends 2–6 business days inside the business. Read access to whatever exists — repos, dashboards, spreadsheets, the tools your team works in every day. Calendar time with the handful of people who actually run the work.
 
-By the end of the week, you have a 20–30 page written report. Not slides. A document.
+Scope varies with the question. A focused diagnostic looks at one workflow, one product problem or one system. A full audit takes in the architecture, the data, the tooling and how work actually gets delivered.
+
+At the end you get a written document, as long as it needs to be. Never a slide deck.
 
 ## What the report contains
 
@@ -60,15 +62,17 @@ By the end of the week, you have a 20–30 page written report. Not slides. A do
 ## You keep it whether you hire us or not
 
 The deliverable is yours. Hand it to your internal team, hand it to another vendor, or sit on it. The roadmap doesn't expire.`,
-    bodyIt: `## Perché la maggior parte degli audit AI è teatro
+    bodyIt: `## Perché la maggior parte degli audit è teatro
 
 Una call conoscitiva travestita. Trenta minuti di domande di qualificazione e una presentazione piena di banalità del tipo "qui l'AI potrebbe aiutare". Questo non è un audit. È un processo di vendita che si finge un deliverable.
 
 ## Cosa facciamo davvero
 
-Mandiamo un ingegnere senior dentro il vostro stack per una settimana. Accesso in lettura a repository, dashboard, data warehouse e sistema di ticketing. Tempo in agenda con quattro-otto persone tra engineering, operations e leadership.
+Un ingegnere senior passa 2–6 giorni lavorativi dentro l'azienda. Accesso in lettura a quello che esiste: repository, dashboard, fogli di calcolo, gli strumenti con cui il vostro team lavora ogni giorno. Tempo in agenda con le poche persone che mandano avanti il lavoro.
 
-Alla fine della settimana avete un report scritto di 20–30 pagine. Non slide. Un documento.
+Lo scope dipende dalla domanda. Una diagnosi mirata guarda un processo, un problema di prodotto o un singolo sistema. Un audit completo comprende architettura, dati, strumenti e il modo in cui il lavoro viene davvero consegnato.
+
+Alla fine avete un documento scritto, lungo quanto serve. Mai una presentazione.
 
 ## Cosa contiene il report
 
@@ -127,12 +131,12 @@ Ci costringe a rilasciare qualcosa di visibile ogni settimana. Costringe la conv
   },
   {
     slug: "production-ai-not-demos",
-    title: "Production AI, not demos",
-    titleIt: "AI in produzione, non demo",
+    title: "Production systems, not demos",
+    titleIt: "Sistemi in produzione, non demo",
     excerpt:
-      "The gap between a working demo and a system that runs in production at 3am is wider than most teams realise.",
+      "The gap between a working demo and a system your business can rely on is wider than most teams realise.",
     excerptIt:
-      "Il divario tra una demo funzionante e un sistema che gira in produzione alle 3 di notte è più ampio di quanto la maggior parte dei team immagini.",
+      "Il divario tra una demo funzionante e un sistema su cui l'azienda può contare è più ampio di quanto la maggior parte dei team immagini.",
     category: "guide",
     publishedAt: "2026-02-14",
     readMinutes: 9,
@@ -143,6 +147,8 @@ Ci costringe a rilasciare qualcosa di visibile ogni settimana. Costringe la conv
     body: `## The demo is the easy part
 
 A working demo on a senior engineer's laptop is one or two days of work. A system that handles a hundred thousand requests a day at p99 latency, fails gracefully, gets observed, gets rolled back, and obeys whatever regulatory regime sits over your industry. That is months.
+
+Not every system needs all of that. A two-week automation that fails loudly and can be safely re-run is production-ready for what it does, and loading it with platform ceremony just makes it expensive. The list below is what production-grade means when production-grade is actually required.
 
 ## What "production-ready" actually means
 
@@ -158,6 +164,8 @@ In nine cases out of ten, the data plane needs work before the model is worth to
     bodyIt: `## La demo è la parte facile
 
 Una demo funzionante sul laptop di un ingegnere senior è uno o due giorni di lavoro. Un sistema che gestisce centomila richieste al giorno a una latenza p99, fallisce in modo controllato, viene osservato, viene riportato indietro con un rollback e rispetta qualunque regime normativo gravi sul vostro settore. Quelli sono mesi.
+
+Non a tutti i sistemi serve tutto questo. Un'automazione da due settimane che fallisce in modo visibile e può essere rilanciata in sicurezza è pronta per quello che deve fare, e caricarla di cerimoniale da piattaforma la rende solo costosa. L'elenco qui sotto è cosa significa production-grade quando production-grade serve davvero.
 
 ## Cosa significa davvero "production-ready"
 

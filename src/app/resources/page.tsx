@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { ResourcesClient } from "./resources-client";
 
 export const metadata: Metadata = {
-  title: "Writing. AI Consulting Frameworks and Field Notes",
+  title: "Writing. Field Notes on Software, Automation and AI",
   description:
-    "Frameworks, audit pillars, four-layer engagement model, and field notes from senior AI engineering work in fintech, tech, and SaaS.",
+    "Field notes from real builds — what worked, what failed and why. Written for founders and operators running the business, not only for engineers.",
   alternates: { canonical: "/resources" },
 };
 

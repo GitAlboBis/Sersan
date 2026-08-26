@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { caseStudies } from "@/data/case-studies";
+import { attributionLine, attributionTitle } from "@/components/work/attribution";
 import { CaseStudyDetailClient } from "./case-study-detail-client";
 
 export async function generateStaticParams() {
@@ -17,9 +18,12 @@ export async function generateMetadata({
   if (!study) {
     return { title: "Case study not found" };
   }
+  /* A shared link or a search result must never read as a SerSan client
+     engagement: "prior" entries lead with the qualifier, so even a truncated
+     SERP row carries it. (Metadata is English-only site-wide.) */
   return {
-    title: `${study.client}, ${study.engagement}`,
-    description: study.summary,
+    title: attributionTitle(study),
+    description: `${attributionLine(study, true)}. ${study.summary}`,
     alternates: { canonical: `/case-studies/${study.id}` },
   };
 }

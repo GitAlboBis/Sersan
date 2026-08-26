@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { ContactClient } from "./contact-client";
 
 export const metadata: Metadata = {
-  title: "Contact. Book a Scoping Call",
+  title: "Contact",
   description:
-    "Book a scoping call with Sersan. London-registered AI-powered software consultancy serving fintech, SaaS, and regulated tech operators. One-business-day reply.",
+    "Talk to the people who'll build it. SerSan is a founder-led studio building custom software, automation and AI for founders, SMEs and growing teams. Reply within one business day.",
   alternates: { canonical: "/contact" },
 };
 
