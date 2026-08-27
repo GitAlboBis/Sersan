@@ -18,7 +18,16 @@ import {
   createPreloaderTunnel,
   type PreloaderTunnel,
 } from "@/components/fx/preloader-tunnel";
-import { SPINE_COPY } from "@/components/sections/cinematic-system-scroll";
+import {
+  SPINE_COPY,
+  BeatRule,
+  BeatEyebrowText,
+  beatEyebrowAttrs,
+  beatPartAttrs,
+  beatTailAttrs,
+} from "@/components/sections/cinematic-system-scroll";
+import { createBeat, type BeatHandle } from "@/components/fx/beat-choreographer";
+import { SPINE_BEATS } from "@/lib/spine";
 import { POSITIONING, projectCount, sersanBuildCount } from "@/data/copy";
 import { getLenis } from "@/lib/lenis-singleton";
 import { suspendSnap } from "@/lib/scroll-snap";
@@ -973,8 +982,60 @@ export default function SingularityPassage() {
              * and a scrub ticks at frame rate). */
             let swallowPublished = -1;
 
+            // ── SPINE_BEATS on the phone beat: ONE-SHOT entrance only. The
+            // pinned plate's copy stays a pure function of t (the dissolve
+            // below, contract clauses 1-5): the beat never HIDES anything
+            // the scrub shows; it only plays the spine's masked rise once,
+            // when the plate first scrolls into view (the site's IO reveal
+            // contract), and lands instantly if the scrub is already past 0
+            // at arm time. Phone-scaled timings; level <= 1 = whole blocks.
+            let liteBeat: BeatHandle | null = null;
+            let liteEntered = false;
+            let liteIo: IntersectionObserver | null = null;
+            let liteBeatCancelled = false;
+            if (SPINE_BEATS) {
+              document.fonts?.ready
+                .then(() => {
+                  if (liteBeatCancelled) return;
+                  liteBeat = createBeat(litePanel, {
+                    compact: true,
+                    level: useTierStore.getState().fxBudget.level,
+                    isHero: false,
+                    ownsRoot: false,
+                  });
+                  if (st.progress > 0) {
+                    liteEntered = true;
+                    liteBeat.settle();
+                    return;
+                  }
+                  liteBeat.hide();
+                  liteIo = new IntersectionObserver(
+                    (entries) => {
+                      if (!entries.some((e) => e.isIntersecting)) return;
+                      liteIo?.disconnect();
+                      liteIo = null;
+                      if (liteEntered || !liteBeat) return;
+                      liteEntered = true;
+                      liteBeat.enter();
+                    },
+                    { rootMargin: "0px 0px -18% 0px", threshold: 0 },
+                  );
+                  liteIo.observe(litePanel);
+                })
+                .catch(() => {});
+            }
+
             // ── The single evaluator: every layer is a pure function of t ──
             const apply = (t: number) => {
+              // SPINE_BEATS fallback: the scrub moved before the IO fired —
+              // land the plate at rest so the dissolve below never fights a
+              // primed-hidden pose.
+              if (liteBeat && !liteEntered && t > 0) {
+                liteEntered = true;
+                liteIo?.disconnect();
+                liteIo = null;
+                liteBeat.settle();
+              }
               // ── THE COPY HANDOFF (t HOLD_END → COPY_OUT_END) ────────────
               // The panel dissolves IN PLACE — it never travels (the desktop
               // grammar's horizontal track-off has no meaning on a frame this
@@ -1210,6 +1271,10 @@ export default function SingularityPassage() {
 
             return () => {
               fontsCancelled = true;
+              liteBeatCancelled = true;
+              liteIo?.disconnect();
+              liteBeat?.dispose();
+              liteBeat = null;
               stopRaf();
               disposeTunnel();
               setCap(false);
@@ -1446,6 +1511,44 @@ export default function SingularityPassage() {
             else panel.setAttribute("aria-hidden", "true");
           };
 
+          // ── SPINE_BEATS: panel 05's triggered ENTER/EXIT (the spine's
+          // beat grammar, fx/beat-choreographer.ts). Created once webfonts
+          // settle (SplitText needs final line boxes); until then compose()
+          // keeps the legacy scrub writes, which are pure in p. Edge-
+          // triggered from compose() crossing PANEL_ENTER_START (forward →
+          // ENTER, back → EXIT-UP); the root's opacity stays compose()'s
+          // (the reverse-entry PANEL_FADE ramp) and the one-shot's, so
+          // `ownsRoot: false`; interactivity keeps the passage's own cache
+          // via onHidden. seqStore writes are untouched. ───────────────────
+          let beat05: BeatHandle | null = null;
+          let beat05On = false;
+          let beatFontsCancelled = false;
+          if (SPINE_BEATS) {
+            document.fonts?.ready
+              .then(() => {
+                if (beatFontsCancelled) return;
+                beat05 = createBeat(panel, {
+                  compact: false,
+                  level: useTierStore.getState().fxBudget.level,
+                  isHero: false,
+                  ownsRoot: false,
+                  onHidden: () => {
+                    // Hidden rest pose reached (exit complete / hide()): the
+                    // root goes to 0 too, so a stale 1 from a completed
+                    // EXIT-UP can never survive under bare parts.
+                    panelAlpha(0);
+                    setPanelInteractive(false);
+                  },
+                });
+                // The legacy entry-Y write is retired with the beat live.
+                panelY(0);
+                beat05On = p >= SEQ.PANEL_ENTER_START;
+                if (beat05On) beat05.settle();
+                else beat05.hide();
+              })
+              .catch(() => {});
+          }
+
           // Focusin net (credibility-strip lineage, adapted): focus landing
           // inside the overflow-hidden sticky stage must never let the
           // browser shear the composition via native scroll-into-view —
@@ -1606,12 +1709,36 @@ export default function SingularityPassage() {
             // out in place), then tracks off-left and fades across
             // PANEL_FADE. The y write is
             // StagePanel's exact (1-opacity)*16px entry offset.
-            const panelA =
-              seqSmooth(p, SEQ.PANEL_ENTER_START, SEQ.PANEL_ENTER_END) *
-              (1 - seqSmooth(p, SEQ.PANEL_FADE_START, SEQ.PANEL_FADE_END));
-            panelAlpha(panelA);
-            panelY((1 - panelA) * 16);
-            setPanelInteractive(panelA > PANEL_LIT_MIN);
+            const fadeA =
+              1 - seqSmooth(p, SEQ.PANEL_FADE_START, SEQ.PANEL_FADE_END);
+            if (beat05) {
+              // SPINE_BEATS: the entry ramp became an EDGE — forward across
+              // PANEL_ENTER_START plays the beat's ENTER (masked line rise,
+              // rolling index, decode); back across it plays EXIT-UP. The
+              // reverse-entry PANEL_FADE stays a pure opacity ramp on the
+              // root while the beat is on.
+              const on = p >= SEQ.PANEL_ENTER_START;
+              if (on !== beat05On) {
+                beat05On = on;
+                if (on) beat05.enter();
+                else beat05.exit(-1);
+              }
+              if (on) {
+                panelAlpha(fadeA);
+                setPanelInteractive(fadeA > PANEL_LIT_MIN);
+              } else if (beat05.state === "hidden") {
+                // Below the edge and the EXIT-UP has landed: the root is a
+                // pure function of p again (0), whatever the last writer
+                // left (a parked-past-end prime, a partial legacy ramp).
+                panelAlpha(0);
+              }
+            } else {
+              const panelA =
+                seqSmooth(p, SEQ.PANEL_ENTER_START, SEQ.PANEL_ENTER_END) * fadeA;
+              panelAlpha(panelA);
+              panelY((1 - panelA) * 16);
+              setPanelInteractive(panelA > PANEL_LIT_MIN);
+            }
 
             applyHoleVisuals(dist, holeFade);
 
@@ -1777,6 +1904,13 @@ export default function SingularityPassage() {
 
           const startPlunge = () => {
             if (plungeActive || plungePlayed) return;
+            // SPINE_BEATS: a flick can cross TRIGGER_P one tick after
+            // PANEL_ENTER_START — land the ENTER instantly so the TRAVERSE
+            // owns a settled panel (its alpha-only track-off, as today).
+            if (beat05) {
+              beat05On = true;
+              beat05.settle();
+            }
             plungeActive = true;
             covertJumped = false;
             reverseAccum = 0;
@@ -2301,6 +2435,9 @@ export default function SingularityPassage() {
 
           return () => {
             fontsCancelled = true;
+            beatFontsCancelled = true;
+            beat05?.dispose();
+            beat05 = null;
             // Mid-plunge teardown (language toggle etc.): unlock everything.
             if (plungeActive) {
               plungeActive = false;
@@ -2406,29 +2543,55 @@ export default function SingularityPassage() {
         <div data-seq-track className="seq-track">
           <div className="container-px w-full">
             <div data-seq-panel className="seq-panel max-w-[42rem]">
-              <p className="eyebrow inline-flex items-center gap-2 text-ink/80 mb-4">
+              {/* SPINE_BEATS: the same beat grammar as stages 01..04 (data
+                  hooks + hairline + rolling index; all of it collapses to the
+                  legacy markup when the switch is off). */}
+              <BeatRule id="handover" />
+              <p
+                className="eyebrow inline-flex items-center gap-2 text-ink/80 mb-4"
+                {...beatEyebrowAttrs("handover")}
+              >
                 <span aria-hidden="true" className="status-dot" />
-                <span>{HANDOVER_STAGE.eyebrow[language]}</span>
+                <span>
+                  <BeatEyebrowText text={HANDOVER_STAGE.eyebrow[language]} />
+                </span>
               </p>
               {/* Type scale = the spine StagePanel's GROUPED-LEAD scale (what
                   stage 04 actually renders at), NOT the single-block scale —
                   owner 2026-08-09: section 05 must read as a sibling of
                   stages 02–04 in the same seat, so its title matches 04's
                   visual size exactly. */}
-              <h2 className="font-display leading-[0.98] text-ink mb-5 text-balance text-[clamp(2rem,3.6vw,3.25rem)] tracking-[-0.026em]">
+              <h2
+                key={SPINE_BEATS ? language : undefined}
+                {...beatPartAttrs("title", "handover")}
+                className="font-display leading-[0.98] text-ink mb-5 text-balance text-[clamp(2rem,3.6vw,3.25rem)] tracking-[-0.026em]"
+              >
                 {HANDOVER_STAGE.title[language]}
               </h2>
-              <p className="text-base sm:text-lg text-foreground/80 leading-[1.55] max-w-[40rem]">
+              <p
+                key={SPINE_BEATS ? `${language}-body` : undefined}
+                {...beatPartAttrs("body", "handover")}
+                className="text-base sm:text-lg text-foreground/80 leading-[1.55] max-w-[40rem]"
+              >
                 {HANDOVER_STAGE.body[language]}
               </p>
-              {HANDOVER_STAGE.extras[language]}
+              {SPINE_BEATS ? (
+                <div {...beatTailAttrs("handover")}>
+                  {HANDOVER_STAGE.extras[language]}
+                </div>
+              ) : (
+                HANDOVER_STAGE.extras[language]
+              )}
               {/* CTA_*_SM: this pair is the one MEASURED offender behind the
                   10px horizontal overflow at 320px — `whitespace-nowrap` made
                   the old "Book a 30-min scoping call" label a 298px min-content
                   block inside a 256px column, and `min-width: auto` refused
                   to compress it. Below `sm` it now fills the column and wraps;
                   ≥sm is untouched (see button.tsx). */}
-              <div className="mt-7 flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
+              <div
+                className="mt-7 flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center"
+                {...beatTailAttrs("handover")}
+              >
                 <Magnetic className={CTA_WRAPPER_SM}>
                   <Link href={START_HREF} className="block">
                     <Button

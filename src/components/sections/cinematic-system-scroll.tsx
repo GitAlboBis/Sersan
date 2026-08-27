@@ -85,7 +85,10 @@ import {
   SPINE_HEIGHT_VH,
   COMPACT_SPINE_SVH,
   HERO_BRAND_COMPACT,
+  SPINE_BEATS,
 } from "@/lib/spine";
+import { RollLetters } from "@/components/fx/roll-letters";
+import { useSpineBeats } from "@/components/fx/beat-choreographer";
 import { cn } from "@/lib/utils";
 
 if (typeof window !== "undefined") {
@@ -364,6 +367,66 @@ function panelOpacity(
   return Math.max(0, o);
 }
 
+// === Beat markup helpers (SPINE_BEATS) ====================================
+// Data hooks the beat engine (fx/beat-choreographer.ts) queries. All of them
+// collapse to nothing when the kill-switch is off, so the legacy path renders
+// byte-identical markup. Exported: the singularity passage's panel 05 uses
+// the same grammar (one vocabulary for 01..05).
+
+/** Attributes for a beat part (title/body): grouped per block by `of`. */
+export function beatPartAttrs(
+  part: "title" | "body",
+  of: string,
+): Record<string, string> | undefined {
+  if (!SPINE_BEATS) return undefined;
+  return { [`data-beat-${part}`]: "", "data-beat-of": of };
+}
+
+/** Attributes for a trailing block (proof chips, CTA row): whole-block
+ * autoAlpha + y after the body. */
+export function beatTailAttrs(of: string): Record<string, string> | undefined {
+  if (!SPINE_BEATS) return undefined;
+  return { "data-beat-tail": "", "data-beat-of": of };
+}
+
+/** Attributes for a beat eyebrow. `data-scramble-done="1"` keeps the global
+ * LabelScrambler from decoding it at first paint (its panel is invisible
+ * then — IO ignores opacity); the ENTER re-triggers the decode on arrival
+ * via the "sersan:scramble" event. */
+export function beatEyebrowAttrs(of: string): Record<string, string> | undefined {
+  if (!SPINE_BEATS) return undefined;
+  return { "data-beat-eyebrow": "", "data-beat-of": of, "data-scramble-done": "1" };
+}
+
+/** The 1px hairline drawn (scaleX) at the head of every numbered block —
+ * door-beats grammar. Nothing on the legacy path. */
+export function BeatRule({ id }: { id: string }) {
+  if (!SPINE_BEATS) return null;
+  return (
+    <span
+      data-beat-rule=""
+      data-beat-of={id}
+      aria-hidden="true"
+      className="block h-px w-full bg-rule/70 mb-3"
+    />
+  );
+}
+
+/** Eyebrow text with the leading "0N" index as RollLetters columns (the R1
+ * "counter that rolls"); the rest of the string is untouched text. The
+ * rendered string concatenates to `text` verbatim (RollLetters' sr-only
+ * node + the in-flow glyphs). Plain text on the legacy path. */
+export function BeatEyebrowText({ text }: { text: string }) {
+  const m = SPINE_BEATS ? /^(\d{2})([\s\S]*)$/.exec(text) : null;
+  if (!m) return <>{text}</>;
+  return (
+    <>
+      <RollLetters text={m[1]!} decoys="self" />
+      {m[2]}
+    </>
+  );
+}
+
 // === Stage panel ==========================================================
 // Renders one DESKTOP_GROUPS entry. Single-block groups (the hero)
 // look exactly like the pre-compression panels; merged groups render BOTH
@@ -395,6 +458,8 @@ function StagePanel({
   isHero,
   compact,
   copy,
+  index,
+  language,
 }: {
   group: StageGroup;
   blocks: Stage[];
@@ -402,13 +467,26 @@ function StagePanel({
   isHero?: boolean;
   compact?: boolean;
   copy: (typeof SPINE_COPY)[Language];
+  /** DESKTOP_GROUPS index — the beat engine's [data-beat] key. */
+  index: number;
+  /** key={language} on every split target so an EN↔IT toggle remounts them
+   * under the beat hook's revertOnUpdate rebuild (no orphaned masks). */
+  language: Language;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
 
   // Drive opacity via rAF (no React re-renders). Early-returns when the
   // computed opacity is unchanged so an idle (un-scrolled) spine stops
   // thrashing styles.
+  //
+  // SPINE_BEATS (2026-08-27): the per-panel opacity/translate/inert writes
+  // below belong to the LEGACY crossfade path. With the beat engine on
+  // (useSpineBeats, fx/beat-choreographer.ts) this effect keeps ONLY the
+  // hero's morph branch — the domReveal-scrubbed H1 crossfade + cluster
+  // cascade + wash whisper, which the intro gate replays in reverse — and
+  // non-hero panels run no rAF at all (one engine loop drives every panel).
   useEffect(() => {
+    if (SPINE_BEATS && !isHero) return;
     let raf = 0;
     let lastO = Number.NaN;
     let lastReveal = Number.NaN;
@@ -441,17 +519,21 @@ function StagePanel({
       const morph = isHero ? useTextMorphStore.getState() : null;
       const active = !!(morph && morph.active);
       const reveal = active && morph ? morph.domReveal : 1;
-      const baseO = panelOpacity(p, group.start, group.end, isHero);
+      // Beat engine on: the root's opacity is the engine's (a constant 1
+      // here keeps the change-detection below keyed on the morph alone).
+      const baseO = SPINE_BEATS ? 1 : panelOpacity(p, group.start, group.end, isHero);
       const o = baseO;
       if (el && (o !== lastO || (active && reveal !== lastReveal) || active !== lastActive)) {
         lastO = o;
         lastReveal = reveal;
-        el.style.opacity = String(o);
-        // Subtle Y offset for entry — anchored at the top of viewport. Uses
-        // the BASE opacity so the H1 rect the particle system anchors to
-        // never shifts while the morph hides it.
-        const yOffset = (1 - baseO) * 16;
-        el.style.transform = `translate3d(0, ${yOffset}px, 0)`;
+        if (!SPINE_BEATS) {
+          el.style.opacity = String(o);
+          // Subtle Y offset for entry — anchored at the top of viewport. Uses
+          // the BASE opacity so the H1 rect the particle system anchors to
+          // never shifts while the morph hides it.
+          const yOffset = (1 - baseO) * 16;
+          el.style.transform = `translate3d(0, ${yOffset}px, 0)`;
+        }
         if (isHero) {
           const h1 = el.querySelector<HTMLElement>("[data-hero-headline]");
           if (active) {
@@ -506,7 +588,10 @@ function StagePanel({
         // With the intro active the panel only counts as visible once the
         // cascade is actually in (hidden CTAs must never be clickable).
         const visible = o > 0.6 && (!active || reveal > 0.5);
-        if (visible !== lit) {
+        // (Beat engine on: inert/aria/pointer-events follow the timelines —
+        // enter-start / exit-complete — plus the same reveal rule for the
+        // hero, all inside useSpineBeats. Never double-own them here.)
+        if (!SPINE_BEATS && visible !== lit) {
           lit = visible;
           el.style.pointerEvents = visible ? "auto" : "none";
           // `inert` exists on HTMLElement in current TS lib; cast for safety.
@@ -581,11 +666,21 @@ function StagePanel({
       // first paint; the rAF tick toggles this as stages light/dim.
       inert={initiallyHidden}
       aria-hidden={initiallyHidden || undefined}
-      style={{
-        opacity: initialOpacity,
-        transform: `translate3d(0, ${initialY}px, 0)`,
-        willChange: "opacity, transform",
-      }}
+      // Beat engine key (fx/beat-choreographer.ts). The SSR pose stays the
+      // same hidden/visible inline opacity; the engine never transforms a
+      // panel root (the hero's rect must not move under the particle intro),
+      // so the legacy translate + will-change are written only on the legacy
+      // path.
+      data-beat={SPINE_BEATS ? index : undefined}
+      style={
+        SPINE_BEATS
+          ? { opacity: initialOpacity }
+          : {
+              opacity: initialOpacity,
+              transform: `translate3d(0, ${initialY}px, 0)`,
+              willChange: "opacity, transform",
+            }
+      }
     >
       <div className={cn("container-px w-full", compact && "my-auto")}>
         {/* relative z-10 (hero only): the copy block must paint/hit ABOVE the
@@ -651,6 +746,9 @@ function StagePanel({
                   visible H1. */}
               <h1
                 data-hero-headline
+                data-beat-title={SPINE_BEATS ? "" : undefined}
+                data-beat-of={SPINE_BEATS ? "hero" : undefined}
+                key={SPINE_BEATS ? language : undefined}
                 className={cn(
                   "font-display text-ink mb-4 text-balance",
                   // Compact reuses StackedFallback's own H1 clamp verbatim —
@@ -753,28 +851,50 @@ function StagePanel({
                 <>
                   {companions.map((block) => (
                     <div key={block.id} className="mb-7 sm:mb-9">
-                      <p className="eyebrow inline-flex items-center gap-2 text-ink/80 mb-3">
+                      <BeatRule id={block.id} />
+                      <p
+                        className="eyebrow inline-flex items-center gap-2 text-ink/80 mb-3"
+                        {...beatEyebrowAttrs(block.id)}
+                      >
                         <span aria-hidden="true" className="status-dot" />
-                        <span>{block.eyebrow}</span>
+                        <span>
+                          <BeatEyebrowText text={block.eyebrow} />
+                        </span>
                       </p>
-                      <h2 className="font-display text-[clamp(1.35rem,2.3vw,1.9rem)] leading-[1.12] tracking-[-0.02em] text-ink mb-2.5 text-balance">
+                      <h2
+                        key={SPINE_BEATS ? language : undefined}
+                        {...beatPartAttrs("title", block.id)}
+                        className="font-display text-[clamp(1.35rem,2.3vw,1.9rem)] leading-[1.12] tracking-[-0.02em] text-ink mb-2.5 text-balance"
+                      >
                         {block.title}
                       </h2>
-                      <p className="text-sm sm:text-[15px] text-foreground/70 leading-[1.55] max-w-[36rem]">
+                      <p
+                        key={SPINE_BEATS ? `${language}-body` : undefined}
+                        {...beatPartAttrs("body", block.id)}
+                        className="text-sm sm:text-[15px] text-foreground/70 leading-[1.55] max-w-[36rem]"
+                      >
                         {block.body}
                       </p>
                       {block.extras}
                     </div>
                   ))}
-                  <p className="eyebrow inline-flex items-center gap-2 text-ink/80 mb-4">
+                  <BeatRule id={lead.id} />
+                  <p
+                    className="eyebrow inline-flex items-center gap-2 text-ink/80 mb-4"
+                    {...beatEyebrowAttrs(lead.id)}
+                  >
                     <span aria-hidden="true" className="status-dot" />
-                    <span>{lead.eyebrow}</span>
+                    <span>
+                      <BeatEyebrowText text={lead.eyebrow} />
+                    </span>
                   </p>
                   {/* Subsequent stages are H2s because the cinematic spine
                       reads as one section to crawlers. The lead title drops
                       one step in scale when it shares the panel with a
                       companion block (two blocks must fit laptop heights). */}
                   <h2
+                    key={SPINE_BEATS ? language : undefined}
+                    {...beatPartAttrs("title", lead.id)}
                     className={cn(
                       "font-display text-ink mb-5 text-balance",
                       // Compact reuses StackedFallback's own H2 clamp verbatim.
@@ -801,7 +921,11 @@ function StagePanel({
                   >
                     {lead.title}
                   </h2>
-                  <p className="text-base sm:text-lg text-foreground/80 leading-[1.55] max-w-[40rem]">
+                  <p
+                    key={SPINE_BEATS ? `${language}-body` : undefined}
+                    {...beatPartAttrs("body", lead.id)}
+                    className="text-base sm:text-lg text-foreground/80 leading-[1.55] max-w-[40rem]"
+                  >
                     {lead.body}
                   </p>
                   {lead.extras}
@@ -1283,14 +1407,29 @@ function CompactSpine({
   groups,
   stageById,
   copy,
+  language,
 }: {
   groups: StageGroup[];
   stageById: Map<string, Stage>;
   copy: (typeof SPINE_COPY)[Language];
+  language: Language;
 }) {
   const outerRef = useRef<HTMLElement | null>(null);
   const progressRef = useRef<number>(0);
   const scrimRef = useRef<HTMLDivElement | null>(null);
+
+  // SPINE_BEATS: the same triggered beat engine as desktop, phone-scaled
+  // (compact timings; whole-block fallback below fxBudget.level 2, no blur).
+  // Reads the same progressRef the trigger below writes; no-op when the
+  // kill-switch is off (StagePanel's legacy crossfade rAF takes over).
+  useSpineBeats({
+    scope: outerRef,
+    progressRef,
+    windows: groups,
+    language,
+    enabled: true,
+    compact: true,
+  });
 
   // Phase 4b gate. `backend` (not level alone): `[data-hero-brand]` presence
   // has side effects (navbar header-hide) and must never appear on a phone
@@ -1447,6 +1586,8 @@ function CompactSpine({
             isHero={i === 0}
             compact
             copy={copy}
+            index={i}
+            language={language}
           />
         ))}
       </div>
@@ -1644,6 +1785,23 @@ export default function CinematicSystemScroll() {
     };
   }, [mode, hasDetectedViewport]);
 
+  // SPINE_BEATS (2026-08-27): the triggered per-beat GSAP choreography for
+  // the desktop spine's panels (fx/beat-choreographer.ts). ONE rAF reads the
+  // progressRef the trigger above writes, resolves the active beat
+  // (lib/spine-beats) and plays ENTER/EXIT timelines on transitions; the
+  // trigger, the snap stations, the gate and every store contract above are
+  // untouched. Enabled only on the live desktop path (the compact spine
+  // mounts its own instance; stacked mounts nothing); a no-op when the
+  // kill-switch is off.
+  useSpineBeats({
+    scope: outerRef,
+    progressRef,
+    windows: DESKTOP_GROUPS,
+    language,
+    enabled: hasDetectedViewport && mode === "desktop",
+    compact: false,
+  });
+
   // (Removed round 7-3: the desktop ScrimDimmer rAF. The two stage-level
   // scrims it drove are deleted — their opacity writer pinned them at 1 for
   // the spine's whole post-intro life, which left them frozen screen-fixed
@@ -1672,7 +1830,12 @@ export default function CinematicSystemScroll() {
   // three panels, same crossfade engine, 180svh instead of 315vh.
   if (mode === "compact") {
     return (
-      <CompactSpine groups={DESKTOP_GROUPS} stageById={stageById} copy={copy} />
+      <CompactSpine
+        groups={DESKTOP_GROUPS}
+        stageById={stageById}
+        copy={copy}
+        language={language}
+      />
     );
   }
 
@@ -1833,6 +1996,8 @@ export default function CinematicSystemScroll() {
             progressRef={progressRef}
             isHero={i === 0}
             copy={copy}
+            index={i}
+            language={language}
           />
         ))}
 

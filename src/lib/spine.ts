@@ -88,3 +88,22 @@ export const HERO_BRAND_COMPACT = true;
 // the route bundle (case-studies-rail / founders-rail DOM writers) and the
 // lazy WebGL host (Scene.tsx mount gates) both read it. Constant only.
 export const RAIL_ISLANDS_TOUCH = true;
+
+// === Hero beats kill-switch (2026-08-27) ===================================
+// SPINE_BEATS — owner ask: "cambia lo stile di animazione delle prime slide
+// della hero (01-02-03-04-05) … animazioni professionali GSAP stile Lusion".
+// When TRUE the spine's text panels (and panel 05 in the singularity passage)
+// are choreographed by TRIGGERED per-beat GSAP timelines (masked line rise +
+// word stagger, rolling "0N" index, eyebrow decode, hairline draw; clean
+// directional exits) fired from the SAME scrubbed progress the old crossfade
+// read — see src/components/fx/beat-choreographer.ts + src/lib/spine-beats.ts.
+// When FALSE every panel renders byte-for-byte on the pre-refactor path: the
+// per-panel rAF `panelOpacity` crossfade (opacity + 16px translate) in
+// StagePanel, and the passage's compose() `panelAlpha/panelY` scrub writes.
+// Scroll geometry, snap stations, the intro gate, the store contracts and the
+// SSR poses are identical on both sides of this switch — it only changes who
+// writes the text nodes' opacity/transform.
+//
+// Lives HERE (DOM-free, three-free) like the other spine switches so both the
+// route bundle and any lazy island can read it. Constant only.
+export const SPINE_BEATS = true;
