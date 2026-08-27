@@ -69,6 +69,8 @@ export default function FinalCTA() {
       className="relative section-lg scroll-mt-24 overflow-hidden"
     >
       <div className="container-px relative">
+        {/* TASK 6 — zero-height content-edge marker (section-cut driver). */}
+        <div data-cut-edge="top" aria-hidden="true" />
         <div className="relative overflow-hidden rounded-[var(--radius-lg)] border border-[hsl(var(--rule))] bg-[hsl(var(--surface)/0.4)]">
           {/* One glow, behind the single most important element. */}
           <SectionGlow position="top-right" intensity={0.9} size="46rem" />

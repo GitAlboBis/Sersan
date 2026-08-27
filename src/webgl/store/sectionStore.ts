@@ -32,6 +32,12 @@ export interface SectionSpan {
   end: number;
 }
 
+/** Document-fraction CONTENT edges of a section (NaN = no marker). */
+export interface SectionEdges {
+  top: number;
+  bottom: number;
+}
+
 /**
  * Decorative [data-line-anchor] ids that exist purely as signature-line curve
  * waypoints (zero-height markers / transparent gaps — `work-in-progress`,
@@ -57,6 +63,14 @@ interface SectionState {
    * useSectionAnchors — derive center fractions from these).
    */
   spans: Record<string, SectionSpan>;
+  /**
+   * TASK 6 (section cuts) — measured CONTENT edges per anchor id, as document
+   * fractions: `top` = the section's first `[data-cut-edge="top"]` marker,
+   * `bottom` = its last `[data-cut-edge="bottom"]` marker (either may be
+   * missing → NaN; the cut derivation then falls back to the wrapper edge).
+   * Measured by SectionBus in the same pass as `spans`.
+   */
+  edges: Record<string, SectionEdges>;
   /** document.documentElement.scrollHeight at measure time. 1 = pre-measure sentinel. */
   scrollHeight: number;
   /**
@@ -101,6 +115,7 @@ interface SectionState {
     spans: Record<string, SectionSpan>,
     scrollHeight: number,
     path: string,
+    edges?: Record<string, SectionEdges>,
   ) => void;
   /**
    * Sets the active section and, when it actually changed, bumps `pulse`
@@ -118,6 +133,7 @@ const createSectionStore = () =>
   create<SectionState>((set, get) => ({
     sections: [],
     spans: {},
+    edges: {},
     scrollHeight: 1,
     measuredPath: "",
     measureVersion: 0,
@@ -125,9 +141,12 @@ const createSectionStore = () =>
     index: -1,
     direction: 0,
     pulse: 0,
-    setMeasured: (sections, spans, scrollHeight, path) => {
+    setMeasured: (sections, spans, scrollHeight, path, edges = {}) => {
       const prev = get();
       const nextKeys = Object.keys(spans);
+      const edgeKeys = Object.keys(edges);
+      const sameEdge = (a: number, b: number): boolean =>
+        (Number.isNaN(a) && Number.isNaN(b)) || Math.abs(a - b) < 0.0005;
       const same =
         prev.measuredPath === path &&
         prev.scrollHeight === scrollHeight &&
@@ -140,11 +159,20 @@ const createSectionStore = () =>
             Math.abs(a.start - b.start) < 0.0005 &&
             Math.abs(a.end - b.end) < 0.0005
           );
+        }) &&
+        edgeKeys.length === Object.keys(prev.edges).length &&
+        edgeKeys.every((k) => {
+          const a = prev.edges[k];
+          const b = edges[k];
+          return (
+            a !== undefined && sameEdge(a.top, b.top) && sameEdge(a.bottom, b.bottom)
+          );
         });
       if (same) return;
       set({
         sections,
         spans,
+        edges,
         scrollHeight,
         measuredPath: path,
         measureVersion: prev.measureVersion + 1,
@@ -246,6 +274,88 @@ export const CUT_BOUNDARY_PAIRS: readonly (readonly [string, string])[] = [
   ["fit", "final-cta"], // fit → outro
 ];
 
+// === TASK 6 — SECTION_CUTS: the igloo "drift-cut" per-seam table ============
+// (scratchpad dossier section-transitions.md §3.3, decisions §3.4 item 1.)
+// The `CUTS_V2` driver in PostFXNodes reads THIS table; the legacy
+// velocity-gated driver (`CUTS_V2 = false`) keeps reading CUT_BOUNDARY_PAIRS
+// above, byte-identically. Kill-switch: `SECTION_CUTS = []` (or `amp: 0`
+// per seam; `style: "none"` removes the seam from the driver entirely).
+
+/**
+ * Every home [data-line-anchor] id, in src/app/page.tsx DOM order. `out`/`in`
+ * below are typed against it, so a typo in the table fails `tsc`. (page.tsx
+ * itself still spells the ids as strings — renaming an anchor there must be
+ * mirrored here, and the dev-only adjacency warn in deriveBoundaries catches
+ * a drifted table at runtime.)
+ */
+export type HomeAnchorId =
+  | "hero"
+  | "credibility"
+  | "problem"
+  | "production"
+  | "case-studies"
+  | "work-in-progress"
+  | "services"
+  | "founders"
+  | "process"
+  | "fit"
+  | "gateway"
+  | "final-cta";
+
+/** Seam vocabulary: `frost` = ice edge + crystalline uv jitter (shove ×0.6);
+ *  `tech` = block displacement dominant (shove ×1.5, no jitter); the `-light`
+ *  variants are the same look at a lower `amp`; `none` = no seam (the pair
+ *  is skipped by the driver — kept in the table for the record). */
+export type CutStyle = "frost" | "tech" | "frost-light" | "tech-light" | "none";
+
+export interface SectionCut {
+  /** Outgoing (upper) anchor. */
+  out: HomeAnchorId;
+  /** Incoming (lower) anchor — must be literally adjacent in `sections`. */
+  in: HomeAnchorId;
+  style: CutStyle;
+  /** Window length in viewports of scroll (igloo: exactly 1). */
+  windowVh: number;
+  /** Constant band amplitude inside the window (uWipeAmp). */
+  amp: number;
+  /** Camera dolly-Z bump amplitude, world units (SignatureLine adds dolly·sin πu). */
+  dolly: number;
+  /** Camera roll bump amplitude, radians (added as roll·dir·sin πu). */
+  roll: number;
+  /** Scrubbed uWarpBurst peak at the crossing (spike·bump(u)); 0 = none. */
+  spike: number;
+  /** Fire the 140 ms DOM .cut-tick on the straddle (hysteresis-armed). */
+  tick: boolean;
+  /** `content` = boundary between measured [data-cut-edge] markers (falls
+   *  back per side to the wrapper edge); `wrapper` = wrapper midpoint. */
+  edge: "content" | "wrapper";
+}
+
+export const SECTION_CUTS: readonly SectionCut[] = [
+  // S2 hero→credibility, S3 credibility→problem: no entries — the pinned
+  // handoff and the passage one-shot own those edges (owner decisions).
+  // S4 problem→production — D19 merge (owner 2026-08-26): NO seam by default.
+  // Optional owner-visible variant, kept as a comment:
+  // { out: "problem", in: "production", style: "frost-light", windowVh: 0.6, amp: 0.35, dolly: 0, roll: 0, spike: 0, tick: false, edge: "content" },
+  { out: "problem", in: "production", style: "none", windowVh: 0.6, amp: 0, dolly: 0, roll: 0, spike: 0, tick: false, edge: "content" },
+  // S5 production→case-studies — the reference cut.
+  { out: "production", in: "case-studies", style: "frost", windowVh: 1.0, amp: 1.0, dolly: 0.35, roll: 0.006, spike: 0.5, tick: true, edge: "content" },
+  // S6 case-studies→services — uWipe 1 = the services runway pin.
+  { out: "case-studies", in: "services", style: "tech", windowVh: 1.0, amp: 1.0, dolly: 0.35, roll: 0.006, spike: 0.5, tick: true, edge: "content" },
+  // S7 services→founders — the gate engages only at uWipe ≥ 0.98 (founders-rail).
+  { out: "services", in: "founders", style: "frost", windowVh: 1.0, amp: 1.0, dolly: 0.25, roll: 0.004, spike: 0.35, tick: true, edge: "content" },
+  // S8 founders→process — traversed by the gate's 0.6 s release nudge.
+  { out: "founders", in: "process", style: "tech-light", windowVh: 0.8, amp: 0.6, dolly: 0.2, roll: 0, spike: 0.25, tick: true, edge: "content" },
+  // S9 process→fit — DROPPED (2026-08-27 live probe): the process strip is
+  // only ~286 px tall, so S8 and S9 sat 182 px apart and the neighbour-distance
+  // cap shrank BOTH windows to ±91 px — two cuts flickering through in 182 px
+  // of scroll. With S9 gone S8 keeps its full window and the fit runway pin
+  // reads as the seam on its own. Re-enable only if the strip grows:
+  // { out: "process", in: "fit", style: "frost-light", windowVh: 0.8, amp: 0.5, dolly: 0.2, roll: 0, spike: 0, tick: false, edge: "content" },
+  // S10 fit→final-cta — dolly 0 (the gateway orbit bell already moves the camera).
+  { out: "fit", in: "final-cta", style: "frost", windowVh: 0.8, amp: 1.0, dolly: 0, roll: 0.006, spike: 0.35, tick: true, edge: "content" },
+];
+
 /** Dev-only: pair indices already reported as out-of-order (warn once each). */
 const warnedPairs = new Set<number>();
 
@@ -273,28 +383,61 @@ export function deriveCutBoundaries(
   outCuts: Float64Array,
   outPairIdx: Int32Array,
 ): number {
-  const { sections, spans, measuredPath } = useSectionStore.getState();
+  return deriveBoundaries(outCuts, outPairIdx, CUT_BOUNDARY_PAIRS, false, "CUT_BOUNDARY_PAIRS");
+}
+
+/**
+ * TASK 6 — the `CUTS_V2` twin: boundaries from SECTION_CUTS (entries with
+ * `style: "none"` skipped), each at the CONTENT edge when the seam asks for
+ * it and the markers were measured: `(edges[out].bottom + edges[in].top)/2`,
+ * falling back PER SIDE to the wrapper edge (`spans[out].end` /
+ * `spans[in].start`) when that side has no marker. `outPairIdx[i]` indexes
+ * SECTION_CUTS. Same contract as deriveCutBoundaries otherwise.
+ */
+export function deriveSectionCuts(
+  outCuts: Float64Array,
+  outPairIdx: Int32Array,
+): number {
+  return deriveBoundaries(outCuts, outPairIdx, SECTION_CUT_PAIRS, true, "SECTION_CUTS");
+}
+
+/** SECTION_CUTS as [out, in] pairs (index-aligned; "none" entries keep their slot). */
+const SECTION_CUT_PAIRS: readonly (readonly [string, string])[] = SECTION_CUTS.map(
+  (c) => [c.out, c.in] as const,
+);
+
+function deriveBoundaries(
+  outCuts: Float64Array,
+  outPairIdx: Int32Array,
+  pairs: readonly (readonly [string, string])[],
+  v2: boolean,
+  listName: string,
+): number {
+  const { sections, spans, edges, measuredPath } = useSectionStore.getState();
   if (measuredPath !== CUT_BOUNDARY_ROUTE) return 0;
   let n = 0;
-  for (let i = 0; i < CUT_BOUNDARY_PAIRS.length && n < outCuts.length; i++) {
-    const pair = CUT_BOUNDARY_PAIRS[i];
+  for (let i = 0; i < pairs.length && n < outCuts.length; i++) {
+    const pair = pairs[i];
+    const cfg = v2 ? SECTION_CUTS[i] : undefined;
+    if (cfg && cfg.style === "none") continue;
     const ia = sections.indexOf(pair[0]);
     if (ia === -1 || sections[ia + 1] !== pair[1]) {
       // ORDER CONTRACT guard (dev only). Flag the unambiguous case: BOTH
       // anchors are measured but not adjacent — that is always a stale pair
       // list, never a transient. A merely missing anchor is legitimate during
       // boot and on other routes, so it stays silent.
+      const key = v2 ? 1000 + i : i;
       if (
         process.env.NODE_ENV !== "production" &&
         ia !== -1 &&
-        !warnedPairs.has(i) &&
+        !warnedPairs.has(key) &&
         sections.indexOf(pair[1]) !== -1
       ) {
-        warnedPairs.add(i);
+        warnedPairs.add(key);
         console.warn(
-          `[sectionStore] CUT_BOUNDARY_PAIRS[${i}] "${pair[0]}"→"${pair[1]}" is not adjacent in the measured DOM ` +
+          `[sectionStore] ${listName}[${i}] "${pair[0]}"→"${pair[1]}" is not adjacent in the measured DOM ` +
             `(measured: "${pair[0]}"→"${sections[ia + 1] ?? "∅"}"). That cut will never fire. ` +
-            `Re-order CUT_BOUNDARY_PAIRS to mirror src/app/page.tsx.`,
+            `Re-order ${listName} to mirror src/app/page.tsx.`,
         );
       }
       continue;
@@ -302,7 +445,15 @@ export function deriveCutBoundaries(
     const sa = spans[pair[0]];
     const sb = spans[pair[1]];
     if (!sa || !sb) continue;
-    outCuts[n] = (sa.end + sb.start) / 2;
+    let aEnd = sa.end;
+    let bStart = sb.start;
+    if (cfg && cfg.edge === "content") {
+      const ea = edges[pair[0]];
+      const eb = edges[pair[1]];
+      if (ea && !Number.isNaN(ea.bottom)) aEnd = ea.bottom;
+      if (eb && !Number.isNaN(eb.top)) bStart = eb.top;
+    }
+    outCuts[n] = (aEnd + bStart) / 2;
     outPairIdx[n] = i;
     n++;
   }

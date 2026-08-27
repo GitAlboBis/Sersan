@@ -518,6 +518,9 @@ export default function ProductionGradeSection() {
             `[data-traverse-unit]`, never from a half. Presentational marker
             only — no copy, no layout, no style. The ledger rows below get the
             same treatment for free through `[data-ledger-row]`. */}
+        {/* TASK 6 — zero-height content-edge marker for the section-cut
+            driver (SectionBus measures it; no copy, no layout). */}
+        <div data-cut-edge="top" aria-hidden="true" />
         <div
           ref={chapterRef}
           data-traverse-unit
@@ -765,6 +768,8 @@ export default function ProductionGradeSection() {
             of this traverse's vertical runway. Zero-height (and therefore
             invisible) until [data-traverse] arms; it sits OUTSIDE the rows
             stack so it can never enter the `[data-lattice-anchor]` box. */}
+        {/* TASK 6 — the section's LAST content edge (before the runway tail). */}
+        <div data-cut-edge="bottom" aria-hidden="true" />
         <div data-traverse-tail aria-hidden="true" />
       </div>
     </section>

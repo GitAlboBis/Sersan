@@ -84,7 +84,20 @@ const CAPTURE_FRAC = 0.42;
  * skipped: capture is ≤0.42·ih, so |d| ≤ ~380 px and the LIVE formula
  * already tops out at ~0.71 s — the "cap" would never bind and would only
  * make the glide ~20 % slower. */
-const DEBOUNCE_MS = 420;
+/** 2026-08-27 SCROLL FEEL (dossier scroll-feel.md §5.3): the wheel law moved
+ * to lerp 0.1 ×0.7 (λ = 6 s⁻¹, 70 px/notch) in lenis-singleton.ts. The
+ * velocity gate (>0.6 px/frame) now clears at t = ln(D/6.6)/6 — 0.39 s for a
+ * 70 px notch, 0.95 s for a 1400 px flick — so at 420 ms the first evaluate
+ * usually landed inside the notch's own tail and fell into the 240 ms retry
+ * ladder. 520 ms puts the first evaluate past a single notch's tail so the
+ * ladder is the exception; still far from the 1000 ms pathology above. The
+ * settle floor rises 0.55 → 0.65 s so a ~380 px settle (peak ≈ 880 px/s at
+ * 0.65) never reads brisker than the user's own wheel (≈ 360 px/s per
+ * notch). KILL-SWITCH: SNAP_FOLLOW_SLOW_WHEEL=false restores 420 / 0.55. */
+const SNAP_FOLLOW_SLOW_WHEEL = true;
+const DEBOUNCE_MS = SNAP_FOLLOW_SLOW_WHEEL ? 520 : 420; // pre-2026-08-27: 420
+/** Settle glide duration floor (s). pre-2026-08-27: 0.55. */
+const SETTLE_MIN_S = SNAP_FOLLOW_SLOW_WHEEL ? 0.65 : 0.55;
 /** Re-check cadence while Lenis is still easing (lerp tail / corrective
  * glides); bounded so an abandoned animation can't retry forever. */
 const RETRY_MS = 240;
@@ -193,7 +206,7 @@ function evaluate() {
     const b = get();
     if (Number.isFinite(b) && y - b !== 0 && (y < b) !== (best < b)) return;
   }
-  const duration = Math.min(1.05, 0.55 + Math.abs(d) / 2400);
+  const duration = Math.min(1.05, SETTLE_MIN_S + Math.abs(d) / 2400);
   lenis.scrollTo(best, {
     duration,
     easing: easeInOutCubic,

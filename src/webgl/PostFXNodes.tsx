@@ -207,9 +207,20 @@ import {
   CUT_BOUNDARY_PAIRS,
   CUT_BOUNDARY_ROUTE,
   MAX_CUT_BOUNDARIES,
+  SECTION_CUTS,
   deriveCutBoundaries,
+  deriveSectionCuts,
   useSectionStore,
 } from "./store/sectionStore";
+import { useCutStore } from "./store/cutStore";
+import {
+  bump,
+  createCutEdgeState,
+  stepCutEdges,
+  wipeU,
+  type CutEdgeState,
+  stepToward,
+} from "@/lib/cut-edge";
 import { devOverridesAllowed, type FxBudget } from "./store/tierStore";
 import { createPointerFlowmap, type PointerFlowmap } from "./fluid/PointerFlowmap";
 import { fireCutTick } from "@/components/fx/cut-tick";
@@ -261,6 +272,69 @@ function resolveBloom(pathname: string) {
 
 const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
 
+/**
+ * TASK 6 — SECTION TRANSITIONS à la igloo.inc (scratchpad dossier
+ * section-transitions.md §3.3/§3.4). `true` selects the v2 "drift-cut"
+ * driver: boundaries from sectionStore.SECTION_CUTS at the measured CONTENT
+ * edge, window = `windowVh` viewports of scroll, CONSTANT amplitude (no
+ * velocity gate), the accent SCRUBBED (`uWarpBurst = spike·bump(u)`), the
+ * .cut-tick fired from a hysteresis-armed edge detector (lib/cut-edge) that
+ * ignores programmatic jumps (scrollStore.teleport), reverse = mirror (no
+ * per-frame shove sign flip, no seedZ doubling), and the camera drift
+ * published on cutStore for SignatureLine. `false` = the ROUND 6-A
+ * velocity-gated driver below, kept selectable on purpose — AND the graph
+ * is built with the legacy look (shove ×1, no frost jitter, no edge glow:
+ * the three v2 shader terms are JS-branched at graph build on this same
+ * constant, so the rendered output matches the pre-TASK-6 chain; the
+ * `style/edgeGlow/frost` uniforms exist in both modes but are inert when
+ * `false`). Zero new uniforms either way.
+ */
+const CUTS_V2: boolean = true;
+
+/**
+ * TASK C (2026-08-27) — "no visible line, always perceivable" (owner, with a
+ * WebGPU screenshot of the work→services seam: the cyan edge line must go,
+ * and a fast scroll must still show the transition). All CUTS_V2-only;
+ * every constant keeps the pre-TASK-C value reachable in its comment.
+ */
+/** Navy-visible cyan edge-glow gain (the one term painted OUTSIDE the
+ *  content-luma mask). 0 = no line over flat navy. Pre-TASK-C: 0.18. Live:
+ *  `__sersanSectionCuts.uniforms.current.edgeGlow.value = 0.18`. */
+const CUT_EDGE_GLOW_DEFAULT = 0;
+/** Flat leading-edge LIFT (`edge·lift`, luma-masked). The lattice haze
+ *  behind the seam gaps sits at luma ≈ 0.11 — INSIDE the content mask
+ *  (lumaHi 0.12) — so this term still drew a whitish ridge (+11/255,
+ *  TASK-C probe r2) over "navy" with the glow off. 0 = no ridge; the
+ *  chroma boost `(base − luma)·edge·0.35` stays (zero on grey/navy).
+ *  Pre-TASK-C: 0.075. Live: `uniforms.current.edgeLift.value = 0.075`. */
+const CUT_EDGE_LIFT_DEFAULT = 0;
+/** Multiplier on the band's CONTENT terms (block uv shove X/Y + 3-tap CA)
+ *  so a card / the line crossing the seam visibly displaces and splits
+ *  (igloo: displacement 0.025 of the frame + 5-tap CA modulator 12; ours
+ *  was 0.006/0.012 + 0.12). 1 = pre-TASK-C. All three stay luma-safe (a uv
+ *  shove / CA on flat pixels resamples identical pixels → self-masked). */
+const CUT_BAND_GAIN = 2.5;
+/** Falloff margin of the block-displacement band (igloo `0.9`): larger =
+ *  wider band core in which blocks are displaced. Pre-TASK-C: 0.9. */
+const CUT_TECH_MARGIN = 1.3;
+/** Fade the block shove out over u ∈ [0.8, 1]: at u → 1 the displacement
+ *  field saturates to 1 for EVERY pixel (a whole-frame uv shift that the
+ *  exit hard-zero then snapped away — 11 px at the old gain, 27 px at
+ *  ×2.5). `false` = pre-TASK-C (no fade). Symmetric in u → still a mirror. */
+const CUT_SHOVE_TAIL_FADE = true;
+/** MIN CYCLE — the DISPLAYED scrub (uniform + cutStore.live.u + accent)
+ *  follows the position-law target through a rate limiter
+ *  |du/dt| ≤ 1/CUT_MIN_CYCLE_S, so a flick that crosses a window in 100 ms
+ *  still sweeps for ≥ 0.45 s and completes on its own after the seam passed
+ *  (igloo-like lag); reverse mid-cycle reverses; at reading pace the limiter
+ *  is inactive (display ≡ position law, probe law unchanged). The tick and
+ *  the window ENTRY/EXIT logic stay on the TRUE position; the band only
+ *  keeps `activeIdx` until its sweep lands on 0 / 1. `false` = pre-TASK-C
+ *  (display ≡ position law, exit clears immediately). Live: `params.minCycleS`
+ *  (0 = off). */
+const CUT_MIN_CYCLE_ON = true;
+const CUT_MIN_CYCLE_S = 0.45;
+
 /** Deterministic per-boundary hash for the band seeds (spec §C:
  *  `hash(i)·25.424` / `hash(i)·64.453`, written once per window entry). */
 const hash01 = (i: number): number => {
@@ -308,6 +382,33 @@ interface CutDriverState {
    *  jump across a cut still fires exactly once even when neither frame is
    *  inside the boundary's window. */
   prevP: number;
+  // --- TASK 6 (CUTS_V2) fields — untouched by the legacy path ------------
+  /** Per-seam half-window (progress units): windowVh·iH/2/limit·windowScale,
+   *  capped by maxH. */
+  h: Float64Array;
+  /** Hysteresis-armed edge detector state (lib/cut-edge). */
+  edge: CutEdgeState;
+  /** SECTION_CUTS index of the active window (−1 none) — survives a
+   *  re-measure so P7 never re-seeds / pops the band mid-window. */
+  activePair: number;
+  /** Last frame direction with motion (1 down, −1 up). */
+  dir: 1 | -1;
+  /** Direction LATCHED at window entry — published to cutStore so the roll
+   *  sign is fixed for the whole traversal (reverse mid-window = mirror). */
+  entryDir: 1 | -1;
+  /** Scrubbed accent value this frame: cfg.spike·bump(u). */
+  burst: number;
+  /** Accent seeds, re-rolled once per window entry. */
+  burstSeedX: number;
+  burstSeedY: number;
+  /** TASK C — the DISPLAYED scrub (rate-limited follow of the position law;
+   *  see CUT_MIN_CYCLE_ON). What `uWipe`, cutStore.live.u and the accent
+   *  actually show. 0 outside every window. */
+  uDisplay: number;
+  /** TASK C — boundary index the edge detector fired THIS frame (−1 none).
+   *  Lets a straddle that jumped over a whole window between two frames
+   *  (violent fling / low fps) still open its min-cycle sweep. */
+  lastFired: number;
 }
 const makeCutState = (): CutDriverState => ({
   version: -1,
@@ -319,6 +420,16 @@ const makeCutState = (): CutDriverState => ({
   activeIdx: -1,
   amp: 0,
   prevP: Number.NaN,
+  h: new Float64Array(MAX_CUT_BOUNDARIES),
+  edge: createCutEdgeState(MAX_CUT_BOUNDARIES),
+  activePair: -1,
+  dir: 1,
+  entryDir: 1,
+  burst: 0,
+  burstSeedX: 0,
+  burstSeedY: 0,
+  uDisplay: 0,
+  lastFired: -1,
 });
 
 /** Live-tunable CPU knobs, exposed on `window.__sersanSectionCuts.params`
@@ -346,6 +457,16 @@ interface CutParams {
   ampLambdaDown: number;
   /** Master switch for the DOM .cut-tick heading micro-glitch. */
   tick: boolean;
+  /** TASK 6 (CUTS_V2) — master multiplier on every seam's `amp` (0 = band off). */
+  ampScale: number;
+  /** TASK 6 (CUTS_V2) — the accent's block-glitch intensity (igloo seed.z);
+   *  ONE constant both directions (reverse = mirror). */
+  spikeSeedZ: number;
+  /** TASK 6 (CUTS_V2) — master multiplier on cutStore dolly/roll (0 = no drift). */
+  driftScale: number;
+  /** TASK C — min sweep duration in seconds for the displayed scrub
+   *  (|du/dt| ≤ 1/minCycleS); 0 = limiter off (display ≡ position law). */
+  minCycleS: number;
 }
 const makeCutParams = (): CutParams => ({
   enabled: true,
@@ -358,6 +479,10 @@ const makeCutParams = (): CutParams => ({
   ampLambdaUp: 6,
   ampLambdaDown: 3,
   tick: true,
+  ampScale: 1,
+  spikeSeedZ: 0.75,
+  driftScale: 1,
+  minCycleS: CUT_MIN_CYCLE_ON ? CUT_MIN_CYCLE_S : 0,
 });
 
 /** Crossing-spike envelope (0.5 s linear in / 0.4 s linear out — igloo's
@@ -394,6 +519,14 @@ interface WipeUniforms {
   amp: UniformNode;
   lumaLo: UniformNode;
   lumaHi: UniformNode;
+  /** TASK 6 — 0 frost / 1 tech (shove ×0.6 → ×1.5, frost jitter off at 1). */
+  style: UniformNode;
+  /** TASK 6 — navy-visible cyan edge glow gain (outside the luma mask). */
+  edgeGlow: UniformNode;
+  /** TASK 6 — frost uv jitter amplitude (uv units) at style 0. */
+  frost: UniformNode;
+  /** TASK C — flat leading-edge lift gain (luma-masked; 0 = no ridge). */
+  edgeLift: UniformNode;
 }
 
 export function PostFXNodes({
@@ -431,6 +564,9 @@ export function PostFXNodes({
   const cutStateRef = useRef<CutDriverState | null>(null);
   const cutParamsRef = useRef<CutParams | null>(null);
   const spikeRef = useRef<SpikeState | null>(null);
+  // TASK 6 — the edge detector's fire callback, created once (allocation-free
+  // per frame); reads the state/params refs so it never goes stale.
+  const fireRef = useRef<((i: number, dir: 1 | -1) => void) | null>(null);
   // The pointer fluid flowmap (WebGPU-only). Null when disabled (coarse pointer
   // / reduced-motion / level "lite") or before the lazy build lands.
   const flowRef = useRef<PointerFlowmap | null>(null);
@@ -517,6 +653,7 @@ export function PostFXNodes({
         mul: (n: TslNode | number) => TslNode;
         div: (n: TslNode | number) => TslNode;
         oneMinus: () => TslNode;
+        abs: () => TslNode;
         greaterThan: (n: TslNode | number) => TslNode;
         toVar: () => TslNode & { assign: (n: TslNode) => void };
         rg: TslNode;
@@ -681,14 +818,34 @@ export function PostFXNodes({
       const uWipeDir = uniform(1);
       const uWipeSeedX = uniform(0);
       const uWipeSeedY = uniform(0);
-      const uWipeShoveX = uniform(0.006);
-      const uWipeShoveY = uniform(0.012);
+      // TASK C — content terms ×CUT_BAND_GAIN on the v2 path (pre-TASK-C:
+      // 0.006 / 0.012 / 0.12).
+      const bandGain = CUTS_V2 ? CUT_BAND_GAIN : 1;
+      const uWipeShoveX = uniform(0.006 * bandGain);
+      const uWipeShoveY = uniform(0.012 * bandGain);
       const uWipeDark = uniform(0.3);
-      const uWipeCA = uniform(0.12);
+      const uWipeCA = uniform(0.12 * bandGain);
       const uWipeAmp = uniform(0);
       const uWipeLumaLo = uniform(0.02);
       const uWipeLumaHi = uniform(0.12);
+      // TASK 6 — per-seam style (written once per window entry by the v2
+      // driver) + two tuning uniforms. The edge glow paints OUTSIDE the luma
+      // mask so the seam exists over empty navy (the single-scene band has
+      // to carry its own contrast — igloo's is visible because two scenes
+      // differ); peak luma 0.18·luma(0.23,0.88,1.0) ≈ 0.13 ≪ the bloom
+      // threshold 1.0. The frost jitter is igloo's tFrost idiom on the
+      // existing vnoise — zero new textures, both backends.
+      // Legacy default when CUTS_V2 = false: both tuning terms 0 → the graph
+      // renders the ROUND 6-A look (see the CUTS_V2 doc comment).
+      const uWipeStyle = uniform(0);
+      // TASK C — edge glow OFF by default (CUT_EDGE_GLOW_DEFAULT 0, was 0.18):
+      // the uniform stays so the owner can re-enable it live.
+      const uWipeEdgeGlow = uniform(CUTS_V2 ? CUT_EDGE_GLOW_DEFAULT : 0);
+      const uWipeFrost = uniform(CUTS_V2 ? 0.004 : 0);
+      // TASK C — legacy graph keeps the constant 0.075 lift.
+      const uWipeEdgeLift = uniform(CUTS_V2 ? CUT_EDGE_LIFT_DEFAULT : 0.075);
       wipeRef.current = {
+        edgeLift: uWipeEdgeLift,
         wipe: uWipe,
         dir: uWipeDir,
         seedX: uWipeSeedX,
@@ -700,6 +857,9 @@ export function PostFXNodes({
         amp: uWipeAmp,
         lumaLo: uWipeLumaLo,
         lumaHi: uWipeLumaHi,
+        style: uWipeStyle,
+        edgeGlow: uWipeEdgeGlow,
+        frost: uWipeFrost,
       };
       // |slope| with slope = −0.2·aspect, and the scrub remap
       // incP = fit(uWipe, 0, 1, 0, 1 + |slope|).
@@ -753,17 +913,40 @@ export function PostFXNodes({
         wipeUv = Fn(() => {
           const u = baseUv.toVar();
           If(uWipe.greaterThan(0.001), () => {
+            // TASK C — wider block band core (CUT_TECH_MARGIN, igloo 0.9).
             const dispB = falloff01(
               blockNoise(baseUv),
               1.0,
-              falloff01(wipeDiag(baseUv), 0.9, incP),
+              falloff01(wipeDiag(baseUv), CUTS_V2 ? CUT_TECH_MARGIN : 0.9, incP),
             );
+            // TASK 6: tech = shove ×1.5, frost = ×0.6 (uWipeStyle 0/1).
+            // Legacy driver (CUTS_V2 = false): ×1, branched at graph build.
+            const shoveMul: TslNode | number = CUTS_V2
+              ? uWipeStyle.mul(0.9).add(0.6)
+              : 1;
+            // TASK 6: frost uv jitter vnoise(uv·9)·uWipeFrost·(1−|2u−1|),
+            // both axes, frost style only.
+            const frostAmt = uWipeFrost
+              .mul(uWipeStyle.oneMinus())
+              .mul(uWipe.mul(2).sub(1).abs().oneMinus());
+            const jx = vnoise(baseUv.mul(9)).mul(2).sub(1);
+            const jy = vnoise(baseUv.mul(9).add(vec2(17.3, 5.1))).mul(2).sub(1);
+            // TASK C — tail fade: dispB saturates to 1 frame-wide as u → 1
+            // (whole-frame shift); fade it over u ∈ [0.8, 1] so the exit
+            // hard-zero is seamless. Function of u only → mirror-safe.
+            const tailFade: TslNode | number =
+              CUTS_V2 && CUT_SHOVE_TAIL_FADE
+                ? smoothstep(0.8, 1.0, uWipe).oneMinus()
+                : 1;
             u.assign(
               u.add(
                 vec2(
-                  dispB.mul(2).sub(1).mul(uWipeShoveX),
-                  dispB.mul(uWipeShoveY).mul(uWipeDir),
-                ).mul(uWipeAmp),
+                  dispB.mul(2).sub(1).mul(uWipeShoveX).mul(shoveMul),
+                  dispB.mul(uWipeShoveY).mul(uWipeDir).mul(shoveMul),
+                )
+                  .mul(tailFade)
+                  .add(vec2(jx, jy).mul(frostAmt))
+                  .mul(uWipeAmp),
               ),
             );
           });
@@ -936,9 +1119,14 @@ export function PostFXNodes({
                 base
                   .sub(luma)
                   .mul(edge.mul(0.35))
-                  .add(edge.mul(0.075))
+                  .add(edge.mul(uWipeEdgeLift))
                   .mul(mask),
               )
+              // TASK 6 — navy-visible cyan edge glow, OUTSIDE the luma mask.
+              // TASK C — gain defaults to 0 (owner: no visible line); every
+              // other term above is luma-masked or self-masking on flat
+              // pixels, so with edgeGlow 0 nothing paints over bare navy.
+              .add(vec3(0.23, 0.88, 1.0).mul(edge.mul(uWipeEdgeGlow)))
               .mul(uWipeAmp),
           );
         });
@@ -1018,6 +1206,12 @@ export function PostFXNodes({
         cutStateRef.current.activeIdx = -1;
         cutStateRef.current.amp = 0;
         cutStateRef.current.prevP = Number.NaN;
+        cutStateRef.current.activePair = -1;
+        cutStateRef.current.burst = 0;
+        cutStateRef.current.uDisplay = 0;
+        cutStateRef.current.edge.prevP = Number.NaN;
+        cutStateRef.current.edge.latchKeep = false;
+        useCutStore.getState().clear();
       }
       if (spikeRef.current) spikeRef.current.peak = 0;
       flowRef.current?.dispose();
@@ -1089,18 +1283,30 @@ export function PostFXNodes({
         // Interior routes / kill switch: settle once, then this whole
         // branch is a couple of compares per frame (prevP stays NaN while
         // disarmed, so re-entering home can never diff against a stale p).
-        if (cs.activeIdx !== -1 || !Number.isNaN(cs.prevP)) {
+        if (
+          cs.activeIdx !== -1 ||
+          !Number.isNaN(cs.prevP) ||
+          !Number.isNaN(cs.edge.prevP)
+        ) {
           cs.activeIdx = -1;
           cs.amp = 0;
           cs.prevP = Number.NaN;
+          cs.activePair = -1;
+          cs.burst = 0;
+          cs.uDisplay = 0;
+          cs.edge.prevP = Number.NaN;
+          cs.edge.latchKeep = false; // route entry re-latches from position
           if (wp.wipe.value !== 0) wp.wipe.value = 0;
           if (wp.amp.value !== 0) wp.amp.value = 0;
+          useCutStore.getState().clear();
         }
       } else {
         const sec = useSectionStore.getState();
         if (sec.measureVersion !== cs.version) {
           cs.version = sec.measureVersion;
-          cs.count = deriveCutBoundaries(cs.cuts, cs.pairIdx);
+          cs.count = CUTS_V2
+            ? deriveSectionCuts(cs.cuts, cs.pairIdx)
+            : deriveCutBoundaries(cs.cuts, cs.pairIdx);
           // Remap the boundary DOC fractions into LENIS-PROGRESS space and
           // derive the scrub half-window — igloo §A-EXT exactly: the window
           // opens when the boundary enters at the viewport BOTTOM (cut − h)
@@ -1131,16 +1337,184 @@ export function PostFXNodes({
               }
               cs.maxH[i] = gap * 0.5;
             }
+            // TASK 6 — per-seam window: `windowVh` viewports of scroll
+            // (igloo: exactly 1), capped so neighbours never overlap.
+            for (let i = 0; i < cs.count; i++) {
+              const cfg = SECTION_CUTS[cs.pairIdx[i]];
+              const vh = CUTS_V2 && cfg ? cfg.windowVh : 1;
+              const hw = cs.halfWindow * vh * params.windowScale;
+              cs.h[i] = hw < cs.maxH[i] ? hw : cs.maxH[i];
+            }
           } else {
             cs.halfWindow = 0;
           }
-          cs.activeIdx = -1;
-          cs.amp = 0;
-          cs.prevP = Number.NaN;
-          if (wp.wipe.value !== 0) wp.wipe.value = 0;
-          if (wp.amp.value !== 0) wp.amp.value = 0;
+          if (CUTS_V2) {
+            // P7 fix: a re-measure NEVER zeroes amp/uWipe — the next frame
+            // recomputes u from the fresh cuts (activePair survives, so the
+            // band is not re-seeded); the edge detector re-latches with
+            // `latchKeep`: boundaries the reader is outside of are armed,
+            // the ones the reader is INSIDE of keep their arm state (live
+            // probe round 1: a body-reflow re-measure while approaching a
+            // seam inside its window used to disarm it and swallow the
+            // crossing's tick; a just-fired seam stays spent either way).
+            cs.activeIdx = -1;
+            cs.edge.prevP = Number.NaN;
+            cs.edge.latchKeep = true;
+          } else {
+            cs.activeIdx = -1;
+            cs.amp = 0;
+            cs.prevP = Number.NaN;
+            if (wp.wipe.value !== 0) wp.wipe.value = 0;
+            if (wp.amp.value !== 0) wp.amp.value = 0;
+          }
         }
-        if (cs.count > 0 && cs.halfWindow > 0) {
+        if (CUTS_V2 && cs.count > 0 && cs.halfWindow > 0) {
+          // === TASK 6 — the v2 "drift-cut" driver (igloo §2.2 + §2.4) ====
+          // Everything is f(progress): window scrub u, constant amplitude,
+          // scrubbed accent, camera drift. The ONLY wall-clock accent is
+          // the 140 ms .cut-tick, fired by the hysteresis-armed edge
+          // detector — never on a programmatic jump (scrollStore.teleport).
+          const ss = useScrollStore.getState();
+          const p = ss.progress;
+          const tele = ss.teleport > 0;
+          const moved = !Number.isNaN(cs.edge.prevP) && p !== cs.edge.prevP;
+          const fire = (fireRef.current ??= (i: number, dir: 1 | -1) => {
+            const st = cutStateRef.current;
+            const pr = cutParamsRef.current;
+            if (!st || !pr) return;
+            st.lastFired = i; // TASK C — the straddled boundary, tick or not
+            if (!pr.tick) return;
+            const cfg = SECTION_CUTS[st.pairIdx[i]];
+            if (cfg && cfg.tick) fireCutTick(cfg.out, cfg.in, dir);
+          });
+          cs.lastFired = -1;
+          const fdir = stepCutEdges(cs.edge, cs.cuts, cs.h, cs.count, p, tele, fire);
+          if (fdir !== 0) cs.dir = fdir;
+          if (tele) {
+            // Spend the budget the frame the jump is observed; otherwise let
+            // it expire (a marked jump that never moved the page).
+            ss.setTeleport(moved ? 0 : ss.teleport - 1);
+          }
+          // WINDOW SCRUB — the boundary whose window contains p (windows
+          // never overlap, so at most one; nearest wins on the exact seam).
+          let best = -1;
+          let bestD = Infinity;
+          for (let i = 0; i < cs.count; i++) {
+            const dd = p - cs.cuts[i];
+            const ad = dd < 0 ? -dd : dd;
+            if (ad < cs.h[i] && ad < bestD) {
+              bestD = ad;
+              best = i;
+            }
+          }
+          // TASK C — MIN CYCLE: the true position has LEFT every window but
+          // the active pair's displayed sweep has not landed on 0 / 1 yet →
+          // keep driving that pair toward the side the reader left through
+          // (window identity by pairIdx, so a re-measure mid-finish — which
+          // resets activeIdx — cannot lose it).
+          const minCycle = CUT_MIN_CYCLE_ON && params.minCycleS > 0;
+          let finishing = false;
+          if (best === -1 && minCycle && cs.activePair !== -1) {
+            for (let i = 0; i < cs.count; i++) {
+              if (cs.pairIdx[i] === cs.activePair) {
+                best = i;
+                finishing = true;
+                break;
+              }
+            }
+          } else if (best === -1 && minCycle && cs.lastFired !== -1) {
+            // TASK C — the true position jumped OVER a whole window between
+            // two frames (violent fling / low fps): no frame ever sat
+            // inside, but the armed edge detector saw the straddle → open
+            // that seam's sweep in finishing mode (entry side → exit side
+            // over ≥ minCycleS). Never on a teleport (the detector does not
+            // fire on one — a jump is not a scroll).
+            best = cs.lastFired;
+            finishing = true;
+          }
+          const cfg = best === -1 ? undefined : SECTION_CUTS[cs.pairIdx[best]];
+          if (best !== -1 && cfg) {
+            const pairI = cs.pairIdx[best];
+            const uPos = wipeU(p, cs.cuts[best], cs.h[best]);
+            if (cs.activePair !== pairI) {
+              // Window ENTRY (event cadence): band seed (hash(i)), style,
+              // and the accent seeds — re-rolled ONCE per window entry.
+              const hs = hash01(pairI);
+              wp.seedX.value = hs * 25.424;
+              wp.seedY.value = hs * 64.453;
+              wp.style.value =
+                cfg.style === "tech" || cfg.style === "tech-light" ? 1 : 0;
+              cs.burstSeedX = Math.random() * 25.424;
+              cs.burstSeedY = Math.random() * 64.453;
+              cs.activePair = pairI;
+              // Latch the crossing direction once per window entry: with no
+              // motion this frame (teleport landing) fall back to the last
+              // frame direction, which is what the entry would have been.
+              cs.entryDir = fdir !== 0 ? fdir : cs.dir;
+              // TASK C — the displayed sweep starts at the side the reader
+              // entered from (down: 0, up: 1) and is rate-limited toward the
+              // position law below; a teleport landing / reload inside the
+              // window (no motion this frame) snaps to the law — a jump is
+              // not a scroll and must not manufacture a sweep.
+              cs.uDisplay = fdir !== 0 && !tele ? (fdir > 0 ? 0 : 1) : uPos;
+            }
+            cs.activeIdx = best;
+            let u = uPos;
+            if (minCycle) {
+              // Target: the position law inside the window; the exit side
+              // (0 above / 1 below the seam) while finishing. Reverse
+              // mid-cycle reverses the limiter (symmetric); at reading pace
+              // the step is under the cap and u === uPos exactly.
+              const target = finishing ? (p > cs.cuts[best] ? 1 : 0) : uPos;
+              if (finishing && cs.uDisplay === target) {
+                // The sweep LANDED on the exit side last frame (that frame
+                // rendered u = 0 / 1 exactly — both are identity in the
+                // graph: every falloff saturates) → exit now, seamlessly.
+                best = -1;
+              } else {
+                const dt = delta > 0.25 ? 0.25 : delta;
+                u = tele
+                  ? target
+                  : stepToward(cs.uDisplay, target, dt / params.minCycleS);
+                cs.uDisplay = u;
+              }
+            } else {
+              cs.uDisplay = uPos;
+            }
+            if (best !== -1) {
+              const amp = cfg.amp * params.ampScale;
+              wp.wipe.value = u;
+              if (wp.amp.value !== amp) wp.amp.value = amp; // CONSTANT inside the window
+              cs.amp = amp;
+              cs.burst = params.spike ? cfg.spike * bump(u) : 0;
+              useCutStore
+                .getState()
+                .set(
+                  best,
+                  pairI,
+                  u,
+                  cs.entryDir,
+                  cfg.dolly * params.driftScale,
+                  cfg.roll * params.driftScale,
+                  uPos,
+                );
+            }
+          }
+          if (
+            best === -1 &&
+            (cs.activeIdx !== -1 || cs.activePair !== -1 || wp.wipe.value !== 0)
+          ) {
+            // Window exit (or the min-cycle sweep landed): hard 0, written once.
+            cs.activeIdx = -1;
+            cs.activePair = -1;
+            cs.amp = 0;
+            cs.burst = 0;
+            cs.uDisplay = 0;
+            wp.wipe.value = 0;
+            if (wp.amp.value !== 0) wp.amp.value = 0;
+            useCutStore.getState().clear();
+          }
+        } else if (!CUTS_V2 && cs.count > 0 && cs.halfWindow > 0) {
           // One getState serves the scrub (progress), the round 6-A amp
           // gate (velocity, per frame) and the crossing spike (velocity,
           // event cadence).
@@ -1288,6 +1662,15 @@ export function PostFXNodes({
       let sx = seq.burstSeedX;
       let sy = seq.burstSeedY;
       let sz = seq.burstSeedZ;
+      // TASK 6 (CUTS_V2): the SCRUBBED accent — spike·bump(u), a pure
+      // function of the scroll (igloo §2.4), max()-merged like the spike.
+      const cs2 = cutStateRef.current;
+      if (CUTS_V2 && cs2 && cs2.burst > target) {
+        target = cs2.burst;
+        sx = cs2.burstSeedX;
+        sy = cs2.burstSeedY;
+        sz = cutParamsRef.current?.spikeSeedZ ?? 0.75;
+      }
       const sp = spikeRef.current;
       if (sp && sp.peak > 0) {
         sp.t += delta;

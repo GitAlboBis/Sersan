@@ -217,6 +217,13 @@ export function WorkCard({
            (language toggle mid-decode). */
         if (line1) {
           const final = line1.textContent ?? "";
+          /* Reserve the FINAL height before the first character is typed: a
+             long eyebrow wraps to two lines at card width, and the partially
+             typed text sits on one — that 16–17 px collapse per card row moved
+             every section below by ~66 px while the grid left the viewport
+             (measured by the section-cuts probe as a ±0.055·ih seam pop).
+             One layout read per card, once per entrance. */
+          line1.style.minHeight = `${line1.offsetHeight}px`;
           const startedAt = performance.now();
           let written: string | null = null;
           line1Timer = window.setInterval(() => {

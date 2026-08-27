@@ -23,6 +23,9 @@ export default function FixedScopeStrip() {
   return (
     <section id="process" className="relative section scroll-mt-24">
       <div className="container-px">
+        {/* TASK 6 — zero-height content-edge markers for the section-cut
+            driver (SectionBus measures them; no copy, no layout). */}
+        <div data-cut-edge="top" aria-hidden="true" />
         <Reveal>
           <div
             className="
@@ -53,6 +56,7 @@ export default function FixedScopeStrip() {
             </Link>
           </div>
         </Reveal>
+        <div data-cut-edge="bottom" aria-hidden="true" />
       </div>
     </section>
   );

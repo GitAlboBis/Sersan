@@ -1184,6 +1184,8 @@ export default function FitSection() {
         className="relative section-lg scroll-mt-24 overflow-hidden"
       >
         <div className="container-px relative">
+          {/* TASK 6 — zero-height content-edge marker (section-cut driver). */}
+          <div data-cut-edge="top" aria-hidden="true" />
           {headingBlock}
 
           {wide ? twoColumnLists : pairedRows}
@@ -1297,6 +1299,8 @@ export default function FitSection() {
           so without it React would REUSE this node for the native layout's
           container and the imperatively-written px height (invisible to
           React) would leak onto a layout that must be content-sized. */}
+      {/* TASK 6 — zero-height content-edge marker (section-cut driver). */}
+      <div data-cut-edge="top" aria-hidden="true" />
       <div
         key="fit-runway"
         ref={runwayRef}

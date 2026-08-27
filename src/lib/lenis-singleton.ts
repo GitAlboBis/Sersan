@@ -25,6 +25,39 @@
  * note on `smoothWheel` below. This is a decision, not an omission.
  */
 import Lenis from "lenis";
+import { useScrollStore } from "@/webgl/store/scrollStore";
+
+// --- SCROLL FEEL (2026-08-27, dossier scratchpad/dossiers/scroll-feel.md) ---
+// Owner: "il nostro mi pare troppo veloce" vs lusion.co / igloo.inc.
+// Measured: ours WAS byte-identical to Lusion (λ = 12 s⁻¹, 100 px/notch, no
+// clamp). igloo (app3d mainController): 100 px × 75e-5 = 0.075 viewport =
+// 67.5 px/notch @900, two cascaded lerps (.075 → τ 214 ms, then .15 → τ
+// 103 ms; one notch 95 % settled ≈ 770 ms, peak ≈ 160 px/s) and a LEAD
+// CLAMP: `targetY2 = clamp(targetY2, y ± 750·mult)` = ±0.5625 viewport —
+// input running further ahead of the eye is discarded, so a 20-notch flick
+// travels 880 px on igloo vs 2000 px on ours.
+// Lenis has ONE damp stage (`damp(value, to, lerp·60, dt)`), so this lands
+// at the midpoint: gain ×0.7 (70 px/notch; igloo 67.5, lusion 100), λ = 6 s⁻¹
+// (lerp .1 → τ 158 ms; one notch 95 % ≈ 480 ms, peak ≈ 360 px/s vs 890), and
+// the igloo lead clamp as a `virtualScroll` pre-filter (§5.2). Touch is not
+// touched by any of it (syncTouch off; the clamp tests the event type).
+// Do NOT go below lerp 0.09: the `round(value)===round(to)` completion of a
+// 70 px notch then takes ~0.8 s and the snap engine's velocity gate stays
+// open that long. Alternatives kept reachable: lerp .12 ×0.7 (lighter),
+// lerp .15 ×0.75 (minimal touch).
+/** KILL-SWITCH: false restores round 8-A (lerp 0.2, wheelMultiplier 1, no clamp). */
+const SCROLL_FEEL_IGLOO = true;
+/** Wheel gain. pre-2026-08-27: 1 (100 px/notch). igloo 0.675. */
+const WHEEL_MULT = SCROLL_FEEL_IGLOO ? 0.7 : 1;
+/** Lenis lerp (per-frame fraction @60 fps; λ = lerp·60). pre-2026-08-27: 0.2. */
+const WHEEL_LERP = SCROLL_FEEL_IGLOO ? 0.1 : 0.2;
+/** KILL-SWITCH for the lead clamp alone. pre-2026-08-27: no clamp. */
+const SCROLL_CLAMP_ON = SCROLL_FEEL_IGLOO;
+/** Max distance (fraction of innerHeight) the wheel TARGET may run ahead of
+ * the animated position; input beyond it is discarded (igloo: 750·75e-5 =
+ * 0.5625). Never binds below ~7 rapid notches, so single notches and
+ * reading pace are unaffected; a 20-notch flick goes 1400 → ~1217 px. */
+const WHEEL_LEAD_FRAC = 0.5625;
 
 let instance: Lenis | null = null;
 let rafId: number | null = null;
@@ -125,6 +158,9 @@ function resyncFromNative() {
   if (instance.isScrolling === "smooth") return;
   const actual = instance.actualScroll;
   if (Math.abs(actual - instance.animatedScroll) <= 1) return;
+  // TASK 6 (section cuts): this is a programmatic jump — the PostFX cut
+  // driver must latch it without firing the edge accent (.cut-tick).
+  useScrollStore.getState().markTeleport();
   instance.scrollTo(actual, RESYNC_OPTS);
 }
 
@@ -209,7 +245,38 @@ export function acquireLenis(): Lenis {
       //     as something else, those four sites silently change with it.
       //   - `{ immediate: true }` teleports (route reset, B14 re-sync, gate
       //     jumps) return before the normalization entirely.
-      lerp: 0.2,
+      //
+      // 2026-08-27 SCROLL FEEL: the value below is now WHEEL_LERP (0.1,
+      // λ = 6 s⁻¹) — see the constants block at the top of this file. The
+      // "do not go near igloo's ~0.1" warning above was written against the
+      // double-lerp CASCADE (S-shaped onset); a single stage at .1 is still a
+      // document glide, just with a 158 ms time constant. Every claim above
+      // about WHICH call sites are affected still holds (lerp mode, same
+      // branch); only the tail length changed: a 100 px notch now completes
+      // (rounded match) in ln(100)/6 ≈ 0.77 s, a 3000 px anchor glide in
+      // ln(3000)/6 ≈ 1.33 s — the provider's 1100 ms snap-suspend backstop
+      // no longer covers the longest anchor jump (dossier §6; the fix, an
+      // explicit `{ duration }` on that scrollTo, lives in
+      // smooth-scroll-provider.tsx, not here).
+      lerp: WHEEL_LERP, // pre-2026-08-27: 0.2
+      wheelMultiplier: WHEEL_MULT, // pre-2026-08-27: (default) 1
+      // Lead clamp pre-filter (igloo parity). `virtualScroll` receives the
+      // MUTABLE {deltaX, deltaY, event} object before Lenis destructures it
+      // (lenis 1.3.23 dist/lenis.mjs L556-558), and `deltaY` is already
+      // ×wheelMultiplier there (VirtualScroll.onWheel L356-357 runs before
+      // emit). We cap `targetScroll + deltaY` to animatedScroll ± lead and
+      // write the difference back. Wheel only: touch/pointer pass through.
+      virtualScroll: (data) => {
+        if (!SCROLL_CLAMP_ON || !instance) return true;
+        const type = data.event?.type ?? "";
+        if (!type.includes("wheel")) return true;
+        const lead = WHEEL_LEAD_FRAC * window.innerHeight;
+        const l = instance;
+        const want = l.targetScroll + data.deltaY;
+        const capped = Math.min(Math.max(want, l.animatedScroll - lead), l.animatedScroll + lead);
+        data.deltaY = capped - l.targetScroll;
+        return true;
+      },
       // Wheel smoothing only — `syncTouch` stays OFF, on purpose.
       //
       // (The old reason here, "we don't run the scene on mobile anyway", is

@@ -36,6 +36,7 @@ import { useScrollStore } from "@/webgl/store/scrollStore";
 import {
   DECORATIVE_ANCHORS,
   useSectionStore,
+  type SectionEdges,
   type SectionSpan,
 } from "@/webgl/store/sectionStore";
 
@@ -75,13 +76,36 @@ export function SectionBus() {
             if (!DECORATIVE_ANCHORS.has(id)) sections.push(id);
           }
         });
+      // TASK 6 (section cuts) — CONTENT edges, same pass: zero-height
+      // `[data-cut-edge="top"|"bottom"]` markers inside the section files
+      // resolve to their enclosing [data-line-anchor] wrapper; `top` = the
+      // first top marker, `bottom` = the last bottom marker (NaN when a side
+      // has none → the cut derivation falls back to the wrapper edge).
+      const edges: Record<string, SectionEdges> = {};
+      if (scrollHeight > 0) {
+        document
+          .querySelectorAll<HTMLElement>("[data-cut-edge]")
+          .forEach((el) => {
+            const host = el.closest<HTMLElement>("[data-line-anchor]");
+            const id = host?.dataset.lineAnchor;
+            if (!id || !spans[id]) return;
+            const side = el.dataset.cutEdge === "bottom" ? "bottom" : "top";
+            const y = (el.getBoundingClientRect().top + window.scrollY) / scrollHeight;
+            const e = (edges[id] ??= { top: Number.NaN, bottom: Number.NaN });
+            if (side === "top") {
+              if (Number.isNaN(e.top) || y < e.top) e.top = y;
+            } else if (Number.isNaN(e.bottom) || y > e.bottom) {
+              e.bottom = y;
+            }
+          });
+      }
       // setMeasured skips the version bump (and the curve rebuild it would
       // trigger) when nothing actually moved — e.g. width-only resizes. The
       // pathname rides along so curve consumers can tell WHICH route the
       // spans describe (route-change race, FIX A2).
       useSectionStore
         .getState()
-        .setMeasured(sections, spans, scrollHeight, pathname);
+        .setMeasured(sections, spans, scrollHeight, pathname, edges);
     };
 
     measure();

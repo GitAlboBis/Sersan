@@ -34,6 +34,7 @@ import { webgpuEnabled } from "./renderer/createRenderer";
 import { getRouteCurve } from "./curves/routeCurves";
 import { CAMERA_FOV, CAMERA_Z, WORLD_VIEW_HEIGHT } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
+import { useCutStore } from "./store/cutStore";
 import { useSectionStore, sectionProgress } from "./store/sectionStore";
 import { useProductionPulseStore } from "./store/productionPulseStore";
 import { useAuditTimelineStore } from "./store/auditTimelineStore";
@@ -799,8 +800,16 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // to 0 and every station lands at the exact shipped framing.
     const dollyNorm = Math.min(Math.abs(velocity) * 0.01, 1);
     const dollyShaped = dollyNorm * dollyNorm * (3 - 2 * dollyNorm);
+    // TASK 6 (section cuts, dossier §3.3 item 4 — igloo's parallaxY as a
+    // camera term): the active seam's scrub adds a symmetric dolly bump
+    // `dolly·sin(π·u)·rigGate` — even in u, so reverse is a mirror — through
+    // this SAME damped channel (C¹). cutStore is written only by the PostFX
+    // cut driver; this stays the single camera writer.
+    const cut = useCutStore.getState();
+    const cutBell = cut.idx === -1 ? 0 : Math.sin(Math.PI * cut.live.u);
     const dollyTarget =
-      dollyShaped * fx.camDollyMax * rigGate * (tier === "full" ? 1 : 0.5);
+      dollyShaped * fx.camDollyMax * rigGate * (tier === "full" ? 1 : 0.5) +
+      cut.dolly * cutBell * rigGate;
     dollyCurrent.current = THREE.MathUtils.damp(
       dollyCurrent.current,
       dollyTarget,
@@ -1226,12 +1235,16 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       // frame would tilt the hole composition even with the yaw/pitch gone.
       // Multiplies the TARGET, like rollGate, so the damp() + clamp still
       // govern the transition and the unwind eases back in reverse.
+      // TASK 6: + the seam's roll bump `roll·dir·sin(π·u)` (sign follows the
+      // crossing direction LATCHED at window entry — reversing mid-window is
+      // a mirror, no sign flip — unwinds through the same curve) BEFORE the clamp.
       const rollTarget = THREE.MathUtils.clamp(
         -aheadTangent.current.x *
           fx.camRoll *
           route.cameraRollScale *
           rollGate *
-          (1 - aim),
+          (1 - aim) +
+          cut.roll * cut.dir * cutBell,
         -CAM_ROLL_MAX,
         CAM_ROLL_MAX,
       );

@@ -1212,6 +1212,8 @@ export default function ServicesSection() {
         className="relative section-lg scroll-mt-24 overflow-hidden"
       >
         <div className="container-px relative">
+          {/* TASK 6 — zero-height content-edge marker (section-cut driver). */}
+          <div data-cut-edge="top" aria-hidden="true" />
           {heading}
           {/* Below 640px this is a lateral rail; at 640px and above it is the
               ORIGINAL grid, untouched — every rail utility is `max-sm:`, so
@@ -1311,6 +1313,8 @@ export default function ServicesSection() {
     >
       {/* Heading — normal flow, above the runway. */}
       <div className="container-px relative pt-20 sm:pt-[6.5rem] lg:pt-32">
+        {/* TASK 6 — zero-height content-edge marker (section-cut driver). */}
+        <div data-cut-edge="top" aria-hidden="true" />
         {heading}
       </div>
 

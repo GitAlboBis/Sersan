@@ -244,7 +244,11 @@ export function SmoothScrollProvider({ children }: { children: React.ReactNode }
       // idempotent.
       const releaseSnap = suspendSnap();
       window.setTimeout(releaseSnap, 1100);
-      lenis.scrollTo(dest as HTMLElement, { offset: -72 });
+      // Explicit duration: since the 2026-08-27 scroll retune (lerp 0.1,
+      // λ 6 s⁻¹) a lerp-mode glide over ~3000 px would take ~1.33 s and
+      // outlive the 1100 ms backstop above; a fixed 1.0 s glide always
+      // lands while the snap engine is still held.
+      lenis.scrollTo(dest as HTMLElement, { offset: -72, duration: 1.0 });
     };
     document.addEventListener("click", onClick);
 

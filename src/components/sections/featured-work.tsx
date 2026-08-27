@@ -63,6 +63,9 @@ export default function FeaturedWork() {
       className="section relative"
       aria-label={isEn ? "Selected work" : "Lavori selezionati"}
     >
+      {/* TASK 6 — zero-height content-edge markers for the section-cut
+          driver (SectionBus measures them; no copy, no layout). */}
+      <div data-cut-edge="top" aria-hidden="true" />
       <div className="container-px mb-14 flex flex-col gap-4 sm:flex-row sm:gap-6 sm:items-end sm:justify-between">
         <SectionHeading
           eyebrow={isEn ? "Selected work" : "Lavori selezionati"}
@@ -97,6 +100,7 @@ export default function FeaturedWork() {
       <div className="container-px">
         <WorkGrid studies={featuredStudies()} isEn={isEn} planesLive={planesLive} />
       </div>
+      <div data-cut-edge="bottom" aria-hidden="true" />
     </section>
   );
 }

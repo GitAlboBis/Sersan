@@ -1673,6 +1673,13 @@ html.cursor-none [contenteditable="true"] {
 /* Footer: eyebrow line-1 + rolling title line-2. */
 .fw-line-1 {
   margin: 1.4em 0 0.55em;
+  /* The entrance types this eyebrow on character by character and empties it
+     on replay; an empty block collapses to 0 px, which shifted every section
+     below by ~16 px per card row (~66 px on the grid) while the rows left the
+     viewport — measured by the section-cuts probe as a ±0.055·ih pop of the
+     case-studies→services seam. Reserve one line so the box never moves. */
+  min-height: 1.3em;
+  min-height: 1lh;
 }
 .fw-title {
   position: relative;
