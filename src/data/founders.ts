@@ -2,6 +2,7 @@
 // rather than imported, so Next.js handles them as static assets.
 const alessandroImg = "/founders/alessandro-serratt.webp";
 const micheleImg = "/founders/michele-sanna.webp";
+const albertoImg = "/founders/alberto-tuveri.webp";
 const mattiaImg = "/founders/mattia-scattu.webp";
 
 export interface FounderProfile {
@@ -112,6 +113,73 @@ export const founders: FounderProfile[] = [
       "Enterprise architect and ML engineer. Builds custom software, data platforms, and the AI layers that earn their place in them.",
   },
   {
+    name: "Alberto Tuveri",
+    initials: "AT",
+    image: albertoImg,
+    // MUST also have /public/founders/alberto-headshot.webp — the WebGL sampler
+    // resolves the tight-crop headshot by this slug (FounderPortraitMorph.loadFounder).
+    anchor: "alberto",
+    linkedIn: "https://www.linkedin.com/in/albertotuveri/",
+    // No live render surface for `badges` / `expertise*` today (see Mattia's
+    // note). Kept accurate, not decorative.
+    badges: ["BSc Computer Science", "Built this site"],
+    kind: "team",
+    roleEn: "Software & AI Engineer · Creative Lead",
+    roleIt: "Software & AI Engineer · Lead Creativo",
+    accent: "cool",
+    credentialsEn: [
+      "BSc Computer Science, Università di Camerino (2026)",
+      "Thesis: architecture and security of OS-level agentic systems (MCP, multi-agent, Zero-Trust)",
+      "Built this site: WebGPU rendering, 3D and motion",
+    ],
+    credentialsIt: [
+      "Laurea in Informatica, Università di Camerino (2026)",
+      "Tesi: architettura e sicurezza dei sistemi agentici OS-level (MCP, multi-agente, Zero-Trust)",
+      "Ha realizzato questo sito: rendering WebGPU, 3D e motion",
+    ],
+    shortBioEn:
+      "Owns the front-end, WebGPU and motion layer of what SerSan ships, this website included, and the AI agents built on the Microsoft stack. Also owns the studio's creative direction: the SerSan logo, its motion-graphics ads and video editing.",
+    shortBioIt:
+      "È responsabile del front-end, del layer WebGPU e del motion di ciò che SerSan rilascia, questo sito compreso, e degli agenti AI costruiti sullo stack Microsoft. Cura anche la direzione creativa dello studio: il logo SerSan, le pubblicità in motion graphics e il montaggio video.",
+    bioEn:
+      "Built this website: the WebGPU rendering, 3D scenes and scroll-driven motion. Built the Domus Tua real-estate platform (Next.js 16, GSAP and Lenis, Playwright on five viewports, Lighthouse CI) and, freelance, the Badante24h home-care PWA (Supabase, PostGIS, offline-first, Web Push). At DOIT (Lodestar Group) he worked across the Microsoft ecosystem: a voice-driven agent for Teams built in Copilot Studio and Power Automate over Dataverse and Dynamics 365, with Azure Speech and a TypeScript web app carrying the chat agent inside it. Designed the SerSan logo and produces its motion-graphics ads and video edits. BSc Computer Science, Università di Camerino, focused on software engineering and architecture; thesis on agentic orchestration (MCP, RAG, multi-agent) and OS-level agent security, mapped to MITRE ATLAS and the OWASP Agentic Top 10.",
+    bioIt:
+      "Ha realizzato questo sito: il rendering WebGPU, le scene 3D e il motion guidato dallo scroll. Ha costruito la piattaforma immobiliare Domus Tua (Next.js 16, GSAP e Lenis, Playwright su cinque viewport, Lighthouse CI) e, da freelance, la PWA per l'assistenza domiciliare Badante24h (Supabase, PostGIS, offline-first, Web Push). In DOIT (Lodestar Group) ha lavorato sull'intero ecosistema Microsoft: un agente vocale per Teams costruito con Copilot Studio e Power Automate su Dataverse e Dynamics 365, con Azure Speech e una web app in TypeScript che integra l'agente conversazionale al suo interno. Ha disegnato il logo SerSan e ne cura le pubblicità in motion graphics e il montaggio video. Laurea in Informatica, Università di Camerino, con focus su ingegneria e architettura del software; tesi sull'orchestrazione agentica (MCP, RAG, multi-agente) e sulla sicurezza degli agenti OS-level, mappata su MITRE ATLAS e OWASP Agentic Top 10.",
+    expertiseEn: ["WebGPU & 3D", "Motion & Front-end", "Full-Stack Web Apps", "Agentic AI & Microsoft Ecosystem"],
+    expertiseIt: ["WebGPU e 3D", "Motion e Front-end", "Web App Full-Stack", "AI Agentica ed Ecosistema Microsoft"],
+    // Every chip is sourced: CV (TypeScript, React/Next.js, Node.js, Supabase,
+    // PostgreSQL/PostGIS, Playwright, GitHub Actions, Vercel), this repo
+    // (three 0.184 WebGPURenderer, TSL node materials, GSAP + Lenis), the
+    // portfolio hero (raw WebGPU + WGSL), the thesis (MCP, Claude Code
+    // skills / hooks / agent teams, ch. 2–3), and the DOIT / Lodestar
+    // internship (Copilot Studio, Power Automate, Dataverse / Dynamics 365,
+    // Azure Speech, Angular + TypeScript pro-code front-end; CV + owner).
+    stack: [
+      "TypeScript",
+      "React / Next.js",
+      "Three.js / WebGPU",
+      "TSL / WGSL",
+      "GSAP / Lenis",
+      "Node.js",
+      "Supabase",
+      "PostgreSQL / PostGIS",
+      "Copilot Studio / Power Automate",
+      "Azure / Dynamics 365",
+      "Playwright",
+      "GitHub Actions",
+      "Vercel",
+      "Claude Code / MCP",
+    ],
+    // `previouslyAt` deliberately OMITTED, for the same reason as Mattia's: it
+    // renders under a "Previously" label parallel to Michele's tier-1 row, and a
+    // 4-month internship (DOIT / Lodestar Group) plus a freelance client
+    // (ALS MCL Civitanova) read as padding there. Both are named in the bio /
+    // fact sheet instead.
+    authorRole: "Software & AI Engineer, Creative Lead, SerSan",
+    authorBio:
+      "Software and AI engineer. Owns the front-end, WebGPU and motion layer of SerSan's builds, this site included, and the studio's creative direction.",
+  },
+  {
     name: "Mattia Scattu",
     initials: "MS",
     image: mattiaImg,
@@ -160,10 +228,11 @@ export const founders: FounderProfile[] = [
 export const getFounder = (name: string) => founders.find((f) => f.name === name);
 
 /** The two co-founders ONLY. Use this on any surface whose copy says the word
- * "founder". `founders` remains the FULL team and drives the home rail,
- * /about, and the WebGL morph. Keeping `founders` as the full list means the
- * two surfaces that MUST include Mattia need no import change at all, so the
- * blast radius is exactly the two that must exclude him. */
+ * "founder". `founders` remains the FULL team (4: Alessandro, Michele, Alberto,
+ * Mattia, in rail order) and drives the home rail, /about, and the WebGL
+ * morph. Keeping `founders` as the full list means the surfaces that MUST
+ * include the engineers need no import change at all, so the blast radius is
+ * exactly the two that must exclude them. */
 export const coFounders: FounderProfile[] = founders.filter(
   (f) => f.kind === "founder",
 );

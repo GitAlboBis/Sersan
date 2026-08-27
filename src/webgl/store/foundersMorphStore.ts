@@ -18,9 +18,11 @@
  *     on its own clock (MORPH_DURATION), absorbing further scroll until done.
  *   - stage 'B'  : Michele fully formed and LOCKED (morph pinned at 1).
  *   - another scroll-down gesture → morphTarget = 2 → auto-play leg 1.
- *   - stage 'C'  : Mattia fully formed and LOCKED (morph pinned at 2).
+ *   - stage 'C'  : Alberto fully formed and LOCKED (morph pinned at 2).
+ *   - another scroll-down gesture → morphTarget = 3 → auto-play leg 2.
+ *   - stage 'D'  : Mattia fully formed and LOCKED (morph pinned at 3).
  *   - another scroll-down gesture → the gate RELEASES (Lenis resumes).
- *   - reverse symmetrically for scroll-up (C→B→A, then release upward).
+ *   - reverse symmetrically for scroll-up (D→C→B→A, then release upward).
  *
  * B IS NOW A MIDDLE STAGE FROM WHICH NEITHER DIRECTION RELEASES. That is a real
  * behaviour change, written down here rather than left to be discovered: a user
@@ -104,19 +106,19 @@ export type FounderStage = "A" | "B" | "C" | "D" | "morphing";
  * HARD CAP 4: the compute engine has exactly four home targets
  * (homeA..homeD / uMorph..uMorph3, gpgpuNodeSim.createTextMorphComputeBuild). */
 export const STAGE_ORDER = ["A", "B", "C", "D"] as const;
-/** The WIRING ceiling, distinct from the engine ceiling above. The compute
- * engine carries four home targets (homeA..homeD / uMorph..uMorph3), but the
- * COLOUR/INK chain deliberately stops at C: there is no colorsD/sizeD in
- * PortraitMorphOpts, portraitInkExpr and the fragment colour chain both end on
- * colorC. A 4th target would therefore move particles to face D's positions
- * while `base` stayed on colorCBuffer — and since ink gates disc size, the
- * alpha knee, coverage and the alpha Discard, cells that are subject in D but
- * backdrop in C get culled: the 4th face renders as a C-shaped STENCIL. N=4 is
- * the one arity that is neither rendered correctly nor truncated, so cap it
- * here and derive TARGET_COUNT from this (FounderPortraitMorph) rather than
- * letting the position cap masquerade as the renderable cap. Raise ONLY
- * together with colorsD/sizeD + the ink/colour chain. */
-export const WIRED_TARGETS = 3;
+/** The WIRING ceiling — the number of targets the COLOUR/INK chain covers,
+ * kept distinct from the engine's position ceiling above even now that they
+ * coincide. History: at 3 the chain stopped at C (no colorsD/sizeD), so a 4th
+ * person would have moved particles to face D's positions while colour and
+ * ink stayed on C — and since ink gates disc size, the alpha knee, coverage
+ * and the alpha Discard, the 4th face rendered as a C-shaped STENCIL. Raised
+ * to 4 on 2026-08-27 together with colorsD/sizeD, portraitMorph3Expr and the
+ * 4-way ink + colour chains in gpgpuNodeSim (tintD, +1 vertex-stage storage
+ * binding, 4 of 8). THIS IS THE CEILING: STAGE_ORDER has four letters and the
+ * compute kernel binds homeA..homeD at 8 of 8 storage buffers, so a 5th person
+ * degrades to truncation (dev warning below) until the kernel is
+ * re-architected. Never raise above STAGE_ORDER.length. */
+export const WIRED_TARGETS = 4;
 /** Morph LEGS (people − 1), CAPPED at the wired targets. Capping here rather
  * than at `founders.length` is load-bearing: at N ≥ 5 an uncapped max would
  * make stageFromMorph return STAGE_ORDER[4] === undefined typed as
@@ -198,7 +200,8 @@ interface FoundersMorphState {
   /** Logical stage — derived by the island from its live uMorph. */
   stage: FounderStage;
   /** Integer 0..MORPH_MAX the island animates toward (0 = Alessandro,
-   * 1 = Michele, 2 = Mattia). The gate only ever steps it by one. */
+   * 1 = Michele, 2 = Alberto, 3 = Mattia). The gate only ever steps it by
+   * one. */
   morphTarget: number;
   /** When true the island JUMPS morph to morphTarget (no auto-play). */
   morphImmediate: boolean;
@@ -314,8 +317,8 @@ export const useFoundersMorphStore = (globalThis.__sersanFoundersMorph ??=
 export interface FoundersGateApi {
   /** Inject exactly ONE discrete armed gesture into the gate state machine. */
   simulateGesture: (dir: "up" | "down") => unknown;
-  /** { engaged, stage: 'A'|'B'|'C'|'morphing', morphTarget: 0|1|2, armed,
-   * accum } snapshot. Typed `unknown`, so the widened values flow through
+  /** { engaged, stage: 'A'|'B'|'C'|'D'|'morphing', morphTarget: 0|1|2|3,
+   * armed, accum } snapshot. Typed `unknown`, so the widened values flow through
    * without a signature change. */
   getGate: () => unknown;
 }

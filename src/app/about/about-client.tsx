@@ -170,14 +170,14 @@ export function AboutClient() {
               <h1 key={language} data-split-reveal className="font-display text-[clamp(2.5rem,8vw,5.5rem)] leading-[1.15] tracking-[-0.025em] text-ink text-balance mb-8 pb-1">
                 {isEn ? (
                   <>
-                    Three operators.{" "}
+                    Four operators.{" "}
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
                       One thesis.
                     </span>
                   </>
                 ) : (
                   <>
-                    Tre operatori.{" "}
+                    Quattro operatori.{" "}
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
                       Una sola tesi.
                     </span>
@@ -215,13 +215,13 @@ export function AboutClient() {
           <OurWhy />
         </div>
 
-        {/* The team — the two co-founders plus the engineering hire. */}
+        {/* The team — the two co-founders plus the two engineers. */}
         <section data-line-anchor="founders" className="container-px mb-24">
           <div className="text-center mb-12 max-w-3xl mx-auto">
             <p className="text-[11px] font-mono uppercase tracking-[0.25em] text-muted-foreground mb-4">
               {isEn
-                ? "Two founders, one engineer. Named owners on every project."
-                : "Due fondatori, un ingegnere. Referenti con nome su ogni progetto."}
+                ? "Two founders, two engineers. Named owners on every project."
+                : "Due fondatori, due ingegneri. Referenti con nome su ogni progetto."}
             </p>
           </div>
 
@@ -233,10 +233,23 @@ export function AboutClient() {
               of those classes resets at `lg`, where it becomes a normal grid
               item. `lg:max-w-6xl` (72rem) restores ~21.3rem per card —
               max-w-5xl across three columns gives ~19rem, too narrow for the bio
-              paragraph. */}
+              paragraph.
+
+              N=4 (2026-08-27): three columns at `lg` would strand card 4 alone
+              on row 2, so when the count is ≡ 1 (mod 3) the grid STAYS two
+              columns at every width (a clean 2×2 at N=4, ~30rem per card at
+              max-w-5xl). Four columns were rejected: ~17rem per card is
+              narrower than the 19rem already judged too tight for the bio.
+              The odd-last-card branch below is inert at even N and
+              self-computes, so N=3 and N=5 keep their shipped shape. */}
           <div
             ref={foundersGridRef}
-            className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-5xl lg:max-w-6xl mx-auto"
+            className={cn(
+              "grid md:grid-cols-2 gap-8 mx-auto",
+              founders.length % 3 === 1
+                ? "lg:grid-cols-2 max-w-5xl"
+                : "lg:grid-cols-3 max-w-5xl lg:max-w-6xl",
+            )}
           >
             {founders.map((f, i) => (
               <Reveal

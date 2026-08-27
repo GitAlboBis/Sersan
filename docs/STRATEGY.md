@@ -246,6 +246,10 @@ the founders personally operate every system forever.
 - **Michele Sanna** — CPTO / Technical Lead. PhD Applied Mathematics, LSE.
   Prior senior delivery at Revolut, J.P. Morgan, Deloitte, Brevan Howard,
   Accenture — always attributed as prior experience, never as SerSan client work.
+- **Alberto Tuveri** — Software & AI Engineer / Creative Lead. Front-end, WebGPU
+  and motion layer of what SerSan ships (this website included); AI agents on the
+  Microsoft stack (Copilot Studio, Power Automate, Dynamics 365, Azure Speech);
+  owns the studio's creative direction (logo, motion-graphics ads, video/VFX).
 - **Mattia Scattu** — Software Engineer. End-to-end delivery of internal systems.
   His resort-operator maintenance and inventory build is the clearest proof of
   the current positioning in the whole repository.
@@ -330,7 +334,7 @@ the scroll choreography of a whole page. **Rewrite in place; never add a row.**
 | 4 service cards | `SEGMENTS = 4`, 4-entry `STAGE_POS`, the word "Four", the `01 / 04` stepper, 5 snap stations |
 | 3 problem rows | `CLUSTER_COUNT = 3` in `neuralLatticeStore`, 3 `CALLOUT_POS` |
 | 3 production rows | `IGNITE_NODES = 3`, `RING_T = [.25,.5,.75]` |
-| 3 team cards | `MORPH_MAX = min(founders.length, 3) − 1` |
+| 4 team cards | `MORPH_MAX = min(founders.length, WIRED_TARGETS = 4) − 1`; "Four operators." |
 | 3 engagement acts | "Three formats." + `i === 1` column offset |
 | 8 practice rows | "Eight surfaces." + cached per-row document centres |
 | 4 process phases | `lg:grid-cols-4` on one drawn spine |

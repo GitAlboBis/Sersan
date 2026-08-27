@@ -73,7 +73,8 @@
  *                                   URL list is decided by the resolved
  *                                   fxBudget) and counts fetched bytes against
  *                                   Content-Length. Today it holds ONLY the
- *                                   three founder headshots the WebGL morph
+ *                                   founder/team headshots (one per entry,
+ *                                   four today) the WebGL morph
  *                                   force-loads, and only at fxBudget.level 3
  *                                   on the WebGPU build landing on `/` (the
  *                                   morph's only route); on every phone /
@@ -974,7 +975,7 @@ export function Preloader() {
     // WebGL tier resolved (CanvasHost's effect runs detectTier) ⇒ START THE
     // ASSET MANIFEST (Phase 3.3). The tier is what decides the URL list (the
     // resolved fxBudget: level 3 on the WebGPU build, landing on `/` ⇒ the
-    // three founder headshots the morph force-loads; anything else ⇒ empty ⇒
+    // four team headshots the morph force-loads; anything else ⇒ empty ⇒
     // progress 1 at once, i.e. the old "tier resolved" signal). heroReady is
     // NOT required (it
     // would couple the loader to a planet that may legitimately take longer,

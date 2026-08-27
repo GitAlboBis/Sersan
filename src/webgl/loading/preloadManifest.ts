@@ -93,11 +93,12 @@ interface ManifestItem {
  * ACCEPTED RESIDUAL WASTE: a desktop that passes all three gates but whose
  * WebGPU adapter request FAILS at runtime (the WebGL2 runtime fallback —
  * `backend === "webgl"` is written by Scene.tsx onCreated, LATER than the tier
- * resolves) still fetches the three headshots the morph will never mount. The
+ * resolves) still fetches the four headshots the morph will never mount. The
  * backend is unknown at tier-resolve time, and the manifest must start on
  * that edge to be worth anything, so this rare desktop case is accepted:
- * three cached webp files, no correctness impact (the slice settles the same
- * way).
+ * four cached webp files (one per `founders` entry — the list is derived, so a
+ * team change needs no edit here), no correctness impact (the slice settles
+ * the same way).
  */
 export function manifestUrlsForBudget(budget: FxBudget): string[] {
   if (budget.level !== 3) return [];

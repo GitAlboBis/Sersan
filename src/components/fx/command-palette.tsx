@@ -50,7 +50,7 @@ const ITEMS: PaletteItem[] = [
   { id: "consulting", group: "navigate", label: "Consulting", labelIt: "Consulenza", keywords: "services engage sprint cto practice", href: "/consulting", hint: "/consulting" },
   { id: "work", group: "navigate", label: "Selected work", labelIt: "Lavori selezionati", keywords: "case studies archive engagements portfolio", href: "/case-studies", hint: "/case-studies" },
   { id: "writing", group: "navigate", label: "Writing", labelIt: "Scritti", keywords: "resources articles guides field notes blog", href: "/resources", hint: "/resources" },
-  { id: "about", group: "navigate", label: "Team", labelIt: "Team", keywords: "about founders alessandro michele mattia chi siamo", href: "/about", hint: "/about" },
+  { id: "about", group: "navigate", label: "Team", labelIt: "Team", keywords: "about founders team alessandro michele alberto tuveri mattia chi siamo", href: "/about", hint: "/about" },
   { id: "trust", group: "navigate", label: "Trust & compliance", labelIt: "Trust e compliance", keywords: "security gdpr dora iso privacy sicurezza", href: "/trust", hint: "/trust" },
   { id: "contact", group: "navigate", label: "Contact", labelIt: "Contatti", keywords: "email phone reach talk contatto", href: "/contact", hint: "/contact" },
   { id: "book", group: "actions", label: CTA.primary.en, labelIt: CTA.primary.it, keywords: "call meeting start brief prenota chiamata", href: START_HREF, hint: "↵" },
