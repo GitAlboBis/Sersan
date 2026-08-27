@@ -329,6 +329,79 @@ import {
   AMBIENT_COOL,
   AMBIENT_WARM_MIX,
   AMBIENT_GAIN,
+  // ROUND 14 — ICE UPGRADE (every stage behind its own kill-switch; see the
+  // config block for the value-world derivations).
+  ICE_ABSORB,
+  ABSORB_COLOR,
+  ABSORB_REF_CHORD,
+  ABSORB_MIX,
+  ABSORB_MILK,
+  THICK_PROXY_A,
+  THICK_PROXY_B,
+  REFR_SCREEN,
+  REFR_SCREEN_THICK,
+  REFR_SCREEN_LOD_K,
+  REFR_SCREEN_BLUR_PX,
+  REFR_SCREEN_TAPS,
+  REFR_SCREEN_MIX,
+  ICE_ENV,
+  ENV_GAIN,
+  ENV_F0,
+  COAT_ROUGH,
+  COAT_GAIN,
+  ICE_INNER,
+  FROST_LAYER_DEPTHS,
+  FROST_LAYER_FREQ,
+  FROST_LAYER_MILK,
+  FROST_MILK_FREQ,
+  FROST_LAYER_COLOR,
+  INNER_GAIN,
+  INNER_ATTEN,
+  CRACK_LO,
+  CRACK_HI,
+  CRACK_GAIN,
+  MILK_GAIN,
+  ICE_SPARKLE2,
+  SPARKLE_FREQ2,
+  SPARKLE2_TILT,
+  SPARKLE2_POW,
+  SPARKLE2_DENSITY,
+  SPARKLE2_GAIN,
+  SPARKLE2_FADE_PX,
+  ICE_BLOOM_GLINTS,
+  GLINT_BLOOM_GAIN,
+  GLINT_BLOOM_DENSITY,
+  ENV_EDGE_GAIN,
+  // ROUND 14 WAVE 2 — the frosted meteorite (four kill-switches; config block
+  // "ROUND 14 WAVE 2" carries the value-world argument).
+  ICE_TWO_PASS,
+  INNER_SAMPLES,
+  INNER_UNPREMUL,
+  CRUST_CURV_PER_SHARD,
+  INNER_LOD_K,
+  INNER_THICK,
+  INNER_CA,
+  INNER_MIX,
+  ICE_CRUST,
+  CRUST_GAIN,
+  CRUST_RIDGE_POW,
+  CRUST_FACE_FLOOR,
+  CRUST_LEVEL,
+  CRUST_BODY_K,
+  CRUST_ALPHA_K,
+  CRUST_COLOR_FACE,
+  CRUST_COLOR_RIDGE,
+  CRUST_FRACTURE_K,
+  GRAIN_STRETCH,
+  GRAIN_FREQ,
+  GRAIN_NORMAL_AMP,
+  GRAIN_ROUGH_K,
+  ICE_METEORITE,
+  METEORITE_ABSORB,
+  METEORITE_ABSORB_MIX,
+  INCLUSION_GAIN,
+  INCLUSION_FREQ,
+  INCLUSION_R,
 } from "./crystalConfig";
 import type { LatticeMode } from "./neuralLatticeConfig";
 
@@ -482,6 +555,64 @@ export interface CrystalUniforms {
   /** Hairline gain — the ONLY term left above the bloom threshold. 0 = the
    * igloo-faithful variant (no pinpoint bloom on the crystal at all). */
   uRimEdge: { value: number };
+  // --- ROUND 14 — ICE UPGRADE tunables (dev-handle surfaced) ---------------
+  /** Stage B — reference chord (crystal units) at which the body transmits
+   * ABSORB_COLOR; per mode (config ABSORB_REF_CHORD). Both tiers. */
+  uAbsorbRef: { value: number };
+  /** Stage B — 0 = the flat uBodyDarken multiply, 1 = pure Beer–Lambert. */
+  uAbsorbMix: { value: number };
+  /** Stage B — milky desaturation of deep paths. */
+  uAbsorbMilk: { value: number };
+  /** Stage A — transmission-ray length (crystal units). Dead node unless the
+   * screen-refraction branch is built (full + WebGPU / REFR_SCREEN_WEBGL2). */
+  uScreenThick: { value: number };
+  /** Stage A — mip lod factor on log2(screenSize.x)·roughEff. Dead as above. */
+  uScreenLodK: { value: number };
+  /** Stage A — Vogel tap radius in px at roughness 1. Dead as above. */
+  uScreenBlurPx: { value: number };
+  /** Stage A — framebuffer-over-backdrop blend; 0 = live off-switch. */
+  uScreenMix: { value: number };
+  /** Stage C — inner frost/crack master gain (dead node on lite). */
+  uInnerGain: { value: number };
+  uInnerAtten: { value: number };
+  uCrackLo: { value: number };
+  uCrackHi: { value: number };
+  uCrackGain: { value: number };
+  uMilkGain: { value: number };
+  /** Stage D — env-specular gain (dead node unless envTexture was passed). */
+  uEnvGain: { value: number };
+  uCoatRough: { value: number };
+  uCoatGain: { value: number };
+  /** Stage E — fine sparkle gain (dead node on lite). */
+  uSparkle2Gain: { value: number };
+  /** Stage F — post-ceiling bloom glint gain (dead node on lite). */
+  uGlintBloom: { value: number };
+  /** Stage F — post-ceiling env hairline gain (dead unless env branch). */
+  uEnvEdge: { value: number };
+  // --- ROUND 14 WAVE 2 — frosted meteorite tunables (dev-handle surfaced) ---
+  /** Two-pass — lod factor on log2(rtSize)·roughEff (dead unless the inner
+   * RT branch was built: full + ICE_TWO_PASS + innerTexture). */
+  uInnerLodK: { value: number };
+  /** Two-pass — transmission-ray length to the inner object (crystal units).
+   * Dead as above. */
+  uInnerThick: { value: number };
+  /** Two-pass — chromatic spread of the inner ladder. Dead as above. */
+  uInnerCA: { value: number };
+  /** Two-pass — RT-over-trans blend by the RT's alpha; 0 = live off. */
+  uInnerMix: { value: number };
+  /** Two-pass — log2 of the RT's longest side; the DRIVER writes it after a
+   * resize (crystalInnerRT.log2Size). Dead as above. */
+  uInnerLog2: { value: number };
+  /** Crust — master frost gain (0 = live off; both tiers when ICE_CRUST). */
+  uCrustGain: { value: number };
+  /** Crust — ridge sharpening exponent on the baked curvature. */
+  uCrustRidgePow: { value: number };
+  /** Crust — striation normal perturbation amplitude (dead on lite). */
+  uGrainNormalAmp: { value: number };
+  /** Crust — roughness raise under the crust (dead on lite). */
+  uGrainRoughK: { value: number };
+  /** Meteorite — dark inclusion gain (dead unless inner layers + meteorite). */
+  uInclusionGain: { value: number };
 }
 
 export interface CrystalBuild {
@@ -499,6 +630,26 @@ export interface CrystalBuild {
    * driver must read it from here — the explode offset is `centr·gap`, so the
    * constant is only meaningful next to the `centr` array it ships with. */
   restGap: number;
+  /** ROUND 14 — which ice stages this build actually compiled (dev handle). */
+  ice: {
+    /** "baked" = per-vertex aThick chord (authored slab), "proxy" = analytic. */
+    thickness: "baked" | "proxy" | "off";
+    screenRefraction: boolean;
+    env: boolean;
+    inner: boolean;
+    sparkle2: boolean;
+    bloomGlints: boolean;
+    // ROUND 14 WAVE 2
+    /** The inner-RT (two-pass) sample branch was built. */
+    twoPass: boolean;
+    /** Frost crust branch; `curvature` says whether `aCurv` was baked. */
+    crust: boolean;
+    curvature: "baked" | "off";
+    /** Meteorite absorption hue + inclusions. */
+    meteorite: boolean;
+    /** Wave-1 mark-RT branch (healthy, MARK_INSIDE_MESH false). */
+    markRt: boolean;
+  };
   dispose: () => void;
 }
 
@@ -522,6 +673,238 @@ export interface CrystalBuildArgs {
    * procedural lite build (1 620 / 1 920), so there is no reduced variant and
    * CRYSTAL_DETAIL_LITE / SHARD_COUNT_LITE are dead on this path. */
   sourceGeometry?: Any;
+  /** ROUND 14 stage A — build the screen-space refraction branch (ONE
+   * module-level viewportMipTexture node shared by both stones). The driver
+   * gates it exactly like the mark RT: `!lite && (backendIsWebGPU ||
+   * REFR_SCREEN_WEBGL2)`. Absent/false → the branch is not built. */
+  screenRefraction?: boolean;
+  /** ROUND 14 stage D — the asset-free canvas equirect (the mark's gradient
+   * env, promoted to a session singleton in CrystalCluster) for
+   * `pmremTexture`. Absent → env/clearcoat branch not built. Full tier only. */
+  envTexture?: Any;
+  /** ROUND 14 WAVE 2 — the per-stone inner transmission RT texture
+   * (crystalInnerRT.ts: the mark mesh rendered from the MAIN camera). Absent →
+   * the two-pass branch is not built. Full tier only; the driver gates the
+   * backend like the mark RT (`backendIsWebGPU || INNER_RT_WEBGL2`). */
+  innerTexture?: Any;
+  /** log2 of the inner RT's longest side at build time (the driver keeps
+   * `uniforms.uInnerLog2` current on resize). */
+  innerLog2?: number;
+}
+
+// === ROUND 14 stage B — the baked chord-length attribute ====================
+/** Module-level cache of the baked chord array per SOURCE geometry (the
+ * loader's module singleton), so a re-mount / GPU-loss rebuild never repeats
+ * the raycast. Keyed on the indexed source: the `toNonIndexed()` soup is the
+ * index expansion of it, so `aThick[i] = chord[index[i]]`. */
+const thickCache: WeakMap<object, Float32Array> = new WeakMap();
+
+/**
+ * Per-vertex CHORD LENGTH: from each vertex march along −normal and take the
+ * nearest BACK-FACING triangle hit (Möller–Trumbore on flat typed arrays, no
+ * Raycaster / no object allocation: 1 328 × 450 and 2 533 × 1 114 tests
+ * measured at 19 / 89 ms in node, once per session per mode, inside the
+ * async build after the GLB resolves — never on the first-paint path). On
+ * the fractured file the pieces tile at gap 0, so a neighbour's coincident
+ * face is FRONT-facing to the ray and skipped: the hit is the piece's own far
+ * wall (per-piece thickness — rotation-invariant, so the vertex explode needs
+ * no change). Misses (concave rims, ~7 %) take the median so the attribute is
+ * never degenerate. Returns chord per SOURCE vertex.
+ */
+function bakeChords(pos: Float32Array, nrm: Float32Array, idx: Any): Float32Array {
+  const vCount = pos.length / 3;
+  const triCount = idx ? idx.length / 3 : vCount / 3;
+  // Flatten triangles once (index indirection out of the hot loop).
+  const tri = new Float32Array(triCount * 9);
+  const tn = new Float32Array(triCount * 3);
+  for (let t = 0; t < triCount; t++) {
+    for (let v = 0; v < 3; v++) {
+      const src = (idx ? idx[t * 3 + v] : t * 3 + v) * 3;
+      tri[t * 9 + v * 3] = pos[src];
+      tri[t * 9 + v * 3 + 1] = pos[src + 1];
+      tri[t * 9 + v * 3 + 2] = pos[src + 2];
+    }
+    const o = t * 9;
+    const e1x = tri[o + 3] - tri[o];
+    const e1y = tri[o + 4] - tri[o + 1];
+    const e1z = tri[o + 5] - tri[o + 2];
+    const e2x = tri[o + 6] - tri[o];
+    const e2y = tri[o + 7] - tri[o + 1];
+    const e2z = tri[o + 8] - tri[o + 2];
+    tn[t * 3] = e1y * e2z - e1z * e2y;
+    tn[t * 3 + 1] = e1z * e2x - e1x * e2z;
+    tn[t * 3 + 2] = e1x * e2y - e1y * e2x;
+  }
+  const out = new Float32Array(vCount);
+  const hits: number[] = [];
+  for (let v = 0; v < vCount; v++) {
+    const ox = pos[v * 3];
+    const oy = pos[v * 3 + 1];
+    const oz = pos[v * 3 + 2];
+    let dx = -nrm[v * 3];
+    let dy = -nrm[v * 3 + 1];
+    let dz = -nrm[v * 3 + 2];
+    const l = Math.hypot(dx, dy, dz) || 1;
+    dx /= l;
+    dy /= l;
+    dz /= l;
+    let best = Infinity;
+    for (let t = 0; t < triCount; t++) {
+      // Back-facing only: geometric normal · ray direction > 0.
+      if (tn[t * 3] * dx + tn[t * 3 + 1] * dy + tn[t * 3 + 2] * dz <= 0) {
+        continue;
+      }
+      const o = t * 9;
+      const ax = tri[o];
+      const ay = tri[o + 1];
+      const az = tri[o + 2];
+      const e1x = tri[o + 3] - ax;
+      const e1y = tri[o + 4] - ay;
+      const e1z = tri[o + 5] - az;
+      const e2x = tri[o + 6] - ax;
+      const e2y = tri[o + 7] - ay;
+      const e2z = tri[o + 8] - az;
+      const px = dy * e2z - dz * e2y;
+      const py = dz * e2x - dx * e2z;
+      const pz = dx * e2y - dy * e2x;
+      const det = e1x * px + e1y * py + e1z * pz;
+      if (Math.abs(det) < 1e-9) continue;
+      const inv = 1 / det;
+      const tx = ox - ax;
+      const ty = oy - ay;
+      const tz = oz - az;
+      const u = (tx * px + ty * py + tz * pz) * inv;
+      if (u < -1e-5 || u > 1 + 1e-5) continue;
+      const qx = ty * e1z - tz * e1y;
+      const qy = tz * e1x - tx * e1z;
+      const qz = tx * e1y - ty * e1x;
+      const w = (dx * qx + dy * qy + dz * qz) * inv;
+      if (w < -1e-5 || u + w > 1 + 1e-5) continue;
+      const tt = (e2x * qx + e2y * qy + e2z * qz) * inv;
+      if (tt > 1e-4 && tt < best) best = tt;
+    }
+    if (best === Infinity) {
+      out[v] = -1;
+    } else {
+      out[v] = best;
+      hits.push(best);
+    }
+  }
+  hits.sort((a, b) => a - b);
+  const median = hits.length ? hits[hits.length >> 1] : 1;
+  for (let v = 0; v < vCount; v++) if (out[v] < 0) out[v] = median;
+  return out;
+}
+
+/**
+ * Attach `aThick` to the prepared SOUP from the chords baked on its SOURCE
+ * (cached per source). One extra float vertex-buffer slot: healthy 3 → 4,
+ * broken 5 → 6, inside the 8-slot wall. Returns false if the source carries
+ * no usable position/normal pair (the graph then uses the analytic proxy).
+ */
+function bakeThickness(
+  src: Any,
+  geometry: Any,
+  BufferAttribute: Any,
+): boolean {
+  const sp = src.getAttribute("position");
+  const sn = src.getAttribute("normal");
+  if (!sp || !sn || sp.itemSize !== 3 || sn.itemSize !== 3) return false;
+  let chords = thickCache.get(src);
+  if (!chords) {
+    chords = bakeChords(
+      sp.array as Float32Array,
+      sn.array as Float32Array,
+      src.index ? src.index.array : null,
+    );
+    thickCache.set(src, chords);
+  }
+  const count = geometry.attributes.position.count as number;
+  const arr = new Float32Array(count);
+  if (src.index) {
+    const ia = src.index.array;
+    if (ia.length !== count) return false;
+    for (let i = 0; i < count; i++) arr[i] = chords[ia[i]];
+  } else {
+    if (chords.length !== count) return false;
+    arr.set(chords);
+  }
+  geometry.setAttribute("aThick", new BufferAttribute(arr, 1));
+  return true;
+}
+
+// === ROUND 14 WAVE 2 — the baked per-vertex CURVATURE attribute =============
+/**
+ * `aCurv` ∈ [0,1]: the ridge sharpness at each SOUP vertex — the largest
+ * angle between this vertex's normal and the normal of any other soup vertex
+ * sharing its position (the split normals of a flat-shaded slab are exactly
+ * the dihedral across the patch border), normalised by 90°. Patch interiors
+ * (all coincident normals equal) bake 0, cleavage ridges bake ~0.4–1.0, and
+ * the interpolation across each triangle turns that into an edge → interior
+ * frost gradient that `pow(curv, CRUST_RIDGE_POW)` sharpens back toward the
+ * ridge. Position-hashed at 1e-4 (the GLB ships float32 positions that are
+ * bit-identical along shared edges; the procedural fallback's are exact by
+ * construction). O(n) with a Map, ~1–3 ms once per build; fwidth-free, so it
+ * serves the lite tier too. One float slot: healthy 4 → 5, broken 6 → 7.
+ */
+function bakeCurvature(geometry: Any, BufferAttribute: Any): boolean {
+  const p = geometry.getAttribute("position");
+  const n = geometry.getAttribute("normal");
+  if (!p || !n || p.itemSize !== 3 || n.itemSize !== 3) return false;
+  const count = p.count as number;
+  const pa = p.array as Float32Array;
+  const na = n.array as Float32Array;
+  // WAVE 2.1 — group PER SHARD on the broken band: the merged rest-state soup
+  // has shards touching (explode is shader-side aCentr*uGap), so a position-
+  // only group pairs a fracture-face vertex with the neighbour shard's back-
+  // to-back vertex (dot = -1 => a fake full ridge over every fracture face
+  // and along every outer-skin crack line). aCentr is constant per shard
+  // (both the authored `_CENTR` and the fallback), so it IS the shard id.
+  const c = CRUST_CURV_PER_SHARD ? geometry.getAttribute("aCentr") : null;
+  const ca = c && c.itemSize === 3 ? (c.array as Float32Array) : null;
+  const groups = new Map<string, number[]>();
+  for (let i = 0; i < count; i++) {
+    let key =
+      Math.round(pa[i * 3] * 1e4) +
+      "," +
+      Math.round(pa[i * 3 + 1] * 1e4) +
+      "," +
+      Math.round(pa[i * 3 + 2] * 1e4);
+    if (ca) {
+      key +=
+        "|" +
+        Math.round(ca[i * 3] * 1e3) +
+        "," +
+        Math.round(ca[i * 3 + 1] * 1e3) +
+        "," +
+        Math.round(ca[i * 3 + 2] * 1e3);
+    }
+    let g = groups.get(key);
+    if (!g) {
+      g = [];
+      groups.set(key, g);
+    }
+    g.push(i);
+  }
+  const out = new Float32Array(count);
+  for (const g of groups.values()) {
+    if (g.length < 2) continue;
+    for (let a = 0; a < g.length; a++) {
+      const ia = g[a] * 3;
+      let minDot = 1;
+      for (let b = 0; b < g.length; b++) {
+        if (a === b) continue;
+        const ib = g[b] * 3;
+        const d =
+          na[ia] * na[ib] + na[ia + 1] * na[ib + 1] + na[ia + 2] * na[ib + 2];
+        if (d < minDot) minDot = d;
+      }
+      const ang = Math.acos(Math.max(-1, Math.min(1, minDot)));
+      out[g[a]] = Math.min(ang / (Math.PI * 0.5), 1);
+    }
+  }
+  geometry.setAttribute("aCurv", new BufferAttribute(out, 1));
+  return true;
 }
 
 /** Deterministic [0,1) hash — the repo's sin-dot family (neuralFieldCompute
@@ -750,8 +1133,27 @@ function prepareAuthored(
   return { geometry, shardCentrs, shardRands };
 }
 
+/** ROUND 14 stage A — ONE `viewportMipTexture()` node for the whole module:
+ * both stones reference it, its `.sample()` clones share the framebuffer via
+ * `referenceNode`, and NodeFrame keys the RENDER-type updateBefore on that
+ * shared texture — so the framebuffer is copied ONCE per render however many
+ * taps or materials read it (dossier §7 / §11). Created lazily from the
+ * passed-in tsl namespace (this module never imports three at top level). */
+let sharedScreenFb: Any = null;
+
 export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
-  const { webgpu, tsl, mode, lite, markTexture, sourceGeometry } = args;
+  const {
+    webgpu,
+    tsl,
+    mode,
+    lite,
+    markTexture,
+    sourceGeometry,
+    screenRefraction,
+    envTexture,
+    innerTexture,
+    innerLog2,
+  } = args;
   const {
     IcosahedronGeometry,
     BufferGeometry,
@@ -797,10 +1199,43 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     sqrt,
     Discard,
     texture,
+    // ROUND 14 — all verified in three/tsl 0.184 (dossier §7): the screen
+    // copy, PMREM, MaterialX noises, Vogel/IGN, screen nodes, BRDF helpers.
+    int,
+    abs,
+    log2,
+    fwidth,
+    reflect,
+    screenSize,
+    screenCoordinate,
+    cameraWorldMatrix,
+    viewportMipTexture,
+    vogelDiskSample,
+    interleavedGradientNoise,
+    pmremTexture,
+    F_Schlick,
+    D_GGX,
+    mx_fractal_noise_float,
+    mx_worley_noise_float,
+    mx_cell_noise_float,
   } = tsl as Any;
 
   const broken = mode === "broken";
   const samples = lite ? CRYSTAL_SAMPLES_LITE : CRYSTAL_SAMPLES;
+  // ROUND 14 — stage gates, resolved ONCE at build (each is a config
+  // kill-switch × the tier × the driver's backend gate). Lite = stage B only.
+  const absorbOn = ICE_ABSORB;
+  const screenOn = !lite && REFR_SCREEN && !!screenRefraction;
+  const envOn = !lite && ICE_ENV && envTexture != null;
+  const innerOn = !lite && ICE_INNER;
+  const sparkle2On = !lite && ICE_SPARKLE2;
+  const bloomGlintsOn = !lite && ICE_BLOOM_GLINTS && sparkle2On;
+  // ROUND 14 WAVE 2 gates. Crust runs on BOTH tiers (lite: the baked ridge
+  // term only — no striation noise, no normal/roughness perturbation); the
+  // two-pass RT and the inclusions are full-tier.
+  const twoPassOn = !lite && ICE_TWO_PASS && innerTexture != null;
+  const crustOn = ICE_CRUST;
+  const meteoriteOn = ICE_METEORITE;
 
   // === Geometry =============================================================
   // ROUND 8-H: the authored slab is the primary path (see prepareAuthored);
@@ -812,10 +1247,18 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
   const authored = sourceGeometry
     ? prepareAuthored(sourceGeometry, broken, BufferAttribute)
     : null;
+  // ROUND 14 stage B — the baked chord attribute rides the authored slab on
+  // BOTH tiers (one float slot); the procedural fallback keeps the analytic
+  // proxy (its silhouette is a displaced sphere, for which the proxy is
+  // exact enough).
+  let thickBaked = false;
   if (authored) {
     geometry = authored.geometry;
     for (const c of authored.shardCentrs) shardCentrs.push(c);
     for (const r of authored.shardRands) shardRands.push(r);
+    if (absorbOn) {
+      thickBaked = bakeThickness(sourceGeometry, geometry, BufferAttribute);
+    }
   } else if (!broken) {
     // FALLBACK — ONE intact crystal: displaced, squashed, flat-shaded. Note
     // this path has NO coplanar patches. ROUND 9-C: that is now much less
@@ -917,6 +1360,10 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     geometry.setAttribute("aRand", new BufferAttribute(mRand, 3));
     bakeFacetRand(geometry, BufferAttribute, 11.3); // round-7 facet randoms
   }
+  // ROUND 14 WAVE 2 — the ridge curvature bake (both paths, both tiers; one
+  // float slot — healthy 5 / broken 7 with aThick, still inside the 8-slot
+  // wall). Rotation- and explode-invariant like aThick.
+  const curvBaked = crustOn ? bakeCurvature(geometry, BufferAttribute) : false;
 
   // === Uniforms =============================================================
   const uTime = uniform(0);
@@ -982,6 +1429,65 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
   const uColNavy = uniform(new Color(BACKDROP_NAVY));
   const uColNavy2 = uniform(new Color(BACKDROP_NAVY2));
   const uColCyan = uniform(new Color(BACKDROP_CYAN));
+  // ROUND 14 — ICE UPGRADE tunables (all live on the dev handle; the ones on
+  // unbuilt branches are dead nodes exactly like uMarkGain).
+  const uAbsorbRef = uniform(ABSORB_REF_CHORD[broken ? "broken" : "healthy"]);
+  const uAbsorbMix = uniform(absorbOn ? ABSORB_MIX : 0);
+  const uAbsorbMilk = uniform(ABSORB_MILK);
+  const uScreenThick = uniform(REFR_SCREEN_THICK);
+  const uScreenLodK = uniform(REFR_SCREEN_LOD_K);
+  const uScreenBlurPx = uniform(REFR_SCREEN_BLUR_PX);
+  const uScreenMix = uniform(REFR_SCREEN_MIX);
+  const uInnerGain = uniform(INNER_GAIN);
+  const uInnerAtten = uniform(INNER_ATTEN);
+  const uCrackLo = uniform(CRACK_LO);
+  const uCrackHi = uniform(CRACK_HI);
+  const uCrackGain = uniform(CRACK_GAIN);
+  const uMilkGain = uniform(MILK_GAIN);
+  const uEnvGain = uniform(ENV_GAIN);
+  const uCoatRough = uniform(COAT_ROUGH);
+  const uCoatGain = uniform(COAT_GAIN);
+  const uSparkle2Gain = uniform(SPARKLE2_GAIN);
+  const uGlintBloom = uniform(GLINT_BLOOM_GAIN);
+  const uEnvEdge = uniform(ENV_EDGE_GAIN);
+  // ROUND 14 WAVE 2 tunables (dead nodes on unbuilt branches, as above).
+  const uInnerLodK = uniform(INNER_LOD_K);
+  const uInnerThick = uniform(INNER_THICK);
+  const uInnerCA = uniform(INNER_CA);
+  const uInnerMix = uniform(twoPassOn ? INNER_MIX : 0);
+  const uInnerLog2 = uniform(innerLog2 ?? 9);
+  const uCrustGain = uniform(crustOn && curvBaked ? CRUST_GAIN : 0);
+  const uCrustRidgePow = uniform(CRUST_RIDGE_POW);
+  const uGrainNormalAmp = uniform(GRAIN_NORMAL_AMP);
+  const uGrainRoughK = uniform(GRAIN_ROUGH_K);
+  const uInclusionGain = uniform(meteoriteOn ? INCLUSION_GAIN : 0);
+  // Stage B — ln(transmittance at the reference chord), per channel, folded
+  // in JS (linear working space): T(d) = exp(lnAbs · d / ref) = C^(d/ref).
+  // WAVE 2 (meteorite): the hue is re-aimed toward METEORITE_ABSORB but
+  // RE-LEVELLED to ABSORB_COLOR's luminance first, so the mean body at the
+  // median chord is wave 1's 0.30 exactly — chromaticity moves, value does
+  // not (the stone is navy-charcoal, not a black hole).
+  const absorbCol = new Color(ABSORB_COLOR);
+  if (meteoriteOn) {
+    const lum = (c: Any): number =>
+      0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    const target = new Color(METEORITE_ABSORB);
+    const k = lum(absorbCol) / Math.max(lum(target), 1e-4);
+    target.multiplyScalar(k);
+    target.r = Math.min(target.r, 1);
+    target.g = Math.min(target.g, 1);
+    target.b = Math.min(target.b, 1);
+    absorbCol.lerp(target, METEORITE_ABSORB_MIX);
+  }
+  const lnAbs: [number, number, number] = [
+    Math.log(Math.max(absorbCol.r, 1e-4)),
+    Math.log(Math.max(absorbCol.g, 1e-4)),
+    Math.log(Math.max(absorbCol.b, 1e-4)),
+  ];
+  const frostLayerCol = new Color(FROST_LAYER_COLOR);
+  // WAVE 2 — the crust albedo pair (face → ridge), linear via Color.
+  const crustFaceCol = new Color(CRUST_COLOR_FACE);
+  const crustRidgeCol = new Color(CRUST_COLOR_RIDGE);
   // Lobe colors — plain constants (config-frozen, not uniforms): the dev
   // handle exposes the scalar gains; hue stays the white-cyan/navy contract.
   const keyCol = new Color(FACET_KEY_COLOR);
@@ -1202,6 +1708,18 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     : varying(
         normalize(modelViewMatrix.mul(vec4(rd2[0], rd2[1], rd2[2], 0.0)).xyz),
       );
+  // ROUND 14 stage B — the baked chord (a per-vertex scalar, rotation- and
+  // explode-invariant, so the broken vertex path needs nothing). Self-
+  // contained attribute expression (varying discipline).
+  const vThick = thickBaked ? varying(attribute("aThick")) : null;
+  // ROUND 14 WAVE 2 — the baked ridge curvature (per-vertex scalar, same
+  // invariances as aThick) and the LOCAL normal (post shard-rotation on the
+  // broken path — the same `nrm` node the view normal is built from), which
+  // the crust needs to seed a per-patch tangent that is fixed to the SURFACE
+  // rather than to the screen (a view-space seed would make the grain swim
+  // across the face as the stone tumbles). Self-contained expressions.
+  const vCurv = curvBaked ? varying(attribute("aCurv")) : null;
+  const vNrmLocal = crustOn && !lite ? varying(nrm) : null;
 
   // === Fragment =============================================================
   // Lobe colors as constant vec3 nodes (linear, via Color) — round 7.
@@ -1212,6 +1730,20 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
   const emberC = vec3(emberCol.r, emberCol.g, emberCol.b);
   // Round 8-E — the pre-mixed ambient tint (cool base + 8.7 % warm).
   const ambC = vec3(ambCol.r, ambCol.g, ambCol.b);
+  // ROUND 14 — stage B/C constants.
+  const lnAbsC = vec3(lnAbs[0], lnAbs[1], lnAbs[2]);
+  const frostC = vec3(frostLayerCol.r, frostLayerCol.g, frostLayerCol.b);
+  const crustFaceC = vec3(crustFaceCol.r, crustFaceCol.g, crustFaceCol.b);
+  const crustRidgeC = vec3(crustRidgeCol.r, crustRidgeCol.g, crustRidgeCol.b);
+  // WAVE 2 — the inner transmission RT: ONE TextureNode per source (+1
+  // texture +1 sampler); every tap is a `.sample().level()` clone of it.
+  const innerBase: Any = twoPassOn ? texture(innerTexture) : null;
+  // Stage A — the shared framebuffer node (one per module, see above).
+  if (screenOn && !sharedScreenFb) sharedScreenFb = viewportMipTexture();
+  const screenFb: Any = screenOn ? sharedScreenFb : null;
+  // Stage D — the PMREM'd canvas equirect: ONE node = +1 texture +1 sampler
+  // (prefiltered once by PMREMNode.updateBefore on the first render).
+  const envRef: Any = envOn ? envTexture : null;
 
   const shade = Fn(() => {
     const N = normalize(vNrmView).toVar();
@@ -1286,6 +1818,79 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
       thickEff = uThickness.mul(frost.mul(FROST_THICK_K).add(1.0)).toVar();
     }
 
+    // === ROUND 14 WAVE 2 — THE FROST CRUST ==================================
+    // igloo's frosted skin is a roughness map + a frost normal map; the
+    // reference block shows it as (a) WHITER RIDGES — the thinner the ice at
+    // a cleavage edge, the more it scatters — and (b) FIBROUS STRIATIONS
+    // running one way per face, like ice scraped along a grain. Ours:
+    //   (a) `aCurv`, the baked dihedral at each vertex (bakeCurvature),
+    //       sharpened by pow → `crustRidge`; faces keep CRUST_FACE_FLOOR of it.
+    //   (b) full tier: an anisotropic 2-octave perlin over (t·p, b·p, n·p)
+    //       with the along-grain frequency GRAIN_STRETCH× lower than the
+    //       across-grain one. The tangent t is seeded PER PATCH from aFacet
+    //       and projected onto the LOCAL normal (vNrmLocal), so every face
+    //       owns a grain direction fixed to its surface. The striation
+    //       modulates the crust, tilts the shading normal along the
+    //       bitangent (uGrainNormalAmp) and RAISES the local roughness
+    //       (uGrainRoughK) — which is what blurs the interior (stage A, the
+    //       inner RT, the env) under the crust, igloo's roughness-map effect.
+    //   (c) broken band: inward-facing (fracture) faces keep CRUST_FRACTURE_K
+    //       of the crust — fresh cut ice over rock. Outwardness is
+    //       dot(N, p̂) in VIEW space (both rotate with the shard).
+    // `crust` ∈ [0,1] is consumed after the body multiply (albedo + opacity)
+    // and at the alpha. Both tiers build (a); lite skips (b).
+    let crust: Any = null;
+    let crustRidge: Any = null;
+    if (crustOn && vCurv) {
+      const curv = clamp(vCurv, float(0), float(1));
+      crustRidge = pow(max(curv, 1e-4), uCrustRidgePow).toVar();
+      let cr: Any = mix(float(CRUST_FACE_FLOOR), float(1.0), crustRidge);
+      if (!lite && vNrmLocal) {
+        const Nl = normalize(vNrmLocal).toVar();
+        const seed = vFacet.mul(2.0).sub(1.0).add(vec3(0.013, -0.021, 0.007));
+        const tang = normalize(seed.sub(Nl.mul(dot(seed, Nl)))).toVar();
+        const bit = cross(Nl, tang).toVar();
+        const gp = vec3(
+          dot(vLocal, tang).mul(GRAIN_FREQ / GRAIN_STRETCH),
+          dot(vLocal, bit).mul(GRAIN_FREQ),
+          dot(vLocal, Nl).mul(GRAIN_FREQ * 0.5),
+        );
+        const stri = mx_fractal_noise_float(gp, 2, 2.0, 0.5)
+          .mul(0.5)
+          .add(0.5)
+          .toVar();
+        cr = cr.mul(stri.mul(0.5).add(0.55));
+        // The scraped look: tilt the shading normal along the bitangent by
+        // the striation signal (view-space bitangent via the mv rotation —
+        // w = 0, uniform group scale, normalised).
+        const bView = normalize(modelViewMatrix.mul(vec4(bit, 0.0)).xyz);
+        const gT = bView.sub(N.mul(dot(N, bView)));
+        N.assign(
+          normalize(
+            N.add(gT.mul(stri.sub(0.5)).mul(uGrainNormalAmp).mul(cr)),
+          ),
+        );
+      }
+      if (broken) {
+        const outward = smoothstep(
+          float(0.0),
+          float(0.5),
+          dot(N, normalize(vPosView.sub(modelViewPosition))),
+        );
+        cr = cr.mul(mix(float(CRUST_FRACTURE_K), float(1.0), outward));
+      }
+      crust = clamp(cr.mul(uCrustGain), float(0), float(1)).toVar();
+      if (!lite) {
+        roughEff.assign(
+          clamp(
+            roughEff.mul(crust.mul(uGrainRoughK).add(1.0)),
+            float(0.05),
+            float(1.0),
+          ),
+        );
+      }
+    }
+
     // Blue-noise stand-in trio (per-fragment, object-stable).
     const nz = vec3(
       hash3(vLocal.mul(41.3)),
@@ -1354,6 +1959,138 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
       accB = accB.add(backdrop(cB).z);
     }
     const trans = vec3(accR, accG, accB).div(samples).toVar();
+
+    // === ROUND 14 stage A — SCREEN-SPACE BLURRED REFRACTION + DISPERSION ===
+    // igloo's / three's getIBLVolumeRefraction, in this material's idiom:
+    // refract the view ray (3 per-channel etas, the ladder's i=0 terms
+    // hoisted), walk `uScreenThick·modelScale` in VIEW space, project the
+    // exit point through the projection matrix, /w, ·0.5+0.5, flip y (RT
+    // textures are y-DOWN on both backends — MARK_FLIP_Y's derivation), and
+    // tap the framebuffer copy at `lod = log2(size)·roughEff·0.36` through a
+    // roughness-scaled Vogel disk (IGN-rotated per pixel so 4 taps read as
+    // grain, not as 4 ghosts). 3 × 4 = 12 fetches, ONE binding (the shared
+    // ViewportTextureNode; `.sample().level()` clones reference it).
+    //
+    // COMPOSITING (dossier §8): the copy holds only what GL drew BEFORE the
+    // stone in this pass — the fog quad and, on the broken band, the mark
+    // mesh — over transparent black; the DOM is not in it. So the framebuffer
+    // is laid OVER the procedural backdrop by its OWN alpha: wherever nothing
+    // was drawn behind, `backdrop()` remains the floor and the 8-E value
+    // world (uBackdropGain ↔ fog coupling) is untouched. Inside `trans`, so
+    // it rides the body multiply, the frost density and the mark rule.
+    if (screenFb) {
+      const rayLen = uScreenThick.mul(modelScale.y).toVar();
+      const lod = log2(screenSize.x).mul(roughEff).mul(uScreenLodK).toVar();
+      const etaG0 = float(1).div(
+        uIor.mul(float(1).add(caEff.mul(nz.x).div(3.0))),
+      );
+      const etaB0 = float(1).div(
+        uIor.mul(float(1).add(caEff.mul(2.0).mul(nz.z).div(3.0))),
+      );
+      const dirs: Any[] = [
+        refrR,
+        refractDir(I, Nj, etaG0).toVar(),
+        refractDir(I, Nj, etaB0).toVar(),
+      ];
+      const phi = interleavedGradientNoise(screenCoordinate.xy)
+        .mul(6.2832)
+        .toVar();
+      const tapR = uScreenBlurPx.mul(roughEff).div(screenSize).toVar();
+      const chan: Any[] = [];
+      let accA: Any = float(0);
+      const comps = ["x", "y", "z"] as const;
+      for (let c = 0; c < 3; c++) {
+        const exitView = vPosView.add(dirs[c].mul(rayLen));
+        const ndc = cameraProjectionMatrix.mul(vec4(exitView, 1.0)).toVar();
+        const uv0 = ndc.xy.div(ndc.w).mul(0.5).add(0.5);
+        const uvC = vec2(uv0.x, float(1).sub(uv0.y)).toVar();
+        let sum: Any = float(0);
+        let sumA: Any = float(0);
+        for (let t = 0; t < REFR_SCREEN_TAPS; t++) {
+          const off = vogelDiskSample(int(t), int(REFR_SCREEN_TAPS), phi).mul(
+            tapR,
+          );
+          const s = screenFb.sample(uvC.add(off)).level(lod).toVar();
+          sum = sum.add(s[comps[c]]);
+          sumA = sumA.add(s.w);
+        }
+        chan.push(sum.div(REFR_SCREEN_TAPS));
+        accA = accA.add(sumA.div(REFR_SCREEN_TAPS));
+      }
+      const fbCol = vec3(chan[0], chan[1], chan[2]);
+      const fbA = clamp(accA.div(3.0), float(0), float(1));
+      trans.assign(mix(trans, fbCol, fbA.mul(uScreenMix)));
+    }
+
+    // === ROUND 14 WAVE 2 — THE INNER OBJECT, igloo's TWO-PASS READ =========
+    // The mark mesh rendered from the MAIN camera into its own mipmapped RT
+    // (crystalInnerRT.ts) and sampled with the SAME projective ray walk as
+    // stage A: per sample i and channel c, refract at the per-channel eta
+    // (1 + uInnerCA·k·(i+noise)/3, k = 0/1/2 — igloo's ladder), walk
+    // `uInnerThick + smear·(i+noise)/3` with smear = thick·pow(rough, .33),
+    // project the exit point, tap at lod = log2(rtSize)·roughEff·uInnerLodK.
+    // 3 × RGB = 9 fetches on a ≤0.5 MP RT, ONE binding. Composited by the
+    // RT's own alpha as a REPLACEMENT of `trans` (an opaque object inside
+    // covers what is behind it), AFTER stage A (so the crisp copy the
+    // framebuffer may hold on the broken band is superseded by the blurred,
+    // dispersed one) and BEFORE the body multiply — so the mark rides
+    // Beer–Lambert, the frost density and the crust like everything inside.
+    if (innerBase) {
+      const mS = modelScale.y;
+      const rayLen0 = uInnerThick.mul(mS).toVar();
+      const smearI = uInnerThick.mul(pow(roughEff, 0.33)).mul(mS).toVar();
+      const lodI = uInnerLog2.mul(roughEff).mul(uInnerLodK).toVar();
+      const caI = uInnerCA.mul(fres.mul(uCAEdge).add(1.0)).toVar();
+      const noiseC: Any[] = [nz.y, nz.x, nz.z];
+      const compsI = ["x", "y", "z"] as const;
+      let iR: Any = float(0);
+      let iG: Any = float(0);
+      let iB: Any = float(0);
+      let iA: Any = float(0);
+      const accI: Any[] = [iR, iG, iB];
+      for (let i = 0; i < INNER_SAMPLES; i++) {
+        const fi = float(i);
+        const etaGi = float(1).div(
+          uIor.mul(float(1).add(caI.mul(fi.add(nz.x)).div(INNER_SAMPLES))),
+        );
+        const etaBi = float(1).div(
+          uIor.mul(
+            float(1).add(caI.mul(2.0).mul(fi.add(nz.z)).div(INNER_SAMPLES)),
+          ),
+        );
+        const dirsI: Any[] = [
+          refrR,
+          refractDir(I, Nj, etaGi).toVar(),
+          refractDir(I, Nj, etaBi).toVar(),
+        ];
+        for (let c = 0; c < 3; c++) {
+          const len = rayLen0.add(
+            smearI.mul(fi.add(noiseC[c]).div(INNER_SAMPLES)),
+          );
+          const exitV = vPosView.add(dirsI[c].mul(len));
+          const ndcI = cameraProjectionMatrix.mul(vec4(exitV, 1.0)).toVar();
+          const uvI0 = ndcI.xy.div(ndcI.w).mul(0.5).add(0.5);
+          const uvI = vec2(uvI0.x, float(1).sub(uvI0.y));
+          const sI = innerBase.sample(uvI).level(lodI).toVar();
+          accI[c] = accI[c].add(sI[compsI[c]]);
+          iA = iA.add(sI.w);
+        }
+      }
+      iR = accI[0];
+      iG = accI[1];
+      iB = accI[2];
+      let innerCol: Any = vec3(iR, iG, iB).div(INNER_SAMPLES);
+      const innerA = clamp(iA.div(3 * INNER_SAMPLES), float(0), float(1));
+      if (INNER_UNPREMUL) {
+        // WAVE 2.1 — the mip chain averages straight-alpha texels over the
+        // transparent-black clear, i.e. the tap IS premultiplied: un-
+        // premultiply (/ max(alpha, 1e-3)) before the mix-by-alpha composite,
+        // otherwise the blurred mark wears a dark halo.
+        innerCol = innerCol.div(max(innerA, float(1e-3)));
+      }
+      trans.assign(mix(trans, innerCol, innerA.mul(uInnerMix)));
+    }
+
     if (markBase) {
       // === ROUND 9-C — THE ORIGIN-REGISTERED PERSPECTIVE MAP =================
       // (research/2026-08-22-round9-inner-object-mechanism.md §3.2, Variant A.)
@@ -1496,11 +2233,50 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     // wordmark's brightness would step from plane to plane, re-introducing
     // patchiness in the very image this round exists to make readable. ------
     const fJit = vFacet;
+    // === ROUND 14 stage B — BEER–LAMBERT ABSORPTION / MILKY DEPTH ==========
+    // three's volumeAttenuation, per channel: T = C^(d / ref) with C the
+    // transmittance at the reference chord (ABSORB_COLOR, lum 0.30 = the flat
+    // BODY_DARKEN it replaces, so the 8-F body row holds at the median), d the
+    // BAKED per-vertex chord (authored slab, both tiers) or the analytic proxy
+    // (procedural fallback). Deep paths go navy, thin rims go clear, and the
+    // milk term desaturates the deepest paths. `uAbsorbMix` 0 is byte-for-
+    // byte the old multiply (ICE_ABSORB false also drops the attribute).
+    let bodyK: Any = uBodyDarken;
+    if (absorbOn) {
+      let thick: Any;
+      if (vThick) {
+        thick = vThick;
+      } else {
+        const nv = clamp(dot(N, V), float(0), float(1));
+        thick = uAbsorbRef.mul(
+          nv.mul(nv).mul(THICK_PROXY_B).add(THICK_PROXY_A),
+        );
+      }
+      const T = exp(
+        lnAbsC.mul(thick).div(max(uAbsorbRef, float(1e-3))),
+      ).toVar();
+      const lumT = dot(T, vec3(0.2126, 0.7152, 0.0722));
+      const Tm = mix(T, vec3(lumT, lumT, lumT), uAbsorbMilk);
+      bodyK = mix(vec3(uBodyDarken, uBodyDarken, uBodyDarken), Tm, uAbsorbMix);
+    }
     let col: Any = trans
-      .mul(uBodyDarken)
+      .mul(bodyK)
       .mul(fJit.y.mul(FACET_VALUE_JIT).add(1 - FACET_VALUE_JIT / 2));
     if (frost !== null) {
       col = col.mul(frost.mul(FROST_DENSITY_K).add(1.0));
+    }
+    // === ROUND 14 WAVE 2 — CRUST ALBEDO + OPACITY ===========================
+    // The crust makes the face more OPAQUE (the transmitted body is cut by
+    // crust·CRUST_BODY_K) and paints a cool blue-white frost over it, face →
+    // ridge tint by the ridge term, lightly hemisphere-lit. CRUST_LEVEL 0.2
+    // keeps a full ridge under the lobe/rim (0.276) and well over the body.
+    if (crust) {
+      col = col.mul(float(1).sub(crust.mul(CRUST_BODY_K)));
+      const crustCol = mix(crustFaceC, crustRidgeC, crustRidge);
+      const hemiC = N.y.mul(0.5).add(0.5);
+      col = col.add(
+        crustCol.mul(crust).mul(CRUST_LEVEL).mul(hemiC.mul(0.4).add(0.8)),
+      );
     }
 
     // --- Round 7-2b §B-a (ii) — the BROKEN ember core: a 3-blob gaussian
@@ -1540,6 +2316,61 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
       col = col.add(
         emberC.mul(ember).mul(uEmberGain).mul(breathe).mul(flicker),
       );
+    }
+
+    // === ROUND 14 stage C — INTERNAL FROST / CRACK PARALLAX LAYERS ==========
+    // The ember-core idiom generalised: each layer is evaluated at
+    // `vLocal + refrR·depth` — the k=0 refracted ray encodes the view, so the
+    // sheets slide against each other as the stone tumbles (parallax). Per
+    // layer: a ridged 3-octave perlin (mx_fractal_noise_float) windowed into
+    // thin bright seams (cracks) + a worley cellular cloud (milk) on the two
+    // shallow layers; deeper = dimmer (exp(−depth·atten), riding the
+    // absorption). Sub-bloom by construction (config INNER_GAIN derivation).
+    if (innerOn) {
+      let inner: Any = vec3(0.0, 0.0, 0.0);
+      // WAVE 2 (meteorite) — sparse dark mineral inclusions: worley cells at
+      // the same parallax depths, dark where the cell distance is under
+      // INCLUSION_R (dots, not clouds), depth-weighted like the seams.
+      let inclSum: Any = meteoriteOn ? float(0) : null;
+      for (let k = 0; k < FROST_LAYER_DEPTHS.length; k++) {
+        const depth = FROST_LAYER_DEPTHS[k];
+        const p = vLocal.add(refrR.mul(depth)).toVar();
+        const n = mx_fractal_noise_float(
+          p.mul(FROST_LAYER_FREQ[k]),
+          3,
+          2.0,
+          0.5,
+        ).toVar();
+        const cracks = smoothstep(uCrackLo, uCrackHi, float(1).sub(abs(n)));
+        let term: Any = cracks.mul(uCrackGain);
+        if (FROST_LAYER_MILK[k]) {
+          const milk = smoothstep(
+            float(0.35),
+            float(0.75),
+            mx_worley_noise_float(p.mul(FROST_MILK_FREQ)),
+          );
+          term = term.add(milk.mul(uMilkGain));
+        }
+        const w = exp(uInnerAtten.mul(-depth));
+        inner = inner.add(frostC.mul(term).mul(w));
+        if (inclSum) {
+          const wd = mx_worley_noise_float(
+            p.mul(INCLUSION_FREQ).add(vec3(3.1, 7.7, 1.3)),
+          );
+          const incl = float(1).sub(
+            smoothstep(float(INCLUSION_R * 0.5), float(INCLUSION_R), wd),
+          );
+          inclSum = inclSum.add(incl.mul(w));
+        }
+      }
+      if (inclSum) {
+        col = col.mul(
+          float(1).sub(
+            clamp(inclSum.mul(uInclusionGain), float(0), float(0.9)),
+          ),
+        );
+      }
+      col = col.add(inner.mul(uInnerGain).mul(fJit.y.mul(0.1).add(0.95)));
     }
 
     // --- Round 8-E §D3 — ANALYTIC AMBIENT HEMISPHERE (priority 4). Until
@@ -1584,6 +2415,36 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     const specAmp = fJit.x.mul(FACET_SPEC_JIT).add(1 - FACET_SPEC_JIT / 2);
     col = col.add(keyC.mul(spec).mul(uSpecGain).mul(specAmp));
     col = col.add(fillC.mul(max(dot(N, fill), 0.0)).mul(uFillGain));
+
+    // === ROUND 14 stage D — ENV SPECULAR (PMREM) + SCHLICK + CLEARCOAT =====
+    // The mark's asset-free 16×256 canvas equirect, PMREM-prefiltered once by
+    // PMREMNode and sampled at the WORLD-space reflection of the clean
+    // shading normal with roughEff as the level (the frost veins modulate the
+    // reflection's blur exactly as they do the mark's). Weighted by
+    // F_Schlick(f0 = 0.02): near-zero face-on, → 1 at grazing, which is
+    // where igloo's sharp cool rims come from on the flat authored patches.
+    // The clearcoat is a GGX lobe at α = COAT_ROUGH² on the UN-jittered N
+    // against the key half-vector, NORMALISED to peak 1 (D·π·α²) so the gain
+    // is an absolute lumLin — the wet pinpoint. Both sit under the ceiling
+    // (config ENV_GAIN / COAT_GAIN derivations). +1 texture +1 sampler.
+    let envSpec: Any = null;
+    if (envRef) {
+      const R = reflect(I, N);
+      const Rw = R.transformDirection(cameraWorldMatrix);
+      envSpec = pmremTexture(envRef, Rw, roughEff).rgb.toVar();
+      const Fs = F_Schlick({
+        f0: vec3(ENV_F0, ENV_F0, ENV_F0),
+        f90: float(1.0),
+        dotVH: clamp(dot(N, V), float(0), float(1)),
+      }).toVar();
+      col = col.add(envSpec.mul(Fs).mul(uEnvGain));
+      const alphaC = uCoatRough.mul(uCoatRough).toVar();
+      const dotNH = clamp(dot(N, H), float(0), float(1));
+      const Dn = D_GGX({ alpha: alphaC, dotNH }).mul(
+        alphaC.mul(alphaC).mul(Math.PI),
+      );
+      col = col.add(keyC.mul(Dn).mul(uCoatGain));
+    }
 
     // --- Round 7-2b rollout 4 — WARM GLINT LOBE (§A3 mechanism twin): a
     // third, NARROW env lobe in desaturated amber. Gated on the facet-tilted,
@@ -1630,6 +2491,47 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
       );
     }
 
+    // === ROUND 14 stage E — FINER SCREEN-STABLE MICRO-FACET GLINTS =========
+    // A second cell layer at SPARKLE_FREQ2 (≈3 px cells at the measured
+    // band): per-cell micro-normal from mx_cell_noise_float, riding the
+    // frost-JITTERED Nj (so the glints follow the grain, not the clean
+    // facet), gated tight (pow 120) and FADED by fwidth — cells that fall
+    // under ~2 screen px vanish instead of shimmering as the stone recedes.
+    // Sub-bloom (gain ≤ the key lobe). Stage F re-uses glint2/cellHash2.
+    let glint2: Any = null;
+    let cellHash2: Any = null;
+    let sparkleFade: Any = null;
+    if (sparkle2On) {
+      const cell2 = floor(vLocal.mul(SPARKLE_FREQ2)).toVar();
+      const fw = fwidth(vLocal).toVar();
+      const cellPx = float(1).div(
+        max(max(fw.x, fw.y), fw.z).mul(SPARKLE_FREQ2).add(1e-5),
+      );
+      sparkleFade = smoothstep(
+        float(SPARKLE2_FADE_PX[0]),
+        float(SPARKLE2_FADE_PX[1]),
+        cellPx,
+      ).toVar();
+      const mN = vec3(
+        mx_cell_noise_float(cell2.add(vec3(0.5, 0.5, 0.5))),
+        mx_cell_noise_float(cell2.add(vec3(7.5, 3.5, 1.5))),
+        mx_cell_noise_float(cell2.add(vec3(2.5, 9.5, 5.5))),
+      )
+        .sub(0.5)
+        .mul(SPARKLE2_TILT);
+      const micro2 = normalize(Nj.add(mN));
+      glint2 = pow(max(dot(micro2, H), 0.0), float(SPARKLE2_POW)).toVar();
+      cellHash2 = hash3(cell2.add(vec3(3.3, 1.1, 8.8))).toVar();
+      const gate2 = smoothstep(
+        float(SPARKLE2_DENSITY),
+        float(SPARKLE2_DENSITY + 0.06),
+        cellHash2,
+      );
+      col = col.add(
+        keyC.mul(glint2).mul(gate2).mul(sparkleFade).mul(uSparkle2Gain),
+      );
+    }
+
     // --- Round 7 §2 — DISPERSIVE RIM: per-channel fresnel exponents (blue
     // reaches further inward than red → spectral fringe), whitened toward
     // extreme grazing.
@@ -1659,6 +2561,12 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     col = col.add(rimCol.mul(rim3).mul(uRimBase.add(uFlash.mul(uRimFlash))));
     const edge = smoothstep(uRimEdgeStart, float(1.0), f1);
     col = col.add(rimCol.mul(edge).mul(uRimEdge));
+    // ROUND 14 stage F (half 1) — the ENV hairline: the sky-band reflection
+    // on the same extreme-grazing gate, PRE-ceiling like the rim hairline so
+    // it clips at uCeil rather than stacking past it.
+    if (envSpec) {
+      col = col.add(envSpec.mul(edge).mul(uEnvEdge));
+    }
 
     // --- Round 8-E §B4.2 part 3 — THE VALUE CEILING. igloo caps every stone
     // pixel with `outgoingLight = clamp(…, 0, 1)` (bundle L38013), which is
@@ -1673,6 +2581,23 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     // igloo's clamp does, while the rim hairline stays just below.
     col = min(col, vec3(uCeil, uCeil, uCeil));
 
+    // === ROUND 14 stage F (half 2) — SPARSE BLOOM GLINTS, POST-CEILING =====
+    // The hairline contract extended: ~4 % of the fine cells (a second, far
+    // sparser gate on the SAME cell hash) get the stage-E glint added AFTER
+    // the clamp so it is not compressed — keyC·1.3 ≥ 1.17 col-lum → ≥ 1.10
+    // post-blend, over the 1.0 bloom threshold on single pixels only, and
+    // still fwidth-faded so far stones do not sparkle-bloom. 0 = off.
+    if (bloomGlintsOn && glint2) {
+      const gateSparse = smoothstep(
+        float(GLINT_BLOOM_DENSITY),
+        float(GLINT_BLOOM_DENSITY + 0.03),
+        cellHash2,
+      );
+      col = col.add(
+        keyC.mul(glint2).mul(gateSparse).mul(sparkleFade).mul(uGlintBloom),
+      );
+    }
+
     // --- Depth fade (igloo fog-mix window, adapted to ALPHA — header) ------
     const dRel = length(vPosView)
       .sub(uCamDist0)
@@ -1684,7 +2609,12 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
       FADE_MARGIN,
       uFadeProgress,
     );
-    const alpha = uAlpha
+    // WAVE 2 — the crust lifts the alpha slightly where it is high (≤ 1);
+    // CRYSTAL_ALPHA itself is untouched (crust = 0 ⇒ byte-identical).
+    const alphaBase: Any = crust
+      ? min(uAlpha.mul(crust.mul(CRUST_ALPHA_K).add(1.0)), float(1.0))
+      : uAlpha;
+    const alpha = alphaBase
       .mul(fade.mul(FADE_MAX).add(1 - FADE_MAX))
       .mul(uReveal)
       .toVar();
@@ -1756,6 +2686,37 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     uCeil,
     uRimEdgeStart,
     uRimEdge,
+    // ROUND 14 — ICE UPGRADE
+    uAbsorbRef,
+    uAbsorbMix,
+    uAbsorbMilk,
+    uScreenThick,
+    uScreenLodK,
+    uScreenBlurPx,
+    uScreenMix,
+    uInnerGain,
+    uInnerAtten,
+    uCrackLo,
+    uCrackHi,
+    uCrackGain,
+    uMilkGain,
+    uEnvGain,
+    uCoatRough,
+    uCoatGain,
+    uSparkle2Gain,
+    uGlintBloom,
+    uEnvEdge,
+    // ROUND 14 WAVE 2
+    uInnerLodK,
+    uInnerThick,
+    uInnerCA,
+    uInnerMix,
+    uInnerLog2,
+    uCrustGain,
+    uCrustRidgePow,
+    uGrainNormalAmp,
+    uGrainRoughK,
+    uInclusionGain,
   };
 
   return {
@@ -1765,6 +2726,19 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     shardCentrs,
     shardRands,
     restGap,
+    ice: {
+      thickness: absorbOn ? (thickBaked ? "baked" : "proxy") : "off",
+      screenRefraction: screenOn,
+      env: envOn,
+      inner: innerOn,
+      sparkle2: sparkle2On,
+      bloomGlints: bloomGlintsOn,
+      twoPass: twoPassOn,
+      crust: crustOn && curvBaked,
+      curvature: curvBaked ? "baked" : "off",
+      meteorite: meteoriteOn,
+      markRt: markTexture != null && !broken && !lite,
+    },
     dispose() {
       geometry.dispose();
       material.dispose();

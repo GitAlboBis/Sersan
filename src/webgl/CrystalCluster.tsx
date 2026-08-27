@@ -195,6 +195,15 @@ import {
   CALLOUT_EDGE_MAX,
   // Round 7-2b (anatomy pass)
   MARK_RT_WEBGL2,
+  // ROUND 14 — ICE UPGRADE (stage A backend gate)
+  REFR_SCREEN_WEBGL2,
+  // ROUND 14 WAVE 2 — the frosted meteorite
+  MARK_INSIDE_MESH,
+  MARK_MESH_Y_HEALTHY,
+  MARK_CORE_HDR,
+  ICE_TWO_PASS,
+  INNER_RT_WEBGL2,
+  INNER_HIDE_MAIN_HEALTHY,
   PLEXUS_CONNECT_WINDOW,
   CALLOUT_VIS_WINDOWS,
   CALLOUT_VIS_IN_LAMBDA,
@@ -219,6 +228,7 @@ import {
 import type { CrystalBuild } from "./neural/crystalBuild";
 import type { CrystalFogBuild } from "./neural/crystalFog";
 import type { MarkRTRig } from "./neural/crystalMarkRT";
+import type { InnerRTRig } from "./neural/crystalInnerRT";
 import type { CrystalPlexus } from "./neural/crystalPlexus";
 import { loadMarkGeometry } from "./RouteHeroLogo";
 
@@ -228,6 +238,37 @@ const MARK_CYAN = new THREE.Color("#3be1ff");
 
 /** Off-screen cull margin in CSS px (the NeuralLattice value). */
 const CULL_PAD = 220;
+
+/**
+ * ROUND 14 stage D — the asset-free gradient ENV, promoted from the broken
+ * mark material's per-mount canvas to a SESSION SINGLETON: the ice's
+ * `pmremTexture` prefilters it once per renderer, and both stones plus the
+ * mark mesh read the same object. Never disposed (module lifetime; 16×256
+ * RGBA = 16 KB). Null during SSR (no document).
+ */
+let crystalEnvTexture: THREE.Texture | null = null;
+function getCrystalEnvTexture(): THREE.Texture | null {
+  if (crystalEnvTexture) return crystalEnvTexture;
+  if (typeof document === "undefined") return null;
+  const c = document.createElement("canvas");
+  c.width = 16;
+  c.height = 256;
+  const ctx = c.getContext("2d");
+  if (!ctx) return null;
+  const g = ctx.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0.0, "#0a1426");
+  g.addColorStop(0.4, "#2bd6ff");
+  g.addColorStop(0.52, "#16243f");
+  g.addColorStop(0.66, "#2a7fff");
+  g.addColorStop(1.0, "#060b16");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 16, 256);
+  const tex = new THREE.CanvasTexture(c);
+  tex.mapping = THREE.EquirectangularReflectionMapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  crystalEnvTexture = tex;
+  return tex;
+}
 
 interface SectionRect {
   cxBase: number;
@@ -253,10 +294,17 @@ export function CrystalCluster({
   const [plexus, setPlexus] = useState<CrystalPlexus | null>(null);
   const [fog, setFog] = useState<CrystalFogBuild | null>(null);
   const markRigRef = useRef<MarkRTRig | null>(null);
+  // ROUND 14 WAVE 2 — the igloo two-pass inner RT (crystalInnerRT.ts): the
+  // mark mesh rendered from the main camera into its own mipmapped RT that
+  // the ice refracts. Full tier + ICE_TWO_PASS + backend gate; null otherwise.
+  const innerRigRef = useRef<InnerRTRig | null>(null);
   // ROUND 13e — D20's FIRST appearance: the mark as a REAL MESH inside the
   // opening meteorite (broken band only; the healthy slab keeps the sealed
   // 6% RT above). Geometry is RouteHeroLogo's session-shared singleton —
   // NEVER disposed here; the material is ours and is.
+  // ROUND 14 WAVE 2 (MARK_INSIDE_MESH): BOTH bands mount the mesh — the
+  // healthy slab drops its render-once RT for the same real object, drawn at
+  // −3.5 so stage A's screen refraction bends it with dispersion for free.
   const [markGeo, setMarkGeo] = useState<THREE.BufferGeometry | null>(null);
   const markMeshRef = useRef<THREE.Mesh | null>(null);
   const markEnvRef = useRef<THREE.Texture | null>(null);
@@ -268,24 +316,9 @@ export function CrystalCluster({
     // bloom) + a cheap procedural gradient env so the metal has something to
     // reflect — form instead of flat plastic. depth flags keep the compositing
     // reveal (fog −4 → mark −3.5 → crystal −3) intact.
-    const c = document.createElement("canvas");
-    c.width = 16;
-    c.height = 256;
-    const ctx = c.getContext("2d");
-    if (ctx) {
-      const g = ctx.createLinearGradient(0, 0, 0, 256);
-      g.addColorStop(0.0, "#0a1426");
-      g.addColorStop(0.4, "#2bd6ff");
-      g.addColorStop(0.52, "#16243f");
-      g.addColorStop(0.66, "#2a7fff");
-      g.addColorStop(1.0, "#060b16");
-      ctx.fillStyle = g;
-      ctx.fillRect(0, 0, 16, 256);
-      const tex = new THREE.CanvasTexture(c);
-      tex.mapping = THREE.EquirectangularReflectionMapping;
-      tex.colorSpace = THREE.SRGBColorSpace;
-      markEnvRef.current = tex;
-    }
+    // ROUND 14: the gradient env is now the module singleton
+    // (getCrystalEnvTexture) shared with the ice's PMREM — not disposed here.
+    markEnvRef.current = getCrystalEnvTexture();
     markMatRef.current = new THREE.MeshStandardMaterial({
       color: "#0B1422",
       metalness: 0.35,
@@ -309,6 +342,7 @@ export function CrystalCluster({
     let cancelled = false;
     let built: CrystalBuild | null = null;
     let markRig: MarkRTRig | null = null;
+    let innerRig: InnerRTRig | null = null;
     let plexusBuilt: CrystalPlexus | null = null;
     let fogBuilt: CrystalFogBuild | null = null;
 
@@ -319,7 +353,8 @@ export function CrystalCluster({
       import("./neural/crystalMarkRT"),
       import("./neural/crystalPlexus"),
       import("./neural/crystalFog"),
-    ]).then(async ([webgpu, tslNs, mod, markMod, plexusMod, fogMod]) => {
+      import("./neural/crystalInnerRT"),
+    ]).then(async ([webgpu, tslNs, mod, markMod, plexusMod, fogMod, innerMod]) => {
       if (cancelled) return;
       // ROUND 8-H — the authored slab (crystal-intact / crystal-fractured
       // .glb). NON-SUSPENDING by construction: a module-cached loader promise
@@ -344,7 +379,14 @@ export function CrystalCluster({
       const bk = (gl as unknown as { backend?: { isWebGLBackend?: boolean } })
         .backend;
       const backendIsWebGPU = !!bk && bk.isWebGLBackend !== true;
-      if (!broken && !lite && (backendIsWebGPU || MARK_RT_WEBGL2)) {
+      // ROUND 14 WAVE 2: the render-once mark RT survives ONLY with
+      // MARK_INSIDE_MESH off (the wave-1 healthy read).
+      if (
+        !MARK_INSIDE_MESH &&
+        !broken &&
+        !lite &&
+        (backendIsWebGPU || MARK_RT_WEBGL2)
+      ) {
         markRig = markMod.createMarkRT(webgpu as never);
         markRigRef.current = markRig;
         // The SAME session-shared normalized mark geometry RouteHeroLogo
@@ -353,20 +395,53 @@ export function CrystalCluster({
           if (!cancelled && geo) markRig?.setGeometry(geo);
         });
       }
+      // ROUND 14 WAVE 2 — the two-pass inner RT (needs the mesh to exist
+      // in the group, i.e. MARK_INSIDE_MESH or broken). Same backend gate
+      // idiom as the mark RT (INNER_RT_WEBGL2 — the rig is the proven
+      // crystalMarkRT rig shape).
+      if (
+        ICE_TWO_PASS &&
+        (broken || MARK_INSIDE_MESH) &&
+        !lite &&
+        (backendIsWebGPU || INNER_RT_WEBGL2)
+      ) {
+        innerRig = innerMod.createInnerRT(webgpu as never);
+        innerRig.resize(size.width, size.height);
+        innerRigRef.current = innerRig;
+      }
       // ROUND 13e — the BROKEN band mounts the mark as a real mesh in the
       // camera-locked group instead (both backends: plain MeshBasicMaterial,
       // no RT, no node graph — the reveal is pure compositing).
-      if (broken) {
+      // ROUND 14 WAVE 2 — with MARK_INSIDE_MESH the healthy band does too.
+      // WAVE 2.1 — on the HEALTHY band ONLY when the inner rig actually
+      // exists: the sealed slab's mesh is meaningful solely as the RT's
+      // source (it is hidden from the main pass); without a rig (lite,
+      // ICE_TWO_PASS off, backend gate) it would be a bare main-pass draw
+      // bleeding 100% outside the silhouette. Lite / no-rig healthy thus
+      // stays mark-less exactly as wave 1 (whose lite healthy had no mark).
+      if (broken || (MARK_INSIDE_MESH && innerRig)) {
         void loadMarkGeometry().then((geo) => {
           if (!cancelled && geo) setMarkGeo(geo);
         });
       }
+      // ROUND 14 stage A — the screen-refraction branch takes the SAME
+      // backend gate as the mark RT (true WebGPU, or the WebGL2 fallback once
+      // REFR_SCREEN_WEBGL2 is flipped after the ?backend=webgl2 proof); the
+      // config kill-switch REFR_SCREEN is applied inside the build.
+      const screenRefr = !lite && (backendIsWebGPU || REFR_SCREEN_WEBGL2);
       built = mod.createCrystalBuild({
         webgpu: webgpu as never,
         tsl: tslNs as never,
         mode,
         lite,
         markTexture: markRig ? markRig.texture : undefined,
+        screenRefraction: screenRefr,
+        // Stage D — the session-singleton gradient env (full tier only; the
+        // build ignores it on lite).
+        envTexture: lite ? undefined : (getCrystalEnvTexture() ?? undefined),
+        // WAVE 2 — the inner transmission RT (full tier, gated above).
+        innerTexture: innerRig ? innerRig.texture : undefined,
+        innerLog2: innerRig ? innerRig.log2Size : undefined,
         // Round 8-H: BOTH tiers get the authored asset — 450 / 1 114 tris is
         // cheaper than the procedural lite build, so there is no reduced
         // variant and no tier branch here.
@@ -395,14 +470,16 @@ export function CrystalCluster({
       cancelled = true;
       built?.dispose();
       markRig?.dispose();
+      innerRig?.dispose();
       plexusBuilt?.dispose();
       fogBuilt?.dispose();
       markRigRef.current = null;
+      innerRigRef.current = null;
       // ROUND 13e — the mark MATERIAL is ours to dispose; the geometry is
       // RouteHeroLogo's session singleton and must never be.
       markMatRef.current?.dispose();
       markMatRef.current = null;
-      markEnvRef.current?.dispose();
+      // ROUND 14: the env is the module singleton — released, never disposed.
       markEnvRef.current = null;
       setMarkGeo(null);
       setBuild(null);
@@ -411,6 +488,15 @@ export function CrystalCluster({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, gl]);
+
+  // ROUND 14 WAVE 2 — keep the inner RT at canvas × INNER_RT_SCALE (capped);
+  // a resize, never a per-frame call. The lod law reads the new log2 size.
+  useEffect(() => {
+    const rig = innerRigRef.current;
+    if (!rig) return;
+    rig.resize(size.width, size.height);
+    if (build) build.uniforms.uInnerLog2.value = rig.log2Size;
+  }, [size.width, size.height, build]);
 
   // --- Section rect + the callout CSS-var host ------------------------------
   const [rect, setRect] = useState<SectionRect | null>(null);
@@ -527,6 +613,10 @@ export function CrystalCluster({
     fogClear: FOG_CLEAR,
     fogRadiusOut: FOG_RADIUS_OUT,
     fogRadiusY: FOG_RADIUS_Y_BY_MODE[mode],
+    // --- ROUND 14 WAVE 2 — the healthy band's mark core (HDR emissive
+    // intensity on the cyan; the broken band rides its meteor-hold bell and
+    // ignores this). Live: `feel.markCoreHdr`.
+    markCoreHdr: MARK_CORE_HDR,
   });
 
   useFrame((_, rawDelta) => {
@@ -881,16 +971,24 @@ export function CrystalCluster({
           (MARK_LIT_BASE + (MARK_LIT_PEAK - MARK_LIT_BASE) * openBell) *
           (1 + 0.5 * zoomBump);
       }
-      // A gentle wobble sells the mark's depth (it is the END-PAGE 3-D logo
-      // treatment now — dark metal body + cyan emissive + env sheen).
-      const markMesh = markMeshRef.current;
-      if (markMesh) {
-        markMesh.rotation.y = Math.sin(t * 0.35) * 0.16;
-        markMesh.rotation.x = Math.sin(t * 0.27 + 1.3) * 0.06;
-      }
     } else {
       // Healthy: the rim flashes with the ring ignitions.
       flashRef.current = Math.min(maxPulse, 1);
+      // ROUND 14 WAVE 2 — the sealed slab's mark core: a steady HDR cyan
+      // (MARK_CORE_HDR) that the body multiply brings to ~1.0 only on thin
+      // chords — a soft bloom through the ice, not a lamp. Rides `reveal`.
+      if (markMatRef.current) {
+        markMatRef.current.emissiveIntensity =
+          feelC.markCoreHdr * (0.6 + 0.4 * reveal);
+      }
+    }
+    // A gentle wobble sells the mark's depth (it is the END-PAGE 3-D logo
+    // treatment now — dark metal body + cyan emissive + env sheen). WAVE 2:
+    // both bands (the mark's own motion, not the meteor-hold choreography).
+    const markMesh = markMeshRef.current;
+    if (markMesh) {
+      markMesh.rotation.y = Math.sin(t * 0.35) * 0.16;
+      markMesh.rotation.x = Math.sin(t * 0.27 + 1.3) * 0.06;
     }
     prevHovered.current = hoveredIdx;
 
@@ -981,6 +1079,20 @@ export function CrystalCluster({
     // a normal scroll pass, at which point no logo is readable. --------------
     const rig = markRigRef.current;
     if (rig) rig.render(gl, t, mesh.quaternion);
+
+    // --- ROUND 14 WAVE 2 — the two-pass inner RT: the mark mesh from the
+    // MAIN camera into its own mipmapped RT, once per frame while the stone
+    // is on frame (the cull early-return above gates it). The rig brings the
+    // mark's world matrix up to date itself (the group transform was written
+    // above in this same callback). On the HEALTHY band the main-pass copy is
+    // hidden once the RT is live (igloo hides its inner object in pass 2);
+    // the broken band keeps it — the shards' gaps are the reveal. ----------
+    const inner = innerRigRef.current;
+    if (inner && markMesh) {
+      markMesh.visible = true;
+      inner.render(gl, camera, markMesh);
+      if (!broken && INNER_HIDE_MAIN_HEALTHY) markMesh.visible = false;
+    }
 
     // --- Round 7-2b §B-c — advance the plexus (healthy full only). The
     // tumble quaternion just written above is applied to the point positions
@@ -1291,6 +1403,21 @@ export function CrystalCluster({
             }
           : null;
       },
+      /** ROUND 14 — which ice stages this build compiled: thickness
+       * "baked" (aThick from the GLB) / "proxy" / "off"; screenRefraction
+       * (WebGPU only until REFR_SCREEN_WEBGL2); env; inner; sparkle2;
+       * bloomGlints. Null until the lazy build lands. */
+      get ice() {
+        return build ? { ...build.ice } : null;
+      },
+      /** ROUND 14 WAVE 2 — the two-pass inner RT (renders / lastMs = CPU
+       * encode ms of the last RT render / size px). Null unless built. */
+      get innerRt() {
+        const r = innerRigRef.current;
+        return r
+          ? { renders: r.renders, lastMs: r.lastMs, size: r.size }
+          : null;
+      },
       /** Round 7-2b — plexus state (healthy full only). */
       get plexusInfo() {
         return plexus
@@ -1389,6 +1516,40 @@ export function CrystalCluster({
           ceil: u.uCeil.value, // 1.0 = the igloo-faithful no-bloom variant
           rimEdgeStart: u.uRimEdgeStart.value,
           rimEdge: u.uRimEdge.value, // 0 = no crystal bloom at all
+          // ROUND 14 — ICE UPGRADE (crystalConfig "ROUND 14" block). Dead
+          // nodes where the stage was not built — see `ice` above.
+          absorbRef: u.uAbsorbRef.value, // stage B reference chord
+          absorbMix: u.uAbsorbMix.value, // 0 = the flat body multiply
+          absorbMilk: u.uAbsorbMilk.value,
+          screenThick: u.uScreenThick.value, // stage A (WebGPU full only)
+          screenLodK: u.uScreenLodK.value,
+          screenBlurPx: u.uScreenBlurPx.value,
+          screenMix: u.uScreenMix.value, // 0 = live off-switch
+          innerGain: u.uInnerGain.value, // stage C
+          innerAtten: u.uInnerAtten.value,
+          crackLo: u.uCrackLo.value,
+          crackHi: u.uCrackHi.value,
+          crackGain: u.uCrackGain.value,
+          milkGain: u.uMilkGain.value,
+          envGain: u.uEnvGain.value, // stage D
+          coatRough: u.uCoatRough.value,
+          coatGain: u.uCoatGain.value,
+          sparkle2Gain: u.uSparkle2Gain.value, // stage E
+          glintBloom: u.uGlintBloom.value, // stage F (post-ceiling)
+          envEdge: u.uEnvEdge.value, // stage F env hairline
+          // ROUND 14 WAVE 2 — the frosted meteorite (config "WAVE 2" block).
+          // Dead nodes where the branch was not built — see `ice`.
+          innerLodK: u.uInnerLodK.value, // two-pass: blur under roughness
+          innerThick: u.uInnerThick.value, // two-pass: ray length
+          innerCA: u.uInnerCA.value, // two-pass: dispersion on the mark
+          innerMix: u.uInnerMix.value, // 0 = live off
+          innerLog2: u.uInnerLog2.value, // driver-written on resize
+          crustGain: u.uCrustGain.value, // frost master (0 = off)
+          crustRidgePow: u.uCrustRidgePow.value,
+          grainNormalAmp: u.uGrainNormalAmp.value, // dead on lite
+          grainRoughK: u.uGrainRoughK.value, // dead on lite
+          inclusionGain: u.uInclusionGain.value, // dead unless inner+meteorite
+          markCoreHdr: feel.current.markCoreHdr, // JS-side (healthy emissive)
         };
       },
     };
@@ -1423,17 +1584,28 @@ export function CrystalCluster({
           LOCKED group, never the tumbling mesh (the tumble reaches ~55° and
           would make the mark unreadable). Geometry is the session-shared
           RouteHeroLogo singleton — never disposed here. */}
-      {broken && markGeo && markMatRef.current && (
-        <mesh
-          ref={markMeshRef}
-          geometry={markGeo}
-          material={markMatRef.current}
-          position={[0, MARK_MESH_Y, 0]}
-          scale={MARK_MESH_SCALE}
-          renderOrder={-3.5}
-          frustumCulled={false}
-        />
-      )}
+      {/* ROUND 14 WAVE 2 — MARK_INSIDE_MESH: the healthy band too, at its
+          own offset (MARK_MESH_Y_HEALTHY); stage A refracts it for free and
+          the two-pass RT (when live) reads it through the frost. */}
+      {/* WAVE 2.1 — healthy mounts ONLY with a live inner rig (the ref is
+          set in the build effect before setBuild, so it is current here)
+          and starts hidden: the useFrame toggles it visible for the RT
+          render and hides it again (INNER_HIDE_MAIN_HEALTHY). Broken keeps
+          it visible from the first frame — the gaps are the reveal. */}
+      {(broken || (MARK_INSIDE_MESH && innerRigRef.current)) &&
+        markGeo &&
+        markMatRef.current && (
+          <mesh
+            ref={markMeshRef}
+            geometry={markGeo}
+            material={markMatRef.current}
+            position={[0, broken ? MARK_MESH_Y : MARK_MESH_Y_HEALTHY, 0]}
+            scale={MARK_MESH_SCALE}
+            renderOrder={-3.5}
+            frustumCulled={false}
+            visible={broken}
+          />
+        )}
       {/* renderOrder −3: painted before the constellation layers (−2/−1) —
           the additive net reads as current flowing in FRONT of the crystal. */}
       <mesh

@@ -2659,3 +2659,300 @@ export const AMBIENT_WARM_MIX = 0.087;
  * which is the §D3 defect this term exists to fix.
  */
 export const AMBIENT_GAIN = 0.032;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// === ROUND 14 — ICE UPGRADE (the igloo-grade ice pass) ======================
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * Dossier: scratchpad/dossiers/crystal-ice.md §9 (staged proposal) on top of
+ * research/2026-08-21-igloo-stones-dossier.md §2 (the measured anatomy). Six
+ * stages, each behind its OWN one-line kill-switch below, each a new branch in
+ * crystalBuild's `shade` Fn. The lite tier builds ONLY stage B's analytic
+ * proxy / baked chord; everything else is `!lite`. Nothing in the meteor
+ * hold, tumble, callouts, GLB silhouettes, render order, alpha/Discard
+ * contract or the bloom threshold moves: the stages add uniforms and ALU,
+ * not choreography.
+ *
+ * VALUE-WORLD RE-LEVEL (8-F / 8-H tables, lumLin): the ordering
+ *   body (0.0396 typ) < lobe / rim (0.276) < ceiling (1.35) < hairline bloom
+ * is preserved by construction. Every new term is either a MULTIPLY on the
+ * body (stage B, mean 1.0 at the median chord by construction) or an ADDITIVE
+ * sub-ceiling term bounded below the ceiling (C <= 0.29 worst case, D coat
+ * 0.35 peak on a pinpoint, env <= 0.25 at grazing). Stage F's glints are
+ * added AFTER the ceiling exactly like the hairline, >= 1.10 post-blend, on
+ * ~4 % of the fine cells only.
+ */
+
+// --- Stage B — Beer–Lambert absorption / milky depth ------------------------
+/** KILL-SWITCH — false restores the flat `uBodyDarken` multiply exactly. */
+export const ICE_ABSORB = true;
+/**
+ * Transmittance colour AT THE REFERENCE CHORD (three's `attenuationColor`
+ * convention: T = C^(dist / ref)). Chosen so its LINEAR luminance is ~0.30 =
+ * BODY_DARKEN, i.e. a median-thickness path transmits exactly what the flat
+ * multiply did, and the 8-F body row (0.0396) is unchanged at the median.
+ * Hue: cool navy-cyan (0.107, 0.332, 0.552 linear → lum 0.300), so DEEP paths
+ * go navy-blue and THIN edges (T → 1) go clear — the igloo "dark cool body,
+ * bright thin rims" read.
+ */
+export const ABSORB_COLOR = "#5C9CC4";
+/**
+ * Reference chord per mode, in CRYSTAL UNITS: the MEDIAN baked chord of the
+ * shipped GLB (measured 2026-08-27 by raycasting −normal from every vertex,
+ * back faces only; intact p05/p50/p95 = 0.39 / 1.93 / 2.72, fractured 0.11 /
+ * 0.93 / 2.16 — the pieces are half as thick as the slab). Per mode so BOTH
+ * bodies sit at 0.30 mean transmittance at their own median; otherwise the
+ * broken stone would run ×1.9 brighter than the healthy one.
+ */
+export const ABSORB_REF_CHORD: Record<"healthy" | "broken", number> = {
+  healthy: 1.93,
+  broken: 0.93,
+};
+/** 0 = today's flat multiply, 1 = pure Beer–Lambert. 0.7 keeps 30 % of the
+ * flat term so the thinnest edges do not go fully clear. */
+export const ABSORB_MIX = 0.7;
+/** Milky depth: lerp T toward its own luminance (desaturate deep paths). */
+export const ABSORB_MILK = 0.35;
+/** Analytic thickness proxy (procedural FALLBACK geometry only — the authored
+ * slab carries a baked `aThick` on both tiers): thick = ref·(A + B·(N·V)²).
+ * At the typical N·V ~0.7 that is 0.99·ref, so the proxy's median matches the
+ * baked one. */
+export const THICK_PROXY_A = 0.35;
+export const THICK_PROXY_B = 1.3;
+
+// --- Stage A — screen-space blurred refraction + RGB dispersion --------------
+/** KILL-SWITCH — the framebuffer branch is not BUILT when false. */
+export const REFR_SCREEN = true;
+/** GATE — the three/webgpu WebGL2 fallback backend (the MARK_RT_WEBGL2
+ * idiom): the copy path exists there (WebGLTextureUtils copyTexSubImage2D +
+ * generateMipmaps) but the repo-wide `?backend=webgl2` proof is still open.
+ * Until it passes the branch is built on true WebGPU only. */
+export const REFR_SCREEN_WEBGL2 = false;
+/** Transmission-ray length in crystal units (igloo `thickness` 2 on a ~2-unit
+ * cube; the mark uses 0.35 for a MID-depth inclusion — the far wall wants
+ * more). Scaled by modelScale in-shader. */
+export const REFR_SCREEN_THICK = 1.2;
+/** igloo's lod law: log2(size)·roughness·clamp(2·ior − 2) = 0.36 at ior 1.18. */
+export const REFR_SCREEN_LOD_K = 0.36;
+/** Vogel-disk tap radius in PIXELS at roughness 1 (× roughEff). */
+export const REFR_SCREEN_BLUR_PX = 6;
+/** Taps per channel (BAKED — the loop is unrolled at build). 3 channels × 4 =
+ * 12 fetches/fragment; three's own dispersion does 3 bicubic = 12. */
+export const REFR_SCREEN_TAPS = 4;
+/** Blend of the framebuffer over the procedural backdrop where the
+ * framebuffer's own alpha says something was drawn (fog quad, broken mark).
+ * The DOM is NOT in the framebuffer (transparent canvas), so `backdrop()`
+ * stays the floor (dossier §8). Live on the dev handle (0 = off). */
+export const REFR_SCREEN_MIX = 0.85;
+
+// --- Stage D — PMREM env specular + Schlick fresnel + GGX clearcoat ---------
+/** KILL-SWITCH for the env-specular + clearcoat terms. */
+export const ICE_ENV = true;
+/** Env-specular gain on F_Schlick(f0 = ENV_F0) × pmremTexture(gradient env,
+ * R_world, roughEff). The env is the mark's asset-free 16×256 canvas equirect
+ * (cyan/blue/navy vertical band), so reflections read as a cool sky band;
+ * worst case at grazing ~0.7 lum × F~1 × 0.35 = 0.25 < the rim 0.277. */
+export const ENV_GAIN = 0.35;
+/** Dielectric f0 for ice (n = 1.31 → 0.018). */
+export const ENV_F0 = 0.02;
+/** Clearcoat lobe: GGX alpha = COAT_ROUGH², NORMALISED to peak 1 (D·π·α²) on
+ * the UN-jittered N against the key half-vector — the wet pinpoint. */
+export const COAT_ROUGH = 0.06;
+/** Peak 0.35 lumLin on a sub-pixel highlight: above the broad lobe (0.276),
+ * far under the ceiling. */
+export const COAT_GAIN = 0.35;
+
+// --- Stage C — internal frost / crack parallax layers ------------------------
+/** KILL-SWITCH for the inner layers. */
+export const ICE_INNER = true;
+/** Depths along the k=0 refracted ray (crystal units): the ember-core idiom
+ * generalised; the mark sits at 0.35, between layers 1 and 2. */
+export const FROST_LAYER_DEPTHS: readonly number[] = [0.25, 0.6, 1.1];
+/** Fractal-noise frequency per layer (mx_fractal_noise_float, 3 octaves). */
+export const FROST_LAYER_FREQ: readonly number[] = [2.2, 3.1, 4.6];
+/** Which layers carry the (27-cell) worley milk; the deepest skips it. */
+export const FROST_LAYER_MILK: readonly boolean[] = [true, true, false];
+export const FROST_MILK_FREQ = 1.4;
+/** Navy-tinted white (the transplant plan's frost colour). */
+export const FROST_LAYER_COLOR = "#CFE2F0";
+/** Master gain. Worst case (milk 1, cracks 1, all layers): (0.35 + 0.22) ×
+ * Σ e^(−depth·1.2) = 0.57 × 1.50 × 0.45 × 0.75 lum = 0.29, under the lobe. */
+export const INNER_GAIN = 0.45;
+/** Deeper = dimmer: w = exp(−depth·INNER_ATTEN). */
+export const INNER_ATTEN = 1.2;
+/** Ridged-noise seam window → thin bright cracks (sub-bloom by construction). */
+export const CRACK_LO = 0.86;
+export const CRACK_HI = 0.97;
+export const CRACK_GAIN = 0.22;
+export const MILK_GAIN = 0.35;
+
+// --- Stage E — finer screen-stable micro-facet glints ------------------------
+/** KILL-SWITCH for the second sparkle layer. */
+export const ICE_SPARKLE2 = true;
+/** Cells per crystal unit (~3 px at the measured 83 px/unit band). */
+export const SPARKLE_FREQ2 = 27;
+export const SPARKLE2_TILT = 0.6;
+export const SPARKLE2_POW = 120;
+export const SPARKLE2_DENSITY = 0.8;
+/** Sub-bloom (<= the key lobe). */
+export const SPARKLE2_GAIN = 0.22;
+/** fwidth fade: cells narrower than FADE_PX[0] screen px vanish, fully in by
+ * FADE_PX[1]: no shimmer at the far scroll positions. */
+export const SPARKLE2_FADE_PX: readonly [number, number] = [2, 5];
+
+// --- Stage F — sparse bloom glints + env-edge hairline (post-ceiling) --------
+/** KILL-SWITCH — off (with ENV_EDGE_GAIN 0) is the igloo-faithful variant. */
+export const ICE_BLOOM_GLINTS = true;
+/** Added AFTER the uCeil clamp on the fine cells: keyC (lum 0.90) × 1.3 =
+ * 1.17 col-lum → 1.10 post-blend > threshold 1.0 (the hairline's exact
+ * arithmetic, RIM_EDGE_GAIN). */
+export const GLINT_BLOOM_GAIN = 1.3;
+/** smoothstep(D, D + 0.03, hash) ⇒ ~4 % of the fine cells. */
+export const GLINT_BLOOM_DENSITY = 0.93;
+/** Second hairline: env specular on the extreme-grazing band (same
+ * uRimEdgeStart gate), post-ceiling. */
+export const ENV_EDGE_GAIN = 0.6;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// === ROUND 14 WAVE 2 — THE FROSTED METEORITE (igloo hero-block read) =======
+// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * Owner reference: igloo.inc's hero slab — a chunky frosted block, white
+ * fibrous striations on the crust, whiter ridges, and a 3-D logo mesh INSIDE
+ * seen only through refraction (blurred by the frost, strongly dispersed).
+ * Ours: the same construction with a space / meteorite mood — dark navy body,
+ * cool blue-white frost, sparse dark mineral inclusions, and the SerSan mark
+ * glowing cyan inside as the single bright accent. Four features, each behind
+ * its own one-line kill-switch, each a live gain on the dev handle:
+ *   1. MARK_INSIDE_MESH — the mark is a REAL mesh inside BOTH stones (the
+ *      broken band already had it; the healthy band drops its render-once RT
+ *      for the same mesh), drawn BEFORE the crystal so stage A refracts it.
+ *   2. ICE_TWO_PASS — igloo's own trick: the inner object rendered into its
+ *      OWN mipmapped RT (crystalInnerRT.ts) and sampled through the SAME
+ *      projective ray walk as stage A, per channel, with the thickness smear
+ *      and the roughness-driven lod — so the mark blurs under the crust.
+ *   3. ICE_CRUST — ridge whitening from a baked per-vertex curvature (`aCurv`,
+ *      one float slot: healthy 5, broken 7, ≤ 8) + anisotropic striations
+ *      stretched along a per-patch tangent (aFacet-seeded), modulating the
+ *      frost albedo, the normal, the local roughness and the opacity.
+ *   4. ICE_METEORITE — absorption hue re-aimed at navy-charcoal at the SAME
+ *      luminance as wave 1 (mean body unchanged), worley inclusions inside.
+ * VALUE WORLD: body 0.04 < frost (≤ CRUST_LEVEL 0.2 at a ridge) < lobe/rim
+ * 0.276 < ceiling 1.35 < hairline. The mark core (MARK_CORE_HDR) is the ONE
+ * new term allowed past 1.0, and only after the body multiply on thin chords.
+ */
+
+// --- 1. The mark as a mesh inside both stones -------------------------------
+/** KILL-SWITCH — false restores wave 1: healthy samples the render-once mark
+ * RT in-shader (crystalMarkRT), broken keeps its mesh. */
+export const MARK_INSIDE_MESH = true;
+/** Healthy-band vertical offset of the mesh (crystal units). The intact slab
+ * is the SAME block the fractured file partitions, so the broken band's
+ * measured −0.5 (MARK_MESH_Y) is the starting point; separate so the two can
+ * be judged independently. */
+export const MARK_MESH_Y_HEALTHY = -0.5;
+/** Healthy-band emissive intensity of the cyan core (HDR, ≥ 1.0 so the mark
+ * blooms SOFTLY through the ice: ×body ≈ 0.3 at the median chord ⇒ ~0.9–1.2
+ * lum only where the chord is thin). The broken band keeps its meteor-hold
+ * ride (MARK_LIT_BASE → MARK_LIT_PEAK) untouched. Live: `feel.markCoreHdr`. */
+export const MARK_CORE_HDR = 3.0;
+
+// --- 2. Two-pass inner transmission (igloo's transmission RT) ---------------
+/** KILL-SWITCH — the inner-RT branch is not built and the RT never allocated
+ * when false. Full tier only (lite never gets an RT). */
+export const ICE_TWO_PASS = true;
+/** GATE — the WebGL2 fallback backend. The rig is the crystalMarkRT rig
+ * (proven on both backends). WAVE 2.1: false — parity with MARK_RT_WEBGL2
+ * (the same rig class, same unproven half-float mip chain on the fallback);
+ * the sample branch was compile-proved on the fallback while this was true.
+ * Flip true only after the `?backend=webgl2` LOOK proof passes. */
+export const INNER_RT_WEBGL2 = false;
+/** RT size CAP (px, longest side); the RT is screen × INNER_RT_SCALE clamped
+ * to this, resized with the canvas (never per frame). */
+export const INNER_RT_SIZE = 1024;
+export const INNER_RT_SCALE = 0.5;
+/** Samples of the inner ladder (BAKED — unrolled). igloo AWESOME_SAMPLES 3:
+ * 3 × RGB = 9 fetches on a ~0.4 MP RT. */
+export const INNER_SAMPLES = 3;
+/** igloo's lod law on the inner RT: lod = log2(size)·roughEff·this. 0.36 =
+ * clamp(2·ior − 2) at ior 1.18; the crust raises roughEff on top. */
+export const INNER_LOD_K = 0.36;
+/** Transmission-ray length to the inner object (crystal units, × modelScale
+ * in-shader). The mark sits at mid-depth: 0.6 + the smear reaches the far
+ * half. */
+export const INNER_THICK = 0.6;
+/** Chromatic spread of the inner ladder — igloo uChromaticAberration 0.1;
+ * higher than the body's CRYSTAL_CA because the mark is where the owner wants
+ * to SEE the fringes ("strong chromatic dispersion"). Fresnel-boosted by
+ * CA_EDGE_BOOST like the body's. */
+export const INNER_CA = 0.16;
+/** Blend of the inner RT over `trans` by its own alpha (mix, not add — an
+ * opaque object inside replaces what was behind it). 0 = live off. */
+export const INNER_MIX = 0.9;
+/** When the two-pass branch is live on the HEALTHY band, the mark is hidden
+ * from the main pass (it is already in the RT — igloo hides its inner object
+ * in pass 2). The broken band keeps it visible: the shards' gaps ARE the
+ * reveal and the crystal never covers them. */
+export const INNER_HIDE_MAIN_HEALTHY = true;
+/** WAVE 2.1 — treat the mipmapped inner-RT tap as PREMULTIPLIED: the RT is a
+ * straight-alpha opaque mark over a (0,0,0,0) clear, so the mip average darkens
+ * the colour wherever alpha < 1 (a dark halo around the blurred mark). The
+ * shader divides the ladder's colour by max(alpha, 1e-3) before the mix-by-
+ * alpha composite. false = wave-2 raw tap. */
+export const INNER_UNPREMUL = true;
+
+// --- 3. Frost crust ---------------------------------------------------------
+/** KILL-SWITCH — no `aCurv` bake / slot, no crust branch. */
+export const ICE_CRUST = true;
+/** Master frost gain (0…1.5). */
+export const CRUST_GAIN = 0.85;
+/** Sharpens the baked curvature toward the ridges: crust ∝ curv^pow. */
+export const CRUST_RIDGE_POW = 1.6;
+/** Frost floor on a flat face interior (fraction of the ridge value) — the
+ * "faces more translucent, ridges whiter" split of the reference. */
+export const CRUST_FACE_FLOOR = 0.22;
+/** Frost albedo LEVEL (lumLin at crust = 1): under the lobe/rim (0.276),
+ * well above the body (0.04) — it is what makes the crust read WHITE. */
+export const CRUST_LEVEL = 0.2;
+/** Body (transmission) reduction where the crust is high — the crust makes
+ * faces more opaque: col·(1 − crust·this). */
+export const CRUST_BODY_K = 0.55;
+/** Alpha lift where the crust is high (× uAlpha, clamped ≤ 1). */
+export const CRUST_ALPHA_K = 0.05;
+/** Frost albedo pair (cool blue-white): face → ridge. */
+export const CRUST_COLOR_FACE = "#CFE2F0";
+export const CRUST_COLOR_RIDGE = "#EAF3FF";
+/** Broken band: fracture (inward-facing cut) faces keep this fraction of the
+ * crust — fresh ice over rock. Outwardness = dot(N_local, p̂). */
+export const CRUST_FRACTURE_K = 0.35;
+/** WAVE 2.1 — the curvature bake groups coincident vertices PER SHARD (key =
+ * position + aCentr) on the broken band. Shards touch at rest, so a position-
+ * only group pairs a fracture face with its neighbour's back-to-back face
+ * (dot = −1 ⇒ a fake 1.0 ridge on every fracture-face vertex and along every
+ * outer-skin crack line). false = wave-2 position-only grouping. */
+export const CRUST_CURV_PER_SHARD = true;
+/** Striations: anisotropic fractal noise stretched STRETCH× along the
+ * per-patch tangent (k1 = FREQ/STRETCH along, k2 = FREQ across). Full tier. */
+export const GRAIN_STRETCH = 8;
+export const GRAIN_FREQ = 14;
+/** Normal perturbation along the bitangent by the striation signal. */
+export const GRAIN_NORMAL_AMP = 0.12;
+/** Local roughness raise under the crust: roughEff·(1 + crust·this) — the
+ * interior blurs more under the frost (igloo's roughness-map effect). */
+export const GRAIN_ROUGH_K = 0.9;
+
+// --- 4. Meteorite mood ------------------------------------------------------
+/** KILL-SWITCH — absorption hue and inclusions. */
+export const ICE_METEORITE = true;
+/** Absorption HUE target. ⚠ Used as a CHROMATICITY only: re-levelled in JS to
+ * ABSORB_COLOR's luminance (0.30 at the reference chord) so the mean body is
+ * byte-for-byte wave 1's re-level — the stone is navy, not a black hole. */
+export const METEORITE_ABSORB = "#0F1B2E";
+/** 0 = wave-1 hue, 1 = pure METEORITE_ABSORB chromaticity. */
+export const METEORITE_ABSORB_MIX = 0.65;
+/** Dark mineral inclusions: worley cells at the stage-C layer depths, dark
+ * where the cell distance < INCLUSION_R (sparse dots), darkening the body by
+ * this gain. Full tier (rides innerOn). */
+export const INCLUSION_GAIN = 0.7;
+export const INCLUSION_FREQ = 3.4;
+export const INCLUSION_R = 0.16;
