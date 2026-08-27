@@ -1,4 +1,4 @@
-# HANDOFF — ritratti a particelle dei fondatori (morph a 3 target), riconciliazione rami, hero
+# HANDOFF — ritratti a particelle dei fondatori (morph a 4 target, era 3), riconciliazione rami, hero
 
 > Documento per **riprendere da una nuova sessione o da un altro PC**. Aggiornato: **2026-07-20** (secondo giro: terza persona).
 > Le sessioni Claude Code e la memoria NON viaggiano tra macchine: viaggia solo il **repo git**. Questo file è committato.
@@ -257,3 +257,88 @@ Il repo è a **un solo branch** (`main`, default su GitHub) e **Vercel fa deploy
 E ha mancato completamente il difetto che rompeva tutto (contratto 7), perché **tredici agenti hanno ragionato sulla correttezza e nessuno sul budget di binding del device**. `tsc` passava pulito e la relazione era convincente.
 
 > Su questa superficie, "typecheck verde + review approfondita" **non è evidenza che funzioni**. Apri il browser e guarda la console.
+
+---
+
+## Quarto target — Alberto Tuveri (2026-08-27)
+
+**Ordine rail e `/about`:** Alessandro (A) · Michele (B) · **Alberto (C)** · Mattia (D). Alberto è `kind: "team"` (`anchor: "alberto"`), quindi `/contact` e `/start` (che iterano `coFounders`) mostrano ancora **due** persone. `/about` dice "Four operators." / "Quattro operatori." e "Two founders, two engineers."; la griglia team resta 2 colonne anche a `lg` quando `founders.length % 3 === 1` (2×2, niente card orfana).
+
+**Cosa è cambiato nel motore** (`src/webgl/gpgpu/gpgpuNodeSim.ts`):
+- `PortraitMorphOpts.colorsD` / `sizeD` (opzionali); gate `hasPortraitD = hasPortraitC && !!colorsD`, `hasPortraitSizeD = hasPortraitD && hasPortraitSizeC && !!sizeD`.
+- `tintDBuffer = instancedArray(packTint(colorsD, sizeD), "vec4")` letto con **`.element(instanceIndex)`** nel vertex stage (contratti 7/8) — mai `.toAttribute()`.
+- `portraitMorph3Expr` = esatto specchio di `m3` del kernel (`morph3N − hash·0.55`, finestra 0.45, `smoothstep`), espressione autonoma (contratto 3).
+- `portraitInkExpr` e `portraitColorExpr` sono catene a 4 vie `mix(mix(mix(A,B,m1),C,m2),D,m3)`, ogni gamba dietro un gate di build: i grafi N=2 e N=3 sono byte-identici a prima; l'hero (portrait undefined) è intatto.
+- `FounderPortraitMorph.tsx` passa `colorsD: pts[3]?.rgb`, `sizeD: pts[3]?.ink`; `homeD = homes[3]` è ora un target vero; `applyMorph` scriveva già `uMorph3 = clamp(p − 2)`.
+- `foundersMorphStore.WIRED_TARGETS = 4` → `MORPH_MAX 3`, `STAGE_TOTAL 4`, contatore `01/04…04/04`; il warning dev di troncamento non scatta più.
+- Touch morph (`founders-rail.tsx`): `hideMedia/restoreMedia` ora agiscono solo su `articles.slice(0, STAGE_TOTAL)` — se in futuro il team supera `WIRED_TARGETS` le card troncate tengono la foto invece di diventare rettangoli vuoti.
+
+**Budget di binding (contratto 7), tabella aggiornata:**
+
+| build | vertex buffer | storage in vertex |
+|---|---|---|
+| ritratto, 3 target | 4 di 8 | 3 di 8 |
+| **ritratto, 4 target (ora)** | **4 di 8** | **4 di 8** |
+
+Il compute resta a **8 su 8** (position, velocity, homeA–homeD, start, delay). **Un quinto ritratto è impossibile senza ri-architettare il kernel** (impacchettare le home in meno buffer): `STAGE_ORDER` ha quattro lettere, `WIRED_TARGETS` non va mai alzato sopra `STAGE_ORDER.length`, e una quinta entry in `founders.ts` degrada a troncamento con warning dev.
+
+**Asset — PLACEHOLDER.** `public/founders/alberto-tuveri.webp` e `alberto-headshot.webp` (1200×1800) sono oggi una card monogramma sullo sfondo grigio studio, in attesa della foto vera. La foto vera deve rispettare il contratto di inquadratura: cranio ≈ 559px di larghezza, top testa ≈ y 306, sfondo chiaro e uniforme negli angoli alti (il sampler misura lì il colore di sfondo), sfumatura del busto (contratto 12) se veste scuro; si lava **solo** il file `-headshot`.
+
+**TODO misura (contratto 11), da fare quando arriva la foto vera:** su Chrome WebGPU, home, sezione in vista, hard reload: `__sersanFounderMorph.getSampler()` → `stride` DEVE essere 1; `sharedCells` atteso ~57–62k contro il tetto `MAX_COUNT_BY_TIER.full = 60000` → alzare il tetto o ridurre `GRID_W/GRID_H` di `sqrt(wanted/measured)`. Su telefono: `lite` 20000 vs stima ~20k → probabilmente abbassare `TOUCH_GRID_SCALE` (0.58 → ~0.53). Scrivere i numeri misurati in `FounderPortraitMorph.tsx` (`MAX_COUNT_BY_TIER`).
+
+**Verifica WebGPU ancora da fare (il typecheck non la vede):** console senza righe `CreateRenderPipeline` / `Vertex buffer count`; parcheggiato su C su frame consecutivi `getUniforms()` → `progress 2, uMorph 1, uMorph2 1, uMorph3 0` esatti; su D → `uMorph3 1`; `simulateGesture('down')` ×4 percorre A→B→C→D e al quarto rilascia; faccia D non stencil a forma di Alberto.
+
+**Gate di merge (revisione 2026-08-27, sera).** Le due metà di questo lavoro hanno rischi diversi e vanno tenute separate (dossier §7d):
+- *Motore* (`gpgpuNodeSim.ts` gamba D, `FounderPortraitMorph.tsx` `colorsD/sizeD`, slice `hideMedia`): byte-identico a N=3 finché `founders.length === 3`, quindi può andare in produzione da subito.
+- *Contenuto* (entry Alberto in `founders.ts`, `WIRED_TARGETS = 4`, i due asset `alberto-*.webp`): OGGI entrambi gli asset sono lo STESSO file placeholder (md5 `5734284b…`, card monogramma). Finché non arriva la foto vera il morph campionerebbe un monogramma come target D e `/about` + rail mostrerebbero la card monogramma. Non pubblicare questa metà prima che la coppia di headshot reali sia in `public/founders/` e la checklist qui sopra sia stata eseguita su Chrome WebGPU dal PC dell'owner (l'estensione Chrome usata dagli agenti non raggiunge `localhost:3000`: ERR_CONNECTION_REFUSED su localhost, 127.0.0.1 e IP LAN, quindi la verifica NON è stata fatta da agente). Per tenere ferma la metà contenuto: togliere l'oggetto Alberto da `founders.ts`, riportare `WIRED_TARGETS` a 3, non aggiungere i due webp.
+
+---
+
+## Depth matte + ritratto illuminato + navigazione a frecce (2026-08-27, pomeriggio)
+
+**Il problema che ha aperto il giro.** Lo screenshot del capo: volti "a mezzatinta" con zone VUOTE (cuoio capelluto, fronte, guance). Causa misurata nel codice, non nella maschera: `ink` era la DISTANZA CROMATICA dal muro (contratto 12) e pilotava la dimensione del disco → la pelle illuminata, dello stesso colore del muro, finiva a ink ≈ 0 → disco sub-pixel → knee alpha → `Discard`. Nessuna soglia poteva risolverlo (contratto 2: colore non separa muro e cranio).
+
+**Riferimento.** `lusion.co/about` TEAM, reverse completo in `docs/recon-2026-08-27/lusion-team-reverse.md`: la testa è una **scansione 3D** (`team/<id>.buf`: 8192 punti blue-noise sulla superficie frontale, normale + shade precalcolati), resa come quad instanziati con DoF bokeh, luce = puntatore, scanline, glitch, additive + bloom. Ogni punto si disegna SEMPRE; il tono viene da `shade × normale·luce`, mai dalla dimensione.
+
+**La soluzione (nostro equivalente 2.5D, senza scansione):**
+1. `scripts/generate-founder-depth.mjs` → `public/founders/<anchor>-depth.webp` (Depth Anything V2 **base**, offline, 600×900, lossless, BIANCO = VICINO, ~48 KB). Rilanciare quando cambia una foto o entra una persona. Il sito non esegue mai il modello.
+2. `sampleImagePoints.ts`: `samplePortraitSet(images, spec, depths?)`. Con la depth twin **presenza** = `smoothstep(depthCut ± depthEdge)` (istogramma bimodale: muro ≤ 0.19, busto ≥ 0.35 → `depthCut 0.3`) **AND** flood fill dal bordo (rimuove l'alone sfocato del modello) × dissolvenza verticale. `ink` è ~1 in tutto il soggetto → copertura uniforme per costruzione. `z` = depth reale (blur 3×3), `nrm` = gradiente della stessa mappa. Senza twin: path legacy byte-identico.
+3. `gpgpuNodeSim.ts` (solo path portrait, hero intatto): con `normalsA/B` il tint vec4 diventa `[rgb24, nx, ny, ink]` (rgb sRGB 8 bit impacchettato in UN float esatto) → **zero binding nuovi** (contratto 7 invariato: 4/8 storage in vertex, 8/8 in compute). `PortraitLook` → uniform live: `ambient, diffuse, rim, mono, monoTint, focusDist, focusRange, bokeh, scan, photo, frontLo/Hi`, `uLightPos` (spazio gruppo, guidata dal puntatore), `uRelief` (kernel: moltiplica la z delle home; gate `hasPortrait`). Tono = `mix(chroma·lumC, tint·lumC, mono) × min(ambient + diffuse·wrapLambert + rim, 1) + scanline`, energia bokeh conservata.
+4. `FounderPortraitMorph.tsx`: carica le twin, passa normali e look, `MAX_COUNT_BY_TIER.full 80000` (unione misurata **46.5k, stride 1** — cresce con la presenza), `TOUCH_GRID_SCALE 0.52`, `fadeStart 0.55/0.3`, blending **additive** + `DEFAULT_EMISSIVE_LIT 0.72`, disco ≈ 1.15× il passo (`DISC_PITCH_LIT`) così i punti restano separati (nuvola, non foto fusa). **`REST_RELIEF 0.2`**: il rilievo proiettato è basso a riposo e si apre a 1 a metà gamba (`uRelief = 0.2 + 0.8·env`).
+
+### Contratti nuovi (13–16)
+
+13. **La griglia frontale regolare "pettina" sotto prospettiva se il rilievo proiettato è alto.** Misurato: pulito a ≤ 0.15–0.2 del rilievo pieno, strisce evidenti a 0.55 (rampe ripide orecchio/mascella: lo spostamento laterale per cella supera il passo). Il volume a riposo lo danno le **normali** (illuminazione), non la z. Non alzare `REST_RELIEF` senza guardare il lato destro del viso ingrandito.
+14. **La luce del puntatore non deve mai attraversare l'asse di vista.** Con la key quasi frontale ogni normale satura insieme, i dischi additivi sommano e il bloom (soglia 0.8) trasforma il busto in una macchia bianca. Per questo `LIGHT_SWING` è piccolo (3.5/2.5), `LIGHT_BASE` obliqua e il termine luce è **cappato a 1** nello shader (la scanline sale sopra il cap).
+15. **Il layout del tint è per BUILD, non per target.** Se manca anche UNA depth twin, `lit` è false per tutti (path legacy). Non mischiare i due layout.
+16. **`photo` comprime la luminanza della foto** (0.35): a 1 la camicia bianca resta 2× la pelle e domina; a 0 il tono è pura geometria. Il crominanza resta sempre.
+
+### Navigazione (richiesta del capo, stesso giorno)
+
+Il **gate scroll-jack è rimosso**: la pagina non viene mai fermata (`lenis.stop()` sparito, nessun listener wheel/touch in capture, niente snap barrier). Si cambia persona con i pulsanti **← →** nel chrome (`[data-founders-prev]` / `[data-founders-next]`, `aria-disabled` agli estremi) o con i tasti ← → quando la sezione è centrata e nessun campo ha il focus. `simulateGesture('down'|'up')` = next/prev. `store.pinned` ora significa solo "modo morph DOM attivo". A riposo il busto **segue il puntatore** (`REST_PARALLAX_YAW 0.16 / PITCH 0.1`, gated da `hover`) e la luce con lui — il "movimento 3D come Lusion".
+
+### Handle nuovi
+
+`__sersanFounderMorph.setLook({...})` / `getLook()` (include `lit`, `depthTwins`, `lightPos`), `setBlend('additive'|'normal')`. `setDepth(v)` scala il rilievo pieno; `setEmissive` resta.
+
+### Secondo giro (sera): composizione Lusion, cursore, auto-avanzamento, definizione
+
+Richiesta del capo dopo il primo giro: "frecce come Lusion col cursore, profili molto più grandi, volti riconoscibili, e i layer di sfondo — ma non copiati, attinenti al nostro sito".
+
+- **Composizione** (`founders-rail.tsx`, ramo `canMorph`): palco `[data-founder-stage]` assoluto, `h-[min(74vh,58rem)]` 3:4 a `left 7%`; contatore mono `[[ 01 / 04 ]]` in alto a sinistra; eyebrow + titolo compatto in alto a destra; per persona UN overlay a tutto frame (`copyRefs[i]`) con nome/ruolo/hairline in basso a sinistra e bio/chip/LinkedIn in basso a destra (`:scope > div > *` = i figli di ENTRAMBI i blocchi, stessa coreografia di prima). I pulsanti ← → restano, piccoli, in basso al centro (tastiera/AT).
+- **Head fit** (`FounderPortraitMorph.tsx` `HEAD_FILL 0.66 / HEAD_FILL_Y 0.78`): con l'ink-presenza l'estensione piena è sempre il frame (spalle), quindi il sampler misura anche `headHalfExtentX/Y` sulle sole righe sopra le spalle (`HEAD_ROW_LIMIT 0.6`) e l'isola adatta la TESTA al palco; il busto deborda e si dissolve — la composizione di Lusion.
+- **Definizione**: griglia `380×532` (unione misurata **80.145 celle, stride 1**, tetto 100k, 58 fps a riposo su questo laptop), `DISC_PITCH_LIT 1.3`, `DEFAULT_EMISSIVE_LIT 0.62`, look `photo 0.75 / mono 0.45 / ambient 0.06 / diffuse 1.0 / rim 0.45` — A/B dal vivo: 1.0× passo = sabbia, 1.15 = retino, 1.3 = si legge il volto (Michele, Alessandro, Mattia riconoscibili; Alberto resta il monogramma).
+- **Cursore** (`[data-founders-cursor]`, logica nel tick): disco accento 96px che segue il puntatore dentro il palco (damp 14/s), scala con la velocità (`1 + 0.9·min(1, v/900)` × backOut all'ingresso), freccia che ruota 0→180° con backInOut per lato del centro del palco; `cursor: none` sul palco; **click sul palco = next/prev per lato**; tasti ← → invariati.
+- **Auto-avanzamento** (`AUTO_ADVANCE_MS 7000`): dwell solo con sezione centrata, cloud vivo, stadio bloccato e puntatore NON sul palco; l'hairline sotto il nome è il timer (Lusion `faceIndexTimer`); alla fine riavvolge A ← D sul clock dell'isola (catena lineare: 3 gambe visibili); ogni passo manuale azzera.
+- **Parallasse a riposo** (`REST_PARALLAX_YAW 0.16 / PITCH 0.1`, gated da `hover`) + luce sul puntatore: il "movimento 3D col cursore".
+- **Licenza**: le twin sono generate con Depth Anything V2 **small (Apache-2.0)**; base/large sono CC-BY-NC — mai in produzione (nota nello script).
+- **Layer "attinenti"** (montati in `Scene.tsx` con 2 righe dopo `<FounderPortraitMorph/>`, auto-gate su `pinned` + WebGPU vero, `renderOrder −1`):
+  - *Telemetry rain* (`src/webgl/team/TeamGlyphRain.tsx` + `telemetryRainNodeMaterial.ts` + `telemetryTokens.ts`): colonne di token di produzione — `p99 38ms`, `evals 94/100`, `kill-sw ON`, `03:02 on-call` — che scorrono come un log tail, rari token in ciano che accendono il bloom. Handle `__sersanTeamTelemetry`. Il capo l'ha approvata ("il bg dietro era bello"). **Perf**: la prima versione a 4 layer costava ~35 ms/frame → 2 layer / 23 colonne / quad tagliati al frame / niente mip-bias → 60 fps a DPR 1. Default dal vivo: `intensity 0.16, accentHdr 0.9, rare 0.03, speed 0.7, density 0.75`. Regola: muro tenue, il testo a destra va letto senza sforzo.
+  - *Astrolabio della persona* (`src/webgl/TeamOrbit.tsx` + pool di 24 `[data-orbit-label]` nel ramo canMorph): tre anelli 3D inclinati e in precessione attorno alla testa; lungo di essi orbitano i DATI VERI di chi è sul palco (`founders.ts`: anello interno `previouslyAt`/`badges`, medio `expertise`, esterno `stack`), ogni satellite = puntino HDR + scia sull'anello + etichetta mono DOM proiettata; dietro la testa si attenuano; etichette nascoste quando cadono sul volto (`HEAD_MASK_*`); inclinano col puntatore come la testa. Cambio persona: inviluppo `1 − smoothstep(0.3, 0.7, |morph − k|)` → i satelliti volano dentro/fuori dal centro insieme al morph. Materiali three "classici" (Line + InstancedMesh), zero binding condivisi col morph. Handle `__sersanTeamOrbit` (`setIntensity/Speed/Radius/Labels`). **Sostituisce** il "loss landscape" a curve di livello, rifiutato dal capo perché troppo Lusion (file cancellati; la ricetta resta in `docs/recon-2026-08-27/`). Revert = togliere la riga in Scene.tsx + `TeamOrbit.tsx` + il pool di etichette.
+
+### Aperto
+
+- Alberto: headshot placeholder → la sua depth twin è quella del monogramma. Rigenerare con `node scripts/generate-founder-depth.mjs alberto` appena arriva la foto vera, poi ri-misurare `getSampler()` (stride 1, tetto 100k).
+- Touch/lite: `TOUCH_GRID_SCALE 0.45` non misurato su telefono; il ramo nativo/touch non ha cursore né auto-avanzamento (solo desktop pinned).
+- La composizione è tarata su ≥1024×780 (`roomy`); sotto si va sulla rail orizzontale come prima.
+

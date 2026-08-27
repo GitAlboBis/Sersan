@@ -44,10 +44,12 @@
  *
  * ENGINE REUSE. createTextMorphComputeBuild (gpgpu/gpgpuNodeSim.ts) with the
  * OPTIONAL `portrait` param. The N founder homes are wired straight through as
- * homeA/homeB/homeC (homeD = homeC, an inert identity leg), with colorsC/sizeC
- * passed so COLOUR AND INK chain to the third target too — without them the
- * third face would render its own POSITIONS in the second face's colours and
- * ink, i.e. a stencil, because the colour/ink path keys off uMorph alone.
+ * homeA/homeB/homeC/homeD (all four engine targets are LIVE at N=4, since
+ * 2026-08-27), with colorsC/sizeC AND colorsD/sizeD passed so COLOUR AND INK
+ * chain to every target — without them a later face would render its own
+ * POSITIONS in the previous face's colours and ink, i.e. a stencil, because
+ * the colour/ink path would key off the earlier uMorph alone. N=4 is the
+ * engine ceiling: the compute kernel has no fifth home buffer.
  *
  * SEQUENCING INVARIANT. uMorph, uMorph2 and uMorph3 are all derived from ONE
  * progress scalar (`morphRef`, 0..MORPH_MAX) via applyMorph(), which is what
@@ -127,10 +129,17 @@ import type {
  * count (one particle per shared grid cell) and only gets strided down if the
  * grid overshoots this. */
 const MAX_COUNT_BY_TIER: Record<"full" | "lite", number> = {
-  // MEASURED IN-BROWSER with all three shipped headshots (Alessandro, Michele,
-  // Mattia), via __sersanFounderMorph.getSampler():
+  // MEASURED IN-BROWSER with the three headshots shipped at N=3 (Alessandro,
+  // Michele, Mattia), via __sersanFounderMorph.getSampler():
   //
   //   sharedCells 51,751 · stride 1 · count 51,751
+  //
+  // TODO (N=4, 2026-08-27): the fourth headshot (alberto-headshot.webp) is a
+  // PLACEHOLDER monogram card until the real photo lands, so the union has
+  // NOT been re-measured. A fourth head of similar framing plausibly adds
+  // 5–10k cells → ~57–62k against this 60,000 ceiling. When the real headshot
+  // ships: measure getSampler().stride (MUST be 1) and sharedCells, then either
+  // raise this ceiling or shrink GRID_W/GRID_H by sqrt(wanted/measured).
   //
   // Frame timing at that real instance count: median 144.9fps, p95 7.3ms — no
   // performance concern here, the count is not what to economise on.
@@ -165,7 +174,14 @@ const MAX_COUNT_BY_TIER: Record<"full" | "lite", number> = {
   //
   // Measure any future portrait added to this rail BEFORE it lands — the union
   // is monotone in image count, so every new face can only grow it.
-  full: 60000,
+  //
+  // DEPTH MATTE (2026-08-27): ink is now PRESENCE (every subject cell inks at
+  // ~1, shoulders included down to the dissolve), so the union grew from the
+  // 51,751 "ink > 0.03" cells to the whole bust area of the four frames.
+  // Raised 60k → 80k to stay clear of the stride-2 cliff; the disc size
+  // self-adapts from spacingDev. MEASURE via __sersanFounderMorph.getSampler()
+  // after any asset change (stride MUST read 1).
+  full: 100000,
   // LITE = the TOUCH island (mobile-parity Phase 4d; the island never mounted
   // on tier lite before that phase, so this ceiling was dead). The touch
   // sampler grid is scaled by TOUCH_GRID_SCALE (below) precisely so the union
@@ -181,7 +197,7 @@ const MAX_COUNT_BY_TIER: Record<"full" | "lite", number> = {
 /** Touch island (Phase 4d): scale applied to GRID_W × GRID_H so the union
  *  lands under MAX_COUNT_BY_TIER.lite at stride 1 (see that comment). Cell
  *  count scales with grid AREA (×0.336 here). */
-const TOUCH_GRID_SCALE = 0.58;
+const TOUCH_GRID_SCALE = 0.45; // 0.58 before the depth matte + the 380×532 grid
 
 // --- Sampler grid + look constants -----------------------------------------
 /** Shared sample grid (5:7 portrait). Measured on the two shipped headshots:
@@ -194,10 +210,20 @@ const TOUCH_GRID_SCALE = 0.58;
  * one cell over the ceiling halves the count for EVERY face at once, and the
  * failure reads as uniformly SOFT rather than sparse (spacingDev auto-grows the
  * discs), so it is easy to ship by accident. */
-const GRID_W = 290;
-const GRID_H = 405;
+// 2026-08-27 (lit path, "i volti non sono definiti"): 290×405 → 380×532
+// (×1.72 cells). Presence-ink union measured 46.5k at 290×405 → expect ~80k
+// here against the 100k ceiling; the head now fills ~⅔ of a stage that is
+// itself ~2× bigger, so the extra particles are what keeps the dots fine
+// enough to read a face. Re-measure via getSampler() (stride MUST be 1).
+const GRID_W = 380;
+const GRID_H = 532;
 /** Portrait fill fraction of the stage rect (leaves a small margin). */
 const STAGE_FILL = 0.92;
+/** Lit path (2026-08-27): the HEAD's width as a fraction of the stage width
+ * (the stage is now the big centre-left box of the Lusion-style layout) and
+ * the head's half-height cap against the stage height. */
+const HEAD_FILL = 0.66;
+const HEAD_FILL_Y = 0.78;
 /** z-relief cap as a fraction of the sampled FACE height. Kept DELIBERATELY tiny
  * (0.04) — the resting cloud is effectively flat. WHY: since the sampler places
  * one particle per cell on a REGULAR grid, adjacent cells that straddle a
@@ -210,6 +236,18 @@ const STAGE_FILL = 0.92;
  * actually reads. Verified live via __sersanFounderMorph.setDepth(): 0 = clean,
  * 0.3 = visible tearing, 1 = severe comb. */
 const Z_RELIEF_MAX_FRAC = 0.04;
+/** z-relief cap when EVERY portrait was sampled with its DEPTH twin
+ * (2026-08-27). Real depth does not comb: a dark beard beside lit skin sits
+ * at the same depth, so adjacent cells get adjacent z and the relief can be
+ * a real bust (~⅓ of the face height front-to-back, like Lusion's
+ * 16 : 27.5 z : xy scale). `setDepth()` still scales it live. */
+const Z_RELIEF_DEPTH_FRAC = 0.34;
+/** Fraction of that relief PROJECTED at a locked stage (kernel `uRelief`).
+ * Measured 2026-08-27 on the shipped grid: the front-facing lattice reads
+ * clean at ≤ 0.15 and combs at steep depth ramps (ear/jaw) from ~0.3 up; the
+ * lighting normals carry the volume at rest instead. Mid-leg the relief
+ * opens to 1 with the flight envelope, so the orbit shows a real bust. */
+const REST_RELIEF = 0.2;
 /** Modest emissive so faces stay photographic at rest (task: ~1.0–1.3). */
 const DEFAULT_EMISSIVE = 1.18;
 
@@ -235,11 +273,62 @@ const SAMPLE_SPEC_BASE: Omit<PortraitSpec, "maxCount"> = {
   inkGain: 1.7, // contrast gain on the backdrop distance
   inkFloor: 0.03, // below this the cell is sensor noise → ink 0
   inkGamma: 0.62, // <1 keeps mid-tones (cheeks, shirt folds) present
-  fadeStart: 0.62, // the bust dissolves into darkness below this normalized y
-  fadeSpan: 0.32,
+  // 2026-08-27 (depth matte): raised from 0.62/0.32 — with presence-ink the
+  // white shirt inks at 1.0 and would otherwise out-shine the face; the
+  // bust now dissolves from just below the collar, Lusion-style.
+  fadeStart: 0.55, // the bust dissolves into darkness below this normalized y
+  fadeSpan: 0.3,
   inkCut: 0.03, // union ink above which a cell joins the shared list
   extentInk: 0.15, // only real ink counts toward the measured face extent
+  // DEPTH MATTE (2026-08-27): the four shipped depth twins are bimodal —
+  // wall ≤ 0.19, bust ≥ 0.35 (Depth Anything V2 base, normalised per map) —
+  // so the cut sits in the empty gap with a ±0.05 soft silhouette.
+  depthCut: 0.3,
+  depthEdge: 0.05,
 };
+
+/** Lit-look defaults (depth-matte path) — live via setLook(). */
+const DEFAULT_LOOK = {
+  // Tuned live 2026-08-27 on the WebGPU laptop (additive, pointSize ≈ 1.15×
+  // the lattice pitch): geometry-led tone, cool monochrome with the photo's
+  // chroma reading through, strong key + rim.
+  ambient: 0.06,
+  diffuse: 1.0,
+  rim: 0.45,
+  // Recognisability (owner: "non si riconosce la faccia"): most of the
+  // photograph's own luminance and chroma survive — the lighting sculpts,
+  // the photo identifies. A/B'd live on Michele 2026-08-27 evening against
+  // a finer/darker and a sandier variant; this one reads at a glance.
+  mono: 0.45,
+  monoTint: [0.8, 0.9, 1.0] as [number, number, number],
+  focusRange: 1.6,
+  bokeh: 1.0,
+  scan: 0.3,
+  photo: 0.75,
+  frontLo: -0.35,
+  frontHi: 0.15,
+};
+/** Emissive on the LIT path — additive discs at ~1.15× pitch overlap
+ * ~1.3× on average, so this lands the lit face around 0.8–1.0 with the
+ * scanline / rim peaks feeding the selective bloom. */
+const DEFAULT_EMISSIVE_LIT = 0.62;
+/** Disc diameter as a multiple of the lattice pitch. Legacy (tone by size):
+ * full-ink discs overlap 2.1× so they fuse into continuous tone. LIT: every
+ * disc is full size, so ~1.15× keeps them SEPARATE — a point cloud, not a
+ * fused image. */
+const DISC_PITCH_LEGACY = 2.1;
+// 1.3 (2026-08-27 evening A/B on the 380×532 grid): 1.0 read as sand, 1.15
+// as a fine screen; at 1.3 the discs fuse just enough for the face to read
+// while the cloud still shows its grain (Lusion's regime is bigger, softer
+// discs — the synthesis dossier §5 says so too).
+const DISC_PITCH_LIT = 1.3;
+/** Pointer-driven light, group-local units (the face is ~5 units tall):
+ * base key light up-left-front + the stage-UV pointer swinging it. */
+const LIGHT_BASE: [number, number, number] = [-2.4, 2.6, 3.4];
+/** Kept small so the key never crosses the view axis (where every normal
+ * lights at once and the bust flattens/blows out) — the pointer tilts the
+ * light, it does not carry it. */
+const LIGHT_SWING: [number, number] = [3.5, 2.5];
 
 // --- Motion constants -------------------------------------------------------
 /** Diffuse-cloud spread radius (world units) at the midpoint of the morph. */
@@ -257,6 +346,11 @@ const PARALLAX_MAX = 0.18;
  * tiny — beyond ~0.02 rad the "locked, crisp face" contract erodes into wobble. */
 const REST_SWAY_YAW = 0.02; // rad, at 0.11 rad/s
 const REST_SWAY_PITCH = 0.012; // rad, at 0.07 rad/s
+/** Rest-stage pointer parallax (rad at the stage edges), damped at 6/s like
+ * the sway. Lusion tilts ±0.05; ours is a little wider (see the useFrame
+ * note). Only on the pointer-hover path — touch has no pointer bridge. */
+const REST_PARALLAX_YAW = 0.16;
+const REST_PARALLAX_PITCH = 0.1;
 const REST_BREATH = 0.004; // scale fraction, at 0.5 rad/s
 /** Entry assemble duration (seconds) once the section reveals. */
 const ENTRY_DURATION = 1.8;
@@ -267,9 +361,9 @@ const CULL_PAD = 120;
 
 /** Headshot asset discovery — preferred over the environmental fallback. */
 const HEADSHOT_EXTS = ["webp", "jpg", "png"];
-/** Morph targets in the chain, A→B→C. Derived from MORPH_MAX — i.e. from the
- * COLOUR/INK wiring ceiling (WIRED_TARGETS), NOT from the engine's four
- * position targets — so the sampler can never prepare a target the renderer
+/** Morph targets in the chain, A→B→C→D. Derived from MORPH_MAX — i.e. from
+ * the COLOUR/INK wiring ceiling (WIRED_TARGETS, now 4 == the engine's four
+ * position targets) — so the sampler can never prepare a target the renderer
  * would draw as a stencil. See foundersMorphStore.WIRED_TARGETS. Tying it here
  * also protects the `imgs.length < TARGET_COUNT` early return below from
  * silently disabling resampling when a 4th headshot asset is absent. */
@@ -291,6 +385,21 @@ interface MorphBuild {
   uPixelRatio: { value: number };
   uViewport: { value: THREE.Vector2 };
   uEmissive?: { value: number };
+  /** Lit path (depth matte) only — see gpgpuNodeSim.PortraitLook. */
+  uLightPos?: { value: THREE.Vector3 };
+  uAmbient?: { value: number };
+  uDiffuse?: { value: number };
+  uRim?: { value: number };
+  uMono?: { value: number };
+  uMonoTint?: { value: THREE.Color };
+  uFocusDist?: { value: number };
+  uFocusRange?: { value: number };
+  uBokeh?: { value: number };
+  uScan?: { value: number };
+  uPhoto?: { value: number };
+  uFrontLo?: { value: number };
+  uFrontHi?: { value: number };
+  uRelief?: { value: number };
   tick: (p: { dt: number; time: number }) => void;
   dispose: () => void;
 }
@@ -310,7 +419,7 @@ interface MorphBuild {
 function applyMorph(b: MorphBuild, p: number) {
   b.uMorph.value = THREE.MathUtils.clamp(p, 0, 1);
   b.uMorph2.value = THREE.MathUtils.clamp(p - 1, 0, 1);
-  b.uMorph3.value = THREE.MathUtils.clamp(p - 2, 0, 1); // ≡ 0 at N=3
+  b.uMorph3.value = THREE.MathUtils.clamp(p - 2, 0, 1); // live leg C→D at N=4
 }
 
 interface StageRect {
@@ -370,6 +479,25 @@ async function loadFounder(idx: number): Promise<HTMLImageElement> {
   return loadImg(f.image);
 }
 
+/** The headshot's DEPTH twin (scripts/generate-founder-depth.mjs), or null
+ * when absent — that one portrait then samples on the legacy colour-distance
+ * path (sampleImagePoints.ts), and the build stays UNLIT for everyone if ANY
+ * twin is missing (the lit layout is per build, not per target). */
+async function loadFounderDepth(idx: number): Promise<HTMLImageElement | null> {
+  const f = founders[idx];
+  if (!f) return null;
+  try {
+    return await loadImg(`/founders/${f.anchor}-depth.webp`);
+  } catch {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn(
+        `[FounderPortraitMorph] no depth twin for ${f.anchor} — run scripts/generate-founder-depth.mjs`,
+      );
+    }
+    return null;
+  }
+}
+
 export function FounderPortraitMorph({
   touch = false,
 }: { touch?: boolean } = {}) {
@@ -387,6 +515,8 @@ export function FounderPortraitMorph({
 
   // Cached decoded portraits + the (scale-independent) shared-grid SET sample.
   const imgsRef = useRef<HTMLImageElement[]>([]);
+  /** Depth twins, index-matched to imgsRef (null = none for that portrait). */
+  const depthsRef = useRef<(HTMLImageElement | null)[]>([]);
   const setRef = useRef<PortraitSet | null>(null);
   const [sampleEpoch, setSampleEpoch] = useState(0);
   const sampleModRef = useRef<typeof import("./image/sampleImagePoints") | null>(
@@ -429,7 +559,15 @@ export function FounderPortraitMorph({
   const depthScaleRef = useRef(1);
   const spreadMaxRef = useRef(SPREAD_MAX);
   const pointSizeRef = useRef<number | null>(null);
-  const emissiveRef = useRef(DEFAULT_EMISSIVE);
+  /** Emissive override (setEmissive); null = per-path default at build. */
+  const emissiveRef = useRef<number | null>(null);
+  /** Lit-look overrides (dev handle setLook) — applied live to the uniforms
+   * and carried across rebuilds. */
+  const lookRef = useRef({ ...DEFAULT_LOOK });
+  /** Render blending (dev handle setBlend → rebuild). */
+  const blendRef = useRef<"normal" | "additive" | null>(null);
+  /** Smoothed pointer-light position (group-local). */
+  const lightRef = useRef(new THREE.Vector3(...LIGHT_BASE));
   /** Live overrides merged over SAMPLE_SPEC_BASE on the next resample. */
   const tuningRef = useRef<SampleTuning>({});
   /** Dev override for uMorph (null = gate/scroll control). */
@@ -482,15 +620,19 @@ export function FounderPortraitMorph({
       Promise.all(
         Array.from({ length: TARGET_COUNT }, (_, i) => loadFounder(i)),
       ),
+      Promise.all(
+        Array.from({ length: TARGET_COUNT }, (_, i) => loadFounderDepth(i)),
+      ),
       import("./image/sampleImagePoints"),
     ])
-      .then(([imgs, mod]) => {
+      .then(([imgs, depths, mod]) => {
         if (cancelled) return;
         imgsRef.current = imgs;
+        depthsRef.current = depths;
         sampleModRef.current = mod;
         // ONE call samples ALL portraits onto the shared grid — that shared
         // cell list is what index-pairs particle j across A, B and C.
-        setRef.current = mod.samplePortraitSet(imgs, sampleSpec());
+        setRef.current = mod.samplePortraitSet(imgs, sampleSpec(), depths);
         setSampleEpoch((e) => e + 1);
       })
       .catch((err) => {
@@ -617,13 +759,32 @@ export function FounderPortraitMorph({
     // holding — re-measure IN-BROWSER via __sersanFounderMorph.getSampler().
     // research/portrait-calibration/sampler_port.py is an order-of-magnitude
     // check only; it under-predicted the three-portrait union by ~8%.
+    // LIT build iff EVERY target carries a depth twin (decided here because the
+    // FIT depends on it; the tint layout below depends on it too).
+    const lit = pts.length > 0 && pts.every((p) => p.hasDepth);
     const halfX = Math.max(...pts.map((p) => p.halfExtentX), 1e-3);
     const halfY = Math.max(...pts.map((p) => p.halfExtentY), 1e-3);
     const stageWorldW = stageW * worldPerPx;
     const stageWorldH = stageH * worldPerPx;
-    const scaleX = (stageWorldW * STAGE_FILL) / (2 * halfX);
-    const scaleY = (stageWorldH * STAGE_FILL) / (2 * halfY);
-    const worldPerGrid = Math.min(scaleX, scaleY);
+    let worldPerGrid: number;
+    if (lit) {
+      // HEAD FIT (owner 2026-08-27, "i profili sono molto più grandi su
+      // Lusion"): fit the HEAD (rows above the shoulders) to HEAD_FILL of the
+      // stage width and let the bust run past the stage edges, dissolving —
+      // exactly Lusion's composition. With presence-ink the full extent is
+      // always the frame width, which used to leave the face at ~45 % of the
+      // stage.
+      const headX = Math.max(...pts.map((p) => p.headHalfExtentX), 1e-3);
+      const headY = Math.max(...pts.map((p) => p.headHalfExtentY), 1e-3);
+      worldPerGrid = Math.min(
+        (stageWorldW * HEAD_FILL) / (2 * headX),
+        (stageWorldH * HEAD_FILL_Y) / (2 * headY),
+      );
+    } else {
+      const scaleX = (stageWorldW * STAGE_FILL) / (2 * halfX);
+      const scaleY = (stageWorldH * STAGE_FILL) / (2 * halfY);
+      worldPerGrid = Math.min(scaleX, scaleY);
+    }
 
     // z-relief cap: normalize the sampler's grid-px relief so its max depth is
     // ≤ Z_RELIEF_MAX_FRAC of the face height, then apply the live depth knob.
@@ -635,7 +796,10 @@ export function FounderPortraitMorph({
       }
     }
     const faceHeightGrid = 2 * halfY;
-    const zNorm = Math.min(1, (Z_RELIEF_MAX_FRAC * faceHeightGrid) / maxAbsZ);
+    // The packed tint layout (colour + normal) is per build, so one missing
+    // twin means the legacy unlit graph for all, with its near-flat relief cap.
+    const reliefFrac = lit ? Z_RELIEF_DEPTH_FRAC : Z_RELIEF_MAX_FRAC;
+    const zNorm = Math.min(1, (reliefFrac * faceHeightGrid) / maxAbsZ);
     const zFactor = worldPerGrid * zNorm * depthScaleRef.current;
 
     const toWorld = (s: PortraitPoints) => {
@@ -652,7 +816,7 @@ export function FounderPortraitMorph({
     const homeB = homes[1] ?? homeA;
     // At N=2 these collapse to homeB — identical to the shipped 2-target wiring.
     const homeC = homes[2] ?? homeB;
-    // Inert 4th leg passed as a TRUE identity mix (uMorph3 never leaves 0).
+    // Real 4th target at N=4 (Mattia); collapses to an identity leg at N=3.
     const homeD = homes[3] ?? homeC;
 
     extentRef.current = {
@@ -710,7 +874,7 @@ export function FounderPortraitMorph({
     const areaDev =
       stageW * dprNow * stageH * dprNow * STAGE_FILL * STAGE_FILL;
     const spacingDev = Math.sqrt(Math.max(areaDev / count, 1));
-    const discDev = spacingDev * 2.1;
+    const discDev = spacingDev * (lit ? DISC_PITCH_LIT : DISC_PITCH_LEGACY);
     const defPointSize = THREE.MathUtils.clamp(
       (discDev * CAMERA_Z) / (dprNow * 1.05),
       10,
@@ -750,19 +914,41 @@ export function FounderPortraitMorph({
         // cells that are subject in C but backdrop in B get culled outright.
         // `undefined` at N=2 → hasPortraitC false → the exact 2-target graph.
         colorsC: pts[2]?.rgb,
+        // Real FOURTH target (2026-08-27, Alberto at index 2 pushes Mattia to
+        // index 3): same argument as C. `undefined` at N=3 → hasPortraitD
+        // false → the exact 3-target graph that shipped before.
+        colorsD: pts[3]?.rgb,
         // Tone comes from particle SIZE: ink scales each disc (and its alpha),
-        // morphed along the same staggered wave as the colour, chained A→B→C.
+        // morphed along the same staggered wave as the colour, chained
+        // A→B→C→D.
         sizeA: pts[0].ink,
         sizeB: (pts[1] ?? pts[0]).ink,
         sizeC: pts[2]?.ink,
-        blending: "normal",
+        sizeD: pts[3]?.ink,
+        // LIT path (depth matte, 2026-08-27): normals from the depth
+        // gradient, packed into the same tint vec4 (zero new bindings).
+        // Passed only when every target has a twin — see `lit` above.
+        normalsA: lit ? pts[0].nrm : undefined,
+        normalsB: lit ? (pts[1] ?? pts[0]).nrm : undefined,
+        normalsC: lit ? pts[2]?.nrm : undefined,
+        normalsD: lit ? pts[3]?.nrm : undefined,
+        look: lit
+          ? {
+              ...lookRef.current,
+              lightPos: LIGHT_BASE,
+              focusDist: CAMERA_Z,
+            }
+          : undefined,
+        // LIT: additive on the dark stage (Lusion: One/One + bloom) — discs
+        // sum into a glowing volume. Legacy keeps normal blending.
+        blending: blendRef.current ?? (lit ? "additive" : "normal"),
         // Depth OFF. With one particle per grid cell there is nothing
         // meaningful to occlude, and depth-testing overlapping discs at
         // slightly different z is exactly what turned the (now tiny) luminance
         // relief into mottling / comb tearing along every luminance edge.
         depthTest: false,
         depthWrite: false,
-        emissive: emissiveRef.current, // faces photographic at rest
+        emissive: emissiveRef.current ?? (lit ? DEFAULT_EMISSIVE_LIT : DEFAULT_EMISSIVE),
         travelTint: [0.16, 2.4, 3.0], // HDR cyan mid-flight → bloom
         // Lattice pitch in device px — sizes the render's sub-pixel coverage
         // compensation (disc diameter is exactly 2·f·spacingDev), so the
@@ -826,7 +1012,7 @@ export function FounderPortraitMorph({
     const imgs = imgsRef.current;
     if (!mod || imgs.length < TARGET_COUNT) return;
     tuningRef.current = { ...tuningRef.current, ...opts };
-    const next = mod.samplePortraitSet(imgs, sampleSpec());
+    const next = mod.samplePortraitSet(imgs, sampleSpec(), depthsRef.current);
     if (!next) return;
     setRef.current = next;
     buildNowRef.current(true);
@@ -1033,12 +1219,21 @@ export function FounderPortraitMorph({
     const mouse = store.mouse;
     const t = timeRef.current;
     const restEnv = 1 - env;
+    // REST PARALLAX (owner 2026-08-27, "movimento 3D come Lusion con il
+    // cursore"): at a locked stage the bust turns slightly toward the
+    // pointer — Lusion's ±0.05 rad tilt, a touch larger here because the
+    // projected relief is parked low (REST_RELIEF) and the lighting normals
+    // do most of the volume. Gated by `hover` so the face settles back to
+    // neutral (sway only) when the pointer leaves the stage.
+    const hov = store.hover;
+    const restYaw = (mouse.x - 0.5) * REST_PARALLAX_YAW * hov;
+    const restPitch = (0.5 - mouse.y) * REST_PARALLAX_PITCH * hov;
     const yawTarget =
       env * (ORBIT_MAX + (mouse.x - 0.5) * PARALLAX_MAX) +
-      restEnv * Math.sin(t * 0.11) * REST_SWAY_YAW;
+      restEnv * (Math.sin(t * 0.11) * REST_SWAY_YAW + restYaw);
     const pitchTarget =
       env * ((0.5 - mouse.y) * PARALLAX_MAX * 0.6) +
-      restEnv * Math.sin(t * 0.07) * REST_SWAY_PITCH;
+      restEnv * (Math.sin(t * 0.07) * REST_SWAY_PITCH + restPitch);
     yawRef.current = THREE.MathUtils.damp(yawRef.current, yawTarget, 6, delta);
     pitchRef.current = THREE.MathUtils.damp(
       pitchRef.current,
@@ -1062,6 +1257,27 @@ export function FounderPortraitMorph({
     group.scale.setScalar(
       (1 + restEnv * REST_BREATH * Math.sin(t * 0.5)) * extentComp,
     );
+
+    // --- Lit path: focus plane + pointer light -------------------------------
+    // The focus plane rides the group's own view distance, so the face centre
+    // is in focus at every stage and the DoF bokeh only ever grows with the
+    // relief (ears, shoulders) and with the mid-leg z-spread. The light is
+    // Lusion's: the pointer, in group-local units, swung about a fixed key.
+    if (b.uFocusDist) b.uFocusDist.value = CAMERA_Z - dolly;
+    // Relief parks low at rest (no comb on the front-facing lattice) and
+    // opens with the leg-local flight envelope — see REST_RELIEF.
+    if (b.uRelief) b.uRelief.value = REST_RELIEF + (1 - REST_RELIEF) * env;
+    if (b.uLightPos) {
+      scratch.set(
+        LIGHT_BASE[0] + (mouse.x - 0.5) * LIGHT_SWING[0],
+        LIGHT_BASE[1] + (0.5 - mouse.y) * LIGHT_SWING[1],
+        LIGHT_BASE[2],
+      );
+      lightRef.current.x = THREE.MathUtils.damp(lightRef.current.x, scratch.x, 5, delta);
+      lightRef.current.y = THREE.MathUtils.damp(lightRef.current.y, scratch.y, 5, delta);
+      lightRef.current.z = scratch.z;
+      b.uLightPos.value.copy(lightRef.current);
+    }
 
     const dpr = Math.min(gl.getPixelRatio(), 2);
     b.uPixelRatio.value = dpr;
@@ -1147,7 +1363,7 @@ export function FounderPortraitMorph({
           progress: morphRef.current, // 0..MORPH_MAX
           uFade: bb?.uFade.value ?? 0,
           uSpread: bb?.uSpread.value ?? 0,
-          emissive: bb?.uEmissive?.value ?? emissiveRef.current,
+          emissive: bb?.uEmissive?.value ?? emissiveRef.current ?? DEFAULT_EMISSIVE,
           pointSize: bb?.uPointSize.value ?? 0,
         };
       },
@@ -1176,6 +1392,41 @@ export function FounderPortraitMorph({
       },
       setDepth(v: number) {
         depthScaleRef.current = v;
+        buildNowRef.current(true);
+      },
+      /** Lit-look knobs (depth-matte path), applied LIVE — e.g.
+       * setLook({ mono: 1, rim: 0.8, bokeh: 2.2, focusRange: 1.0 }). */
+      setLook(opts: Partial<typeof DEFAULT_LOOK>) {
+        Object.assign(lookRef.current, opts);
+        const bb = buildRef.current;
+        if (!bb) return;
+        const L = lookRef.current;
+        if (bb.uAmbient) bb.uAmbient.value = L.ambient;
+        if (bb.uDiffuse) bb.uDiffuse.value = L.diffuse;
+        if (bb.uRim) bb.uRim.value = L.rim;
+        if (bb.uMono) bb.uMono.value = L.mono;
+        if (bb.uMonoTint) bb.uMonoTint.value.fromArray(L.monoTint);
+        if (bb.uFocusRange) bb.uFocusRange.value = L.focusRange;
+        if (bb.uBokeh) bb.uBokeh.value = L.bokeh;
+        if (bb.uScan) bb.uScan.value = L.scan;
+        if (bb.uPhoto) bb.uPhoto.value = L.photo;
+        if (bb.uFrontLo) bb.uFrontLo.value = L.frontLo;
+        if (bb.uFrontHi) bb.uFrontHi.value = L.frontHi;
+      },
+      getLook() {
+        const bb = buildRef.current;
+        return {
+          ...lookRef.current,
+          lit: !!bb?.uLightPos,
+          blend: blendRef.current,
+          depthTwins: depthsRef.current.map((d) => !!d),
+          focusDist: bb?.uFocusDist?.value ?? null,
+          lightPos: bb?.uLightPos?.value.toArray() ?? null,
+        };
+      },
+      /** "normal" | "additive" — rebuilds in place (preserves the morph). */
+      setBlend(mode: "normal" | "additive") {
+        blendRef.current = mode;
         buildNowRef.current(true);
       },
       /** Pin the progress scalar, 0..MORPH_MAX (null = release to the gate). */

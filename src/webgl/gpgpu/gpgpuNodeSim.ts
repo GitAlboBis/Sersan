@@ -200,6 +200,8 @@ export interface TslSymbolsGpgpu {
   varying: (n: AnyNode) => AnyNode;
   pow: (a: AnyNode, b: AnyNode | number) => AnyNode;
   abs: (n: AnyNode) => AnyNode;
+  floor: (n: AnyNode) => AnyNode;
+  sqrt: (n: AnyNode) => AnyNode;
   /** Deterministic per-index hash → [0,1) (TSL built-in). */
   hash: (n: AnyNode) => AnyNode;
   /** TSL stack-based branching: If(cond, fn).ElseIf(cond, fn).Else(fn). */
@@ -1036,8 +1038,76 @@ export interface TextMorphNodeBuild {
   uHoleStrength: UniformNode<number>;
   /** Flyby falloff radius in world units (the text sim is world-scaled). */
   uHoleRadius: UniformNode<number>;
+  /**
+   * PORTRAIT LIT PATH ONLY (present iff `portrait.normalsA/B` were passed —
+   * the depth-matte founders build, 2026-08-27). Live-tunable look uniforms;
+   * see PortraitLook for meanings. Absent on the hero and on the legacy
+   * (no depth twin) portrait, whose graphs are unchanged.
+   */
+  uLightPos?: UniformNode<Vec3Like>;
+  uAmbient?: UniformNode<number>;
+  uDiffuse?: UniformNode<number>;
+  uRim?: UniformNode<number>;
+  uMono?: UniformNode<number>;
+  uMonoTint?: UniformNode<ColorLike>;
+  uFocusDist?: UniformNode<number>;
+  uFocusRange?: UniformNode<number>;
+  uBokeh?: UniformNode<number>;
+  uScan?: UniformNode<number>;
+  uPhoto?: UniformNode<number>;
+  uFrontLo?: UniformNode<number>;
+  uFrontHi?: UniformNode<number>;
+  /** PORTRAIT path only: multiplier on the home z-relief inside the compute
+   * kernel (default 1). The founders island parks it low at rest and opens
+   * it mid-leg — see the kernel comment. Absent on the hero. */
+  uRelief?: UniformNode<number>;
   tick: (p: { dt: number; time: number }) => void;
   dispose: () => void;
+}
+
+/**
+ * Look parameters of the LIT portrait (depth-matte founders build). All are
+ * live uniforms on the returned build, so QA can dial them without a rebuild.
+ * The rendering model mirrors lusion.co's team head (reverse-engineered
+ * 2026-08-27, docs/recon-2026-08-27/lusion-team-reverse.md): every surface
+ * point is drawn; brightness = baked tone × (ambient + normal·light + rim);
+ * a pointer-driven light; depth of field grows and dims out-of-focus discs;
+ * a slow scanline sweeps the bust.
+ */
+export interface PortraitLook {
+  /** Light position in the build's LOCAL (group) space — the founders island
+   * drives it from the pointer, Lusion-style. */
+  lightPos?: [number, number, number];
+  /** Flat term every point receives (0.28). */
+  ambient?: number;
+  /** Lambert gain on smoothstep(-0.2, 1, n·l) (0.9). */
+  diffuse?: number;
+  /** Silhouette rim gain on (1 − max(n.z, 0))² (0.55). */
+  rim?: number;
+  /** 0 = photo colour, 1 = luminance × monoTint (0.7 — the cool monochrome
+   * point cloud; the photo tint still reads through at 0.3). */
+  mono?: number;
+  /** Tint applied to the luminance on the mono side (LINEAR rgb). */
+  monoTint?: [number, number, number];
+  /** View-space distance of the focus plane (the island writes the group's
+   * own distance every frame, so the face centre is always in focus). */
+  focusDist?: number;
+  /** World units from the focus plane at which blur saturates (1.4). */
+  focusRange?: number;
+  /** Disc size gain at full blur — bokeh (1.6). */
+  bokeh?: number;
+  /** Scanline sweep strength (0.35; 0 = off). */
+  scan?: number;
+  /** How much of the photograph's own luminance range survives (0.55):
+   * 0 = tone is pure geometry lighting, 1 = full photo contrast (a white
+   * shirt stays 2× the skin). Chroma is kept either way. */
+  photo?: number;
+  /** Front-facing gate `smoothstep(frontLo, frontHi, n.z)` on disc size —
+   * silhouette/side cells shrink away (−0.35 / 0.15). Raising both darkens
+   * the sides of the head like a lit scan and hides the comb tearing where
+   * the relief is steep. */
+  frontLo?: number;
+  frontHi?: number;
 }
 
 export interface TextMorphParams {
@@ -1071,6 +1141,11 @@ export interface TextMorphParams {
  * gates disc size, the alpha knee, coverage and the alpha Discard, so cells that
  * are subject in C but backdrop in B would be culled outright (C would appear as
  * a B-shaped stencil). Absent → the exact 2-target graph.
+ *
+ * FOURTH TARGET (A→B→C→D). `colorsD` + `sizeD` chain a third colour/ink leg
+ * driven by `uMorph3`, mirroring the kernel's `mix(…, hD, m3)`. Same stencil
+ * argument as above; absent → the exact 3-target graph. The engine has NO
+ * fifth home target (compute storage budget 8 of 8), so D is the ceiling.
  *
  * SEQUENCING INVARIANT (caller's responsibility). `uMorph` must reach EXACTLY
  * 1.0 before `uMorph2` leaves 0. The blend is chained, so driving both legs at
@@ -1108,14 +1183,39 @@ export interface PortraitMorphOpts {
   /** count floats in 0..1: per-particle tonal weight for target B. */
   sizeB?: Float32Array;
   /** OPTIONAL count floats 0..1: per-particle tonal weight for target C.
-   * Requires `colorsC` + `sizeA` + `sizeB` present. NOTE: there is deliberately
-   * no colorsD/sizeD — a FOURTH portrait target would render target D's
-   * positions with target C's colours. Add them if that day comes: colour and
-   * ink pack together into ONE `tintD` vec4 buffer, so the render cost is +1
-   * vertex-stage storage binding (4 of 8) and ZERO vertex-buffer slots. Read
-   * the RENDER BINDING BUDGET block in createTextMorphComputeBuild first — the
-   * COMPUTE kernel is the tighter wall, already at 8 of 8 storage buffers. */
+   * Requires `colorsC` + `sizeA` + `sizeB` present. */
   sizeC?: Float32Array;
+  /** OPTIONAL count×3 LINEAR rgb for target D (index-matched to homeD).
+   * FOURTH portrait target (A→B→C→D, 2026-08-27). Requires `colorsC`; MUST be
+   * passed together with `sizeD`. Colour and ink pack into ONE `tintD` vec4
+   * storage buffer read via `.element(instanceIndex)`, so the render cost is
+   * +1 vertex-stage storage binding (4 of 8) and ZERO vertex-buffer slots.
+   * This is the LAST wirable target: the COMPUTE kernel already binds
+   * homeA..homeD and sits at 8 of 8 storage buffers, so a FIFTH person needs a
+   * kernel re-architecture (packed homes), not another pair of fields. See the
+   * RENDER BINDING BUDGET block in createTextMorphComputeBuild. */
+  colorsD?: Float32Array;
+  /** OPTIONAL count floats 0..1: per-particle tonal weight for target D.
+   * Requires `colorsD` + `sizeC` (and therefore the whole A..C ink chain). */
+  sizeD?: Float32Array;
+  /**
+   * OPTIONAL count×2 model-space surface normals (x right, y up; z rebuilt as
+   * sqrt(1−x²−y²)) per target — the DEPTH-MATTE lit path (2026-08-27). When
+   * `normalsA` AND `normalsB` are present the packed tint layout changes for
+   * EVERY target of this build to `[rgb24, nx, ny, ink]` (the linear rgb
+   * quantised to 3×8 bits and packed into ONE float — exact in f32, decoded in
+   * the vertex stage) so the normal rides in the SAME vec4 storage binding:
+   * ZERO new bindings, the RENDER BINDING BUDGET below is untouched. A target
+   * without normals in a lit build gets the flat normal (0,0,1). Requires the
+   * ink path (`sizeA/B`). Absent → the legacy `[r, g, b, ink]` layout,
+   * byte-identical graph.
+   */
+  normalsA?: Float32Array;
+  normalsB?: Float32Array;
+  normalsC?: Float32Array;
+  normalsD?: Float32Array;
+  /** Lit-path look defaults (live uniforms afterwards). */
+  look?: PortraitLook;
   /** Render blending — "normal" (default, real occlusion) or "additive". */
   blending?: "normal" | "additive";
   /** Depth test (default false — one particle per cell has nothing to occlude,
@@ -1229,6 +1329,20 @@ export function createTextMorphComputeBuild(
   // `portraitMorph2Expr` null while this gate is true, and the `!` below would
   // then dereference it and throw at shader-build time.
   const hasPortraitSizeC = hasPortraitC && hasPortraitSize && !!portrait?.sizeC;
+  // Optional FOURTH portrait target (A→B→C→D). Same guard ordering as C:
+  // `colorsD` gates the stagger expression, `sizeD` gates only the ink chain.
+  // Chained on `hasPortraitC` / `hasPortraitSizeC` so a D without a C can never
+  // produce a graph with a hole in the middle of the blend chain.
+  const hasPortraitD = hasPortraitC && !!portrait?.colorsD;
+  const hasPortraitSizeD = hasPortraitD && hasPortraitSizeC && !!portrait?.sizeD;
+  // LIT portrait (depth-matte founders build): normals ride in the tint vec4.
+  // Requires the ink path — size/alpha semantics change with it (presence).
+  const hasPortraitLit =
+    hasPortraitSize && !!portrait?.normalsA && !!portrait?.normalsB;
+  /** Portrait home-z relief multiplier (kernel, see `simulate`). 1 = the
+   * homes as passed. Only read behind the `hasPortrait` build gate. */
+  const uRelief = uniform(1) as UniformNode<number>;
+  const reliefN = uRelief as unknown as AnyNode;
 
   /**
    * Interleave a count×3 LINEAR rgb array and an optional count ink array into
@@ -1236,9 +1350,34 @@ export function createTextMorphComputeBuild(
    * supplied none — harmless, because `.w` is only ever READ behind the
    * `hasPortraitSize` / `hasPortraitSizeC` build-time gates, so the flat-size
    * portrait path (colours, no ink) never sees it.
+   *
+   * LIT layout (`hasPortraitLit`): `[rgb24, nx, ny, ink]`. The linear rgb is
+   * sRGB-encoded, quantised to 8 bits per channel and packed as
+   * r·65536 + g·256 + b — an integer ≤ 2^24−1, EXACT in an f32 — so the
+   * normal's x,y take the two freed lanes. Decoded in `unpackTintColor`
+   * (vertex stage). sRGB encoding before quantisation keeps 8 bits where the
+   * eye needs them (dark skin, beard); the decode applies the 2.2 curve.
    */
-  const packTint = (rgb: Float32Array, ink?: Float32Array): Float32Array => {
+  const packTint = (
+    rgb: Float32Array,
+    ink?: Float32Array,
+    nrm?: Float32Array,
+  ): Float32Array => {
     const out = new Float32Array(count * 4);
+    if (hasPortraitLit) {
+      const enc = (c: number) => {
+        const s = c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4);
+        return Math.max(0, Math.min(255, Math.round(s * 255)));
+      };
+      for (let i = 0; i < count; i++) {
+        out[i * 4] =
+          enc(rgb[i * 3]) * 65536 + enc(rgb[i * 3 + 1]) * 256 + enc(rgb[i * 3 + 2]);
+        out[i * 4 + 1] = nrm ? nrm[i * 2] : 0;
+        out[i * 4 + 2] = nrm ? nrm[i * 2 + 1] : 0;
+        out[i * 4 + 3] = ink ? ink[i] : 0;
+      }
+      return out;
+    }
     for (let i = 0; i < count; i++) {
       out[i * 4] = rgb[i * 3];
       out[i * 4 + 1] = rgb[i * 3 + 1];
@@ -1249,13 +1388,28 @@ export function createTextMorphComputeBuild(
   };
 
   const tintABuffer = portrait
-    ? instancedArray(packTint(portrait.colorsA, portrait.sizeA), "vec4")
+    ? instancedArray(
+        packTint(portrait.colorsA, portrait.sizeA, portrait.normalsA),
+        "vec4",
+      )
     : null;
   const tintBBuffer = portrait
-    ? instancedArray(packTint(portrait.colorsB, portrait.sizeB), "vec4")
+    ? instancedArray(
+        packTint(portrait.colorsB, portrait.sizeB, portrait.normalsB),
+        "vec4",
+      )
     : null;
   const tintCBuffer = hasPortraitC
-    ? instancedArray(packTint(portrait!.colorsC!, portrait!.sizeC), "vec4")
+    ? instancedArray(
+        packTint(portrait!.colorsC!, portrait!.sizeC, portrait!.normalsC),
+        "vec4",
+      )
+    : null;
+  const tintDBuffer = hasPortraitD
+    ? instancedArray(
+        packTint(portrait!.colorsD!, portrait!.sizeD, portrait!.normalsD),
+        "vec4",
+      )
     : null;
   // Element handles — plain node EXPRESSIONS (NOT `.toVar()`s), so they are
   // safe to feed `varying(...)`; see the VaryingNode hazard note below. Every
@@ -1265,6 +1419,7 @@ export function createTextMorphComputeBuild(
   const tintA = tintABuffer ? tintABuffer.element(instanceIndex) : null;
   const tintB = tintBBuffer ? tintBBuffer.element(instanceIndex) : null;
   const tintC = tintCBuffer ? tintCBuffer.element(instanceIndex) : null;
+  const tintD = tintDBuffer ? tintDBuffer.element(instanceIndex) : null;
   // Entry-assemble fields: the scattered start each particle flies in FROM,
   // and its stagger delay = normalized home-A x (ICS-media: "the normalized X
   // position directly becomes the delay value" → a left→right forming wave).
@@ -1352,6 +1507,14 @@ export function createTextMorphComputeBuild(
     const hD = homeDBuffer.element(instanceIndex);
     const m3 = clamp(morph3N.sub(r.mul(0.55)).div(0.45), 0.0, 1.0).toVar();
     target.assign(mix(target, hD, smoothstep(0.0, 1.0, m3)));
+    // PORTRAIT ONLY (build-time gate → the hero kernel is byte-identical):
+    // scale the home z-RELIEF. The founders island parks it LOW at every
+    // locked stage (a regular front-facing grid with a deep relief combs at
+    // steep depth ramps under perspective — measured 2026-08-27: clean at
+    // ≤ 0.15, torn at 0.55) and opens it to 1 mid-leg, when the cloud is
+    // scattered anyway and the orbit shows the bust's volume. Lighting is
+    // untouched: the normals are baked at full relief in the tint buffer.
+    if (hasPortrait) target.z.mulAssign(reliefN);
 
     // Diffuse-cloud spread: a stable per-particle offset direction whose
     // radius (uSpread) the scroll shrinks to 0 — the text visibly CONDENSES
@@ -1516,6 +1679,16 @@ export function createTextMorphComputeBuild(
         clamp(morph2N.sub(hash(instanceIndex).mul(0.55)).div(0.45), 0.0, 1.0),
       )
     : null;
+  /** Third-leg (C→D) stagger. MUST mirror the kernel's `m3` EXACTLY (same
+   * 0.55 / 0.45 / hash), for the same lockstep reason. Self-contained
+   * expression, never an outer `.toVar()`. */
+  const portraitMorph3Expr = hasPortraitD
+    ? smoothstep(
+        0.0,
+        1.0,
+        clamp(morph3N.sub(hash(instanceIndex).mul(0.55)).div(0.45), 0.0, 1.0),
+      )
+    : null;
   // Ink lives in `.w` of the packed tint vec4 — a `.element()` read of a
   // `"vec4"` buffer is a TRUE vec4 (no 3→4 padding rewrite applies), so `.w` is
   // the real scalar and there is no `.xyz` question here at all.
@@ -1524,10 +1697,15 @@ export function createTextMorphComputeBuild(
   // vertex Fn's `inkNow`, by `portraitSizePxExpr` and by the `vInkF` varying, so
   // disc size, sub-pixel coverage compensation and fragment alpha all pick up
   // the 3-way chain and stay in lockstep with no further edits.
+  // 4-way chain: mix(mix(mix(A,B,m1), C, m2), D, m3) — each leg gated at
+  // build time, so the N=2 / N=3 graphs are byte-identical to what shipped.
   const portraitInkExpr = hasPortraitSize
-    ? hasPortraitSizeC
-      ? mix(mix(tintA!.w, tintB!.w, portraitMorphExpr!), tintC!.w, portraitMorph2Expr!)
-      : mix(tintA!.w, tintB!.w, portraitMorphExpr!)
+    ? (() => {
+        let ink = mix(tintA!.w, tintB!.w, portraitMorphExpr!);
+        if (hasPortraitSizeC) ink = mix(ink, tintC!.w, portraitMorph2Expr!);
+        if (hasPortraitSizeD) ink = mix(ink, tintD!.w, portraitMorph3Expr!);
+        return ink;
+      })()
     : null;
 
   /** Portrait disc size floor — kept barely non-zero ONLY so the quad never
@@ -1584,7 +1762,7 @@ export function createTextMorphComputeBuild(
   // `sizeFC` a live term. If anyone ever animates them, this varying silently
   // DESYNCHRONISES from the real disc size and the coverage term starts lying.
   // Fold `sizeFD` in here if that day comes.
-  const portraitSizePxExpr = hasPortraitSize
+  let portraitSizePxExpr: AnyNode | null = hasPortraitSize
     ? (uPointSize as unknown as AnyNode)
         .mul(uPixelRatio as unknown as AnyNode)
         .mul(
@@ -1605,6 +1783,173 @@ export function createTextMorphComputeBuild(
         0.001,
       )
     : null;
+
+  // ===========================================================================
+  // LIT PORTRAIT — depth-matte founders build (2026-08-27)
+  // ===========================================================================
+  // Rendering model of lusion.co's team head (docs/recon-2026-08-27/
+  // lusion-team-reverse.md), adapted to a 2.5D relief: every subject cell is
+  // drawn (ink = presence), and TONE comes from colour × lighting, never from
+  // disc size. Everything here is a self-contained EXPRESSION (VaryingNode
+  // discipline, see `portraitMorphExpr`), resolved in the VERTEX stage per
+  // instance — exact, since all four quad corners share the instance values —
+  // and consuming ZERO extra bindings: the normal rides in the tint vec4.
+  //
+  // Lighting is done in the build's LOCAL (group) space: the normal is stored
+  // there, the light position is a local-space uniform the island drives from
+  // the pointer, and the group orbit (±0.7 rad mid-leg only) is deliberately
+  // ignored — at every locked stage, where the face is read, it is exact.
+  const look = portrait?.look ?? {};
+  const lookLight = look.lightPos ?? [-1.6, 2.2, 4.0];
+  const uLightPos = hasPortraitLit
+    ? (uniform(
+        new Vector3(lookLight[0], lookLight[1], lookLight[2]),
+      ) as UniformNode<Vec3Like>)
+    : null;
+  const uAmbient = hasPortraitLit
+    ? (uniform(look.ambient ?? 0.28) as UniformNode<number>)
+    : null;
+  const uDiffuse = hasPortraitLit
+    ? (uniform(look.diffuse ?? 0.9) as UniformNode<number>)
+    : null;
+  const uRim = hasPortraitLit
+    ? (uniform(look.rim ?? 0.55) as UniformNode<number>)
+    : null;
+  const uMono = hasPortraitLit
+    ? (uniform(look.mono ?? 0.7) as UniformNode<number>)
+    : null;
+  const uMonoTint = hasPortraitLit
+    ? (uniform(
+        new Color().fromArray(look.monoTint ?? [0.8, 0.9, 1.0]),
+      ) as UniformNode<ColorLike>)
+    : null;
+  const uFocusDist = hasPortraitLit
+    ? (uniform(look.focusDist ?? 12) as UniformNode<number>)
+    : null;
+  const uFocusRange = hasPortraitLit
+    ? (uniform(look.focusRange ?? 1.4) as UniformNode<number>)
+    : null;
+  const uBokeh = hasPortraitLit
+    ? (uniform(look.bokeh ?? 1.6) as UniformNode<number>)
+    : null;
+  const uScan = hasPortraitLit
+    ? (uniform(look.scan ?? 0.35) as UniformNode<number>)
+    : null;
+  const uPhoto = hasPortraitLit
+    ? (uniform(look.photo ?? 0.55) as UniformNode<number>)
+    : null;
+  const uFrontLo = hasPortraitLit
+    ? (uniform(look.frontLo ?? -0.35) as UniformNode<number>)
+    : null;
+  const uFrontHi = hasPortraitLit
+    ? (uniform(look.frontHi ?? 0.15) as UniformNode<number>)
+    : null;
+  /** Decode the `[rgb24, nx, ny, ink]` lit tint layout (see `packTint`):
+   * three 8-bit sRGB channels out of one exact f32 integer, then the 2.2 curve
+   * back to linear. */
+  const unpackTintColor = (t: AnyNode): AnyNode => {
+    const pck = t.x;
+    const rr = tsl.floor(pck.div(65536.0));
+    const rem = pck.sub(rr.mul(65536.0));
+    const gg = tsl.floor(rem.div(256.0));
+    const bb = rem.sub(gg.mul(256.0));
+    return tsl.pow(vec3(rr, gg, bb).div(255.0), 2.2);
+  };
+  /** Rebuild the unit normal from its stored x,y (front hemisphere). */
+  const unpackTintNormal = (t: AnyNode): AnyNode =>
+    vec3(
+      t.y,
+      t.z,
+      tsl.sqrt(max(float(1.0).sub(t.y.mul(t.y)).sub(t.z.mul(t.z)), 0.0)),
+    );
+  // Normal chain — mirrors the colour/ink chains exactly (same staggers), so
+  // shading crosses targets in lockstep with position.
+  const portraitNormalExpr = hasPortraitLit
+    ? (() => {
+        let n = mix(
+          unpackTintNormal(tintA!),
+          unpackTintNormal(tintB!),
+          portraitMorphExpr!,
+        );
+        if (hasPortraitSizeC)
+          n = mix(n, unpackTintNormal(tintC!), portraitMorph2Expr!);
+        if (hasPortraitSizeD)
+          n = mix(n, unpackTintNormal(tintD!), portraitMorph3Expr!);
+        return n.normalize();
+      })()
+    : null;
+  const litModelPos = hasPortraitLit ? positionBuffer.toAttribute().xyz : null;
+  /** Silhouette / back-facing points shrink away (Lusion's
+   * frontFaceMultiplier) — the relief's steep rims read as an edge, not as a
+   * wall of full discs. */
+  const litFrontExpr = hasPortraitLit
+    ? smoothstep(
+        uFrontLo as unknown as AnyNode,
+        uFrontHi as unknown as AnyNode,
+        portraitNormalExpr!.z,
+      )
+    : null;
+  /** Depth of field: 0 in focus, 1 at ≥ focusRange from the focus plane. */
+  const litBlurExpr = hasPortraitLit
+    ? clamp(
+        tsl
+          .abs(portraitDistExpr!.sub(uFocusDist as unknown as AnyNode))
+          .div(uFocusRange as unknown as AnyNode),
+        0.0,
+        1.0,
+      )
+    : null;
+  /** Disc size multiplier: front-facing gate × bokeh growth. Shared by the
+   * vertex `sizeNode` AND `portraitSizePxExpr` so the sub-pixel coverage
+   * compensation keeps tracking the real diameter. */
+  const litSizeMulExpr = hasPortraitLit
+    ? litFrontExpr!.mul(
+        float(1.0).add(
+          tsl.pow(litBlurExpr!, 1.5).mul(uBokeh as unknown as AnyNode),
+        ),
+      )
+    : null;
+  /** Energy conservation for the bokeh: a disc that grows by (1+b·k) in
+   * diameter dims by the same factor (Lusion's subpixelMultiplier idea). */
+  const litEnergyExpr = hasPortraitLit
+    ? float(1.0).div(
+        float(1.0).add(litBlurExpr!.mul(uBokeh as unknown as AnyNode)),
+      )
+    : null;
+  /** ambient + diffuse·wrap-Lambert + silhouette rim + scanline sweep. */
+  const litLightExpr = hasPortraitLit
+    ? (() => {
+        const lightN = uLightPos as unknown as AnyNode;
+        const L = lightN.sub(litModelPos!).normalize();
+        const ndl = tsl.dot(portraitNormalExpr!, L);
+        const diff = smoothstep(-0.2, 1.0, ndl);
+        const rim = tsl
+          .pow(float(1.0).sub(max(portraitNormalExpr!.z, 0.0)), 2.0)
+          .mul(uRim as unknown as AnyNode);
+        // A slow band sweeping down the bust (Lusion's scanline), brighter
+        // where it crosses the silhouette.
+        const scan = smoothstep(
+          0.06,
+          0.0,
+          tsl.fract(
+            timeN.mul(-0.08).sub(litModelPos!.y.mul(0.12)).add(0.5),
+          ),
+        )
+          .mul(uScan as unknown as AnyNode)
+          .mul(float(0.4).add(rim));
+        // Capped: the pointer light can swing near the view axis, where every
+        // front-facing normal saturates the wrap-Lambert at once and the
+        // additive discs + bloom turn the bust into a white blob (measured
+        // 2026-08-27). The scanline rides ABOVE the cap so it still sparkles.
+        return tsl.min(
+          (uAmbient as unknown as AnyNode)
+            .add((uDiffuse as unknown as AnyNode).mul(diff))
+            .add(rim),
+          1.0,
+        ).add(scan);
+      })()
+    : null;
+  if (hasPortraitLit) portraitSizePxExpr = portraitSizePxExpr!.mul(litSizeMulExpr!);
 
   // ===========================================================================
   // RENDER BINDING BUDGET — read this BEFORE adding another morph target.
@@ -1631,7 +1976,8 @@ export function createTextMorphComputeBuild(
   //                                   vertex buffers | vertex-stage storage
   //   hero text (no portrait)                4 of 8  |        0 of 8
   //   portrait, 2 targets                    4 of 8  |        2 of 8
-  //   portrait, 3 targets (ships today)      4 of 8  |        3 of 8
+  //   portrait, 3 targets                    4 of 8  |        3 of 8
+  //   portrait, 4 targets (ships today)      4 of 8  |        4 of 8
   //   ── for comparison, the layout this replaced ──
   //   portrait, 2 targets (all toAttribute)  8 of 8  |        0    ← at the wall
   //   portrait, 3 targets (all toAttribute) 10 of 8  |        0    ← FAILED
@@ -1640,17 +1986,19 @@ export function createTextMorphComputeBuild(
   // `positionBuffer`, `velocityBuffer` and `delayBuffer` via `.toAttribute()`.
   // Those three are identical on the hero path, which is why the hero graph is
   // untouched by all of this. The portrait storage bindings are the packed
-  // `tintA` / `tintB` / `tintC` vec4s — ONE per target, colour in `.xyz`, ink
-  // in `.w`.
+  // `tintA` / `tintB` / `tintC` / `tintD` vec4s — ONE per target, colour in
+  // `.xyz`, ink in `.w`.
   //
-  // COST OF A FOURTH TARGET: +1 vertex-stage storage binding (a `tintD`), i.e.
-  // 4 of 8. There is room. What there is NOT room for is going back to a
-  // buffer-per-attribute layout.
+  // THE FOURTH TARGET (2026-08-27) cost exactly the predicted +1 vertex-stage
+  // storage binding (`tintD`), i.e. 4 of 8, and ZERO vertex-buffer slots.
+  // What there is NOT room for is going back to a buffer-per-attribute layout.
   //
   // AND CHECK THE COMPUTE KERNEL TOO: `simulate` above already binds EIGHT
   // storage buffers (position, velocity, homeA–homeD, start, delay) — it is at
-  // 8 of 8 on maxStorageBuffersPerShaderStage. A fifth home target breaks the
-  // COMPUTE pipeline before the render budget above is anywhere near spent.
+  // 8 of 8 on maxStorageBuffersPerShaderStage. A FIFTH home target breaks the
+  // COMPUTE pipeline before the render budget above is anywhere near spent:
+  // a fifth person on the rail is a kernel re-architecture (pack homes into
+  // fewer buffers), not another `tintE`.
   //
   // UNIFORMS ARE A SEPARATE BUDGET from both tables above (and from the
   // compute kernel's storage wall): the 2026-08-07 flyby attractor — uHole /
@@ -1740,6 +2088,9 @@ export function createTextMorphComputeBuild(
           )
           .mul(float(0.85).add(float(0.3).mul(heroRandExpr)))
           .mul(sizeFD)
+          // Lit path: front-facing gate × bokeh (the SAME node as in
+          // portraitSizePxExpr, so coverage compensation stays exact).
+          .mul(hasPortraitLit ? litSizeMulExpr! : float(1.0))
           .div(max(dist, 0.001))
       : (uPointSize as unknown as AnyNode)
           .mul(uPixelRatio as unknown as AnyNode)
@@ -1765,6 +2116,8 @@ export function createTextMorphComputeBuild(
   // perspective divide, and the view-space distance to divide it by.
   const vSizePxF = hasPortraitSize ? varying(portraitSizePxExpr!) : null;
   const vPortraitDistF = hasPortraitSize ? varying(portraitDistExpr!) : null;
+  // Lit path: the DoF blur amount, for the fragment's disc softness + alpha.
+  const vBlurF = hasPortraitLit ? varying(litBlurExpr!) : null;
 
   // Portrait travel tint (HDR cyan) + emissive — created only on the portrait
   // path so the hero fragment graph is unchanged.
@@ -1813,9 +2166,42 @@ export function createTextMorphComputeBuild(
    */
   const portraitColorExpr = hasPortrait
     ? (() => {
-        let base = mix(tintA!.xyz, tintB!.xyz, portraitMorphExpr!);
-        if (hasPortraitC) {
-          base = mix(base, tintC!.xyz, portraitMorph2Expr!);
+        let base: AnyNode;
+        if (hasPortraitLit) {
+          // LIT: decode the packed colours, chain them like the legacy path,
+          // then tone = mix(photo, luminance × monoTint, mono) × light, dimmed
+          // for the bokeh energy. Ink no longer carries tone (it is presence),
+          // so this product is the ONLY tonal signal on screen.
+          let lin = mix(
+            unpackTintColor(tintA!),
+            unpackTintColor(tintB!),
+            portraitMorphExpr!,
+          );
+          if (hasPortraitC)
+            lin = mix(lin, unpackTintColor(tintC!), portraitMorph2Expr!);
+          if (hasPortraitD)
+            lin = mix(lin, unpackTintColor(tintD!), portraitMorph3Expr!);
+          const lum = tsl.dot(lin, vec3(0.2126, 0.7152, 0.0722));
+          // `photo` compresses the photograph's own luminance range toward a
+          // flat 1 — at 0 the tone is pure geometry (normal·light, the Lusion
+          // scan look), at 1 the white shirt stays 2× brighter than the skin.
+          const photoK = uPhoto as unknown as AnyNode;
+          const lumC = mix(float(1.0), lum, photoK);
+          const chroma = lin.div(max(lum, 0.02));
+          const tone = mix(
+            chroma.mul(lumC),
+            (uMonoTint as unknown as AnyNode).toVec3().mul(lumC),
+            uMono as unknown as AnyNode,
+          );
+          base = tone.mul(litLightExpr!).mul(litEnergyExpr!);
+        } else {
+          base = mix(tintA!.xyz, tintB!.xyz, portraitMorphExpr!);
+          if (hasPortraitC) {
+            base = mix(base, tintC!.xyz, portraitMorph2Expr!);
+          }
+          if (hasPortraitD) {
+            base = mix(base, tintD!.xyz, portraitMorph3Expr!);
+          }
         }
         // Travel glow: fast (mid-flight) discs surge toward HDR cyan → the >1.0
         // values feed the selective bloom; at rest speed≈0 so faces stay photo.
@@ -1836,7 +2222,13 @@ export function createTextMorphComputeBuild(
     // edge lets depth-tested neighbours resolve facial detail. Hero path
     // unchanged (byte-identical contract).
     const a = (
-      hasPortrait ? smoothstep(0.5, 0.34, rr) : smoothstep(0.5, 0.12, rr)
+      hasPortraitLit
+        ? // Lit: in focus the crisp portrait edge; out of focus the disc
+          // feathers toward a soft bokeh circle (Lusion's `range`).
+          smoothstep(0.5, float(0.34).sub(vBlurF!.mul(0.3)), rr)
+        : hasPortrait
+          ? smoothstep(0.5, 0.34, rr)
+          : smoothstep(0.5, 0.12, rr)
     ).toVar();
     let col: AnyNode;
     if (hasPortrait) {
@@ -1907,6 +2299,9 @@ export function createTextMorphComputeBuild(
     // (ink 0.02–0.1) survives. It still keeps near-invisible fragments out of
     // the HDR/selective-bloom pass. JS ternary on a BUILD-TIME boolean → the
     // hero emits the literal 0.004 verbatim.
+    // Lit: out-of-focus discs are also more transparent (bokeh), so the
+    // shoulders/ears recede instead of competing with the face.
+    if (hasPortraitLit) alpha.mulAssign(float(1.0).sub(vBlurF!.mul(0.55)));
     Discard(alpha.lessThan(hasPortraitSize ? 0.02 : 0.004));
     return vec4(col, alpha);
   })();
@@ -1948,6 +2343,20 @@ export function createTextMorphComputeBuild(
     uPixelRatio,
     uViewport,
     uEmissive: uPortraitEmissive ?? undefined,
+    uLightPos: uLightPos ?? undefined,
+    uAmbient: uAmbient ?? undefined,
+    uDiffuse: uDiffuse ?? undefined,
+    uRim: uRim ?? undefined,
+    uMono: uMono ?? undefined,
+    uMonoTint: uMonoTint ?? undefined,
+    uFocusDist: uFocusDist ?? undefined,
+    uFocusRange: uFocusRange ?? undefined,
+    uBokeh: uBokeh ?? undefined,
+    uScan: uScan ?? undefined,
+    uPhoto: uPhoto ?? undefined,
+    uFrontLo: uFrontLo ?? undefined,
+    uFrontHi: uFrontHi ?? undefined,
+    uRelief: hasPortrait ? uRelief : undefined,
     uHole,
     uHoleStrength,
     uHoleRadius,

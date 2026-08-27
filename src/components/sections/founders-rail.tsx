@@ -16,7 +16,7 @@ import { founders, type FounderProfile } from "@/data/founders";
 import { POSITIONING, pick } from "@/data/copy";
 import { useLanguage } from "@/components/language-provider";
 import { getLenis } from "@/lib/lenis-singleton";
-import { snapPoint, snapBarrier } from "@/lib/scroll-snap";
+import { snapPoint } from "@/lib/scroll-snap";
 import { useCentreFocus, type CentreFocusRef } from "@/lib/use-centre-focus";
 import { DragRail } from "@/components/ui/drag-rail";
 import {
@@ -51,7 +51,7 @@ if (typeof window !== "undefined") {
  *      alone through the middle, the arriving block enters child-by-child late —
  *      and a small gate chrome (stage counter + accent hairline + idle scroll
  *      hint, the fit-section grammar) tells the user the page is intentionally
- *      held. INTERIOR people (Michele at N=3) both enter and exit; only the two
+ *      held. INTERIOR people (Michele and Alberto at N=4) both enter and exit; only the two
  *      sequence ENDS are one-sided, and that falls out of the leg-local math with
  *      no special-casing. The DOM portrait posters in the stage cross-fade too but
  *      are driven transparent once the cloud is live (they stay a graceful static
@@ -125,17 +125,16 @@ const MASK_FINAL_R = 700;
 /** Panel-center viewport fraction at which the entry reveal completes. */
 const REVEAL_END = 0.55;
 
-// --- MORPH-mode scroll gate (mirrors HeroIntroGate) ------------------------
-/** Accumulated wheel/touch delta (px) that fires ONE leg (one gesture = one). */
-const G_TRIGGER_PX = 140;
-/** Re-arm the gate after input idles this long (separates gestures). */
-const G_IDLE_MS = 160;
-/** Fraction of the viewport the section top must leave before re-engaging. */
-const G_ENGAGE_EXIT = 0.28;
-/** Max time (ms) the gate may hold the page before force-releasing (safety).
+// --- MORPH-mode navigation ---------------------------------------------------
+// 2026-08-27 (owner): the scroll-jack gate that pinned the page and mapped
+// wheel/touch gestures to stage changes is GONE. The page scrolls normally
+// through the section; people change via the ← → buttons / keys (see the
+// canMorph effect). The G_* / GATE_* constants that parameterised the gate
+// were removed with it.
+/* Max time (ms) the gate may hold the page before force-releasing (safety).
  * THIS BOUNDS SILENCE, NOT THE TOTAL SESSION. A per-session budget cannot be
  * made large enough: any fixed total ejects a slow reader mid-sequence, and at
- * N=3 the ejection is worse than it was at N=2 — the recovery path (scroll back
+ * N=4 (was N=3) the ejection is worse than it was at N=2 — the recovery path (scroll back
  * up → fromBottom → engage(MORPH_MAX)) lands on the LAST person, skipping the
  * one they were reading. With two stages every locked stage was an extreme end,
  * so either re-entry was legitimate.
@@ -156,10 +155,8 @@ const G_ENGAGE_EXIT = 0.28;
  * finishes that leg on its own clock while the page scrolls away. The leg
  * COMPLETES and lands on a locked, consistent stage (and the next engage()
  * reasserts the target with immediate:true), so this is a visible unowned
- * animation, not a broken state. Deliberately NOT fixed here. */
-const G_MAX_ENGAGE_MS = 20000;
-/** Touch drag maps a bit faster than wheel (shorter gestures). */
-const G_TOUCH_FACTOR = 2.0;
+ * animation, not a broken state. Deliberately NOT fixed here.
+ * (Historical note kept for the record — the gate no longer exists.) */
 
 // --- MORPH-mode copy handoff (pure functions of the island's live progress
 // scalar, so reverse legs mirror automatically) -------------------------------
@@ -187,10 +184,21 @@ const COPY_ENTER_END = 0.98;
 const COPY_ENTER_STAGGER = 0.035;
 /** Enter travel (px, from below). */
 const COPY_ENTER_Y = 18;
-/** Gate chrome: idle time (ms) at a LOCKED stage before the scroll hint
- * fades in (any input restarts the clock — the hint only surfaces after
- * true silence, mirroring the gate's own re-arm discipline). */
-const HINT_IDLE_MS = 1200;
+/** MORPH-mode ← → buttons (the chrome). Same pill grammar as the LinkedIn
+ * link; `aria-disabled` (not `disabled`) so the end buttons stay focusable
+ * and announce their state. */
+const NAV_BTN_CLASS =
+  "grid h-7 w-7 place-items-center rounded-full border border-[hsl(var(--ink)/0.14)] bg-[hsl(var(--bg)/0.5)] font-mono text-[11px] leading-none text-ink-dim backdrop-blur transition-[border-color,background-color,opacity,transform,color] duration-300 hover:border-[hsl(var(--accent)/0.7)] hover:text-[hsl(var(--accent))] active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(var(--accent))] aria-disabled:pointer-events-none aria-disabled:opacity-30";
+/** DOM label pool for the TeamOrbit island (≥ its ORBIT_MAX = 24). */
+const ORBIT_LABEL_POOL = 24;
+/** Auto-advance dwell at a locked stage (Lusion: 5 s via timeBaseChangeSpeed
+ * 0.2). Paused while the pointer is over the stage (the reader is engaged)
+ * and while a leg plays; any manual step resets it. */
+const AUTO_ADVANCE_MS = 7000;
+/** Pointer-cursor tuning (Lusion's #about-who-face-cursor). */
+const CURSOR_FOLLOW = 14; // damp rate toward the pointer
+const CURSOR_SCALE_MAX = 1.9; // at high pointer speed
+const CURSOR_SPEED_REF = 900; // px/s that reads as "fast"
 
 /** clamped smoothstep(edge0, edge1, x). */
 function smoothstep(edge0: number, edge1: number, x: number): number {
@@ -778,7 +786,7 @@ export default function FoundersRail() {
       s.backend === "webgpu",
   );
   // One entry per morph stage, indexed by stage (0 = Alessandro, 1 = Michele,
-  // 2 = Mattia). NOT querySelectorAll: the gate effect reads these
+  // 2 = Alberto, 3 = Mattia). NOT querySelectorAll: the gate effect reads these
   // synchronously below (refs are already committed there), and a query would
   // be order-fragile against the poster imgs that share [data-founder-media].
   const copyRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -843,7 +851,7 @@ export default function FoundersRail() {
     // special-casing: block 0's enter term always evaluates to 1 (its `u` is
     // permanently past COPY_ENTER_END) and the last block's exit term always to
     // 0 (its `local` never goes positive) — they fall out of the leg-local math
-    // in applyStage. INTERIOR blocks (Michele at N=3) get both, which is the
+    // in applyStage. INTERIOR blocks (Michele and Alberto at N=4) get both, which is the
     // only genuinely new DOM behaviour in the N-stage widening.
     //
     // Block opacity multiplies child opacity in the compositor, so exit-on-the-
@@ -891,8 +899,8 @@ export default function FoundersRail() {
       gsap.set(el, { opacity: 1, y: 0 });
       const kids = Array.from(el.querySelectorAll<HTMLElement>(":scope > div > *"));
       // `dur` is PER BLOCK, not shared: FounderCopy renders a `previouslyAt` row
-      // only when the data has one, so Michele has 6 children where Alessandro
-      // and Mattia have 5. A single shared dur would land the 5-child blocks'
+      // only when the data has one, so Michele has 6 children where Alessandro,
+      // Alberto and Mattia have 5. A single shared dur would land the 5-child blocks'
       // last child at 0.945 instead of COPY_ENTER_END (0.98) — early, not late,
       // but still off the lock.
       const dur = Math.max(
@@ -936,64 +944,34 @@ export default function FoundersRail() {
     const chromeCounterEl = section.querySelector<HTMLElement>(
       "[data-founders-counter]",
     );
-    const chromeLineEl = section.querySelector<HTMLElement>(
-      "[data-founders-line]",
+    // One dwell hairline per person block (each overlay carries its own);
+    // all are written together — only the visible block's shows.
+    const chromeLineEls = Array.from(
+      section.querySelectorAll<HTMLElement>("[data-founders-line]"),
     );
-    const chromeHintEl = section.querySelector<HTMLElement>(
-      "[data-founders-hint]",
+    const setChromeLines = chromeLineEls.map(
+      (el) => gsap.quickSetter(el, "scaleX") as (v: number) => void,
     );
-    const setChromeLine = chromeLineEl
-      ? (gsap.quickSetter(chromeLineEl, "scaleX") as (v: number) => void)
-      : null;
-    if (chromeLineEl) {
-      gsap.set(chromeLineEl, { transformOrigin: "0% 50%", scaleX: 0 });
-    }
+    chromeLineEls.forEach((el) =>
+      gsap.set(el, { transformOrigin: "0% 50%", scaleX: 0 }),
+    );
     let lastLineQ = -1;
+    const setChromeLine = (v: number) => {
+      const q = Math.round(v * 256) / 256;
+      if (q === lastLineQ) return;
+      lastLineQ = q;
+      for (const s of setChromeLines) s(q);
+    };
     let lastCounter = "";
     let chromeShown = false;
-    let hintShown = false;
-    let hintT: ReturnType<typeof setTimeout> | undefined;
-
-    const showHint = () => {
-      if (!chromeHintEl || hintShown) return;
-      hintShown = true;
-      gsap.killTweensOf(chromeHintEl);
-      gsap.to(chromeHintEl, { opacity: 1, duration: 0.4, ease: "power2.out" });
-    };
-    const hideHint = () => {
-      clearTimeout(hintT);
-      if (!chromeHintEl || !hintShown) return;
-      hintShown = false;
-      gsap.killTweensOf(chromeHintEl);
-      gsap.to(chromeHintEl, { opacity: 0, duration: 0.2, ease: "power2.in" });
-    };
-    const scheduleHint = () => {
-      clearTimeout(hintT);
-      hintT = setTimeout(() => {
-        const s = useFoundersMorphStore.getState();
-        // Surface only while the gate still holds at a LOCKED stage — a leg
-        // in flight or a released gate must never grow a hint.
-        if (s.gateEngaged && s.stage !== "morphing") showHint();
-      }, HINT_IDLE_MS);
-    };
-    /** Any input while engaged hides the hint and restarts its idle clock. */
-    const noteInput = () => {
-      hideHint();
-      scheduleHint();
-    };
+    /** Chrome (counter, hairline, ← → buttons) fades in once the cloud is
+     * live and the section is in view; it stays for the section's lifetime
+     * (there is no gate to hide it behind any more). */
     const showChrome = () => {
       if (!chromeEl || chromeShown) return;
       chromeShown = true;
       gsap.killTweensOf(chromeEl);
       gsap.to(chromeEl, { opacity: 1, duration: 0.5, ease: "expo.out" });
-      scheduleHint();
-    };
-    const hideChrome = () => {
-      hideHint();
-      if (!chromeEl || !chromeShown) return;
-      chromeShown = false;
-      gsap.killTweensOf(chromeEl);
-      gsap.to(chromeEl, { opacity: 0, duration: 0.3, ease: "power2.in" });
     };
 
     // Copy handoff + chrome FOLLOW the island's live progress scalar
@@ -1011,8 +989,9 @@ export default function FoundersRail() {
     //   - block 0:   local = m ≥ 0 → u ≥ 1 > COPY_ENTER_END, so every child
     //                saturates at 1. Permanently "entered", exactly as today.
     //   - block N−1: local ≤ 0 → exitT = 0. Never exits, exactly as today.
-    //   - block 1 at N=3 is a MIDDLE block and correctly gets both: it enters
-    //                over m∈[0.7, 0.98] and exits over m∈[1.02, 1.3].
+    //   - blocks 1 and 2 at N=4 are MIDDLE blocks and correctly get both:
+    //                block 1 enters over m∈[0.7, 0.98] and exits over
+    //                m∈[1.02, 1.3]; block 2 one leg later.
     // At N=2 this is numerically identical to the shipped two-block form.
     //
     // Posters: the static portrait is ONLY a fallback (WebGL2 session / very slow
@@ -1061,17 +1040,8 @@ export default function FoundersRail() {
           );
         }
       }
-      // Chrome: hairline tracks m (quantized so parked frames write nothing,
-      // fit-section idiom); the counter flips at each leg MIDPOINT.
-      if (setChromeLine) {
-        // Normalised to the WHOLE sequence — raw m would overshoot the 16rem
-        // track by 2× on leg 2.
-        const q = Math.round((m / Math.max(1, MORPH_MAX)) * 512) / 512;
-        if (q !== lastLineQ) {
-          lastLineQ = q;
-          setChromeLine(q);
-        }
-      }
+      // Counter flips at each leg MIDPOINT. (The hairline is the auto-advance
+      // dwell timer now — written from the tick, not from m.)
       if (chromeCounterEl) {
         // Math.round is half-up, so this flips at each leg midpoint — exactly
         // reproducing the shipped `m >= 0.5 ? "02" : "01"` and extending it.
@@ -1105,29 +1075,19 @@ export default function FoundersRail() {
     };
 
     measure();
+    // `pinned` now means "the MORPH DOM mode is live" (the island renders
+    // when it is set) — the page itself is never pinned any more.
     store.setPinned(true);
     applyStage(store.morph);
 
-    // Site-wide snap engine (lib/scroll-snap): a settle must never animate
-    // ACROSS this section's top edge — the gate treats any crossing as user
-    // scroll and would hijack the page mid-settle. (While the gate is
-    // actually engaged the provider suspends the engine entirely via
-    // gateEngaged; this barrier covers the un-engaged approach paths.)
-    const clearSnapBarrier = snapBarrier(() => {
-      const s = useFoundersMorphStore.getState();
-      return s.pinned && s.secTop > 0 ? s.secTop : Number.NaN;
-    });
-
-    // Poster hides the instant the cloud goes live; copy follows uMorph.
-    // Stage transitions drive the scroll hint's idle clock: a leg starting
-    // retires the hint instantly, a leg completing re-opens the window.
+    // Poster hides the instant the cloud goes live; copy follows uMorph; the
+    // ← → buttons follow the target so the ends read as disabled.
     const unsub = useFoundersMorphStore.subscribe((s, prev) => {
       // Sticky liveness latch — see everLiveRef. `active` alone flaps on rebuild.
       if (s.active) everLiveRef.current = true;
       if (s.morph !== prev.morph || s.active !== prev.active) applyStage(s.morph);
-      if (s.stage !== prev.stage) {
-        if (s.stage === "morphing") hideHint();
-        else if (s.gateEngaged) scheduleHint();
+      if (s.morphTarget !== prev.morphTarget || s.stage !== prev.stage) {
+        updateArrows();
       }
     });
 
@@ -1156,7 +1116,7 @@ export default function FoundersRail() {
     // WHY NOT REUSE THE 4s POSTER TIMER: the poster is REVERSIBLE (it hides the
     // instant `active` flips), whereas this is a ONE-WAY DOOR — once the branch
     // is dropped the morph does not come back this mount. The island's build is
-    // a cold-cache network path (three headshots + the three/webgpu, three/tsl
+    // a cold-cache network path (four headshots + the three/webgpu, three/tsl
     // and gpgpu dynamic chunks, then sampling and the GPU build), which can
     // legitimately exceed 4s on a slow connection; latching failure there would
     // cost a healthy session its flagship visual. 12s is past any plausible
@@ -1171,396 +1131,213 @@ export default function FoundersRail() {
       if (!everLiveRef.current) setMorphFailed(true);
     }, 12000);
 
-    // --- GATE state machine --------------------------------------------------
-    // Deterministic + momentum-proof: gestures are gated on STAGE + a signed
-    // accumulator that resets each leg, and RELEASE requires a true SEQUENCE
-    // BOUNDARY (no next node in that direction) — an interior gesture can
-    // therefore ONLY morph, never release. There is no momentum-driven escape
-    // (the old |delta| cap released
-    // at A on the entry fling's inertial wheel tail); the anti-trap is the
-    // morph-then-release path + Escape + the max-engage safety timer.
-    let engaged = false;
-    let armed = true; // ready to accept a NEW gesture (one gesture = one leg)
-    let acc = 0; // signed delta accumulator for the current gesture
-    let engageTime = 0;
-    let idleT: ReturnType<typeof setTimeout> | undefined;
-    let reBlocked = false; // suppress re-engage right after a release
-    let cooldownUntil = 0;
-    let lastDir = 1;
-    let insideEngageUsed = false; // one-shot: reload-landed-inside engage
-    // The reload-landed-inside arm is a NARROW window, not a standing rule: on
-    // a normal scroll-in the section sweeps through the `inside` band (top ≤
-    // 50vh) one frame BEFORE the top-edge crossing, so leaving the arm live for
-    // the whole session let it win the branch and snap the page ~50vh forward.
-    //
-    // The window is latched on the PRECONDITION, not on effect setup. `inside`
-    // is consumed under `live.active`, which only flips after the island's full
-    // async build (three headshot fetches + decode, three ~48k-point samples, the
-    // three/webgpu + three/tsl + gpgpu dynamic imports, then the GPU build).
-    // Both clocks start together, so a setup-relative budget was reliably spent
-    // before its own guard could open on a cold cache — killing the
-    // reload-landed-inside engage and leaving founder B's copy at opacity:0 AND
-    // inert (Michele's name/bio/credentials/LinkedIn out of the a11y tree).
-    // Measuring 600ms from "the island went live" still fixes the 50vh snap: in
-    // a normal session `active` latches during page load while the section is
-    // far below the fold, so the window is long expired by the time the user
-    // scrolls into the band.
-    let insideEngageDeadline = 0;
-    let prevTop = section.getBoundingClientRect().top;
-
-    /** `initIndex` is a STAGE INDEX, not a letter: 0 = first person (arriving
-     * from above), MORPH_MAX = last person (arriving from below). A literal
-     * "B" here was a two-target encoding — at N=3 a user scrolling UP into the
-     * section would be dropped mid-rail on Michele and their very first
-     * up-gesture would play a leg backward from a stage they never saw. */
-    const engage = (initIndex: number) => {
-      if (engaged) return;
-      engaged = true;
-      insideEngageUsed = true;
-      acc = 0;
-      engageTime = performance.now();
-      const s = useFoundersMorphStore.getState();
-      s.setGateEngaged(true);
-      s.setReveal(1);
-      // Entry LOCKS at the entry side FIRST (the FIRST stage from above, the
-      // LAST from below) — the entry scroll is NOT the morph gesture. DISARM
-      // and zero the accumulator;
-      // the entry flick's momentum (inertial wheel/Lenis fling) keeps resetting
-      // the idle timer while armed=false, so it can never count as the first
-      // gesture. Re-arm ONLY after G_IDLE_MS of TRUE silence → a fresh, separate
-      // impulse then plays the morph.
-      s.setMorphTarget(initIndex, true);
-      armed = false;
-      acc = 0;
-      clearTimeout(idleT);
-      idleT = setTimeout(() => {
-        armed = true;
-        acc = 0;
-      }, G_IDLE_MS);
-      // secTop is kept EXACTLY fresh every frame by the tick (it ran this frame
-      // before engage), so it already equals the section's live document top:
-      // snap the page to it so the [data-founder-stage] lands at its designed
-      // viewport position and EVERY stage shares the IDENTICAL on-screen rect.
-      // The tick
-      // then re-asserts the pin for the whole engaged session.
-      const target = useFoundersMorphStore.getState().secTop;
-      const lenis = getLenis();
-      if (lenis) {
-        lenis.scrollTo(target, { immediate: true, force: true });
-        lenis.stop();
-      } else {
-        window.scrollTo(0, target);
-      }
-      // The page is now intentionally held — say so (counter + hairline +
-      // idle hint), or the hijack reads as broken scroll.
-      showChrome();
-    };
-
-    const release = (dir: number) => {
-      if (!engaged) return;
-      engaged = false;
-      armed = true;
-      acc = 0;
-      lastDir = dir;
-      // The gate no longer holds the page — the affordance cluster (and any
-      // pending hint) leaves with it, whatever mid-state a tween was in.
-      hideChrome();
-      const s = useFoundersMorphStore.getState();
-      s.setGateEngaged(false);
-      const lenis = getLenis();
-      lenis?.start();
-      // Nudge out of the pin (just below the section for a down-release, just
-      // above for an up-release) so the section top clears the re-engage band
-      // and the gate can't immediately re-fire. Block re-engage briefly.
-      const ih = window.innerHeight;
-      const target = Math.max(0, s.secTop + (dir > 0 ? ih : -ih));
-      if (lenis) lenis.scrollTo(target, { duration: 0.6 });
-      else window.scrollTo(0, target);
-      reBlocked = true;
-      cooldownUntil = performance.now() + 500;
-    };
-
-    // One discrete gesture → advance ONE leg, or RELEASE at a sequence
-    // BOUNDARY. `morphing` is absorbed (the leg must finish first).
-    //
-    // Release is NO LONGER A LETTER TEST. The shipped form encoded "far end" as
-    // a property of the STAGE (B releases down, A releases up), which is only
-    // correct because with exactly two stages every locked stage IS an extreme
-    // end. With three, Michele is far-end for NEITHER direction — the letter
-    // test made a down-gesture at B release the page, which is the reported
-    // "it won't let me scroll between Michele and Mattia". Encoded as a BOUNDS
-    // CHECK instead: release means "there is no next node in this direction".
-    // INTERIOR nodes morph in BOTH directions and can never release — which is
-    // exactly the old "a near-end gesture can only morph, never release"
-    // anti-trap guarantee, generalised rather than weakened. Correct for any N.
-    const step = (dir: number) => {
+    // --- NAVIGATION — no scroll-jack (owner 2026-08-27) -----------------------
+    // The page is NEVER held any more. Stage changes come from the ← → arrow
+    // buttons in the chrome, the ← → keys while the section is centred, or
+    // the dev hook (simulateGesture). A leg self-plays on the island's clock
+    // (MORPH_DURATION) and locks; a gesture past either end is a no-op and
+    // the corresponding button reads as disabled. Nothing here touches Lenis.
+    let dwellMs = 0; // auto-advance timer (ms at the current locked stage)
+    const step = (dir: number, wrap = false) => {
       const s = useFoundersMorphStore.getState();
       if (s.stage === "morphing" || !s.assembleDone) return; // absorb mid-play
-      const i = stageIndex(s.stage); // 0..MORPH_MAX; never -1 past the guard
-      const next = i + (dir > 0 ? 1 : -1);
-      if (next < 0) return release(-1); // far end (up) → release upward
-      if (next > MORPH_MAX) return release(1); // far end (down) → release down
-      s.setMorphTarget(next, false); // interior → play one leg, STAY engaged
-      // REAL PROGRESS re-arms the safety valve — see G_MAX_ENGAGE_MS. This is
-      // the ONLY reset site: resetting on raw input instead would pin the page
-      // forever in the wedge case this timer exists to escape.
-      engageTime = performance.now();
-      armed = false;
-    };
-
-    const consume = (deltaPx: number, e: Event) => {
-      if (!engaged) return;
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      lastDir = deltaPx >= 0 ? 1 : -1;
-      // Live input retires the scroll hint and restarts its idle clock
-      // (cheap: guarded writes + one timer swap, same class as idleT below).
-      noteInput();
-      // Re-arm only after input idles: EVERY input event (including the entry
-      // fling's inertial tail) reschedules this, so `armed` flips true only
-      // after G_IDLE_MS of TRUE silence — the entry momentum can never arm.
-      clearTimeout(idleT);
-      idleT = setTimeout(() => {
-        armed = true;
-        acc = 0;
-      }, G_IDLE_MS);
-      if (useFoundersMorphStore.getState().stage === "morphing") {
-        acc = 0;
-        return; // absorb all input while a leg plays
+      const i = stageIndex(s.stage);
+      if (i < 0) return;
+      let next = i + (dir > 0 ? 1 : -1);
+      if (next < 0 || next > MORPH_MAX) {
+        if (!wrap) return;
+        // Auto-advance wraps: the chain is linear (A→B→C→D), so the way back
+        // to the first person is a multi-leg rewind on the island's clock —
+        // deliberately visible, like a film spooling back.
+        next = next < 0 ? MORPH_MAX : 0;
       }
-      if (!armed) return; // absorb the entry gesture + its momentum
-      acc += deltaPx;
-      if (acc >= G_TRIGGER_PX) {
-        step(1);
-        acc = 0;
-      } else if (acc <= -G_TRIGGER_PX) {
-        step(-1);
-        acc = 0;
-      }
-    };
-
-    // Deterministic test hook: inject exactly ONE discrete armed gesture down
-    // the SAME code path a real single flick hits (bypasses wheel/Lenis momentum
-    // timing so QA can verify the sequence reproducibly).
-    const simulateGesture = (dir: "up" | "down") => {
-      armed = true;
-      acc = 0;
-      const fake = {
-        preventDefault() {},
-        stopImmediatePropagation() {},
-      } as unknown as Event;
-      consume(dir === "up" ? -(G_TRIGGER_PX + 1) : G_TRIGGER_PX + 1, fake);
-      return getGate();
+      dwellMs = 0;
+      setChromeLine(0);
+      s.setMorphTarget(next, false);
     };
     const getGate = () => {
       const s = useFoundersMorphStore.getState();
       return {
-        engaged,
+        engaged: false, // kept for the dev-handle shape; there is no gate
         stage: s.stage,
-        // With three nodes the letter alone is an ambiguous assertion for QA
-        // (the wheel path is momentum-flaky by design), so expose the index the
-        // bounds check actually uses. -1 while a leg is in flight.
         stageIndex: stageIndex(s.stage),
         morphTarget: s.morphTarget,
-        armed,
-        accum: acc,
+        armed: s.stage !== "morphing" && s.assembleDone,
+        accum: 0,
       };
+    };
+    // Dev hook: "down" = next person, "up" = previous (same names as before so
+    // the island's __sersanFounderMorph.simulateGesture proxy keeps working).
+    const simulateGesture = (dir: "up" | "down") => {
+      step(dir === "down" ? 1 : -1);
+      return getGate();
     };
     if (process.env.NODE_ENV !== "production") {
       foundersGateApi.current = { simulateGesture, getGate };
     }
 
-    const onWheel = (e: WheelEvent) => {
-      const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 120 : 1;
-      consume(e.deltaY * scale, e);
-    };
-    let touchY: number | null = null;
-    const onTouchStart = (e: TouchEvent) => {
-      touchY = e.touches[0]?.clientY ?? null;
-    };
-    const onTouchMove = (e: TouchEvent) => {
-      if (touchY == null) return;
-      const y = e.touches[0]?.clientY ?? touchY;
-      consume((touchY - y) * G_TOUCH_FACTOR, e);
-      touchY = y;
-    };
+    const prevBtn = section.querySelector<HTMLButtonElement>("[data-founders-prev]");
+    const nextBtn = section.querySelector<HTMLButtonElement>("[data-founders-next]");
+    function updateArrows() {
+      const s = useFoundersMorphStore.getState();
+      const atStart = s.morphTarget <= 0;
+      const atEnd = s.morphTarget >= MORPH_MAX;
+      prevBtn?.setAttribute("aria-disabled", String(atStart));
+      nextBtn?.setAttribute("aria-disabled", String(atEnd));
+    }
+    const onPrev = () => step(-1);
+    const onNext = () => step(1);
+    prevBtn?.addEventListener("click", onPrev);
+    nextBtn?.addEventListener("click", onNext);
+    updateArrows();
+
+    // ← → keys navigate while the section is centred in the viewport and no
+    // editable element has focus. Nothing else is intercepted (Tab, PageDown,
+    // Space, arrows up/down all keep their native meaning — the page scrolls).
     const onKey = (e: KeyboardEvent) => {
-      if (!engaged) return;
-      const k = e.key;
-      if (k === "Escape") {
-        release(lastDir || 1);
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
+      )
         return;
-      }
-      const rearm = () => {
-        clearTimeout(idleT);
-        idleT = setTimeout(() => {
-          armed = true;
-        }, G_IDLE_MS * 2);
-      };
-      if (["ArrowDown", "PageDown", "End", " ", "Spacebar"].includes(k)) {
-        e.preventDefault();
-        noteInput();
-        if (armed) {
-          step(1);
-          rearm();
-        }
-      } else if (["ArrowUp", "PageUp", "Home"].includes(k)) {
-        e.preventDefault();
-        noteInput();
-        if (armed) {
-          step(-1);
-          rearm();
-        }
-      }
-      // Tab is NOT intercepted → focus still moves into the section's links.
+      const r = section.getBoundingClientRect();
+      const ih = window.innerHeight;
+      if (r.top > ih * 0.5 || r.bottom < ih * 0.5) return; // not centred
+      e.preventDefault();
+      step(e.key === "ArrowRight" ? 1 : -1);
     };
 
-    // Keyboard escape hatch: when focus LEAVES the pinned viewport, release the
-    // gate. Tab is deliberately not intercepted, so focus can walk out of the
-    // sticky frame and the browser scrolls it into view — but the per-frame pin
-    // would otherwise undo that on the next rAF, leaving focus off-screen with
-    // no visible indicator (WCAG 2.4.3 / 2.4.7). Uses the existing release() so
-    // the cooldown / re-engage guards stay intact.
-    //
-    // "LEAVES" is the load-bearing word: the gate is only ever entered by
-    // SCROLLING, so at engage time document.activeElement is <body> and focus
-    // was never inside the sticky. The first Tab then lands on the FIRST
-    // tabbable element in document order (skip link / header nav) — far ABOVE
-    // this section and not contained by stickyRef. Releasing on that would
-    // eject the keyboard user before the morph ever played, and with a stale
-    // `lastDir` of 1 it would run a 0.6s scrollTo one viewport DOWN while the
-    // browser scrolls the header UP into view — the two fight. So: only fire
-    // once focus has actually BEEN inside, and take the direction from
-    // geometry (focus above the section → release upward, following the
-    // browser) instead of from the last wheel direction.
-    let focusWasInside = false;
-    const onFocusIn = (e: FocusEvent) => {
-      if (!engaged) return;
-      const t = e.target as Node | null;
-      if (t && stickyRef.current?.contains(t)) {
-        focusWasInside = true;
-        return;
+    // --- Pointer-cursor (Lusion's face cursor) --------------------------------
+    // Follows the pointer inside the stage (damped), scales with pointer
+    // speed, arrow turns by the side of the stage centre the pointer is on;
+    // click on the stage steps in that direction. Coordinates are frame-
+    // relative (the cursor element is a child of the sticky frame).
+    const cursorEl = section.querySelector<HTMLElement>("[data-founders-cursor]");
+    const cursorArrowEl = section.querySelector<HTMLElement>(
+      "[data-founders-cursor-arrow]",
+    );
+    const stageEl = section.querySelector<HTMLElement>("[data-founder-stage]");
+    const frameEl = stickyRef.current;
+    let curTargetX = 0;
+    let curTargetY = 0;
+    let curX = 0;
+    let curY = 0;
+    let curSpeed = 0; // px/s, decays
+    let curLastT = 0;
+    let curLastX = 0;
+    let curLastY = 0;
+    let curActive = 0; // eased 0..1 (visible)
+    let curOver = false;
+    let curDir = 1; // +1 = right half (next), −1 = left half (prev)
+    let curRot = 0; // eased 0 (→) .. 1 (←)
+    let curSeeded = false;
+    const onCursorMove = (e: PointerEvent) => {
+      if (e.pointerType && e.pointerType !== "mouse") return;
+      if (!frameEl || !stageEl) return;
+      const fr = frameEl.getBoundingClientRect();
+      const sr = stageEl.getBoundingClientRect();
+      curTargetX = e.clientX - fr.left;
+      curTargetY = e.clientY - fr.top;
+      const now = performance.now();
+      if (curLastT > 0) {
+        const dt = Math.max(1, now - curLastT) / 1000;
+        const v = Math.hypot(e.clientX - curLastX, e.clientY - curLastY) / dt;
+        curSpeed = Math.max(curSpeed, Math.min(v, CURSOR_SPEED_REF * 2.5));
       }
-      if (!focusWasInside) return; // focus never entered the frame — not a "leave"
-      focusWasInside = false;
-      const el = t instanceof Element ? t : null;
-      const dir =
-        el && el.getBoundingClientRect().top < section.getBoundingClientRect().top
-          ? -1
-          : 1;
-      release(dir);
+      curLastT = now;
+      curLastX = e.clientX;
+      curLastY = e.clientY;
+      curDir = e.clientX > sr.left + sr.width / 2 ? 1 : -1;
+      curOver = true;
+      if (!curSeeded) {
+        curSeeded = true;
+        curX = curTargetX;
+        curY = curTargetY;
+      }
     };
+    const onCursorLeave = () => {
+      curOver = false;
+    };
+    const onStageClick = (e: MouseEvent) => {
+      if (!stageEl) return;
+      const sr = stageEl.getBoundingClientRect();
+      step(e.clientX > sr.left + sr.width / 2 ? 1 : -1);
+    };
+    stageEl?.addEventListener("pointermove", onCursorMove);
+    stageEl?.addEventListener("pointerleave", onCursorLeave);
+    stageEl?.addEventListener("click", onStageClick);
 
-    // Engage on the top-edge crossing (both directions) + hold/escape poll.
+    // Per-frame: keep the island's camera-lock docTop FRESH (cheap, no
+    // rebuild — a layout shift above must never leave secTop stale), start
+    // forming the first face as soon as the section peeks in, surface the
+    // chrome once the cloud is live, run the auto-advance dwell timer, and
+    // animate the pointer-cursor.
     let raf = 0;
+    let lastTick = performance.now();
     const tick = () => {
+      const now = performance.now();
+      const dt = Math.min(0.05, (now - lastTick) / 1000);
+      lastTick = now;
       const rect = section.getBoundingClientRect();
       const top = rect.top;
       const ihNow = window.innerHeight;
-      const now = performance.now();
       const live = useFoundersMorphStore.getState();
-
-      // Keep the island's camera-lock docTop FRESH every frame (cheap, no
-      // rebuild): a layout shift above (hero gate collapse) or a scroll can no
-      // longer leave secTop stale — the ~430px cloud-vs-DOM-stage drift. The
-      // island keeps doing its per-frame placement from window.scrollY + this
-      // secTop (no getBoundingClientRect in the render loop).
       const docTop = top + window.scrollY;
       if (Math.abs(live.secTop - docTop) > 0.5) live.setLayout(0, docTop);
+      const peeking = top < ihNow && rect.bottom > 0;
+      const centred = top < ihNow * 0.5 && rect.bottom > ihNow * 0.5;
+      if (peeking) {
+        live.setReveal(1);
+        if (live.active) showChrome();
+      }
 
-      if (engaged) {
-        getLenis()?.stop(); // re-assert (survive stray Lenis starts)
-        // Hold the pin: keep the section top exactly at the viewport top so A
-        // and B occupy the IDENTICAL on-screen stage rect (re-assert on drift).
-        const drift = Math.abs(top);
-        if (drift > ihNow * 0.15) {
-          // A real EXTERNAL scroll source moved the document — scrollbar drag,
-          // find-in-page, an anchor jump. `stop()` doesn't block those (Lenis
-          // only preventDefaults the wheel/touch it listens to), and re-snapping
-          // is a corrective loop, not a block: the page moves, we teleport it
-          // back next frame, the user moves it again — a visible 60Hz fight that
-          // can hold for the full G_MAX_ENGAGE_MS. Hand the page back instead
-          // (same safety valve as hero-intro-gate.tsx). release() runs the full
-          // teardown incl. the re-engage cooldown, so this can't ping-pong.
-          release(top < 0 ? 1 : -1);
-        } else if (drift > 1) {
-          // Sub-viewport drift only (layout shift above, sub-pixel rounding) —
-          // engage()'s snap already lands within a pixel, so normal pinned
-          // operation is unchanged.
-          const ny = window.scrollY + top;
-          const lenis = getLenis();
-          if (lenis) lenis.scrollTo(ny, { immediate: true, force: true });
-          else window.scrollTo(0, ny);
-        }
-        if (now - engageTime > G_MAX_ENGAGE_MS) release(lastDir);
-      } else {
-        // Start forming Alessandro as soon as the section peeks in.
-        if (top < ihNow && rect.bottom > 0) live.setReveal(1);
-        if (
-          reBlocked &&
-          now > cooldownUntil &&
-          Math.abs(top) > ihNow * G_ENGAGE_EXIT
-        ) {
-          reBlocked = false;
-        }
-        // Engage ONLY once the island is truly live (true-WebGPU build). On a
-        // flag-on WebGL2 fallback `active` stays false → the gate NEVER hijacks
-        // scroll, so the DOM poster/section is the whole (non-trapping)
-        // experience.
-        if (!reBlocked && live.active) {
-          // PRE-POSITION THE ENTRY SIDE WHILE THE SECTION IS OFF-SCREEN, where
-          // the island culls the group (visible=false, uFade=0). Without this,
-          // an approach from below runs a full un-pinned viewport with morph at
-          // 0 (Alessandro's face, copy block 0, counter 01) and then engage()'s
-          // setMorphTarget(MORPH_MAX, immediate) snaps face, copy, hairline
-          // scaleX and counter across the WHOLE rail in a single frame, with the
-          // chrome fading in over 0.5s on top of an already-completed jump.
-          // Doing it here makes that assignment a genuine no-op in both
-          // directions. The two conditions are disjoint and are both mutually
-          // exclusive with any on-screen state, so no one-shot flag is needed
-          // and this cannot fight a normal downward approach.
-          if (rect.bottom <= 0) {
-            // Fully ABOVE the viewport → the user is below; next entry is
-            // fromBottom, which lands on the LAST stage.
-            if (live.morphTarget !== MORPH_MAX)
-              live.setMorphTarget(MORPH_MAX, true);
-          } else if (top >= ihNow) {
-            // Fully BELOW the viewport → the user is above; next entry is
-            // fromTop, which lands on the FIRST stage.
-            if (live.morphTarget !== 0) live.setMorphTarget(0, true);
-          }
-          // Arm the reload-landed-inside window on the FIRST frame the island
-          // is live (see the declaration): 600ms from here, not from mount.
-          if (insideEngageDeadline === 0) insideEngageDeadline = now + 600;
-          const fromTop = prevTop > 0 && top <= 0; // scrolled DOWN to top edge
-          const fromBottom = prevTop < 0 && top >= 0; // scrolled UP into it
-          const inside =
-            !insideEngageUsed &&
-            now < insideEngageDeadline &&
-            top <= ihNow * 0.5 &&
-            rect.bottom >= ihNow * 0.5;
-          if ((fromTop || fromBottom) && rect.bottom > 0 && top < ihNow) {
-            // Arriving from BELOW pins the LAST stage, not a hardcoded "B".
-            engage(fromBottom ? MORPH_MAX : 0);
-          } else if (inside) {
-            engage(0); // reload landed inside → pin without wedging
-          }
+      // Auto-advance: dwell only while centred, locked, live and not hovered.
+      if (
+        centred &&
+        live.active &&
+        live.assembleDone &&
+        live.stage !== "morphing" &&
+        !curOver
+      ) {
+        dwellMs += dt * 1000;
+        if (dwellMs >= AUTO_ADVANCE_MS) step(1, true);
+      }
+      setChromeLine(Math.min(1, dwellMs / AUTO_ADVANCE_MS));
+
+      // Pointer-cursor easing.
+      if (cursorEl) {
+        const k = 1 - Math.exp(-CURSOR_FOLLOW * dt);
+        curX += (curTargetX - curX) * k;
+        curY += (curTargetY - curY) * k;
+        curSpeed *= Math.exp(-6 * dt);
+        const wantActive = curOver && live.active && centred ? 1 : 0;
+        curActive += (wantActive - curActive) * (1 - Math.exp(-10 * dt));
+        curRot += ((curDir < 0 ? 1 : 0) - curRot) * (1 - Math.exp(-12 * dt));
+        // backOut on the entry, speed-scaled like Lusion's
+        // min(2.5, vel/5 + 1) · backOut(activeRatio).
+        const a = curActive;
+        const back = 1 + 2.7 * Math.pow(a - 1, 3) + 1.7 * Math.pow(a - 1, 2);
+        const scale =
+          Math.max(0.001, back) *
+          (1 + (CURSOR_SCALE_MAX - 1) * Math.min(1, curSpeed / CURSOR_SPEED_REF));
+        cursorEl.style.opacity = a < 0.01 ? "0" : "1";
+        cursorEl.style.transform = `translate3d(${curX.toFixed(1)}px,${curY.toFixed(1)}px,0) translate3d(-50%,-50%,0) scale(${scale.toFixed(3)})`;
+        if (cursorArrowEl) {
+          // backInOut on the flip, plus a little overshoot from the pointer's
+          // own horizontal speed direction.
+          const r = curRot;
+          const s = r < 0.5 ? 2 * r * r : 1 - Math.pow(-2 * r + 2, 2) / 2;
+          cursorArrowEl.style.transform = `rotate(${(s * 180).toFixed(1)}deg)`;
         }
       }
-      prevTop = top;
       raf = requestAnimationFrame(tick);
     };
-
     raf = requestAnimationFrame(tick);
 
-    window.addEventListener("wheel", onWheel, { passive: false, capture: true });
-    window.addEventListener("touchstart", onTouchStart, { passive: true });
-    window.addEventListener("touchmove", onTouchMove, {
-      passive: false,
-      capture: true,
-    });
-    window.addEventListener("keydown", onKey, { capture: true });
-    window.addEventListener("focusin", onFocusIn);
+    window.addEventListener("keydown", onKey);
 
     // Pointer bridge on the stage → subtle mid-flight parallax (getState only).
     const stage = section.querySelector<HTMLElement>("[data-founder-stage]");
@@ -1622,20 +1399,14 @@ export default function FoundersRail() {
     return () => {
       fontsCancelled = true;
       cancelAnimationFrame(raf);
-      clearTimeout(idleT);
-      clearTimeout(hintT);
       clearTimeout(resizeT);
       clearTimeout(posterGrace);
       clearTimeout(morphFailGrace);
       // Chrome: kill any in-flight fade and re-assert hidden — the cluster
-      // must never rest visible past the gate's lifetime.
+      // must never rest visible past this mode's lifetime.
       if (chromeEl) {
         gsap.killTweensOf(chromeEl);
         gsap.set(chromeEl, { opacity: 0 });
-      }
-      if (chromeHintEl) {
-        gsap.killTweensOf(chromeHintEl);
-        gsap.set(chromeHintEl, { opacity: 0 });
       }
       // Copy: settle to the STAGE-0 rest pose (matches the store reset below —
       // reset() puts morph back at 0). A stale visibility:hidden or a stale
@@ -1647,19 +1418,19 @@ export default function FoundersRail() {
         b.el.style.visibility = "";
         b.children.forEach((c) => gsap.set(c.el, { clearProps: "opacity,transform" }));
       });
-      window.removeEventListener("wheel", onWheel, { capture: true });
-      window.removeEventListener("touchstart", onTouchStart);
-      window.removeEventListener("touchmove", onTouchMove, { capture: true });
-      window.removeEventListener("keydown", onKey, { capture: true });
-      window.removeEventListener("focusin", onFocusIn);
+      window.removeEventListener("keydown", onKey);
+      prevBtn?.removeEventListener("click", onPrev);
+      nextBtn?.removeEventListener("click", onNext);
+      stageEl?.removeEventListener("pointermove", onCursorMove);
+      stageEl?.removeEventListener("pointerleave", onCursorLeave);
+      stageEl?.removeEventListener("click", onStageClick);
+      if (cursorEl) cursorEl.style.opacity = "0";
       window.removeEventListener("resize", onResize);
       stage?.removeEventListener("pointermove", onMove);
       stage?.removeEventListener("pointerleave", onLeave);
       unsubIntro();
       unsub();
-      clearSnapBarrier();
       foundersGateApi.current = null;
-      if (engaged) getLenis()?.start(); // never leave scroll stopped
       section.style.height = "";
       // The store outlives routes — clear it so the island never reads a stale
       // section after this unmounts / the mode flips.
@@ -1789,9 +1560,13 @@ export default function FoundersRail() {
     // island's build cleanup flaps `active` false on every rebuild and we
     // must never flash the photo back (a blank card for a few frames beats
     // a photo flash). Restored ONLY by this effect's cleanup.
+    // Scoped to the cards the cloud actually draws (STAGE_TOTAL): if the team
+    // ever outgrows WIRED_TARGETS, the truncated cards keep their photo instead
+    // of turning into blank rectangles the cloud never replaces. At N=4 with
+    // WIRED_TARGETS=4 this is every card.
     const articles = Array.from(
       section.querySelectorAll<HTMLElement>("[data-founders-panel] .founder-portrait"),
-    );
+    ).slice(0, STAGE_TOTAL);
     const mediaFx = articles.map((article) => {
       const media = article.querySelector<HTMLElement>("[data-founder-media]");
       return {
@@ -2194,6 +1969,8 @@ export default function FoundersRail() {
         className="relative section-lg scroll-mt-24 overflow-hidden"
       >
         {/* §5.5 chrome trim: 32 → 16px below `sm`; `sm:mb-10` unchanged. */}
+        {/* TASK 6 — zero-height content-edge marker (section-cut driver). */}
+        <div data-cut-edge="top" aria-hidden="true" />
         <div className="container-px relative mb-4 sm:mb-10">{heading()}</div>
         {/* MOBILE_HOME_SPEC §2 row 7 / §5.5 — <DragRail> adoption, AFFORDANCE
             ONLY. The mechanic is untouched: this was already a native
@@ -2237,6 +2014,8 @@ export default function FoundersRail() {
   if (canMorph) {
     return (
       <section id="founders" className="relative scroll-mt-24">
+        {/* TASK 6 — zero-height content-edge marker (section-cut driver). */}
+        <div data-cut-edge="top" aria-hidden="true" />
         <div
           ref={sectionRef}
           // Round 7-3: tint + glows removed (twin of the native variant).
@@ -2248,114 +2027,259 @@ export default function FoundersRail() {
             data-founders-morph-sticky
             className="sticky top-0 flex h-screen flex-col justify-center overflow-hidden"
           >
-            <div className="container-px relative w-full">
-              <div className="mb-8 max-w-2xl sm:mb-10">{heading()}</div>
-              <div className="grid grid-cols-1 items-center gap-10 lg:grid-cols-[minmax(0,26rem)_1fr]">
-                {/* Stage: the WebGL particle cloud (persistent canvas, behind the
-                    content) renders over this box. The DOM portraits are a
-                    STATIC POSTER cross-fade — visible only while the cloud is not
-                    live (flag-on WebGL2 fallback / island still building), driven
-                    transparent once it renders. Kept in the a11y tree via alt.
-                    `f.image` is the DOM poster, NOT the sampler's `-headshot`
-                    asset — the headshot preference lives in the island.
-                    STAGE_TOTAL, not founders.length: the compute engine has a
-                    hard four-target cap, so a 5th person degrades to graceful
-                    truncation HERE while the rail/native branches below keep
-                    rendering everyone. */}
+            {/* LUSION-STYLE COMPOSITION (owner 2026-08-27): the head is the
+                hero — a big centre-left stage; a tiny mono counter top-left;
+                eyebrow + title top-right; per-person name/role bottom-left
+                with the auto-advance hairline; per-person bio/chips/LinkedIn
+                bottom-right. The big blue pointer-cursor lives in the frame
+                and is driven by the effect. */}
+            <div className="container-px pointer-events-none relative flex h-full w-full flex-col justify-between pb-[3.25rem] pt-[5.75rem] sm:pb-[3.75rem]">
+              {/* top row */}
+              <div className="flex items-start justify-between gap-8">
                 <div
-                  data-founder-stage
-                  className="relative mx-auto aspect-[3/4] w-full max-w-[26rem]"
+                  aria-hidden="true"
+                  className="flex items-baseline gap-2 font-mono tabular-nums text-ink-dim"
                 >
-                  {founders.slice(0, STAGE_TOTAL).map((f, i) => (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      key={f.anchor}
-                      ref={(el) => {
-                        stageImgRefs.current[i] = el;
-                      }}
-                      src={f.image}
-                      alt={`${f.name}, ${isEn ? f.roleEn : f.roleIt}`}
-                      data-founder-media
-                      draggable={false}
-                      style={{ opacity: 0 }}
-                      className="absolute inset-0 h-full w-full rounded-lg object-cover"
-                    />
-                  ))}
-                </div>
-                {/* Copy region: every block overlaid, cross-fading on progress.
-                    The inline opacity:0 on i > 0 is a FIRST-CLIENT-PAINT
-                    contract, not an SSR one — this branch is client-only
-                    (canMorph depends on `detected`) — so it covers the frames
-                    between the canMorph commit and the gate effect arming the
-                    children. Load-bearing: without it every block paints
-                    stacked. See the writer construction. */}
-                <div className="relative min-h-[26rem]">
-                  {founders.slice(0, STAGE_TOTAL).map((f, i) => (
-                    <div
-                      key={f.anchor}
-                      ref={(el) => {
-                        copyRefs.current[i] = el;
-                      }}
-                      className="absolute inset-x-0 top-0"
-                      style={i === 0 ? undefined : { opacity: 0 }}
-                    >
-                      <FounderCopy
-                        f={f}
-                        index={i}
-                        total={STAGE_TOTAL}
-                        isEn={isEn}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-            {/* Gate affordance chrome — fit-section's counter/hairline grammar:
-                stage counter (01/03 → 02/03 → 03/03 at N=3, flipping at each
-                leg midpoint), a 1px accent hairline whose scaleX tracks the live
-                progress scalar NORMALISED over the whole sequence, and an idle
-                scroll hint. Pure
-                presentation → aria-hidden; pointer-events-none so it can't
-                trap the stage's pointer bridge; ships at inline opacity 0 and
-                is faded in/out ONLY by the gate (engage/release) — it never
-                flashes on paths where the gate does not run. */}
-            <div
-              data-founders-chrome
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-x-0 bottom-0 z-10"
-              style={{ opacity: 0 }}
-            >
-              <div className="container-px flex items-end gap-6 pb-7 sm:gap-8 sm:pb-8">
-                <div className="flex items-baseline gap-2 font-mono tabular-nums">
+                  <span className="text-[10px] tracking-[0.18em]">[[</span>
                   <span
                     data-founders-counter
-                    className="text-[1.5rem] leading-none tracking-tight text-ink"
+                    className="text-[11px] tracking-[0.18em] text-ink"
                   >
                     01
                   </span>
-                  {/* STAGE_TOTAL, not founders.length — the counter's
-                      denominator must agree with the stages the gate can
-                      actually reach. "01" above stays literal: it is the SSR
-                      seed applyStage overwrites via textContent, correct for
-                      any N. */}
-                  <span className="text-[11px] tracking-[0.18em] text-ink-dim">
-                    / {String(STAGE_TOTAL).padStart(2, "0")}
+                  <span className="text-[10px] tracking-[0.18em]">
+                    / {String(STAGE_TOTAL).padStart(2, "0")} ]]
                   </span>
                 </div>
-                <div className="relative mb-[0.3rem] h-px max-w-[16rem] flex-1 bg-[hsl(var(--rule))]">
-                  <div
-                    data-founders-line
-                    className="absolute inset-0 origin-left bg-[hsl(var(--accent))]"
-                    style={{ transform: "scaleX(0)" }}
-                  />
+                <div className="pointer-events-auto max-w-[26rem] text-left">
+                  <p className="mb-3 font-mono text-[10px] tracking-[0.18em] uppercase text-ink-dim">
+                    {eyebrow}
+                  </p>
+                  <h2 className="font-display text-[clamp(1.6rem,2.3vw,2.25rem)] leading-[1.05] text-ink">
+                    {isEn ? (
+                      <>
+                        Built by the people who{" "}
+                        <span className="italic">build and run it.</span>
+                      </>
+                    ) : (
+                      <>
+                        Costruito dalle persone che{" "}
+                        <span className="italic">lo realizzano e lo gestiscono.</span>
+                      </>
+                    )}
+                  </h2>
                 </div>
-                <span
-                  data-founders-hint
-                  className="mb-[0.15rem] font-mono text-[10px] tracking-[0.18em] uppercase text-ink-dim"
+              </div>
+              {/* middle: the stage lives here (absolute, see below) */}
+              <div className="min-h-0 flex-1" />
+              {/* bottom row — per-person blocks are overlaid absolutely (see
+                  the copy overlays below); this row only reserves the space. */}
+              <div className="flex items-end justify-between gap-8">
+                <div className="h-[6.5rem] w-[22rem]" />
+                <div className="h-[9rem] w-[24rem]" />
+              </div>
+            </div>
+
+            {/* Stage: the WebGL particle cloud (persistent canvas, behind the
+                content) renders over this box — big, centre-left. The DOM
+                portraits are a STATIC POSTER cross-fade — visible only while
+                the cloud is not live (island still building), driven
+                transparent once it renders. Kept in the a11y tree via alt.
+                `f.image` is the DOM poster, NOT the sampler's `-headshot`
+                asset. STAGE_TOTAL, not founders.length: the compute engine
+                has a hard four-target cap. `cursor-none`: the frame's own
+                pointer cursor replaces the system one here. */}
+            <div
+              data-founder-stage
+              className="absolute left-[9%] top-[52%] aspect-[3/4] h-[min(74vh,58rem)] -translate-y-1/2 cursor-none"
+            >
+              {founders.slice(0, STAGE_TOTAL).map((f, i) => (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={f.anchor}
+                  ref={(el) => {
+                    stageImgRefs.current[i] = el;
+                  }}
+                  src={f.image}
+                  alt={`${f.name}, ${isEn ? f.roleEn : f.roleIt}`}
+                  data-founder-media
+                  draggable={false}
                   style={{ opacity: 0 }}
+                  className="absolute inset-0 h-full w-full rounded-lg object-cover"
+                />
+              ))}
+            </div>
+
+            {/* Copy overlays: one full-frame overlay per person, each holding
+                the bottom-left name block and the bottom-right bio block,
+                cross-fading on progress. The inline opacity:0 on i > 0 is a
+                FIRST-CLIENT-PAINT contract (this branch is client-only) that
+                covers the frames between the canMorph commit and the effect
+                arming the children — load-bearing, see the writer
+                construction (`:scope > div > *` = the children of BOTH
+                blocks, staggered together). */}
+            {founders.slice(0, STAGE_TOTAL).map((f, i) => (
+              <div
+                key={f.anchor}
+                ref={(el) => {
+                  copyRefs.current[i] = el;
+                }}
+                className="container-px pointer-events-none absolute inset-0 flex items-end justify-between gap-8 pb-[3.25rem] sm:pb-[3.75rem]"
+                style={i === 0 ? undefined : { opacity: 0 }}
+              >
+                <div className="flex w-[22rem] flex-col gap-2">
+                  <h3 className="flex items-center gap-2 font-display text-[clamp(1.5rem,2vw,2rem)] leading-none text-ink">
+                    <span
+                      aria-hidden="true"
+                      className="inline-block h-[0.45em] w-[0.45em] rotate-45 border border-[hsl(var(--accent))]"
+                    />
+                    {f.name}
+                  </h3>
+                  <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute">
+                    {isEn ? f.roleEn : f.roleIt}
+                  </p>
+                  {/* auto-advance hairline (Lusion's indicator): scaleX = the
+                      dwell timer; resets on every manual step. */}
+                  <div
+                    aria-hidden="true"
+                    className="relative mt-3 h-px w-[11rem] bg-[hsl(var(--rule))]"
+                  >
+                    <div
+                      data-founders-line
+                      className="absolute inset-0 origin-left bg-[hsl(var(--accent))]"
+                      style={{ transform: "scaleX(0)" }}
+                    />
+                  </div>
+                </div>
+                <div className="pointer-events-auto flex w-[24rem] max-w-[38vw] flex-col gap-3">
+                  <p className="text-[12.5px] leading-relaxed text-ink-mute sm:text-[13px]">
+                    {isEn ? f.shortBioEn : f.shortBioIt}
+                  </p>
+                  <ul className="flex flex-wrap gap-1.5 list-none">
+                    {(isEn ? f.credentialsEn : f.credentialsIt).map((c) => (
+                      <li
+                        key={c}
+                        className={`${CHIP_CLASS} gap-2 text-[10.5px] text-ink leading-snug`}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="block h-1 w-1 shrink-0 rounded-full bg-[hsl(var(--accent)/0.8)]"
+                        />
+                        <span>{c}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {f.previouslyAt && f.previouslyAt.length > 0 ? (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="mr-1 font-mono text-[9px] tracking-[0.18em] uppercase text-ink-mute/70">
+                        {isEn ? "Previously" : "In precedenza"}
+                      </span>
+                      <ul className="contents list-none">
+                        {f.previouslyAt.map((co) => (
+                          <li
+                            key={co}
+                            className={`${CHIP_CLASS} font-mono text-[9px] tracking-[0.1em] uppercase text-ink-mute`}
+                          >
+                            {co}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  <Link
+                    href={f.linkedIn}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`${f.name} on LinkedIn`}
+                    className="inline-flex w-fit items-center gap-2 rounded-full border border-[hsl(var(--ink)/0.25)] bg-[hsl(var(--bg)/0.6)] px-3.5 py-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-mute backdrop-blur transition-colors hover:border-[hsl(var(--accent)/0.6)] hover:text-ink"
+                  >
+                    LinkedIn
+                    <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                  </Link>
+                </div>
+              </div>
+            ))}
+
+            {/* TeamOrbit labels: a pool of mono labels the WebGL island
+                projects next to the orbiting satellites every frame (text +
+                transform + opacity written by the island; see
+                src/webgl/TeamOrbit.tsx). Presentation only. */}
+            <div
+              data-founders-orbit
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-0 z-[1]"
+            >
+              {Array.from({ length: ORBIT_LABEL_POOL }).map((_, i) => (
+                <span
+                  key={i}
+                  data-orbit-label
+                  className="absolute left-0 top-0 whitespace-nowrap font-mono text-[10px] tracking-[0.16em] uppercase text-ink-mute will-change-transform"
+                  style={{ opacity: 0 }}
+                />
+              ))}
+            </div>
+
+            {/* The pointer-cursor (Lusion's #about-who-face-cursor): a big
+                accent disc that follows the pointer inside the stage, scales
+                with pointer speed, and whose arrow turns ← / → by the side of
+                the head the pointer is on. Click = that direction. Driven by
+                the effect; hidden until the pointer enters the stage. */}
+            <div
+              data-founders-cursor
+              aria-hidden="true"
+              className="pointer-events-none absolute left-0 top-0 z-20 flex h-24 w-24 items-center justify-center rounded-full bg-[hsl(var(--accent))] text-[hsl(var(--bg))] will-change-transform"
+              style={{ opacity: 0, transform: "translate3d(-200px,-200px,0)" }}
+            >
+              <svg
+                data-founders-cursor-arrow
+                viewBox="0 0 24 24"
+                className="h-8 w-8 will-change-transform"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M4 12h16" />
+                <path d="M13 5l7 7-7 7" />
+              </svg>
+            </div>
+
+            {/* Chrome: fades in once the cloud is live. Holds the visually
+                hidden but focusable ← → controls (keyboard / assistive tech):
+                the visible affordance is the pointer-cursor + the ← → keys. */}
+            <div
+              data-founders-chrome
+              className="pointer-events-none absolute inset-x-0 bottom-0 z-10"
+              style={{ opacity: 0 }}
+            >
+              <div
+                role="group"
+                aria-label={isEn ? "Team navigation" : "Navigazione team"}
+                className="pointer-events-auto absolute bottom-[0.9rem] left-1/2 flex -translate-x-1/2 items-center gap-3"
+              >
+                <button
+                  type="button"
+                  data-founders-prev
+                  aria-label={isEn ? "Previous person" : "Persona precedente"}
+                  className={NAV_BTN_CLASS}
                 >
-                  {isEn ? "Scroll" : "Scorri"}
+                  ←
+                </button>
+                <span
+                  aria-hidden="true"
+                  className="font-mono text-[9px] tracking-[0.2em] uppercase text-ink-dim/70"
+                >
+                  {isEn ? "click the face · ← → keys" : "clicca il volto · tasti ← →"}
                 </span>
+                <button
+                  type="button"
+                  data-founders-next
+                  aria-label={isEn ? "Next person" : "Persona successiva"}
+                  className={NAV_BTN_CLASS}
+                >
+                  →
+                </button>
               </div>
             </div>
           </div>
@@ -2369,6 +2293,8 @@ export default function FoundersRail() {
   // HORIZONTAL RAIL mode: pinned desktop, NOT morph-eligible (pure DOM fallback).
   return (
     <section id="founders" className="relative scroll-mt-24">
+      {/* TASK 6 — zero-height content-edge marker (section-cut driver). */}
+      <div data-cut-edge="top" aria-hidden="true" />
       {/* The tall scroll runway: height = 100vh + travel, set in px by
           measure(). minHeight is the SSR placeholder before JS measures. */}
       <div

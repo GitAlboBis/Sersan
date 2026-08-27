@@ -33,6 +33,8 @@ import { RouteHero, type RouteHeroKind } from "./RouteHero";
 import { DriftParticles } from "./DriftParticles";
 import { FeaturedWorkPlanes } from "./FeaturedWorkPlanes";
 import { FounderPortraitMorph } from "./FounderPortraitMorph";
+import { TeamGlyphRain } from "./team/TeamGlyphRain";
+import { TeamOrbit } from "./TeamOrbit";
 import { ResourcePreviewPlane } from "./ResourcePreviewPlane";
 import { NeuralLattice } from "./NeuralLattice";
 import { CrystalCluster } from "./CrystalCluster";
@@ -465,6 +467,12 @@ export default function Scene({ tier }: { tier: Exclude<SceneTier, "off"> }) {
       {pathname === "/" && webgpu && (tier === "full" || railIslandsTouch) && (
         <FounderPortraitMorph touch={tier !== "full" && railIslandsTouch} />
       )}
+      {/* Team section layers (2026-08-27): the production-telemetry rain
+          backdrop (src/webgl/team) and the person's data ASTROLABE
+          (TeamOrbit). Desktop pinned morph only — both self-gate on
+          foundersMorphStore.pinned + true WebGPU, renderOrder −1. */}
+      {pathname === "/" && webgpu && tier === "full" && <TeamGlyphRain />}
+      {pathname === "/" && webgpu && tier === "full" && <TeamOrbit />}
       {/* FIX 3 neural-lattice islands (home only). Two camera-locked lattices:
           the Problem section ("broken" — pathways go dark / packets die) and the
           ProductionGrade section ("healthy" — clusters pulse in sequence). MUST
