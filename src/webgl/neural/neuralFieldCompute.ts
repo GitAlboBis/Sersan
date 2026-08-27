@@ -394,6 +394,9 @@ import {
   WINDOW_FADE_OUT,
   SIZE_NORM_MAX,
   STAR_WINDOW_SNAP,
+  WINDOW_REHOME_SNAP,
+  WINDOW_REHOME_SNAP_DEBRIS,
+  WINDOW_REHOME_SNAP_ON,
   RIVER_M,
   RIVER_K,
   RIVER_TAIL,
@@ -4359,6 +4362,12 @@ export function createNeuralFieldBuild(
     // λ=9 ramp, and every re-homed particle spring-flew across the field with
     // the snap disarmed — the condensing cloud the owner photographed, back
     // by a second route. Non-ribbon builds bake the identical gated chain.
+    // ROUND 14 — the SAME failure was still reachable through the two
+    // remaining gate terms (uRecohere on every scroll-driven row ignition,
+    // ~2.7 s per edge; `dispersing` on every post-fracture link). The
+    // unconditional WINDOW_REHOME_SNAP below (before the gated recycle snap)
+    // closes both routes: a κ-window re-home always hard-resets, whatever
+    // `armed` says. The gate itself is unchanged.
     const armed = (
       RIB ? one : select(uReveal.greaterThan(float(0.9)), one, float(0))
     )
@@ -4399,6 +4408,34 @@ export function createNeuralFieldBuild(
     // builds bake no such branch.
     if (RIB) {
       If(uReveal.lessThan(float(0.02)), () => {
+        pos.assign(anchor);
+        velH.assign(vec3(0.0, 0.0, 0.0));
+      });
+    }
+    // ROUND 14 — THE κ-WINDOW RE-HOME IS NEVER A FLIGHT. A re-home moves an
+    // anchor ~1.0 local (94× wrapSnapDist, 4× STAR_WINDOW_SNAP); no
+    // legitimate excursion on the ribbon exceeds ~0.2 (reveal ≤ 0.035,
+    // pointer+curl 0.0028, NODE_DRIFT·1.05 ≈ 0.047, DEBRIS_SPREAD+GAP+wander
+    // under a tease ≈ 0.2). It must snap regardless of `armed` — uRecohere
+    // (any row ignition on the broken act) and `dispersing` (every
+    // post-fracture link) disarm the recycle snap for seconds at a time, and
+    // a disarmed re-home spring-flies across the frame: bottom→top under
+    // reverse scroll. Both ends of a re-home sit ≥ WINDOW_FADE_OUT·half off
+    // frame (pad inequality), so the teleport is invisible in both directions.
+    // REVIEW FIX — the 0.4 bound is sized from ANCHOR-side terms only; a
+    // post-fracture ember (spring ×0.15, DEBRIS_WANDER_ACC 5.0 in `extraAcc`
+    // below) legitimately sits 0.5–0.7 local off its anchor, so the threshold
+    // widens to WINDOW_REHOME_SNAP_DEBRIS with `dispersing` (0.8 at full
+    // disperse, still under the ≈1.0 re-home). Kill-switch: set
+    // WINDOW_REHOME_SNAP_DEBRIS = WINDOW_REHOME_SNAP.
+    // Ribbon builds only; kill-switch WINDOW_REHOME_SNAP_ON.
+    if (RIB && WINDOW_REHOME_SNAP_ON) {
+      const rehomeSnap = mix(
+        float(WINDOW_REHOME_SNAP),
+        float(WINDOW_REHOME_SNAP_DEBRIS),
+        dispersing,
+      );
+      If(length(anchor.sub(pos)).greaterThan(rehomeSnap), () => {
         pos.assign(anchor);
         velH.assign(vec3(0.0, 0.0, 0.0));
       });

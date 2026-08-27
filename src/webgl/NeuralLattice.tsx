@@ -156,6 +156,9 @@ import {
   RIBBON_PARTICLE_SCALE_MAX,
   CONDUIT_FILL_RIBBON,
   REVEAL_DAMP_RIBBON,
+  WINDOW_REHOME_SNAP,
+  WINDOW_REHOME_SNAP_DEBRIS,
+  WINDOW_REHOME_SNAP_ON,
   RIBBON_RY,
   getPlexus,
   ribbonPlexusParams,
@@ -204,6 +207,10 @@ import {
   type LatticeMode,
 } from "./neural/neuralLatticeConfig";
 import type { NeuralFieldBuild } from "./neural/neuralFieldCompute";
+
+/** ROUND 14 kill-switch — force uReveal = 0 on the first frame back from the
+ * ribbon cull so the kernel's warm-start pin fires on reverse re-entry too. */
+const PIN_FRAME_ON = true;
 
 /**
  * ROUND 12 · D — CENTRE THE κ-WINDOW ON THE FRAME.
@@ -742,6 +749,14 @@ function NeuralLatticeIsland({
   // freezes with the frame loop, so a re-entry restarts the reveal from 0 and
   // the invisibility pin re-settles every particle before the fade-in.
   const wasCulled = useRef(true);
+  // ROUND 14 — one-frame flag: on the first frame back from the cull the
+  // uReveal write is forced to 0 so the kernel's warm-start pin actually
+  // fires. Without it a REVERSE re-entry (vis already 1) would send
+  // uReveal ≈ 0.14 on that very frame and the pin would never run. BOTH
+  // tiers render one alpha-0 frame at un-cull (buildShade × uReveal is
+  // shared) — invisible, because un-cull only happens off-frame (forward,
+  // CULL_PAD) or at fieldFade 0 (reverse, p ≈ 1). Kill-switch: PIN_FRAME_ON.
+  const pinFrame = useRef(false);
   const clock = useRef(0);
   const parallaxRef = useRef({ x: 0, y: 0 });
   // Store-pulse decay (bumpCluster targets → ring flashes on healthy; the
@@ -1070,6 +1085,7 @@ function NeuralLatticeIsland({
       if (wasCulled.current) {
         wasCulled.current = false;
         revealDamped.current = 0;
+        if (PIN_FRAME_ON) pinFrame.current = true;
       }
     } else if (bcfg && bcfg.ribbon && build.field.ribbon) {
       group.visible = false;
@@ -1440,7 +1456,11 @@ function NeuralLatticeIsland({
 
     // --- Drive the field uniforms -------------------------------------------
     u.uTime.value = t;
-    u.uReveal.value = revealDamped.current;
+    // ROUND 14 — the un-cull frame writes uReveal = 0 (see pinFrame) so the
+    // compute pin teleports every particle onto its live anchor while alpha
+    // is 0; the λ=9 ramp then fades the settled net in, both directions.
+    u.uReveal.value = pinFrame.current ? 0 : revealDamped.current;
+    pinFrame.current = false;
     u.uSurgeT.value = s.t;
     u.uSurgeAmp.value = s.amp;
     u.uFlash.value = flashEnv.current;
@@ -1609,6 +1629,22 @@ function NeuralLatticeIsland({
       },
       get uReveal() {
         return revealDamped.current;
+      },
+      /** ROUND 14 readouts: the always-armed re-home threshold the kernel
+       * bakes (ribbon only) and whether the next uReveal write is pinned. */
+      get rehomeSnap() {
+        return build?.field.ribbon && WINDOW_REHOME_SNAP_ON
+          ? WINDOW_REHOME_SNAP
+          : null;
+      },
+      /** Re-home threshold at full `dispersing` (the kernel mixes toward it). */
+      get rehomeSnapDebris() {
+        return build?.field.ribbon && WINDOW_REHOME_SNAP_ON
+          ? WINDOW_REHOME_SNAP_DEBRIS
+          : null;
+      },
+      get pinFrame() {
+        return pinFrame.current;
       },
       get hovered() {
         return useNeuralLatticeStore.getState().hovered[surfaceKey];

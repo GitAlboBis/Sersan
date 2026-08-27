@@ -2139,6 +2139,40 @@ export const SIZE_NORM_MAX = 1.45;
  * steady-state gate the link snap uses. RIBBON BUILDS ONLY — on every other
  * build the star bound stays 1e9, to the bit. */
 export const STAR_WINDOW_SNAP = 0.25;
+/** ROUND 14 — THE κ-WINDOW RE-HOME IS NEVER A FLIGHT. A second, ALWAYS-ARMED
+ * snap threshold applied to every role on ribbon builds, independently of the
+ * `armed` gate (`uRecohere` row ignition / post-fracture `dispersing`) that
+ * can disarm the recycle snap for seconds at a time and let a re-home spring-
+ * fly across the frame (bottom→top under reverse scroll). Sizing (ANCHOR-side
+ * terms, i.e. how far the anchor itself strays from the rest lattice): a
+ * frayed link under a recohere tease ≈ DEBRIS_SPREAD 0.075 + DEBRIS_GAP 0.02
+ * + wander (three per-axis sines × u·0.06 × (1 + uScrollVel·VEL_DEBRIS 0.2)
+ * ⇒ up to 0.06·√3·1.2 ≈ 0.125) + drifted-endpoint swing ≈ 2·NODE_DRIFT·1.05
+ * ≈ 0.094 → ≈ 0.27 local worst case; a κ-window re-home moves the anchor
+ * ≈ 1.0 local. 0.4 is 1.5× the former and 2.5× under the latter. (0.25 =
+ * STAR_WINDOW_SNAP is fine for stars but too tight for frayed links.)
+ * This constant does NOT cover the FORCE-side excursion of post-fracture
+ * debris — see WINDOW_REHOME_SNAP_DEBRIS. Local units; ribbon builds only. */
+export const WINDOW_REHOME_SNAP = 0.4;
+/** ROUND 14 · REVIEW FIX — headroom for DISPERSING particles. Post-fracture
+ * debris is driven by `DEBRIS_WANDER_ACC` 5.0 × (1 + uScrollVel·VEL_DEBRIS)
+ * while its spring is cut to NEURAL_SPRING·(1 − 0.85) = 9 (damping 8.5):
+ * quasi-static amplitude A/√((k−ω²)² + (cω)²) per axis ≈ 0.36 / 0.41 / 0.45
+ * at ω = 1.4 / 1.1 / 0.9, phase-offset across the three axes ⇒ |pos − anchor|
+ * routinely 0.5–0.7 local (×1.2 under scroll) on top of the frayed anchor's
+ * own ≈ 0.27. At 0.4 a fully dispersed ember would be hard-snapped back onto
+ * its anchor periodically — a new pop on the #problem tail, compute tier
+ * only. The kernel blends `mix(WINDOW_REHOME_SNAP, WINDOW_REHOME_SNAP_DEBRIS,
+ * dispersing)`, so intact links keep the tight 0.4 and debris gets 0.8 —
+ * still under the ≈ 1.0 re-home (a coincident three-axis peak under full
+ * scroll can brush ≈ 0.85 + 0.27; accepted: a rare snap on a 0.22-alpha ember
+ * versus a guaranteed 1.0-local flight). Kill-switch: set this equal to
+ * WINDOW_REHOME_SNAP (the mix collapses to the ROUND 14 constant). Local
+ * units; ribbon builds only. */
+export const WINDOW_REHOME_SNAP_DEBRIS = 0.8;
+/** Kill-switch for the ROUND 14 unconditional re-home snap (false ⇒ the
+ * kernel bakes exactly the pre-ROUND-14 graph). */
+export const WINDOW_REHOME_SNAP_ON = true;
 
 // --- ROUND 12 · D — MOTION IS LIGHT (the travelling signal) ------------------
 //
