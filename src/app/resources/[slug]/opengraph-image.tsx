@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import { resources } from "@/data/resources";
 
-export const alt = "Sersan field notes";
+export const alt = "SerSan field notes";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 

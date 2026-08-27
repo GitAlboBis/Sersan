@@ -42,6 +42,20 @@ export interface ServiceDeliverable {
   textIt: string;
 }
 
+/**
+ * A per-service section heading. The template renders it as
+ * `{lead} <span className="…italic">{accent}</span>` — a plain text node plus
+ * exactly ONE italic span, which is the shape SplitText requires. Authored per
+ * service so that no two service pages open the same section with the same
+ * sentence: a prospect comparing two services is the likely journey.
+ */
+export interface ServiceHeading {
+  lead: string;
+  leadIt: string;
+  accent: string;
+  accentIt: string;
+}
+
 export interface ServiceContent {
   slug: "engineering" | "automation" | "mlops" | "architecture";
   /** Order index used for sequential numbering (01/02/03/04). */
@@ -62,8 +76,21 @@ export interface ServiceContent {
     body: string;
     bodyIt: string;
   };
+  /** Section 03 heading + intro. Per-service, never a shared paragraph. */
+  buildsHeading: ServiceHeading;
+  buildsNote: string;
+  buildsNoteIt: string;
   builds: ServiceBuild[];
+  /** Section 04 heading tail — rendered after the derived count word. */
+  useCasesHeading: ServiceHeading;
   useCases: ServiceUseCase[];
+  /**
+   * Section 05 strapline. MUST NOT promise an artefact this service's
+   * deliverables list does not contain — the shared version promised "the
+   * code" above an audit deliverables list that ships no code.
+   */
+  deliverablesNote: string;
+  deliverablesNoteIt: string;
   /** Concrete artefacts handed over at the end of an engagement. */
   deliverables: ServiceDeliverable[];
   /** Case study slugs (from src/data/case-studies.ts) that exemplify
@@ -72,6 +99,10 @@ export interface ServiceContent {
   /** Typical timeline phrasing for the CTA copy. */
   timeline: string;
   timelineIt: string;
+  /** Section 08 closing heading + paragraph. Per-service. */
+  closingHeading: ServiceHeading;
+  closingNote: string;
+  closingNoteIt: string;
   faqs: ServiceFaq[];
 }
 
@@ -98,6 +129,16 @@ export const services: ServiceContent[] = [
       body: "The spreadsheet becomes a process. The process becomes the business. Then it starts costing hours, causing errors and blocking growth — and the off-the-shelf tool everyone uses can't be bent any further. Custom software is worth building at exactly that point: when the way you work is a real advantage and no product on the market fits it. Sometimes that includes AI. Often the first version doesn't need any.",
       bodyIt: "Il foglio di calcolo diventa un processo. Il processo diventa l'azienda. E a un certo punto costa ore, genera errori e blocca la crescita, mentre lo strumento pronto che usano tutti non si piega oltre. Il software su misura vale esattamente da lì: quando il vostro modo di lavorare è un vantaggio reale e nessun prodotto sul mercato lo copre. A volte serve anche l'AI. Spesso la prima versione non ne ha bisogno.",
     },
+    buildsHeading: {
+      lead: "Every build is different. These parts",
+      leadIt: "Ogni progetto è diverso. Queste parti",
+      accent: "keep recurring.",
+      accentIt: "ricorrono sempre.",
+    },
+    buildsNote:
+      "Not every project needs all of it. The mix is agreed before anything is written and sized to the problem — a first internal tool and a customer-facing platform don't carry the same machinery.",
+    buildsNoteIt:
+      "Non tutti i progetti li richiedono tutti. Il mix si concorda prima di scrivere una riga ed è dimensionato sul problema: un primo strumento interno e una piattaforma rivolta ai clienti non hanno lo stesso apparato.",
     builds: [
       {
         title: "Product engineering: frontend, backend, infra",
@@ -142,6 +183,12 @@ export const services: ServiceContent[] = [
           " Lasciamo documentazione per chi amministra e per chi usa il sistema, formiamo chi lo gestisce ogni giorno, facciamo il passaggio ai vostri sviluppatori quando ci sono e possiamo restare a supporto dopo il lancio.",
       },
     ],
+    useCasesHeading: {
+      lead: "moments when off-the-shelf software stops",
+      leadIt: "momenti in cui il software pronto smette di",
+      accent: "fitting.",
+      accentIt: "bastare.",
+    },
     useCases: [
       {
         title: "A process has outgrown its spreadsheets",
@@ -168,6 +215,10 @@ export const services: ServiceContent[] = [
           "Avete un sistema che funziona e vi serve una nuova funzionalità, una feature AI, un'integrazione o semplicemente che smetta di rompersi. Scope ristretto, integrazione reale, nessuna riscrittura se non conviene davvero.",
       },
     ],
+    deliverablesNote:
+      "Concrete artefacts, handed over at the end. Yours to keep, extend or give to another supplier: the code, and the reasons behind it.",
+    deliverablesNoteIt:
+      "Artefatti concreti, consegnati alla fine. Vostri da tenere, estendere o dare a un altro fornitore: il codice e le ragioni dietro le scelte.",
     deliverables: [
       { text: "Production code in your repository, owned by your team", textIt: "Codice di produzione nel vostro repository, di proprietà del vostro team" },
       { text: "Eval harness for any AI feature, run in CI", textIt: "Eval harness per ogni funzionalità AI, eseguita in CI" },
@@ -179,6 +230,16 @@ export const services: ServiceContent[] = [
     caseStudyIds: ["spherenode", "quantex", "revolut"],
     timeline: `${FACTS.sprintDuration.en} · fixed fee per phase`,
     timelineIt: `${FACTS.sprintDuration.it} · compenso fisso per fase`,
+    closingHeading: {
+      lead: "Describe the job the software",
+      leadIt: "Descriveteci il lavoro che il software",
+      accent: "has to do.",
+      accentIt: "deve fare.",
+    },
+    closingNote:
+      "Two or three sentences is enough. A founder reads it and comes back with a recommended first step — sometimes a smaller first version than the one you had in mind, sometimes a tool that already does it.",
+    closingNoteIt:
+      "Bastano due o tre frasi. Le legge un founder e torna con un primo passo consigliato: a volte una prima versione più piccola di quella che avevate in mente, a volte uno strumento che lo fa già.",
     faqs: [
       {
         q: "Do we need an in-house engineering team?",
@@ -202,7 +263,7 @@ export const services: ServiceContent[] = [
         q: "Can you take over a prototype, or software another developer built?",
         qIt: "Potete riprendere un prototipo, o un software costruito da altri?",
         a: "Yes. The Scope phase reviews what's there, what's salvageable, and what should be rebuilt. Usually it's a mix.",
-        aIt: "Sì. La fase di Scope esamina cosa c'è, cosa è recuperabile e cosa va ricostruito. Di solito è un mix.",
+        aIt: "Sì. La fase di Definizione esamina cosa c'è, cosa è recuperabile e cosa va ricostruito. Di solito è un mix.",
       },
       {
         q: "Is this just web development?",
@@ -235,6 +296,16 @@ export const services: ServiceContent[] = [
       body: "Not because nobody thought of it — the obvious tools stop right where the work gets hard. So somebody re-types the same data into three systems, chases approvals by email, and rebuilds the same report every Monday. Or the opposite happened: years of Zaps and scenarios nobody can map, quietly dropping work when a field changes.",
       bodyIt: "Non perché nessuno ci abbia pensato: gli strumenti ovvi si fermano proprio dove il lavoro si complica. Così qualcuno ridigita gli stessi dati in tre sistemi, insegue le approvazioni via email e rifà lo stesso report ogni lunedì. Oppure è successo il contrario: anni di Zap e scenari che nessuno sa mappare, che perdono lavoro quando cambia un campo.",
     },
+    buildsHeading: {
+      lead: "What a well-built automation actually",
+      leadIt: "Cosa contiene davvero un'automazione",
+      accent: "contains.",
+      accentIt: "fatta bene.",
+    },
+    buildsNote:
+      "Most automations use three or four of these, not all five. We agree which before we start: one workflow should never inherit the process of a platform build.",
+    buildsNoteIt:
+      "La maggior parte delle automazioni ne usa tre o quattro, non tutte e cinque. Si concorda quali prima di iniziare: un singolo processo non deve ereditare il metodo di una piattaforma.",
     builds: [
       {
         title: "Rule-based first, where software is enough",
@@ -277,6 +348,12 @@ export const services: ServiceContent[] = [
           "Il codice è vostro. Documentiamo come funziona, formiamo chi se ne occuperà e mostriamo il costo di esecuzione per processo e per step, così la fattura mensile non vi sorprende. Non serve un team tecnico interno.",
       },
     ],
+    useCasesHeading: {
+      lead: "kinds of manual work we're usually called in to",
+      leadIt: "tipi di lavoro manuale che ci chiedono di",
+      accent: "remove.",
+      accentIt: "far sparire.",
+    },
     useCases: [
       {
         title: "Repetitive work eating your team's time",
@@ -303,6 +380,10 @@ export const services: ServiceContent[] = [
           "Fatture, contratti, candidature o richieste in arrivo da leggere, instradare o arricchire. Il modello legge, le regole instradano, una persona approva ciò che conta — e ogni step lascia una traccia verificabile.",
       },
     ],
+    deliverablesNote:
+      "Concrete artefacts, handed over at the end. The automation code, a map of what runs when, and what each run costs — yours to keep, extend or hand on.",
+    deliverablesNoteIt:
+      "Artefatti concreti, consegnati alla fine. Il codice dell'automazione, la mappa di cosa parte e quando e il costo di ogni esecuzione: vostri da tenere, estendere o passare ad altri.",
     deliverables: [
       { text: "Automation code in your repository, owned by you", textIt: "Codice dell'automazione nel vostro repository, vostro" },
       { text: "Per-step retry / rollback / dead-letter routing", textIt: "Routing per step di retry / rollback / dead-letter" },
@@ -314,6 +395,16 @@ export const services: ServiceContent[] = [
     caseStudyIds: ["terra-noa", "regione-sardegna", "apple-uk"],
     timeline: "Days to weeks per workflow · fixed scope",
     timelineIt: "Da giorni a settimane per processo · scope fisso",
+    closingHeading: {
+      lead: "Name the job that still runs",
+      leadIt: "Indicateci il lavoro che si fa ancora",
+      accent: "by hand.",
+      accentIt: "a mano.",
+    },
+    closingNote:
+      "Two or three sentences, or a screen recording of the job as you do it today. A founder reads it and comes back with the smallest version worth building first.",
+    closingNoteIt:
+      "Bastano due o tre frasi, o una registrazione dello schermo di come lo fate oggi. Le legge un founder e torna con la versione più piccola che vale la pena costruire per prima.",
     faqs: [
       {
         q: "Do you replace Zapier or work alongside it?",
@@ -364,6 +455,16 @@ export const services: ServiceContent[] = [
       body: "It works in the demo. In production it's right most of the time, wrong occasionally, and nobody can say which. Costs drift, latency spikes on the worst possible day, and no test would have caught it. The fix is rarely a better model — it's measurement, and being able to roll back in a minute.",
       bodyIt: "Nella demo funziona. In produzione ha ragione quasi sempre, a volte no, e nessuno sa dire quando. I costi si spostano, la latenza schizza nel giorno peggiore e nessun test l'avrebbe intercettato. La soluzione raramente è un modello migliore: è misurare, e poter tornare indietro in un minuto.",
     },
+    buildsHeading: {
+      lead: "What it takes before an AI feature is",
+      leadIt: "Cosa serve prima che una funzionalità AI",
+      accent: "safe to depend on.",
+      accentIt: "sia affidabile.",
+    },
+    buildsNote:
+      "Which of these you need depends on what the feature decides and who it can affect. We agree the mix first, and leave out the parts the risk doesn't justify.",
+    buildsNoteIt:
+      "Quali servano dipende da cosa decide la funzionalità e da chi ne subisce gli effetti. Il mix si concorda prima e si lascia fuori ciò che il rischio non giustifica.",
     builds: [
       {
         title: "Proof it still works, before every release",
@@ -406,6 +507,12 @@ export const services: ServiceContent[] = [
           "Quando il drift supera la soglia, la pipeline apre un ticket di retraining, non un disservizio. Un owner designato approva la run di retraining e il nuovo deployment: qualcuno da parte vostra, oppure noi con un accordo di supporto.",
       },
     ],
+    useCasesHeading: {
+      lead: "ways an AI feature loses a team's",
+      leadIt: "modi in cui una funzionalità AI perde la",
+      accent: "trust.",
+      accentIt: "fiducia del team.",
+    },
     useCases: [
       {
         title: "An AI feature that works inconsistently",
@@ -432,6 +539,10 @@ export const services: ServiceContent[] = [
           "Pipeline auditabili, dati di training tracciabili, model card e la documentazione che un regolatore vuole davvero vedere. Il lavoro di compliance è progettazione, non scartoffie incollate alla fine.",
       },
     ],
+    deliverablesNote:
+      "Concrete artefacts, handed over at the end. The eval suite, the pipelines and the dashboards that make the feature measurable — readable by your team without us.",
+    deliverablesNoteIt:
+      "Artefatti concreti, consegnati alla fine. La suite di eval, le pipeline e le dashboard che rendono misurabile la funzionalità: leggibili dal vostro team anche senza di noi.",
     deliverables: [
       { text: "Eval suite with documented test cases", textIt: "Suite di eval con casi di test documentati" },
       { text: "Model registry + promotion pipeline", textIt: "Model registry + pipeline di promozione" },
@@ -443,6 +554,16 @@ export const services: ServiceContent[] = [
     caseStudyIds: ["revolut", "jp-morgan", "pharma-deloitte", "apple-uk", "who"],
     timeline: "Review, hardening sprint or ongoing · fixed scope",
     timelineIt: "Review, sprint di hardening o continuativo · scope fisso",
+    closingHeading: {
+      lead: "Tell us which AI feature nobody",
+      leadIt: "Diteci quale funzionalità AI",
+      accent: "quite trusts yet.",
+      accentIt: "nessuno usa con fiducia.",
+    },
+    closingNote:
+      "Two or three sentences about what it gets wrong is enough. A founder reads it and comes back with what we'd measure first, before anyone touches the model.",
+    closingNoteIt:
+      "Bastano due o tre frasi su cosa sbaglia. Le legge un founder e torna con ciò che misureremmo per primo, prima che qualcuno tocchi il modello.",
     faqs: [
       {
         q: "Do you work with our cloud / our ML platform?",
@@ -465,8 +586,8 @@ export const services: ServiceContent[] = [
       {
         q: "Can you take an existing model into production without retraining?",
         qIt: "Potete portare in produzione un modello esistente senza riaddestrarlo?",
-        a: "Usually yes. About a third of this work is 'this model works, get it operable'. We wrap it with eval, monitoring, rollback and a deployment story, without touching the training code. We review it first and give you one verdict: build, harden or stop.",
-        aIt: "Di solito sì. Circa un terzo di questo lavoro è del tipo «questo modello funziona, rendetelo operabile». Lo avvolgiamo con eval, monitoring, rollback e una storia di deployment, senza toccare il codice di training. Prima lo esaminiamo e diamo un verdetto solo: costruire, irrobustire o fermarsi.",
+        a: "Usually yes. Often the job is exactly that: 'this model works, get it operable'. We wrap it with eval, monitoring, rollback and a deployment story, without touching the training code. We review it first and give you one verdict: build, harden or stop.",
+        aIt: "Di solito sì. Spesso il lavoro è esattamente questo: «il modello funziona, rendetelo operabile». Lo avvolgiamo con eval, monitoring, rollback e una storia di deployment, senza toccare il codice di training. Prima lo esaminiamo e diamo un verdetto solo: costruire, irrobustire o fermarsi.",
       },
     ],
   },
@@ -493,6 +614,16 @@ export const services: ServiceContent[] = [
       body: "Projects rarely fail at execution. They fail at the decision before it: the wrong tool was bought, the integration plan was optimistic, the data wasn't where everyone assumed, or the thing being automated wasn't the expensive part. Two months in, the team is committed to a path that should have been stopped in scoping. A few days of senior review beforehand is the cheapest work in the whole project.",
       bodyIt: "I progetti raramente falliscono nell'esecuzione. Falliscono nella decisione che viene prima: si è comprato lo strumento sbagliato, il piano di integrazione era ottimista, i dati non erano dove tutti pensavano, oppure la cosa automatizzata non era quella costosa. Due mesi dopo il team è impegnato su un percorso che andava fermato in fase di scoping. Qualche giorno di revisione senior prima è il lavoro più economico dell'intero progetto.",
     },
+    buildsHeading: {
+      lead: "What the review actually",
+      leadIt: "Cosa vi lascia davvero",
+      accent: "hands you.",
+      accentIt: "la revisione.",
+    },
+    buildsNote:
+      "A focused diagnostic uses fewer of these than a full audit. Scope, questions and depth are agreed before day one, so the review ends on the day it said it would.",
+    buildsNoteIt:
+      "Una diagnosi mirata ne usa meno di un audit completo. Scope, domande e profondità si concordano prima del primo giorno, così la revisione finisce nel giorno previsto.",
     builds: [
       {
         title: "Two scopes: focused diagnostic or full audit",
@@ -530,11 +661,17 @@ export const services: ServiceContent[] = [
         title: "Optional follow-on build engagement",
         titleIt: "Eventuale ingaggio di build successivo",
         detail:
-          "If you decide to build, we can. Audit fee credits against the build engagement. About a third of audits end in 'don't build this', and that's a successful outcome.",
+          "If you decide to build, we can. The audit fee credits against the build engagement. If you'd rather build it elsewhere, the recommendation is written to be handed over.",
         detailIt:
-          "Se decidete di costruire, possiamo farlo noi. Il compenso dell'audit viene scontato dall'ingaggio di build. Circa un terzo degli audit si conclude con un «non costruitelo», ed è un esito di successo.",
+          "Se decidete di costruire, possiamo farlo noi: il compenso dell'audit viene scontato dall'ingaggio. Se preferite costruirlo altrove, la raccomandazione è scritta per essere consegnata.",
       },
     ],
+    useCasesHeading: {
+      lead: "decisions where a short review pays for",
+      leadIt: "decisioni in cui una revisione breve si ripaga da",
+      accent: "itself.",
+      accentIt: "sola.",
+    },
     useCases: [
       {
         title: "Before you commit to building",
@@ -569,6 +706,10 @@ export const services: ServiceContent[] = [
           "State valutando strumenti o fornitori e ogni demo si assomiglia. Vi forniamo le domande tecniche da porre e valutiamo le risposte.",
       },
     ],
+    deliverablesNote:
+      "Concrete artefacts, handed over at the end. A written recommendation, the diagrams and the risk register behind it — yours to act on, with us or with anyone else.",
+    deliverablesNoteIt:
+      "Artefatti concreti, consegnati alla fine. Una raccomandazione scritta, i diagrammi e il registro dei rischi che la sostengono: vostri, da usare con noi o con chiunque altro.",
     deliverables: [
       { text: "Written recommendation, sized to scope, never a deck", textIt: "Raccomandazione scritta, mai una presentazione" },
       { text: "Risk register with severities + mitigation", textIt: "Registro dei rischi con severità + mitigazione" },
@@ -580,6 +721,16 @@ export const services: ServiceContent[] = [
     caseStudyIds: ["leonardo", "stealth-greentech", "salvatori", "regione-sardegna"],
     timeline: FACTS.auditDurationScoped.en,
     timelineIt: FACTS.auditDurationScoped.it,
+    closingHeading: {
+      lead: "Send us the decision you're about to",
+      leadIt: "Inviateci la decisione che state per",
+      accent: "commit to.",
+      accentIt: "prendere.",
+    },
+    closingNote:
+      "Two or three sentences about the decision in front of you is enough. A founder reads it and comes back with the scope, the questions we'd ask, and what the review would settle.",
+    closingNoteIt:
+      "Bastano due o tre frasi sulla decisione che avete davanti. Le legge un founder e torna con lo scope, le domande che porremmo e ciò che la revisione chiarirebbe.",
     faqs: [
       {
         q: "What's the difference between this and a consultant's strategy deck?",
@@ -590,8 +741,8 @@ export const services: ServiceContent[] = [
       {
         q: "What if the audit recommends 'don't build this'?",
         qIt: "E se l'audit raccomanda «non costruitelo»?",
-        a: "That's a successful outcome. It happens in roughly a third of audits. You've spent a few days of senior time and saved a quarter of build time on the wrong system. We'd rather refuse work than build something we know won't survive production.",
-        aIt: "È un esito di successo. Accade in circa un terzo degli audit. Avete speso qualche giorno di tempo senior e risparmiato un trimestre di sviluppo sul sistema sbagliato. Preferiamo rifiutare il lavoro piuttosto che costruire qualcosa che sappiamo non sopravvivrà alla produzione.",
+        a: "That's a successful outcome, and it does happen. You've spent a few days of senior time instead of months of build time on the wrong system. We'd rather talk you out of a project than build something we know won't survive production.",
+        aIt: "È un esito di successo, e succede. Avete speso qualche giorno di tempo senior invece di mesi di sviluppo sul sistema sbagliato. Preferiamo sconsigliarvi un progetto piuttosto che costruire qualcosa che sappiamo non sopravvivrà alla produzione.",
       },
       {
         q: "Do you sign NDAs?",

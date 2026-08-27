@@ -5,7 +5,7 @@ import { CookiesClient } from "./cookies-client";
 export const metadata: Metadata = pageMetadata({
   title: "Cookie Policy",
   description:
-    "How SERSAN uses cookies and similar tracking technologies on its website.",
+    "How SerSan uses cookies and similar tracking technologies on its website.",
   path: "/cookies",
   index: false,
 });

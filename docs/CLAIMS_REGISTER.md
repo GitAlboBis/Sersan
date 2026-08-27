@@ -52,7 +52,7 @@ evidence. Where there is no evidence, the claim is reworded to posture
 |---|---|---|---|---|---|
 | "EU-only data residency unless explicitly agreed otherwise" vs. "Infrastructure is hosted in London (UK)" vs. "Cloud providers in London (UK)" vs. subprocessors "EU-based" — four statements, one page | /trust | The UK left the EU; the site itself runs on Vercel. All four could not be true at once. | Alessandro | SHIPPED | One sentence, imported from `COMPLIANCE.hosting`: "Infrastructure is hosted in the UK and EU. Data residency is agreed per engagement." Used on /trust ×2 and /privacy. |
 | "We don't retain rights to anything we build for you" (/trust FAQ) vs. "deliverables become the property of the client **upon full payment**. SERSAN retains rights to its pre-existing know-how, frameworks, and tooling" (/terms §5) | /trust, /terms | The contract is the authority. The FAQ was over-promising against the terms it defers to. | Alessandro | SHIPPED | FAQ now: transfer on full payment, no licence back, "we keep only our pre-existing know-how, frameworks and internal tooling — never your system." /terms §5 additionally confirms source code is included and nothing is withheld. |
-| "Full subprocessor list available on request **under NDA**" | /trust (controls) | Putting a subprocessor list behind an NDA is friction, not security; every serious processor publishes one. | Alessandro | SHIPPED | Published inline on /trust and /privacy: AWS, Google Cloud, Azure, Vercel, Supabase, Anthropic, OpenAI, Google, Resend. **OPEN:** the list must be reconciled against the accounts actually in use before the next DPA goes out. |
+| "Full subprocessor list available on request **under NDA**" | /trust (controls) | Putting a subprocessor list behind an NDA is friction, not security; every serious processor publishes one. | Alessandro | SHIPPED | Published inline on /trust and /privacy, now **split by processing context** (see §7): site-collected data = Vercel + Resend only; client-engagement data = cloud hosting and model APIs, scoped per project. Supabase removed — it was never in the request path. **OPEN:** the engagement-side names still need reconciling against the accounts actually in use before the next DPA goes out. |
 
 ## 4. The universal-regime problem
 
@@ -70,7 +70,7 @@ evidence. Where there is no evidence, the claim is reworded to posture
 | Analytics and marketing cookies "Used only with consent" | /cookies | **`@vercel/analytics` mounts unconditionally at `src/app/layout.tsx:334`, and there is no consent banner anywhere in `src/`.** The policy described a mechanism that does not exist. | Alessandro | SHIPPED (policy) / **OPEN (product)** | Policy now describes what actually happens: Vercel Analytics counts page views without cookies, cross-site tracking or ad profiles; marketing cookies: "None." No claim that consent is collected. **The product decision is still open: either ship a consent mechanism or keep analytics strictly cookieless and documented as such.** ePrivacy/PECR treatment of cookieless analytics is not settled — get this reviewed. |
 | "Remember preferences such as language or theme" | /cookies | Verified in `src/components/language-provider.tsx:67–86`: a real `sersan_language` cookie, `max-age` 1 year, `SameSite=Lax`, plus `localStorage`. Theme storage was not verified. | Alessandro | SHIPPED | Named precisely: "A sersan_language cookie and local storage remember whether you read the site in English or Italian, for 12 months." The unverified theme claim was dropped. |
 | "cookies … placed by third-party services (e.g. analytics, embedded calendars or videos)" | /cookies | No calendar embed is live — `CAL_ENABLED = false` in `src/lib/site.ts` and the Cal.com slug is a documented placeholder that 404s. No video embeds. | Alessandro | SHIPPED | "We currently embed no third-party calendars, video players or advertising tags." |
-| "You will not see a consent banner here, because we do not set advertising or profiling cookies." | /cookies | True as of 2026-08-27. Becomes false the moment anyone adds a tag manager. | Alessandro | OPEN | Ships as written. **Tie this line to the analytics decision above — it must be re-checked before any marketing tag is added.** |
+| "You will not see a consent banner here, because we do not set advertising or profiling cookies." | /cookies | True as of 2026-08-27. Becomes false the moment anyone adds a tag manager. | Alessandro | OPEN | Ships as written, and now states *why*: the language cookie is strictly necessary for a setting the visitor chose, so it is exempt from consent, and the analytics sets no cookies. /privacy §3 states the same basis (see §7). **Tie this line to the analytics decision above — it must be re-checked before any marketing tag is added.** |
 
 ## 6. Identity and legal completeness
 
@@ -83,6 +83,30 @@ evidence. Where there is no evidence, the claim is reworded to posture
 
 ---
 
+## 7. Legal accuracy pass — second sweep (2026-08-27)
+
+Findings from the seven-dimension audit, applied to /privacy, /cookies, /trust and
+the /start intake form.
+
+| claim | page | evidence | owner | status | safe public wording |
+|---|---|---|---|---|---|
+| "site and database hosting (**Vercel, Supabase**)" published as a subprocessor for data collected through the site | /privacy §4, /trust (controls) | `grep -rn supabase src/ package.json` returns **one** hit, and it is a client's tech stack in `src/data/case-studies.ts`. There is no Supabase dependency, no client, no site database. `/api/intake` and `/api/contact` forward via **Resend** and nothing else; the site and both routes run on **Vercel**; `@vercel/analytics` mounts in `src/app/layout.tsx`. Publishing a processor you do not use is as inaccurate as omitting one you do. | Alessandro | SHIPPED | Split by processing context. /privacy §4: "for data collected through this site, Vercel (site and form hosting, plus cookieless analytics) and Resend (email delivery of your message) — there is no site database. For client-engagement data, subprocessors are scoped per project: typically cloud hosting (AWS, Google Cloud, Azure) and model APIs (Anthropic, OpenAI, Google)." /trust carries the same split in one row. |
+| "cookies and similar technologies — **consent**" as the Art. 6 basis | /privacy §3 (legal bases) | Directly contradicted by /cookies, which states — correctly — that no consent is ever collected because the analytics is cookieless. The site does set one cookie: `sersan_language`, `max-age` 1 year, `SameSite=Lax` (`src/components/language-provider.tsx:19,76`). A strictly-necessary preference cookie is exempt from consent; that is the accurate position. | Alessandro | SHIPPED | Both pages now state one basis. /privacy §3: "the language-preference cookie — strictly necessary for a setting you chose yourself, so it is exempt from consent, and our analytics sets no cookies at all." /cookies §5 says the same in the visitor's words. /privacy §8 rewritten to match. |
+| Three precise retention periods (30 days / 24 months / 6 months) stated on a page whose own footnote says "this page is a summary; the Privacy Policy and DPA govern" — while /privacy §6 contained **no** periods at all | /trust (retention), /privacy §6 | The summary was summarising something that did not exist in the governing document. | Alessandro | SHIPPED | Periods moved **into** /privacy §6, word-for-word identical to /trust: lead 24 months from last contact; engagement data deleted within 30 days of contract end unless the DPA specifies a longer regulatory hold; hiring 6 months unless the candidate consents to longer. /privacy adds contractual and accounting records "for as long as UK company and tax law requires" (no invented year count). /trust unchanged — it now genuinely summarises. |
+| "We don't use your brief for marketing" at the point of collection, against /privacy's stated use "Communicate with you about our services, updates, and **promotions**" | `src/components/start-intake-form.tsx`, /privacy §3 | The form made an absolute promise the policy withdrew two clicks later, and /trust stated a third position ("Marketing communications to opted-in business contacts"). The strictest is the one to publish. | Alessandro | SHIPPED | Form: "By submitting you agree we may reply by email. Your brief isn't used for marketing, and nobody is added to a list without consent." /privacy §3 use-bullet rewritten to "Communicate with you about the work in hand — marketing only with your consent, with an opt-out in every message", which matches the Art. 6 line below it and /trust's Controller list. |
+| "We will route any request we receive to the relevant client **within five business days**." | /trust (GDPR roles note) | A timing SLA nobody instruments — same class as the retired 30-second kill switch. There is no ticketing system, no clock, no measurement. | Alessandro | SHIPPED | "without undue delay, and tell you we have" — the GDPR processor standard, and it matches /privacy §7, which already promised to route and to say so. |
+| "**Either way** the work runs on cloud providers in the UK and EU, encrypted at rest and in transit…" | /trust (privacy FAQ) | An "every" claim over systems SerSan may not host. The controls list one section above already scopes encryption and logging to "the systems we operate"; the FAQ contradicted that scoping. | Michele | SHIPPED | "Where we host the work, it runs on cloud providers in the UK and EU…" — same guarantee, honestly bounded. |
+| "We do not claim compliance certifications we don't hold. We do build systems that pass them." | /trust (standards intro) | Re-checked this pass. Still the strongest line on the page. | — | SHIPPED | Kept verbatim. Unqualified on purpose. Do not add a disclaimer to it. |
+
+**Re-checked and left alone this pass** — these read as absolutes but survive scrutiny:
+"AES-256 and modern TLS as standard" (scoped to systems we operate), "delete engagement
+data within 30 days" (operable, and now stated identically in the governing document),
+"we respond within 30 days" on /privacy §7 (the GDPR statutory maximum, not a
+self-invented SLA), and the three AI control rows, which describe a practice rather than
+a measured guarantee.
+
+---
+
 ## Still open
 
 1. **Footer ISO badge** (`src/components/footer.tsx`) — the ISO claim is removed from /trust
@@ -90,8 +114,10 @@ evidence. Where there is no evidence, the claim is reworded to posture
    explains the posture now contradicts the badge above it.
 2. **Consent mechanism vs. analytics** — pick one. The cookie policy is honest today
    only because the analytics in use is cookieless.
-3. **Subprocessor list** — reconcile the published names against the accounts actually
-   in use, then mirror the same list into the DPA template.
+3. **Subprocessor list** — the *site* half is now verified against the code (Vercel +
+   Resend; Supabase removed). The *engagement* half — AWS / Google Cloud / Azure and the
+   model APIs — is still a typical-case list, not an account audit. Reconcile it against
+   the accounts actually in use, then mirror the same split into the DPA template.
 4. **DPA template** — /trust and /privacy both defer to it. Confirm it exists in a
    sendable state and that "Request DPA" resolves to a real document.
 5. **Theme-preference storage** — claimed previously, not verified; currently unclaimed.

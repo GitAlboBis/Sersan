@@ -504,7 +504,7 @@ export default function ProcessSection() {
 
         {/* Closing line + CTA — the page's third strategic conversion point.
             The buying anxiety at this depth is "is this actually buyable in
-            chunks?", answered by "start with Diagnose". */}
+            chunks?", answered by "start at Understand". */}
         <div className="mt-12 sm:mt-14 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 items-start">
           <p className="lg:col-span-7 text-[14px] text-ink-mute leading-relaxed">
             {isEn ? (
@@ -512,9 +512,8 @@ export default function ProcessSection() {
                 Most engagements run the full sequence. Many start at{" "}
                 <span className="text-ink">Scope</span> or{" "}
                 <span className="text-ink">Build</span> because the problem was
-                already clear. About a third of early engagements end with
-                &ldquo;don&apos;t build this,&rdquo; and that&apos;s a successful
-                outcome.
+                already clear. Some end with &ldquo;don&apos;t build this,&rdquo;
+                and that&apos;s a successful outcome.
               </>
             ) : (
               <>
@@ -522,9 +521,8 @@ export default function ProcessSection() {
                 Molti iniziano da{" "}
                 <span className="text-ink">Definizione</span> o{" "}
                 <span className="text-ink">Costruzione</span> perché il problema
-                era già chiaro. Circa un terzo degli ingaggi iniziali si
-                chiude con &ldquo;non costruire questo&rdquo;, ed è un esito di
-                successo.
+                era già chiaro. Alcuni si chiudono con &ldquo;non costruire
+                questo&rdquo;, ed è un esito di successo.
               </>
             )}
           </p>

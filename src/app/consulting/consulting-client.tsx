@@ -40,23 +40,28 @@ export function ConsultingClient() {
       q: isEn
         ? "How much does it cost, and how big does a project need to be?"
         : "Quanto costa, e quanto deve essere grande un progetto?",
+      // The old closing clause promised a costed proposal inside the reply
+      // window — a DELIVERY promise, where every other surface promises a
+      // REPLY (FACTS.replyTime). Aligned. The "continued work is agreed phase
+      // by phase" clause also went: the same idea is stated in full by the
+      // fixed-scope strip in the process section further up this page.
       a: isEn
-        ? "It depends on the work. Diagnostics are fixed-price. Builds are scoped and priced per project, and continued work is agreed phase by phase. There's no minimum programme to buy into — one well-defined problem is a good place to start, and it can grow from there. You'll get a clear proposal, usually within a business day."
-        : "Dipende dal lavoro. Le diagnosi sono a prezzo fisso. Gli sviluppi sono dimensionati e quotati progetto per progetto, e il lavoro continuativo si concorda fase per fase. Non c'è un programma minimo da sottoscrivere: un singolo problema ben definito è un ottimo punto di partenza, e da lì può crescere. Ricevete una proposta chiara, di solito entro un giorno lavorativo.",
+        ? `It depends on the work. Diagnostics are fixed-price. Builds are scoped and priced per project. There's no minimum programme to buy into — one well-defined problem is a good place to start, and it can grow from there. ${pick(isEn, FACTS.replyTime)}.`
+        : `Dipende dal lavoro. Le diagnosi sono a prezzo fisso. Gli sviluppi sono dimensionati e quotati progetto per progetto. Non c'è un programma minimo da sottoscrivere: un singolo problema ben definito è un ottimo punto di partenza, e da lì può crescere. ${pick(isEn, FACTS.replyTime)}.`,
     },
     {
       q: isEn
         ? "How long does a typical engagement last?"
         : "Quanto dura un ingaggio tipico?",
       a: isEn
-        ? `A Focused Diagnostic runs ${pick(isEn, FACTS.auditDuration)}. A Delivery Sprint runs ${pick(isEn, FACTS.sprintDuration)}. Continued work is agreed in phases, each with its own scope, price and end. We scope each one up front so nothing comes out of nowhere later.`
-        : `Una Diagnosi mirata dura ${pick(isEn, FACTS.auditDuration)}. Uno Sprint di delivery dura ${pick(isEn, FACTS.sprintDuration)}. Il lavoro continuativo si concorda per fasi, ognuna con il proprio scope, prezzo e fine. Definiamo tutto in anticipo, così non emergono sorprese in corso d'opera.`,
+        ? `A Focused Diagnostic runs ${pick(isEn, FACTS.auditDuration)}. A Delivery Sprint runs ${pick(isEn, FACTS.sprintDuration)}. Longer builds are split into sprints you can stop between. We scope each one up front so nothing comes out of nowhere later.`
+        : `Una Diagnosi mirata dura ${pick(isEn, FACTS.auditDuration)}. Uno Sprint di delivery dura ${pick(isEn, FACTS.sprintDuration)}. I progetti più lunghi si dividono in sprint tra i quali potete fermarvi. Definiamo tutto in anticipo, così non emergono sorprese in corso d'opera.`,
     },
     {
       q: isEn ? "What happens after launch?" : "Cosa succede dopo il lancio?",
       a: isEn
-        ? "Handover and a stabilisation period: documentation, architecture decision records, a walkthrough with whoever will run it, and us on hand while it settles. You own the code and the system outright — no licensing, no lock-in, no source held back. Continued development or support is available, scoped and priced separately, never an assumption."
-        : "Handover e un periodo di stabilizzazione: documentazione, architecture decision record, un walkthrough con chi dovrà gestirlo e noi a disposizione mentre il sistema si assesta. Il codice e il sistema sono vostri: nessuna licenza, nessun lock-in, nessun sorgente trattenuto. Sviluppo o supporto continuativo sono disponibili, con scope e prezzo a parte, mai un automatismo.",
+        ? "Handover and a stabilisation period: documentation, architecture decision records, a walkthrough with whoever will run it, and us on hand while it settles. You own the code and the system outright — no licensing, no lock-in, no source held back. Continued development or support is available if you want it, scoped and priced separately."
+        : "Handover e un periodo di stabilizzazione: documentazione, architecture decision record, un walkthrough con chi dovrà gestirlo e noi a disposizione mentre il sistema si assesta. Il codice e il sistema sono vostri: nessuna licenza, nessun lock-in, nessun sorgente trattenuto. Sviluppo o supporto continuativo sono disponibili se li volete, con scope e prezzo a parte.",
     },
   ];
 
@@ -267,9 +272,14 @@ export function ConsultingClient() {
         </div>
       </section>
 
-      {/* Intake form */}
+      {/* Intake form — this is /consulting's conversion. The page used to
+          embed this AND then close with a primary CTA into /start, a second,
+          different form for the same job; the closing beat now points back
+          here instead (see below). scroll-mt-24 matches #engage / #faq for
+          the no-JS landing (the smooth-scroll provider already offsets
+          hash-link clicks by 72px). */}
       <div>
-      <section id="intake" className="section-lg relative">
+      <section id="intake" className="section-lg relative scroll-mt-24">
         <div className="container-px relative">
           <SectionHeading
             align="center"
@@ -311,7 +321,11 @@ export function ConsultingClient() {
           here and the signature line threads it before the CTA. */}
       <div data-line-anchor="ritual" aria-hidden="true" className="py-28 sm:py-40" />
 
-      {/* Closing CTA */}
+      {/* Closing CTA — contextual, not a second conversion. It points at the
+          intake above rather than at /start, so the page asks for exactly one
+          brief in exactly one form. The heading no longer restates the
+          intake's own promise ("...what we'd build first"); it answers the
+          objection that actually stops people filling the form in. */}
       <div data-line-anchor="final-cta">
       <section className="section-lg">
         <div className="container-px">
@@ -323,16 +337,16 @@ export function ConsultingClient() {
               title={
                 isEn ? (
                   <>
-                    Tell us the problem.{" "}
+                    You don&apos;t need a spec or a budget.{" "}
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                      We&apos;ll tell you what we&apos;d build first.
+                      Just the problem you want gone.
                     </span>
                   </>
                 ) : (
                   <>
-                    Diteci qual è il problema.{" "}
+                    Non servono capitolato né budget.{" "}
                     <span className="italic" style={{ color: "hsl(var(--accent))" }}>
-                      Vi diciamo cosa costruiremmo per primo.
+                      Basta il problema da risolvere.
                     </span>
                   </>
                 )
@@ -340,7 +354,7 @@ export function ConsultingClient() {
             />
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
               <Button asChild size="lg" className={cn("group", CTA_FLUID_SM)}>
-                <Link href={START_HREF}>
+                <Link href="#intake">
                   {pick(isEn, CTA.discussProject)}
                   <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
                 </Link>

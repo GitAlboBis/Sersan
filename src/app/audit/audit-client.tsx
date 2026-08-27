@@ -4,7 +4,6 @@ import Link from "next/link";
 import { ArrowRight, Check, Mail } from "lucide-react";
 import { Button, CTA_FLUID_SM } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { CalEmbed } from "@/components/cal-embed";
 import { SectionHeading } from "@/components/ui/section-heading";
 import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
@@ -56,12 +55,17 @@ export function AuditClient() {
 
   const after = isEn
     ? [
-        { title: "Build it with us", desc: "If the audit reveals work you want to ship, we'll quote a fixed scope and timeline. Continuation is earned phase by phase, never assumed." },
+        // The fee credit is the strongest de-risker we have for a
+        // price-sensitive buyer, and until now it only rendered on
+        // /services/architecture — a page reached after this decision, not
+        // before it. Wording follows the shipped policy in src/data/services.ts
+        // ("Audit fee credits against the build engagement").
+        { title: "Build it with us", desc: "If the audit reveals work you want to ship, we'll quote a fixed scope and timeline, and the diagnostic fee is credited against that build. Continuation is earned phase by phase, never assumed." },
         { title: "Build it with someone else", desc: "The plan is yours to keep. Hand it to your own people, a freelancer or another supplier. We're happy either way." },
         { title: "Sit on it", desc: "Some companies aren't ready to act immediately. The report doesn't expire. Come back when you are." },
       ]
     : [
-        { title: "Costruitelo con noi", desc: "Se l'audit fa emergere lavori che volete realizzare, vi diamo una proposta a scope e tempi fissi. La continuità si guadagna fase per fase, non si dà per scontata." },
+        { title: "Costruitelo con noi", desc: "Se l'audit fa emergere lavori che volete realizzare, vi diamo una proposta a scope e tempi fissi, e il compenso della diagnosi viene scalato da quel build. La continuità si guadagna fase per fase, non si dà per scontata." },
         { title: "Costruitelo con qualcun altro", desc: "Il piano resta vostro. Passatelo alle vostre persone, a un freelance o a un altro fornitore. Per noi va bene comunque." },
         { title: "Tenetelo lì", desc: "Alcune aziende non sono pronte ad agire subito. Il report non ha scadenza. Tornate quando lo sarete." },
       ];
@@ -148,13 +152,16 @@ export function AuditClient() {
                 ? "A senior engineer spends 2–6 business days inside your business: how the work actually runs, the systems behind it, the data, the tools. You leave with a written report on what's costing you, what to change, and what we'd build first. Software, automation or AI — whichever earns its place."
                 : "Un ingegnere senior passa 2–6 giorni lavorativi dentro la vostra azienda: come funziona davvero il lavoro, i sistemi che lo reggono, i dati, gli strumenti. Uscite con un report scritto su cosa vi costa, cosa cambiare e cosa costruiremmo per primo. Software, automazione o AI — a seconda di cosa se lo merita."}
             </p>
-            {/* `block sm:inline` on the <a>: it is an INLINE box outside any
-                flex row, so the button's `w-full` would resolve against a
+            {/* `block sm:inline` on the wrapper: it is an INLINE box outside
+                any flex row, so the button's `w-full` would resolve against a
                 shrink-to-fit parent and change nothing. `px-10` + the nowrap
-                Italian label (then "Prenota una call di scoping") measured ~334px —
-                well past the 256px column at 320px. `sm:inline` puts the
-                wrapper back exactly as it was at every desktop width. */}
-            <a href="#book-call" className="block sm:inline">
+                Italian label measured ~334px — well past the 256px column at
+                320px. `sm:inline` puts the wrapper back exactly as it was at
+                every desktop width.
+                DESTINATION: START_HREF, not the old in-page `#book-call`
+                jump. This was the only hero primary on the site that never
+                reached the brief; the label is unchanged. */}
+            <Link href={START_HREF} className="block sm:inline">
               <Button
                 size="lg"
                 className={cn(
@@ -165,7 +172,7 @@ export function AuditClient() {
                 {pick(isEn, CTA.discussDiagnostic)}
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
-            </a>
+            </Link>
             <p className="mt-4 text-xs text-muted-foreground">
               {pick(isEn, FACTS.briefIsEnough)}. {pick(isEn, FACTS.replyTime)}.
             </p>
@@ -420,8 +427,18 @@ export function AuditClient() {
           here and the signature line threads it before the CTA. */}
       <div data-line-anchor="ritual" aria-hidden="true" className="py-28 sm:py-40" />
 
-      {/* Closing CTA — booking (written-intake fallback while the Cal embed
-          is disabled; see CAL_ENABLED in @/lib/site) */}
+      {/* Closing CTA — ONE unit. This slot used to render the same ask three
+          times in a row: the <CalEmbed/> fallback card (a placeholder shaped
+          like a booking widget, carrying its own filled "Send a project brief"
+          + email), a hairline divider, then an outline button asking for the
+          brief again plus the same email. Booking is not coming back
+          (CAL_ENABLED is false and the Cal slug 404s — see @/lib/site), so a
+          card standing in for a booking embed was holding a slot for a thing
+          that will never occupy it. The card is gone; the heading now leads
+          straight into a single filled primary + the email fallback.
+          The `book-call` id is kept only so any external deep link to
+          /audit#book-call still lands somewhere sensible — nothing on the
+          site targets it any more. */}
       <div data-line-anchor="final-cta">
       <section id="book-call" className="section-lg relative overflow-hidden">
         <div
@@ -469,14 +486,8 @@ export function AuditClient() {
 
           <div className="section-divider max-w-3xl mx-auto" aria-hidden="true" />
 
-          <div className="max-w-4xl mx-auto mt-10">
-            <CalEmbed slug="sersan/scoping-call" theme="dark" />
-          </div>
-
-          <div className="section-divider max-w-3xl mx-auto mt-10" aria-hidden="true" />
-
           <div className="mt-10 flex flex-col sm:flex-row gap-3 justify-center items-center">
-            <Button asChild variant="outline" size="lg" className={cn("group", CTA_FLUID_SM)}>
+            <Button asChild size="lg" className={cn("group", CTA_FLUID_SM)}>
               <Link href={START_HREF}>
                 {pick(isEn, CTA.primary)}
                 <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-0.5 transition-transform" />

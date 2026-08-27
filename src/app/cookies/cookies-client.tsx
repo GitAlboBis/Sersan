@@ -52,8 +52,8 @@ export function CookiesClient() {
           </h1>
           <p className="text-lg text-muted-foreground leading-[1.65]">
             {isEn
-              ? "How SERSAN uses cookies and similar technologies on our website — and how few of them there are."
-              : "Come SERSAN utilizza cookie e tecnologie simili sul nostro sito — e quanto pochi ne servono."}
+              ? "How SerSan uses cookies and similar technologies on our website — and how few of them there are."
+              : "Come SerSan utilizza cookie e tecnologie simili sul nostro sito — e quanto pochi ne servono."}
           </p>
         </div>
 
@@ -124,8 +124,8 @@ export function CookiesClient() {
                 </h2>
                 <p>
                   {isEn
-                    ? "This Cookie Policy explains what SERSAN actually stores on your device when you visit our website, and what it is for. It is a short list on purpose: we do not run advertising tags, and we do not build profiles of visitors."
-                    : "Questa Cookie Policy spiega cosa SERSAN memorizza davvero sul vostro dispositivo quando visitate il sito, e a cosa serve. L'elenco è volutamente breve: non usiamo tag pubblicitari e non profiliamo i visitatori."}
+                    ? "This Cookie Policy explains what SerSan actually stores on your device when you visit our website, and what it is for. It is a short list on purpose: we do not run advertising tags, and we do not build profiles of visitors."
+                    : "Questa Cookie Policy spiega cosa SerSan memorizza davvero sul vostro dispositivo quando visitate il sito, e a cosa serve. L'elenco è volutamente breve: non usiamo tag pubblicitari e non profiliamo i visitatori."}
                 </p>
               </section>
               </Reveal>
@@ -210,8 +210,8 @@ export function CookiesClient() {
                 </p>
                 <p>
                   {isEn
-                    ? "You will not see a consent banner here, because we do not set advertising or profiling cookies. Clearing the language cookie only means the site opens in English again."
-                    : "Non troverete un banner di consenso, perché non impostiamo cookie pubblicitari o di profilazione. Cancellare il cookie della lingua significa soltanto che il sito si riaprirà in inglese."}
+                    ? "You will not see a consent banner here: the only cookie we set is the language preference, strictly necessary for a setting you chose yourself and so exempt from consent, and our analytics sets no cookies at all. Clearing the language cookie only means the site opens in English again."
+                    : "Non troverete un banner di consenso: l'unico cookie che impostiamo è quello della lingua, strettamente necessario per un'impostazione scelta da voi e quindi esente da consenso, e i nostri analytics non impostano alcun cookie. Cancellare il cookie della lingua significa soltanto che il sito si riaprirà in inglese."}
                 </p>
               </section>
               </Reveal>

@@ -60,8 +60,8 @@ export function PrivacyClient() {
           </h1>
           <p className="text-lg text-muted-foreground leading-[1.65]">
             {isEn
-              ? "How SERSAN collects, uses, and protects your personal data in compliance with GDPR."
-              : "Come SERSAN raccoglie, utilizza e protegge i vostri dati personali in conformità al GDPR."}
+              ? "How SerSan collects, uses, and protects your personal data in compliance with GDPR."
+              : "Come SerSan raccoglie, utilizza e protegge i vostri dati personali in conformità al GDPR."}
           </p>
         </div>
 
@@ -200,14 +200,14 @@ export function PrivacyClient() {
                     ? [
                         "Provide and improve our consulting, AI, and engineering services",
                         "Customise proposals, delivery plans, and technical recommendations",
-                        "Communicate with you about our services, updates, and promotions",
+                        "Communicate with you about the work in hand — marketing only with your consent, with an opt-out in every message",
                         "Analyse usage patterns to enhance platform performance",
                         "Comply with legal obligations and protect our rights",
                       ]
                     : [
                         "Fornire e migliorare i nostri servizi di consulenza, AI e ingegneria",
                         "Personalizzare proposte, piani di delivery e raccomandazioni tecniche",
-                        "Comunicare con voi su servizi, aggiornamenti e promozioni",
+                        "Comunicare con voi sul lavoro in corso — marketing solo con il vostro consenso, con revoca in ogni messaggio",
                         "Analizzare i modelli di utilizzo per migliorare le performance della piattaforma",
                         "Adempiere agli obblighi di legge e tutelare i nostri diritti",
                       ]
@@ -227,8 +227,8 @@ export function PrivacyClient() {
                       over-promising in the data subject's favour is safe, the
                       reverse is not. */}
                   {isEn
-                    ? "delivering an engagement and the steps leading to it — Art. 6(1)(b), contract; security, audit logging and service improvement — Art. 6(1)(f), legitimate interests; replying to you and following up on an enquiry you started — Art. 6(1)(b) and 6(1)(f); marketing communications — consent, to opted-in business contacts only, with an opt-out in every message; cookies and similar technologies — consent."
-                    : "erogazione del progetto e fasi precontrattuali — Art. 6(1)(b), contratto; sicurezza, log di audit e miglioramento del servizio — Art. 6(1)(f), legittimo interesse; risposta e follow-up su una richiesta che avete iniziato voi — Art. 6(1)(b) e 6(1)(f); comunicazioni marketing — consenso, solo verso contatti business che lo hanno dato, con possibilità di revoca in ogni messaggio; cookie e tecnologie simili — consenso."}
+                    ? "delivering an engagement and the steps leading to it — Art. 6(1)(b), contract; security, audit logging and service improvement — Art. 6(1)(f), legitimate interests; replying to you and following up on an enquiry you started — Art. 6(1)(b) and 6(1)(f); marketing communications — consent, to opted-in business contacts only, with an opt-out in every message; the language-preference cookie — strictly necessary for a setting you chose yourself, so it is exempt from consent, and our analytics sets no cookies at all."
+                    : "erogazione del progetto e fasi precontrattuali — Art. 6(1)(b), contratto; sicurezza, log di audit e miglioramento del servizio — Art. 6(1)(f), legittimo interesse; risposta e follow-up su una richiesta che avete iniziato voi — Art. 6(1)(b) e 6(1)(f); comunicazioni marketing — consenso, solo verso contatti business che lo hanno dato, con possibilità di revoca in ogni messaggio; il cookie della lingua — strettamente necessario per un'impostazione scelta da voi, quindi esente da consenso, e i nostri analytics non impostano alcun cookie."}
                 </p>
               </section>
               </Reveal>
@@ -274,8 +274,8 @@ export function PrivacyClient() {
                     {isEn ? "Subprocessors:" : "Sub-responsabili:"}
                   </strong>{" "}
                   {isEn
-                    ? "cloud hosting (AWS, Google Cloud, Azure), site and database hosting (Vercel, Supabase), model APIs (Anthropic, OpenAI, Google), and email delivery (Resend). The list is published, not held behind an NDA, and is named in full in the DPA."
-                    : "hosting cloud (AWS, Google Cloud, Azure), hosting del sito e del database (Vercel, Supabase), API dei modelli (Anthropic, OpenAI, Google) e invio email (Resend). L'elenco è pubblico, non soggetto a NDA, ed è riportato per esteso nel DPA."}
+                    ? "for data collected through this site, Vercel (site and form hosting, plus cookieless analytics) and Resend (email delivery of your message) — there is no site database. For client-engagement data, subprocessors are scoped per project: typically cloud hosting (AWS, Google Cloud, Azure) and model APIs (Anthropic, OpenAI, Google). Both lists are published, not held behind an NDA, and are named in full in the DPA."
+                    : "per i dati raccolti tramite questo sito, Vercel (hosting del sito e dei form, oltre agli analytics senza cookie) e Resend (invio email del vostro messaggio) — non esiste alcun database del sito. Per i dati dei progetti con i clienti, i sub-responsabili sono definiti progetto per progetto: di norma hosting cloud (AWS, Google Cloud, Azure) e API dei modelli (Anthropic, OpenAI, Google). Entrambi gli elenchi sono pubblici, non soggetti a NDA, e riportati per esteso nel DPA."}
                 </p>
                 <p className="mt-4">
                   <strong className="text-foreground font-medium">
@@ -313,8 +313,8 @@ export function PrivacyClient() {
                 </h2>
                 <p>
                   {isEn
-                    ? "We retain your information for as long as necessary to fulfil the purposes outlined in this policy, unless a longer retention period is required by law. You may request deletion of your data at any time."
-                    : "Conserviamo le vostre informazioni per il tempo necessario a perseguire le finalità indicate in questa policy, salvo che un periodo di conservazione più lungo sia richiesto dalla legge. Potete chiedere in qualsiasi momento la cancellazione dei vostri dati."}
+                    ? "We retain your information only as long as the purpose requires. Lead data is retained for 24 months from last contact, then purged. Engagement data is deleted within 30 days of contract end, unless the DPA specifies a longer regulatory hold. Hiring data is retained for 6 months unless the candidate consents to a longer hold. Contractual and accounting records are kept for as long as UK company and tax law requires. You may request deletion of your data at any time."
+                    : "Conserviamo le vostre informazioni solo per il tempo necessario alla finalità. I dati dei lead vengono conservati per 24 mesi dall'ultimo contatto e poi eliminati. I dati di ingaggio vengono cancellati entro 30 giorni dalla fine del contratto, salvo che il DPA preveda un periodo di conservazione più lungo per ragioni normative. I dati di selezione del personale vengono conservati per 6 mesi, salvo che il candidato acconsenta a un periodo più lungo. I documenti contrattuali e contabili vengono conservati per il tempo richiesto dalla normativa societaria e fiscale del Regno Unito. Potete chiedere in qualsiasi momento la cancellazione dei vostri dati."}
                 </p>
               </section>
               </Reveal>
@@ -367,9 +367,10 @@ export function PrivacyClient() {
                 <p>
                   {isEn ? (
                     <>
-                      We use a small number of cookies and similar technologies: one remembers your language choice,
-                      and a privacy-friendly analytics script measures traffic without cross-site tracking or
-                      advertising profiles. You can manage them through your browser settings or our{" "}
+                      We use a small number of cookies and similar technologies: a sersan_language cookie remembers
+                      your language choice, and our analytics measures traffic without cookies, cross-site tracking
+                      or advertising profiles. Neither is used for advertising, so no consent banner is shown. You
+                      can manage them through your browser settings or our{" "}
                       <Link
                         href="/cookies"
                         className="text-foreground underline underline-offset-2 hover:text-foreground/80 transition-colors"
@@ -380,9 +381,10 @@ export function PrivacyClient() {
                     </>
                   ) : (
                     <>
-                      Utilizziamo un numero ridotto di cookie e tecnologie simili: uno ricorda la lingua scelta e uno
-                      script di analytics rispettoso della privacy misura il traffico senza tracciamento cross-site né
-                      profilazione pubblicitaria. Potete gestirli dalle impostazioni del browser o dalla nostra{" "}
+                      Utilizziamo un numero ridotto di cookie e tecnologie simili: un cookie sersan_language ricorda
+                      la lingua scelta e i nostri analytics misurano il traffico senza cookie, senza tracciamento
+                      cross-site né profilazione pubblicitaria. Nessuno dei due serve alla pubblicità, perciò non
+                      compare alcun banner di consenso. Potete gestirli dalle impostazioni del browser o dalla nostra{" "}
                       <Link
                         href="/cookies"
                         className="text-foreground underline underline-offset-2 hover:text-foreground/80 transition-colors"

@@ -325,7 +325,7 @@ export const SPINE_COPY = {
     // Hero cluster — the DOM payoff the intro gate releases onto (the
     // [data-hero-stagger] cascade in StagePanel's isHero branch). Eyebrow is
     // the brand's canonical positioning line (same string as the OG image).
-    heroEyebrow: "Custom software, automation & AI · London",
+    heroEyebrow: "Custom software, automation & AI · For founders & SMEs · London",
     heroSub:
       "From one manual workflow to a full production platform. You don't need a CTO to start.",
     // Intro-gate skip affordance (HeroIntroGate's bottom-right mono label).
@@ -334,7 +334,7 @@ export const SPINE_COPY = {
   it: {
     ctaPrimary: CTA.primary.it,
     seeSelectedWork: "Guarda i nostri lavori",
-    heroEyebrow: "Software su misura, automazione e AI · Londra",
+    heroEyebrow: "Software su misura, automazione e AI · Per founder e PMI · Londra",
     heroSub:
       "Da un processo manuale a una piattaforma in produzione. Non serve un CTO per iniziare.",
     skipIntro: "Salta l'intro",

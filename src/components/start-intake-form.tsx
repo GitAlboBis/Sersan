@@ -719,8 +719,8 @@ export default function StartIntakeForm() {
         </Button>
         <p className="text-[12px] text-ink-mute/80 leading-relaxed">
           {isEn
-            ? "By submitting you agree we may reply by email. We don't use your brief for marketing."
-            : "Inviando, acconsentite a ricevere una nostra risposta via email. Non usiamo il vostro brief per finalità di marketing."}
+            ? "By submitting you agree we may reply by email. Your brief isn't used for marketing, and nobody is added to a list without consent."
+            : "Inviando, acconsentite a ricevere una nostra risposta via email. Non usiamo il vostro brief per finalità di marketing e non inseriamo nessuno in una lista senza consenso."}
         </p>
       </div>
     </form>

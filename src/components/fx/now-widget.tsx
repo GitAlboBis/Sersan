@@ -1,8 +1,16 @@
 "use client";
 
 /**
- * NowWidget — the footer's live "NOW · ON-CALL · ALESSANDRO · LDN · [time]"
- * strip from the site spec (AGENTS.md footer block), previously never built.
+ * NowWidget — the footer's live London clock strip.
+ *
+ * It used to read "NOW · ON-CALL · ALESSANDRO · LDN · [time]", a leftover of
+ * the retired "if it breaks at 3am we're the ones who wake up" positioning
+ * (STRATEGY §7 rules that voice off-charter). Naming one person as on-call at
+ * whatever hour the visitor happens to load the page promises round-the-clock
+ * personal availability that nothing else on the site backs — the actual
+ * promise is FACTS.replyTime, one row above this in the footer. The clock
+ * itself stays: it is a true, quiet signal of where the studio sits, and the
+ * footer layout expects the row.
  *
  * London time via Intl with an explicit timeZone (the studio clock, not the
  * visitor's), re-rendered once a minute. Hydration-safe: the server renders
@@ -11,6 +19,7 @@
  * differs. The dot reuses the footer's status-dot idiom (accent + pulse).
  */
 import { useEffect, useState } from "react";
+import { useLanguage } from "@/components/language-provider";
 
 const LONDON_TIME = new Intl.DateTimeFormat("en-GB", {
   hour: "2-digit",
@@ -20,6 +29,8 @@ const LONDON_TIME = new Intl.DateTimeFormat("en-GB", {
 });
 
 export function NowWidget() {
+  const { language } = useLanguage();
+  const isEn = language === "en";
   const [time, setTime] = useState<string | null>(null);
 
   useEffect(() => {
@@ -43,7 +54,7 @@ export function NowWidget() {
     <span className="inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.12em] uppercase text-ink-mute">
       <span aria-hidden="true" className="status-dot" />
       <span suppressHydrationWarning>
-        {"Now · On-call · Alessandro · LDN · "}
+        {isEn ? "Now · London · " : "Ora · Londra · "}
         {time ?? "—:—"}
       </span>
     </span>

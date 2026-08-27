@@ -39,7 +39,11 @@ export function ContactClient() {
     {
       icon: Building2,
       title: isEn ? "Company" : "Società",
-      value: "SERSAN Limited",
+      // The REGISTERED entity, exactly as Companies House holds it — this is
+      // the field a buyer copies into a supplier record, a PO or an NDA, so
+      // it must not render the brand mark ("SerSan") or the old all-caps
+      // form. Entity casing legitimately differs from the brand casing.
+      value: "Sersan Limited",
       href: null as string | null,
     },
     {

@@ -2,8 +2,10 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import gsap from "gsap";
+import Link from "next/link";
 import { QUESTIONS, TOTAL_QUESTIONS, matchFindings } from "@/data/audit-questions";
 import { CTA, pick } from "@/data/copy";
+import { START_HREF } from "@/lib/site";
 
 /**
  * SelfAudit — the 60-second self-audit as /audit's participation beat,
@@ -29,8 +31,10 @@ import { CTA, pick } from "@/data/copy";
  *     from Q1). Selecting advances.
  *   - result: matchFindings(answers) top-3 as mini-beats (mono number +
  *     finding title + line + effort tag, staggered in), a closing line
- *     bridging to the page's existing #book-call CTA (a link — no new
- *     form), and a mono "Run again" reset. The engine can return fewer
+ *     bridging to the brief at START_HREF (a link — no new form here), and
+ *     a mono "Run again" reset. This is the highest-intent moment on the
+ *     page, so it goes to the brief itself rather than scrolling to another
+ *     CTA further down. The engine can return fewer
  *     than 3 findings (e.g. mature answers raise no triggers), so the
  *     heading adapts by count and an empty state exists — same honesty
  *     contract as the page FAQ's "what if you find nothing?".
@@ -560,13 +564,15 @@ export function SelfAudit({ isEn }: { isEn: boolean }) {
               </p>
 
               <div className="mt-8 flex flex-wrap items-center gap-x-8 gap-y-4">
-                {/* Link to the page's existing CTA target — not a new form. */}
+                {/* Straight to the brief — the visitor has just been shown
+                    their own top findings, and an in-page jump to another CTA
+                    spent that intent on a scroll. */}
                 {/* Both result actions carry HIT_PAD + `-my-3.5`: the padded
                     boxes clear 44px while each flex line keeps the cross-size
                     it had before, so `gap-y-4` between wrapped rows and the
                     row's own height are untouched. */}
-                <a
-                  href="#book-call"
+                <Link
+                  href={START_HREF}
                   className="group/cta relative -my-3.5 inline-flex items-center gap-1.5 rounded-sm py-3.5 font-mono text-[12px] uppercase tracking-[0.18em] text-accent outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--accent)/0.45)]"
                 >
                   {pick(isEn, CTA.discussDiagnostic)}
@@ -582,7 +588,7 @@ export function SelfAudit({ isEn }: { isEn: boolean }) {
                     aria-hidden="true"
                     className="absolute bottom-3 left-0 h-px w-full origin-left scale-x-0 bg-accent/80 transition-transform duration-300 ease-out group-hover/cta:scale-x-100 group-focus-visible/cta:scale-x-100 motion-reduce:transition-none"
                   />
-                </a>
+                </Link>
                 <button
                   type="button"
                   onClick={reset}

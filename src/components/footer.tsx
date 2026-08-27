@@ -11,7 +11,7 @@ import { useLanguage } from "@/components/language-provider";
 import { NowWidget } from "@/components/fx/now-widget";
 import { CONTACT_EMAIL, START_HREF } from "@/lib/site";
 import { track, EVENTS } from "@/lib/analytics";
-import { CTA, FACTS, pick } from "@/data/copy";
+import { CTA, FACTS, POSITIONING, pick } from "@/data/copy";
 import { usePressState } from "@/lib/use-press-state";
 
 if (typeof window !== "undefined") {
@@ -69,10 +69,16 @@ const COLUMNS: Array<{ heading: string; headingIt: string; links: LinkRow[] }> =
     heading: "What we build",
     headingIt: "Cosa costruiamo",
     links: [
+      // Shortened forms of the canonical service names in src/data/services.ts
+      // — a nav column may abbreviate, but it may not RENAME. These four used
+      // to be a third naming of the same products ("AI systems",
+      // "Architecture & data"), so /services/mlops was unrecognisable as the
+      // "AI Features & Reliability" the home card and the page itself both
+      // announce. Shorten, never rename.
       { href: "/services/engineering", label: "Custom software", labelIt: "Software su misura" },
-      { href: "/services/automation", label: "Workflow automation", labelIt: "Automazione processi" },
-      { href: "/services/mlops", label: "AI systems", labelIt: "Sistemi AI" },
-      { href: "/services/architecture", label: "Architecture & data", labelIt: "Architettura e dati" },
+      { href: "/services/automation", label: "Workflow automation", labelIt: "Automazione dei processi" },
+      { href: "/services/mlops", label: "AI features & reliability", labelIt: "Funzioni AI e affidabilità" },
+      { href: "/services/architecture", label: "Technical audits", labelIt: "Audit tecnici" },
     ],
   },
   {
@@ -441,6 +447,22 @@ export function Footer() {
           </div>
         </div>
 
+        {/* The tagline lockup (POSITIONING.tagline). AGENTS.md specifies it
+            for the footer and it had never been built here: until now the one
+            surface rendering the line the charter calls "unchanged, and
+            untouchable" was /about. It sits above the divider as a signature —
+            a quiet full-width mono lockup, deliberately NOT a second display
+            statement competing with the brand column's headline, and it
+            displaces nothing: the conversion CTA keeps its row in the brand
+            stack. `data-footer-meta` hands it to the existing entrance
+            timeline so it can never sit visible while the rest is hidden. */}
+        <p
+          data-footer-meta
+          className="mb-7 text-[10.5px] font-mono uppercase tracking-[0.2em] text-ink-mute"
+        >
+          {pick(isEn, POSITIONING.tagline)}
+        </p>
+
         {/* Divider — draws in last of the rules (document order drives the
             stagger), underlining the block before the legal tail settles. */}
         <div data-footer-rule aria-hidden="true" className="section-rule mb-10" />
@@ -451,7 +473,7 @@ export function Footer() {
             data-footer-meta
             className="sm:col-span-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute"
           >
-            <span>© 2026 SerSan Limited</span>
+            <span>© 2026 Sersan Limited</span>
             <span aria-hidden="true" className="text-ink-mute/50">·</span>
             <span>128 City Road, London EC1V 2NX</span>
             <span aria-hidden="true" className="text-ink-mute/50">·</span>
@@ -505,12 +527,25 @@ export function Footer() {
           >
             {/* The ISO 27001 claim is gone from this badge. It rendered on
                 EVERY route as "(in progress)" — a certification status SerSan
-                does not hold and cannot evidence — and /trust is dropping the
-                same claim. What is left is what is actually true: systems
-                designed against those regimes (COMPLIANCE.posture). */}
-            {isEn
-              ? "Built for GDPR · DORA · EU AI Act"
-              : "Progettati per GDPR · DORA · EU AI Act"}
+                does not hold and cannot evidence — and /trust dropped the same
+                claim.
+
+                What replaced it, "Built for GDPR · DORA · EU AI Act", was
+                still unqualified AND unlinked on 20+ routes, which reads as a
+                compliance mark: DORA and the EU AI Act do not apply to a
+                marketing site at all. It now says what is actually true — the
+                SYSTEMS are designed against those regimes (COMPLIANCE.posture)
+                — and it is a link, so the qualification that cannot fit in a
+                10.5px badge ("obligations and certification remain
+                scope-specific") is one tap away on /trust. */}
+            <Link
+              href="/trust"
+              className="tap-44 inline-block hover:text-ink transition-colors"
+            >
+              {isEn
+                ? "Systems designed for GDPR · DORA · EU AI Act"
+                : "Sistemi progettati per GDPR · DORA · EU AI Act"}
+            </Link>
             {/* Palette discoverability — desktop/fine-pointer only (the
                 shortcut is keyboard-first by nature). */}
             <span className="hidden lg:block pt-1 text-ink-mute/60">

@@ -77,8 +77,8 @@ export function TrustClient() {
     {
       title: isEn ? "Subprocessors" : "Sub-responsabili",
       desc: isEn
-        ? "Cloud hosting (AWS, Google Cloud, Azure), site and database (Vercel, Supabase), model APIs (Anthropic, OpenAI, Google), email (Resend). Named in the DPA, no NDA required."
-        : "Hosting cloud (AWS, Google Cloud, Azure), sito e database (Vercel, Supabase), API dei modelli (Anthropic, OpenAI, Google), email (Resend). Elencati nel DPA, senza NDA.",
+        ? "Site-collected data: Vercel (hosting, forms, cookieless analytics) and Resend (email delivery). No site database. Engagement data: cloud hosting (AWS, Google Cloud, Azure) and model APIs (Anthropic, OpenAI, Google), scoped per project. Named in the DPA, no NDA required."
+        : "Dati raccolti dal sito: Vercel (hosting, form, analytics senza cookie) e Resend (invio email). Nessun database del sito. Dati di progetto: hosting cloud (AWS, Google Cloud, Azure) e API dei modelli (Anthropic, OpenAI, Google), definiti progetto per progetto. Elencati nel DPA, senza NDA.",
     },
     {
       title: isEn ? "AI stop path" : "Percorso di arresto AI",
@@ -105,7 +105,7 @@ export function TrustClient() {
 
   const gdprRoles = [
     {
-      title: isEn ? "Sersan as Controller" : "Sersan come Titolare",
+      title: isEn ? "SerSan as Controller" : "SerSan come Titolare",
       label: isEn ? "Our own operations" : "Le nostre operazioni",
       items: isEn
         ? [
@@ -122,7 +122,7 @@ export function TrustClient() {
           ],
     },
     {
-      title: isEn ? "Sersan as Processor" : "Sersan come Responsabile",
+      title: isEn ? "SerSan as Processor" : "SerSan come Responsabile",
       label: isEn ? "Client AI engagements" : "Ingaggi AI con i clienti",
       items: isEn
         ? [
@@ -171,8 +171,8 @@ export function TrustClient() {
         ? "Do we need to be a regulated company to work with you?"
         : "Bisogna essere un'azienda regolamentata per lavorare con voi?",
       a: isEn
-        ? `No. Most of what we build carries no sector regulation at all. ${COMPLIANCE.proportional.en} Either way the work runs on cloud providers in the UK and EU, encrypted at rest and in transit, under its own project and credentials.`
-        : `No. Gran parte di ciò che costruiamo non è soggetta ad alcuna normativa di settore. ${COMPLIANCE.proportional.it} In ogni caso il lavoro gira su cloud provider nel Regno Unito e nell'UE, con cifratura at-rest e in-transit, sul proprio ambiente e con le proprie credenziali.`,
+        ? `No. Most of what we build carries no sector regulation at all. ${COMPLIANCE.proportional.en} Where we host the work, it runs on cloud providers in the UK and EU, encrypted at rest and in transit, under its own project and credentials.`
+        : `No. Gran parte di ciò che costruiamo non è soggetta ad alcuna normativa di settore. ${COMPLIANCE.proportional.it} Quando l'hosting è nostro, il lavoro gira su cloud provider nel Regno Unito e nell'UE, con cifratura at-rest e in-transit, sul proprio ambiente e con le proprie credenziali.`,
     },
   ];
 
@@ -292,8 +292,8 @@ export function TrustClient() {
           <Reveal>
             <p className="text-sm text-ink-mute leading-[1.55] mb-8 max-w-3xl">
               {isEn
-                ? "Under GDPR, responsibilities differ depending on whether an organisation is a Controller or a Processor. Sersan can act in either capacity depending on the engagement."
-                : "Ai sensi del GDPR, le responsabilità variano a seconda che l'organizzazione sia Titolare o Responsabile del trattamento. Sersan può agire in entrambi i ruoli a seconda dell'ingaggio."}
+                ? "Under GDPR, responsibilities differ depending on whether an organisation is a Controller or a Processor. SerSan can act in either capacity depending on the engagement."
+                : "Ai sensi del GDPR, le responsabilità variano a seconda che l'organizzazione sia Titolare o Responsabile del trattamento. SerSan può agire in entrambi i ruoli a seconda dell'ingaggio."}
             </p>
           </Reveal>
           {/* Two full-width beats, NOT cards: no borders around them — a
@@ -339,8 +339,8 @@ export function TrustClient() {
           <p className="mt-6 text-xs text-ink-mute leading-[1.55] max-w-3xl">
             <strong className="text-ink">{isEn ? "Note:" : "Nota:"}</strong>{" "}
             {isEn
-              ? "Data subjects whose data we process on a client's behalf should direct rights requests to the client (the Controller). We will route any request we receive to the relevant client within five business days."
-              : "Gli interessati i cui dati trattiamo per conto di un cliente devono rivolgere le richieste di esercizio dei diritti al cliente stesso (Titolare). Inoltreremo al cliente competente qualsiasi richiesta ricevuta entro cinque giorni lavorativi."}
+              ? "Data subjects whose data we process on a client's behalf should direct rights requests to the client (the Controller). We will route any request we receive to the relevant client without undue delay, and tell you we have."
+              : "Gli interessati i cui dati trattiamo per conto di un cliente devono rivolgere le richieste di esercizio dei diritti al cliente stesso (Titolare). Inoltreremo al cliente competente qualsiasi richiesta ricevuta senza ingiustificato ritardo, e ve lo comunicheremo."}
           </p>
         </section>
 

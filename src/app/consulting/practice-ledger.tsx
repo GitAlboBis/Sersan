@@ -13,13 +13,12 @@ if (typeof window !== "undefined") {
 /**
  * PracticeLedger — the /consulting practice areas as a full-bleed big-type
  * numbered index ("less cards, more animation, big text"). Replaces the 4×2
- * icon-card grid; all eight EN+IT content strings are carried over verbatim,
- * only the icons and card chrome are retired. The five detail routes the
- * retired cards held (recovered from the pre-ledger consulting-client.tsx,
- * commit a2e2602^: architecture → /services/architecture, automation →
- * /services/automation, data platforms → /audit, ML & production AI →
- * /services/engineering, MLOps → /services/mlops) are restored as a small
- * mono "Explore →" <Link> INSIDE each expanded description — it rides the
+ * icon-card grid; only the icons and card chrome are retired. Each of the
+ * eight rows carries a destination (architecture → /services/architecture,
+ * automation → /services/automation, data platforms → /audit, custom
+ * software → /services/engineering, AI in production → /services/mlops,
+ * fintech + forecasting → /case-studies, fractional CTO → #engage) as a
+ * small mono "Explore →" <Link> INSIDE each expanded description — it rides the
  * height-clip reveal, so it appears only when the row is active, and is
  * always visible in static/SSR mode (descriptions open). The row itself
  * stays non-link — the CTA is the row's only interactive element. Keyboard:
@@ -75,12 +74,15 @@ if (typeof window !== "undefined") {
 
 type PracticeArea = { num: string; title: string; desc: string; href?: string };
 
-// href = the buyer path each retired practice card carried (recovered
-// verbatim from the pre-ledger consulting-client.tsx, a2e2602^). Only the
-// historical five: data platforms deliberately routed to /audit (its data &
-// ML readiness surface is the entry engagement; no dedicated detail page);
-// FinTech engineering and Quantitative ML never had a target; Fractional
-// CTO's "#engage" was an in-page anchor, not a route — all stay link-free.
+// href = the buyer path each row carries. Five were recovered verbatim from
+// the retired practice cards (pre-ledger consulting-client.tsx, a2e2602^),
+// with data platforms deliberately routed to /audit (its data & ML readiness
+// surface is the entry engagement; no dedicated detail page). The remaining
+// three used to render as dead list items beside five linked ones, which read
+// as an oversight rather than a decision: FinTech engineering and Forecasting
+// & risk now go to /case-studies, where the evidence for both actually lives,
+// and Fractional CTO goes to #engage, the Technical Partnership format on
+// this same page. Every row now has somewhere to go.
 function getAreas(isEn: boolean): PracticeArea[] {
   return [
     {
@@ -126,9 +128,14 @@ function getAreas(isEn: boolean): PracticeArea[] {
     {
       num: "06",
       title: isEn ? "FinTech engineering" : "Ingegneria FinTech",
+      // Prior employment, attributed as such — NOT a SerSan practice record.
+      // The old line compressed eight years spanning fintech, public sector,
+      // aerospace and renewables into "eight years at three fintech firms",
+      // which contradicted /about. Titles are the canonical ones.
       desc: isEn
-        ? "Low-latency, regulated, real money. Our CPTO spent eight years delivering it at J.P. Morgan, Revolut and Brevan Howard."
-        : "Bassa latenza, regolamentato, denaro reale. Il nostro CPTO l'ha fatto per otto anni in J.P. Morgan, Revolut e Brevan Howard.",
+        ? "Low-latency, regulated, real money. Prior to SerSan our CPTO was Senior Data Scientist at Revolut and VP, Quantitative Data Scientist at J.P. Morgan."
+        : "Bassa latenza, regolamentato, denaro reale. Prima di SerSan il nostro CPTO è stato Senior Data Scientist in Revolut e VP, Quantitative Data Scientist in J.P. Morgan.",
+      href: "/case-studies",
     },
     {
       num: "07",
@@ -136,13 +143,19 @@ function getAreas(isEn: boolean): PracticeArea[] {
       desc: isEn
         ? "Demand, pricing, signals, exposure. The mathematics behind decisions that are currently made on instinct."
         : "Domanda, prezzi, segnali, esposizione. La matematica dietro decisioni che oggi si prendono a intuito.",
+      href: "/case-studies",
     },
     {
       num: "08",
       title: "Fractional CTO",
+      // "Scoped in phases." was this page's fourth restatement of the
+      // continuation thesis, which the process section states in full one
+      // scroll below. Replaced with the thing a buyer actually wants to know
+      // about a fractional CTO.
       desc: isEn
-        ? "A senior technical owner in the room for roadmap, architecture, hiring and vendor decisions. Scoped in phases."
-        : "Un responsabile tecnico senior al tavolo per roadmap, architettura, hiring e scelta dei fornitori. Definito per fasi.",
+        ? "A senior technical owner in the room for roadmap, architecture, hiring and vendor decisions, without hiring a full-time CTO."
+        : "Un responsabile tecnico senior al tavolo per roadmap, architettura, hiring e scelta dei fornitori, senza assumere un CTO a tempo pieno.",
+      href: "#engage",
     },
   ];
 }

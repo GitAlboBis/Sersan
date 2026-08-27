@@ -218,9 +218,16 @@ function copy(language: "en" | "it") {
 // --- map this component's fields onto the /api/intake schema ---
 // The schema (source of truth) wants: name, email, company, role, objective,
 // stage, timeline, budget. This form collects workType / outcome / size /
-// budget instead, so we translate. workType + company stage are folded into
-// role/objective so no captured info is lost; stage/timeline are derived
-// sensibly (this short form doesn't ask for them explicitly).
+// budget instead, so we translate. workType + company size are folded into
+// role/objective so no captured info is lost.
+//
+// STAGE + TIMELINE ARE NOT SENT. This form never asks for either, and it used
+// to invent both: `timeline: "exploring"` was hardcoded onto every brief, and
+// stage was guessed from the work type. That put fabricated data into the lead
+// record, where ops reads it as something the client said. Both fields are
+// optional in the API schema and the ops email renders a row only when a value
+// is present, so omitting them is honest and lossless — an absent row is the
+// truth ("they didn't say"), which "Exploring" was not.
 const WORK_TYPE_LABEL: Record<WorkType, string> = {
   "custom-software": "Custom software",
   automation: "Automation",
@@ -235,19 +242,6 @@ const SIZE_LABEL: Record<CompanySize, string> = {
   enterprise: "Enterprise",
 };
 
-type IntakeStage =
-  | "manual-today"
-  | "idea"
-  | "prototype"
-  | "in-use"
-  | "needs-fixing";
-
-function deriveStage(workType: WorkType | ""): IntakeStage {
-  // Automation implies work being done by hand today; everything else
-  // defaults to an early version existing.
-  return workType === "automation" ? "manual-today" : "prototype";
-}
-
 function toIntakePayload(data: IntakeData, language: "en" | "it") {
   const workLabel = data.workType ? WORK_TYPE_LABEL[data.workType] : "Project";
   return {
@@ -256,8 +250,6 @@ function toIntakePayload(data: IntakeData, language: "en" | "it") {
     company: data.company,
     role: data.size ? SIZE_LABEL[data.size] : "",
     objective: `${workLabel}: ${data.outcome}`,
-    stage: deriveStage(data.workType),
-    timeline: "exploring" as const,
     budget: data.budget || undefined,
     language,
   };

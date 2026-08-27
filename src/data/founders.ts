@@ -72,9 +72,9 @@ export const founders: FounderProfile[] = [
     expertiseEn: ["Scoping", "Product & Brand", "Proposals", "Engagement Lead"],
     expertiseIt: ["Scoping", "Prodotto e Brand", "Proposte", "Lead Ingaggio"],
     stack: ["Claude Code", "Vercel", "MCP", "Notion", "Figma", "Jira"],
-    authorRole: "Co-Founder & CEO, SERSAN",
+    authorRole: "Co-Founder & CEO, SerSan",
     authorBio:
-      "Owns scoping, proposals, pricing, client communication, and engagement structure on every Sersan engagement, from first call to handover.",
+      "Owns scoping, proposals, pricing, client communication, and engagement structure on every SerSan engagement, from first call to handover.",
   },
   {
     name: "Michele Sanna",
@@ -89,11 +89,11 @@ export const founders: FounderProfile[] = [
     accent: "cool",
     credentialsEn: [
       "PhD Applied Mathematics, LSE",
-      "8 years senior delivery at tier-1 institutions, pre-Sersan",
+      "8 years senior delivery at tier-1 institutions, pre-SerSan",
     ],
     credentialsIt: [
       "PhD in Matematica Applicata, LSE",
-      "8 anni di delivery senior in istituzioni Tier-1, pre-Sersan",
+      "8 anni di delivery senior in istituzioni Tier-1, pre-SerSan",
     ],
     previouslyAt: ["J.P. Morgan", "Revolut", "Deloitte", "Brevan Howard", "Accenture"],
     shortBioEn:
@@ -101,13 +101,13 @@ export const founders: FounderProfile[] = [
     shortBioIt:
       "È il responsabile tecnico di un progetto: da una singola automazione a una piattaforma in produzione. Guida la costruzione, il percorso dei dati e il layer AI dove se lo merita.",
     bioEn:
-      "PhD Applied Mathematics, LSE (Stochastic Differential Geometry for Optimization in Deep Learning). Eight years of senior delivery before Sersan, across fintech, public sector, aerospace, and renewables: full-stack engineering at Revolut, quantitative ML on liquidity and credit at J.P. Morgan, ML/MLOps at Deloitte, quantitative market analysis at Brevan Howard (Cayman), business architecture at Accenture. That prior work included autonomous orbit management for a LEO satellite constellation, regional healthcare workflows for Sardegna (SIBAR/SISAR/FSE), and ML-based PV+BESS forecasting. CTO of a greentech startup that exited Oct 2024. Now CPTO of Sersan and Presidente CDA & CTO at Cooperativa Agricola Terra Noa.",
+      "PhD Applied Mathematics, LSE (Stochastic Differential Geometry for Optimization in Deep Learning). Eight years of senior delivery before SerSan, spanning fintech, public sector, aerospace and renewables: Senior Data Scientist / ML Engineer on the real-time anti-fraud platform at Revolut, VP Quantitative Data Scientist on liquidity and credit ML at J.P. Morgan, ML/MLOps at Deloitte, quantitative market analysis at Brevan Howard (Cayman), business architecture at Accenture. That prior work included autonomous orbit management for a LEO satellite constellation, regional healthcare workflows for Sardegna (SIBAR/SISAR/FSE), and ML-based PV+BESS forecasting. CTO of a greentech startup that exited Oct 2024. Now CPTO of SerSan and Presidente CDA & CTO at Cooperativa Agricola Terra Noa.",
     bioIt:
-      "PhD in Matematica Applicata, LSE (Geometria Differenziale Stocastica per l'Ottimizzazione nel Deep Learning). Otto anni di delivery senior prima di Sersan, tra fintech, settore pubblico, aerospace e rinnovabili: full-stack in Revolut, ML quantitativo su liquidità e credito in J.P. Morgan, ML/MLOps in Deloitte, analisi quantitativa in Brevan Howard (Cayman), architettura di business in Accenture. Quel lavoro precedente comprende orbit management autonomo per una costellazione di satelliti LEO, workflow sanitari regionali per la Sardegna (SIBAR/SISAR/FSE), e forecasting ML per impianti PV+BESS. CTO di una startup greentech con exit Oct 2024. Oggi CPTO di Sersan e Presidente CDA & CTO di Cooperativa Agricola Terra Noa.",
+      "PhD in Matematica Applicata, LSE (Geometria Differenziale Stocastica per l'Ottimizzazione nel Deep Learning). Otto anni di delivery senior prima di SerSan, tra fintech, settore pubblico, aerospace e rinnovabili: Senior Data Scientist / ML Engineer sulla piattaforma anti-frode in tempo reale in Revolut, VP Quantitative Data Scientist su ML di liquidità e credito in J.P. Morgan, ML/MLOps in Deloitte, analisi quantitativa in Brevan Howard (Cayman), architettura di business in Accenture. Quel lavoro precedente comprende orbit management autonomo per una costellazione di satelliti LEO, workflow sanitari regionali per la Sardegna (SIBAR/SISAR/FSE), e forecasting ML per impianti PV+BESS. CTO di una startup greentech con exit Oct 2024. Oggi CPTO di SerSan e Presidente CDA & CTO di Cooperativa Agricola Terra Noa.",
     expertiseEn: ["Architecture", "ML/MLOps", "FinTech Engineering", "Production AI"],
     expertiseIt: ["Architettura", "ML/MLOps", "FinTech Engineering", "AI in Produzione"],
     stack: ["Python", "PyTorch", "TypeScript / React", "FastAPI", "Kubernetes", "Terraform", "AWS / GCP", "Postgres", "Kafka", "MQTT", "OpenTelemetry", "LangChain"],
-    authorRole: "Co-Founder & CPTO, SERSAN",
+    authorRole: "Co-Founder & CPTO, SerSan",
     authorBio:
       "Enterprise architect and ML engineer. Builds custom software, data platforms, and the AI layers that earn their place in them.",
   },
@@ -151,7 +151,7 @@ export const founders: FounderProfile[] = [
     // the page. `previouslyAt` likewise omitted: it renders under a "Previously"
     // label directly parallel to Michele's tier-1 row, and a 3-month internship
     // there reads as padding.
-    authorRole: "Software Engineer, SERSAN",
+    authorRole: "Software Engineer, SerSan",
     authorBio:
       "Software engineer. Builds internal systems end to end, from requirements and data model through to the running software.",
   },

@@ -90,7 +90,7 @@ export default function OurWhy() {
               {isEn ? (
                 <>
                   <p className="text-balance">
-                    Sersan was built by two people with{" "}
+                    SerSan was built by two people with{" "}
                     <span className="text-ink">opposite backgrounds</span>. One
                     deeply technical, one deeply commercial. Working together
                     produced something neither could build alone.
@@ -107,7 +107,7 @@ export default function OurWhy() {
               ) : (
                 <>
                   <p className="text-balance">
-                    Sersan è nata dall&apos;incontro di due persone con{" "}
+                    SerSan è nata dall&apos;incontro di due persone con{" "}
                     <span className="text-ink">background opposti</span>. Uno
                     profondamente tecnico, uno profondamente commerciale.
                     Lavorando insieme abbiamo prodotto qualcosa che nessuno dei

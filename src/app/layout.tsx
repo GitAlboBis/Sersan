@@ -144,7 +144,7 @@ export const metadata: Metadata = {
     "London software studio",
     "EU AI Act",
   ],
-  authors: [{ name: "SerSan Limited" }],
+  authors: [{ name: "Sersan Limited" }],
   creator: "SerSan",
   alternates: {
     canonical: "/",
@@ -207,7 +207,7 @@ export default function RootLayout({
     "@context": "https://schema.org",
     "@type": "Organization",
     name: "SerSan",
-    legalName: "SerSan Limited",
+    legalName: "Sersan Limited",
     url: "https://www.sersan.io",
     logo: "https://www.sersan.io/og-image.png",
     description:

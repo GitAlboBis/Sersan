@@ -1179,7 +1179,11 @@ export default function ServicesSection() {
         ref={annotationRef}
         className="max-w-md text-[13px] leading-relaxed text-ink-mute"
       >
-        {`${pick(isEn, POSITIONING.range)} ${pick(isEn, POSITIONING.core)}`}
+        {`${
+          isEn
+            ? "Every engagement is scoped and priced before we build."
+            : "Ogni progetto ha uno scope e un prezzo definiti prima di costruire."
+        } ${pick(isEn, POSITIONING.core)}`}
       </p>
     </div>
   );

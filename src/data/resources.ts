@@ -35,8 +35,8 @@ export const resources: Resource[] = [
     publishedAt: "2026-04-12",
     readMinutes: 7,
     authorName: "Michele Sanna",
-    authorRole: "Co-Founder & CPTO, SERSAN",
-    authorRoleIt: "Co-Founder & CPTO, SERSAN",
+    authorRole: "Co-Founder & CPTO, SerSan",
+    authorRoleIt: "Co-Founder & CPTO, SerSan",
     tags: ["audit", "ai-strategy", "process"],
     body: `## Why most audits are theatre
 
@@ -88,7 +88,7 @@ Alla fine avete un documento scritto, lungo quanto serve. Mai una presentazione.
 Il deliverable è vostro. Datelo al vostro team interno, datelo a un altro fornitore, oppure tenetelo nel cassetto. La roadmap non ha scadenza.`,
   },
   {
-    slug: "weekly-scope-not-multi-year-retainers",
+    slug: "scope-you-can-stop-after-any-phase",
     title: "Scope you can stop after any phase",
     titleIt: "Uno scope che potete fermare a fine fase",
     excerpt:
@@ -99,35 +99,39 @@ Il deliverable è vostro. Datelo al vostro team interno, datelo a un altro forni
     publishedAt: "2026-03-28",
     readMinutes: 5,
     authorName: "Alessandro Serratt",
-    authorRole: "Co-Founder & CEO, SERSAN",
-    authorRoleIt: "Co-Founder & CEO, SERSAN",
+    authorRole: "Co-Founder & CEO, SerSan",
+    authorRoleIt: "Co-Founder & CEO, SerSan",
     tags: ["engagement-model", "pricing"],
     body: `## Every phase has an end
 
-The traditional consulting model is built on lock-in. Long contracts, hard-to-quantify deliverables, and a steady hum of "we're working on it" that nobody wants to interrupt.
+Consulting has a habit of selling the open-ended: long contracts, deliverables nobody can quantify, and a steady hum of "we're working on it" that nobody wants to interrupt.
 
-We work the other way round.
+We scope the other way round. Every phase — a diagnostic, a build, a stretch of continued development — has its own scope, its own price and its own end. When it ends it actually ends, and the next one is a decision rather than a default.
 
-## How weekly scope actually works
+## Continuation is earned, not assumed
 
-Every Friday, we send a one-page summary: what landed this week, what we believe ships next, and what we'd cut if you wanted to stop. You can stop. Most clients don't, but the option is real.
+None of that means the work has to stop. Plenty of clients keep going: more development, support, optimisation, fractional technical leadership. We are glad to do all of it, and we do. The difference is that each stretch is scoped and priced on its own, against what the last one actually produced.
+
+A long relationship is entirely possible. It just gets re-earned at every step instead of renewing quietly in the background.
 
 ## Why this is good for both sides
 
-It forces us to ship something visible every week. It forces the conversation to be about value, not hours. And it keeps the engagement honest in a way that a twelve-month statement of work never can be.`,
+It forces us to ship something visible in every phase, because the next phase depends on the last one having been worth it. It keeps the conversation about value rather than hours. And it means you can stop without a negotiation — which is the only thing that makes "you can stop" true.`,
     bodyIt: `## Ogni fase ha una fine
 
-Il modello di consulenza tradizionale è costruito sul lock-in. Contratti lunghi, deliverable difficili da quantificare e un costante brusio di "ci stiamo lavorando" che nessuno ha voglia di interrompere.
+La consulenza ha l'abitudine di vendere l'indefinito: contratti lunghi, deliverable che nessuno riesce a quantificare e un costante brusio di "ci stiamo lavorando" che nessuno ha voglia di interrompere.
 
-Noi lavoriamo al contrario.
+Noi definiamo lo scope al contrario. Ogni fase — una diagnosi, una build, un periodo di sviluppo continuativo — ha il suo scope, il suo prezzo e la sua fine. Quando finisce, finisce davvero, e quella successiva è una decisione, non un rinnovo automatico.
 
-## Come funziona davvero lo scope settimanale
+## La continuità si guadagna, non si dà per scontata
 
-Ogni venerdì inviamo un riepilogo di una pagina: cosa è arrivato questa settimana, cosa crediamo verrà rilasciato dopo e cosa taglieremmo se voleste fermarvi. Potete fermarvi. La maggior parte dei clienti non lo fa, ma l'opzione è reale.
+Niente di tutto questo significa che il lavoro debba fermarsi. Molti clienti proseguono: altro sviluppo, supporto, ottimizzazione, direzione tecnica frazionale. Lo facciamo volentieri, e lo facciamo spesso. La differenza è che ogni tratto ha uno scope e un prezzo propri, misurati su ciò che ha prodotto il precedente.
+
+Una relazione lunga è del tutto possibile. Va solo riguadagnata a ogni passo, invece di rinnovarsi in silenzio sullo sfondo.
 
 ## Perché questo è un bene per entrambe le parti
 
-Ci costringe a rilasciare qualcosa di visibile ogni settimana. Costringe la conversazione a vertere sul valore, non sulle ore. E mantiene l'ingaggio onesto in un modo che uno statement of work a dodici mesi non potrà mai essere.`,
+Ci costringe a rilasciare qualcosa di visibile in ogni fase, perché la fase successiva dipende dal fatto che la precedente sia valsa la pena. Mantiene la conversazione sul valore, non sulle ore. E significa che potete fermarvi senza una trattativa: l'unica cosa che rende vero il "potete fermarvi".`,
   },
   {
     slug: "production-ai-not-demos",
@@ -141,8 +145,8 @@ Ci costringe a rilasciare qualcosa di visibile ogni settimana. Costringe la conv
     publishedAt: "2026-02-14",
     readMinutes: 9,
     authorName: "Michele Sanna",
-    authorRole: "Co-Founder & CPTO, SERSAN",
-    authorRoleIt: "Co-Founder & CPTO, SERSAN",
+    authorRole: "Co-Founder & CPTO, SerSan",
+    authorRoleIt: "Co-Founder & CPTO, SerSan",
     tags: ["mlops", "production", "ai-engineering"],
     body: `## The demo is the easy part
 

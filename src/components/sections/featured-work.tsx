@@ -61,7 +61,7 @@ export default function FeaturedWork() {
     <section
       id="work"
       className="section relative"
-      aria-label={isEn ? "Selected engagements" : "Incarichi selezionati"}
+      aria-label={isEn ? "Selected work" : "Lavori selezionati"}
     >
       <div className="container-px mb-14 flex flex-col gap-4 sm:flex-row sm:gap-6 sm:items-end sm:justify-between">
         <SectionHeading
@@ -81,8 +81,8 @@ export default function FeaturedWork() {
           }
           description={
             isEn
-              ? `${caseStudies.length} engagements across ${sectorList(true)}. Sersan builds and prior senior delivery, each one labelled for what it is.`
-              : `${caseStudies.length} ingaggi tra ${sectorList(false)}. Build di Sersan e precedenti consegne senior, ognuna etichettata per quello che è.`
+              ? `${caseStudies.length} projects across ${sectorList(true)}. SerSan builds and prior senior delivery, each one labelled for what it is.`
+              : `${caseStudies.length} progetti tra ${sectorList(false)}. Build di SerSan e precedenti consegne senior, ognuno etichettato per quello che è.`
           }
         />
         <Link

@@ -13,7 +13,7 @@ import { Reveal } from "@/components/ui/reveal";
 import { UseCaseBeats } from "@/components/sections/use-case-beats";
 import { useLanguage } from "@/components/language-provider";
 import { caseStudies } from "@/data/case-studies";
-import { CTA, pick } from "@/data/copy";
+import { CTA, FACTS, pick } from "@/data/copy";
 import type { ServiceContent } from "@/data/services";
 import { START_HREF } from "@/lib/site";
 import { track, EVENTS } from "@/lib/analytics";
@@ -45,6 +45,15 @@ import { cn } from "@/lib/utils";
  *
  * No invented copy — everything comes from src/data/services.ts and
  * src/data/case-studies.ts.
+ *
+ * PER-SERVICE COPY. Section 03/04/05/08 headings and straplines used to be
+ * written once in this template and rendered byte-identical on all four
+ * service pages (the 05 strapline even promised "the code" on /services/
+ * architecture, which ships a written recommendation and no code). They now
+ * come from the service entry: buildsHeading/buildsNote, useCasesHeading,
+ * deliverablesNote, closingHeading/closingNote. What stays shared here is what
+ * is genuinely universal — the reply promise (FACTS.replyTime) and the
+ * structural section labels.
  */
 
 export default function ServiceDetail({
@@ -228,23 +237,18 @@ export default function ServiceDetail({
             <SectionHeading
               eyebrow={isEn ? "Typical build includes" : "Cosa include di solito"}
               title={
-                isEn ? (
-                  <>
-                    What ships when you engage SerSan for{" "}
-                    <span className="font-display italic">{name}.</span>
-                  </>
-                ) : (
-                  <>
-                    Cosa consegniamo quando ingaggiate SerSan per{" "}
-                    <span className="font-display italic">{name}.</span>
-                  </>
-                )
+                <>
+                  {isEn
+                    ? service.buildsHeading.lead
+                    : service.buildsHeading.leadIt}{" "}
+                  <span className="font-display italic">
+                    {isEn
+                      ? service.buildsHeading.accent
+                      : service.buildsHeading.accentIt}
+                  </span>
+                </>
               }
-              description={
-                isEn
-                  ? "Each item below appears in most projects of this kind. The exact mix is agreed before we start, sized to the problem — never a default checklist, and never more process than the work deserves."
-                  : "Ogni voce qui sotto compare nella maggior parte dei progetti di questo tipo. Il mix esatto si concorda prima di iniziare, dimensionato sul problema: mai una checklist di default, mai più processo di quanto il lavoro meriti."
-              }
+              description={isEn ? service.buildsNote : service.buildsNoteIt}
               className="mb-12 sm:mb-16 max-w-3xl"
             />
 
@@ -306,18 +310,17 @@ export default function ServiceDetail({
             <SectionHeading
               eyebrow={isEn ? "Where this lands" : "Dove si applica"}
               title={
-                isEn ? (
-                  <>
-                    {useCaseCountWord} places SerSan typically gets called in
-                    for <span className="font-display italic">{name}.</span>
-                  </>
-                ) : (
-                  <>
-                    {useCaseCountWord} situazioni in cui SerSan viene
-                    tipicamente chiamata per{" "}
-                    <span className="font-display italic">{name}.</span>
-                  </>
-                )
+                <>
+                  {useCaseCountWord}{" "}
+                  {isEn
+                    ? service.useCasesHeading.lead
+                    : service.useCasesHeading.leadIt}{" "}
+                  <span className="font-display italic">
+                    {isEn
+                      ? service.useCasesHeading.accent
+                      : service.useCasesHeading.accentIt}
+                  </span>
+                </>
               }
               className="mb-12 sm:mb-16 max-w-3xl"
             />
@@ -367,8 +370,8 @@ export default function ServiceDetail({
                   }
                   description={
                     isEn
-                      ? "Concrete artefacts, handed over at the end. Yours to keep, extend or give to anyone else: the code, and the reasons behind it."
-                      : "Artefatti concreti, consegnati alla fine. Vostri da tenere, estendere o dare a chiunque: il codice e le ragioni dietro le scelte."
+                      ? service.deliverablesNote
+                      : service.deliverablesNoteIt
                   }
                 />
               </div>
@@ -524,8 +527,8 @@ export default function ServiceDetail({
                   }
                   description={
                     isEn
-                      ? "If your question isn't here, send it with your brief and a founder will answer it. Reply within one business day."
-                      : "Se la vostra domanda non è qui, inviatela insieme al brief: risponde un founder. Risposta entro un giorno lavorativo."
+                      ? `If your question isn't here, send it with your brief and a founder will answer it. ${FACTS.replyTime.en}.`
+                      : `Se la vostra domanda non è qui, inviatela insieme al brief: risponde un founder. ${FACTS.replyTime.it}.`
                   }
                 />
               </div>
@@ -579,26 +582,17 @@ export default function ServiceDetail({
                 </span>
               </p>
               <h2 className="font-display text-[clamp(2.25rem,4.5vw,3.75rem)] leading-[1.02] tracking-[-0.028em] text-ink mb-5 text-balance">
-                {isEn ? (
-                  <>
-                    Tell us what you&apos;re trying to build with{" "}
-                    <span className="text-[hsl(var(--accent))] font-display font-medium">
-                      {name}.
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    Raccontateci cosa volete costruire con{" "}
-                    <span className="text-[hsl(var(--accent))] font-display font-medium">
-                      {name}.
-                    </span>
-                  </>
-                )}
+                {isEn
+                  ? service.closingHeading.lead
+                  : service.closingHeading.leadIt}{" "}
+                <span className="text-[hsl(var(--accent))] font-display font-medium">
+                  {isEn
+                    ? service.closingHeading.accent
+                    : service.closingHeading.accentIt}
+                </span>
               </h2>
               <p className="text-base sm:text-lg text-ink-mute leading-relaxed max-w-2xl mb-7">
-                {isEn
-                  ? "Two or three sentences is enough. A founder reads it, and comes back with a recommended next step: sometimes a small first piece of work, sometimes a diagnostic, sometimes “don't build this.”"
-                  : "Bastano due o tre frasi. Le legge un founder e torna con il prossimo passo consigliato: a volte un primo intervento piccolo, a volte una diagnosi, a volte «non costruitelo»."}
+                {isEn ? service.closingNote : service.closingNoteIt}
               </p>
               <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-start sm:items-center">
                 <Link

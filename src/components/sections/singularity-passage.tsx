@@ -43,7 +43,7 @@ import { cn } from "@/lib/utils";
  * WHAT LIVES HERE (owner corrections 2026-08-07):
  *   1. Stage 05 exists ONCE — the spine runs 01→04 and its old handover
  *      panel moved here WHOLESALE (HANDOVER_STAGE below: eyebrow · title ·
- *      body · capability line · 13/5/1 proof chips · both CTAs, EN+IT
+ *      body · capability line · derived proof chips · both CTAs, EN+IT
  *      byte-identical). It is REAL content: never blanket aria-hidden, CTAs
  *      focusable/clickable while on screen, readable on every tier.
  *   2. The traverse is a TRUE horizontal parallax passage (the deleted
@@ -386,7 +386,7 @@ const HANDOVER_STAGE = {
         <p className="text-[13px] sm:text-[14px] font-mono uppercase tracking-[0.14em] text-ink/85 leading-relaxed">
           Custom Software <span aria-hidden="true">·</span> AI Agents{" "}
           <span aria-hidden="true">·</span> Automation{" "}
-          <span aria-hidden="true">·</span> MLOps{" "}
+          <span aria-hidden="true">·</span> AI Reliability{" "}
           <span aria-hidden="true">·</span> Audits
           <br />
           <span className="text-ink-mute/80">
@@ -407,7 +407,7 @@ const HANDOVER_STAGE = {
         <p className="text-[13px] sm:text-[14px] font-mono uppercase tracking-[0.14em] text-ink/85 leading-relaxed">
           Software su misura <span aria-hidden="true">·</span> Agenti AI{" "}
           <span aria-hidden="true">·</span> Automazione{" "}
-          <span aria-hidden="true">·</span> MLOps{" "}
+          <span aria-hidden="true">·</span> Affidabilità AI{" "}
           <span aria-hidden="true">·</span> Audit
           <br />
           <span className="text-ink-mute/80">

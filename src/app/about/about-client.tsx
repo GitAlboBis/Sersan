@@ -416,7 +416,7 @@ export function AboutClient() {
                     </span>
                   </div>
                   <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
-                    {isEn ? "Senior delivery, pre-Sersan" : "Delivery senior, pre-Sersan"}
+                    {isEn ? "Senior delivery, pre-SerSan" : "Delivery senior, pre-SerSan"}
                   </p>
                 </Reveal>
                 <Reveal delay={80}>
@@ -428,7 +428,7 @@ export function AboutClient() {
                     <CountUp value={String(sersanBuildCount())} duration={0.8} force />
                   </div>
                   <p className="text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute">
-                    {isEn ? "Systems built as Sersan" : "Sistemi costruiti come Sersan"}
+                    {isEn ? "Systems built as SerSan" : "Sistemi costruiti come SerSan"}
                   </p>
                 </Reveal>
                 <Reveal delay={160} className="col-span-2 md:col-span-1">
@@ -445,7 +445,7 @@ export function AboutClient() {
                 </Reveal>
               </div>
               <p className="eyebrow text-center text-[10px] tracking-[0.18em] mt-10">
-                {isEn ? "Prior senior delivery" : "Delivery senior precedente"} · Revolut · JP Morgan · Deloitte · Brevan Howard · Accenture
+                {isEn ? "Prior senior delivery" : "Delivery senior precedente"} · Revolut · J.P. Morgan · Deloitte · Brevan Howard · Accenture
               </p>
             </div>
           </div>

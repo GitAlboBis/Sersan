@@ -59,7 +59,7 @@ function WorkInProgressCard({
     <article className="card-steel flex flex-col gap-5 p-7 sm:p-8 h-full">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="font-mono text-[10px] tracking-[0.16em] uppercase text-[hsl(var(--accent))]">
-          {isIt ? "Sersan · Build interna" : "Sersan · Internal build"}
+          {isIt ? "SerSan · Build interna" : "SerSan · Internal build"}
         </span>
         <span className="status-pill">
           <span className="status-dot" aria-hidden="true" />
