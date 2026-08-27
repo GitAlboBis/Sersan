@@ -67,6 +67,22 @@ const LABEL_SHOW_TRANSITION =
   "opacity 500ms var(--ease-entrance, cubic-bezier(0.16, 1, 0.3, 1)), color 200ms var(--ease-out, ease-out)";
 const LABEL_HIDE_TRANSITION =
   "opacity 200ms cubic-bezier(0.32, 0, 0.67, 0), color 200ms var(--ease-out, ease-out)";
+/** KILL-SWITCH (Fix A, owner report 2026-08-27 "buco nero in tutte le sezioni
+ * dopo refresh"): when the page loads ALREADY SCROLLED (browser scroll
+ * restoration on a hard reload, a #hash landing) the gate can never engage
+ * (canEngage needs scrollY <= 2) and nothing else advances gateProgress, so
+ * the journey sits at 0 forever: H1/header hidden and the camera-locked
+ * HomeSingularity eclipse never melting. With this on, the never-engaged +
+ * scrolled + intro-complete state is pinned at the journey's END state
+ * (same payload as the safety valve / skip, WITHOUT markIntroSkipped so the
+ * reverse replay at the top stays available). `false` restores the old
+ * behavior. */
+const COLD_LOAD_RELEASE = true;
+/** Fix A hold (ms): scrollY must stay > 8 this long before the pin, so the
+ * provider's nav-into-home reset (scrollTo(0) + gateProgress 0, which can
+ * land a frame or two apart while Lenis is stopped) is never mistaken for a
+ * scrolled landing. */
+const COLD_SCROLL_HOLD_MS = 250;
 
 export function HeroIntroGate({
   skipLabel = "Skip intro",
@@ -88,6 +104,9 @@ export function HeroIntroGate({
     let engagedAt = 0;
     // Last applied label visibility — style writes only happen on the flip.
     let labelShown = false;
+    // Fix A: performance.now() when scrollY first exceeded the abort
+    // threshold while NOT engaged; 0 = not currently past it.
+    let scrolledSince = 0;
 
     // Seed the session flag before the first tick: a hard reload (or a soft
     // nav back home) after a skip must never re-gate. sessionStorage is read
@@ -264,7 +283,38 @@ export function HeroIntroGate({
         });
       }
       if (!engaged) {
-        if (morph.gateProgress < 1 && canEngage()) engage();
+        if (morph.gateProgress < 1 && canEngage()) {
+          engage();
+        } else if (
+          COLD_LOAD_RELEASE &&
+          morph.active &&
+          !morph.introSkipped &&
+          morph.gateProgress < 1 &&
+          useIntroStore.getState().introComplete &&
+          window.scrollY > 8
+        ) {
+          // Cold load landing already scrolled (see COLD_LOAD_RELEASE): pin
+          // the journey at its END state, the payload the safety valve and
+          // the skip land on, but WITHOUT markIntroSkipped() — the reverse
+          // replay at the very top must stay available and the session flag
+          // is the visitor's explicit choice only. Held for a beat so the
+          // provider's nav-into-home reset can never be mistaken for this.
+          const now = performance.now();
+          if (scrolledSince === 0) {
+            scrolledSince = now;
+          } else if (now - scrolledSince >= COLD_SCROLL_HOLD_MS) {
+            scrolledSince = 0;
+            useTextMorphStore.setState({
+              gateProgress: 1,
+              assembleDone: true,
+              morphDone: true,
+              morph2Done: true,
+              gateKick: 0,
+            });
+          }
+        } else {
+          scrolledSince = 0;
+        }
       } else if (window.scrollY > 8) {
         setProgress(1);
         release();

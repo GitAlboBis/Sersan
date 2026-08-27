@@ -43,13 +43,19 @@
  * centered (xFrac 0). All three live in `placeRef`
  * (window.__sersanHomeSingularity.place) for live eclipse-framing tuning.
  *
- * CAMERA-LOCKED, NOT WORLD-ANCHORED: during its entire visible life the page
- * is parked at the top under HeroIntroGate's lock, and a distant horizon
+ * CAMERA-LOCKED, NOT WORLD-ANCHORED: during its intended visible life the
+ * page is parked at the top under HeroIntroGate's lock, and a distant horizon
  * should hold the frame under the gate's spring-back camera bob anyway — so
  * the group follows camera.position each frame (a HUD anchor, like
  * NeuralLattice) instead of a section anchor. No camDescend compensation and
  * no camRoll counter-rotation: both beats run long after the fade below has
  * fully retired the hole (and a rolled horizon would be correct regardless).
+ * That "parked at the top" assumption is NOT guaranteed (a scroll-restored
+ * hard reload lands past the hero with the gate never engaged, owner report
+ * 2026-08-27), so the fade ALSO carries a store-driven hero-hold scroll term
+ * (ECLIPSE_HERO_HOLD): the eclipse retires over the first 0.7 viewports of
+ * real scroll, HeroTextParticles' own uFade law, and can never ride the
+ * camera over the rest of the page whatever the intro state says.
  *
  * LIFECYCLE (tied to the intro, the whole point):
  *   • never even STARTS BUILDING until textMorphStore.assembleDone flips
@@ -145,6 +151,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { webgpuEnabled } from "./renderer/createRenderer";
 import { CAMERA_FOV } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
+import { useSectionStore } from "./store/sectionStore";
 import { useIntroStore } from "./store/introStore";
 import { useTextMorphStore } from "./store/textMorphStore";
 import { usePointerStore, installPointerTracking } from "./store/pointerStore";
@@ -189,6 +196,16 @@ const ORBIT_BOB = 0.14; // vertical bob amplitude, world units (half rate)
  * so the eased smoothstep needs no extra damping of its own. */
 const MELT_START = 0.05;
 const MELT_END = 0.9;
+/** KILL-SWITCH (Fix B, owner report 2026-08-27): multiply a hero-hold scroll
+ * term into the fade — 1 while the page is parked in the hero, retiring to 0
+ * over the first HERO_HOLD_VH viewports of real scroll (store reads only:
+ * scrollStore.progress × sectionStore.scrollHeight, never window.scrollY).
+ * During the gated intro scroll is 0 → term is 1 → byte-identical intro.
+ * `false` restores the intro-lifecycle-only fade. */
+const ECLIPSE_HERO_HOLD = true;
+/** Viewports of scroll over which the hero hold retires (HeroTextParticles'
+ * own 0.7·h uFade law, so wordmark and eclipse leave together). */
+const HERO_HOLD_VH = 0.7;
 
 /**
  * GRAVITATIONAL FLYBY FIELD (owner 2026-08-07) — module-scope shared ref,
@@ -509,7 +526,17 @@ export function HomeSingularity({ lite = false }: { lite?: boolean }) {
       REVEAL_DAMP,
       delta,
     );
-    const opacity = ignite * melt * revealDamped.current;
+    // Hero hold (ECLIPSE_HERO_HOLD): scrollHeight is 1 (sentinel) before
+    // SectionBus measures → scrollPx ≈ 0 → hold 1, permissive until measured.
+    let heroHold = 1;
+    if (ECLIPSE_HERO_HOLD) {
+      const sh = useSectionStore.getState().scrollHeight;
+      const scrollPx =
+        useScrollStore.getState().progress * Math.max(sh - size.height, 0);
+      heroHold =
+        1 - THREE.MathUtils.smoothstep(scrollPx, 0, size.height * HERO_HOLD_VH);
+    }
+    const opacity = ignite * melt * heroHold * revealDamped.current;
     fadeRef.current = opacity;
     build.u.uFade.value = opacity;
     group.visible = opacity > 0.005;
