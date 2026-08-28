@@ -145,7 +145,7 @@ import { useEffect, useRef, useState } from "react";
 import gsap from "gsap";
 import { useLanguage } from "@/components/language-provider";
 import { useTierStore } from "@/webgl/store/tierStore";
-import { useIntroStore } from "@/webgl/store/introStore";
+import { useIntroStore, heroMarkRectRef } from "@/webgl/store/introStore";
 import { getLenis } from "@/lib/lenis-singleton";
 import {
   createPreloaderTunnel,
@@ -211,6 +211,16 @@ const COUNTER_EASE = 0.12;
 // motion tempo, even though this exit dissolves rather than wipes. The
 // close+zoom choreography runs ~1.4s total, ending under this fade.
 const FADE_DURATION = 0.7;
+// FLIP align duration (s) — handoff refactor 2026-08-28 (Donprod's
+// shared-element move): the DOM mark translates/scales onto the WebGL spore
+// mark's projected rect (heroMarkRectRef, published by HeroLogo) BEFORE the
+// overlay fade, so the crossfade uncovers an identical, already-whole mark in
+// the identical spot. Only the home route publishes a rect; everywhere else
+// reveal() falls back to the legacy zoom-through exit.
+const ALIGN_DURATION = 0.45;
+/** Below this published rect height (px) the projection is degenerate
+ *  (island mid-teardown / mark off-screen) — fall back to the legacy exit. */
+const ALIGN_MIN_RECT_PX = 12;
 
 // ---- Mark geometry: the two halves, the axis, and the room to part ---------
 // The paths come from sersan-logo.tsx (one source of truth). The viewBox is the
@@ -328,6 +338,10 @@ export function Preloader() {
   // their open ±90° pose to 0° on close; their outer groups carry static
   // placement.
   const logoRef = useRef<HTMLDivElement>(null);
+  // The mark wrapper (svg + its field canvas, NOT the readout below): the FLIP
+  // exit transforms THIS node onto the WebGL mark's projected rect, so the
+  // readout can fade in place instead of riding the glide.
+  const markWrapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   // The wheel: everything that spins hangs off this one group.
   const spinRef = useRef<SVGGElement>(null);
@@ -386,6 +400,13 @@ export function Preloader() {
     /** Wheel speed in turns/second, and the exit's multiplier on it. */
     let spinTurns = 0;
     let spinBoost = 1;
+    /** FLIP exit only (handoff refactor 2026-08-28): true once the reveal
+     *  timeline owns markState.spin (tweening it to rest) — the frame loop's
+     *  rate integrator must stop adding on top or the settle never lands.
+     *  The legacy zoom exit leaves this false and keeps winding the wheel. */
+    let spinFrozen = false;
+    /** One-shot guard for the reformStart pre-beat kick (see the frame loop). */
+    let reformKicked = false;
     const startedAt = performance.now();
 
     // Guard against (somehow) running under reduced motion — never animate the
@@ -1017,6 +1038,21 @@ export function Preloader() {
       lastFrameT = now;
 
       if (!revealed) {
+        // Handoff refactor 2026-08-28 — the reform PRE-BEAT: the instant the
+        // pipeline warm-up is genuinely under way (compileAsync resolved ⇒
+        // warmProgress ≥ 0.5, or warmReady outright), tell HeroLogo to start
+        // the spore reform NOW, behind this still-opaque overlay. warmReady
+        // sits ≥ MIN_WARM_MS (2s) after this threshold and the counter cannot
+        // complete before warmReady, so the ~2.07s reform normally finishes
+        // under the curtain and the FLIP exit lands on an already-whole mark
+        // (HeroLogo fast-forwards the tail if a warm cache beats the arc).
+        if (!reformKicked) {
+          const intro = useIntroStore.getState();
+          if (intro.warmReady || intro.warmProgress >= 0.5) {
+            reformKicked = true;
+            intro.startReform();
+          }
+        }
         // Truthful target: driven ONLY by real readiness signals (incl. `warm`),
         // never a fixed timer — the counter genuinely waits for shader compilation.
         const target = targetFraction();
@@ -1107,7 +1143,9 @@ export function Preloader() {
       // after `revealed` the GSAP timeline writes the same state through the
       // same function, so the two can never disagree.
       let spinRate = 0;
-      if (joined) {
+      // `spinFrozen`: the FLIP exit's settle tween owns markState.spin — the
+      // integrator must not keep adding on top (legacy exit: never frozen).
+      if (joined && !spinFrozen) {
         spinRate = spinTurns * spinBoost;
         markState.spin = (markState.spin + spinRate * 360 * delta) % 360;
         markState.shine =
@@ -1163,9 +1201,16 @@ export function Preloader() {
 
     // ----- Hand-off: close → zoom-through → divider streak → overlay fade ----
     function reveal() {
-      // Flip the shared flag FIRST so SignatureLine re-kicks its uReveal 0→1 on
-      // this exact beat — the fade below uncovers the line as it draws in.
-      useIntroStore.getState().complete();
+      // Handoff refactor 2026-08-28 — TWO exits share this function:
+      //   FLIP (home): the island published the spore mark's projected rect
+      //     (heroMarkRectRef) → the DOM mark settles its spin and glides onto
+      //     that exact rect over ALIGN_DURATION, introStore.complete() fires
+      //     ON the aligned beat, and the overlay crossfades away over a mark
+      //     that never moves again — Donprod's shared-element handoff on
+      //     Arago's two-fades-over-shared-black ground.
+      //   LEGACY (no rect — interior routes, island torn down): the original
+      //     release → zoom-through → fade, complete() on the first beat,
+      //     byte-identical to before.
 
       // Session-short: remember that this tab session has seen the full
       // preloader once, so a repeat hard load uses the shorter minimum floor
@@ -1191,6 +1236,9 @@ export function Preloader() {
 
       const node = overlayRef.current;
       if (!node) {
+        // No overlay to choreograph — hand off immediately (the flag would
+        // otherwise never flip on this path).
+        useIntroStore.getState().complete();
         finish();
         return;
       }
@@ -1204,10 +1252,7 @@ export function Preloader() {
       // is missing the timeline still runs the overlay fade via the final tween.
       const tl = gsap.timeline();
 
-      // (a) RELEASE — the wheel is ALREADY turning, so the exit does not seat
-      //     anything: it winds the wheel up (spinBoost) and casts a full ring
-      //     of points off the rim. The spin itself stays with the rAF
-      //     integrator — a tween here would fight it for the angle.
+      // The two-piece snap is COMMON to both exits.
       if (!joined) {
         // Watchdog path only: the halves never met (a stuck GPU tripped the
         // 14s insurance). Snap them together rather than zoom a mark in pieces.
@@ -1218,6 +1263,146 @@ export function Preloader() {
         markState.shineAlpha = 1;
         applyMark();
       }
+
+      // ---- FLIP measure (read ONCE, on the reveal beat) --------------------
+      // wrapper centre == svg centre == mark centre (the viewBox pads the mark
+      // symmetrically), and the mark's rendered height inside the svg is
+      // svgHeight · MARK_H / VB_H — so height ratio + centre delta is the
+      // whole FLIP, no mid-tween layout reads (Donprod's FLIP-by-arithmetic).
+      const rect = heroMarkRectRef.current;
+      const wrap = markWrapRef.current;
+      let flip: { dx: number; dy: number; scale: number } | null = null;
+      if (rect && wrap && rect.h >= ALIGN_MIN_RECT_PX) {
+        const r = wrap.getBoundingClientRect();
+        if (r.width > 1 && r.height > 1) {
+          const markH = r.height * (MARK_H / VB_H);
+          flip = {
+            dx: rect.cx - (r.left + r.width / 2),
+            dy: rect.cy - (r.top + r.height / 2),
+            scale: rect.h / markH,
+          };
+        }
+      }
+
+      if (flip) {
+        // ==== FLIP EXIT (home) ==============================================
+        // The wheel SETTLES instead of releasing: the integrator hands the
+        // angle to a tween that parks it upright (the next full turn) while
+        // the mark wrapper glides onto the WebGL mark's projected rect. The
+        // spore mark beneath is already whole (reform ran behind the curtain
+        // on the reformStart pre-beat), so the overlay fade is a crossfade
+        // between two identical marks in the identical spot.
+        spinFrozen = true;
+        tl.to(
+          markState,
+          {
+            spin: Math.ceil(markState.spin / 360) * 360,
+            shineAlpha: 0,
+            duration: ALIGN_DURATION,
+            ease: "power2.out",
+          },
+          0,
+        );
+        tl.to(
+          wrap,
+          {
+            x: flip.dx,
+            y: flip.dy,
+            scale: flip.scale,
+            duration: ALIGN_DURATION,
+            ease: "power3.inOut",
+            transformOrigin: "50% 50%",
+          },
+          0,
+        );
+        // Ghost + readout leave first — by the aligned beat only the lit mark
+        // remains: the exact silhouette the spore mark continues.
+        if (ghostWrapRef.current) {
+          tl.to(
+            ghostWrapRef.current,
+            { opacity: 0, duration: 0.32, ease: "power1.out" },
+            0,
+          );
+        }
+        if (readoutRef.current) {
+          tl.to(
+            readoutRef.current,
+            { opacity: 0, duration: 0.3, ease: "power1.out" },
+            0,
+          );
+        }
+        // The shaft still draws out of the mark's centre (it rides the FLIP
+        // transform with the svg) and streaks into the signature line below.
+        if (dividerRef.current) {
+          tl.to(
+            dividerRef.current,
+            { scaleY: 1, opacity: 1, duration: 0.3, ease: "power2.out" },
+            0.1,
+          );
+        }
+        // THE WARP still fires under the move — tunnel streaks while the mark
+        // glides, dissolving with the overlay.
+        tl.call(
+          () => {
+            tunnel?.setTargetTimeCoef(100);
+          },
+          undefined,
+          0.15,
+        );
+        // The shared beat, ON ALIGNMENT: SignatureLine re-kicks its draw-in,
+        // the wordmark entry arms, HeroLogo pins any unfinished reform, the
+        // ignition ramp (PostFXNodes) and the camera settle (SignatureLine)
+        // start — every subscriber keys on this one flag, exactly as before,
+        // just ALIGN_DURATION later than the legacy beat.
+        tl.call(
+          () => {
+            useIntroStore.getState().complete();
+          },
+          undefined,
+          ALIGN_DURATION,
+        );
+        if (dividerRef.current) {
+          tl.to(
+            dividerRef.current,
+            {
+              scaleY: 6,
+              y: 120,
+              fill: "hsl(189 100% 62%)", // --accent cyan head of the signature line
+              duration: FADE_DURATION,
+              ease: "expo.in",
+              transformOrigin: "50% 50%",
+              transformBox: "fill-box",
+            },
+            ALIGN_DURATION + 0.05,
+          );
+        }
+        // EXIT FADE: the whole overlay — tunnel, lit mark, streak — crossfades
+        // over the identical spore mark beneath. The mark "never moves": it
+        // stops being pixels and becomes particles.
+        tl.to(
+          node,
+          {
+            opacity: 0,
+            duration: FADE_DURATION,
+            ease: "power2.inOut",
+            onComplete: finish,
+          },
+          ALIGN_DURATION,
+        );
+
+        introTweens.push(tl as unknown as gsap.core.Tween);
+        return;
+      }
+
+      // ==== LEGACY zoom-through exit (no published rect) ====================
+      // Flip the shared flag FIRST so SignatureLine re-kicks its uReveal 0→1 on
+      // this exact beat — the fade below uncovers the line as it draws in.
+      useIntroStore.getState().complete();
+
+      // (a) RELEASE — the wheel is ALREADY turning, so the exit does not seat
+      //     anything: it winds the wheel up (spinBoost) and casts a full ring
+      //     of points off the rim. The spin itself stays with the rAF
+      //     integrator — a tween here would fight it for the angle.
       const exit = { spin: 1 };
       tl.to(
         exit,
@@ -1418,7 +1603,10 @@ export function Preloader() {
         ref={logoRef}
         className="flex flex-col items-center will-change-transform"
       >
-        <div className="relative flex items-center justify-center">
+        <div
+          ref={markWrapRef}
+          className="relative flex items-center justify-center will-change-transform"
+        >
           {/* PARTICLE FIELD — soft additive points on their own 2D canvas
               behind the mark: gathering inward while it assembles, cast
               outward once it turns. Sized from the SVG's box (sizeField) and

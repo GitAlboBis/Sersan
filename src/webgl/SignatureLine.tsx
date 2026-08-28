@@ -96,6 +96,16 @@ const DOLLY_DAMP = 2.2;
 const ORBIT_DAMP = 2.5;
 /** damp() lambda for the pointer micro-parallax follower. */
 const PAR_DAMP = 3;
+/** Intro camera SETTLE (handoff refactor 2026-08-28 — Oddity's zoom residue):
+ * on the introComplete edge the camera starts this fraction of CAMERA_Z
+ * CLOSER (content ~2% larger) and eases back to rest over INTRO_SETTLE_S
+ * with an expo-out, so the uncovered hero lands with a breath instead of a
+ * hard freeze. Kept SUBTLE on purpose: the overlay's 0.7s crossfade shows
+ * the DOM mark over the (settling) spore mark, and a stronger zoom would
+ * read as a double edge between the two. One-shot, additive on the z write,
+ * exactly 0 after the ramp — every other frame is untouched. */
+const INTRO_SETTLE_FRAC = 0.022;
+const INTRO_SETTLE_S = 1.1;
 /** Viewport fraction over which the whole rig fades in from the top. While
  * the page is pinned at scroll 0 (intro gate, brand replay) every channel is
  * EXACTLY 0, so the particle brand + HeroLogo keep their pixel registration
@@ -380,6 +390,9 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   const dollyCurrent = useRef(0);
   const orbitCurrent = useRef(0);
   const parCurrent = useRef({ x: 0, y: 0 });
+  // Intro settle clock (s). Initialized SPENT (≥ INTRO_SETTLE_S ⇒ idle);
+  // re-armed to 0 by the introComplete edge in the hand-off effect below.
+  const introSettleClock = useRef(INTRO_SETTLE_S);
   // Singularity-passage lateral pan (seqStore.pan01 — the passage's scrubbed
   // ScrollTrigger owns the clock, this file stays the single camera
   // authority; exact camTilt precedent). Lightly damped so a passage
@@ -612,6 +625,9 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     const unsubscribe = useIntroStore.subscribe((state, prev) => {
       if (state.introComplete && !prev.introComplete) {
         setReveal(0);
+        // Arm the one-shot camera settle on the same beat (ref write only —
+        // the rig block in useFrame integrates it; see INTRO_SETTLE_*).
+        introSettleClock.current = 0;
         // Brief beat so the curve is settled before the draw-in begins,
         // matching the ~420ms route-reveal window.
         timeoutId = window.setTimeout(() => setReveal(1), 60);
@@ -917,7 +933,18 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     if (Math.abs(seqPanCurrent.current) < 1e-4 && seqPanTarget === 0) {
       seqPanCurrent.current = 0;
     }
-    camera.position.z = CAMERA_Z + dollyCurrent.current * rigGate;
+    // Intro settle — the one-shot expo-out pull-back armed by the hand-off
+    // effect (see INTRO_SETTLE_*). The residual 2^(-10t) tail at t = 1 is
+    // sub-millimeter; past the ramp the clock stops and settleZ is exactly 0.
+    let settleZ = 0;
+    if (introSettleClock.current < INTRO_SETTLE_S) {
+      introSettleClock.current += delta;
+      const st = Math.min(introSettleClock.current / INTRO_SETTLE_S, 1);
+      if (st < 1) {
+        settleZ = -CAMERA_Z * INTRO_SETTLE_FRAC * Math.pow(2, -10 * st);
+      }
+    }
+    camera.position.z = CAMERA_Z + dollyCurrent.current * rigGate + settleZ;
     camera.position.x =
       (orbitCurrent.current + parCurrent.current.x) * rigGate +
       seqPanCurrent.current;

@@ -67,7 +67,7 @@ import { useGLTF } from "@react-three/drei";
 import { SPINE_TRAVEL_VH } from "@/lib/spine";
 import { WORLD_VIEW_HEIGHT } from "./constants";
 import { useTextMorphStore } from "./store/textMorphStore";
-import { useIntroStore } from "./store/introStore";
+import { useIntroStore, heroMarkRectRef } from "./store/introStore";
 import {
   sampleMarkHomePositions,
   type MarkHomeField,
@@ -215,6 +215,14 @@ const FLIGHT_BULGE = 0.7;
 // arc — BODY_REVEAL was not retightened when BLOOM took its second cut).
 const INTRO_REFORM_PEAK = 0.92; // burst that holds the mark as NOTHING (1 = gone)
 const INTRO_REFORM_HOLD = 0.12; // s held as nothing after the curtain lifts (was 0.35)
+/** Reform-clock rate multiplier when the curtain is ALREADY lifting with the
+ * reform mid-flight (preloader handoff refactor 2026-08-28: the reform now
+ * starts on introStore.reformStart — the warm pre-beat — and normally
+ * finishes BEHIND the overlay; this fast-forward covers the late/never case:
+ * watchdog hard-reveal, or a warm signal that completed the counter faster
+ * than the 2.07s arc). 7 ⇒ the envelope releases in ≈0.3s, safely inside the
+ * 0.7s overlay fade, so the visitor never sees a half-formed mark. */
+const INTRO_REFORM_CATCHUP_RATE = 7;
 const INTRO_REFORM_RAMP = 0.25; // s to drop burst→0, releasing the regrow bloom (was 0.4)
 const INTRO_REFORM_BLOOM = 1.7; // s the materialise bloom is given to finish (was 5.5, then 1.9)
 /** Regrow-rate multiplier during the materialise — still slower than the
@@ -296,6 +304,14 @@ useGLTF.preload(MARK_GLB);
 /** Cursor far away → repulsion vanishes (pointer-leave / coarse pointer). */
 const MOUSE_OFF = new THREE.Vector3(1e9, 1e9, 1e9);
 
+/** Hoisted projection temps for the per-frame markRect publish (island rule:
+ *  zero per-frame allocation in useFrame). */
+const _mrCenter = new THREE.Vector3();
+const _mrTop = new THREE.Vector3();
+/** Width/height aspect of the normalized mark (the 1.62×2 hexagon envelope —
+ *  see the framing comment in the frame loop). */
+const MARK_ASPECT = 1.62 / TARGET_HEIGHT;
+
 /**
  * TSL STATIC build (the home-position billboards, analytic dispersion). Shape
  * mirrors createStaticParticleNodeBuild's return, loose-typed because the
@@ -329,6 +345,12 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // on a slow GLB load, and the nav-into-home replay reset publishing
   // domReveal 1→0) glide instead of snapping the mark across the frame.
   const flightRef = useRef(1);
+  // One-shot: on the introComplete edge of a HARD load, any residual flight
+  // glide is snapped to its target under the just-opening crossfade, so the
+  // mark sits exactly on the rect the preloader's FLIP aimed at (published
+  // from the TARGET pose below — a fast repeat visit can reveal while the
+  // damp is still mid-glide). Soft entries never arm the FLIP → never snap.
+  const introFlightSnapped = useRef(false);
   const simTimeRef = useRef(0);
   const announcedReady = useRef(false);
   // One-shot intro REFORM clock (seconds). -1 = pre-reveal (mark held dead);
@@ -750,6 +772,10 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     () => () => {
       useTierStore.getState().setHeroReady(false);
       announcedReady.current = false;
+      // Drop the published FLIP rect: a remount republishes fresh, and a
+      // preloader that outlives this island must fall back to its legacy exit
+      // rather than FLIP onto a stale position.
+      heroMarkRectRef.current = null;
     },
     [],
   );
@@ -870,6 +896,17 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     // the pre-lockup behavior.
     const morph = useTextMorphStore.getState();
     const flightT = morph.active ? morph.domReveal : 1;
+    // Hard-load handoff snap (see introFlightSnapped): kill the residual
+    // rest↔lockup glide the instant the curtain starts lifting, so the mark
+    // is AT the station the FLIP targeted while the overlay is still ~opaque.
+    if (
+      !softEntryRef.current &&
+      !introFlightSnapped.current &&
+      useIntroStore.getState().introComplete
+    ) {
+      introFlightSnapped.current = true;
+      flightRef.current = flightT;
+    }
     flightRef.current = THREE.MathUtils.damp(
       flightRef.current,
       flightT,
@@ -920,6 +957,40 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         THREE.MathUtils.lerp(LOCKUP_SCALE, 1 - 0.2 * hp, flight) *
         (0.92 + 0.08 * fade),
     );
+
+    // Publish the mark's projected screen rect (CSS px) for the preloader's
+    // shared-element FLIP (handoff refactor 2026-08-28) — only while the
+    // curtain is still up (nothing reads it afterwards). Projected from the
+    // TARGET pose (eased flightT), NOT the damped in-flight pose: on a fast
+    // repeat visit the reveal can land while the mark is still gliding
+    // rest↔lockup, and the FLIP must aim where the mark WILL sit — the
+    // introComplete snap above parks it there under the opening crossfade.
+    // Plain module-ref write: no store notify, no per-frame allocation
+    // (hoisted temps). Half-height in world units = the target scale
+    // (geometry normalized to TARGET_HEIGHT = 2 ⇒ half = 1 × scale); the
+    // slight pointer tilt is ignored — the mark reads frontal and the DOM
+    // twin crossfades over it.
+    if (!useIntroStore.getState().introComplete) {
+      const ft = flightT * flightT * (3 - 2 * flightT);
+      const tx = heroX * ft;
+      const ty = THREE.MathUtils.lerp(lockY, heroY, ft);
+      const tz =
+        THREE.MathUtils.lerp(fx.heroPosZ, heroZ, ft) +
+        Math.sin(ft * Math.PI) * FLIGHT_BULGE;
+      const ts =
+        baseScale *
+        THREE.MathUtils.lerp(LOCKUP_SCALE, 1 - 0.2 * hp, ft) *
+        (0.92 + 0.08 * fade);
+      _mrCenter.set(tx, ty, tz).project(camera);
+      _mrTop.set(tx, ty + ts, tz).project(camera);
+      const mrH = Math.abs(_mrTop.y - _mrCenter.y) * size.height;
+      heroMarkRectRef.current = {
+        cx: (_mrCenter.x * 0.5 + 0.5) * size.width,
+        cy: (0.5 - _mrCenter.y * 0.5) * size.height,
+        w: mrH * MARK_ASPECT,
+        h: mrH,
+      };
+    }
 
     // ANCHORED mark — no drag-to-rotate, no idle spin. The mark sits STILL at
     // its front-facing rest and only "looks toward" the cursor by a few degrees:
@@ -1077,12 +1148,25 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       // scroll explode above. A soft route re-entry shows the logo already
       // present (softEntryRef ⇒ introBurst 0, no replay).
       if (!softEntryRef.current) {
+        const intro = useIntroStore.getState();
         if (introReformClock.current < 0) {
-          if (tslSpore && useIntroStore.getState().introComplete && hp < 0.05) {
+          // Handoff refactor 2026-08-28: the clock now starts on the warm
+          // PRE-BEAT (reformStart) so the ~2.07s reform plays out BEHIND the
+          // still-opaque overlay and the curtain lifts onto a whole mark.
+          // introComplete stays in the OR as the fallback trigger for paths
+          // that never set the pre-beat (watchdog hard-reveal).
+          if (
+            tslSpore &&
+            (intro.reformStart || intro.introComplete) &&
+            hp < 0.05
+          ) {
             introReformClock.current = 0;
           }
         } else if (introReformClock.current < INTRO_REFORM_RELEASE) {
-          introReformClock.current += delta;
+          // Curtain already lifting mid-reform → fast-forward (see the
+          // CATCHUP_RATE doc); the normal pre-beat path runs at 1×.
+          introReformClock.current +=
+            delta * (intro.introComplete ? INTRO_REFORM_CATCHUP_RATE : 1);
         }
       }
       const introBurst = softEntryRef.current
@@ -1095,7 +1179,12 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         !softEntryRef.current &&
         introReformClock.current >= 0 &&
         introReformClock.current < INTRO_REFORM_RELEASE
-          ? INTRO_REFORM_REGROW_SLOW
+          ? // Catch-up path (curtain lifting mid-reform): drop the intro crawl
+            // so the bloom completes at the preset's full pace alongside the
+            // fast-forwarded envelope clock.
+            useIntroStore.getState().introComplete
+            ? 1
+            : INTRO_REFORM_REGROW_SLOW
           : 1;
       // Occluder body: on scroll it follows the TRAILING core (stays solid
       // behind the crust as that leads off). During the intro reform it must NOT

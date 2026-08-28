@@ -24,10 +24,38 @@
  */
 import { create } from "zustand";
 
+/**
+ * Projected screen rect of the WebGL hero mark (CSS px, viewport space),
+ * published per-frame by HeroLogo while the preloader is still up and read
+ * ONCE by the preloader's reveal() to FLIP its DOM mark onto the exact spot
+ * where the spore mark already sits — the Donprod-style shared-element
+ * handoff. A MODULE-SCOPE REF, not store state: a per-frame zustand setState
+ * would notify every listener 60×/s for a value nothing reads reactively
+ * (the entryProgressRef / pointerStore precedent). `null` until the island
+ * publishes (non-home routes never do — the preloader falls back to its
+ * legacy zoom-through exit there). This module stays three-free so the
+ * preloader chunk can import it.
+ */
+export const heroMarkRectRef: {
+  current: { cx: number; cy: number; w: number; h: number } | null;
+} = { current: null };
+
 interface IntroState {
   /** False until the first-load preloader hands off; true forever after. */
   introComplete: boolean;
   complete: () => void;
+  /**
+   * Flipped by the preloader the moment the pipeline warm-up is genuinely
+   * under way (warmProgress ≥ 0.5 — compileAsync resolved, the scene is
+   * rendering under the curtain). HeroLogo keys its one-shot spore REFORM on
+   * this pre-beat instead of `introComplete`, so the mark assembles BEHIND the
+   * overlay (~2.07s) and the curtain lifts onto a mark that is already whole —
+   * no "logo vanishes, then re-forms" gap. `introComplete` still starts the
+   * reform on paths that never set this (watchdog hard-reveal, reduced-motion
+   * teardown), so the flag is an accelerator, never a gate.
+   */
+  reformStart: boolean;
+  startReform: () => void;
   /**
    * True once the WebGL scene is actually RENDERING SMOOTHLY — i.e. the WebGPU
    * pipelines/compute kernels have finished compiling (the heavy one-time cost
@@ -56,6 +84,12 @@ interface IntroState {
 export const useIntroStore = create<IntroState>((set, get) => ({
   introComplete: false,
   complete: () => set({ introComplete: true }),
+  reformStart: false,
+  // Idempotent: the preloader's frame loop calls this every tick once the
+  // warm threshold is crossed; only the first call writes.
+  startReform: () => {
+    if (!get().reformStart) set({ reformStart: true });
+  },
   warmReady: false,
   // Ready ⇒ progress is 1 by definition (monotonic: never lowered afterwards).
   setWarmReady: () => set({ warmReady: true, warmProgress: 1 }),

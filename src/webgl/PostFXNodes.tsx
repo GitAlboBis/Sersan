@@ -203,6 +203,7 @@ import { routeFx, HOME_FX } from "./store/routeFxStore";
 import { usePointerStore } from "./store/pointerStore";
 import { useSeqStore } from "./store/seqStore";
 import { useScrollStore } from "./store/scrollStore";
+import { useIntroStore } from "./store/introStore";
 import {
   CUT_BOUNDARY_PAIRS,
   CUT_BOUNDARY_ROUTE,
@@ -529,6 +530,13 @@ interface WipeUniforms {
   edgeLift: UniformNode;
 }
 
+/** Ignition ramp length (s) — handoff refactor 2026-08-28: how long the frame
+ *  takes to come up from the near-black floor (×0.14) to full exposure after
+ *  introComplete. Sized to bracket the overlay's 0.7s crossfade and hand into
+ *  the wordmark's 3.6s assembly — Arago's 0→6 light ramp compressed to our
+ *  tempo. */
+const IGNITE_S = 2.0;
+
 export function PostFXNodes({
   pathname = "/",
   level,
@@ -557,6 +565,13 @@ export function PostFXNodes({
     seedZ: UniformNode;
   } | null>(null);
   const burstDampedRef = useRef(0);
+  // Ignition ramp (handoff refactor 2026-08-28, Arago's lights-up beat): the
+  // whole composited frame is lifted from near-black to full exposure over
+  // ~2s on the introComplete edge. The uniform is built at 1 (no-op) unless
+  // the preloader curtain is still up at graph-build time; the clock ref
+  // drives the one-shot ease in the frame loop below.
+  const igniteRef = useRef<UniformNode | null>(null);
+  const igniteClockRef = useRef(0);
   // W4 — section-cut wipe uniforms (built with the graph) + the CPU driver's
   // hoisted state. State/params/spike are lazy-init (`??=`) so the useRef
   // initializers stay allocation-free across re-renders.
@@ -1134,6 +1149,19 @@ export function PostFXNodes({
       })();
       node = node.add(vec4(wipeGrade, 0));
 
+      // 1b) IGNITION (handoff refactor 2026-08-28 — Arago's lights-up beat):
+      //    multiply the whole composited frame by mix(0.14, 1, uIgnite). The
+      //    uniform is built at 1 everywhere except a hard load still behind
+      //    the preloader curtain (introComplete false), so every other
+      //    route/rebuild renders byte-identically (×1 is a no-op). Applied
+      //    AFTER bloom/wipe and BEFORE the vignette so the ramp lifts the
+      //    entire lit frame, highlights included — exposure coming up, not a
+      //    grey veil. Driven 0→1 over ~2s in the frame loop below.
+      const uIgnite = uniform(useIntroStore.getState().introComplete ? 1 : 0);
+      igniteRef.current = uIgnite;
+      const igniteLift = uIgnite.mul(0.86).add(0.14);
+      node = node.mul(vec4(igniteLift, igniteLift, igniteLift, 1));
+
       // 2) VIGNETTE (hand-rolled — no `vignette` export in three/tsl). Mirrors
       //    `<Vignette offset={0.35} darkness={...}>`: darken from ~0.5 of the way
       //    out to the corners. `screenUV.distance(center)` is 0 at center, grows
@@ -1197,6 +1225,10 @@ export function PostFXNodes({
       bloomRef.current = null;
       burstRef.current = null;
       burstDampedRef.current = 0;
+      // Drop the dead ignition uniform; a rebuilt graph re-derives its initial
+      // value from introComplete (1 after any completed intro).
+      igniteRef.current = null;
+      igniteClockRef.current = 0;
       // W4 — drop the dead wipe uniforms and reset the driver so a rebuilt
       // graph re-derives its boundaries (state objects survive; version −1
       // forces the next frame's re-derivation).
@@ -1699,6 +1731,20 @@ export function PostFXNodes({
         bu.seedZ.value = sz;
       } else if (bu.burst.value !== 0) {
         bu.burst.value = 0;
+      }
+    }
+
+    // Ignition ramp — one-shot: 0 → 1 over IGNITE_S with a cubic ease-out,
+    // armed by the introComplete edge (getState, no subscription — island
+    // rule). Once the uniform reaches 1 this is a single compare per frame
+    // forever; graphs built after the intro start at 1 and never enter.
+    const ig = igniteRef.current;
+    if (ig && ig.value < 1) {
+      if (useIntroStore.getState().introComplete) {
+        igniteClockRef.current += Math.min(delta, 1 / 30);
+        const t = Math.min(igniteClockRef.current / IGNITE_S, 1);
+        const inv = 1 - t;
+        ig.value = 1 - inv * inv * inv;
       }
     }
 
