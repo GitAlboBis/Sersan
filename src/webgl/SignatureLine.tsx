@@ -111,13 +111,13 @@ const PAR_DAMP = 3;
  *           because the glide starts from the load pose by construction.
  * Soft entries never enter (introComplete already true, glide clock spent).
  * This subsumes the earlier 2.2% "settle". */
-// Owner passes 2+3 (2026-08-28: "più zoommato nel preloader… e quando esce
-// c'è uno zoom out smooth", then "ancora di più zoommato"): IN 0.10 → 0.16
-// → 0.24, MID 0.045 → 0.09 → 0.14 — the load stage is watched properly
-// close-up (lockup ≈ a third larger), and the exit glide (3.0s) travels a
-// theatrical 14% pull-back into the hero frame.
-const INTRO_CAM_IN = 0.24;
-const INTRO_CAM_MID = 0.14;
+// Owner passes 2-4 (2026-08-28, "più zoommato" three times over): IN 0.10 →
+// 0.16 → 0.24 → 0.32, MID 0.045 → 0.09 → 0.14 → 0.19 — the load stage is a
+// genuine close-up (lockup ≈ 1.5×) and the 3.0s exit glide travels a full
+// 19% pull-back into the hero frame. Next notch up starts cropping the
+// lockup against the viewport on short screens — tune with eyes on.
+const INTRO_CAM_IN = 0.32;
+const INTRO_CAM_MID = 0.19;
 const INTRO_CAM_X = 0.015;
 const INTRO_CAM_GLIDE_S = 3.0;
 /** Viewport fraction over which the whole rig fades in from the top. While
