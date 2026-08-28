@@ -665,6 +665,14 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
     // notifications. Unconditional so the skip pin (entryRef = 1 above) and
     // the completed state stay visible to HeroLogo's burst trigger.
     entryProgressRef.value = entryRef.current;
+    // Wordmark-formed beat (preloader v2): the counter holds its completion
+    // until the brand has fully assembled. Unconditional on the PUBLISHED
+    // value, so the normal 3.6s completion, the skip pin and the replay seed
+    // all count; the store setter is idempotent.
+    if (entryRef.current >= 1) {
+      const introDone = useIntroStore.getState();
+      if (!introDone.wordmarkFormed) introDone.setWordmarkFormed();
+    }
 
     // --- TOUCH BEAT auto-driver (plan Phase 4b; DEAD on desktop: autoRef is
     // only true for the compact `data-hero-brand-compact` anchor) -----------

@@ -91,10 +91,15 @@ const MANIFEST_MAX_MS = 4000;
 // 10-12s on a fresh Turbopack graph; production chunks are prebuilt and land
 // in a fraction of that); still safely under the WATCHDOG.
 const STAGE_MAX_MS = 12000;
+// Bound on the wordmark hold (owner 2026-08-28: the counter may not complete
+// before the SERSAN assemble wave has fully formed). Sized as the stage
+// worst case + the 3.6s entry with margin; paths that never mount a
+// wordmark (WebGL2, phones without the brand anchor) self-resolve here.
+const WORDMARK_MAX_MS = 17000;
 // LAST-RESORT safety only: if the scene never reports `warm` (a truly stuck
 // GPU), reveal anyway so the visitor is never trapped. Sits above
-// STAGE_MAX_MS with margin.
-const WATCHDOG_MS = 16000;
+// WORDMARK_MAX_MS with margin.
+const WATCHDOG_MS = 20000;
 // Counter easing toward its target each frame (fraction per ~16ms frame).
 // Lowered 0.12 → 0.08 (owner live pass 2026-08-28: "fai tutto più lento e
 // smooth") — the readout breathes instead of ticking.
@@ -214,6 +219,7 @@ export function Preloader() {
     // watchdog still backstops everything).
     const onHome = window.location.pathname === "/";
     let stageForced = false;
+    let wordmarkForced = false;
     let manifest: PreloadManifestHandle | null = null;
     let manifestForced = false;
     const manifestProgress = () => {
@@ -238,6 +244,10 @@ export function Preloader() {
       // counter breathes at the 90% cap until the mark can actually grow.
       const stageReady =
         !onHome || tierOff || stageForced || intro.heroStageReady;
+      // Wordmark hold (owner: the loader lasts until SERSAN has fully
+      // composed) — same shape as the stage gate, bounded by WORDMARK_MAX_MS.
+      const wordmarkReady =
+        !onHome || tierOff || wordmarkForced || intro.wordmarkFormed;
       const resolved =
         (signals.fonts ? 0.25 : 0) +
         (signals.load ? 0.2 : 0) +
@@ -248,7 +258,8 @@ export function Preloader() {
         signals.load &&
         signals.manifest &&
         signals.warm &&
-        stageReady;
+        stageReady &&
+        wordmarkReady;
       const elapsed = performance.now() - startedAt;
       const minElapsed = Math.min(elapsed / minVisibleMs, 1);
       if (allReady && minElapsed >= 1) return 1;
@@ -311,6 +322,11 @@ export function Preloader() {
       window.setTimeout(() => {
         stageForced = true;
       }, STAGE_MAX_MS),
+    );
+    fallbackTimers.push(
+      window.setTimeout(() => {
+        wordmarkForced = true;
+      }, WORDMARK_MAX_MS),
     );
 
     // ----- Counter ease + rise floor + reveal trigger (single rAF) ---------

@@ -111,10 +111,14 @@ const PAR_DAMP = 3;
  *           because the glide starts from the load pose by construction.
  * Soft entries never enter (introComplete already true, glide clock spent).
  * This subsumes the earlier 2.2% "settle". */
-const INTRO_CAM_IN = 0.1;
-const INTRO_CAM_MID = 0.045;
+// Owner pass 2 (2026-08-28: "più zoommato nel preloader… e quando esce c'è
+// uno zoom out smooth"): IN 0.10 → 0.16, MID 0.045 → 0.09 — the load stage
+// is watched genuinely close-up, and the exit glide (lengthened 2.6 → 3.0s)
+// now travels a real 9% pull-back instead of a whisper.
+const INTRO_CAM_IN = 0.16;
+const INTRO_CAM_MID = 0.09;
 const INTRO_CAM_X = 0.015;
-const INTRO_CAM_GLIDE_S = 2.6;
+const INTRO_CAM_GLIDE_S = 3.0;
 /** Viewport fraction over which the whole rig fades in from the top. While
  * the page is pinned at scroll 0 (intro gate, brand replay) every channel is
  * EXACTLY 0, so the particle brand + HeroLogo keep their pixel registration

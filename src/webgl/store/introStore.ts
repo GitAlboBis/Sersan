@@ -55,6 +55,17 @@ interface IntroState {
   heroStageReady: boolean;
   setHeroStageReady: () => void;
   /**
+   * True once the SERSAN wordmark's 3.6s assemble wave has fully formed
+   * (published by HeroTextParticles the frame its entry clock reaches 1 —
+   * the skip pin and replay seed count too). The preloader holds its
+   * completion on it (owner 2026-08-28: "fai durare il preloader fino a
+   * quando non ha finito di comporsi la scritta Sersan"), bounded like the
+   * stage gate so builds that never mount a wordmark (WebGL2, phones without
+   * the brand anchor, interior routes) degrade to the plain reveal.
+   */
+  wordmarkFormed: boolean;
+  setWordmarkFormed: () => void;
+  /**
    * True once the WebGL scene is actually RENDERING SMOOTHLY — i.e. the WebGPU
    * pipelines/compute kernels have finished compiling (the heavy one-time cost
    * that otherwise stalls the first frames). Set by PipelineWarmup (in-Canvas)
@@ -85,6 +96,10 @@ export const useIntroStore = create<IntroState>((set, get) => ({
   heroStageReady: false,
   setHeroStageReady: () => {
     if (!get().heroStageReady) set({ heroStageReady: true });
+  },
+  wordmarkFormed: false,
+  setWordmarkFormed: () => {
+    if (!get().wordmarkFormed) set({ wordmarkFormed: true });
   },
   warmReady: false,
   // Ready ⇒ progress is 1 by definition (monotonic: never lowered afterwards).
