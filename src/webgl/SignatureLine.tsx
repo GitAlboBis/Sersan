@@ -40,7 +40,7 @@ import { useProductionPulseStore } from "./store/productionPulseStore";
 import { useAuditTimelineStore } from "./store/auditTimelineStore";
 import { useTextMorphStore } from "./store/textMorphStore";
 import { useSeqStore, SEQ_PAN_FRAC } from "./store/seqStore";
-import { useIntroStore } from "./store/introStore";
+import { useIntroStore, introProgressRef } from "./store/introStore";
 import { useFxStore } from "./store/fxStore";
 import { usePointerStore } from "./store/pointerStore";
 import { routeFx } from "./store/routeFxStore";
@@ -96,16 +96,25 @@ const DOLLY_DAMP = 2.2;
 const ORBIT_DAMP = 2.5;
 /** damp() lambda for the pointer micro-parallax follower. */
 const PAR_DAMP = 3;
-/** Intro camera SETTLE (handoff refactor 2026-08-28 — Oddity's zoom residue):
- * on the introComplete edge the camera starts this fraction of CAMERA_Z
- * CLOSER (content ~2% larger) and eases back to rest over INTRO_SETTLE_S
- * with an expo-out, so the uncovered hero lands with a breath instead of a
- * hard freeze. Kept SUBTLE on purpose: the overlay's 0.7s crossfade shows
- * the DOM mark over the (settling) spore mark, and a stronger zoom would
- * read as a double edge between the two. One-shot, additive on the z write,
- * exactly 0 after the ramp — every other frame is untouched. */
-const INTRO_SETTLE_FRAC = 0.022;
-const INTRO_SETTLE_S = 1.6;
+/** Intro CAMERA RIG (preloader v2, owner 2026-08-28: "non ci sono movimenti
+ * di camera… guarda il sito argo"). Arago's intro is a dolly: the scene is
+ * seen CLOSER and the camera pulls back into the resting frame. Two phases,
+ * continuous by construction:
+ *   LOAD  — while the chrome is up the camera sits INTRO_CAM_IN of CAMERA_Z
+ *           closer (plus a whisper of lateral offset) and eases toward
+ *           INTRO_CAM_MID as the counter climbs (scrubbed by
+ *           introProgressRef — the materialising lockup is watched from a
+ *           slowly retreating camera, never a static tableau);
+ *   GLIDE — on the introComplete edge the REMAINING offset (wherever the
+ *           scrub left it) expo-glides to 0 over INTRO_CAM_GLIDE_S: the
+ *           pull-back lands exactly in the hero frame, no seam at the edge
+ *           because the glide starts from the load pose by construction.
+ * Soft entries never enter (introComplete already true, glide clock spent).
+ * This subsumes the earlier 2.2% "settle". */
+const INTRO_CAM_IN = 0.1;
+const INTRO_CAM_MID = 0.045;
+const INTRO_CAM_X = 0.015;
+const INTRO_CAM_GLIDE_S = 2.6;
 /** Viewport fraction over which the whole rig fades in from the top. While
  * the page is pinned at scroll 0 (intro gate, brand replay) every channel is
  * EXACTLY 0, so the particle brand + HeroLogo keep their pixel registration
@@ -390,9 +399,12 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   const dollyCurrent = useRef(0);
   const orbitCurrent = useRef(0);
   const parCurrent = useRef({ x: 0, y: 0 });
-  // Intro settle clock (s). Initialized SPENT (≥ INTRO_SETTLE_S ⇒ idle);
-  // re-armed to 0 by the introComplete edge in the hand-off effect below.
-  const introSettleClock = useRef(INTRO_SETTLE_S);
+  // Intro camera-rig state: the glide clock (initialized SPENT ⇒ idle;
+  // re-armed to 0 by the introComplete edge in the hand-off effect below)
+  // and the load-pose snapshot the glide departs from — kept fresh every
+  // load-phase frame, so the edge hand-off is continuous by construction.
+  const introGlideClock = useRef(INTRO_CAM_GLIDE_S);
+  const introCamFrom = useRef({ z: 0, x: 0 });
   // Singularity-passage lateral pan (seqStore.pan01 — the passage's scrubbed
   // ScrollTrigger owns the clock, this file stays the single camera
   // authority; exact camTilt precedent). Lightly damped so a passage
@@ -625,9 +637,10 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     const unsubscribe = useIntroStore.subscribe((state, prev) => {
       if (state.introComplete && !prev.introComplete) {
         setReveal(0);
-        // Arm the one-shot camera settle on the same beat (ref write only —
-        // the rig block in useFrame integrates it; see INTRO_SETTLE_*).
-        introSettleClock.current = 0;
+        // Arm the one-shot camera pull-back GLIDE on the same beat (ref
+        // write only — the rig block in useFrame integrates it; see
+        // INTRO_CAM_*).
+        introGlideClock.current = 0;
         // Brief beat so the curve is settled before the draw-in begins,
         // matching the ~420ms route-reveal window.
         timeoutId = window.setTimeout(() => setReveal(1), 60);
@@ -933,21 +946,34 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     if (Math.abs(seqPanCurrent.current) < 1e-4 && seqPanTarget === 0) {
       seqPanCurrent.current = 0;
     }
-    // Intro settle — the one-shot expo-out pull-back armed by the hand-off
-    // effect (see INTRO_SETTLE_*). The residual 2^(-10t) tail at t = 1 is
-    // sub-millimeter; past the ramp the clock stops and settleZ is exactly 0.
-    let settleZ = 0;
-    if (introSettleClock.current < INTRO_SETTLE_S) {
-      introSettleClock.current += delta;
-      const st = Math.min(introSettleClock.current / INTRO_SETTLE_S, 1);
-      if (st < 1) {
-        settleZ = -CAMERA_Z * INTRO_SETTLE_FRAC * Math.pow(2, -10 * st);
+    // Intro camera rig (see INTRO_CAM_*): the LOAD pose is scrubbed by the
+    // counter while the chrome is up, then the one-shot GLIDE armed by the
+    // hand-off effect pulls the remaining offset to 0. The residual 2^(-10t)
+    // tail at t = 1 is sub-millimeter; past the glide both offsets are
+    // exactly 0 and this whole block is one getState + a compare per frame.
+    let introZ = 0;
+    let introX = 0;
+    if (!useIntroStore.getState().introComplete) {
+      const pIn = introProgressRef.current;
+      const pe = pIn * pIn * (3 - 2 * pIn);
+      introZ = -CAMERA_Z * (INTRO_CAM_IN + (INTRO_CAM_MID - INTRO_CAM_IN) * pe);
+      introX = worldViewWidth * (INTRO_CAM_X * (1 - pe));
+      introCamFrom.current.z = introZ;
+      introCamFrom.current.x = introX;
+    } else if (introGlideClock.current < INTRO_CAM_GLIDE_S) {
+      introGlideClock.current += delta;
+      const gt = Math.min(introGlideClock.current / INTRO_CAM_GLIDE_S, 1);
+      if (gt < 1) {
+        const gr = Math.pow(2, -10 * gt);
+        introZ = introCamFrom.current.z * gr;
+        introX = introCamFrom.current.x * gr;
       }
     }
-    camera.position.z = CAMERA_Z + dollyCurrent.current * rigGate + settleZ;
+    camera.position.z = CAMERA_Z + dollyCurrent.current * rigGate + introZ;
     camera.position.x =
       (orbitCurrent.current + parCurrent.current.x) * rigGate +
-      seqPanCurrent.current;
+      seqPanCurrent.current +
+      introX;
     camera.position.y += parCurrent.current.y * rigGate;
 
     // Camera-descent beat STATE (textMorphStore.camTilt 0..1) — read EARLY so
