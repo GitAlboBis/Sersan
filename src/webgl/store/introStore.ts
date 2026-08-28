@@ -39,6 +39,19 @@ import { create } from "zustand";
  */
 export const introProgressRef: { current: number } = { current: 1 };
 
+/**
+ * Intro frame shift (fraction of WORLD_VIEW_HEIGHT, rests at 0) — the
+ * "camera più in alto" of the close-up (owner 2026-08-28: at the 32%
+ * dolly-in the lockup cropped at the top). The screen-anchored hero actors
+ * (mark, wordmark) follow camera.y one-to-one, so a real camera-y move
+ * cannot reframe them; instead SignatureLine publishes this shift — full at
+ * the full close-up, riding the dolly's own fraction down to an exact 0 as
+ * the exit lands — and HeroLogo / HeroTextParticles LOWER their anchored y
+ * by it, which reads as the camera aiming higher. Module ref, no store
+ * notify (per-frame value).
+ */
+export const introCamShiftRef: { current: number } = { current: 0 };
+
 interface IntroState {
   /** False until the first-load preloader hands off; true forever after. */
   introComplete: boolean;

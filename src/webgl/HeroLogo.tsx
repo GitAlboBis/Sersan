@@ -67,7 +67,11 @@ import { useGLTF } from "@react-three/drei";
 import { SPINE_TRAVEL_VH } from "@/lib/spine";
 import { WORLD_VIEW_HEIGHT } from "./constants";
 import { useTextMorphStore } from "./store/textMorphStore";
-import { useIntroStore, introProgressRef } from "./store/introStore";
+import {
+  useIntroStore,
+  introProgressRef,
+  introCamShiftRef,
+} from "./store/introStore";
 import {
   sampleMarkHomePositions,
   type MarkHomeField,
@@ -969,7 +973,10 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       camera.position.y + camDescend - WORLD_VIEW_HEIGHT * LOCKUP_OFFSET_Y;
     group.position.set(
       heroX * flight,
-      THREE.MathUtils.lerp(lockY, heroY, flight),
+      // Intro frame lift (introCamShiftRef, rests at 0): the close-up dolly
+      // aims "higher" by lowering the anchored lockup — see introStore doc.
+      THREE.MathUtils.lerp(lockY, heroY, flight) -
+        WORLD_VIEW_HEIGHT * introCamShiftRef.current,
       THREE.MathUtils.lerp(fx.heroPosZ, heroZ, flight) +
         Math.sin(flight * Math.PI) * FLIGHT_BULGE,
     );

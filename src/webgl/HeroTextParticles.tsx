@@ -52,7 +52,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { WORLD_VIEW_HEIGHT } from "./constants";
 import { sampleTextPoints, type TextSpec } from "./text/sampleTextPoints";
 import { webgpuEnabled } from "./renderer/createRenderer";
-import { useIntroStore } from "./store/introStore";
+import { useIntroStore, introCamShiftRef } from "./store/introStore";
 import { useTextMorphStore } from "./store/textMorphStore";
 import { useFxStore } from "./store/fxStore";
 import { useTierStore, type SceneTier } from "./store/tierStore";
@@ -831,7 +831,11 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
           (cx / size.width - 0.5) * worldViewWidth,
           camera.position.y +
             useTextMorphStore.getState().camDescend +
-            (0.5 - cy / size.height) * WORLD_VIEW_HEIGHT,
+            (0.5 - cy / size.height) * WORLD_VIEW_HEIGHT -
+            // Intro frame lift (introCamShiftRef, rests at 0): the close-up
+            // dolly aims "higher" by lowering the anchored lockup — the SAME
+            // shift HeroLogo applies, so mark and wordmark move as one.
+            WORLD_VIEW_HEIGHT * introCamShiftRef.current,
           0,
         );
         group.position.copy(scratch);

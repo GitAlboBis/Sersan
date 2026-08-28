@@ -40,7 +40,11 @@ import { useProductionPulseStore } from "./store/productionPulseStore";
 import { useAuditTimelineStore } from "./store/auditTimelineStore";
 import { useTextMorphStore } from "./store/textMorphStore";
 import { useSeqStore, SEQ_PAN_FRAC } from "./store/seqStore";
-import { useIntroStore, introProgressRef } from "./store/introStore";
+import {
+  useIntroStore,
+  introProgressRef,
+  introCamShiftRef,
+} from "./store/introStore";
 import { useFxStore } from "./store/fxStore";
 import { usePointerStore } from "./store/pointerStore";
 import { routeFx } from "./store/routeFxStore";
@@ -124,10 +128,20 @@ const INTRO_CAM_IN = 0.32;
 const INTRO_CAM_MID = 0.19;
 const INTRO_CAM_X = 0.015;
 const INTRO_CAM_S1 = 1.4;
-const INTRO_CAM_DWELL = 0.35;
+// Owner pass 6: "tra un movimento e l'altro deve passare meno tempo" —
+// DWELL 0.35 → 0.12; and both gestures now run on softer curves
+// (smootherstep for stage 1, cubic in-out for stage 2 — the old expo-out
+// attacked too hard off the dwell).
+const INTRO_CAM_DWELL = 0.12;
 const INTRO_CAM_GLIDE_S = 3.0;
 /** Total exit-clock length — the frame block idles past this. */
 const INTRO_CAM_EXIT_S = INTRO_CAM_S1 + INTRO_CAM_DWELL + INTRO_CAM_GLIDE_S;
+/** Frame lift at the full close-up (fraction of WORLD_VIEW_HEIGHT): the
+ * screen-anchored lockup is LOWERED by this so the 32% dolly no longer crops
+ * the mark at the top — "sposta la camera più in alto". Published through
+ * introCamShiftRef riding the dolly's own fraction, so it reaches an exact 0
+ * together with the pull-back. */
+const INTRO_CAM_LIFT = 0.08;
 /** Viewport fraction over which the whole rig fades in from the top. While
  * the page is pinned at scroll 0 (intro gate, brand replay) every channel is
  * EXACTLY 0, so the particle brand + HeroLogo keep their pixel registration
@@ -982,23 +996,31 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       const midZ = -CAMERA_Z * INTRO_CAM_MID;
       if (ec < INTRO_CAM_S1) {
         // STAGE 1 — the deliberate first gesture, IN → MID, landing with
-        // the burst under the fading chrome.
+        // the burst under the fading chrome. Smootherstep (C2 at both ends)
+        // so it neither snaps off the hold nor thuds into the dwell.
         const t1 = ec / INTRO_CAM_S1;
-        const e1 = t1 * t1 * (3 - 2 * t1);
+        const e1 = t1 * t1 * t1 * (t1 * (t1 * 6 - 15) + 10);
         introZ = fromZ + (midZ - fromZ) * e1;
       } else if (ec < INTRO_CAM_S1 + INTRO_CAM_DWELL) {
-        // DWELL — let the first movement read before the second begins.
+        // DWELL — a breath between the two movements.
         introZ = midZ;
       } else if (ec < INTRO_CAM_EXIT_S) {
-        // STAGE 2 — the long smooth zoom-out, MID → 0 (expo residual; the
-        // 2^(-10t) tail at t = 1 is sub-millimeter).
+        // STAGE 2 — the long smooth zoom-out, MID → 0. Cubic in-out: a
+        // gentle re-attack off the dwell and a velvet landing at exactly 0.
         const t2 = (ec - INTRO_CAM_S1 - INTRO_CAM_DWELL) / INTRO_CAM_GLIDE_S;
-        introZ = midZ * Math.pow(2, -10 * t2);
+        const e2 =
+          t2 < 0.5 ? 4 * t2 * t2 * t2 : 1 - Math.pow(-2 * t2 + 2, 3) / 2;
+        introZ = midZ * (1 - e2);
       }
       // The lateral whisper rides the z journey proportionally, reaching an
       // exact 0 together with it.
       introX = fromZ !== 0 ? introCamFrom.current.x * (introZ / fromZ) : 0;
     }
+    // Publish the frame lift for the screen-anchored lockup actors (see
+    // INTRO_CAM_LIFT): full at the full close-up, riding the dolly fraction,
+    // exactly 0 once the pull-back has landed (introZ 0 ⇒ shift 0).
+    introCamShiftRef.current =
+      INTRO_CAM_LIFT * (introZ / (-CAMERA_Z * INTRO_CAM_IN));
     camera.position.z = CAMERA_Z + dollyCurrent.current * rigGate + introZ;
     camera.position.x =
       (orbitCurrent.current + parCurrent.current.x) * rigGate +
