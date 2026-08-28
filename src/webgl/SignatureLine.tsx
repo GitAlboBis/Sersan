@@ -125,23 +125,34 @@ const PAR_DAMP = 3;
 // zoom-out into the hero frame. Next notch of IN starts cropping the lockup
 // on short viewports — tune with eyes on.
 const INTRO_CAM_IN = 0.32;
-const INTRO_CAM_MID = 0.19;
 const INTRO_CAM_X = 0.015;
-const INTRO_CAM_S1 = 1.4;
-// Owner pass 6: "tra un movimento e l'altro deve passare meno tempo" —
-// DWELL 0.35 → 0.12; and both gestures now run on softer curves
-// (smootherstep for stage 1, cubic in-out for stage 2 — the old expo-out
-// attacked too hard off the dwell).
-const INTRO_CAM_DWELL = 0.12;
-const INTRO_CAM_GLIDE_S = 3.0;
-/** Total exit-clock length — the frame block idles past this. */
-const INTRO_CAM_EXIT_S = INTRO_CAM_S1 + INTRO_CAM_DWELL + INTRO_CAM_GLIDE_S;
-/** Frame lift at the full close-up (fraction of WORLD_VIEW_HEIGHT): the
- * screen-anchored lockup is LOWERED by this so the 32% dolly no longer crops
+/** Frame lift at the load close-up (fraction of WORLD_VIEW_HEIGHT): the
+ * screen-anchored lockup is LOWERED by this so the 32% dolly does not crop
  * the mark at the top — "sposta la camera più in alto". Published through
- * introCamShiftRef riding the dolly's own fraction, so it reaches an exact 0
- * together with the pull-back. */
+ * introCamShiftRef; during the exit the lift becomes its own animated
+ * channel (each gate has one). */
 const INTRO_CAM_LIFT = 0.08;
+/** EXIT GATES (owner idea 2026-08-28: "i gate dei zoom out — primo gate
+ * scritta Sersan, secondo gate il logo 3d, terzo gate il buco nero"). From
+ * the load hold the camera passes THREE framing checkpoints, one per hero
+ * element: (1) SERSAN — barely wider, composition RAISED so the wordmark
+ * sits central; (2) the 3D mark — wider, composition LOWERED so the logo is
+ * the subject (HeroLogo times the crust burst onto this gate —
+ * INTRO_BURST_AT_S there mirrors gate 1's dur + dwell); (3) the black hole —
+ * the full hero frame, every offset at an exact 0. `z` = dolly-in fraction
+ * of CAMERA_Z, `lift` = frame shift (fraction of WORLD_VIEW_HEIGHT,
+ * positive lowers the lockup), `dur`/`dwell` seconds. Each leg runs cubic
+ * in-out from wherever the previous one ended — continuous at every seam. */
+const INTRO_CAM_GATES = [
+  { z: 0.28, lift: -0.01, dur: 1.2, dwell: 0.15 }, // gate 1 — SERSAN
+  { z: 0.18, lift: 0.1, dur: 1.2, dwell: 0.15 }, // gate 2 — the 3D mark
+  { z: 0, lift: 0, dur: 2.6, dwell: 0 }, // gate 3 — the black hole / hero
+];
+/** Total exit-clock length — the frame block idles past this. */
+const INTRO_CAM_EXIT_S = INTRO_CAM_GATES.reduce(
+  (s, g) => s + g.dur + g.dwell,
+  0,
+);
 /** Viewport fraction over which the whole rig fades in from the top. While
  * the page is pinned at scroll 0 (intro gate, brand replay) every channel is
  * EXACTLY 0, so the particle brand + HeroLogo keep their pixel registration
@@ -431,7 +442,7 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   // and the load-pose snapshot the glide departs from — kept fresh every
   // load-phase frame, so the edge hand-off is continuous by construction.
   const introGlideClock = useRef(INTRO_CAM_EXIT_S);
-  const introCamFrom = useRef({ z: 0, x: 0 });
+  const introCamFrom = useRef({ zf: 0, lift: 0, x: 0 });
   // Singularity-passage lateral pan (seqStore.pan01 — the passage's scrubbed
   // ScrollTrigger owns the clock, this file stays the single camera
   // authority; exact camTilt precedent). Lightly damped so a passage
@@ -980,6 +991,7 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // exactly 0 and this whole block is one getState + a compare per frame.
     let introZ = 0;
     let introX = 0;
+    let introLift = 0;
     if (!useIntroStore.getState().introComplete) {
       // LOAD: HOLD the close-up — the pull-back is not pre-spent; only the
       // lateral whisper drifts with the counter so the frame still breathes.
@@ -987,40 +999,47 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       const pe = pIn * pIn * (3 - 2 * pIn);
       introZ = -CAMERA_Z * INTRO_CAM_IN;
       introX = worldViewWidth * (INTRO_CAM_X * (1 - 0.5 * pe));
-      introCamFrom.current.z = introZ;
+      introLift = INTRO_CAM_LIFT;
+      introCamFrom.current.zf = INTRO_CAM_IN;
+      introCamFrom.current.lift = INTRO_CAM_LIFT;
       introCamFrom.current.x = introX;
     } else if (introGlideClock.current < INTRO_CAM_EXIT_S) {
+      // EXIT — walk the three gates (see INTRO_CAM_GATES): each leg eases
+      // z + lift together, cubic in-out, from wherever the previous leg
+      // ended, then dwells a breath so the framing reads. Continuous at
+      // every seam by construction.
       introGlideClock.current += delta;
-      const ec = introGlideClock.current;
-      const fromZ = introCamFrom.current.z;
-      const midZ = -CAMERA_Z * INTRO_CAM_MID;
-      if (ec < INTRO_CAM_S1) {
-        // STAGE 1 — the deliberate first gesture, IN → MID, landing with
-        // the burst under the fading chrome. Smootherstep (C2 at both ends)
-        // so it neither snaps off the hold nor thuds into the dwell.
-        const t1 = ec / INTRO_CAM_S1;
-        const e1 = t1 * t1 * t1 * (t1 * (t1 * 6 - 15) + 10);
-        introZ = fromZ + (midZ - fromZ) * e1;
-      } else if (ec < INTRO_CAM_S1 + INTRO_CAM_DWELL) {
-        // DWELL — a breath between the two movements.
-        introZ = midZ;
-      } else if (ec < INTRO_CAM_EXIT_S) {
-        // STAGE 2 — the long smooth zoom-out, MID → 0. Cubic in-out: a
-        // gentle re-attack off the dwell and a velvet landing at exactly 0.
-        const t2 = (ec - INTRO_CAM_S1 - INTRO_CAM_DWELL) / INTRO_CAM_GLIDE_S;
-        const e2 =
-          t2 < 0.5 ? 4 * t2 * t2 * t2 : 1 - Math.pow(-2 * t2 + 2, 3) / 2;
-        introZ = midZ * (1 - e2);
+      let t = introGlideClock.current;
+      let fromZf = introCamFrom.current.zf;
+      let fromLift = introCamFrom.current.lift;
+      let zf = 0;
+      let lift = 0;
+      for (const gate of INTRO_CAM_GATES) {
+        if (t < gate.dur) {
+          const gt = t / gate.dur;
+          const ge =
+            gt < 0.5 ? 4 * gt * gt * gt : 1 - Math.pow(-2 * gt + 2, 3) / 2;
+          zf = fromZf + (gate.z - fromZf) * ge;
+          lift = fromLift + (gate.lift - fromLift) * ge;
+          break;
+        }
+        t -= gate.dur;
+        zf = gate.z;
+        lift = gate.lift;
+        if (t < gate.dwell) break;
+        t -= gate.dwell;
+        fromZf = gate.z;
+        fromLift = gate.lift;
       }
-      // The lateral whisper rides the z journey proportionally, reaching an
-      // exact 0 together with it.
-      introX = fromZ !== 0 ? introCamFrom.current.x * (introZ / fromZ) : 0;
+      introZ = -CAMERA_Z * zf;
+      introLift = lift;
+      // The lateral whisper rides the dolly fraction — exact 0 together
+      // with it.
+      introX = introCamFrom.current.x * (zf / INTRO_CAM_IN);
     }
-    // Publish the frame lift for the screen-anchored lockup actors (see
-    // INTRO_CAM_LIFT): full at the full close-up, riding the dolly fraction,
-    // exactly 0 once the pull-back has landed (introZ 0 ⇒ shift 0).
-    introCamShiftRef.current =
-      INTRO_CAM_LIFT * (introZ / (-CAMERA_Z * INTRO_CAM_IN));
+    // Publish the frame lift for the screen-anchored lockup actors (mark +
+    // wordmark) — each gate carries its own framing; exactly 0 past the exit.
+    introCamShiftRef.current = introLift;
     camera.position.z = CAMERA_Z + dollyCurrent.current * rigGate + introZ;
     camera.position.x =
       (orbitCurrent.current + parCurrent.current.x) * rigGate +

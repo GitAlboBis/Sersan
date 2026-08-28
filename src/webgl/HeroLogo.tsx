@@ -251,6 +251,12 @@ const INTRO_PRIME_S = 0.55; // s of hidden kill before the grow can begin
 const INTRO_GROW_FLOOR = 0.08;
 const INTRO_GROW_GAIN = 3.4;
 const INTRO_GROW_POW = 1.3;
+/** Seconds after the introComplete edge before the crust AUTO-BURST fires —
+ * timed onto EXIT GATE 2, the logo gate (owner 2026-08-28: "secondo gate il
+ * logo 3d"): mirrors gate 1's dur + dwell in SignatureLine's
+ * INTRO_CAM_GATES, so the explosion lands as the camera's second gesture
+ * centres the mark. */
+const INTRO_BURST_AT_S = 1.35;
 const INTRO_BODY_AT = 0.8; // counter fraction where the dark body fades in
 const INTRO_REFORM_RAMP = 0.25; // s to drop burst→0, releasing the regrow bloom (was 0.4)
 const INTRO_REFORM_BLOOM = 1.7; // s the materialise bloom is given to finish (was 5.5, then 1.9)
@@ -371,6 +377,10 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // (one-shot per LOCKUP VISIT, owner 2026-08-09 round 2). Soft route
   // re-entry never arms it; the dev re-fire knob resets the clock directly.
   const autoBurstClock = useRef(-1);
+  // Gate-2 burst countdown (s since the introComplete edge; -1 = not armed).
+  // Armed by the completion edge below; fires the auto-burst clock once it
+  // reaches INTRO_BURST_AT_S — the crust explosion lands ON the logo gate.
+  const introBurstDelay = useRef(-1);
   // Last-seen fx.sporeAutoBurstFire (null until the first spores frame, so a
   // pre-bumped store value can never fire spuriously on mount) — any NEW
   // value re-fires the envelope for live tuning.
@@ -1177,7 +1187,17 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         introReformClock.current < INTRO_REFORM_RELEASE
       ) {
         introReformClock.current = INTRO_REFORM_RELEASE;
-        if (autoBurstClock.current < 0) autoBurstClock.current = 0;
+        introBurstDelay.current = 0; // arm the gate-2 burst countdown
+      }
+      // The crust explosion belongs to the LOGO gate (exit gate 2): fire it
+      // INTRO_BURST_AT_S after the completion edge, when the camera's second
+      // gesture has centred the mark. Wall-clock one-shot; -1 = not armed.
+      if (introBurstDelay.current >= 0 && autoBurstClock.current < 0) {
+        if (introBurstDelay.current >= INTRO_BURST_AT_S) {
+          autoBurstClock.current = 0;
+        } else {
+          introBurstDelay.current += delta;
+        }
       }
       const introBurst = !softEntryRef.current && introPriming
         ? INTRO_REFORM_PEAK
