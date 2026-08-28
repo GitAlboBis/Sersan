@@ -111,15 +111,23 @@ const PAR_DAMP = 3;
  *           because the glide starts from the load pose by construction.
  * Soft entries never enter (introComplete already true, glide clock spent).
  * This subsumes the earlier 2.2% "settle". */
-// Owner passes 2-4 (2026-08-28, "più zoommato" three times over): IN 0.10 →
-// 0.16 → 0.24 → 0.32, MID 0.045 → 0.09 → 0.14 → 0.19 — the load stage is a
-// genuine close-up (lockup ≈ 1.5×) and the 3.0s exit glide travels a full
-// 19% pull-back into the hero frame. Next notch up starts cropping the
-// lockup against the viewport on short screens — tune with eyes on.
+// Owner passes 2-5 (2026-08-28, "più zoommato" ×3, then "il 19 deve
+// iniziare alla fine del preloader, così fa due movimenti"): the load phase
+// HOLDS the full close-up at IN (no pre-spent pull-back — the lateral
+// whisper is the only in-load motion), and the exit is TWO distinct
+// gestures: STAGE 1 pulls IN → MID over S1 with a smoothstep (a deliberate
+// beat, landing with the burst under the fading chrome), a short DWELL lets
+// it read, then STAGE 2 expo-glides MID → 0 over GLIDE_S — the long smooth
+// zoom-out into the hero frame. Next notch of IN starts cropping the lockup
+// on short viewports — tune with eyes on.
 const INTRO_CAM_IN = 0.32;
 const INTRO_CAM_MID = 0.19;
 const INTRO_CAM_X = 0.015;
+const INTRO_CAM_S1 = 1.4;
+const INTRO_CAM_DWELL = 0.35;
 const INTRO_CAM_GLIDE_S = 3.0;
+/** Total exit-clock length — the frame block idles past this. */
+const INTRO_CAM_EXIT_S = INTRO_CAM_S1 + INTRO_CAM_DWELL + INTRO_CAM_GLIDE_S;
 /** Viewport fraction over which the whole rig fades in from the top. While
  * the page is pinned at scroll 0 (intro gate, brand replay) every channel is
  * EXACTLY 0, so the particle brand + HeroLogo keep their pixel registration
@@ -408,7 +416,7 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
   // re-armed to 0 by the introComplete edge in the hand-off effect below)
   // and the load-pose snapshot the glide departs from — kept fresh every
   // load-phase frame, so the edge hand-off is continuous by construction.
-  const introGlideClock = useRef(INTRO_CAM_GLIDE_S);
+  const introGlideClock = useRef(INTRO_CAM_EXIT_S);
   const introCamFrom = useRef({ z: 0, x: 0 });
   // Singularity-passage lateral pan (seqStore.pan01 — the passage's scrubbed
   // ScrollTrigger owns the clock, this file stays the single camera
@@ -959,20 +967,37 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     let introZ = 0;
     let introX = 0;
     if (!useIntroStore.getState().introComplete) {
+      // LOAD: HOLD the close-up — the pull-back is not pre-spent; only the
+      // lateral whisper drifts with the counter so the frame still breathes.
       const pIn = introProgressRef.current;
       const pe = pIn * pIn * (3 - 2 * pIn);
-      introZ = -CAMERA_Z * (INTRO_CAM_IN + (INTRO_CAM_MID - INTRO_CAM_IN) * pe);
-      introX = worldViewWidth * (INTRO_CAM_X * (1 - pe));
+      introZ = -CAMERA_Z * INTRO_CAM_IN;
+      introX = worldViewWidth * (INTRO_CAM_X * (1 - 0.5 * pe));
       introCamFrom.current.z = introZ;
       introCamFrom.current.x = introX;
-    } else if (introGlideClock.current < INTRO_CAM_GLIDE_S) {
+    } else if (introGlideClock.current < INTRO_CAM_EXIT_S) {
       introGlideClock.current += delta;
-      const gt = Math.min(introGlideClock.current / INTRO_CAM_GLIDE_S, 1);
-      if (gt < 1) {
-        const gr = Math.pow(2, -10 * gt);
-        introZ = introCamFrom.current.z * gr;
-        introX = introCamFrom.current.x * gr;
+      const ec = introGlideClock.current;
+      const fromZ = introCamFrom.current.z;
+      const midZ = -CAMERA_Z * INTRO_CAM_MID;
+      if (ec < INTRO_CAM_S1) {
+        // STAGE 1 — the deliberate first gesture, IN → MID, landing with
+        // the burst under the fading chrome.
+        const t1 = ec / INTRO_CAM_S1;
+        const e1 = t1 * t1 * (3 - 2 * t1);
+        introZ = fromZ + (midZ - fromZ) * e1;
+      } else if (ec < INTRO_CAM_S1 + INTRO_CAM_DWELL) {
+        // DWELL — let the first movement read before the second begins.
+        introZ = midZ;
+      } else if (ec < INTRO_CAM_EXIT_S) {
+        // STAGE 2 — the long smooth zoom-out, MID → 0 (expo residual; the
+        // 2^(-10t) tail at t = 1 is sub-millimeter).
+        const t2 = (ec - INTRO_CAM_S1 - INTRO_CAM_DWELL) / INTRO_CAM_GLIDE_S;
+        introZ = midZ * Math.pow(2, -10 * t2);
       }
+      // The lateral whisper rides the z journey proportionally, reaching an
+      // exact 0 together with it.
+      introX = fromZ !== 0 ? introCamFrom.current.x * (introZ / fromZ) : 0;
     }
     camera.position.z = CAMERA_Z + dollyCurrent.current * rigGate + introZ;
     camera.position.x =
