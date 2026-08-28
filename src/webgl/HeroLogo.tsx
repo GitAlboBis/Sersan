@@ -67,7 +67,7 @@ import { useGLTF } from "@react-three/drei";
 import { SPINE_TRAVEL_VH } from "@/lib/spine";
 import { WORLD_VIEW_HEIGHT } from "./constants";
 import { useTextMorphStore } from "./store/textMorphStore";
-import { useIntroStore, heroMarkRectRef } from "./store/introStore";
+import { useIntroStore, introProgressRef } from "./store/introStore";
 import {
   sampleMarkHomePositions,
   type MarkHomeField,
@@ -215,32 +215,47 @@ const FLIGHT_BULGE = 0.7;
 // arc — BODY_REVEAL was not retightened when BLOOM took its second cut).
 const INTRO_REFORM_PEAK = 0.92; // burst that holds the mark as NOTHING (1 = gone)
 const INTRO_REFORM_HOLD = 0.12; // s held as nothing after the curtain lifts (was 0.35)
-/** Reform-clock rate multiplier when the curtain is ALREADY lifting with the
- * reform mid-flight (preloader handoff refactor 2026-08-28: the reform now
- * starts on introStore.reformStart — the warm pre-beat — and normally
- * finishes BEHIND the overlay; this fast-forward covers the late/never case:
- * watchdog hard-reveal, or a warm signal that completed the counter faster
- * than the 2.07s arc). 7 ⇒ the envelope releases in ≈0.3s, safely inside the
- * 0.7s overlay fade, so the visitor never sees a half-formed mark. */
-const INTRO_REFORM_CATCHUP_RATE = 7;
+
+// ---- PRELOADER v2 (owner 2026-08-28): the mark IS the loading readout -----
+// The chrome-only preloader publishes its eased counter (introProgressRef)
+// and this component scrubs the spore materialisation with it, all on the
+// sim's EXISTING uniforms (no new sim path):
+//   PRIME — the seeded-alive spores are killed at envelope PEAK for
+//     INTRO_PRIME_S while the group is hidden: they die unseen, respawn
+//     parked at life 2 (staggered by the randomized kill rates — the stagger
+//     that makes the grow read organic);
+//   GROW — envelope 0 releases them into the regrow queue and uRegrowScale
+//     is scrubbed by the counter (FLOOR + GAIN·p², via introRegrowScale):
+//     the mark literally grows with the percentage, on the hero's own stage;
+//   BURST — on the introComplete edge the legacy reform clock parks at
+//     RELEASE (auto-burst arming + lockup-replay reset still read it),
+//     regrow snaps to full rate for stragglers, and the crust AUTO-BURST
+//     fires — the explosion IS the reveal beat ("nel preloader esplode lo
+//     strato di spore, come fa già nella hero").
+// The clock-driven reform envelope of the previous design is superseded on
+// hard loads; the RELEASE arithmetic below survives as the sentinel value
+// downstream consumers key on.
+const INTRO_PRIME_S = 0.55; // s of hidden kill before the grow can begin
+// Regrow-rate law vs the counter: rate = FLOOR + GAIN·p^POW. Sized against
+// the preset's LIFE_REGROW (≈0.7 life/s at rate 1) so spores CROSS their
+// whole 2→1 regrow inside the load window and the mark visibly tracks the
+// percentage. Live-tuned 2026-08-28 twice: 0.06/4.0/1.5 parked the
+// population near life 2 (bloom only after 100%); 0.12/6.5/1.3 read but
+// too eager for the owner ("fai tutto più lento e smooth") — softened to
+// 0.08/3.4 against the stretched RISE floor, so the growth breathes with
+// the slower counter instead of rushing it.
+const INTRO_GROW_FLOOR = 0.08;
+const INTRO_GROW_GAIN = 3.4;
+const INTRO_GROW_POW = 1.3;
+const INTRO_BODY_AT = 0.8; // counter fraction where the dark body fades in
 const INTRO_REFORM_RAMP = 0.25; // s to drop burst→0, releasing the regrow bloom (was 0.4)
 const INTRO_REFORM_BLOOM = 1.7; // s the materialise bloom is given to finish (was 5.5, then 1.9)
-/** Regrow-rate multiplier during the materialise — still slower than the
- * preset's hover/scroll-back regrow (the client's "molto più lento" beat),
- * but paced up 0.3 → 0.75 (owner retiming 2026-08-07) → 0.85 (round 2,
- * 2026-08-09: the whole reform tightened so the earlier crust auto-burst
- * still meets a whole mark). Lower for a slower first reveal. */
-const INTRO_REFORM_REGROW_SLOW = 0.85;
-/** Clock value past which the intro is fully over (burst 0 + regrow restored). */
+/** Clock value past which the intro is fully over (burst 0 + regrow restored).
+ * v2: the clock no longer RUNS on hard loads (the counter scrub supersedes
+ * it) — it jumps straight here on the introComplete edge, because the
+ * auto-burst machinery and the lockup-replay reset still key on it. */
 const INTRO_REFORM_RELEASE =
   INTRO_REFORM_HOLD + INTRO_REFORM_RAMP + INTRO_REFORM_BLOOM;
-/** Seconds (at the END of the intro) over which the dark occluder body fades
- * back in. Kept LATE so it never shows as a dim "spento" logo under the slowly-
- * blooming particles — the reform reads as forming from nothing/particles (core
- * already lit), with the dark body filling in behind only at the very end.
- * 2.2 → 0.8 with the retiming (~39% of the 2.07s arc; the original 2.2 was
- * 35% of 6.25s — BLOOM's second cut nudged the proportion up). */
-const INTRO_REFORM_BODY_REVEAL = 0.8;
 
 // EXPLODE (scroll-out) — STAGGERED so the OUTER crust expands BEFORE the inner
 // core (client: "lo strato di sopra inizia ad espandersi prima di quello di
@@ -251,22 +266,8 @@ const EXPLODE_CRUST_END = 0.78; // hp by which the outer crust is fully scattere
 const EXPLODE_CORE_LAG = 0.33; // hp at which the inner core only STARTS to go
 const EXPLODE_CORE_END = 1.0; // hp by which the core is fully scattered
 
-/** Reform envelope vs seconds since the curtain lifted: PEAK before reveal
- * (te<0, held dead behind the curtain) → PEAK through HOLD → ramps to 0 over
- * RAMP, dropping below the respawn threshold and releasing the regrow bloom
- * (the visible "materialise from nothing"). */
-function introReformEnvelope(te: number): number {
-  if (te < 0) return INTRO_REFORM_PEAK;
-  return (
-    INTRO_REFORM_PEAK *
-    (1 -
-      THREE.MathUtils.smoothstep(
-        te,
-        INTRO_REFORM_HOLD,
-        INTRO_REFORM_HOLD + INTRO_REFORM_RAMP,
-      ))
-  );
-}
+// (v2: the clock-driven reform envelope was removed — the PRIME/GROW scrub
+// in the frame loop drives the same uniforms from the live counter instead.)
 
 /**
  * ONE-SHOT crust AUTO-BURST envelope (owner 2026-08-07) vs seconds since the
@@ -303,14 +304,6 @@ useGLTF.preload(MARK_GLB);
 
 /** Cursor far away → repulsion vanishes (pointer-leave / coarse pointer). */
 const MOUSE_OFF = new THREE.Vector3(1e9, 1e9, 1e9);
-
-/** Hoisted projection temps for the per-frame markRect publish (island rule:
- *  zero per-frame allocation in useFrame). */
-const _mrCenter = new THREE.Vector3();
-const _mrTop = new THREE.Vector3();
-/** Width/height aspect of the normalized mark (the 1.62×2 hexagon envelope —
- *  see the framing comment in the frame loop). */
-const MARK_ASPECT = 1.62 / TARGET_HEIGHT;
 
 /**
  * TSL STATIC build (the home-position billboards, analytic dispersion). Shape
@@ -353,10 +346,16 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   const introFlightSnapped = useRef(false);
   const simTimeRef = useRef(0);
   const announcedReady = useRef(false);
-  // One-shot intro REFORM clock (seconds). -1 = pre-reveal (mark held dead);
-  // set to 0 on the preloader hand-off at the hero top, counts to
-  // INTRO_REFORM_RELEASE then holds (plays once per mount, hard load only).
+  // Legacy intro REFORM clock (seconds). v2: it no longer RUNS on hard loads
+  // (the counter scrub supersedes it) — it stays -1 through the load and
+  // jumps straight to INTRO_REFORM_RELEASE on the introComplete edge, so the
+  // auto-burst machinery and the lockup-replay reset keep their invariants.
   const introReformClock = useRef(-1);
+  // PRIME clock (seconds) for the v2 materialisation: -1 until the spore
+  // build lands on a hard load, then counts to INTRO_PRIME_S while the
+  // seeded-alive spores are killed UNSEEN (group hidden) and parked in the
+  // regrow queue. Never runs on soft entries or the static fallback.
+  const introPrimeClock = useRef(-1);
   // Entry type, snapshotted on the first frame: true ⇒ soft route re-entry
   // (introComplete already true → no intro replay); false ⇒ hard load.
   const softEntryRef = useRef(false);
@@ -772,10 +771,6 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     () => () => {
       useTierStore.getState().setHeroReady(false);
       announcedReady.current = false;
-      // Drop the published FLIP rect: a remount republishes fresh, and a
-      // preloader that outlives this island must fall back to its legacy exit
-      // rather than FLIP onto a stale position.
-      heroMarkRectRef.current = null;
     },
     [],
   );
@@ -916,8 +911,34 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
     const flight =
       flightRef.current * flightRef.current * (3 - 2 * flightRef.current);
     fadeRef.current = fade;
-    group.visible = fade > 0.005;
-    if (!group.visible) return;
+    // v2 PRIME phase (see the INTRO_PRIME_S doc): advance the clock the
+    // moment the spore build lands on a hard load, and keep the whole group
+    // HIDDEN while it runs — the seeded-alive spores die unseen and park in
+    // the regrow queue, so the first thing the visitor ever sees of the mark
+    // is it GROWING with the counter, never a flash of the full mark
+    // dissolving. Spores mode only; the static fallback materialises via its
+    // own uFade scrub below and never primes.
+    if (
+      !softEntryRef.current &&
+      showSpores &&
+      !sporeStaticFallback &&
+      introPrimeClock.current < INTRO_PRIME_S
+    ) {
+      if (introPrimeClock.current < 0) {
+        if (tslSpore) introPrimeClock.current = 0;
+      } else {
+        introPrimeClock.current += delta;
+      }
+    }
+    const introPriming =
+      !softEntryRef.current &&
+      introPrimeClock.current >= 0 &&
+      introPrimeClock.current < INTRO_PRIME_S;
+    // Hidden ≠ paused: while priming the RENDER is hidden but the frame must
+    // keep running — the kill only happens when the compute below steps with
+    // the envelope at PEAK. Only a genuine scroll-out fade early-returns.
+    group.visible = fade > 0.005 && !introPriming;
+    if (fade <= 0.005) return;
 
     // Framing + scroll choreography. The at-rest values come from LIVE fxStore
     // knobs (heroOffsetX / heroOffsetY / heroPosZ / heroScale) so the mark can
@@ -958,39 +979,6 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         (0.92 + 0.08 * fade),
     );
 
-    // Publish the mark's projected screen rect (CSS px) for the preloader's
-    // shared-element FLIP (handoff refactor 2026-08-28) — only while the
-    // curtain is still up (nothing reads it afterwards). Projected from the
-    // TARGET pose (eased flightT), NOT the damped in-flight pose: on a fast
-    // repeat visit the reveal can land while the mark is still gliding
-    // rest↔lockup, and the FLIP must aim where the mark WILL sit — the
-    // introComplete snap above parks it there under the opening crossfade.
-    // Plain module-ref write: no store notify, no per-frame allocation
-    // (hoisted temps). Half-height in world units = the target scale
-    // (geometry normalized to TARGET_HEIGHT = 2 ⇒ half = 1 × scale); the
-    // slight pointer tilt is ignored — the mark reads frontal and the DOM
-    // twin crossfades over it.
-    if (!useIntroStore.getState().introComplete) {
-      const ft = flightT * flightT * (3 - 2 * flightT);
-      const tx = heroX * ft;
-      const ty = THREE.MathUtils.lerp(lockY, heroY, ft);
-      const tz =
-        THREE.MathUtils.lerp(fx.heroPosZ, heroZ, ft) +
-        Math.sin(ft * Math.PI) * FLIGHT_BULGE;
-      const ts =
-        baseScale *
-        THREE.MathUtils.lerp(LOCKUP_SCALE, 1 - 0.2 * hp, ft) *
-        (0.92 + 0.08 * fade);
-      _mrCenter.set(tx, ty, tz).project(camera);
-      _mrTop.set(tx, ty + ts, tz).project(camera);
-      const mrH = Math.abs(_mrTop.y - _mrCenter.y) * size.height;
-      heroMarkRectRef.current = {
-        cx: (_mrCenter.x * 0.5 + 0.5) * size.width,
-        cy: (0.5 - _mrCenter.y * 0.5) * size.height,
-        w: mrH * MARK_ASPECT,
-        h: mrH,
-      };
-    }
 
     // ANCHORED mark — no drag-to-rotate, no idle spin. The mark sits STILL at
     // its front-facing rest and only "looks toward" the cursor by a few degrees:
@@ -1115,7 +1103,18 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
           size.width * dprStatic,
           size.height * dprStatic,
         );
-        tslStatic.uFade.value = fade;
+        // v2 materialisation on the static/WebGL2 path: no compute sim to
+        // scrub, so the whole build simply fades in with the counter (the
+        // cheap analog of the spores growing) and rests at the plain scroll
+        // fade after the hand-off / on soft entries. The build being live IS
+        // stage-readiness here (no prime phase to wait out).
+        const introStatic = useIntroStore.getState();
+        if (!introStatic.heroStageReady) introStatic.setHeroStageReady();
+        tslStatic.uFade.value =
+          fade *
+          (softEntryRef.current || introStatic.introComplete
+            ? 1
+            : introProgressRef.current);
         tslStatic.uEmissive.value = fx.gpgpuEmissive;
         tslStatic.uPointAlpha.value = fx.gpgpuPointAlpha;
         tslStatic.uMouse.value.copy(modelMouse);
@@ -1142,63 +1141,60 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
         EXPLODE_CORE_END,
       );
 
-      // ONE-SHOT intro REFORM-from-nothing (HARD load only): the mark is held
-      // DEAD behind the preloader curtain (clock < 0 ⇒ envelope PEAK) and
-      // respawns + regrows from nothing once it lifts — the reverse of the
-      // scroll explode above. A soft route re-entry shows the logo already
-      // present (softEntryRef ⇒ introBurst 0, no replay).
-      if (!softEntryRef.current) {
-        const intro = useIntroStore.getState();
-        if (introReformClock.current < 0) {
-          // Handoff refactor 2026-08-28: the clock now starts on the warm
-          // PRE-BEAT (reformStart) so the ~2.07s reform plays out BEHIND the
-          // still-opaque overlay and the curtain lifts onto a whole mark.
-          // introComplete stays in the OR as the fallback trigger for paths
-          // that never set the pre-beat (watchdog hard-reveal).
-          if (
-            tslSpore &&
-            (intro.reformStart || intro.introComplete) &&
-            hp < 0.05
-          ) {
-            introReformClock.current = 0;
-          }
-        } else if (introReformClock.current < INTRO_REFORM_RELEASE) {
-          // Curtain already lifting mid-reform → fast-forward (see the
-          // CATCHUP_RATE doc); the normal pre-beat path runs at 1×.
-          introReformClock.current +=
-            delta * (intro.introComplete ? INTRO_REFORM_CATCHUP_RATE : 1);
-        }
+      // ---- FIRST-LOAD MATERIALISATION, scrubbed by the COUNTER (v2) --------
+      // See the INTRO_PRIME_S doc block: PRIME kills the seeded-alive spores
+      // unseen (envelope PEAK, group hidden by the gate above), then the
+      // envelope drops to 0 — every spore parks in the regrow queue — and
+      // uRegrowScale follows the preloader's eased counter, so the mark
+      // GROWS with the percentage on its own stage. On the introComplete
+      // edge the legacy clock parks at RELEASE (auto-burst arming + lockup
+      // replay reset still read it), regrow snaps to full rate for any
+      // stragglers, and the crust AUTO-BURST fires — the explosion is the
+      // reveal beat. Soft entries never enter (introBurst 0, mark present).
+      const intro = useIntroStore.getState();
+      // Stage-actor gate (v2): tell the preloader the mark is genuinely ready
+      // to perform — build landed AND the hidden prime kill finished — so the
+      // counter cannot complete before there is a mark to grow (a cold
+      // compile can otherwise outlast the whole load; the preloader bounds
+      // this signal, so a broken build still degrades gracefully).
+      if (
+        !intro.heroStageReady &&
+        tslSpore &&
+        introPrimeClock.current >= INTRO_PRIME_S
+      ) {
+        intro.setHeroStageReady();
       }
-      const introBurst = softEntryRef.current
-        ? 0
-        : introReformEnvelope(introReformClock.current);
-      // Crawl the regrow rate ONLY during the intro window so the first reveal
-      // blooms in very slowly (client: "molto più lento"); 1 everywhere else
-      // keeps the preset's faster hover / scroll-back regrow.
-      const introRegrowScale =
+      if (
         !softEntryRef.current &&
-        introReformClock.current >= 0 &&
+        intro.introComplete &&
         introReformClock.current < INTRO_REFORM_RELEASE
-          ? // Catch-up path (curtain lifting mid-reform): drop the intro crawl
-            // so the bloom completes at the preset's full pace alongside the
-            // fast-forwarded envelope clock.
-            useIntroStore.getState().introComplete
-            ? 1
-            : INTRO_REFORM_REGROW_SLOW
-          : 1;
+      ) {
+        introReformClock.current = INTRO_REFORM_RELEASE;
+        if (autoBurstClock.current < 0) autoBurstClock.current = 0;
+      }
+      const introBurst = !softEntryRef.current && introPriming
+        ? INTRO_REFORM_PEAK
+        : 0;
+      const introGrow =
+        softEntryRef.current || intro.introComplete
+          ? 1
+          : introProgressRef.current;
+      const introRegrowScale =
+        softEntryRef.current || intro.introComplete
+          ? 1
+          : introPriming
+            ? 0
+            : INTRO_GROW_FLOOR +
+              INTRO_GROW_GAIN * Math.pow(introGrow, INTRO_GROW_POW);
       // Occluder body: on scroll it follows the TRAILING core (stays solid
-      // behind the crust as that leads off). During the intro reform it must NOT
-      // show as a dim "spento" logo under the slowly-blooming particles (client
-      // 2026-06-29) — keep it HIDDEN through the materialise and fade it in only
-      // over the LAST INTRO_REFORM_BODY_REVEAL seconds, so the reform reads as
-      // forming from nothing/particles with the body filling in behind at the end.
+      // behind the crust as that leads off). During the materialise it must
+      // NOT show as a dim "spento" logo under the growing particles (client
+      // 2026-06-29) — keep it HIDDEN and fade it in only over the counter's
+      // last stretch (INTRO_BODY_AT → 100%), so the mark reads as forming
+      // from nothing with the body filling in behind at the very end.
       const introBodyReveal = softEntryRef.current
         ? 1
-        : THREE.MathUtils.smoothstep(
-            introReformClock.current,
-            INTRO_REFORM_RELEASE - INTRO_REFORM_BODY_REVEAL,
-            INTRO_REFORM_RELEASE,
-          );
+        : THREE.MathUtils.smoothstep(introGrow, INTRO_BODY_AT, 1);
       const occBurst = Math.max(burstCore, 1 - introBodyReveal);
 
       // The opaque occluder follows the scroll fade AND that burst — a solid

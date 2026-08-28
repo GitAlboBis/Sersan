@@ -25,37 +25,35 @@
 import { create } from "zustand";
 
 /**
- * Projected screen rect of the WebGL hero mark (CSS px, viewport space),
- * published per-frame by HeroLogo while the preloader is still up and read
- * ONCE by the preloader's reveal() to FLIP its DOM mark onto the exact spot
- * where the spore mark already sits — the Donprod-style shared-element
- * handoff. A MODULE-SCOPE REF, not store state: a per-frame zustand setState
- * would notify every listener 60×/s for a value nothing reads reactively
- * (the entryProgressRef / pointerStore precedent). `null` until the island
- * publishes (non-home routes never do — the preloader falls back to its
- * legacy zoom-through exit there). This module stays three-free so the
- * preloader chunk can import it.
+ * Live first-load counter fraction (0..1) — the eased value the preloader's
+ * readout displays, published every rAF tick while the chrome overlay is up
+ * (preloader v2, 2026-08-28: the loader has NO backdrop of its own — the
+ * WebGL scene IS the stage, and HeroLogo scrubs the spore mark's
+ * materialisation from this value so the mark literally grows with the
+ * percentage). A MODULE-SCOPE REF, not store state: a per-frame zustand
+ * setState would notify every listener 60×/s for a value nothing reads
+ * reactively (the entryProgressRef / pointerStore precedent). Rests at 1:
+ * soft entries and every post-intro frame read "fully materialised"; the
+ * preloader writes 0 on arm and 1 again on its way out. This module stays
+ * three-free so the preloader chunk can import it.
  */
-export const heroMarkRectRef: {
-  current: { cx: number; cy: number; w: number; h: number } | null;
-} = { current: null };
+export const introProgressRef: { current: number } = { current: 1 };
 
 interface IntroState {
   /** False until the first-load preloader hands off; true forever after. */
   introComplete: boolean;
   complete: () => void;
   /**
-   * Flipped by the preloader the moment the pipeline warm-up is genuinely
-   * under way (warmProgress ≥ 0.5 — compileAsync resolved, the scene is
-   * rendering under the curtain). HeroLogo keys its one-shot spore REFORM on
-   * this pre-beat instead of `introComplete`, so the mark assembles BEHIND the
-   * overlay (~2.07s) and the curtain lifts onto a mark that is already whole —
-   * no "logo vanishes, then re-forms" gap. `introComplete` still starts the
-   * reform on paths that never set this (watchdog hard-reveal, reduced-motion
-   * teardown), so the flag is an accelerator, never a gate.
+   * True once the hero mark's STAGE ACTOR is genuinely ready to perform the
+   * materialisation (preloader v2): the spore compute build has landed AND
+   * its hidden PRIME kill has finished (HeroLogo), or the static-fallback
+   * build is live. The preloader requires it (home route only, bounded) to
+   * complete the counter — Oddity's principle: the loader gates on exactly
+   * what the hero will play, so the reveal can never land before the mark
+   * exists. Never reset (per hard load, like introComplete).
    */
-  reformStart: boolean;
-  startReform: () => void;
+  heroStageReady: boolean;
+  setHeroStageReady: () => void;
   /**
    * True once the WebGL scene is actually RENDERING SMOOTHLY — i.e. the WebGPU
    * pipelines/compute kernels have finished compiling (the heavy one-time cost
@@ -84,11 +82,9 @@ interface IntroState {
 export const useIntroStore = create<IntroState>((set, get) => ({
   introComplete: false,
   complete: () => set({ introComplete: true }),
-  reformStart: false,
-  // Idempotent: the preloader's frame loop calls this every tick once the
-  // warm threshold is crossed; only the first call writes.
-  startReform: () => {
-    if (!get().reformStart) set({ reformStart: true });
+  heroStageReady: false,
+  setHeroStageReady: () => {
+    if (!get().heroStageReady) set({ heroStageReady: true });
   },
   warmReady: false,
   // Ready ⇒ progress is 1 by definition (monotonic: never lowered afterwards).

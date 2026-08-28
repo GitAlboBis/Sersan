@@ -626,11 +626,20 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
     }
     const delta = Math.min(rawDelta, 1 / 30);
 
-    // HOLD until the preloader curtain lifts: the sim doesn't tick, so the
-    // scattered seed stays frozen and the cloud settles ON SCREEN.
-    if (!useIntroStore.getState().introComplete) {
-      group.visible = false;
-      return;
+    // HOLD until the hero stage is live (preloader v2, owner 2026-08-28:
+    // "aggiungi anche la scritta Sersan nel preloader"): on a hard load the
+    // wordmark's assemble wave starts on the heroStageReady pre-beat — the
+    // spore mark's build has landed and its hidden prime finished — so the
+    // whole brand lockup materialises ON the loading stage, under the
+    // counter, and is simply THERE when the chrome fades (Arago: the scene
+    // performs beneath the loader). introComplete keeps releasing every path
+    // that never sets the pre-beat (soft entries, watchdog).
+    {
+      const introState = useIntroStore.getState();
+      if (!introState.heroStageReady && !introState.introComplete) {
+        group.visible = false;
+        return;
+      }
     }
 
     // --- Intro skip (Esc / session flag): pin every driver at its end state.

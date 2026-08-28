@@ -105,7 +105,7 @@ const PAR_DAMP = 3;
  * read as a double edge between the two. One-shot, additive on the z write,
  * exactly 0 after the ramp — every other frame is untouched. */
 const INTRO_SETTLE_FRAC = 0.022;
-const INTRO_SETTLE_S = 1.1;
+const INTRO_SETTLE_S = 1.6;
 /** Viewport fraction over which the whole rig fades in from the top. While
  * the page is pinned at scroll 0 (intro gate, brand replay) every channel is
  * EXACTLY 0, so the particle brand + HeroLogo keep their pixel registration

@@ -2027,3 +2027,23 @@ html.cursor-none [contenteditable="true"] {
 [data-lattice-anchor] > span[style*="--callout-2-"] {
   opacity: var(--callout-2-vis, 1);
 }
+
+/* === FIRST-LOAD INTRO HOLD (preloader v2, 2026-08-28) ======================
+   The loader is transparent chrome on the scene's own stage: while it is up,
+   the page DOM (the fixed nav + the [data-lang-fade] content wrapper) is
+   pinned invisible so the only thing on the shared navy ground is the
+   materialising WebGL spore mark + the readout. Added/removed by
+   src/components/fx/preloader.tsx on the <body>; JS-off and reduced-motion
+   never receive the class, so the SSR page is untouched. `!important` wins
+   over the LanguageProvider's inline data-lang-fade opacity writes for the
+   duration of the hold only. RELEASE carries the opacity transition for the
+   way back in and is dropped ~1.2s later, so neither rule lingers. */
+body.sersan-intro-hold nav,
+body.sersan-intro-hold [data-lang-fade] {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+body.sersan-intro-release nav,
+body.sersan-intro-release [data-lang-fade] {
+  transition: opacity 0.9s ease;
+}
