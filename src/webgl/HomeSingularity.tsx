@@ -152,7 +152,11 @@ import { webgpuEnabled } from "./renderer/createRenderer";
 import { CAMERA_FOV } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
 import { useSectionStore } from "./store/sectionStore";
-import { useIntroStore, introZoomRef } from "./store/introStore";
+import {
+  useIntroStore,
+  introZoomRef,
+  introHeadRaiseRef,
+} from "./store/introStore";
 import { useTextMorphStore } from "./store/textMorphStore";
 import { usePointerStore, installPointerTracking } from "./store/pointerStore";
 import { useTierStore } from "./store/tierStore";
@@ -277,8 +281,17 @@ const INTRO_HOLE_SCALE_IN = 9;
  * cresting ≈62vh down, well below the brand — and only the FINAL gate walks
  * it to the shipped size/position. Sized against the rest framing: at
  * dist 1.758 one world unit ≈ 61vh, ring radius ≈ 0.35·scale. */
-const INTRO_HOLE_G2_SCALE = 4.8;
-const INTRO_HOLE_G2_Y = -1.2;
+const INTRO_HOLE_G2_SCALE = 6.5;
+const INTRO_HOLE_G2_Y = -1.6;
+/** DEPTH PUSH-BACK (owner 2026-08-28: "il buco nero dev'essere dietro anche
+ * al logo… in modo che l'orbita non copra sopra il logo"). The magnified
+ * proxy sphere is physically NEARER the camera than the opaque spore mark,
+ * so the depth test lets it paint over the logo. Multiplying the group's
+ * distance AND its scale by the same factor leaves the apparent size
+ * mathematically unchanged (size ∝ scale/dist) while pushing the geometry
+ * far behind the mark, where the depth test correctly hides it. Rides back
+ * to 1 across the final gate, so the shipped hero pose is untouched. */
+const INTRO_HOLE_DEPTH_K = 3;
 /** Load-pose yFrac (owner screenshot pass 2): the hole's CENTER sits
  * full-screen BEHIND the forming SERSAN — "dobbiamo uscire dall'interno del
  * buco nero, dev'essere a pieno schermo il centro" — not parked low like
@@ -649,9 +662,9 @@ export function HomeSingularity({ lite = false }: { lite?: boolean }) {
     // (camera inside it, black core over the whole frame) and shrinks to
     // its shipped size as the zoom lands. yFrac travels with it so the
     // centre starts behind the wordmark and settles into the rest framing.
-    const introDist = place.dist;
     let introScale = 1;
     let introYFrac = place.yFrac;
+    let depthK = 1;
     if (introZoom > 0) {
       if (introZoom >= INTRO_HOLE_KNOT) {
         // Leg A — the climb out of the centre: 9x → still-enormous G2 pose.
@@ -663,14 +676,23 @@ export function HomeSingularity({ lite = false }: { lite?: boolean }) {
           e,
         );
         introYFrac = THREE.MathUtils.lerp(INTRO_HOLE_LOAD_Y, INTRO_HOLE_G2_Y, e);
+        depthK = INTRO_HOLE_DEPTH_K;
       } else {
-        // Leg B — the final gate walks it to the shipped hero framing.
+        // Leg B — the final gate walks it to the shipped hero framing (and
+        // the depth push-back back to 1: apparent size never jumps).
         const legT = 1 - introZoom / INTRO_HOLE_KNOT;
         const e = legT * legT * (3 - 2 * legT);
         introScale = THREE.MathUtils.lerp(INTRO_HOLE_G2_SCALE, 1, e);
         introYFrac = THREE.MathUtils.lerp(INTRO_HOLE_G2_Y, place.yFrac, e);
+        depthK = THREE.MathUtils.lerp(INTRO_HOLE_DEPTH_K, 1, e);
       }
+      // HEAD RAISE (introHeadRaiseRef): the aim lifts, so the WORLD sinks —
+      // the brand is screen-anchored and must not move (owner: "la scritta
+      // non si dovrebbe muovere").
+      introYFrac -= introHeadRaiseRef.current;
     }
+    introScale *= depthK;
+    const introDist = place.dist * depthK;
     group.scale.setScalar(introScale);
     // Inside the proxy sphere only back faces are visible; outside, the
     // shipped FrontSide (see the layering note in the header).

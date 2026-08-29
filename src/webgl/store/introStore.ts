@@ -53,6 +53,16 @@ export const introProgressRef: { current: number } = { current: 1 };
 export const introCamShiftRef: { current: number } = { current: 0 };
 
 /**
+ * Intro HEAD-RAISE (fraction of the eclipse's view height, rests at 0) —
+ * owner 2026-08-28: "come se fosse da fuori una persona che alza la testa e
+ * guarda più in alto". The brand (mark + wordmark) is screen-anchored, so
+ * raising the aim must NOT move it — what sinks is the WORLD: this ref is
+ * published by SignatureLine's gate walker and consumed by HomeSingularity,
+ * which lowers the hole by it. Module ref, no store notify (per-frame).
+ */
+export const introHeadRaiseRef: { current: number } = { current: 0 };
+
+/**
  * Intro zoom fraction (1 = camera fully INSIDE the black hole at the load
  * hold, 0 = landed in the hero frame; rests at 0) — published per frame by
  * SignatureLine's intro camera rig as `current dolly / INTRO_CAM_IN`.

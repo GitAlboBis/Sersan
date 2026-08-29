@@ -831,11 +831,9 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
           (cx / size.width - 0.5) * worldViewWidth,
           camera.position.y +
             useTextMorphStore.getState().camDescend +
-            (0.5 - cy / size.height) * WORLD_VIEW_HEIGHT -
-            // Intro frame lift (introCamShiftRef, rests at 0): the close-up
-            // dolly aims "higher" by lowering the anchored lockup — the SAME
-            // shift HeroLogo applies, so mark and wordmark move as one.
-            WORLD_VIEW_HEIGHT * introCamShiftRef.current,
+            // (Preloader v3: no intro frame shift here — the wordmark must
+            // NOT move while the aim rises; the world sinks instead.)
+            (0.5 - cy / size.height) * WORLD_VIEW_HEIGHT,
           0,
         );
         group.position.copy(scratch);

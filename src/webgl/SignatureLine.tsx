@@ -44,6 +44,7 @@ import {
   useIntroStore,
   introProgressRef,
   introCamShiftRef,
+  introHeadRaiseRef,
   introZoomRef,
 } from "./store/introStore";
 import { useFxStore } from "./store/fxStore";
@@ -1061,7 +1062,10 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     }
     // Publish the frame lift for the screen-anchored lockup actors (mark +
     // wordmark) — each gate carries its own framing; exactly 0 past the exit.
-    introCamShiftRef.current = introLift;
+    // The lift is now a HEAD RAISE: the brand stays put (its own shift ref
+    // is retired to 0) and the world sinks by this amount instead.
+    introCamShiftRef.current = 0;
+    introHeadRaiseRef.current = introLift;
     // Publish the zoom fraction (1 = inside the hole, 0 = landed): the
     // eclipse rides it between its swallowing-the-frame distance and its
     // hero rest — the "uscire da dentro il buco nero" of the owner concept.

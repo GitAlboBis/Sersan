@@ -968,10 +968,9 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       camera.position.y + camDescend - WORLD_VIEW_HEIGHT * LOCKUP_OFFSET_Y;
     group.position.set(
       heroX * flight,
-      // Intro frame lift (introCamShiftRef, rests at 0): the close-up dolly
-      // aims "higher" by lowering the anchored lockup — see introStore doc.
-      THREE.MathUtils.lerp(lockY, heroY, flight) -
-        WORLD_VIEW_HEIGHT * introCamShiftRef.current,
+      // (Preloader v3: the mark no longer carries an intro frame shift —
+      // the "head raise" sinks the WORLD instead, so the brand never moves.)
+      THREE.MathUtils.lerp(lockY, heroY, flight),
       THREE.MathUtils.lerp(fx.heroPosZ, heroZ, flight) +
         Math.sin(flight * Math.PI) * FLIGHT_BULGE,
     );
