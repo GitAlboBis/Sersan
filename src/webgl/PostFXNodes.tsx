@@ -530,17 +530,16 @@ interface WipeUniforms {
   edgeLift: UniformNode;
 }
 
-/** Ignition ramp length (s) — preloader v2, 2026-08-28: how long the frame
- *  takes to come up from the underexposed loading stage to full exposure
- *  after introComplete. 2.0 → 2.8 on the owner's live pass ("fai tutto più
- *  lento e smooth") — Arago's light ramp takes its time, and so does ours. */
-const IGNITE_S = 2.8;
-/** Exposure floor while the chrome is up. A dark STAGE, not black — the
- *  spore mark materialising with the counter is the loading readout and must
- *  read clearly on it, and the shared navy ground must stay recognisably the
- *  page's own (live-tuned 2026-08-28: at 0.45 the navy multiplied down to
- *  near-black and the "same stage as the hero" continuity broke). */
-const IGNITE_FLOOR = 0.6;
+/** Ignition ramp length (s) — inside-the-hole rework (owner 2026-08-28):
+ *  the whole intro is the climb OUT of the black hole, so the light comes up
+ *  slowly across BOTH exit gates — near-dark while the mark generates and
+ *  the hole is merely glimpsed (gate 2), full exposure landing with the
+ *  hero frame (gate 3). */
+const IGNITE_S = 4.5;
+/** Exposure floor while the chrome is up: NEAR BLACK on purpose — "la scena
+ *  del preloader inizia a schermo nero: siamo dentro il buco nero". The
+ *  emissive wordmark forming through bloom is the only light in there. */
+const IGNITE_FLOOR = 0.1;
 
 export function PostFXNodes({
   pathname = "/",

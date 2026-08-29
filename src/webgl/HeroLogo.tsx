@@ -67,11 +67,7 @@ import { useGLTF } from "@react-three/drei";
 import { SPINE_TRAVEL_VH } from "@/lib/spine";
 import { WORLD_VIEW_HEIGHT } from "./constants";
 import { useTextMorphStore } from "./store/textMorphStore";
-import {
-  useIntroStore,
-  introProgressRef,
-  introCamShiftRef,
-} from "./store/introStore";
+import { useIntroStore, introCamShiftRef } from "./store/introStore";
 import {
   sampleMarkHomePositions,
   type MarkHomeField,
@@ -220,44 +216,30 @@ const FLIGHT_BULGE = 0.7;
 const INTRO_REFORM_PEAK = 0.92; // burst that holds the mark as NOTHING (1 = gone)
 const INTRO_REFORM_HOLD = 0.12; // s held as nothing after the curtain lifts (was 0.35)
 
-// ---- PRELOADER v2 (owner 2026-08-28): the mark IS the loading readout -----
-// The chrome-only preloader publishes its eased counter (introProgressRef)
-// and this component scrubs the spore materialisation with it, all on the
-// sim's EXISTING uniforms (no new sim path):
-//   PRIME — the seeded-alive spores are killed at envelope PEAK for
-//     INTRO_PRIME_S while the group is hidden: they die unseen, respawn
-//     parked at life 2 (staggered by the randomized kill rates — the stagger
-//     that makes the grow read organic);
-//   GROW — envelope 0 releases them into the regrow queue and uRegrowScale
-//     is scrubbed by the counter (FLOOR + GAIN·p², via introRegrowScale):
-//     the mark literally grows with the percentage, on the hero's own stage;
-//   BURST — on the introComplete edge the legacy reform clock parks at
-//     RELEASE (auto-burst arming + lockup-replay reset still read it),
-//     regrow snaps to full rate for stragglers, and the crust AUTO-BURST
-//     fires — the explosion IS the reveal beat ("nel preloader esplode lo
-//     strato di spore, come fa già nella hero").
-// The clock-driven reform envelope of the previous design is superseded on
-// hard loads; the RELEASE arithmetic below survives as the sentinel value
-// downstream consumers key on.
-const INTRO_PRIME_S = 0.55; // s of hidden kill before the grow can begin
-// Regrow-rate law vs the counter: rate = FLOOR + GAIN·p^POW. Sized against
-// the preset's LIFE_REGROW (≈0.7 life/s at rate 1) so spores CROSS their
-// whole 2→1 regrow inside the load window and the mark visibly tracks the
-// percentage. Live-tuned 2026-08-28 twice: 0.06/4.0/1.5 parked the
-// population near life 2 (bloom only after 100%); 0.12/6.5/1.3 read but
-// too eager for the owner ("fai tutto più lento e smooth") — softened to
-// 0.08/3.4 against the stretched RISE floor, so the growth breathes with
-// the slower counter instead of rushing it.
-const INTRO_GROW_FLOOR = 0.08;
-const INTRO_GROW_GAIN = 3.4;
-const INTRO_GROW_POW = 1.3;
+// ---- PRELOADER v3 (owner 2026-08-28): out of the black hole ---------------
+// Gate 1 (the load, on the near-black stage) belongs to the SERSAN wordmark
+// alone — this mark is DEAD the whole time: PRIME kills the seeded-alive
+// spores unseen (envelope PEAK, group hidden) and they wait parked in the
+// regrow queue at rate 0. The introComplete edge then starts the reform
+// CLOCK: the full-rate regrow bloom (~1.4s) IS the gate-2 "il logo si
+// genera", the burst countdown fires the explosion as it completes, and the
+// camera (SignatureLine's INTRO_CAM_GATES) frames the whole thing on its
+// zoom-out to 39%. All on the sim's EXISTING uniforms — no new sim path.
+const INTRO_PRIME_S = 0.55; // s of hidden kill before the spores can park
+// INSIDE-THE-HOLE rework (owner concept 2026-08-28): the mark stays DEAD
+// through the whole load — gate 1 on the black belongs to the SERSAN
+// wordmark alone — and its reform CLOCK starts on the introComplete edge:
+// the ~1.4s regrow bloom at full rate IS the "il logo si genera" the
+// camera's gate-2 zoom-out frames, and the burst countdown below fires the
+// explosion as it completes.
 /** Seconds after the introComplete edge before the crust AUTO-BURST fires —
- * timed onto EXIT GATE 2, the logo gate (owner 2026-08-28: "secondo gate il
- * logo 3d"): mirrors gate 1's dur + dwell in SignatureLine's
- * INTRO_CAM_GATES, so the explosion lands as the camera's second gesture
- * centres the mark. */
-const INTRO_BURST_AT_S = 1.35;
-const INTRO_BODY_AT = 0.8; // counter fraction where the dark body fades in
+ * sized to the reform bloom's completion, inside gate 2 of SignatureLine's
+ * INTRO_CAM_GATES. */
+const INTRO_BURST_AT_S = 2.0;
+/** Seconds (at the END of the reform clock) over which the dark occluder
+ * body fades back in — kept late so the generation reads as particles
+ * forming from nothing with the body filling in behind. */
+const INTRO_REFORM_BODY_AT_S = 0.8;
 const INTRO_REFORM_RAMP = 0.25; // s to drop burst→0, releasing the regrow bloom (was 0.4)
 const INTRO_REFORM_BLOOM = 1.7; // s the materialise bloom is given to finish (was 5.5, then 1.9)
 /** Clock value past which the intro is fully over (burst 0 + regrow restored).
@@ -381,6 +363,9 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
   // Armed by the completion edge below; fires the auto-burst clock once it
   // reaches INTRO_BURST_AT_S — the crust explosion lands ON the logo gate.
   const introBurstDelay = useRef(-1);
+  // Static/WebGL2 gate-2 reveal clock (s since the completion edge, capped):
+  // the fallback mark's fade-in analog of the spores' generation.
+  const staticRevealClock = useRef(0);
   // Last-seen fx.sporeAutoBurstFire (null until the first spores frame, so a
   // pre-bumped store value can never fire spuriously on mount) — any NEW
   // value re-fires the envelope for live tuning.
@@ -1120,18 +1105,21 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
           size.width * dprStatic,
           size.height * dprStatic,
         );
-        // v2 materialisation on the static/WebGL2 path: no compute sim to
-        // scrub, so the whole build simply fades in with the counter (the
-        // cheap analog of the spores growing) and rests at the plain scroll
-        // fade after the hand-off / on soft entries. The build being live IS
-        // stage-readiness here (no prime phase to wait out).
+        // Inside-the-hole rework: the static/WebGL2 mark is HELD INVISIBLE
+        // through the load (the wordmark owns gate 1 on the black) and fades
+        // in over ~1.5s from the completion edge — the cheap analog of the
+        // spores' gate-2 generation. The build being live IS stage-readiness
+        // here (no prime phase to wait out).
         const introStatic = useIntroStore.getState();
         if (!introStatic.heroStageReady) introStatic.setHeroStageReady();
+        if (!softEntryRef.current && introStatic.introComplete) {
+          staticRevealClock.current = Math.min(
+            staticRevealClock.current + delta,
+            1.5,
+          );
+        }
         tslStatic.uFade.value =
-          fade *
-          (softEntryRef.current || introStatic.introComplete
-            ? 1
-            : introProgressRef.current);
+          fade * (softEntryRef.current ? 1 : staticRevealClock.current / 1.5);
         tslStatic.uEmissive.value = fx.gpgpuEmissive;
         tslStatic.uPointAlpha.value = fx.gpgpuPointAlpha;
         tslStatic.uMouse.value.copy(modelMouse);
@@ -1181,13 +1169,24 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       ) {
         intro.setHeroStageReady();
       }
+      // GATE 2 ("il logo si genera e esplode"): the reform clock STARTS on
+      // the introComplete edge — one-shot (< 0 = armed) — and runs its
+      // 2.07s arc while the camera's first zoom-out gesture plays; the
+      // burst countdown fires the explosion as the bloom completes.
       if (
         !softEntryRef.current &&
         intro.introComplete &&
+        introReformClock.current < 0
+      ) {
+        introReformClock.current = 0;
+        introBurstDelay.current = 0; // arm the gate-2 burst countdown
+      }
+      if (
+        !softEntryRef.current &&
+        introReformClock.current >= 0 &&
         introReformClock.current < INTRO_REFORM_RELEASE
       ) {
-        introReformClock.current = INTRO_REFORM_RELEASE;
-        introBurstDelay.current = 0; // arm the gate-2 burst countdown
+        introReformClock.current += delta;
       }
       // The crust explosion belongs to the LOGO gate (exit gate 2): fire it
       // INTRO_BURST_AT_S after the completion edge, when the camera's second
@@ -1202,26 +1201,24 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       const introBurst = !softEntryRef.current && introPriming
         ? INTRO_REFORM_PEAK
         : 0;
-      const introGrow =
-        softEntryRef.current || intro.introComplete
-          ? 1
-          : introProgressRef.current;
+      // Parked DEAD through the whole load (regrow rate 0 — the primed
+      // spores wait invisibly in the regrow queue); the completion edge
+      // releases the full-rate bloom that IS the gate-2 generation.
       const introRegrowScale =
-        softEntryRef.current || intro.introComplete
-          ? 1
-          : introPriming
-            ? 0
-            : INTRO_GROW_FLOOR +
-              INTRO_GROW_GAIN * Math.pow(introGrow, INTRO_GROW_POW);
+        softEntryRef.current || intro.introComplete ? 1 : 0;
       // Occluder body: on scroll it follows the TRAILING core (stays solid
-      // behind the crust as that leads off). During the materialise it must
-      // NOT show as a dim "spento" logo under the growing particles (client
-      // 2026-06-29) — keep it HIDDEN and fade it in only over the counter's
-      // last stretch (INTRO_BODY_AT → 100%), so the mark reads as forming
-      // from nothing with the body filling in behind at the very end.
+      // behind the crust as that leads off). During the gate-2 generation it
+      // must NOT show as a dim "spento" logo under the blooming particles
+      // (client 2026-06-29) — hidden through the load (clock < 0 ⇒ 0) and
+      // faded in only over the reform clock's last stretch, so the mark
+      // reads as forming from nothing with the body filling in behind.
       const introBodyReveal = softEntryRef.current
         ? 1
-        : THREE.MathUtils.smoothstep(introGrow, INTRO_BODY_AT, 1);
+        : THREE.MathUtils.smoothstep(
+            introReformClock.current,
+            INTRO_REFORM_RELEASE - INTRO_REFORM_BODY_AT_S,
+            INTRO_REFORM_RELEASE,
+          );
       const occBurst = Math.max(burstCore, 1 - introBodyReveal);
 
       // The opaque occluder follows the scroll fade AND that burst — a solid

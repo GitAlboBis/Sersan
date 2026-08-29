@@ -124,29 +124,31 @@ const PAR_DAMP = 3;
 // it read, then STAGE 2 expo-glides MID → 0 over GLIDE_S — the long smooth
 // zoom-out into the hero frame. Next notch of IN starts cropping the lockup
 // on short viewports — tune with eyes on.
-const INTRO_CAM_IN = 0.32;
+// INSIDE THE BLACK HOLE (owner concept 2026-08-28, Oddity's zoom-out: "la
+// scena del preloader inizia a schermo nero — siamo dentro il buco nero").
+// The load phase is GATE 1: the camera sits deep inside (INTRO_CAM_IN of
+// CAMERA_Z), the stage is near-black (PostFXNodes' ignite floor), and the
+// only thing that happens is the SERSAN wordmark generating on the dark.
+const INTRO_CAM_IN = 0.52;
 const INTRO_CAM_X = 0.015;
-/** Frame lift at the load close-up (fraction of WORLD_VIEW_HEIGHT): the
- * screen-anchored lockup is LOWERED by this so the 32% dolly does not crop
- * the mark at the top — "sposta la camera più in alto". Published through
- * introCamShiftRef; during the exit the lift becomes its own animated
- * channel (each gate has one). */
-const INTRO_CAM_LIFT = 0.08;
-/** EXIT GATES (owner idea 2026-08-28: "i gate dei zoom out — primo gate
- * scritta Sersan, secondo gate il logo 3d, terzo gate il buco nero"). From
- * the load hold the camera passes THREE framing checkpoints, one per hero
- * element: (1) SERSAN — barely wider, composition RAISED so the wordmark
- * sits central; (2) the 3D mark — wider, composition LOWERED so the logo is
- * the subject (HeroLogo times the crust burst onto this gate —
- * INTRO_BURST_AT_S there mirrors gate 1's dur + dwell); (3) the black hole —
- * the full hero frame, every offset at an exact 0. `z` = dolly-in fraction
- * of CAMERA_Z, `lift` = frame shift (fraction of WORLD_VIEW_HEIGHT,
- * positive lowers the lockup), `dur`/`dwell` seconds. Each leg runs cubic
- * in-out from wherever the previous one ended — continuous at every seam. */
+/** Frame lift during gate 1 (fraction of WORLD_VIEW_HEIGHT, positive lowers
+ * the composition): centres the FORMING WORDMARK on the black — the mark is
+ * dead until gate 2, so the text is the whole frame. Published through
+ * introCamShiftRef; during the exit the lift is its own animated channel. */
+const INTRO_CAM_LIFT = 0.02;
+/** EXIT GATES — the climb out of the hole, after the counter completes:
+ *   GATE 2 — zoom out to 39%: the 3D spore mark GENERATES and EXPLODES
+ *            (HeroLogo starts the reform clock on the introComplete edge and
+ *            fires the burst at INTRO_BURST_AT_S ≈ the reform's completion)
+ *            while the black hole starts to be GLIMPSED behind the brand
+ *            (the ignite ramp is still low, the eclipse rim reads first);
+ *   GATE 3 — zoom out to 0: the hero frame, every offset at an exact 0.
+ * `z` = dolly-in fraction of CAMERA_Z, `lift` = frame shift, `dur`/`dwell`
+ * seconds. Each leg runs cubic in-out from wherever the previous one ended
+ * — continuous at every seam. */
 const INTRO_CAM_GATES = [
-  { z: 0.28, lift: -0.01, dur: 1.2, dwell: 0.15 }, // gate 1 — SERSAN
-  { z: 0.18, lift: 0.1, dur: 1.2, dwell: 0.15 }, // gate 2 — the 3D mark
-  { z: 0, lift: 0, dur: 2.6, dwell: 0 }, // gate 3 — the black hole / hero
+  { z: 0.39, lift: 0.03, dur: 2.6, dwell: 0.2 }, // gate 2 — the mark + the glimpse
+  { z: 0, lift: 0, dur: 2.6, dwell: 0 }, // gate 3 — the hero
 ];
 /** Total exit-clock length — the frame block idles past this. */
 const INTRO_CAM_EXIT_S = INTRO_CAM_GATES.reduce(
