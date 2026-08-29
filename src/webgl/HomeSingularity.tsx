@@ -249,21 +249,24 @@ export const holeField = {
  * arithmetic. */
 const HOLE_ANCHOR_Y_FRAC = 0.01;
 
-/** Inside-the-hole intro distance (world units, owner concept 2026-08-28:
- * "siamo dentro il buco nero… dobbiamo uscire con uno zoom out"): the group
- * slides between THIS camera distance and the tuned `place.dist` riding
- * introZoomRef (1 = load hold, 0 = landed). At 1.12 the unit sphere's disk
- * spans ≈190vh — the frame sits inside the hole, its rim first reading as
- * the light comes up — and the value MUST stay > 1: the camera can never
- * enter the unit sphere (FrontSide march, see the layering note). Exactly
- * `place.dist` again at zoom 0 ⇒ the rest framing is byte-identical. */
-const INTRO_DIST_IN = 1.12;
-/** Exponent on the intro zoom before the distance lerp: < 1 keeps the hole
- * NEAR (huge) through most of the climb, releasing it to the rest framing
- * only in the final gate — at gate 2 the frame still shows HALF of an
- * enormous disk ("si vede metà del buco nero perché è enorme"), not a hole
- * that already receded. */
-const INTRO_HOLE_EXIT_POW = 0.6;
+/** INSIDE-THE-HOLE intro pose (owner screenshot 2026-08-28). The hole rides
+ * introZoomRef (1 = load hold, 0 = landed) through a TWO-LEG path:
+ *   LOAD (gate 1, zoom 1): dist LOAD_DIST — maximum zoom, the disk spans
+ *     ≈200vh and the frame sits fully inside it: black screen. MUST stay
+ *     > 1 — the camera can never enter the unit sphere (FrontSide march).
+ *   GATE 2 (zoom → KNOT): the hole barely recedes but SINKS — yFrac slides
+ *     to G2_Y, so climbing out the enormous horizon FALLS below the brand:
+ *     the drawn framing, a full-width arc ≈62vh down with the disk still
+ *     ~200vh.
+ *   GATE 3 (zoom KNOT → 0): recedes + rises to the tuned rest (`place.dist`
+ *     / `place.yFrac`) — byte-identical framing at zoom 0.
+ * Legs interpolate linearly in the (already leg-eased) zoom, meeting at the
+ * KNOT pose — continuous by construction. KNOT mirrors gate 2's landing
+ * fraction in SignatureLine's INTRO_CAM_GATES (0.39 / 0.52). */
+const INTRO_HOLE_LOAD_DIST = 1.03;
+const INTRO_HOLE_G2_DIST = 1.05;
+const INTRO_HOLE_G2_Y = -1.14;
+const INTRO_HOLE_KNOT = 0.75;
 const HOLE_NEAR_FRAC = 0.4;
 const HOLE_FAR_FRAC = 0.58;
 
@@ -603,18 +606,33 @@ export function HomeSingularity({ lite = false }: { lite?: boolean }) {
     // hole swallows the frame while we are "inside" it and slides to the
     // tuned rest as the camera climbs out; identical to before at zoom 0.
     const place = placeRef.current;
-    const introDist = THREE.MathUtils.lerp(
-      place.dist,
-      INTRO_DIST_IN,
-      Math.pow(introZoomRef.current, INTRO_HOLE_EXIT_POW),
-    );
+    // Two-leg intro pose (see INTRO_HOLE_*): gate 2 SINKS the huge horizon
+    // below the brand, gate 3 releases it to the tuned rest.
+    const introZoom = introZoomRef.current;
+    let introDist = place.dist;
+    let introYFrac = place.yFrac;
+    if (introZoom > 0) {
+      if (introZoom >= INTRO_HOLE_KNOT) {
+        const legT = (1 - introZoom) / (1 - INTRO_HOLE_KNOT);
+        introDist = THREE.MathUtils.lerp(
+          INTRO_HOLE_LOAD_DIST,
+          INTRO_HOLE_G2_DIST,
+          legT,
+        );
+        introYFrac = THREE.MathUtils.lerp(place.yFrac, INTRO_HOLE_G2_Y, legT);
+      } else {
+        const legT = 1 - introZoom / INTRO_HOLE_KNOT;
+        introDist = THREE.MathUtils.lerp(INTRO_HOLE_G2_DIST, place.dist, legT);
+        introYFrac = THREE.MathUtils.lerp(INTRO_HOLE_G2_Y, place.yFrac, legT);
+      }
+    }
     const viewHAtGroup = 2 * TAN_HALF_FOV * introDist;
     const aspect = size.width / size.height;
     group.position.set(
       camera.position.x +
         place.xFrac * viewHAtGroup * aspect +
         parallax.current.x,
-      camera.position.y + place.yFrac * viewHAtGroup + parallax.current.y,
+      camera.position.y + introYFrac * viewHAtGroup + parallax.current.y,
       camera.position.z - introDist,
     );
     // ROTATION/SCALE STAY IDENTITY FOREVER (translation only) — the raymarch
@@ -646,14 +664,23 @@ export function HomeSingularity({ lite = false }: { lite?: boolean }) {
     // note): /audit has no accretion consumers, its bob direction is purely
     // aesthetic and stays as shipped.
     const oy = -Math.sin(oa * 0.5) * orbit.bob;
+    // Intro calm (owner 2026-08-28: "né gravità sulla scritta, né orbita —
+    // solo la rotazione su se stesso"): the orbit swim and the flyby pull
+    // are damped to ZERO for the whole intro and ramp back quadratically as
+    // the zoom lands — the disk's own spin lives in the march time uniform
+    // and is untouched. Exactly 1 at rest ⇒ byte-identical after the intro.
+    const introCalm = (1 - introZoomRef.current) ** 2;
+    const cox = ox * introCalm;
+    const coy = oy * introCalm;
+    const coz = oz * introCalm;
 
     // --- Virtual march camera: real camera + orbit. The group is a
     // scene-root child with identity rotation/scale, so worldToLocal
     // degenerates to an exact subtraction (position IS the world position
     // this frame). -----------------------------------------------------------
-    const camX = camera.position.x + ox;
-    const camY = camera.position.y + oy;
-    const camZ = camera.position.z + oz;
+    const camX = camera.position.x + cox;
+    const camY = camera.position.y + coy;
+    const camZ = camera.position.z + coz;
     build.u.uCamWorld.value.set(camX, camY, camZ);
     build.u.uCamLocal.value.set(
       camX - group.position.x,
@@ -667,9 +694,9 @@ export function HomeSingularity({ lite = false }: { lite?: boolean }) {
     // tracks translates by −offset). Proximity is the view-height-fraction
     // distance to the fixed lockup anchor at the group plane — pure
     // arithmetic on values already in hand, no rect reads.
-    const ax = group.position.x - ox;
-    const ay = group.position.y - oy;
-    const az = group.position.z - oz;
+    const ax = group.position.x - cox;
+    const ay = group.position.y - coy;
+    const az = group.position.z - coz;
     const hnx = (ax - camera.position.x) / viewHAtGroup;
     const hny = (ay - camera.position.y) / viewHAtGroup - HOLE_ANCHOR_Y_FRAC;
     const holeDist = Math.sqrt(hnx * hnx + hny * hny);
@@ -679,7 +706,9 @@ export function HomeSingularity({ lite = false }: { lite?: boolean }) {
     holeField.x = ax;
     holeField.y = ay;
     holeField.z = az;
-    holeField.strength = opacity * prox;
+    // Intro calm also gates the published pull: no gravity on the forming
+    // brand while the intro runs (see the introCalm doc above).
+    holeField.strength = opacity * prox * introCalm;
   });
 
   // Dev-only debug handle: live eclipse-framing knobs + uniform handles + a
