@@ -148,12 +148,17 @@ const INTRO_CAM_LIFT = 0.02;
  * seconds. Each leg runs cubic in-out from wherever the previous one ended
  * — continuous at every seam. */
 const INTRO_CAM_GATES = [
-  // Gate 2 — the mark + the sinking horizon. lift 0.03 → 0.12 (owner
-  // screenshot pass: "la camera deve alzarsi e guardare più in alto") — the
-  // composition drops enough that the generating mark AND its explosion
-  // (burst at ~2.0s, ~85% through this leg's ease) sit fully in frame.
-  { z: 0.39, lift: 0.12, dur: 2.6, dwell: 0.2 },
-  { z: 0, lift: 0, dur: 2.6, dwell: 0 }, // gate 3 — the hero
+  // Gate 2a — THE CLIMB OUT: the hole shrinks out of the frame (it rides
+  // this leg's zoom fraction). The frame does NOT lift yet — owner
+  // 2026-08-28: "prima c'è lo zoom out del buco nero, POI la camera si
+  // sposta in alto per l'esplosione".
+  { z: 0.39, lift: INTRO_CAM_LIFT, dur: 2.4, dwell: 0.15 },
+  // Gate 2b — THE LOGO: the camera looks higher (lift) and holds the dolly
+  // while the mark finishes generating and BURSTS (HeroLogo's
+  // INTRO_BURST_AT_S is timed into this leg).
+  { z: 0.39, lift: 0.13, dur: 1.5, dwell: 0.15 },
+  // Gate 3 — the hero.
+  { z: 0, lift: 0, dur: 2.6, dwell: 0 },
 ];
 /** Total exit-clock length — the frame block idles past this. */
 const INTRO_CAM_EXIT_S = INTRO_CAM_GATES.reduce(
@@ -1029,14 +1034,7 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
           const ge =
             gt < 0.5 ? 4 * gt * gt * gt : 1 - Math.pow(-2 * gt + 2, 3) / 2;
           zf = fromZf + (gate.z - fromZf) * ge;
-          // The LIFT LEADS the dolly (owner: "la camera deve alzarsi PRIMA
-          // che il logo esploda"): it completes in the first ~45% of the
-          // leg, on its own eased clock, so the frame has already dropped
-          // when the mark generates and bursts.
-          const lt = Math.min(gt * 2.2, 1);
-          const le =
-            lt < 0.5 ? 4 * lt * lt * lt : 1 - Math.pow(-2 * lt + 2, 3) / 2;
-          lift = fromLift + (gate.lift - fromLift) * le;
+          lift = fromLift + (gate.lift - fromLift) * ge;
           break;
         }
         t -= gate.dur;

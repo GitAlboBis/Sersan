@@ -235,7 +235,7 @@ const INTRO_PRIME_S = 0.55; // s of hidden kill before the spores can park
 /** Seconds after the introComplete edge before the crust AUTO-BURST fires —
  * sized to the reform bloom's completion, inside gate 2 of SignatureLine's
  * INTRO_CAM_GATES. */
-const INTRO_BURST_AT_S = 2.0;
+const INTRO_BURST_AT_S = 3.6;
 /** Seconds (at the END of the reform clock) over which the dark occluder
  * body fades back in — kept late so the generation reads as particles
  * forming from nothing with the body filling in behind. */

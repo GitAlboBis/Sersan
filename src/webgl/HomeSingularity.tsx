@@ -263,15 +263,30 @@ const HOLE_ANCHOR_Y_FRAC = 0.01;
  * Legs interpolate linearly in the (already leg-eased) zoom, meeting at the
  * KNOT pose — continuous by construction. KNOT mirrors gate 2's landing
  * fraction in SignatureLine's INTRO_CAM_GATES (0.39 / 0.52). */
-const INTRO_HOLE_LOAD_DIST = 1.03;
+/** GATE-1 SCALE of the whole hole (owner 2026-08-28: "devi semplicemente
+ * ingrandire tutto il buco nero e rimpicciolirlo, così da simulare un'uscita
+ * dal buco nero dal centro"). The group is scaled uniformly — the march runs
+ * in OBJECT space (uCamLocal + normalized directions), so a uniform scale is
+ * an exact magnification of the entire hole, event horizon included, with no
+ * recalibration. At 9 the camera (rest distance 1.758) sits deep INSIDE the
+ * proxy sphere and the black core alone spans ≈130vh: the screen is the
+ * inside of the hole. It shrinks to 1 across gate 2 = the climb out. */
+const INTRO_HOLE_SCALE_IN = 9;
 /** Load-pose yFrac (owner screenshot pass 2): the hole's CENTER sits
  * full-screen BEHIND the forming SERSAN — "dobbiamo uscire dall'interno del
  * buco nero, dev'essere a pieno schermo il centro" — not parked low like
  * the rest pose. Gate 2 then sinks it from here to G2_Y. */
 const INTRO_HOLE_LOAD_Y = 0;
-const INTRO_HOLE_G2_DIST = 1.05;
-const INTRO_HOLE_G2_Y = -1.14;
 const INTRO_HOLE_KNOT = 0.75;
+/** EVENT-HORIZON radius during gate 1 (march units; the shipped rest value
+ * is 0.13). THIS is what makes "siamo dentro il buco nero" literal: the
+ * core is the only truly BLACK part of the march, and at 0.13 it can never
+ * cover the frame from outside the unit proxy (max ≈27vh) — so the horizon
+ * itself is swollen to nearly the whole sphere while the wordmark forms,
+ * filling the screen with black, and shrinks back to 0.13 across gate 2 as
+ * the hole recedes: the contour emerges exactly as the zoom-out starts
+ * ("si rimpicciolisce e quindi si intravede il contorno"). Restored to the
+ * factory value for the whole hero life. */
 const HOLE_NEAR_FRAC = 0.4;
 const HOLE_FAR_FRAC = 0.58;
 
@@ -621,26 +636,35 @@ export function HomeSingularity({ lite = false }: { lite?: boolean }) {
     // Two-leg intro pose (see INTRO_HOLE_*): gate 2 SINKS the huge horizon
     // below the brand, gate 3 releases it to the tuned rest.
     const introZoom = introZoomRef.current;
-    let introDist = place.dist;
+    // THE CLIMB OUT (see INTRO_HOLE_SCALE_IN): distance and every march
+    // constant stay exactly as tuned — only the group's SCALE rides the
+    // intro zoom, so the hole is a magnified version of itself at gate 1
+    // (camera inside it, black core over the whole frame) and shrinks to
+    // its shipped size as the zoom lands. yFrac travels with it so the
+    // centre starts behind the wordmark and settles into the rest framing.
+    const introDist = place.dist;
+    let introScale = 1;
     let introYFrac = place.yFrac;
     if (introZoom > 0) {
-      if (introZoom >= INTRO_HOLE_KNOT) {
-        const legT = (1 - introZoom) / (1 - INTRO_HOLE_KNOT);
-        introDist = THREE.MathUtils.lerp(
-          INTRO_HOLE_LOAD_DIST,
-          INTRO_HOLE_G2_DIST,
-          legT,
-        );
-        introYFrac = THREE.MathUtils.lerp(
-          INTRO_HOLE_LOAD_Y,
-          INTRO_HOLE_G2_Y,
-          legT,
-        );
-      } else {
-        const legT = 1 - introZoom / INTRO_HOLE_KNOT;
-        introDist = THREE.MathUtils.lerp(INTRO_HOLE_G2_DIST, place.dist, legT);
-        introYFrac = THREE.MathUtils.lerp(INTRO_HOLE_G2_Y, place.yFrac, legT);
-      }
+      // Eased on the gate-2 leg (zoom 1 → KNOT); past the knot the hole is
+      // already at rest and only the camera keeps travelling.
+      const legT = THREE.MathUtils.clamp(
+        (1 - introZoom) / (1 - INTRO_HOLE_KNOT),
+        0,
+        1,
+      );
+      const e = legT * legT * (3 - 2 * legT);
+      introScale = THREE.MathUtils.lerp(INTRO_HOLE_SCALE_IN, 1, e);
+      introYFrac = THREE.MathUtils.lerp(INTRO_HOLE_LOAD_Y, place.yFrac, e);
+    }
+    group.scale.setScalar(introScale);
+    // Inside the proxy sphere only back faces are visible; outside, the
+    // shipped FrontSide (see the layering note in the header).
+    const desiredSide =
+      introScale > introDist ? THREE.BackSide : THREE.FrontSide;
+    if (build.material.side !== desiredSide) {
+      build.material.side = desiredSide;
+      build.material.needsUpdate = true;
     }
     const viewHAtGroup = 2 * TAN_HALF_FOV * introDist;
     const aspect = size.width / size.height;
@@ -690,18 +714,19 @@ export function HomeSingularity({ lite = false }: { lite?: boolean }) {
     const coy = oy * introCalm;
     const coz = oz * introCalm;
 
-    // --- Virtual march camera: real camera + orbit. The group is a
-    // scene-root child with identity rotation/scale, so worldToLocal
-    // degenerates to an exact subtraction (position IS the world position
-    // this frame). -----------------------------------------------------------
+    // --- Virtual march camera: real camera + orbit. The group carries
+    // identity rotation and a UNIFORM scale, so worldToLocal degenerates to
+    // subtract-then-divide — the division is what expresses the intro
+    // magnification to the object-space march (1 at rest ⇒ the historic
+    // exact subtraction). ---------------------------------------------------
     const camX = camera.position.x + cox;
     const camY = camera.position.y + coy;
     const camZ = camera.position.z + coz;
     build.u.uCamWorld.value.set(camX, camY, camZ);
     build.u.uCamLocal.value.set(
-      camX - group.position.x,
-      camY - group.position.y,
-      camZ - group.position.z,
+      (camX - group.position.x) / introScale,
+      (camY - group.position.y) / introScale,
+      (camZ - group.position.z) / introScale,
     );
 
     // --- Publish the flyby field (see the holeField doc above) --------------
