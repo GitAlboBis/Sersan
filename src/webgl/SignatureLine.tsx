@@ -992,7 +992,6 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // hand-off effect pulls the remaining offset to 0. The residual 2^(-10t)
     // tail at t = 1 is sub-millimeter; past the glide both offsets are
     // exactly 0 and this whole block is one getState + a compare per frame.
-    let introZ = 0;
     let introX = 0;
     let introLift = 0;
     let introZoom01 = 0;
@@ -1001,7 +1000,6 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       // lateral whisper drifts with the counter so the frame still breathes.
       const pIn = introProgressRef.current;
       const pe = pIn * pIn * (3 - 2 * pIn);
-      introZ = -CAMERA_Z * INTRO_CAM_IN;
       introX = worldViewWidth * (INTRO_CAM_X * (1 - 0.5 * pe));
       introLift = INTRO_CAM_LIFT;
       introZoom01 = 1;
@@ -1036,11 +1034,10 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
         fromZf = gate.z;
         fromLift = gate.lift;
       }
-      introZ = -CAMERA_Z * zf;
       introLift = lift;
       introZoom01 = zf / INTRO_CAM_IN;
-      // The lateral whisper rides the dolly fraction — exact 0 together
-      // with it.
+      // The lateral whisper rides the virtual dolly fraction — exact 0
+      // together with it.
       introX = introCamFrom.current.x * (zf / INTRO_CAM_IN);
     }
     // Publish the frame lift for the screen-anchored lockup actors (mark +
@@ -1050,7 +1047,11 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // eclipse rides it between its swallowing-the-frame distance and its
     // hero rest — the "uscire da dentro il buco nero" of the owner concept.
     introZoomRef.current = introZoom01;
-    camera.position.z = CAMERA_Z + dollyCurrent.current * rigGate + introZ;
+    // The intro "zoom-out" is VIRTUAL (owner: "la scritta sersan rimane
+    // della stessa grandezza") — the camera never moves in z during the
+    // intro; the gate timeline above only feeds introZoomRef, and the black
+    // hole rides it out of the frame while the brand renders at true size.
+    camera.position.z = CAMERA_Z + dollyCurrent.current * rigGate;
     camera.position.x =
       (orbitCurrent.current + parCurrent.current.x) * rigGate +
       seqPanCurrent.current +

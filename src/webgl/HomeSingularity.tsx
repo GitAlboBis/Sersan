@@ -258,6 +258,12 @@ const HOLE_ANCHOR_Y_FRAC = 0.01;
  * enter the unit sphere (FrontSide march, see the layering note). Exactly
  * `place.dist` again at zoom 0 ⇒ the rest framing is byte-identical. */
 const INTRO_DIST_IN = 1.12;
+/** Exponent on the intro zoom before the distance lerp: < 1 keeps the hole
+ * NEAR (huge) through most of the climb, releasing it to the rest framing
+ * only in the final gate — at gate 2 the frame still shows HALF of an
+ * enormous disk ("si vede metà del buco nero perché è enorme"), not a hole
+ * that already receded. */
+const INTRO_HOLE_EXIT_POW = 0.6;
 const HOLE_NEAR_FRAC = 0.4;
 const HOLE_FAR_FRAC = 0.58;
 
@@ -600,7 +606,7 @@ export function HomeSingularity({ lite = false }: { lite?: boolean }) {
     const introDist = THREE.MathUtils.lerp(
       place.dist,
       INTRO_DIST_IN,
-      introZoomRef.current,
+      Math.pow(introZoomRef.current, INTRO_HOLE_EXIT_POW),
     );
     const viewHAtGroup = 2 * TAN_HALF_FOV * introDist;
     const aspect = size.width / size.height;
