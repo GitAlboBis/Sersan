@@ -63,6 +63,18 @@ export const introCamShiftRef: { current: number } = { current: 0 };
 export const introHeadRaiseRef: { current: number } = { current: 0 };
 
 /**
+ * Staged EXIT PROGRESS for the black hole (1 = the load pose inside it,
+ * 0.5 = the big low "gate 2" pose, 0 = the shipped hero rest). Separate
+ * from introZoomRef on purpose (owner 2026-08-28: "lo zoom in verso il logo
+ * non deve spostare il buco nero, deve rimanere fissato in basso fino al
+ * terzo gate") — the camera's push-in during the logo gate must not drag
+ * the hole back up, so its pose walks its own monotone staircase: it
+ * travels during gate 2a, HOLDS through gate 2b, and only the final gate
+ * takes it home. Module ref, no store notify (per-frame).
+ */
+export const introHoleRef: { current: number } = { current: 0 };
+
+/**
  * Intro zoom fraction (1 = camera fully INSIDE the black hole at the load
  * hold, 0 = landed in the hero frame; rests at 0) — published per frame by
  * SignatureLine's intro camera rig as `current dolly / INTRO_CAM_IN`.

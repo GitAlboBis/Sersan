@@ -239,7 +239,7 @@ const INTRO_PRIME_S = 0.55; // s of hidden kill before the spores can park
 /** Seconds after the introComplete edge before the crust AUTO-BURST fires —
  * sized to the reform bloom's completion, inside gate 2 of SignatureLine's
  * INTRO_CAM_GATES. */
-const INTRO_BURST_AT_S = 3.6;
+const INTRO_BURST_AT_S = 4.2;
 /** INTRO LOCKUP SPREAD (fraction of WORLD_VIEW_HEIGHT, owner 2026-08-28:
  * "il logo è troppo vicino alla scritta, dovrebbe stare più in alto
  * all'inizio — essendo che iniziamo con uno zoom, c'è più distanza tra un

@@ -154,7 +154,7 @@ import { useScrollStore } from "./store/scrollStore";
 import { useSectionStore } from "./store/sectionStore";
 import {
   useIntroStore,
-  introZoomRef,
+  introHoleRef,
   introHeadRaiseRef,
 } from "./store/introStore";
 import { useTextMorphStore } from "./store/textMorphStore";
@@ -297,7 +297,7 @@ const INTRO_HOLE_DEPTH_K = 3;
  * buco nero, dev'essere a pieno schermo il centro" — not parked low like
  * the rest pose. Gate 2 then sinks it from here to G2_Y. */
 const INTRO_HOLE_LOAD_Y = 0;
-const INTRO_HOLE_KNOT = 0.75;
+const INTRO_HOLE_KNOT = 0.5;
 /** EVENT-HORIZON radius during gate 1 (march units; the shipped rest value
  * is 0.13). THIS is what makes "siamo dentro il buco nero" literal: the
  * core is the only truly BLACK part of the march, and at 0.13 it can never
@@ -655,7 +655,10 @@ export function HomeSingularity({ lite = false }: { lite?: boolean }) {
     const place = placeRef.current;
     // Two-leg intro pose (see INTRO_HOLE_*): gate 2 SINKS the huge horizon
     // below the brand, gate 3 releases it to the tuned rest.
-    const introZoom = introZoomRef.current;
+    // The hole walks its OWN staircase (introHoleRef: 1 load → 0.5 the big
+    // low gate-2 pose → 0 rest), so the logo gate's push-in never drags it
+    // back up. KNOT is therefore the fixed 0.5 midpoint of that ref.
+    const introZoom = introHoleRef.current;
     // THE CLIMB OUT (see INTRO_HOLE_SCALE_IN): distance and every march
     // constant stay exactly as tuned — only the group's SCALE rides the
     // intro zoom, so the hole is a magnified version of itself at gate 1
@@ -686,10 +689,11 @@ export function HomeSingularity({ lite = false }: { lite?: boolean }) {
         introYFrac = THREE.MathUtils.lerp(INTRO_HOLE_G2_Y, place.yFrac, e);
         depthK = THREE.MathUtils.lerp(INTRO_HOLE_DEPTH_K, 1, e);
       }
-      // HEAD RAISE (introHeadRaiseRef): the aim lifts, so the WORLD sinks —
-      // the brand is screen-anchored and must not move (owner: "la scritta
-      // non si dovrebbe muovere").
-      introYFrac -= introHeadRaiseRef.current;
+      // PITCH COMPENSATION (introHeadRaiseRef): the camera's head raise
+      // pushes every world object DOWN in frame; adding the same fraction
+      // back here cancels it for the eclipse alone, so the hole stays
+      // pinned low while the rest of the scene tilts (owner 2026-08-28).
+      introYFrac += introHeadRaiseRef.current;
     }
     introScale *= depthK;
     const introDist = place.dist * depthK;
@@ -745,7 +749,7 @@ export function HomeSingularity({ lite = false }: { lite?: boolean }) {
     // are damped to ZERO for the whole intro and ramp back quadratically as
     // the zoom lands — the disk's own spin lives in the march time uniform
     // and is untouched. Exactly 1 at rest ⇒ byte-identical after the intro.
-    const introCalm = (1 - introZoomRef.current) ** 2;
+    const introCalm = (1 - introHoleRef.current) ** 2;
     const cox = ox * introCalm;
     const coy = oy * introCalm;
     const coz = oz * introCalm;

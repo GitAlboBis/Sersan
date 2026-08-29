@@ -45,6 +45,7 @@ import {
   introProgressRef,
   introCamShiftRef,
   introHeadRaiseRef,
+  introHoleRef,
   introZoomRef,
 } from "./store/introStore";
 import { useFxStore } from "./store/fxStore";
@@ -158,7 +159,7 @@ const INTRO_CAM_GATES = [
   // cropped mark drops into frame) WITH a small push-in on it (z 0.39 →
   // 0.44), and only then does the mark BURST (HeroLogo's INTRO_BURST_AT_S
   // is timed into this leg, after the move).
-  { z: 0.44, lift: 0.17, dur: 1.5, dwell: 0.15 },
+  { z: 0.44, lift: 0.3, dur: 1.9, dwell: 0.15 },
   // Gate 3 — the hero.
   { z: 0, lift: 0, dur: 2.6, dwell: 0 },
 ];
@@ -1016,6 +1017,7 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       introX = worldViewWidth * (INTRO_CAM_X * (1 - 0.5 * pe));
       introLift = INTRO_CAM_LIFT;
       introZoom01 = 1;
+      introHoleRef.current = 1;
       introCamFrom.current.zf = INTRO_CAM_IN;
       introCamFrom.current.lift = INTRO_CAM_LIFT;
       introCamFrom.current.x = introX;
@@ -1030,25 +1032,28 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       let fromLift = introCamFrom.current.lift;
       let zf = 0;
       let lift = 0;
-      for (const gate of INTRO_CAM_GATES) {
+      // The hole's own staircase (see introHoleRef): 1 → 0.5 across gate 2a,
+      // HELD at 0.5 through gate 2b (the logo push-in must not drag it back
+      // up), 0.5 → 0 across gate 3.
+      const HOLE_STOPS = [1, 0.5, 0.5, 0];
+      let holeP = 0;
+      for (let i = 0; i < INTRO_CAM_GATES.length; i++) {
+        const gate = INTRO_CAM_GATES[i];
         if (t < gate.dur) {
           const gt = t / gate.dur;
+          // ONE smooth cubic in-out for every channel of the leg — no
+          // leading sub-curve (owner: "i movimenti non sono più smooth").
           const ge =
             gt < 0.5 ? 4 * gt * gt * gt : 1 - Math.pow(-2 * gt + 2, 3) / 2;
           zf = fromZf + (gate.z - fromZf) * ge;
-          // The LIFT LEADS inside its own leg (owner: restore the earlier
-          // camera move): it completes in the first ~45% on its own eased
-          // clock, so in gate 2b the frame has already dropped when the mark
-          // finishes generating and bursts.
-          const lt = Math.min(gt * 2.2, 1);
-          const le =
-            lt < 0.5 ? 4 * lt * lt * lt : 1 - Math.pow(-2 * lt + 2, 3) / 2;
-          lift = fromLift + (gate.lift - fromLift) * le;
+          lift = fromLift + (gate.lift - fromLift) * ge;
+          holeP = HOLE_STOPS[i] + (HOLE_STOPS[i + 1] - HOLE_STOPS[i]) * ge;
           break;
         }
         t -= gate.dur;
         zf = gate.z;
         lift = gate.lift;
+        holeP = HOLE_STOPS[i + 1];
         if (t < gate.dwell) break;
         t -= gate.dwell;
         fromZf = gate.z;
@@ -1057,6 +1062,7 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       introZ = -CAMERA_Z * zf;
       introLift = lift;
       introZoom01 = zf / INTRO_CAM_IN;
+      introHoleRef.current = holeP;
       // The lateral whisper rides the dolly fraction — exact 0 together
       // with it.
       introX = introCamFrom.current.x * (zf / INTRO_CAM_IN);
@@ -1068,10 +1074,13 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // read by HeroLogo + HeroTextParticles) and the world/eclipse
     // (introHeadRaiseRef). One value, two consumers, so the whole scene
     // tilts as one and the cropped logo drops into frame.
-    // Both legacy shift channels stay at 0: the head raise is the camera
-    // pitch applied further down, so nothing translates on its own.
+    // The lockup translates by nothing — the head raise IS the camera pitch
+    // applied further down. The eclipse, however, must NOT ride that pitch
+    // (owner: "il buco nero deve rimanere fissato in basso fino al terzo
+    // gate"), so it receives the lift as a COUNTER-shift and holds its
+    // screen position while everything else tilts.
     introCamShiftRef.current = 0;
-    introHeadRaiseRef.current = 0;
+    introHeadRaiseRef.current = introLift;
     // Publish the zoom fraction (1 = inside the hole, 0 = landed): the
     // eclipse rides it between its swallowing-the-frame distance and its
     // hero rest — the "uscire da dentro il buco nero" of the owner concept.
