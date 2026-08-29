@@ -148,7 +148,11 @@ const INTRO_CAM_LIFT = 0.02;
  * seconds. Each leg runs cubic in-out from wherever the previous one ended
  * — continuous at every seam. */
 const INTRO_CAM_GATES = [
-  { z: 0.39, lift: 0.03, dur: 2.6, dwell: 0.2 }, // gate 2 — the mark + the glimpse
+  // Gate 2 — the mark + the sinking horizon. lift 0.03 → 0.12 (owner
+  // screenshot pass: "la camera deve alzarsi e guardare più in alto") — the
+  // composition drops enough that the generating mark AND its explosion
+  // (burst at ~2.0s, ~85% through this leg's ease) sit fully in frame.
+  { z: 0.39, lift: 0.12, dur: 2.6, dwell: 0.2 },
   { z: 0, lift: 0, dur: 2.6, dwell: 0 }, // gate 3 — the hero
 ];
 /** Total exit-clock length — the frame block idles past this. */

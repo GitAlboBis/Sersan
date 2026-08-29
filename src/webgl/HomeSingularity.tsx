@@ -264,6 +264,11 @@ const HOLE_ANCHOR_Y_FRAC = 0.01;
  * KNOT pose — continuous by construction. KNOT mirrors gate 2's landing
  * fraction in SignatureLine's INTRO_CAM_GATES (0.39 / 0.52). */
 const INTRO_HOLE_LOAD_DIST = 1.03;
+/** Load-pose yFrac (owner screenshot pass 2): the hole's CENTER sits
+ * full-screen BEHIND the forming SERSAN — "dobbiamo uscire dall'interno del
+ * buco nero, dev'essere a pieno schermo il centro" — not parked low like
+ * the rest pose. Gate 2 then sinks it from here to G2_Y. */
+const INTRO_HOLE_LOAD_Y = 0;
 const INTRO_HOLE_G2_DIST = 1.05;
 const INTRO_HOLE_G2_Y = -1.14;
 const INTRO_HOLE_KNOT = 0.75;
@@ -619,7 +624,11 @@ export function HomeSingularity({ lite = false }: { lite?: boolean }) {
           INTRO_HOLE_G2_DIST,
           legT,
         );
-        introYFrac = THREE.MathUtils.lerp(place.yFrac, INTRO_HOLE_G2_Y, legT);
+        introYFrac = THREE.MathUtils.lerp(
+          INTRO_HOLE_LOAD_Y,
+          INTRO_HOLE_G2_Y,
+          legT,
+        );
       } else {
         const legT = 1 - introZoom / INTRO_HOLE_KNOT;
         introDist = THREE.MathUtils.lerp(INTRO_HOLE_G2_DIST, place.dist, legT);
