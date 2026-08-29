@@ -513,12 +513,14 @@ export function HomeSingularity({ lite = false }: { lite?: boolean }) {
     // explicit check retires the march the same frame, no melt tail.
     // introComplete: hold behind the preloader curtain (HeroTextParticles'
     // own discipline) so the march never burns GPU under the cover.
+    // PRE-INTRO (preloader v3, owner 2026-08-28): the hole is no longer held
+    // behind the curtain — it IS the loading stage. Once its deferred build
+    // lands it shows immediately, full-screen behind the forming SERSAN
+    // ("dev'essere a pieno schermo il centro del buco nero, dietro la
+    // scritta"), and the counter waits for it (preloader's eclipse hold).
+    const preIntro = !useIntroStore.getState().introComplete;
     const morph = useTextMorphStore.getState();
-    if (
-      !morph.active ||
-      morph.introSkipped ||
-      !useIntroStore.getState().introComplete
-    ) {
+    if (!morph.active || morph.introSkipped) {
       group.visible = false;
       holeField.active = false;
       holeField.strength = 0;
@@ -560,7 +562,12 @@ export function HomeSingularity({ lite = false }: { lite?: boolean }) {
       heroHold =
         1 - THREE.MathUtils.smoothstep(scrollPx, 0, size.height * HERO_HOLD_VH);
     }
-    const opacity = ignite * melt * heroHold * revealDamped.current;
+    // The route-reveal damping is SUPPRESSED pre-intro: SignatureLine parks
+    // scrollStore.reveal at 0 while the preloader is up (the line must not
+    // draw under the chrome), which would zero the eclipse exactly when it
+    // is meant to be the stage.
+    const opacity =
+      ignite * melt * heroHold * (preIntro ? 1 : revealDamped.current);
     fadeRef.current = opacity;
     build.u.uFade.value = opacity;
     group.visible = opacity > 0.005;

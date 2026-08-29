@@ -64,6 +64,7 @@ import gsap from "gsap";
 import { useLanguage } from "@/components/language-provider";
 import { useTierStore } from "@/webgl/store/tierStore";
 import { useIntroStore, introProgressRef } from "@/webgl/store/introStore";
+import { useTextMorphStore } from "@/webgl/store/textMorphStore";
 import { getLenis } from "@/lib/lenis-singleton";
 import {
   manifestUrlsForBudget,
@@ -96,10 +97,19 @@ const STAGE_MAX_MS = 12000;
 // worst case + the 3.6s entry with margin; paths that never mount a
 // wordmark (WebGL2, phones without the brand anchor) self-resolve here.
 const WORDMARK_MAX_MS = 17000;
+// Bound on the ECLIPSE hold (owner 2026-08-28: the black hole must already
+// fill the screen behind SERSAN before the zoom-out starts). Its deferred
+// build only arms once the wordmark has assembled, so this waits on top of
+// the wordmark hold; every path that never builds one (WebGL2, lite tiers,
+// skipped intro) self-resolves here.
+const ECLIPSE_MAX_MS = 22000;
+// Milliseconds the eclipse is given to IGNITE (its own ~1.2s smoothstep
+// rise) once ready, so the reveal never starts on a half-risen horizon.
+const ECLIPSE_IGNITE_MS = 900;
 // LAST-RESORT safety only: if the scene never reports `warm` (a truly stuck
 // GPU), reveal anyway so the visitor is never trapped. Sits above
 // WORDMARK_MAX_MS with margin.
-const WATCHDOG_MS = 20000;
+const WATCHDOG_MS = 25000;
 // Counter easing toward its target each frame (fraction per ~16ms frame).
 // Lowered 0.12 → 0.08 (owner live pass 2026-08-28: "fai tutto più lento e
 // smooth") — the readout breathes instead of ticking.
@@ -220,6 +230,10 @@ export function Preloader() {
     const onHome = window.location.pathname === "/";
     let stageForced = false;
     let wordmarkForced = false;
+    let eclipseForced = false;
+    // Wall-clock stamp of the frame the eclipse first reported ready, so the
+    // hold can add its ignite beat on top (0 = not yet).
+    let eclipseReadyAt = 0;
     let manifest: PreloadManifestHandle | null = null;
     let manifestForced = false;
     const manifestProgress = () => {
@@ -248,6 +262,18 @@ export function Preloader() {
       // composed) — same shape as the stage gate, bounded by WORDMARK_MAX_MS.
       const wordmarkReady =
         !onHome || tierOff || wordmarkForced || intro.wordmarkFormed;
+      // Eclipse hold: the hole must be built AND given its ignite beat, so
+      // the curtain lifts onto a black hole already filling the frame behind
+      // the brand — never onto one still rising.
+      if (!eclipseReadyAt && useTextMorphStore.getState().eclipseReady) {
+        eclipseReadyAt = performance.now();
+      }
+      const eclipseReady =
+        !onHome ||
+        tierOff ||
+        eclipseForced ||
+        (eclipseReadyAt > 0 &&
+          performance.now() - eclipseReadyAt >= ECLIPSE_IGNITE_MS);
       const resolved =
         (signals.fonts ? 0.25 : 0) +
         (signals.load ? 0.2 : 0) +
@@ -259,7 +285,8 @@ export function Preloader() {
         signals.manifest &&
         signals.warm &&
         stageReady &&
-        wordmarkReady;
+        wordmarkReady &&
+        eclipseReady;
       const elapsed = performance.now() - startedAt;
       const minElapsed = Math.min(elapsed / minVisibleMs, 1);
       if (allReady && minElapsed >= 1) return 1;
@@ -327,6 +354,11 @@ export function Preloader() {
       window.setTimeout(() => {
         wordmarkForced = true;
       }, WORDMARK_MAX_MS),
+    );
+    fallbackTimers.push(
+      window.setTimeout(() => {
+        eclipseForced = true;
+      }, ECLIPSE_MAX_MS),
     );
 
     // ----- Counter ease + rise floor + reveal trigger (single rAF) ---------
