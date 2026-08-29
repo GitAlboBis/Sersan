@@ -44,6 +44,7 @@ import {
   useIntroStore,
   introProgressRef,
   introCamShiftRef,
+  introZoomRef,
 } from "./store/introStore";
 import { useFxStore } from "./store/fxStore";
 import { usePointerStore } from "./store/pointerStore";
@@ -994,6 +995,7 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     let introZ = 0;
     let introX = 0;
     let introLift = 0;
+    let introZoom01 = 0;
     if (!useIntroStore.getState().introComplete) {
       // LOAD: HOLD the close-up — the pull-back is not pre-spent; only the
       // lateral whisper drifts with the counter so the frame still breathes.
@@ -1002,6 +1004,7 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       introZ = -CAMERA_Z * INTRO_CAM_IN;
       introX = worldViewWidth * (INTRO_CAM_X * (1 - 0.5 * pe));
       introLift = INTRO_CAM_LIFT;
+      introZoom01 = 1;
       introCamFrom.current.zf = INTRO_CAM_IN;
       introCamFrom.current.lift = INTRO_CAM_LIFT;
       introCamFrom.current.x = introX;
@@ -1035,6 +1038,7 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       }
       introZ = -CAMERA_Z * zf;
       introLift = lift;
+      introZoom01 = zf / INTRO_CAM_IN;
       // The lateral whisper rides the dolly fraction — exact 0 together
       // with it.
       introX = introCamFrom.current.x * (zf / INTRO_CAM_IN);
@@ -1042,6 +1046,10 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     // Publish the frame lift for the screen-anchored lockup actors (mark +
     // wordmark) — each gate carries its own framing; exactly 0 past the exit.
     introCamShiftRef.current = introLift;
+    // Publish the zoom fraction (1 = inside the hole, 0 = landed): the
+    // eclipse rides it between its swallowing-the-frame distance and its
+    // hero rest — the "uscire da dentro il buco nero" of the owner concept.
+    introZoomRef.current = introZoom01;
     camera.position.z = CAMERA_Z + dollyCurrent.current * rigGate + introZ;
     camera.position.x =
       (orbitCurrent.current + parCurrent.current.x) * rigGate +

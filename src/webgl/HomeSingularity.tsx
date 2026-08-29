@@ -152,7 +152,7 @@ import { webgpuEnabled } from "./renderer/createRenderer";
 import { CAMERA_FOV } from "./constants";
 import { useScrollStore } from "./store/scrollStore";
 import { useSectionStore } from "./store/sectionStore";
-import { useIntroStore } from "./store/introStore";
+import { useIntroStore, introZoomRef } from "./store/introStore";
 import { useTextMorphStore } from "./store/textMorphStore";
 import { usePointerStore, installPointerTracking } from "./store/pointerStore";
 import { useTierStore } from "./store/tierStore";
@@ -248,6 +248,16 @@ export const holeField = {
  * d≈0.59 → 0; the t=0 rest pose d≈0.48 → ~0.58. No rect reads — pure orbit
  * arithmetic. */
 const HOLE_ANCHOR_Y_FRAC = 0.01;
+
+/** Inside-the-hole intro distance (world units, owner concept 2026-08-28:
+ * "siamo dentro il buco nero… dobbiamo uscire con uno zoom out"): the group
+ * slides between THIS camera distance and the tuned `place.dist` riding
+ * introZoomRef (1 = load hold, 0 = landed). At 1.12 the unit sphere's disk
+ * spans ≈190vh — the frame sits inside the hole, its rim first reading as
+ * the light comes up — and the value MUST stay > 1: the camera can never
+ * enter the unit sphere (FrontSide march, see the layering note). Exactly
+ * `place.dist` again at zoom 0 ⇒ the rest framing is byte-identical. */
+const INTRO_DIST_IN = 1.12;
 const HOLE_NEAR_FRAC = 0.4;
 const HOLE_FAR_FRAC = 0.58;
 
@@ -583,15 +593,23 @@ export function HomeSingularity({ lite = false }: { lite?: boolean }) {
 
     // --- Placement: CAMERA-LOCKED (see the header — a horizon, not a
     // section object). view height at the group plane = 2·tan(FOV/2)·dist.
+    // The EFFECTIVE distance rides the intro zoom (see INTRO_DIST_IN): the
+    // hole swallows the frame while we are "inside" it and slides to the
+    // tuned rest as the camera climbs out; identical to before at zoom 0.
     const place = placeRef.current;
-    const viewHAtGroup = 2 * TAN_HALF_FOV * place.dist;
+    const introDist = THREE.MathUtils.lerp(
+      place.dist,
+      INTRO_DIST_IN,
+      introZoomRef.current,
+    );
+    const viewHAtGroup = 2 * TAN_HALF_FOV * introDist;
     const aspect = size.width / size.height;
     group.position.set(
       camera.position.x +
         place.xFrac * viewHAtGroup * aspect +
         parallax.current.x,
       camera.position.y + place.yFrac * viewHAtGroup + parallax.current.y,
-      camera.position.z - place.dist,
+      camera.position.z - introDist,
     );
     // ROTATION/SCALE STAY IDENTITY FOREVER (translation only) — the raymarch
     // constants and the uCamLocal shortcut both depend on it. Never scale.

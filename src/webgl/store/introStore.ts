@@ -52,6 +52,17 @@ export const introProgressRef: { current: number } = { current: 1 };
  */
 export const introCamShiftRef: { current: number } = { current: 0 };
 
+/**
+ * Intro zoom fraction (1 = camera fully INSIDE the black hole at the load
+ * hold, 0 = landed in the hero frame; rests at 0) — published per frame by
+ * SignatureLine's intro camera rig as `current dolly / INTRO_CAM_IN`.
+ * Consumed by HomeSingularity to slide the eclipse between its
+ * inside-the-hole distance (the disk swallowing the whole frame — "siamo
+ * dentro il buco nero") and its tuned hero rest, riding the very same
+ * zoom-out. Module ref, no store notify (per-frame value).
+ */
+export const introZoomRef: { current: number } = { current: 0 };
+
 interface IntroState {
   /** False until the first-load preloader hands off; true forever after. */
   introComplete: boolean;
