@@ -831,9 +831,10 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
           (cx / size.width - 0.5) * worldViewWidth,
           camera.position.y +
             useTextMorphStore.getState().camDescend +
-            // (Preloader v3: no intro frame shift here — the wordmark must
-            // NOT move while the aim rises; the world sinks instead.)
-            (0.5 - cy / size.height) * WORLD_VIEW_HEIGHT,
+            // HEAD RAISE (introCamShiftRef, rests at 0): the SAME sink the
+            // mark and the eclipse take, so the whole scene tilts as one.
+            (0.5 - cy / size.height) * WORLD_VIEW_HEIGHT -
+            WORLD_VIEW_HEIGHT * introCamShiftRef.current,
           0,
         );
         group.position.copy(scratch);

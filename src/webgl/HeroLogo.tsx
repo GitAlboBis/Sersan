@@ -67,7 +67,11 @@ import { useGLTF } from "@react-three/drei";
 import { SPINE_TRAVEL_VH } from "@/lib/spine";
 import { WORLD_VIEW_HEIGHT } from "./constants";
 import { useTextMorphStore } from "./store/textMorphStore";
-import { useIntroStore, introCamShiftRef } from "./store/introStore";
+import {
+  useIntroStore,
+  introCamShiftRef,
+  introZoomRef,
+} from "./store/introStore";
 import {
   sampleMarkHomePositions,
   type MarkHomeField,
@@ -236,6 +240,15 @@ const INTRO_PRIME_S = 0.55; // s of hidden kill before the spores can park
  * sized to the reform bloom's completion, inside gate 2 of SignatureLine's
  * INTRO_CAM_GATES. */
 const INTRO_BURST_AT_S = 3.6;
+/** INTRO LOCKUP SPREAD (fraction of WORLD_VIEW_HEIGHT, owner 2026-08-28:
+ * "il logo è troppo vicino alla scritta, dovrebbe stare più in alto
+ * all'inizio — essendo che iniziamo con uno zoom, c'è più distanza tra un
+ * oggetto e l'altro a linea d'aria"). The mark sits HIGHER in world space
+ * for the whole zoomed-in phase, so the camera's head-raise lands it
+ * centred while the wordmark and the eclipse sink out of frame below — the
+ * rigid-camera physics the owner asked for. Rides introZoomRef down to 0,
+ * so the shipped lockup is exactly what the hero rests on. */
+const INTRO_MARK_RAISE = 0.13;
 /** Seconds (at the END of the reform clock) over which the dark occluder
  * body fades back in — kept late so the generation reads as particles
  * forming from nothing with the body filling in behind. */
@@ -965,12 +978,20 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       WORLD_VIEW_HEIGHT * (fx.heroOffsetY + hp * 0.04);
     const heroZ = fx.heroPosZ - hp * 2.2;
     const lockY =
-      camera.position.y + camDescend - WORLD_VIEW_HEIGHT * LOCKUP_OFFSET_Y;
+      camera.position.y +
+      camDescend -
+      WORLD_VIEW_HEIGHT * LOCKUP_OFFSET_Y +
+      // INTRO SPREAD (see INTRO_MARK_RAISE): the mark rides higher in space
+      // while the camera is zoomed in, so the head raise frames it while the
+      // rest of the scene sinks below. Exactly 0 once the intro lands.
+      WORLD_VIEW_HEIGHT * INTRO_MARK_RAISE * introZoomRef.current;
     group.position.set(
       heroX * flight,
-      // (Preloader v3: the mark no longer carries an intro frame shift —
-      // the "head raise" sinks the WORLD instead, so the brand never moves.)
-      THREE.MathUtils.lerp(lockY, heroY, flight),
+      // HEAD RAISE (introCamShiftRef, rests at 0): the gaze lifts, so every
+      // object sinks — this is what drops the cropped mark into frame right
+      // before its burst.
+      THREE.MathUtils.lerp(lockY, heroY, flight) -
+        WORLD_VIEW_HEIGHT * introCamShiftRef.current,
       THREE.MathUtils.lerp(fx.heroPosZ, heroZ, flight) +
         Math.sin(flight * Math.PI) * FLIGHT_BULGE,
     );

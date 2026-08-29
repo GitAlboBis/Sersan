@@ -154,10 +154,11 @@ const INTRO_CAM_GATES = [
   // 2026-08-28: "prima c'è lo zoom out del buco nero, POI la camera si
   // sposta in alto per l'esplosione".
   { z: 0.39, lift: INTRO_CAM_LIFT, dur: 2.4, dwell: 0.15 },
-  // Gate 2b — THE LOGO: the camera looks higher (lift) and holds the dolly
-  // while the mark finishes generating and BURSTS (HeroLogo's
-  // INTRO_BURST_AT_S is timed into this leg).
-  { z: 0.39, lift: 0.13, dur: 1.5, dwell: 0.15 },
+  // Gate 2b — THE LOGO: the gaze rises (lift sinks the whole scene, so the
+  // cropped mark drops into frame) WITH a small push-in on it (z 0.39 →
+  // 0.44), and only then does the mark BURST (HeroLogo's INTRO_BURST_AT_S
+  // is timed into this leg, after the move).
+  { z: 0.44, lift: 0.17, dur: 1.5, dwell: 0.15 },
   // Gate 3 — the hero.
   { z: 0, lift: 0, dur: 2.6, dwell: 0 },
 ];
@@ -1062,10 +1063,15 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
     }
     // Publish the frame lift for the screen-anchored lockup actors (mark +
     // wordmark) — each gate carries its own framing; exactly 0 past the exit.
-    // The lift is now a HEAD RAISE: the brand stays put (its own shift ref
-    // is retired to 0) and the world sinks by this amount instead.
+    // HEAD RAISE (owner 2026-08-28, final form): raising the gaze sinks
+    // EVERYTHING by the same screen fraction — the lockup (introCamShiftRef,
+    // read by HeroLogo + HeroTextParticles) and the world/eclipse
+    // (introHeadRaiseRef). One value, two consumers, so the whole scene
+    // tilts as one and the cropped logo drops into frame.
+    // Both legacy shift channels stay at 0: the head raise is the camera
+    // pitch applied further down, so nothing translates on its own.
     introCamShiftRef.current = 0;
-    introHeadRaiseRef.current = introLift;
+    introHeadRaiseRef.current = 0;
     // Publish the zoom fraction (1 = inside the hole, 0 = landed): the
     // eclipse rides it between its swallowing-the-frame distance and its
     // hero rest — the "uscire da dentro il buco nero" of the owner concept.
@@ -1485,6 +1491,17 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
       camera.rotateY(sineNoise1(12.23, 3.44, -3.234 + ts) * amp);
       camera.rotateX(sineNoise1(-2.45, 4.789, 7.343 + ts) * amp);
       camera.rotateZ(sineNoise1(23.434, -1.565, 8.454 + ts) * amp);
+    }
+    // INTRO HEAD RAISE — a REAL pitch, not a translation (owner 2026-08-28:
+    // "anche il bg allora si dovrebbe spostare, come da logica"). Tilting
+    // the camera up moves EVERYTHING down in frame — mark, wordmark, the
+    // eclipse and the starfield the march samples by ray direction — which
+    // a per-object translation could never do. The gate's `lift` is a
+    // fraction of the view height, so the angle is lift × the vertical FOV.
+    // Local rotateX after lookAt/roll, exactly the shake block's grammar;
+    // exactly 0 outside the intro.
+    if (introLift > 0.0001) {
+      camera.rotateX(introLift * THREE.MathUtils.degToRad(CAMERA_FOV));
     }
     // Fov widen (igloo's 22→30 ramp transposed to CAMERA_FOV + up to 8°).
     // Re-project ONLY on a > 0.01° change — the idle frame never touches the
