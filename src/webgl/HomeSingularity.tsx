@@ -272,6 +272,13 @@ const HOLE_ANCHOR_Y_FRAC = 0.01;
  * proxy sphere and the black core alone spans ≈130vh: the screen is the
  * inside of the hole. It shrinks to 1 across gate 2 = the climb out. */
 const INTRO_HOLE_SCALE_IN = 9;
+/** Scale + height the hole LANDS ON at the end of its climb-out (the owner's
+ * drawing): still enormous — photon ring ≈68vh radius, so a full-width arc
+ * cresting ≈62vh down, well below the brand — and only the FINAL gate walks
+ * it to the shipped size/position. Sized against the rest framing: at
+ * dist 1.758 one world unit ≈ 61vh, ring radius ≈ 0.35·scale. */
+const INTRO_HOLE_G2_SCALE = 4.8;
+const INTRO_HOLE_G2_Y = -1.2;
 /** Load-pose yFrac (owner screenshot pass 2): the hole's CENTER sits
  * full-screen BEHIND the forming SERSAN — "dobbiamo uscire dall'interno del
  * buco nero, dev'essere a pieno schermo il centro" — not parked low like
@@ -646,16 +653,23 @@ export function HomeSingularity({ lite = false }: { lite?: boolean }) {
     let introScale = 1;
     let introYFrac = place.yFrac;
     if (introZoom > 0) {
-      // Eased on the gate-2 leg (zoom 1 → KNOT); past the knot the hole is
-      // already at rest and only the camera keeps travelling.
-      const legT = THREE.MathUtils.clamp(
-        (1 - introZoom) / (1 - INTRO_HOLE_KNOT),
-        0,
-        1,
-      );
-      const e = legT * legT * (3 - 2 * legT);
-      introScale = THREE.MathUtils.lerp(INTRO_HOLE_SCALE_IN, 1, e);
-      introYFrac = THREE.MathUtils.lerp(INTRO_HOLE_LOAD_Y, place.yFrac, e);
+      if (introZoom >= INTRO_HOLE_KNOT) {
+        // Leg A — the climb out of the centre: 9x → still-enormous G2 pose.
+        const legT = (1 - introZoom) / (1 - INTRO_HOLE_KNOT);
+        const e = legT * legT * (3 - 2 * legT);
+        introScale = THREE.MathUtils.lerp(
+          INTRO_HOLE_SCALE_IN,
+          INTRO_HOLE_G2_SCALE,
+          e,
+        );
+        introYFrac = THREE.MathUtils.lerp(INTRO_HOLE_LOAD_Y, INTRO_HOLE_G2_Y, e);
+      } else {
+        // Leg B — the final gate walks it to the shipped hero framing.
+        const legT = 1 - introZoom / INTRO_HOLE_KNOT;
+        const e = legT * legT * (3 - 2 * legT);
+        introScale = THREE.MathUtils.lerp(INTRO_HOLE_G2_SCALE, 1, e);
+        introYFrac = THREE.MathUtils.lerp(INTRO_HOLE_G2_Y, place.yFrac, e);
+      }
     }
     group.scale.setScalar(introScale);
     // Inside the proxy sphere only back faces are visible; outside, the

@@ -1034,7 +1034,14 @@ export function SignatureLine({ tier, pathname, anchors }: SignatureLineProps) {
           const ge =
             gt < 0.5 ? 4 * gt * gt * gt : 1 - Math.pow(-2 * gt + 2, 3) / 2;
           zf = fromZf + (gate.z - fromZf) * ge;
-          lift = fromLift + (gate.lift - fromLift) * ge;
+          // The LIFT LEADS inside its own leg (owner: restore the earlier
+          // camera move): it completes in the first ~45% on its own eased
+          // clock, so in gate 2b the frame has already dropped when the mark
+          // finishes generating and bursts.
+          const lt = Math.min(gt * 2.2, 1);
+          const le =
+            lt < 0.5 ? 4 * lt * lt * lt : 1 - Math.pow(-2 * lt + 2, 3) / 2;
+          lift = fromLift + (gate.lift - fromLift) * le;
           break;
         }
         t -= gate.dur;

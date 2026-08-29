@@ -1275,12 +1275,20 @@ export function HeroLogo({ tier, anchors }: HeroLogoProps) {
       // (text build absent/failed → the ref never advances past 0) waives
       // the clause entirely; soft entry never arms the clock at all.
       if (autoBurstClock.current < 0) {
+        // (Preloader v3: the hard-load arming moved OUT of here and onto the
+        // camera's logo gate — the INTRO_BURST_AT_S countdown above. This
+        // legacy clause fired on the reform's own completion (~2.07s), which
+        // put the explosion BEFORE the camera had moved to look at the mark
+        // — owner 2026-08-28: "prima si sposta la camera per guardare il
+        // logo, POI il logo esplode". Kept only as the entry-progress path
+        // for a morph that never runs its own intro.)
         const wordmarkNearlyFormed =
           !morph.active ||
           morph.introSkipped ||
           entryProgressRef.value >= fx.sporeAutoBurstAt;
         if (
           !softEntryRef.current &&
+          introBurstDelay.current < 0 &&
           introReformClock.current >= INTRO_REFORM_RELEASE &&
           wordmarkNearlyFormed
         ) {
