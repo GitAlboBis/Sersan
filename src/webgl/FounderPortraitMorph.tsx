@@ -134,12 +134,16 @@ const MAX_COUNT_BY_TIER: Record<"full" | "lite", number> = {
   //
   //   sharedCells 51,751 · stride 1 · count 51,751
   //
-  // TODO (N=4, 2026-08-27): the fourth headshot (alberto-headshot.webp) is a
-  // PLACEHOLDER monogram card until the real photo lands, so the union has
-  // NOT been re-measured. A fourth head of similar framing plausibly adds
-  // 5–10k cells → ~57–62k against this 60,000 ceiling. When the real headshot
-  // ships: measure getSampler().stride (MUST be 1) and sharedCells, then either
-  // raise this ceiling or shrink GRID_W/GRID_H by sqrt(wanted/measured).
+  // N=4 RESOLVED (2026-09-04): the real alberto-headshot.webp shipped and the
+  // union WAS re-measured in-browser, as the old TODO here demanded —
+  //
+  //   sharedCells 80,491 · stride 1 · count 80,491 · maxCount 100,000
+  //
+  // stride reads 1 (the requirement) with ~19.5% of headroom left under the
+  // ceiling, so nothing here had to move. The portrait was reframed to the
+  // shared head geometry measured off the three shipped headshots (hair top
+  // 0.171 of frame height, head width 0.417 of frame width, face centre
+  // 0.486) precisely so this union would not jump.
   //
   // Frame timing at that real instance count: median 144.9fps, p95 7.3ms — no
   // performance concern here, the count is not what to economise on.
@@ -744,19 +748,32 @@ export function FounderPortraitMorph({
     // aspect-[3/4]). It is X-bound with all three shipped headshots, and a
     // subject with a wider measured extent would not flip the fit — it would
     // simply lower worldPerGrid a few percent and render EVERY face slightly
-    // smaller. Expect halfExtent ≈ [[136,134],[129,137],[136,135]]; investigate
-    // only if max(halfExtentX) > 143. NEVER lower `fadeStart` to chase this: it
-    // is shared, so it would shrink everyone's bust. Check getSampler().
+    // smaller. NEVER lower `fadeStart` to chase this: it is shared, so it would
+    // shrink everyone's bust. Check getSampler().
     //
-    // max(halfExtentX) is ALESSANDRO's 136.50, as it has always been. Mattia is
-    // NOT the widest extent, so `worldPerGrid` is unchanged from the two-portrait
-    // build and the ~3% global face shrink the pre-wash analysis predicted does
-    // NOT occur. That is a property of the ASSET, not of this code: Mattia's
-    // headshot carries a vertical wash of the torso toward the white backdrop
-    // (face untouched above the chin), which took his halfExtent from [140,146]
-    // to [136,135]. Re-export that headshot WITHOUT the wash and both these
-    // expectations and the measured 51,751 union behind MAX_COUNT_BY_TIER stop
-    // holding — re-measure IN-BROWSER via __sersanFounderMorph.getSampler().
+    // MEASURED N=4, depth-matte era (2026-09-04, A→B→C→D = Alessandro,
+    // Michele, Alberto, Mattia):
+    //
+    //   [[183.13,171.40], [174.83,177.59], [178.82,171.74], [182.38,173.56]]
+    //
+    // (The [[136,134],[129,137],[136,135]] figures this note used to quote are
+    // PRE-depth-matte: ink became PRESENCE, so every extent grew ~35%. The old
+    // "investigate above 143" tripwire went with them — the number to watch is
+    // whether ONE portrait pulls away from the pack, not any absolute.)
+    //
+    // max(halfExtentX) is ALESSANDRO's 183.13, as it has always been. Alberto
+    // — the newest face — is NOT the widest, so `worldPerGrid` is unchanged and
+    // the global face shrink a wider fourth subject would have caused does NOT
+    // occur. That is a property of the ASSET, not of this code, and it was
+    // engineered: his headshot is reframed to the shared head geometry
+    // (hair top 0.171 · head width 0.417 · centre 0.486, measured off the three
+    // that shipped before it) and carries the same vertical wash of the torso
+    // toward the white backdrop that Mattia's does — the wash is what keeps the
+    // extent bound to the HEAD instead of to the shoulders, which reach the
+    // frame edge in the raw studio plate. Re-export any headshot WITHOUT the
+    // wash and both these expectations and the measured 80,491 union behind
+    // MAX_COUNT_BY_TIER stop holding — re-measure IN-BROWSER via
+    // __sersanFounderMorph.getSampler().
     // research/portrait-calibration/sampler_port.py is an order-of-magnitude
     // check only; it under-predicted the three-portrait union by ~8%.
     // LIT build iff EVERY target carries a depth twin (decided here because the
