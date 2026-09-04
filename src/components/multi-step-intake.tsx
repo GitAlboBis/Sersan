@@ -165,7 +165,6 @@ function copy(language: "en" | "it") {
     errorName: "Required.",
     errorEmail: "Use a working email.",
     errorCompany: "Required.",
-    footer: "Read by a founder · Reply within one business day",
   };
 
   const it = {
@@ -209,7 +208,6 @@ function copy(language: "en" | "it") {
     errorName: "Richiesto.",
     errorEmail: "Usate un'email funzionante.",
     errorCompany: "Richiesto.",
-    footer: "Letto da un founder · Risposta entro un giorno lavorativo",
   };
 
   return language === "it" ? it : en;
@@ -1191,9 +1189,11 @@ export function MultiStepIntake() {
               </div>
             )}
 
-            <p className="mt-6 text-[10px] font-mono uppercase tracking-[0.14em] text-ink-mute text-center">
-              {t.footer}
-            </p>
+            {/* REMOVED 2026-09-04 (owner: "scritte piccole inutili"): the
+                10px mono strip under Send, "Read by a founder · Reply within
+                one business day" — a promise this screen already makes. The
+                whole <p> goes, not just the text, or its mt-6 would leave an
+                empty 24px band under the button. */}
           </div>
         )}
       </div>

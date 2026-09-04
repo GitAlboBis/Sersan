@@ -1922,23 +1922,14 @@ export default function FoundersRail() {
   // (scroller `pb`) +22 (the <DragRail> affordance's own box) = −94. The spec
   // budgets −52 for this file because it does not carry the affordance's cost
   // on this row; that is where the remaining 6px sits.
+  // REMOVED 2026-09-04 (owner: "ci sono disclaimer con scritte piccole
+  // inutili, come questa: 'Read by one of us, not a queue. Briefs sent through
+  // /start get a reply within one business day.'"). The same reply promise
+  // renders on /audit, /consulting, /contact and FinalCTA — which sits two
+  // sections below this one. The row keeps its "Full team bios" link and now
+  // justifies it to the end, since it is the only child.
   const closing = (
-    <div className="container-px flex flex-col gap-5 py-6 sm:flex-row sm:items-center sm:justify-between sm:py-14">
-      <p className="max-w-2xl text-[14px] text-ink-mute leading-relaxed">
-        {isEn ? (
-          <>
-            Read by one of us, not a queue. Briefs sent through{" "}
-            <span className="text-ink">/start</span> get a reply within one
-            business day.
-          </>
-        ) : (
-          <>
-            Letto da uno di noi, non da una coda. I brief inviati tramite{" "}
-            <span className="text-ink">/start</span> ricevono risposta entro un
-            giorno lavorativo.
-          </>
-        )}
-      </p>
+    <div className="container-px flex flex-col gap-5 py-6 sm:flex-row sm:items-center sm:justify-end sm:py-14">
       <Link
         href="/about"
         className="group inline-flex items-center gap-2 font-mono text-[11px] tracking-[0.14em] uppercase text-ink hover:text-[hsl(var(--accent))] transition-colors shrink-0"
@@ -2127,15 +2118,26 @@ export default function FoundersRail() {
                 className="container-px pointer-events-none absolute inset-0 flex items-end justify-between gap-8 pb-[3.25rem] sm:pb-[3.75rem]"
                 style={i === 0 ? undefined : { opacity: 0 }}
               >
-                <div className="flex w-[22rem] flex-col gap-2">
-                  <h3 className="flex items-center gap-2 font-display text-[clamp(1.5rem,2vw,2rem)] leading-none text-ink">
+                {/* OWNER 2026-09-04: "i nomi siano più grandi sotto le foto di
+                    particelle." Up from clamp(1.5rem,2vw,2rem). The column
+                    widens 22 -> 28rem with it so the longest name on the roster
+                    ("Alessandro Serratt", ~18 characters at roughly 0.5em of
+                    display advance ≈ 430px at the 3rem ceiling) still sets on
+                    ONE line inside 448px — the diamond glyph and the name share
+                    a baseline row, so a wrap would push the hairline down and
+                    break the bottom alignment the stage is composed on. The
+                    frame's bottom-left spacer stays 22rem: it only reserves
+                    flow space under an absolutely-positioned overlay and is
+                    never seen. */}
+                <div className="flex w-[28rem] flex-col gap-2">
+                  <h3 className="flex items-center gap-2 font-display text-[clamp(1.9rem,2.9vw,3rem)] leading-[0.95] text-ink">
                     <span
                       aria-hidden="true"
                       className="inline-block h-[0.45em] w-[0.45em] rotate-45 border border-[hsl(var(--accent))]"
                     />
                     {f.name}
                   </h3>
-                  <p className="font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute">
+                  <p className="font-mono text-[11px] tracking-[0.18em] uppercase text-ink-mute">
                     {isEn ? f.roleEn : f.roleIt}
                   </p>
                   {/* auto-advance hairline (Lusion's indicator): scaleX = the
@@ -2151,15 +2153,27 @@ export default function FoundersRail() {
                     />
                   </div>
                 </div>
-                <div className="pointer-events-auto flex w-[24rem] max-w-[38vw] flex-col gap-3">
-                  <p className="text-[12.5px] leading-relaxed text-ink-mute sm:text-[13px]">
+                {/* OWNER 2026-09-04: "le descrizioni delle persone, quelle a
+                    destra, siano più grandi e più in alto, sotto la scritta
+                    Built by the people who build and run it."
+                    `self-start` lifts THIS column out of the row's `items-end`
+                    (the name block on the left keeps its bottom alignment and
+                    its auto-advance hairline), and the margin clears the top
+                    row: pt-[5.75rem] (92px) + eyebrow with its mb-3 (~25px) +
+                    two lines of the h2 at its clamp ceiling (~76px) ≈ 193px,
+                    plus a ~43px breath. The heading wraps to two lines across
+                    the whole clamp range at its max-w-[26rem], so this offset
+                    is stable; the column matches that 26rem so the two share
+                    one right-hand edge. */}
+                <div className="pointer-events-auto flex w-[26rem] max-w-[40vw] flex-col gap-4 self-start mt-[14.75rem]">
+                  <p className="text-[15px] leading-relaxed text-ink-mute sm:text-[16px]">
                     {isEn ? f.shortBioEn : f.shortBioIt}
                   </p>
                   <ul className="flex flex-wrap gap-1.5 list-none">
                     {(isEn ? f.credentialsEn : f.credentialsIt).map((c) => (
                       <li
                         key={c}
-                        className={`${CHIP_CLASS} gap-2 text-[10.5px] text-ink leading-snug`}
+                        className={`${CHIP_CLASS} gap-2 text-[12px] text-ink leading-snug`}
                       >
                         <span
                           aria-hidden="true"
@@ -2171,14 +2185,14 @@ export default function FoundersRail() {
                   </ul>
                   {f.previouslyAt && f.previouslyAt.length > 0 ? (
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="mr-1 font-mono text-[9px] tracking-[0.18em] uppercase text-ink-mute/70">
+                      <span className="mr-1 font-mono text-[10px] tracking-[0.18em] uppercase text-ink-mute/70">
                         {isEn ? "Previously" : "In precedenza"}
                       </span>
                       <ul className="contents list-none">
                         {f.previouslyAt.map((co) => (
                           <li
                             key={co}
-                            className={`${CHIP_CLASS} font-mono text-[9px] tracking-[0.1em] uppercase text-ink-mute`}
+                            className={`${CHIP_CLASS} font-mono text-[10px] tracking-[0.1em] uppercase text-ink-mute`}
                           >
                             {co}
                           </li>
@@ -2191,10 +2205,10 @@ export default function FoundersRail() {
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label={`${f.name} on LinkedIn`}
-                    className="inline-flex w-fit items-center gap-2 rounded-full border border-[hsl(var(--ink)/0.25)] bg-[hsl(var(--bg)/0.6)] px-3.5 py-1.5 font-mono text-[10px] tracking-[0.14em] uppercase text-ink-mute backdrop-blur transition-colors hover:border-[hsl(var(--accent)/0.6)] hover:text-ink"
+                    className="inline-flex w-fit items-center gap-2 rounded-full border border-[hsl(var(--ink)/0.25)] bg-[hsl(var(--bg)/0.6)] px-4 py-2 font-mono text-[11px] tracking-[0.14em] uppercase text-ink-mute backdrop-blur transition-colors hover:border-[hsl(var(--accent)/0.6)] hover:text-ink"
                   >
                     LinkedIn
-                    <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                    <ArrowUpRight className="h-3.5 w-3.5" aria-hidden="true" />
                   </Link>
                 </div>
               </div>

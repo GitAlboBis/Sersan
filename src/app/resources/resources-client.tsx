@@ -553,11 +553,10 @@ export function ResourcesClient() {
                   </>
                 )
               }
-              description={
-                isEn
-                  ? "Describe the problem in two or three sentences. A founder reads it and replies within one business day."
-                  : "Raccontateci il problema in due o tre frasi. Legge un founder e risponde entro un giorno lavorativo."
-              }
+              /* description removed 2026-09-04 (owner: "scritte piccole
+                 inutili") — the same brief-and-reply promise the site makes on
+                 /audit, /contact, /start and FinalCTA. SectionHeading guards
+                 the slot, so the heading simply renders without it. */
             />
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <Button

@@ -123,13 +123,13 @@ export default function FinalCTA() {
                   : "Un processo, un'idea di prodotto, un sistema che continua a rompersi o qualcosa che il vostro team fa ancora a mano. Raccontateci cosa succede. Vi diciamo cosa faremmo dopo."}
               </p>
 
-              <p className="max-w-xl text-sm leading-relaxed text-ink-mute">
-                {`${pick(isEn, FACTS.briefIsEnough)}. ${
-                  isEn
-                    ? "No marketing follow-ups, no demo decks."
-                    : "Nessun follow-up commerciale, nessuna presentazione demo."
-                }`}
-              </p>
+              {/* REMOVED 2026-09-04 (owner: "disclaimer con scritte piccole
+                  inutili"): "Two or three sentences is enough. No marketing
+                  follow-ups, no demo decks." — a 14px permission-giver under a
+                  paragraph that already says "Tell us what's happening. We'll
+                  tell you what we'd do next." FACTS.briefIsEnough survives: it
+                  still renders on /audit, /case-studies and the case-study
+                  detail pages. */}
 
               <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
                 {/* The pair was already `w-full sm:w-auto`, but the cva base's

@@ -525,11 +525,9 @@ export default function ServiceDetail({
                       </>
                     )
                   }
-                  description={
-                    isEn
-                      ? `If your question isn't here, send it with your brief and a founder will answer it. ${FACTS.replyTime.en}.`
-                      : `Se la vostra domanda non è qui, inviatela insieme al brief: risponde un founder. ${FACTS.replyTime.it}.`
-                  }
+                  /* description removed 2026-09-04 (owner: "scritte piccole
+                     inutili") — a hedge under the FAQ heading restating the
+                     reply promise. */
                 />
               </div>
               <div className="lg:col-span-7">
@@ -609,7 +607,7 @@ export default function ServiceDetail({
                     <ArrowRight className="ml-2 h-5 w-5 transition-transform duration-300 group-hover:translate-x-1" />
                   </Button>
                 </Link>
-                <Link href="/#process" className={CTA_WRAPPER_SM}>
+                <Link href="/consulting#process" className={CTA_WRAPPER_SM}>
                   <Button variant="heroOutline" size="xl" className={CTA_FLUID_SM}>
                     {isEn
                       ? "See how engagements run"

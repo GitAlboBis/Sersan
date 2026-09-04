@@ -1179,11 +1179,14 @@ export default function ServicesSection() {
         ref={annotationRef}
         className="max-w-md text-[13px] leading-relaxed text-ink-mute"
       >
-        {`${
-          isEn
-            ? "Every engagement is scoped and priced before we build."
-            : "Ogni progetto ha uno scope e un prezzo definiti prima di costruire."
-        } ${pick(isEn, POSITIONING.core)}`}
+        {/* The "Every engagement is scoped and priced before we build."
+            clause was cut 2026-09-04 (owner: "disclaimer con scritte piccole
+            inutili") — it raised price terms next to "Four services. One
+            discipline.", before the reader has asked, and it was the same
+            promise as the fixed-scope strip removed in the same pass.
+            POSITIONING.core stays: it is a named brand asset, and it is the
+            actual annotation this line exists to carry. */}
+        {pick(isEn, POSITIONING.core)}
       </p>
     </div>
   );
@@ -1191,13 +1194,13 @@ export default function ServicesSection() {
   // Section closer — plain text only. The /start CTA that lived here was
   // removed in the restyle-step-2 CTA dedupe (home keeps exactly three
   // /start moments: spine handover, post-case-studies, FinalCTA).
-  const closing = (
-    <p className="max-w-xl text-[14px] text-ink-mute leading-relaxed">
-      {isEn
-        ? "Not sure which one fits? Describe the problem. We'll tell you which one fits, and how small the first piece can be."
-        : "Non sapete quale sia quello giusto? Descriveteci il problema. Vi diciamo quale ingaggio serve e quanto può essere piccolo il primo passo."}
-    </p>
-  );
+  // REMOVED 2026-09-04 (owner named this line): "Not sure which one fits?
+  // Describe the problem. We'll tell you which one fits, and how small the
+  // first piece can be." The section already ends on its cards; the hedge
+  // restated /start, which the spine, the post-work CTA and FinalCTA all make.
+  // `null` keeps both render sites (the pinned runway and the native stack)
+  // structurally identical — React renders nothing for it.
+  const closing = null;
 
   // Native fallback (≤768px / coarse / reduced-motion): the unpinned stacked
   // grid — no runway, no transforms, browser-owned scroll.

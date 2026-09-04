@@ -10,7 +10,7 @@ import { CalEmbed } from "@/components/cal-embed";
 import { Reveal } from "@/components/ui/reveal";
 import { useLanguage } from "@/components/language-provider";
 import { cn } from "@/lib/utils";
-import { CTA, FACTS, pick } from "@/data/copy";
+import { CTA, pick } from "@/data/copy";
 import { CONTACT_EMAIL } from "@/lib/site";
 
 export function ContactClient() {
@@ -95,7 +95,8 @@ export function ContactClient() {
                 style={{ background: "hsl(var(--accent))" }}
                 aria-hidden="true"
               />
-              {pick(isEn, FACTS.replyTime)}
+              {/* reply-promise text removed 2026-09-04 (owner) — the accent
+                  dot above stays as the live/available indicator. */}
             </p>
             {/* key={language}: SplitText owns this subtree once split; a language
                 swap must remount it or React reconciles against orphaned nodes
@@ -304,11 +305,8 @@ export function ContactClient() {
                   ? "Send a written brief — a founder replies within one business day with a recommended next step."
                   : "Inviate un brief scritto: un founder risponde entro un giorno lavorativo con il prossimo passo consigliato."}
               </p>
-              <p className="text-sm text-ink-mute leading-[1.55]">
-                {isEn
-                  ? "Whoever replies is the person who would own the work itself, and they answer in their own words."
-                  : "Chi risponde è la stessa persona che seguirebbe il lavoro, e risponde con parole sue."}
-              </p>
+              {/* REMOVED 2026-09-04 (owner) — the paragraph above already
+                  says a founder replies with a recommended next step. */}
             </div>
             <div className="lg:col-span-3">
               <CalEmbed slug="sersan/scoping-call" theme="dark" />

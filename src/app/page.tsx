@@ -5,7 +5,6 @@ import FeaturedWork from "@/components/sections/featured-work";
 import ServicesSection from "@/components/sections/services-section";
 import ProductionGradeSection from "@/components/sections/production-grade-section";
 import FoundersRail from "@/components/sections/founders-rail";
-import FixedScopeStrip from "@/components/sections/fixed-scope-strip";
 import FitSection from "@/components/sections/fit-section";
 import FinalCTA from "@/components/sections/final-cta";
 
@@ -85,9 +84,17 @@ export default function Home() {
       <div data-line-anchor="founders">
         <FoundersRail />
       </div>
-      <div data-line-anchor="process">
-        <FixedScopeStrip />
-      </div>
+      {/* REMOVED 2026-09-04 (owner: "ci sono disclaimer con scritte piccole
+          inutili" — the fixed-scope strip was named). It was a 13.5px card
+          restating CONTINUATION, which /consulting renders in full under "How
+          we engage"; the two /#process links that pointed here (start-client,
+          service-detail) now go straight to /consulting#process.
+          The ANCHOR STAYS as a zero-height div — same treatment as
+          "work-in-progress" above: routeCurves has a waypoint keyed on
+          "process" and an unresolvable anchor collapses it to document
+          fraction 0, which deforms the whole home curve. The component file
+          is parked, not deleted (institution-marks precedent). */}
+      <div data-line-anchor="process" />
       <div data-line-anchor="fit">
         <FitSection />
       </div>

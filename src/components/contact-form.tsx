@@ -240,11 +240,9 @@ export function ContactForm() {
       )}
 
       <div className="pt-2 flex items-center justify-between gap-4 flex-wrap">
-        <p className="text-xs text-ink-mute">
-          {isEn
-            ? "Two or three sentences is enough. Read by a founder."
-            : "Bastano due o tre frasi. Lo legge un founder."}
-        </p>
+        {/* REMOVED 2026-09-04 (owner: "scritte piccole inutili"): a 12px
+            softener beside the submit button. The row keeps `justify-between`,
+            which now simply right-aligns the button. */}
         <Button type="submit" variant="hero" size="lg" disabled={submitting} className="gap-2">
           {submitting && <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />}
           {submitting

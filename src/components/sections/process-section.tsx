@@ -377,27 +377,17 @@ export default function ProcessSection() {
           className="mb-10 sm:mb-12 max-w-3xl"
         />
 
-        {/* Fixed-scope guarantee strip — makes "sized to the job" concrete
-            and prominent: one accent-bordered band stating that scope and
-            price are agreed first and that continuation is earned. */}
-        <Reveal>
-          <div
-            className="
-              mb-10 sm:mb-14 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6
-              rounded-[var(--radius-lg)] border border-[hsl(var(--accent)/0.3)]
-              bg-[hsl(var(--accent)/0.05)] px-5 py-4
-            "
-          >
-            <span className="font-mono text-[10px] tracking-[0.2em] uppercase text-[hsl(var(--accent))] shrink-0">
-              {isEn ? "Fixed scope" : "Perimetro fisso"}
-            </span>
-            <p className="text-[13.5px] text-ink leading-relaxed">
-              {isEn
-                ? `Scope and price are agreed before work starts. ${pick(isEn, CONTINUATION)}`
-                : `Perimetro e prezzo concordati prima di iniziare. ${pick(isEn, CONTINUATION)}`}
-            </p>
-          </div>
-        </Reveal>
+        {/* REMOVED 2026-09-04 (owner quoted this strip verbatim as an
+            example of "disclaimer con scritte piccole inutili"): the
+            accent-bordered "Fixed scope · Scope and price are agreed before
+            work starts. Continuation is earned…" band. The line one above it
+            already reads "Start at any phase, stop after any phase. Price and
+            scope are fixed before work begins.", and "Fixed scope" also runs
+            as act 01's rail qualifier on this same page.
+            FLAG FOR THE OWNER: with the home strip unmounted in the same pass,
+            the CONTINUATION claim now renders on exactly one surface site-wide
+            — /about rule 02, "Scope with an end". Spacing is safe: this band's
+            mb-10/sm:mb-14 was redundant with the heading's own bottom margin. */}
 
         {/* The drawn sequence. Desktop (lg+): one horizontal hairline spine
             spans the map; the accent overlay draws left→right with scroll and

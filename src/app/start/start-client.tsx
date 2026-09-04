@@ -133,22 +133,15 @@ export function StartClient() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-16">
             <div className="lg:col-span-7">
               {/* key={language}: same SplitText remount contract as the h1. */}
-              <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-3xl leading-[1.05] tracking-[-0.022em] text-ink mb-2">
+              <h2 key={language} data-split-reveal className="font-display text-2xl sm:text-3xl leading-[1.05] tracking-[-0.022em] text-ink mb-8">
                 {pick(isEn, CTA.primary)}
               </h2>
-              <p className="text-[13.5px] text-ink-mute mb-8 leading-relaxed">
-                {isEn ? (
-                  <>
-                    Four required fields, everything else optional. Read by one
-                    of the founders, who replies with a recommended first step.
-                  </>
-                ) : (
-                  <>
-                    Quattro campi obbligatori, il resto è facoltativo. Lo legge
-                    uno dei founder, che risponde con un primo passo consigliato.
-                  </>
-                )}
-              </p>
+              {/* REMOVED 2026-09-04 (owner: "disclaimer con scritte piccole
+                  inutili"): "Four required fields, everything else optional.
+                  Read by one of the founders, who replies with a recommended
+                  first step." The form states its own required fields, and the
+                  reply promise is made by the panel beside it. `mb-8` moves to
+                  the h2 so the gap above the form is unchanged. */}
               <StartIntakeForm />
             </div>
 
@@ -218,7 +211,7 @@ export function StartClient() {
                 <ul className="flex flex-col gap-2 text-[13.5px] text-ink-mute">
                   <li>
                     <a
-                      href="/#process"
+                      href="/consulting#process"
                       className="text-ink hover:text-[hsl(var(--accent))] transition-colors underline underline-offset-4 decoration-[hsl(var(--ink-mute)/0.3)] hover:decoration-[hsl(var(--accent))]"
                     >
                       {isEn ? "How we work →" : "Come lavoriamo →"}

@@ -173,9 +173,10 @@ export function AuditClient() {
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
             </Link>
-            <p className="mt-4 text-xs text-muted-foreground">
-              {pick(isEn, FACTS.briefIsEnough)}. {pick(isEn, FACTS.replyTime)}.
-            </p>
+            {/* REMOVED 2026-09-04 (owner: "disclaimer con scritte piccole
+                inutili"): a 12px "Two or three sentences is enough. Reply
+                within one business day." tucked under the hero CTA. Both
+                constants stay used elsewhere. */}
           </div>
         </div>
       </section>
@@ -477,9 +478,14 @@ export function AuditClient() {
                     ? "Tell us what's slowing the business down. If a diagnostic is the right shape, we'll scope it. If it isn't, we'll say so and tell you what we'd do instead."
                     : "Raccontateci cosa sta rallentando l'azienda. Se una diagnosi è la forma giusta, la definiamo. Se non lo è, ve lo diciamo e vi diciamo cosa faremmo al suo posto."}
                 </span>
-                <span className="block mt-4 max-w-md mx-auto text-sm">
-                  {pick(isEn, FACTS.readByFounder)}. {pick(isEn, FACTS.replyTime)}.
-                </span>
+                {/* REMOVED 2026-09-04 (same owner note): "Read by a founder,
+                    not a queue. Reply within one business day." — near-verbatim
+                    the line the owner quoted from the founders rail. The span
+                    above already says what happens when it is not a fit.
+                    NOTE: this was FACTS.readByFounder's only render site, so
+                    that constant in src/data/copy.ts is now unused — left in
+                    place deliberately rather than deleted from the shared
+                    copy table. */}
               </>
             }
           />

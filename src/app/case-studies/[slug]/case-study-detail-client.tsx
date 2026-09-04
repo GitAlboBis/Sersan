@@ -18,7 +18,7 @@ import {
 import { isFlipArmedFor } from "@/lib/flip-handoff-store";
 import { useReturnFlipSource } from "@/lib/use-flip-source";
 import { attributionLine, statusLabel } from "@/components/work/attribution";
-import { CTA, FACTS, pick } from "@/data/copy";
+import { CTA, pick } from "@/data/copy";
 import { START_HREF } from "@/lib/site";
 import { track, EVENTS } from "@/lib/analytics";
 
@@ -560,14 +560,12 @@ export function CaseStudyDetailClient({
             {isEn ? (
               <>
                 Start with the problem, not the platform. Tell us what&apos;s
-                slow, manual or breaking. {FACTS.briefIsEnough.en} — a founder
-                reads it.
+                slow, manual or breaking.
               </>
             ) : (
               <>
                 Si parte dal problema, non dalla piattaforma. Raccontateci cosa
-                è lento, manuale o si rompe. {FACTS.briefIsEnough.it}: a
-                leggere è un founder.
+                è lento, manuale o si rompe.
               </>
             )}
           </p>

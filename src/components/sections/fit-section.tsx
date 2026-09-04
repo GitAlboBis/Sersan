@@ -970,11 +970,17 @@ export default function FitSection() {
 
   /* ---- Shared strings / blocks (copy byte-identical) ------------------ */
 
-  // Single-sourced: the native branch renders it through SectionHeading,
-  // the pinned branch hangs it top-right as the annotation.
-  const description = isEn
-    ? "What follows describes a good brief, not a hurdle. And if the honest answer is spend the money elsewhere, or wait, we'd rather say that on the first call than three weeks in."
-    : "Quella che segue è la descrizione di un buon brief, non un esame. E se la risposta onesta è spendere altrove, o aspettare, preferiamo dirlo alla prima call, non dopo tre settimane.";
+  // REMOVED 2026-09-04 (owner named this line): "What follows describes a good
+  // brief, not a hurdle. And if the honest answer is spend the money
+  // elsewhere, or wait, we'd rather say that on the first call than three
+  // weeks in." A hedge about the section that follows, in 13px, above a
+  // section whose whole argument IS that honesty — it apologised for its own
+  // content. `null` rather than deleting the binding: SectionHeading's
+  // `description` is optional and already guarded (`{description ? …}`), the
+  // pinned annotation below is now guarded the same way, and both
+  // `[data-fit-annotation]` lookups in the scroll effect are `querySelector` +
+  // `if (annot)`, so the beat simply does not run.
+  const description = null;
 
   // NATIVE BRANCHES ONLY (the pinned branch sets the title as the in-frame
   // chapter statement instead). `mb-6` is the base-only value: below 640px
@@ -1007,21 +1013,16 @@ export default function FitSection() {
     </div>
   );
 
-  const closingBlock = (
-    <p className="text-[14px] text-ink-mute max-w-md">
-      {isEn ? (
-        <>
-          If you&apos;re unsure, send the brief. We&apos;ll tell you quickly,
-          and in writing.
-        </>
-      ) : (
-        <>
-          Se avete dubbi, inviateci il brief. Ve lo diremo in fretta, e per
-          iscritto.
-        </>
-      )}
-    </p>
-  );
+  // REMOVED 2026-09-04 (owner: "disclaimer con scritte piccole inutili"):
+  // "If you're unsure, send the brief. We'll tell you quickly, and in
+  // writing." — the twin of the hedge already cut above (`description`), and
+  // FinalCTA makes the same offer at full size one gateway gap below.
+  // `null` rather than deleting the binding, exactly as `description` was
+  // handled: the block renders at TWO sites (the native branch and the pinned
+  // branch), and the pinned one's wrapper div carries that section's whole
+  // bottom padding before the gateway gap — removing the div would cost the
+  // home layout up to 128px of section end.
+  const closingBlock = null;
 
   /* ---- Native layout A: the v1 two-column lists (`lg` and above) ------ *
    * Byte-identical to what shipped before the paired-rows work. A coarse
@@ -1358,14 +1359,16 @@ export default function FitSection() {
           {/* ---- The annotation (z-10) — the description hung top-right as
                a small column (the Noomo/Lusion pairing). Static in the
                scrub; blur-fades in after the statement's intro rise. */}
-          <div className="container-px absolute inset-x-0 top-[12vh] z-10">
-            <p
-              data-fit-annotation
-              className="ml-auto w-[300px] max-w-[38vw] text-[13px] leading-relaxed text-ink-mute"
-            >
-              {description}
-            </p>
-          </div>
+          {description ? (
+            <div className="container-px absolute inset-x-0 top-[12vh] z-10">
+              <p
+                data-fit-annotation
+                className="ml-auto w-[300px] max-w-[38vw] text-[13px] leading-relaxed text-ink-mute"
+              >
+                {description}
+              </p>
+            </div>
+          ) : null}
 
           {/* ---- The pane field (z-20, in FRONT of the type) — REAL copy,
                NOT aria-hidden. Velocity skew lives on this wrapper only

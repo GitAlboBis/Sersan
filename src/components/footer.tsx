@@ -8,7 +8,6 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
 import { SersanLogo } from "@/components/sersan-logo";
 import { useLanguage } from "@/components/language-provider";
-import { NowWidget } from "@/components/fx/now-widget";
 import { CONTACT_EMAIL, START_HREF } from "@/lib/site";
 import { track, EVENTS } from "@/lib/analytics";
 import { CTA, FACTS, POSITIONING, pick } from "@/data/copy";
@@ -373,10 +372,15 @@ export function Footer() {
                 <span aria-hidden="true" className="status-dot" />
                 {CONTACT_EMAIL}
               </a>
-              <span className="font-mono text-[11px] tracking-[0.12em] uppercase text-ink-mute">
-                {pick(isEn, FACTS.replyTime)}
-              </span>
-              <NowWidget />
+              {/* REMOVED 2026-09-04 (owner: "la footer ha troppe scritte
+                  piccole che sono inutili e ripetitive, toglile"):
+                  · the FACTS.replyTime row — the same promise renders on
+                    /audit, /consulting, /contact AND final-cta, which sits
+                    DIRECTLY above this footer on the home page;
+                  · <NowWidget /> — the live London clock strip, decoration
+                    whose own header describes it as backing the reply promise
+                    that just left with it.
+                  Both are one-line restores; the components are untouched. */}
             </div>
           </div>
 
@@ -447,6 +451,43 @@ export function Footer() {
           </div>
         </div>
 
+        {/* THE WORDMARK (owner 2026-09-04, drawn over a screenshot: "in grande
+            la scritta sersan in bianco, con lo stesso font della hero").
+            Sersan Display at weight 340 — the SAME face and weight the hero's
+            `[data-hero-brand]` span uses, so the page opens and closes on one
+            letterform.
+
+            JUSTIFIED, not tracked. The hero pins a literal `tracking-[0.3em]`
+            because the particle sampler reads that exact rect; here the brief
+            is "fills the width", and a fixed tracking cannot do that at every
+            viewport — one `justify-between` over six letters lands the S and
+            the N on the container's own edges at any width, with the gaps
+            solving themselves. Sized so the natural advance (~5.2em for this
+            face at 0.3em) very nearly fills the 1600px container, which keeps
+            the computed gaps close to the hero's tracking instead of exploding
+            on ultrawide.
+
+            aria-hidden + select-none: it is a decorative lockup, and the
+            footer already states the company name in the legal line — a screen
+            reader should not spell out "S E R S A N". `data-footer-brand`
+            hands it to the existing entrance timeline, so it can never sit
+            visible while the rest of the footer is still hidden. */}
+        <div
+          data-footer-brand
+          aria-hidden="true"
+          className="mb-10 select-none sm:mb-12"
+        >
+          <span
+            className="flex w-full items-baseline justify-between font-brand leading-[0.8] text-ink text-[clamp(3rem,12.5vw,15rem)]"
+            style={{ fontWeight: 340 }}
+          >
+            {"SERSAN".split("").map((letter, i) => (
+              // eslint-disable-next-line react/no-array-index-key
+              <span key={i}>{letter}</span>
+            ))}
+          </span>
+        </div>
+
         {/* The tagline lockup (POSITIONING.tagline). AGENTS.md specifies it
             for the footer and it had never been built here: until now the one
             surface rendering the line the charter calls "unchanged, and
@@ -471,7 +512,7 @@ export function Footer() {
         <div className="grid grid-cols-1 sm:grid-cols-12 gap-6 items-center">
           <div
             data-footer-meta
-            className="sm:col-span-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute"
+            className="sm:col-span-8 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-mono uppercase tracking-[0.14em] text-ink-mute"
           >
             <span>© 2026 Sersan Limited</span>
             <span aria-hidden="true" className="text-ink-mute/50">·</span>
@@ -484,7 +525,7 @@ export function Footer() {
               grows the padding to 0.875rem on touch only — 44×44 with the glyph
               still centred by construction — and desktop keeps its p-2 cluster
               exactly as it renders today. */}
-          <div className="sm:col-span-3 flex items-center gap-2 sm:justify-center">
+          <div className="sm:col-span-4 flex items-center gap-2 sm:justify-end">
             <a
               ref={pressRef}
               data-footer-social
@@ -521,37 +562,16 @@ export function Footer() {
             </a>
           </div>
 
-          <div
-            data-footer-meta
-            className="sm:col-span-3 sm:text-right text-[10.5px] font-mono uppercase tracking-[0.14em] text-ink-mute"
-          >
-            {/* The ISO 27001 claim is gone from this badge. It rendered on
-                EVERY route as "(in progress)" — a certification status SerSan
-                does not hold and cannot evidence — and /trust dropped the same
-                claim.
-
-                What replaced it, "Built for GDPR · DORA · EU AI Act", was
-                still unqualified AND unlinked on 20+ routes, which reads as a
-                compliance mark: DORA and the EU AI Act do not apply to a
-                marketing site at all. It now says what is actually true — the
-                SYSTEMS are designed against those regimes (COMPLIANCE.posture)
-                — and it is a link, so the qualification that cannot fit in a
-                10.5px badge ("obligations and certification remain
-                scope-specific") is one tap away on /trust. */}
-            <Link
-              href="/trust"
-              className="tap-44 inline-block hover:text-ink transition-colors"
-            >
-              {isEn
-                ? "Systems designed for GDPR · DORA · EU AI Act"
-                : "Sistemi progettati per GDPR · DORA · EU AI Act"}
-            </Link>
-            {/* Palette discoverability — desktop/fine-pointer only (the
-                shortcut is keyboard-first by nature). */}
-            <span className="hidden lg:block pt-1 text-ink-mute/60">
-              {isEn ? "Ctrl K · quick nav" : "Ctrl K · navigazione rapida"}
-            </span>
-          </div>
+          {/* REMOVED 2026-09-04 (same owner note) — the third meta column
+              held two more small mono lines:
+              · "Systems designed for GDPR · DORA · EU AI Act", linking /trust.
+                Nothing is lost: the LEGAL column above links the SAME route as
+                "Security", so /trust keeps its footer entry and the badge was
+                a second, smaller way of saying it on all 20+ routes.
+              · "Ctrl K · quick nav" — a desktop-only hint for the command
+                palette, which still opens on the shortcut and from MENU.
+              The bottom row is rebalanced 6/3/3 → 8/4 so the legal line and
+              the socials keep the full width between them. */}
         </div>
       </div>
     </footer>
