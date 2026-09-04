@@ -52,3 +52,16 @@ f_*.png
 
 # Lusion reverse-engineering raw artifacts — proprietary code, NEVER push
 /research/lusion-raw/
+
+.vercel
+.env*
+
+# motion graphics ad (Remotion project "sersan-film") — NOT part of the site
+# build. It is a separate npm project with its own package.json, tsconfig and
+# node_modules, and the root has no workspaces, so `bun install` on Vercel
+# never installs its deps. While it was tracked AND inside the root tsconfig's
+# `**/*.tsx` include, `next build` typechecked 1102 of its files against
+# packages that do not exist on the build machine — the deploy died at
+# "Running TypeScript" while every local build stayed green (motion/node_modules
+# exists here). Excluded from tsconfig too, belt and braces.
+/motion/
