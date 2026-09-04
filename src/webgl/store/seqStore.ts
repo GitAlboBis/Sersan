@@ -99,11 +99,18 @@ export const SEQ = {
   DIST_MID: 12, // ~17.9vh — HOLD 1 framing; also the one-shot TRAVERSE end
   DIST_HOLD2: 6, // ~35.7vh — the APPROACH micro-hold plateau
   DIST_NEAR: 2.6, // ~82.5vh — end of the scrubbed APPROACH (near hold)
-  DIST_LS_END: 10, // ~21.4vh — hole distance at the END of the light-speed
-  // beat: 17.9→21.4vh across the whole warp — a barely-perceptible approach
-  // so the body reads as enormous and DISTANT, dead-center, never fading
-  DIST_FLOOR: 1.9, // ~112.9vh — one-shot ENTER floor (dossier: never
-  // cross r≈1.2; >100vh apparent — the veil completes frame coverage)
+  DIST_LS_END: 4.5, // ~47.7vh — hole distance at the END of the light-speed
+  // beat. OWNER 2026-09-04: "vorrei che si entrasse ancora di più dentro il
+  // buco nero, quindi in prospettiva il buco nero deve diventare più grande."
+  // This was 10 (~21.4vh), i.e. 17.9→21.4vh across the WHOLE warp — a
+  // deliberately imperceptible approach so the body read as enormous and
+  // DISTANT. That intent is rejected: the jump must be a real DIVE. 17.9 →
+  // ~47.7vh is a 2.6× growth over the beat, so the hole visibly rushes at the
+  // camera while the streaks stretch, instead of hanging as a distant disc.
+  DIST_FLOOR: 1.5, // ~143vh — one-shot ENTER floor. Was 1.9 (~112.9vh); the
+  // deeper floor is the second half of the same note. Still 0.2 above
+  // SequenceSingularity's DIST_HARD_FLOOR (1.3) and 0.3 above the dossier's
+  // r≈1.2 no-go, so the FrontSide/depthWrite-off proxy stays valid.
 
   // --- Raymarch fade (lensing-first reveal; NO scrub fade-out — owner: "il
   // buco nero non deve fare fade e sparire, ci dobbiamo entrare dentro").
@@ -196,18 +203,29 @@ export const SEQ = {
    * lensing-first to full. Warp stays WARP_MIN; veil untouched. */
   PLUNGE_TRAVERSE_S: 1.7,
   /** LIGHT-SPEED: the jump (power2.in) — warp WARP_MIN→WARP_MAX, streaks
-   * rise, stars fall; the hole stays FULLY VISIBLE, DEAD-CENTER, at
-   * near-constant apparent size (DIST_MID→DIST_LS_END). No veil. */
-  PLUNGE_LIGHTSPEED_S: 1.6,
+   * rise, stars fall; the hole stays FULLY VISIBLE and DEAD-CENTER while it
+   * RUSHES AT THE CAMERA (DIST_MID→DIST_LS_END = 17.9→~47.7vh, 2.6×). No
+   * veil. (Was a near-constant apparent size; see DIST_LS_END.) */
+  // 1.6 -> 1.2 (owner: "il salto a velocità della luce è troppo lungo"). With
+  // the warp lag inverted in singularity-passage's rAF, the authored curve is
+  // now what plays on screen, so this reads as a genuinely abrupt jump rather
+  // than a smeared one — which is the note.
+  PLUNGE_LIGHTSPEED_S: 1.2,
   /** ENTER: the slow final approach (power1.in) — dist DIST_LS_END→FLOOR;
    * the black veil completes coverage only in the tail (the color-seam
    * trick), then the black-frame call hides the march + covert-jumps. */
   PLUNGE_ENTER_S: 1.8,
   /** PURE SPEED: inside the black — streaks at full, warp holds WARP_MAX;
    * the camera pan silently unwinds beneath the covered frame. */
-  PLUNGE_SPEED_S: 0.7,
+  // 0.7 -> 0.5: the on-the-nose part of "continua l'effetto anche dopo" —
+  // full black, streaks at peak, no hole to justify them. 0.5s still lets
+  // pan01 unwind and leaves SignatureLine's PROGRESS_DAMP = 6 camera chase at
+  // e^-3 ≈ 5% residual over the covert jump, which is the constraint here.
+  PLUNGE_SPEED_S: 0.5,
   /** EMERGENCE: the black opens, streaks die, the divario ZOOMS IN. */
-  PLUNGE_EMERGE_S: 1.1,
+  // 1.1 -> 0.9: the streaks must be done decelerating by the time the divario
+  // is legible. Total shot 6.9s -> 6.1s.
+  PLUNGE_EMERGE_S: 0.9,
 
   // --- Warp drive (timeCoef target; module lerps 0.02/frame) ---------------
   WARP_MIN: 2,

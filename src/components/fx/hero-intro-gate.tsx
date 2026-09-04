@@ -83,6 +83,40 @@ const COLD_LOAD_RELEASE = true;
  * land a frame or two apart while Lenis is stopped) is never mistaken for a
  * scrolled landing. */
 const COLD_SCROLL_HOLD_MS = 250;
+/** STALL RELEASE (Fix B, owner 2026-09-04: "capita qualche volta che il
+ * preloader carica, ma non caricano gli elementi, e continua la pagina
+ * vuota"). The preloader bounds every signal it waits on — forced timers on
+ * fonts/load/manifest/stage/wordmark/eclipse plus a 25s watchdog — so stage 1
+ * ALWAYS resolves, which is why the loader is seen to "finish". Stage 2 had
+ * no bound at all: once the island publishes `active`, the DOM hero is held
+ * at opacity 0 by domReveal, the navbar hides itself for the whole hero, and
+ * this gate consumes every wheel/touch event — and the only thing that can
+ * END that state is the in-Canvas frame loop (assembleDone → gateProgress →
+ * domReveal). If the loop never delivers, the visitor sits on a permanently
+ * blank, permanently unscrollable page.
+ *
+ * So the gate bounds its OWN wait the way the preloader bounds every signal
+ * it reads: this many milliseconds of VISIBLE, ticking time with the island
+ * claiming the hero and the brand still un-assembled, and the journey pins
+ * land, the DOM hero comes back and the page scrolls again. The clock's zero
+ * is the island's own publish (the `active` guard below), NOT introComplete,
+ * so its budget is measured against the 3.6s ENTRY_DURATION and not against
+ * however long the island's chunks took to import. On every healthy load
+ * assembleDone is ALREADY true when introComplete flips (the counter holds on
+ * wordmarkFormed, which the same frame block publishes), so this clock
+ * effectively only ever runs on a degraded path. WITHOUT markIntroSkipped():
+ * if the scene recovers, the reverse replay at the very top stays available.
+ *
+ * NOTE this is a RELEASE, not a full recovery: the desktop navbar still hides
+ * itself until 0.8×215vh of scroll, so the header returns as the reader moves
+ * rather than at the top. */
+const ASSEMBLE_STALL_MS = 6000;
+/** Per-tick cap on the stall clock (ms). The clock ACCUMULATES capped frame
+ * deltas instead of reading wall-clock: a hidden tab or a throttled rAF must
+ * only ever make the watchdog fire LATER, never trip it on the visitor's
+ * return. (The inverse of the preloader's RISE floor, which uses wall-clock
+ * on purpose — different direction, same discipline.) */
+const STALL_TICK_CAP_MS = 100;
 
 export function HeroIntroGate({
   skipLabel = "Skip intro",
@@ -107,6 +141,11 @@ export function HeroIntroGate({
     // Fix A: performance.now() when scrollY first exceeded the abort
     // threshold while NOT engaged; 0 = not currently past it.
     let scrolledSince = 0;
+    // Fix B (ASSEMBLE_STALL_MS): accumulated VISIBLE time since the island
+    // claimed the hero, and the previous tick's stamp it is measured from
+    // (0 = the condition does not currently hold).
+    let stallMs = 0;
+    let stallLastAt = 0;
 
     // Seed the session flag before the first tick: a hard reload (or a soft
     // nav back home) after a skip must never re-gate. sessionStorage is read
@@ -282,6 +321,55 @@ export function HeroIntroGate({
           morph2Done: true,
         });
       }
+      // Fix B — STALL RELEASE (see ASSEMBLE_STALL_MS). Runs whether or not
+      // the gate is engaged: the stranded state is "engaged with nothing on
+      // screen", but a never-engaged gate over a dead island is the same
+      // blank hero. Gated on `active` because that flag is the island's own
+      // promise that it owns the hero copy — without it this clock would also
+      // run on every interior route and every WebGL2 / tier-off home load,
+      // where assembleDone is false forever BY DESIGN (the preloader
+      // auto-passes those gates and domReveal rests at 1, so there is no
+      // stranded state to rescue), and on a soft nav into home it would start
+      // before the island had even remounted. domReveal is pinned alongside
+      // the journey flags because gateProgress alone does NOT unhide the DOM
+      // hero — only the island's per-frame domReveal write does, and on this
+      // path there is no island writing anything. `active` is deliberately
+      // LEFT ALONE: a recovering island damps gSmooth toward the pinned
+      // gateProgress 1 and writes domReveal back to 1 on its own, so the two
+      // converge instead of fighting (the ~0.4s damp tail reads as a brief
+      // fade, not a re-hide — the same tail COLD_LOAD_RELEASE already has).
+      if (
+        morph.active &&
+        !morph.introSkipped &&
+        !morph.assembleDone &&
+        useIntroStore.getState().introComplete
+      ) {
+        const now = performance.now();
+        if (stallLastAt === 0) {
+          stallLastAt = now;
+        } else {
+          stallMs += Math.min(now - stallLastAt, STALL_TICK_CAP_MS);
+          stallLastAt = now;
+          if (stallMs >= ASSEMBLE_STALL_MS) {
+            stallMs = 0;
+            stallLastAt = 0;
+            useTextMorphStore.setState({
+              gateProgress: 1,
+              assembleDone: true,
+              morphDone: true,
+              morph2Done: true,
+              gateKick: 0,
+              domReveal: 1,
+            });
+            release();
+          }
+        }
+      } else {
+        // BOTH are reset, not just the stamp: two separate sub-threshold
+        // stretches must never accumulate into one false fire.
+        stallMs = 0;
+        stallLastAt = 0;
+      }
       if (!engaged) {
         if (morph.gateProgress < 1 && canEngage()) {
           engage();
@@ -310,6 +398,11 @@ export function HeroIntroGate({
               morphDone: true,
               morph2Done: true,
               gateKick: 0,
+              // Fix B: pinning the gate does not unhide the DOM hero — the H1
+              // and the [data-hero-stagger] cluster follow domReveal, which
+              // only the island writes. A cold-scrolled landing over a dead
+              // island had the same blank-hero hole this closes.
+              domReveal: 1,
             });
           }
         } else {

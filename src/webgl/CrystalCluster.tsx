@@ -1150,7 +1150,16 @@ export function CrystalCluster({
             rand[1] *
             Math.sin(rand[0] * 5 + t * 0.5) *
             CRYSTAL_IDLE_DRIFT;
-          const m = 1 + gapRef.current + drift;
+          // ROUND 15 — the APERTURE twin (crystalConfig METEOR_APERTURE). The
+          // vertex path floors the same multiplier, and BROKEN_CALLOUT_SHARDS
+          // rides piece 1, which the floor moves ~0.87 units (≈62 px): without
+          // this the leader line would point at empty space. Rate read off the
+          // build, never recomputed here — one source, exactly like restGap.
+          const rXY = Math.max(Math.hypot(centr[0], centr[1]), 1e-4);
+          const m = Math.max(
+            1 + gapRef.current + drift,
+            (build.apertureK * gapRef.current) / rXY,
+          );
           v.set(centr[0] * m, centr[1] * m, centr[2] * m);
         } else {
           const p = HEALTHY_CALLOUT_ANCHORS[i];

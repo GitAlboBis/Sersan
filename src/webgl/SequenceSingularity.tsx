@@ -60,8 +60,10 @@
  * + depthWrite OFF + FrontSide) — the backdrop convention. With depth writes
  * on, the ~80–110vh transparent proxy silhouette would stamp depth over the
  * signature line / drift dust wherever they overlap; FrontSide is safe
- * because dist is floored at 1.9 ≫ 1 (the camera never enters the proxy —
- * the dossier's r≈1.2 limit is never approached).
+ * because dist is floored at SEQ.DIST_FLOOR (1.5 since the 2026-09-04 deeper
+ * dive, was 1.9) and hard-floored at DIST_HARD_FLOOR 1.3 below — both ≫ the
+ * proxy's radius 1, so the camera never enters it and the dossier's r≈1.2
+ * limit is never approached.
  *
  * BACK-CHANNEL: publishes the hole's apparent-center in canvas UV
  * (seqStore.holeNdcX/Y, eased to exact 0.5/0.5 across the crossfade window)
@@ -289,6 +291,11 @@ export function SequenceSingularity({ lite = false }: { lite?: boolean }) {
     // mounts no tunnel — there is nothing to step up to. Desktop
     // (lite=false) runs exactly the band it always did.
     if (!lite) {
+      // 0.8 unchanged, but note it now lands on a LARGER hole: with
+      // DIST_LS_END 4.5 the light-speed beat is a real approach, so the
+      // HI→LO march step happens over a ~45vh silhouette rather than ~20vh.
+      // The streaks are at 0.8 alpha there, which is what masks it; if the
+      // step ever pops in plain sight, lower this edge (not the distance).
       const low = !seq.tunnelNull && seq.tunnelAlpha >= 0.8;
       if (low !== iterLow.current) {
         iterLow.current = low;

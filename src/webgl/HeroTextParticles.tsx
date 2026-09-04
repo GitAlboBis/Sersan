@@ -541,19 +541,24 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
       }
       built.uAssemble.value = entryRef.current;
       setBuild(built);
-      // Republish the CURRENT reveal, not a flat 0: a rebuild after the gate
-      // released (or mid-gate) must not blink the already-revealed hero
-      // (H1/stagger cluster, scrims, HeroLogo all multiply by domReveal).
-      // gSmoothRef persists across rebuilds, so this derivation is exact;
-      // on a fresh intro it is 0 as before.
-      useTextMorphStore.setState({
-        active: true,
-        domReveal: THREE.MathUtils.smoothstep(
-          gSmoothRef.current,
-          REVEAL_START,
-          REVEAL_END,
-        ),
-      });
+      // THE CLAIM IS DELIBERATELY NOT PUBLISHED HERE (owner 2026-09-04:
+      // "capita qualche volta che il preloader carica, ma non caricano gli
+      // elementi, e continua la pagina vuota"). `active: true` used to be
+      // written on this line, one statement after setBuild — but `build` is
+      // REACT STATE and the frame loop early-returns for as long as it is
+      // null. A wedged island commit (a pending Suspense anywhere in the
+      // bridged Canvas tree stalls ALL of them — see Scene.tsx's commit-wedge
+      // note; home still suspends on HeroLogo's useGLTF) therefore left the
+      // store claiming the island owned the hero when it could neither draw
+      // it nor release it: the DOM H1 and the whole [data-hero-stagger]
+      // cluster pinned at opacity 0, the intro gate swallowing every wheel
+      // event, nothing on screen, forever. Intermittent, because it is a
+      // commit race.
+      //
+      // The claim now lives in the frame loop, on the first frame that
+      // actually HAS a build (see "THE CLAIM" below), so `active` can never be
+      // true without a live, drawing loop — a wedged island degrades to the
+      // plain DOM hero exactly like every other fallback path.
     });
 
     return () => {
@@ -624,6 +629,27 @@ export function HeroTextParticles(_props: HeroTextParticlesProps) {
       group.visible = false;
       return;
     }
+
+    // THE CLAIM (moved here from the build promise — see the note there).
+    // Publishing `active` from inside the loop is what makes the flag mean
+    // "a live loop owns the hero" instead of "a promise resolved". Idempotent
+    // and one property read on the settled path. The reveal is republished
+    // from the CURRENT gSmooth, not a flat 0: a rebuild after the gate
+    // released (or mid-gate) must not blink the already-revealed hero
+    // (H1/stagger cluster, scrims, HeroLogo all multiply by domReveal).
+    // gSmoothRef persists across rebuilds, so this derivation is exact; on a
+    // fresh intro it is 0, exactly as it was when the promise wrote it.
+    if (!useTextMorphStore.getState().active) {
+      useTextMorphStore.setState({
+        active: true,
+        domReveal: THREE.MathUtils.smoothstep(
+          gSmoothRef.current,
+          REVEAL_START,
+          REVEAL_END,
+        ),
+      });
+    }
+
     const delta = Math.min(rawDelta, 1 / 30);
 
     // HOLD until the hero stage is live (preloader v2, owner 2026-08-28:

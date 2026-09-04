@@ -125,6 +125,8 @@ import { useGSAP } from "@gsap/react";
 import { rollDelay } from "@/components/fx/roll-letters";
 import { lusionEase } from "@/components/fx/lusion-ease";
 import { readingBandArmPx } from "@/components/fx/scroll-ignition";
+// three-free store (see its header) — no chunk weight added to this module.
+import { useSeqStore } from "@/webgl/store/seqStore";
 
 if (typeof window !== "undefined") {
   gsap.registerPlugin(ScrollTrigger, SplitText);
@@ -294,7 +296,17 @@ function createReplayTrigger(
 export function useChapterReveal(
   scope: RefObject<HTMLElement | null>,
   language: string,
+  rollArmed = false,
 ): void {
+  // Read through a REF, never a dependency (the same discipline as
+  // `createReplayTrigger`'s `armOffsetPx` note): `rollArmed` flips false→true
+  // right after hydration, and `useGSAP` DEFERS cleanup when a dependency
+  // array is present, so a dependency would ADD a second set of timelines and
+  // triggers on top of the first instead of replacing them.
+  const rollArmedRef = useRef(rollArmed);
+  useEffect(() => {
+    rollArmedRef.current = rollArmed;
+  });
   useGSAP(
     () => {
       if (reducedMotion()) return;
@@ -308,6 +320,7 @@ export function useChapterReveal(
       let split: SplitText | null = null;
       let tl: gsap.core.Timeline | null = null;
       let sts: ScrollTrigger[] = [];
+      let offPlunge: (() => void) | null = null;
 
       // Fonts must be settled or line boxes split wrong mid-swap (the
       // HeadingChoreographer discipline). Everything created inside this
@@ -372,13 +385,49 @@ export function useChapterReveal(
             0.5,
           );
         }
-        sts = createReplayTrigger(scopeEl, tl);
+        // ── ARM INSIDE THE READING BAND ───────────────────────────────
+        // (owner 2026-09-04: "non si vede l'animazione… forse perché si entra
+        // quando è già troppo in basso".) The chapter arms exactly where the
+        // ledger rows do, and for the same reason: the diagonal traverse holds
+        // `[data-traverse-alpha]` at opacity 0 until the unit has climbed
+        // 0.12·ih above the viewport bottom — `windowAt` returns a HARD 0
+        // above that — so a plain `top bottom` play burnt the whole entrance
+        // at opacity ≈ 0 and the reader met a settled headline. Off that tier
+        // the getter returns 0 and the arm point stays byte-for-byte where it
+        // shipped.
+        sts = createReplayTrigger(scopeEl, tl, () =>
+          rollArmedRef.current ? readingBandArmPx(scopeEl.offsetHeight) : 0,
+        );
+
+        // ── THE COVERT JUMP MUST NOT CONSUME THE ENTRANCE ─────────────────
+        // (the other half of the same note: "forse perché avviene prima che
+        // l'animazione del salto finisce".) `singularity-passage` teleports
+        // the reader to #problem's document top from INSIDE the plunge, under
+        // a fully closed #000 veil — and Lenis's own scroll event runs
+        // ScrollTrigger.update(), so this trigger's `onEnter` fired THERE,
+        // not where the reader was. On the house ease the whole entrance was
+        // spent before EMERGE had even begun opening the frame: the headline
+        // was always already settled by the time it became visible. So replay
+        // it on the shot's FALLING edge — `finishPlunge` writes plungeT 0 on
+        // the natural completion AND on every skip path, which is the first
+        // genuinely clear frame. `sts[0]` is the full-transit trigger, so
+        // `isActive` is the honest "this block is on frame" test (it also
+        // keeps the production twin, several viewports below the landing,
+        // from replaying). Inert wherever the shot never runs (touch, reduced
+        // motion, every inner route): plungeT rests at 0 for the page's whole
+        // life and the edge never arrives.
+        offPlunge = useSeqStore.subscribe((st, prev) => {
+          if (prev.plungeT > 0 && st.plungeT === 0 && sts[0]?.isActive) {
+            tl?.play(0);
+          }
+        });
       });
 
       refreshOnFontsReady();
 
       return () => {
         cancelled = true;
+        offPlunge?.();
         sts.forEach((t) => t.kill());
         tl?.kill();
         if (desc) {

@@ -449,7 +449,11 @@ export default function ProblemSection() {
   // FROM primed at arm only, revert on language rebuild).
   const sectionRef = useRef<HTMLElement | null>(null);
   const chapterRef = useRef<HTMLDivElement | null>(null);
-  useChapterReveal(chapterRef, language);
+  // `scrollLit` (3rd arg, 2026-09-04): arm the chapter entrance inside the
+  // reading band, exactly as the rows below already do — the traverse holds
+  // this block at opacity 0 until it has climbed into the band, so a plain
+  // `top bottom` play burnt the whole animation invisibly.
+  useChapterReveal(chapterRef, language, scrollLit);
   useLedgerReveal(rowRef, language, undefined, scrollLit);
   useTextDrift(sectionRef, language);
   // ROUND 11 STAGE 1 — the diagonal traverse. Owns the `x` + `opacity` of the

@@ -37,7 +37,9 @@ import { create } from "zustand";
  * preloader writes 0 on arm and 1 again on its way out. This module stays
  * three-free so the preloader chunk can import it.
  */
-export const introProgressRef: { current: number } = { current: 1 };
+export const introProgressRef: { current: number } = (globalThis.__sersanIntroProgressRef ??= {
+  current: 1,
+});
 
 /**
  * Intro frame shift (fraction of WORLD_VIEW_HEIGHT, rests at 0) — the
@@ -50,7 +52,9 @@ export const introProgressRef: { current: number } = { current: 1 };
  * by it, which reads as the camera aiming higher. Module ref, no store
  * notify (per-frame value).
  */
-export const introCamShiftRef: { current: number } = { current: 0 };
+export const introCamShiftRef: { current: number } = (globalThis.__sersanIntroCamShiftRef ??= {
+  current: 0,
+});
 
 /**
  * Intro HEAD-RAISE (fraction of the eclipse's view height, rests at 0) —
@@ -60,7 +64,9 @@ export const introCamShiftRef: { current: number } = { current: 0 };
  * published by SignatureLine's gate walker and consumed by HomeSingularity,
  * which lowers the hole by it. Module ref, no store notify (per-frame).
  */
-export const introHeadRaiseRef: { current: number } = { current: 0 };
+export const introHeadRaiseRef: { current: number } = (globalThis.__sersanIntroHeadRaiseRef ??= {
+  current: 0,
+});
 
 /**
  * Staged EXIT PROGRESS for the black hole (1 = the load pose inside it,
@@ -72,7 +78,9 @@ export const introHeadRaiseRef: { current: number } = { current: 0 };
  * travels during gate 2a, HOLDS through gate 2b, and only the final gate
  * takes it home. Module ref, no store notify (per-frame).
  */
-export const introHoleRef: { current: number } = { current: 0 };
+export const introHoleRef: { current: number } = (globalThis.__sersanIntroHoleRef ??= {
+  current: 0,
+});
 
 /**
  * Intro zoom fraction (1 = camera fully INSIDE the black hole at the load
@@ -83,7 +91,9 @@ export const introHoleRef: { current: number } = { current: 0 };
  * dentro il buco nero") and its tuned hero rest, riding the very same
  * zoom-out. Module ref, no store notify (per-frame value).
  */
-export const introZoomRef: { current: number } = { current: 0 };
+export const introZoomRef: { current: number } = (globalThis.__sersanIntroZoomRef ??= {
+  current: 0,
+});
 
 interface IntroState {
   /** False until the first-load preloader hands off; true forever after. */
@@ -136,26 +146,58 @@ interface IntroState {
   setWarmProgress: (p: number) => void;
 }
 
-export const useIntroStore = create<IntroState>((set, get) => ({
-  introComplete: false,
-  complete: () => set({ introComplete: true }),
-  heroStageReady: false,
-  setHeroStageReady: () => {
-    if (!get().heroStageReady) set({ heroStageReady: true });
-  },
-  wordmarkFormed: false,
-  setWordmarkFormed: () => {
-    if (!get().wordmarkFormed) set({ wordmarkFormed: true });
-  },
-  warmReady: false,
-  // Ready ⇒ progress is 1 by definition (monotonic: never lowered afterwards).
-  setWarmReady: () => set({ warmReady: true, warmProgress: 1 }),
-  warmProgress: 0,
-  // Clamped to [0,1] and monotonic: a late compileAsync resolution (0.5) after
-  // the heuristic already set 1 must not pull the counter back.
-  setWarmProgress: (p) => {
-    const next = Math.min(1, Math.max(0, p));
-    if (Number.isNaN(next) || next <= get().warmProgress) return;
-    set({ warmProgress: next });
-  },
-}));
+/**
+ * Pinned on globalThis, for the reason textMorphStore records verbatim: this
+ * module is imported from BOTH the route bundle (the preloader, the hero
+ * panel, the intro gate) and the lazy `ssr:false` WebGL island (HeroLogo,
+ * HeroTextParticles, HomeSingularity, SignatureLine, PipelineWarmup,
+ * PostFXNodes, AdaptiveResolution). A bundler that inlines a copy of this
+ * small module into each chunk gives the two sides two live stores — the
+ * preloader's `complete()` then never reaches the island's `introComplete`
+ * read, the wordmark's HOLD never lifts and the page stays black. The pin
+ * makes every bundled copy resolve to the single real store. Dev shares one
+ * module graph, so this class of failure only ever shows in production.
+ *
+ * The module REFS above are pinned for the same reason and are the same
+ * hazard: `introProgressRef` is written by the preloader (route bundle) and
+ * read by HeroLogo (island) every frame — two copies means the spore mark
+ * never scrubs with the counter.
+ */
+const createIntroStore = () =>
+  create<IntroState>((set, get) => ({
+    introComplete: false,
+    complete: () => set({ introComplete: true }),
+    heroStageReady: false,
+    setHeroStageReady: () => {
+      if (!get().heroStageReady) set({ heroStageReady: true });
+    },
+    wordmarkFormed: false,
+    setWordmarkFormed: () => {
+      if (!get().wordmarkFormed) set({ wordmarkFormed: true });
+    },
+    warmReady: false,
+    // Ready ⇒ progress is 1 by definition (monotonic: never lowered after).
+    setWarmReady: () => set({ warmReady: true, warmProgress: 1 }),
+    warmProgress: 0,
+    // Clamped to [0,1] and monotonic: a late compileAsync resolution (0.5)
+    // after the heuristic already set 1 must not pull the counter back.
+    setWarmProgress: (p) => {
+      const next = Math.min(1, Math.max(0, p));
+      if (Number.isNaN(next) || next <= get().warmProgress) return;
+      set({ warmProgress: next });
+    },
+  }));
+
+declare global {
+  /* eslint-disable no-var */
+  var __sersanIntroStore: ReturnType<typeof createIntroStore> | undefined;
+  var __sersanIntroProgressRef: { current: number } | undefined;
+  var __sersanIntroCamShiftRef: { current: number } | undefined;
+  var __sersanIntroHeadRaiseRef: { current: number } | undefined;
+  var __sersanIntroHoleRef: { current: number } | undefined;
+  var __sersanIntroZoomRef: { current: number } | undefined;
+  /* eslint-enable no-var */
+}
+
+export const useIntroStore = (globalThis.__sersanIntroStore ??=
+  createIntroStore());

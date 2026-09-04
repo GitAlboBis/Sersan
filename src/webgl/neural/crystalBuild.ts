@@ -402,6 +402,9 @@ import {
   INCLUSION_GAIN,
   INCLUSION_FREQ,
   INCLUSION_R,
+  METEOR_APERTURE,
+  METEOR_APERTURE_PROCEDURAL,
+  METEOR_PEAK_GAIN,
 } from "./crystalConfig";
 import type { LatticeMode } from "./neuralLatticeConfig";
 
@@ -630,6 +633,14 @@ export interface CrystalBuild {
    * driver must read it from here — the explode offset is `centr·gap`, so the
    * constant is only meaningful next to the `centr` array it ships with. */
   restGap: number;
+  /** ROUND 15 — the APERTURE rate this build was levelled for (crystalConfig
+   * METEOR_APERTURE / METEOR_APERTURE_PROCEDURAL divided by the full-open
+   * gap). The vertex explode floors its multiplier at `apertureK·gap / |centr
+   * .xy|`; the callout projection twin in CrystalCluster MUST read the rate
+   * from here for the same reason it reads `restGap` from here — one source,
+   * or the leader lines detach from the shards they point at. 0 on healthy
+   * (no explode at all). */
+  apertureK: number;
   /** ROUND 14 — which ice stages this build actually compiled (dev handle). */
   ice: {
     /** "baked" = per-vertex aThick chord (authored slab), "proxy" = analytic. */
@@ -1380,6 +1391,16 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
       : FRACTURE_REST_GAP
     : 0;
   const uGap = uniform(restGap);
+  // ROUND 15 — THE APERTURE as a RATE on uGap (crystalConfig METEOR_APERTURE):
+  // floor radius = apertureK·gap, so it is exactly 0 when the slab is sealed
+  // and exactly METEOR_APERTURE at the full-open gap (restGap·PEAK_GAIN),
+  // linear between. Build-time scalar — no uniform, no per-frame cost. The
+  // procedural partition gets its own constant for the same reason it gets
+  // its own rest gap: its centroids are ~1.9× shorter.
+  const apertureK = broken
+    ? (authored ? METEOR_APERTURE : METEOR_APERTURE_PROCEDURAL) /
+      Math.max(restGap * METEOR_PEAK_GAIN, 1e-4)
+    : 0;
   const uCamDist0 = uniform(12);
   const uWorldScale = uniform(1);
   const uIor = uniform(CRYSTAL_IOR);
@@ -1658,16 +1679,25 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
       .add(aRand.z.mul(6.2832))
       .mul(openK);
     const pR = rotate3D(positionLocal.sub(aCentr), axis, spinAng).add(aCentr);
-    // Igloo explode, verbatim: += centr·(gap + rand.y·sin(rand.x·5+t·.5)·drift)
-    // — the wander term rides `openK` too, or a closed slab would still
-    // breathe its shards radially into one another.
+    // Igloo explode: += centr·(gap + rand.y·sin(rand.x·5+t·.5)·drift) — the
+    // wander term rides `openK` too, or a closed slab would still breathe its
+    // shards radially into one another.
+    const mGap = uGap.add(
+      aRand.y
+        .mul(sin(aRand.x.mul(5.0).add(uTime.mul(0.5))))
+        .mul(uDrift)
+        .mul(openK),
+    );
+    // ROUND 15 — THE APERTURE (crystalConfig METEOR_APERTURE). A FLOOR on the
+    // multiplier, so the three short-centroid pieces that stand on the mark
+    // travel far enough to clear it while the other five keep their shipped
+    // trajectories exactly. `rXY` is the LATERAL radius on purpose: the mark
+    // is veiled in SCREEN space, not in depth. Reduces to the line above
+    // whenever the floor does not bind (pieces with rXY ≥ ~1.13) and whenever
+    // the gap is 0 — the sealed slab is byte-identical.
+    const rXY = max(length(vec2(aCentr.x, aCentr.y)), float(1e-4));
     const explode = aCentr.mul(
-      uGap.add(
-        aRand.y
-          .mul(sin(aRand.x.mul(5.0).add(uTime.mul(0.5))))
-          .mul(uDrift)
-          .mul(openK),
-      ),
+      max(mGap, uGap.mul(float(apertureK)).div(rXY).sub(1.0)),
     );
     pos = pR.add(explode);
     nrm = rotate3D(normalLocal, axis, spinAng);
@@ -2301,7 +2331,15 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
         const drift = float(r[1])
           .mul(sin(float(r[0] * 5).add(uTime.mul(0.5))))
           .mul(uDrift);
-        const m = uGap.add(1.0).add(drift);
+        // ROUND 15 — the aperture twin. EMBER_SHARDS = [0, 1] and BOTH are
+        // pieces the floor moves, so without this the two amber blobs would
+        // float free of their shards at 54% brightness (the breathe term is
+        // still 0.54 at the full-open gap).
+        const rXYe = Math.max(Math.hypot(c[0], c[1]), 1e-4);
+        const m = max(
+          uGap.add(1.0).add(drift),
+          uGap.mul(float(apertureK / rXYe)),
+        );
         const bc = vec3(c[0], c[1], c[2]).mul(m);
         const dv = pE.sub(bc).toVar();
         ember = ember.add(
@@ -2726,6 +2764,7 @@ export function createCrystalBuild(args: CrystalBuildArgs): CrystalBuild {
     shardCentrs,
     shardRands,
     restGap,
+    apertureK,
     ice: {
       thickness: absorbOn ? (thickBaked ? "baked" : "proxy") : "off",
       screenRefraction: screenOn,

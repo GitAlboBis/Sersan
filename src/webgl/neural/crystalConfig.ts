@@ -703,6 +703,51 @@ export const METEOR_OPEN_ARRIVE = 0.5;
  * the traverse resumes. */
 export const METEOR_ZOOM = 0.3;
 /**
+ * ROUND 15 — THE APERTURE (owner 2026-09-04: "i frammenti del meteorite anche
+ * dopo la piena apertura zoom con lo scroll coprono ancora troppo il logo").
+ *
+ * The explode is RADIAL IN `centr` (`aCentr·uGap`), so a piece travels in
+ * proportion to how long its own centroid already is — and in the authored
+ * partition the three pieces that sit ON the mark are exactly the three with
+ * the SHORTEST centroids and the LARGEST bodies (piece 0 |centr| 0.698 /
+ * R 1.611, piece 1 0.726 / 1.648, piece 2 0.877 / 1.144). At the full-open
+ * gap 1.430 they reach |c| 1.70 / 1.76 / 2.13 while still measuring 1.6 / 1.6
+ * / 1.1 units across — pieces 0 and 1 still reach back to the group origin —
+ * so they stand on the 1.50 × 1.84 unit mark: measured over 16 spin phases
+ * the ink is 45.9% veiled at full open (worst phase 50.8%). Raising
+ * METEOR_PEAK_GAIN cannot fix that: it scales EVERY piece, so the offenders
+ * keep their share of the frame while the whole cluster inflates.
+ *
+ * This is instead the MINIMUM LATERAL (screen-plane) RADIUS every centroid
+ * holds at full open, in crystal units. It is a FLOOR ON THE MULTIPLIER — the
+ * explode stays a pure radial scale of `centr`, so the callout twin and the
+ * ember twin keep their `centr·m` form — and it is a RATE ON `uGap`, never on
+ * `openK`: 0 when sealed, exactly this at the full-open gap, linear between.
+ * So the D20 arc is untouched — the slab still recomposes bit-for-bit at gap
+ * 0, the hover re-cohere still collapses, and the whole thing stays a pure,
+ * stateless function of the stone's centring scalar `a`.
+ *
+ * LATERAL, not 3-D, on purpose: the mark is veiled in SCREEN space, and a
+ * floor on |centr| would push the front lid straight at the camera without
+ * shrinking its footprint (a 3-D floor needs ~3.4 units to do what 2.5 does
+ * laterally). At 2.5 the veiling is 0.0% at every sampled phase; 2.2 leaves
+ * 1.0% (worst 2.5%) with the front lid 0.34 units less forward — drop to 2.2
+ * if piece 2 reads as "thrown at the viewer" rather than as a shattered lid.
+ * Only pieces 0/1/2 move (m 2.43 → 3.61 / 3.72 / 4.37); 3–7 are byte-
+ * identical, so the lowest vertex stays at y = −3.78 units and the silhouette
+ * widens only 298 → 318 px — the band-overflow ladder is unchanged.
+ */
+export const METEOR_APERTURE = 2.5;
+/**
+ * The same floor for the PROCEDURAL fallback partition (used only when
+ * `public/models/crystal-fractured.glb` fails to load). Its centroids are
+ * ~1.9× shorter than the authored ones (|centr| 0.42–0.835, mean 0.60 vs
+ * 1.16 — the same ratio FRACTURE_REST_GAP vs FRACTURE_REST_GAP_AUTHORED
+ * already carries), so a flat 2.5 would fling its inner pieces far further
+ * than intended. 2.5 × 0.60/1.16 ≈ 1.3.
+ */
+export const METEOR_APERTURE_PROCEDURAL = 1.3;
+/**
  * The mark inside the ice — the SAME 552-triangle shared geometry
  * RouteHeroLogo loads (module singleton; never dispose it). Camera-locked
  * group, never the tumbling mesh (the tumble reaches ~55° and would make it
@@ -2855,7 +2900,20 @@ export const MARK_MESH_Y_HEALTHY = -0.5;
  * blooms SOFTLY through the ice: ×body ≈ 0.3 at the median chord ⇒ ~0.9–1.2
  * lum only where the chord is thin). The broken band keeps its meteor-hold
  * ride (MARK_LIT_BASE → MARK_LIT_PEAK) untouched. Live: `feel.markCoreHdr`. */
-export const MARK_CORE_HDR = 3.0;
+// 3.0 -> 8.0, MEASURED ON THE WEBGPU RENDER, not derived (owner 2026-09-04:
+// "nel secondo meteorite, quello pieno non frammentato, non si vede bene il
+// logo dentro"). The desk analysis said 4.0 was the ceiling — blue leaves the
+// body multiply at ~1.45, clipping against CRYSTAL_CEIL 1.35 and blooming —
+// and predicted a glowing blob past it. On the actual stone that is not what
+// happens: the ceiling CLAMPS the flooded surround instead of haloing it, so
+// the mark's own silhouette gains contrast while the crystal keeps its
+// facets. A/B at 3.6 / 6 / 8 / 10 / 12 on the live uniform: 3.6 is a mushy
+// dark form, 6 is legible but soft, 8 is the read the owner asked for, 10
+// starts flooding the glow out to the silhouette edge and 12 pushes it past.
+// Verified at 8 with bloom on, full reveal, band entry and exit: no halo
+// outside the stone. Lower toward 6 if a future bloom-threshold change makes
+// it bleed. Sharpness (INNER_LOD_K) and dispersion (INNER_CA) do the rest.
+export const MARK_CORE_HDR = 8.0;
 
 // --- 2. Two-pass inner transmission (igloo's transmission RT) ---------------
 /** KILL-SWITCH — the inner-RT branch is not built and the RT never allocated
@@ -2869,26 +2927,56 @@ export const ICE_TWO_PASS = true;
 export const INNER_RT_WEBGL2 = false;
 /** RT size CAP (px, longest side); the RT is screen × INNER_RT_SCALE clamped
  * to this, resized with the canvas (never per frame). */
-export const INNER_RT_SIZE = 1024;
-export const INNER_RT_SCALE = 0.5;
+// 1024/0.5 -> 1536/0.75 (owner 2026-09-04: "nel secondo meteorite, quello
+// pieno non frammentato, non si vede bene il logo dentro"). The on-screen
+// blur of the inner tap goes as 2^lod / rtSize, so a 1.5x linear RT cuts the
+// kernel by ~1.4x for the same lod. Deliberately NOT 2048/1.0: that
+// quadruples the HalfFloat clear + mip regeneration every frame the stone is
+// on screen, and both stones can be on frame during the traverse. Watch
+// `__sersanCrystal_*.innerRt.lastMs` against the 0.8 ms QA budget.
+export const INNER_RT_SIZE = 1536;
+export const INNER_RT_SCALE = 0.75;
 /** Samples of the inner ladder (BAKED — unrolled). igloo AWESOME_SAMPLES 3:
  * 3 × RGB = 9 fetches on a ~0.4 MP RT. */
 export const INNER_SAMPLES = 3;
 /** igloo's lod law on the inner RT: lod = log2(size)·roughEff·this. 0.36 =
  * clamp(2·ior − 2) at ior 1.18; the crust raises roughEff on top. */
-export const INNER_LOD_K = 0.36;
+// 0.36 -> 0.22 (the biggest single lever on legibility, and it touches only
+// the mark). lod = log2(rtSize)·roughEff·this; at roughEff 0.41 that is
+// 1.46 -> 0.89 (2.75 -> 1.85 texels), and on the crust ridges (roughEff ~0.60)
+// 2.14 -> 1.31. 0.22 is the CONSERVATIVE middle: it keeps the "penguin in
+// ice" coupling where the frost veins and the crust still modulate the mark's
+// softness, instead of 0.16, which reads crisper than the ice around it and
+// starts to look like a decal rather than something embedded. The ice's own
+// screen refraction keeps REFR_SCREEN_LOD_K 0.36, so the stone's surface
+// blur, frost, crust and env are byte-identical.
+export const INNER_LOD_K = 0.22;
 /** Transmission-ray length to the inner object (crystal units, × modelScale
  * in-shader). The mark sits at mid-depth: 0.6 + the smear reaches the far
  * half. */
-export const INNER_THICK = 0.6;
+// 0.6 -> 0.4: the lateral displacement is len·sin(delta), so at 0.6 crystal
+// units and delta up to 32 deg the mark warped by up to ~0.32 units (~40 CSS
+// px) near the silhouette, and `smearI` rides the same constant so the three
+// samples ghosted by the same order. The mark sits at y -0.5 in a +/-1.66
+// slab, so 0.4 still lands on it: -33% warp and -33% ghost for nothing.
+export const INNER_THICK = 0.4;
 /** Chromatic spread of the inner ladder — igloo uChromaticAberration 0.1;
  * higher than the body's CRYSTAL_CA because the mark is where the owner wants
  * to SEE the fringes ("strong chromatic dispersion"). Fresnel-boosted by
  * CA_EDGE_BOOST like the body's. */
-export const INNER_CA = 0.16;
+// 0.16 -> 0.09. caI is fresnel-boosted by (1 + fres·CA_EDGE_BOOST 1.6), so
+// near the silhouette the effective spread reached 0.42 of the eta step and
+// the strokes split into three coloured copies. 0.09 keeps a visible fringe —
+// the owner's "strong chromatic dispersion" for the inner object survives —
+// while the three ladders re-converge ON the strokes.
+export const INNER_CA = 0.09;
 /** Blend of the inner RT over `trans` by its own alpha (mix, not add — an
  * opaque object inside replaces what was behind it). 0 = live off. */
-export const INNER_MIX = 0.9;
+// 0.9 -> 1.0 — free, and the only change here with no downside: at full RT
+// alpha this stops 10% of the navy-cyan backdrop being mixed back over the
+// mark (+11% on the core, a harder silhouette edge). At the blurred rim,
+// where alpha is partial, the composite is unchanged.
+export const INNER_MIX = 1.0;
 /** When the two-pass branch is live on the HEALTHY band, the mark is hidden
  * from the main pass (it is already in the RT — igloo hides its inner object
  * in pass 2). The broken band keeps it visible: the shards' gaps ARE the

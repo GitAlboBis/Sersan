@@ -27,6 +27,7 @@ import {
   beatTailAttrs,
 } from "@/components/sections/cinematic-system-scroll";
 import { createBeat, type BeatHandle } from "@/components/fx/beat-choreographer";
+import { SPINE_GUTTER_STYLE } from "@/components/fx/spine-gutter";
 import { SPINE_BEATS } from "@/lib/spine";
 import { POSITIONING, projectCount, sersanBuildCount } from "@/data/copy";
 import { getLenis } from "@/lib/lenis-singleton";
@@ -99,7 +100,7 @@ import { cn } from "@/lib/utils";
  *                         dead-center at dist 2.6,
  *                         ~82.5vh — the designed re-entry pose) and scrubs
  *                         back through the beats from there.
- *   ONE-SHOT (triggered timeline ≈ 6.9s, input locked, accelerating):
+ *   ONE-SHOT (triggered timeline ≈ 6.1s, input locked, accelerating):
  *     TRIGGER    forward crossing of p 0.10 (right after SETTLE) → Lenis
  *                stopped, wheel/touch consumed, snap suspended.
  *     TRAVERSE   ~1.7s power2.inOut — the pan the scrub used to own plays
@@ -110,24 +111,29 @@ import { cn } from "@/lib/utils";
  *                veil untouched; the hole is exactly centered as the
  *                tunnel's center lock completes (PLUNGE_LOCK_T ≈ end of
  *                TRAVERSE).
- *     LIGHTSPEED ~1.6s power2.in — the jump: warp 2→100, streaks rise to
- *                0.85 (tunnel z-40 paints over the veil z-38), stars fall
- *                0.9→0.4 — and the hole stays FULLY VISIBLE, DEAD-CENTER,
- *                through the WHOLE warp at near-constant apparent size
- *                (dist 12→10, 17.9→21.4vh — a barely-perceptible approach:
- *                it reads as an enormous, distant body). No veil.
- *     ENTER      ~1.8s power1.in — the viewer actually goes in: dist 10→1.9
- *                SLOWLY (apparent crosses ~113vh); the #000 veil (same
- *                black as the march's uRampCol3) completes coverage ONLY
- *                in the tail (segment-t 0.55–1) — by dist ≈2 the hole's
- *                own black core exceeds ~107vh, so the completion is
- *                invisible (the color seam). Then, under the FULLY BLACK
+ *     LIGHTSPEED ~1.2s power2.in — THE JUMP, and a real dive: warp 2→100,
+ *                streaks rise to 0.85 (tunnel z-40 paints over the veil
+ *                z-38), stars fall 0.9→0.4, and the hole — FULLY VISIBLE,
+ *                DEAD-CENTER — RUSHES AT THE CAMERA (dist 12→4.5,
+ *                17.9→~47.7vh, 2.6×). No veil. Owner 2026-09-04 rejected the
+ *                previous "barely-perceptible approach so the body reads as
+ *                enormous and DISTANT": we go IN. The warp on screen is now
+ *                the authored warp — the module's ~0.83s timeCoef lag is
+ *                inverted in the rAF below, so the jump ends where the map
+ *                says it ends instead of peaking under the veil.
+ *     ENTER      ~1.8s power1.in — the viewer actually goes in: dist 4.5→1.5
+ *                (apparent crosses ~143vh); the #000 veil (same black as the
+ *                march's uRampCol3) completes coverage ONLY in the tail
+ *                (segment-t 0.78–1, was 0.55 — the growth is the beat now and
+ *                must be SEEN, so the black closes late) — by then the hole's
+ *                own black core is far past frame height, so the completion
+ *                is invisible (the color seam). Then, under the FULLY BLACK
  *                frame: march hidden (holeFade→0 — the swap is invisible)
  *                and the COVERT JUMP: scrollTo(#problem, immediate) — the
  *                user never sees a downward scroll.
- *     SPEED      ~0.7s — inside the black: streaks at full, warp holds
+ *     SPEED      ~0.5s — inside the black: streaks at full, warp holds
  *                WARP_MAX; the camera pan silently unwinds 1→0.
- *     EMERGE     ~1.1s power2.out — the black opens, warp 100→8, streaks
+ *     EMERGE     ~0.9s power2.out — the black opens, warp 100→8, streaks
  *                die, and the divario lands as a ZOOM-IN: [data-emerge]
  *                scales 0.8→1 from the vanishing point to identity
  *                (transform-only). Lenis restarts at timeline end.
@@ -349,12 +355,16 @@ const PULSE_PEAK = 0.18;
 /**
  * MUST match `TIME_COEF_LERP` in components/fx/preloader-tunnel.ts — the rate
  * at which that module lerps its internal `timeCoef` toward the target on
- * every render() call. The phone beat shadows and inverts that lerp to make
- * the warp genuinely scroll-linked (see requestWarp in the coarse branch);
- * the desktop one-shot has 4s of timeline and just rides the module's own
- * smoothing, so it does not care. If the module ever changes this, the phone
- * warp responds faster/slower than asked — bounded by SEQ.LITE_WARP_REQ_MAX,
- * never unbounded.
+ * every render() call. BOTH beats now shadow and invert that lerp: the phone
+ * to make the warp genuinely scroll-linked (requestWarp, coarse branch), the
+ * desktop one-shot because the lag is ~50 render frames and the shot is only
+ * ~6.1s — riding the module's own smoothing put the light-speed PEAK under
+ * the closed veil (~44 of 100 where the beat map says 100, still ~80 with the
+ * divario 70% revealed) and made the whole shot frame-rate dependent
+ * (τ = 0.42s at 120Hz, 1.67s at 30Hz). That was the owner's "continua
+ * l'effetto anche dopo che il buco nero è superato". If the module ever
+ * changes this, both beats respond faster/slower than asked — bounded by
+ * SEQ.LITE_WARP_REQ_MAX, never unbounded.
  */
 const TUNNEL_COEF_LERP = 0.02;
 
@@ -1566,6 +1576,9 @@ export default function SingularityPassage() {
           let tunnel: PreloaderTunnel | null = null;
           let tunnelCanvas: HTMLCanvasElement | null = null;
           let lastAlpha = -1;
+          // Mirror of the module's internal `timeCoef` — see the inversion in
+          // the rAF below. Starts where the module constructs it.
+          let warpShadow = SEQ.WARP_MIN;
           const ensureTunnel = () => {
             if (tunnel || useSeqStore.getState().tunnelNull) return;
             const cv = document.createElement("canvas");
@@ -1614,10 +1627,36 @@ export default function SingularityPassage() {
                 lastAlpha = a;
                 tunnelCanvas.style.opacity = String(a);
               }
-              // Warp target comes straight from the store (the one-shot
-              // timeline writes it; WARP_MIN at rest). The module lerps its
-              // timeCoef at 0.02/frame — smooth both directions.
-              tunnel.setTargetTimeCoef(s.warp);
+              // ── The warp on screen IS the authored warp ────────────────
+              // (owner 2026-09-04: "il salto a velocità della luce è troppo
+              // lungo, continua l'effetto anche dopo che il buco nero è
+              // superato".) The module lerps its own timeCoef toward the
+              // target by TUNNEL_COEF_LERP PER RENDER FRAME, with no delta —
+              // a ~50-frame (~0.83s at 60Hz) first-order lag. Feeding it the
+              // raw target meant the beat map and the screen disagreed for
+              // the whole shot: at the end of LIGHT-SPEED, where the map says
+              // warp has REACHED 100, the tunnel was only at ~44; it went on
+              // climbing to ~93 under the closed veil (hole already gone) and
+              // was still ~80 with the divario 70% revealed. It was also
+              // frame-rate dependent (τ = 0.42s at 120Hz, 1.67s at 30Hz), so
+              // the shot did not even play the same on two machines.
+              //
+              // Shadow that lerp and INVERT it — the coarse branch's
+              // requestWarp grammar, applied to the desktop one-shot — so the
+              // timeline's curve is what plays: the jump peaks where the map
+              // says it peaks, and it is OVER when the hole is. Clamped to
+              // LITE_WARP_REQ_MAX for the same self-limiting reason as there.
+              // Do NOT lower TUNNEL_COEF_LERP instead: the preloader and the
+              // phone beat share that module.
+              const warpReq = Math.min(
+                SEQ.LITE_WARP_REQ_MAX,
+                Math.max(
+                  SEQ.WARP_MIN,
+                  warpShadow + (s.warp - warpShadow) / TUNNEL_COEF_LERP,
+                ),
+              );
+              tunnel.setTargetTimeCoef(warpReq);
+              warpShadow += (warpReq - warpShadow) * TUNNEL_COEF_LERP;
               // Center lock: particle convergence + zoom-blur center sit on
               // the marched core (island-published UV, eased to exact center
               // across the one-shot's first PLUNGE_LOCK_T; 0.5/0.5 whenever
@@ -1806,6 +1845,8 @@ export default function SingularityPassage() {
               tunnelAlpha: 0,
               warp: SEQ.WARP_MIN,
               pan01: 0,
+              // (warpShadow is reset alongside this write, just below — the
+              // inversion's mirror must start from rest on the next shot.)
               // Round 3 §C — warp-camera + burst fields die WITH the shot
               // (the skip path may land mid-flip; SignatureLine's damped
               // consume eases the residual out over ~0.2s).
@@ -1814,6 +1855,7 @@ export default function SingularityPassage() {
               shakeAmp: 0,
               burst: 0,
             });
+            warpShadow = SEQ.WARP_MIN;
             tunnel?.setEmergence(0, 0);
             veilSet({ opacity: 0, scale: 2.3 });
             if (pulseAlpha) pulseAlpha(0);
@@ -2044,7 +2086,17 @@ export default function SingularityPassage() {
                   SEQ.DIST_LS_END *
                   Math.pow(SEQ.DIST_FLOOR / SEQ.DIST_LS_END, t);
                 useSeqStore.setState({ dist });
-                const v = seqRamp(t, 0.55, 1);
+                // Veil band 0.55→0.78 (owner 2026-09-04: "vorrei che si
+                // entrasse ancora di più dentro il buco nero"). With the
+                // deeper DIST_LS_END the growth is the point of the beat, and
+                // starting the black at t 0.55 hid the last 45% of it: at
+                // 0.78 the hole is already ~93vh when the veil begins, so the
+                // reader SEES the body swallow the frame instead of the frame
+                // simply going dark. The colour-seam trick still holds — the
+                // hole's own core is past 100vh well before the veil is —
+                // and the tail still reaches full black before the covert
+                // jump at tE.
+                const v = seqRamp(t, 0.78, 1);
                 veilSet({ opacity: v, scale: 0.5 + 1.8 * v });
                 applyHoleVisuals(dist, 1); // NO fade — full presence
               },
@@ -2170,11 +2222,18 @@ export default function SingularityPassage() {
                 ),
               });
             };
+            // Durations 3.4/2.6 -> 3.0/2.3, scaled by the shot's new
+            // tT..tE span (3.0s vs 3.4s) after LIGHT-SPEED went 1.6 -> 1.2.
+            // These are FIXED seconds on a timeline whose segments moved, so
+            // leaving them would have had the corkscrew still un-rolling when
+            // the veil opens — exactly the "still going" the shortening is
+            // meant to remove. Rolled-back-to-0 by ~4.9s / 5.5s against tS
+            // 5.2s and a 6.1s end, the same margins they had before.
             tl.to(
               flipState,
               {
                 rot: Math.PI,
-                duration: 3.4,
+                duration: 3.0,
                 ease: "power3.inOut",
                 onUpdate: writeFlip,
               },
@@ -2184,22 +2243,27 @@ export default function SingularityPassage() {
               flipState,
               {
                 settle: 1,
-                duration: 2.6,
+                duration: 2.3,
                 ease: "power2.inOut",
                 onUpdate: writeFlip,
               },
               tL + 0.3,
             );
 
-            // C1b — fov widen: base +8° across LIGHT-SPEED + ENTER (igloo's
+            // C1b — fov widen: base +3° across LIGHT-SPEED + ENTER (igloo's
             // 22→30 ramp transposed onto CAMERA_FOV), held through SPEED,
             // eased back on landing (EMERGE).
+            // 8 → 3 (owner 2026-09-04, the "entrare più dentro" pass): a wider
+            // fov SHRINKS everything in frame, so the old +8° was spending a
+            // third of the dive's hard-won growth back. +3° keeps the sense of
+            // the lens opening under acceleration without fighting the
+            // approach it is supposed to sell.
             const fovState = { v: 0 };
             const writeFov = () =>
               useSeqStore.setState({ fovShift: fovState.v });
             tl.to(
               fovState,
-              { v: 8, duration: tE - tT, ease: "power1.inOut", onUpdate: writeFov },
+              { v: 3, duration: tE - tT, ease: "power1.inOut", onUpdate: writeFov },
               tT,
             );
             tl.to(
@@ -2277,7 +2341,22 @@ export default function SingularityPassage() {
               );
             };
             spike(tL + 1.0); // horizon crossing (veil ~closing, still visible)
-            spike(tS); // emergence (the black opening onto the divario)
+            // BURST 2 REMOVED (owner 2026-09-04: "non ci dev essere la
+            // transizione glitch tra la fine della scena del salto e
+            // l'entrata nella sezione con la rete neurale"). `spike(tS)` fired
+            // the full-frame block-displacement burst exactly as EMERGE began
+            // opening the veil, i.e. ON the neural section as it came into
+            // view — read as a glitch on arrival rather than as an accent on
+            // the crossing. One burst, at the horizon, is the whole vocabulary
+            // now. This was the ONLY writer of seqStore.burst in the
+            // emergence window, and PostFXNodes' branch is `If(uWarpBurst >
+            // 0.001)`, so with it gone the glitch path never executes and idle
+            // cost is unchanged. Every OTHER seam is untouched: the section
+            // cuts feed the same uniform through cutStateRef/spikeRef and
+            // max()-merge, so production→case-studies, case-studies→services,
+            // services→founders, founders→process and fit→final-cta keep their
+            // spikes byte-identically. (SECTION_CUTS/CUT_BOUNDARY_PAIRS never
+            // had an entry for this boundary — the passage owns it.)
 
             tl.play();
           };
@@ -2541,7 +2620,11 @@ export default function SingularityPassage() {
             panel: the foreground plate of the lateral tracking shot on
             desktop, and the pinned reading plate on the phone beat. */}
         <div data-seq-track className="seq-track">
-          <div className="container-px w-full">
+          {/* SPINE_GUTTER_STYLE: stage 05 must sit on the SAME left edge as
+              the spine's 01..04 — the 04→05 handoff is pinned and motionless,
+              so a centred 1600px box here would jump the copy sideways at the
+              seam on any monitor wider than 1600px. See fx/spine-gutter.ts. */}
+          <div className="container-px w-full" style={SPINE_GUTTER_STYLE}>
             <div data-seq-panel className="seq-panel max-w-[42rem]">
               {/* SPINE_BEATS: the same beat grammar as stages 01..04 (data
                   hooks + hairline + rolling index; all of it collapses to the

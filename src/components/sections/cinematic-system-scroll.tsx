@@ -72,6 +72,7 @@ import {
 import { Magnetic } from "@/components/ui/magnetic";
 import { HeroHoverLayer } from "@/components/hero-hover-layer";
 import { HeroIntroGate } from "@/components/fx/hero-intro-gate";
+import { SPINE_GUTTER_STYLE } from "@/components/fx/spine-gutter";
 import { useLanguage } from "@/components/language-provider";
 import { useTextMorphStore } from "@/webgl/store/textMorphStore";
 import { useTierStore } from "@/webgl/store/tierStore";
@@ -682,7 +683,17 @@ function StagePanel({
             }
       }
     >
-      <div className={cn("container-px w-full", compact && "my-auto")}>
+      {/* SPINE_GUTTER_STYLE (owner 2026-09-04): stages 01..04 hold the laptop
+          composition at every width — .container-px centres its 1600px box and
+          walks the labels toward the middle of a wide monitor. No-op below
+          1600px; see fx/spine-gutter.ts for the whole argument, including why
+          this is an inline style and not a class. Stage 05
+          (singularity-passage) carries the same style so the pinned 04→05
+          handoff cannot shift sideways. */}
+      <div
+        className={cn("container-px w-full", compact && "my-auto")}
+        style={SPINE_GUTTER_STYLE}
+      >
         {/* relative z-10 (hero only): the copy block must paint/hit ABOVE the
             HeroHoverLayer sense overlay (z-[5], right 46%, full height) — on
             ~1000-1300px viewports the CTA row crosses the 54% mark and the

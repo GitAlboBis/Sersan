@@ -455,7 +455,11 @@ export default function ProductionGradeSection() {
   // FROM primed at arm only, revert on language rebuild).
   const sectionRef = useRef<HTMLElement | null>(null);
   const chapterRef = useRef<HTMLDivElement | null>(null);
-  useChapterReveal(chapterRef, language);
+  // `scrollLit` (3rd arg, 2026-09-04): arm the chapter entrance inside the
+  // reading band, exactly as the rows below already do — the traverse holds
+  // this block at opacity 0 until it has climbed into the band, so a plain
+  // `top bottom` play burnt the whole animation invisibly.
+  useChapterReveal(chapterRef, language, scrollLit);
   useLedgerReveal(rowRef, language, igniteRing, scrollLit);
   useTextDrift(sectionRef, language);
   // ══ D19 — THE MERGE CASHES IN THE NOTE THIS BLOCK USED TO CARRY ══════════
